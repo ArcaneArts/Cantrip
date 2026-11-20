@@ -131,9 +131,18 @@ impl Ensurer {
             .0
             .codex
             .launch_in_scope(
-                provider::launch(profile, provider, self.0.access.clone())?,
+                provider::launch(
+                    profile,
+                    provider,
+                    self.0.access.clone(),
+                    &command["model"],
+                    &Value::Null,
+                )?,
                 Some((server.clone(), bound.0.clone())),
             )
+            .await?;
+        runtime
+            .synchronize_models(&command["model"], &Value::Null)
             .await?;
         let configuration = profile::configuration(
             &command,

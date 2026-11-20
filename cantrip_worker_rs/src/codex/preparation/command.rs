@@ -443,7 +443,16 @@ impl Ensurer {
             .get("subagentDefaults")
             .filter(|value| value.is_object())
         {
-            open_runtime_provider(&self.0.encryption, &defaults["provider"])?;
+            if standalone || guest {
+                bail!("Custom subagents require a Host Project Chat.");
+            }
+            let child = open_runtime_provider(&self.0.encryption, &defaults["provider"])?;
+            if ["id", "kind", "accountId", "credentialHomeKey"]
+                .iter()
+                .any(|field| child[*field] != provider[*field])
+            {
+                bail!("Custom subagents must use the root model's provider identity.");
+            }
         }
         let structured = command["structuredTask"] == true;
         let user_servers = if structured {
@@ -511,7 +520,9 @@ impl Ensurer {
                     let runtime = match &attached {
                         Some((_, live)) => live.runtime.clone(),
                         None => {
-                            let mut launch = provider::launch(profile, provider, this.0.access.clone())?;
+                            let mut launch = provider::launch(
+                                profile, provider, this.0.access.clone(), &command["model"], &command["subagentDefaults"]["model"],
+                            )?;
                             if let Some(environment) = environment.clone() {
                                 launch.profile.native_host = true;
                                 launch.prepare_home = Some(Arc::new(move |home| {
@@ -523,6 +534,11 @@ impl Ensurer {
                         }
                     };
                     resource.signal.check()?;
+                    if !stopping && held.is_none() {
+                        runtime.synchronize_models(&command["model"], &command["subagentDefaults"]["model"]).await?;
+                        resource.signal.check()?;
+                        this.assert_bound(&bound)?;
+                    }
                     let session = &command["session"];
                     let mut mcp = mcp;
                     let admission = if structured {
@@ -945,13 +961,25 @@ impl Ensurer {
         )
         .await?;
         self.assert_bound(bound)?;
-        self.0
+        let runtime = self
+            .0
             .codex
             .launch_in_scope(
-                provider::launch(profile, provider, self.0.access.clone())?,
+                provider::launch(
+                    profile,
+                    provider,
+                    self.0.access.clone(),
+                    &job["model"],
+                    &Value::Null,
+                )?,
                 Some((server.clone(), owner.clone())),
             )
-            .await
+            .await?;
+        runtime
+            .synchronize_models(&job["model"], &Value::Null)
+            .await?;
+        self.assert_bound(bound)?;
+        Ok(runtime)
     }
 
     pub(crate) async fn resolve_routing(&self, incoming: &Value) -> Result<Value> {

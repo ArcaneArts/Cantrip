@@ -155,6 +155,8 @@ async fn cycle(
     let (direct, direct_listener) =
         crate::worker_link::DirectBroker::bind(worker.clone(), logs.clone()).await?;
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
+    heartbeat["codexVersion"] = codex_compatibility["version"]["raw"].clone();
+    heartbeat["codexRuntime"] = codex_compatibility.clone();
     let managed_web = Arc::new(crate::managed_web::Runtimes::configure(
         &config.data_directory,
         environment,

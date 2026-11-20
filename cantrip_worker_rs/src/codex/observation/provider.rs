@@ -2,7 +2,7 @@ use super::field;
 use crate::{
     codex::{
         catalog::{PROVIDER_CONFIG, auth::Auth},
-        managed::{GrokAccount, Launch, Profile},
+        managed::{GrokAccount, Launch, Profile, model_catalog},
         private_inference::{Context, Hooks},
     },
     provider_access::{Access, Account},
@@ -16,8 +16,11 @@ pub(in crate::codex) fn launch(
     mut profile: Profile,
     provider: Value,
     access: Access,
+    model: &Value,
+    subagent: &Value,
 ) -> Result<Launch> {
     let portable = configure(&mut profile, &provider, true)?;
+    profile.managed_catalog = model_catalog::Seed::new(&provider, model, subagent, access.clone());
     Ok(Launch {
         profile,
         private_inference: Hooks {

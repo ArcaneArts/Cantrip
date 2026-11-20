@@ -107,9 +107,18 @@ impl Observer {
         let runtime = self
             .codex
             .launch_in_scope(
-                provider::launch(profile, provider, self.access.clone())?,
+                provider::launch(
+                    profile,
+                    provider,
+                    self.access.clone(),
+                    &command["model"],
+                    &Value::Null,
+                )?,
                 Some((server_id, owner.clone())),
             )
+            .await?;
+        runtime
+            .synchronize_models(&command["model"], &Value::Null)
             .await?;
         self.assert_bound(binding)?;
         Ok((runtime, model_provider))

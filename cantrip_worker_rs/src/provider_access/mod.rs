@@ -151,6 +151,42 @@ impl Access {
         self.read(account, Some(revision))
     }
 
+    pub(crate) async fn native_model_inventory(&self, provider: &Value) -> Result<Value> {
+        let binding = self.binding()?;
+        let (server, worker) = {
+            let config = self.0.configuration.lock().unwrap();
+            (config.server_url.clone(), config.worker_id.clone())
+        };
+        let url = url::Url::parse(&server)?.join("/api/internal/native-model-inventory")?;
+        let input = checked(
+            "nativeModelInventoryRequestSchema",
+            &json!({
+                "workerId": worker,
+                "providerId": provider["id"],
+                "providerAccountId": provider["accountId"],
+            }),
+        )?;
+        let response = self
+            .request(reqwest::Method::POST, url.clone())
+            .header("content-type", "application/json")
+            .body(input.stringify())
+            .send()
+            .await?;
+        if !response.status().is_success() || response.url() != &url {
+            bail!("Could not read the native model inventory.");
+        }
+        let inventory = checked("nativeModelInventorySchema", &json_body(response).await?)?;
+        if self.binding()? != binding
+            || ["workerId", "providerId", "providerAccountId"]
+                .into_iter()
+                .any(|field| inventory[field] != input[field])
+            || inventory["providerKind"] != provider["kind"]
+        {
+            bail!("Native model inventory returned another provider scope.");
+        }
+        Ok(inventory)
+    }
+
     fn binding(&self) -> Result<(JsString, String)> {
         let (owner, server) = self.0.encryption.bound_identity()?;
         Ok((owner, server.stringify()))

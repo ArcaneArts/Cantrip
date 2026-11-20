@@ -14,8 +14,25 @@ export async function verifySubagentInteraction({
   keyRevision,
   labelKey,
   interactionKey,
+  customModel = false,
 }) {
-  const { model, profile } = await createModel("Subagent approval model", 3);
+  const childName = "cantrip-approval-child-model";
+  const childEffort = "high";
+  const { model, profile, provider } = await createModel(
+    "Subagent approval model",
+    3,
+    customModel
+      ? [
+          {
+            id: childName,
+            capabilities: {
+              trained_for_tool_use: true,
+              reasoning: { allowed_options: ["medium", childEffort] },
+            },
+          },
+        ]
+      : [],
+  );
   await call("PATCH", "/api/settings", 200, {
     defaultModelId: profile.id,
     defaultChatPermissionProfileId: ":workspace",
@@ -30,50 +47,122 @@ export async function verifySubagentInteraction({
     labelKey,
     title: "Subagent approval",
   });
+  const configuration = (subagentModelId) => ({
+    modelId: profile.id,
+    reasoningEffort: null,
+    customSubagentModel: true,
+    subagentModelId,
+    subagentReasoningEffort: childEffort,
+  });
+  const refreshSettings = () =>
+    call("POST", `${chatUrl}/native-settings/refresh`, 200, {});
+  let warm;
+  let childConfiguration;
+  if (customModel) {
+    warm = await eventually(refreshSettings, ({ effective }) =>
+      assert.ok(effective),
+    );
+    const route = `${chatUrl}/model-configuration`;
+    const { profile: foreign } = await createModel("Unrelated provider");
+    const incompatible = await call(
+      "PATCH",
+      route,
+      409,
+      configuration(foreign.id),
+    );
+    assert.equal(incompatible.code, "provider-route-incompatible");
+    const catalog = await call(
+      "POST",
+      `/api/settings/providers/${provider.id}/catalog/refresh?workerId=${workerId}`,
+      200,
+      {},
+    );
+    assert.ok(
+      catalog.models
+        .find(({ nativeModelId }) => nativeModelId === childName)
+        ?.supportedReasoningEfforts.some(
+          ({ effort }) => effort === childEffort,
+        ),
+    );
+    const childProfile = await call("POST", "/api/settings/models", 201, {
+      name: "Custom child model",
+      routes: [
+        { providerId: provider.id, modelName: childName, enabled: true },
+      ],
+    });
+    childConfiguration = configuration(childProfile.id);
+    await call("PATCH", route, 200, childConfiguration);
+  }
   const command = "printf cantrip-private-child-approval-fixture";
-  const search = model.reply({
-    toolSearch: { query: "spawn_agent", limit: 1 },
-  });
-  const spawn = model.reply({ hold: true });
-  const next = ["after-spawn-1", "after-spawn-2"].map((responseId) =>
-    model.reply({ hold: true, responseId }),
-  );
-  const resumed = model.reply({
-    text: "Child observed the declined approval.",
-  });
+  const held = [];
+  const hold = (responseId) => {
+    const response = model.reply({ hold: true, responseId });
+    held.push(response);
+    return response;
+  };
+  const firstResponse = hold();
   const entered = (plan) =>
     eventually(
       () => plan.request,
       (request) => assert.ok(request),
     );
-  const tool = (tools, name) => {
-    const entry = modelFunctions(tools).find(
-      (candidate) => candidate.name === name,
+  const findTool = (tools, name) =>
+    modelFunctions(tools).find(
+      (candidate) =>
+        candidate.name === name || candidate.name.endsWith(`__${name}`),
     );
+  const tool = (tools, name) => {
+    const entry = findTool(tools, name);
     assert.ok(entry, `Bundled Codex advertises ${name}`);
     return entry;
   };
   try {
-    await call(
-      "POST",
-      `${chatUrl}/turns`,
-      202,
-      await encryptedTurn("Delegate one local approval fixture.", profile.id),
+    const payload = await encryptedTurn(
+      "Delegate one local approval fixture.",
+      profile.id,
     );
-    const first = await entered(spawn);
+    if (childConfiguration)
+      Object.assign(payload.queuedPrompt, childConfiguration);
+    await call("POST", `${chatUrl}/turns`, 202, payload);
+    const first = await entered(firstResponse);
     const root = first.input.client_metadata;
     assert.ok(root.thread_id && root.turn_id, JSON.stringify(root));
-    assert.ok(search.request.completed);
-    const discovered = first.input.input.find(
-      (item) => item.type === "tool_search_output",
-    );
-    const spawnTool = tool(discovered?.tools, "spawn_agent");
+    assert.equal(first.input.model, model.model);
+    let spawn = firstResponse;
+    let spawnTool = findTool(first.input.tools, "spawn_agent");
+    if (!spawnTool) {
+      spawn = hold();
+      firstResponse.toolSearch = { query: "spawn_agent", limit: 1 };
+      firstResponse.release();
+      const discovered = (await entered(spawn)).input.input.find(
+        (item) => item.type === "tool_search_output",
+      );
+      spawnTool = tool(discovered?.tools, "spawn_agent");
+    }
+    const next = [hold("after-spawn-1"), hold("after-spawn-2")];
+    const resumed = model.reply({
+      text: "Child observed the declined approval.",
+    });
+    model.reply({
+      onlyFor: ({ input }) =>
+        input.model === model.model &&
+        input.client_metadata.thread_id === root.thread_id &&
+        input.input
+          .at(-1)
+          ?.content?.some(
+            ({ text }) =>
+              text?.startsWith("<subagent_notification>") &&
+              text.includes(resumed.text),
+          ),
+      text: "The root acknowledged its child's completion.",
+    });
     spawn.calls = [
       {
         ...spawnTool,
         arguments: {
           message: "Exercise a protected command approval in the child turn.",
-          ...(spawnTool.namespace === "multi_agent_v1"
+          ...(spawnTool.namespace === "multi_agent_v1" ||
+          spawnTool.name === "multi_agent_v1__spawn_agent"
             ? {}
             : { task_name: "approval" }),
         },
@@ -87,6 +176,12 @@ export async function verifySubagentInteraction({
     );
     const child = next.find((plan) => plan !== parent);
     assert.ok(parent && child);
+    assert.equal(
+      child.request.input.model,
+      customModel ? childName : model.model,
+    );
+    if (customModel)
+      assert.equal(child.request.input.reasoning?.effort, childEffort);
     const metadata = child.request.input.client_metadata;
     assert.equal(metadata.root_turn_id, root.turn_id);
     assert.ok(metadata.turn_id);
@@ -170,17 +265,30 @@ export async function verifySubagentInteraction({
     );
     assert.equal(outcome.length, 1);
     assert.match(JSON.stringify(outcome[0].output), /reject|denied|declin/i);
+    parent.text = "The root finished after the child approval.";
     parent.release();
     await eventually(
       () => parent.request.completed,
       (completed) => assert.ok(completed),
     );
+    if (warm) {
+      const { effective } = await eventually(refreshSettings, ({ effective }) =>
+        assert.ok(effective),
+      );
+      assert.equal(effective.context.threadId, warm.effective.context.threadId);
+      assert.equal(
+        effective.context.runtimeGeneration,
+        warm.effective.context.runtimeGeneration,
+      );
+      console.log(
+        "The configured child used its provider model on the existing native runtime.",
+      );
+    }
     assert.deepEqual(model.failures, []);
     console.log(
       "An admitted root turn delivered one protected approval reply to its real Codex child.",
     );
   } finally {
-    spawn.release();
-    for (const plan of next) plan.release();
+    for (const plan of held) plan.release();
   }
 }

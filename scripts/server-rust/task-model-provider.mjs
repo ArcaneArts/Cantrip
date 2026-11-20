@@ -17,6 +17,7 @@ export function modelFunctions(tools, namespace) {
 export async function taskModelProvider({
   allowMcpDiscoveryProbe = false,
   observeStreams = false,
+  additionalModels = [],
 } = {}) {
   const replies = [],
     requests = [],
@@ -25,6 +26,7 @@ export async function taskModelProvider({
     sockets = new Set();
   // Use the bundled runtime's normal model metadata against this local provider.
   const model = "gpt-5.5";
+  const models = [{ id: model }, ...additionalModels];
   let nextResponse = 0;
   const send = (response, event) =>
     response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
@@ -82,14 +84,12 @@ export async function taskModelProvider({
         response.end(
           JSON.stringify({
             object: "list",
-            data: [
-              {
-                id: model,
-                object: "model",
-                created: 0,
-                owned_by: "acceptance",
-              },
-            ],
+            data: models.map((descriptor) => ({
+              object: "model",
+              created: 0,
+              owned_by: "acceptance",
+              ...descriptor,
+            })),
           }),
         );
         record.completed = true;
@@ -100,7 +100,10 @@ export async function taskModelProvider({
         ["/v1/responses", "/responses"].includes(pathname),
         "actual Responses endpoint",
       );
-      assert.equal(input.model, model);
+      assert.ok(
+        models.some(({ id }) => input.model === id),
+        `Unexpected model ${input.model}`,
+      );
       assert.equal(input.stream, true);
       let plan = replies.shift();
       // A possible extra Goal continuation belongs to that conversation. If it
@@ -143,6 +146,8 @@ export async function taskModelProvider({
         record.completed = true;
         return;
       }
+      // Paused tool responses can choose their output after inspecting the request.
+      if (plan.text === undefined && plan.gate) await plan.gate;
       if (plan.text !== undefined) {
         const item = {
           type: "message",
@@ -169,9 +174,6 @@ export async function taskModelProvider({
           item,
         });
       }
-      // Tool-only streams must remain open before the tool is delivered too.
-      // Text streams already wait between their delta and completed item.
-      if (plan.text === undefined && plan.gate) await plan.gate;
       if (plan.toolSearch) {
         send(response, {
           type: "response.output_item.done",
