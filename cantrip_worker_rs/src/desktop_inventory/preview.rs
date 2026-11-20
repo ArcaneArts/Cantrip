@@ -33,7 +33,7 @@ const STOP: &str = "computer-use.preview.stop";
 const REVOKE: &str = "computer-use.preview.revoke";
 const OPERATION: &str = "computer-use.operation";
 const ANSWER: &str = "computer-use.approval.respond";
-pub use agent::{HostAction, HostDesktop, HostEvaluation, HostSnapshot};
+pub use agent::{DesktopTurn, HostAction, HostEvaluation, HostSnapshot};
 pub(super) use native::{release, run};
 
 pub(crate) fn supports(method: &str) -> bool {
@@ -51,6 +51,8 @@ struct Manager {
     guests: guest::Guests,
     requests: mpsc::Sender<DesktopRequest>,
     retirements: mpsc::UnboundedSender<Arc<native::Attachment>>,
+    stop: Abort,
+    running: Signal,
 }
 
 pub(super) struct Retirements {
@@ -74,7 +76,7 @@ pub(super) struct Lease {
     abort: Abort,
     signal: Signal,
     attachment: Arc<native::Attachment>,
-    guest: Mutex<Option<Arc<guest::Group>>>,
+    guest: Mutex<Option<guest::GuestLease>>,
 }
 
 pub(super) struct Request {
@@ -93,7 +95,11 @@ impl Request {
     }
 
     pub(super) fn expired(self) {
-        let _ = self.reply.send(Err(native::cancelled("not-sent")));
+        self.fail(native::cancelled("not-sent"));
+    }
+
+    fn fail(self, error: anyhow::Error) {
+        let _ = self.reply.send(Err(error));
     }
 }
 
@@ -105,6 +111,7 @@ impl Previews {
         requests: mpsc::Sender<DesktopRequest>,
     ) -> (Self, Retirements) {
         let (retirements, releases) = mpsc::unbounded_channel();
+        let (stop, running) = Abort::new();
         let manager = Arc::new(Manager {
             leases: Mutex::default(),
             encryption,
@@ -113,6 +120,8 @@ impl Previews {
             outgoing,
             requests,
             retirements,
+            stop,
+            running,
         });
         let retirements = Retirements {
             manager: Arc::downgrade(&manager),
@@ -137,6 +146,10 @@ impl Previews {
                     }
                 }
             }
+            previews
+                .0
+                .stop
+                .abort(anyhow::anyhow!("Computer-use worker stopped."));
             previews.remove_matching(|_| true);
             previews.0.guests.close().await;
         })
@@ -289,7 +302,9 @@ impl Previews {
         if lease.authority["osPlacement"].is_null() {
             let _ = self.0.retirements.send(lease.attachment.clone());
         } else {
-            self.0.guests.release(lease);
+            self.0
+                .guests
+                .release(&lease.guest, lease.attachment.clone());
         }
     }
 
@@ -403,7 +418,9 @@ impl Previews {
                 reply,
             };
             if let Some(execution) = placement {
-                self.0.guests.dispatch(&lease, request, &execution).await?;
+                self.0
+                    .guests
+                    .submit(&lease.authority, &lease.guest, &execution, request)?;
             } else {
                 self.0
                     .requests

@@ -1,8 +1,8 @@
-//! Authorized JavaScript host actions on the worker's desktop service.
+//! Authorized JavaScript host actions on the turn's assigned desktop.
 #[cfg(all(test, unix))]
 mod tests;
 
-use super::{DEADLINE, DesktopRequest, Previews, Request, native};
+use super::{DEADLINE, DesktopRequest, Previews, Request, guest, native};
 use crate::{
     computer_use::{HostError, Javascript},
     http::checked,
@@ -45,19 +45,42 @@ struct EvaluationFrames {
     input_receipts: Vec<Value>,
 }
 
-pub struct HostDesktop {
+pub struct DesktopTurn {
     desktop: Previews,
     authority: Value,
+    execution: Option<Value>,
     bound: Value,
     epoch: u64,
     abort: Arc<Abort>,
     signal: Signal,
-    attachment: Arc<Mutex<Arc<native::Attachment>>>,
+    attachment: Arc<Mutex<Arc<Attachment>>>,
+}
+
+struct Attachment {
+    native: Arc<native::Attachment>,
+    guest: Mutex<Option<guest::GuestLease>>,
+}
+
+impl Attachment {
+    fn new(authority: &Value, binding: &Value) -> Self {
+        Self {
+            native: Arc::new(native::Attachment::new(authority, Some(binding))),
+            guest: Mutex::default(),
+        }
+    }
+
+    fn retire(&self, manager: &super::Manager, in_guest: bool) {
+        if in_guest {
+            manager.guests.release(&self.guest, self.native.clone());
+        } else {
+            let _ = manager.retirements.send(self.native.clone());
+        }
+    }
 }
 
 struct EvaluationAttachment<'a> {
-    desktop: &'a HostDesktop,
-    attachment: Arc<native::Attachment>,
+    desktop: &'a DesktopTurn,
+    attachment: Arc<Attachment>,
     keep: bool,
 }
 
@@ -70,33 +93,30 @@ impl Drop for EvaluationAttachment<'_> {
 }
 
 impl Previews {
-    /// Binds an observed evaluator to the Host captured by Core. A Chat with
-    /// a guest placement must use the corresponding guest carrier instead.
-    pub fn bind_host(
+    /// Binds an observed evaluator to the exact Host or guest placement.
+    pub fn bind_turn(
         &self,
         authority: &Value,
         javascript: &Javascript,
         epoch: u64,
-    ) -> Result<HostDesktop> {
+    ) -> Result<DesktopTurn> {
         let authority = checked("cuaAgentAuthoritySchema", authority)?;
         self.authorize(&authority)?;
         let binding = javascript.binding();
         ensure!(
             self.0.outgoing.stream_current(epoch)
                 && binding["chatId"] == authority["chatId"]
-                && binding["workerId"] == authority["workerId"]
-                && self.0.guests.placement(&authority)?.is_none(),
-            "Computer use is outside the assigned Host execution."
+                && binding["workerId"] == authority["workerId"],
+            "Computer use is outside the assigned execution."
         );
+        let execution = self.0.guests.placement(&authority)?;
+        let in_guest = execution.is_some();
         let (abort, signal) = Abort::new();
         let abort = Arc::new(abort);
-        let signal = Signal::any(vec![signal, javascript.turn()]);
+        let signal = Signal::any(vec![signal, javascript.turn(), self.0.running.clone()]);
         signal.check()?;
-        let attachment = Arc::new(Mutex::new(Arc::new(native::Attachment::new(
-            &authority,
-            Some(binding),
-        ))));
-        let retirement = self.0.retirements.clone();
+        let attachment = Arc::new(Mutex::new(Arc::new(Attachment::new(&authority, binding))));
+        let manager = Arc::downgrade(&self.0);
         let mut connection = self.0.outgoing.stream_epoch();
         tokio::spawn({
             let attachment = attachment.clone();
@@ -106,16 +126,19 @@ impl Previews {
                 tokio::select! {
                     _ = signal.cancelled() => {},
                     _ = connection.wait_for(|current| *current != epoch) => {
-                        abort.abort(anyhow::anyhow!("Computer-use Host connection changed."));
+                        abort.abort(anyhow::anyhow!("Computer-use worker connection changed."));
                     },
                 }
                 let attachment = attachment.lock().unwrap().clone();
-                let _ = retirement.send(attachment);
+                if let Some(manager) = manager.upgrade() {
+                    attachment.retire(&manager, in_guest);
+                }
             }
         });
-        Ok(HostDesktop {
+        Ok(DesktopTurn {
             desktop: self.clone(),
             authority,
+            execution,
             bound: binding.clone(),
             epoch,
             abort,
@@ -125,7 +148,7 @@ impl Previews {
     }
 }
 
-impl HostDesktop {
+impl DesktopTurn {
     /// The coordinator refreshes Core authority and waits for any required
     /// approval. Only this callback can authorize a native action.
     pub async fn evaluate<F, A>(
@@ -145,8 +168,8 @@ impl HostDesktop {
         );
         self.signal.check()?;
         ensure!(
-            self.desktop.0.outgoing.stream_current(self.epoch),
-            "Computer-use Host connection changed."
+            self.placement_current(),
+            "The computer-use placement changed."
         );
         let mut owned = self.evaluation_attachment();
         let frames = Mutex::new(EvaluationFrames::default());
@@ -209,22 +232,31 @@ impl HostDesktop {
         }
     }
 
-    fn retire(&self, attachment: &Arc<native::Attachment>) {
+    fn retire(&self, attachment: &Arc<Attachment>) {
         let mut current = self.attachment.lock().unwrap();
         if Arc::ptr_eq(&current, attachment) {
             let previous = std::mem::replace(
                 &mut *current,
-                Arc::new(native::Attachment::new(&self.authority, Some(&self.bound))),
+                Arc::new(Attachment::new(&self.authority, &self.bound)),
             );
-            let _ = self.desktop.0.retirements.send(previous);
+            previous.retire(&self.desktop.0, self.execution.is_some());
         }
+    }
+
+    fn placement_current(&self) -> bool {
+        self.desktop.0.outgoing.stream_current(self.epoch)
+            && self.desktop.authorize(&self.authority).is_ok()
+            && self
+                .desktop
+                .0
+                .guests
+                .placement(&self.authority)
+                .is_ok_and(|current| current == self.execution)
     }
 
     fn current(&self, signal: &Signal) -> Result<(), HostError> {
         signal.check().map_err(|_| HostError::new("cancelled"))?;
-        if self.desktop.0.outgoing.stream_current(self.epoch)
-            && self.desktop.authorize(&self.authority).is_ok()
-        {
+        if self.placement_current() {
             Ok(())
         } else {
             Err(HostError::new("ownership-mismatch"))
@@ -233,14 +265,14 @@ impl HostDesktop {
 
     async fn action<F: Future<Output = Result<(), HostError>>>(
         &self,
-        attachment: &Arc<native::Attachment>,
+        attachment: &Attachment,
         action: Value,
         signal: Signal,
         frames: &Mutex<EvaluationFrames>,
         authorize: &impl Fn(HostAction, Signal) -> F,
     ) -> Result<Value, HostError> {
         self.current(&signal)?;
-        let session = attachment.data(None);
+        let session = attachment.native.data(None);
         let (policy, command) = command(&action, &session)?;
         authorize(policy, signal.clone()).await?;
         self.current(&signal)?;
@@ -300,14 +332,14 @@ impl HostDesktop {
 
     async fn dispatch(
         &self,
-        attachment: &Arc<native::Attachment>,
+        attachment: &Attachment,
         action: Value,
         signal: &Signal,
     ) -> Result<native::ResultData, HostError> {
         let mutating = native::mutates_desktop(&action);
         let (reply, result) = oneshot::channel();
         let request = Request {
-            attachment: attachment.clone(),
+            attachment: attachment.native.clone(),
             epoch: self.epoch,
             signal: signal.clone(),
             allow_cantrip_app: self.authority["cantripAppAllowed"] == true,
@@ -315,32 +347,44 @@ impl HostDesktop {
             action,
             reply,
         };
-        self.desktop
-            .0
-            .requests
-            .try_send(DesktopRequest::ComputerUse(request))
-            .map_err(|_| HostError::new("capacity"))?;
+        if let Some(execution) = &self.execution {
+            self.desktop
+                .0
+                .guests
+                .submit(&self.authority, &attachment.guest, execution, request)
+                .map_err(|error| dispatch_error(error, mutating))?;
+        } else {
+            self.desktop
+                .0
+                .requests
+                .try_send(DesktopRequest::ComputerUse(request))
+                .map_err(|_| HostError::new("capacity"))?;
+        }
         result
             .await
             .map_err(|_| HostError::new("cancelled"))?
-            .map_err(|error| {
-                let rejected = error.downcast_ref::<native::Rejected>();
-                let code = match rejected {
-                    Some(failed) if mutating && failed.outcome == "unknown" => "input-unknown",
-                    Some(failed) if failed.code == "timeout" => "cancelled",
-                    Some(failed) => &failed.code,
-                    None => "invalid-request",
-                };
-                HostError::new(code)
-            })
+            .map_err(|error| dispatch_error(error, mutating))
     }
 }
 
-impl Drop for HostDesktop {
+impl Drop for DesktopTurn {
     fn drop(&mut self) {
         self.abort
-            .abort(anyhow::anyhow!("Computer-use Host execution ended."));
+            .abort(anyhow::anyhow!("Computer-use desktop execution ended."));
     }
+}
+
+fn dispatch_error(error: anyhow::Error, mutating: bool) -> HostError {
+    let rejected = error.downcast_ref::<native::Rejected>();
+    let code = match rejected {
+        Some(failed) if mutating && failed.outcome == "unknown" => "input-unknown",
+        Some(failed) if failed.code == "timeout" => "cancelled",
+        Some(failed) if failed.code == "unavailable" => "unsupported",
+        Some(failed) => &failed.code,
+        None if error.is::<crate::metadata::Cancelled>() => "cancelled",
+        None => "invalid-request",
+    };
+    HostError::new(code)
 }
 
 fn command(action: &Value, session: &Value) -> Result<(HostAction, Value), HostError> {

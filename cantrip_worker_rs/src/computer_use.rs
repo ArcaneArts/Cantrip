@@ -15,7 +15,7 @@ use std::{
 use tokio::task::JoinHandle;
 
 pub use crate::desktop_inventory::preview::{
-    HostAction, HostDesktop, HostEvaluation, HostSnapshot, Previews as Desktop,
+    DesktopTurn, HostAction, HostEvaluation, HostSnapshot, Previews as Desktop,
 };
 pub use crate::desktop_inventory::process::NativeError;
 
