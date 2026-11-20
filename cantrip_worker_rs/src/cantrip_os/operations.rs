@@ -16,6 +16,14 @@ pub(super) struct Operations {
     active: Mutex<HashSet<PathBuf>>,
 }
 
+pub(super) struct Admission<'a> {
+    pub scope: &'a Value,
+    pub id: &'a str,
+    pub command: &'a str,
+    pub body: Value,
+    pub checkpoint: Option<Value>,
+}
+
 struct Active<'a> {
     file: PathBuf,
     set: &'a Mutex<HashSet<PathBuf>>,
@@ -87,6 +95,16 @@ impl Journal<'_> {
     pub fn set_checkpoint(&mut self, checkpoint: Value) -> Result<()> {
         self.record["checkpoint"] = checkpoint;
         self.save()
+    }
+
+    pub fn checkpoint(&self) -> &Value {
+        &self.record["checkpoint"]
+    }
+
+    pub fn outcome(&mut self, state: &str, receipt: Value, error: Value) {
+        self.record["state"] = json!(state);
+        self.record["receipt"] = receipt;
+        self.record["error"] = error;
     }
 
     pub fn prepare_process(&mut self, process_id: &str, argv: &[&str]) -> Result<()> {
@@ -203,8 +221,47 @@ impl Operations {
         checkpoint: Option<Value>,
         run: impl AsyncFnOnce(&mut Journal<'_>) -> Result<Value>,
     ) -> Result<Value> {
+        self.run_record(
+            Admission {
+                scope,
+                id,
+                command,
+                body: admission,
+                checkpoint,
+            },
+            false,
+            async |journal, _| {
+                let receipt = run(journal).await?;
+                journal.outcome("ready", receipt, Value::Null);
+                Ok(())
+            },
+        )
+        .await
+    }
+
+    pub(super) async fn reconcile_record(
+        &self,
+        admission: Admission<'_>,
+        run: impl AsyncFnOnce(&mut Journal<'_>, bool) -> Result<()>,
+    ) -> Result<Value> {
+        self.run_record(admission, true, run).await
+    }
+
+    async fn run_record(
+        &self,
+        admission: Admission<'_>,
+        reconcile: bool,
+        run: impl AsyncFnOnce(&mut Journal<'_>, bool) -> Result<()>,
+    ) -> Result<Value> {
+        let Admission {
+            scope,
+            id,
+            command,
+            body,
+            checkpoint,
+        } = admission;
         let file = self.file(scope, id)?;
-        let fingerprint = digest(Value::Array(vec![json!(command), admission]));
+        let fingerprint = digest(Value::Array(vec![json!(command), body]));
         let time = now();
         let mut record = json!({"version":1,"operationId":id,"command":command,"admissionFingerprint":fingerprint,
             "scope":scope,"state":"running","startedAt":time,"updatedAt":time,"receipt":Value::Null,
@@ -212,9 +269,9 @@ impl Operations {
         if let Some(checkpoint) = checkpoint {
             record["checkpoint"] = checkpoint;
         }
-        let active = {
+        let (active, fresh) = {
             let mut active = self.active.lock().unwrap();
-            if let Err(error) = save(&file, &record, true) {
+            let fresh = if let Err(error) = save(&file, &record, true) {
                 if error
                     .downcast_ref::<io::Error>()
                     .is_none_or(|error| error.kind() != io::ErrorKind::AlreadyExists)
@@ -230,35 +287,75 @@ impl Operations {
                         && &prior["scope"] == scope,
                     "The OS operation ID already belongs to a different admission."
                 );
-                return Ok(prior);
-            }
+                if !reconcile
+                    || active.contains(&file)
+                    || prior["state"] == "ready"
+                    || prior["state"] == "failed"
+                {
+                    return Ok(prior);
+                }
+                record = prior;
+                false
+            } else {
+                true
+            };
             active.insert(file.clone());
-            Active {
-                file,
-                set: &self.active,
-            }
+            (
+                Active {
+                    file,
+                    set: &self.active,
+                },
+                fresh,
+            )
         };
 
         let mut journal = Journal {
             file: &active.file,
             record,
         };
-        match run(&mut journal).await {
-            Ok(receipt) => {
-                journal.record["state"] = json!("ready");
-                journal.record["receipt"] = receipt;
-            }
-            Err(error) => {
-                journal.record["state"] = json!(if error.is::<DeliveryUnknown>() {
-                    "unknown"
-                } else {
-                    "failed"
-                });
-                journal.record["error"] = json!(error.to_string());
-            }
+        if reconcile {
+            journal.record["state"] = json!("unknown");
+        }
+        if let Err(error) = run(&mut journal, fresh).await {
+            let state = if reconcile || error.is::<DeliveryUnknown>() {
+                "unknown"
+            } else {
+                "failed"
+            };
+            journal.outcome(state, Value::Null, json!(error.to_string()));
         }
         journal.save()?;
         Ok(journal.record)
+    }
+
+    /// Attach a protected receipt without changing the terminal fact or time.
+    pub(super) fn record_terminal_receipt(&self, prior: &Value, receipt: Value) -> Result<Value> {
+        let id = super::text(prior, "operationId")?;
+        let file = self.file(&prior["scope"], id)?;
+        let active = self.active.lock().unwrap();
+        ensure!(!active.contains(&file), "The OS operation is still active.");
+        let mut current = self
+            .read(&file, id, false)?
+            .context("The OS operation disappeared.")?;
+        ensure!(
+            matches!(current["state"].as_str(), Some("ready" | "failed"))
+                && [
+                    "command",
+                    "scope",
+                    "admissionFingerprint",
+                    "checkpoint",
+                    "state",
+                    "error"
+                ]
+                .into_iter()
+                .all(|field| current[field] == prior[field]),
+            "The terminal OS operation changed before its receipt was recorded."
+        );
+        if current["receipt"].is_null() {
+            current["receipt"] = receipt;
+            save(&file, &current, false)?;
+        }
+        Ok(current)
     }
 
     pub fn complete_observed(&self, prior: &Value, receipt: Value) -> Result<Value> {

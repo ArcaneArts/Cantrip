@@ -5,6 +5,7 @@ mod docker;
 mod linked;
 mod lock;
 pub(crate) mod operations;
+mod packages;
 mod power;
 mod process;
 pub(crate) mod product_files;
@@ -35,6 +36,7 @@ const SOURCE_CLIENT: &str = "cantrip-source-dispatch";
 pub(crate) struct Controller {
     worker: JsString,
     operations: Operations,
+    packages: packages::Manager,
 }
 
 fn checked(schema: &str, value: Value) -> Result<Value> {
@@ -124,6 +126,7 @@ impl Controller {
         Self {
             worker,
             operations: Operations::new(data),
+            packages: packages::Manager::new(data),
         }
     }
 
@@ -139,6 +142,8 @@ impl Controller {
                 | SOURCE_PROVISION
                 | desktop::STATUS
                 | desktop::OPERATION
+                | packages::STATUS
+                | packages::OPERATION
                 | power::STATUS
                 | power::OPERATION
                 | run_definitions::COMMAND
@@ -195,6 +200,12 @@ impl Controller {
         }
         if matches!(kind, desktop::STATUS | desktop::OPERATION) {
             return desktop::execute(&self.operations, command, lifetime).await;
+        }
+        if matches!(kind, packages::STATUS | packages::OPERATION) {
+            return self
+                .packages
+                .execute(&self.operations, command, encryption, lifetime)
+                .await;
         }
         let transport_value = checked("cantripOsTransportSchema", command["transport"].clone())?;
         let transport = Transport::from_value(&transport_value)?;

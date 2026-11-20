@@ -22,6 +22,7 @@ const { values } = parseArgs({
     repository: { type: "string" },
     "executor-package": { type: "string" },
     "workspaces-package": { type: "string" },
+    "package-artifact": { type: "string" },
     "run-plan": { type: "boolean", default: false },
     "run-runtime": { type: "boolean", default: false },
     "product-files": { type: "boolean", default: false },
@@ -51,6 +52,7 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-os-"));
 const name = `cantrip-rust-os-${randomUUID()}`;
 const workerId = "native-os-workspaces";
 const data = path.join(root, "worker");
+const packageCatalog = path.join(root, "catalogue");
 const trace = path.join(root, "guest-create.log");
 let container, server, worker, powerProxy, realDockerHost;
 const linked = values.linked
@@ -61,8 +63,8 @@ async function docker(...args) {
   return (await execute("docker", args, { timeout: 20_000 })).stdout.trim();
 }
 
-async function eventually(check) {
-  const deadline = Date.now() + 25_000;
+async function eventually(check, timeout = 25_000) {
+  const deadline = Date.now() + timeout;
   for (;;) {
     try {
       return await check();
@@ -173,7 +175,9 @@ try {
     const response = await fetch(server.origin + url, {
       method,
       signal: AbortSignal.timeout(
-        values.power || values.desktop ? 180_000 : 25_000,
+        values.power || values.desktop || values["package-artifact"]
+          ? 180_000
+          : 25_000,
       ),
       headers: {
         origin: "http://127.0.0.1:5173",
@@ -244,6 +248,9 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
           CANTRIP_WORKER_DATA_DIR: data,
           CANTRIP_WORKER_ID: workerId,
           CANTRIP_SERVER_URL: server.origin,
+          ...(values["package-artifact"]
+            ? { CANTRIP_OS_PACKAGE_DIRECTORY: packageCatalog }
+            : {}),
           ...(powerProxy
             ? {
                 DOCKER_HOST: powerProxy.endpoint,
@@ -387,8 +394,9 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
     ]),
   );
   assert.deepEqual(record.receipt, created.receipt);
+  let repositoryKey;
   if (sources) {
-    await sources.verifySources({
+    repositoryKey = await sources.verifySources({
       call,
       projects,
       os,
@@ -453,6 +461,27 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       },
     });
   }
+  if (values["package-artifact"]) {
+    const { verifyCantripOsPackages } =
+      await import("./cantrip-os-packages-cases.mjs");
+    await verifyCantripOsPackages({
+      call,
+      os,
+      workerId,
+      data,
+      repositoryKey,
+      serverId: bootstrap.server.id,
+      file: values["package-artifact"],
+      catalog: packageCatalog,
+      guest: (...args) => docker("exec", "--user", "0", container, ...args),
+      journalDir: path.dirname(file),
+      eventually,
+      restartWorker: async () => {
+        await stopWorker();
+        await startWorker();
+      },
+    });
+  }
   console.log(
     JSON.stringify({
       suite: "native-cantrip-os-workspaces",
@@ -465,6 +494,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       nodeCompatibleJournal: true,
       ...(values.desktop ? { guestDesktopLifecycle: true } : {}),
       ...(powerProxy ? { retainedPowerControls: true } : {}),
+      ...(values["package-artifact"] ? { guestPackageManagement: true } : {}),
     }),
   );
 } catch (error) {

@@ -39,6 +39,7 @@ pub(crate) enum Transport {
 pub(super) enum Program {
     Executor,
     Workspaces,
+    Python,
 }
 
 impl Transport {
@@ -81,6 +82,7 @@ impl Transport {
         let guest = match program {
             Program::Executor => "/usr/bin/cantrip-executor",
             Program::Workspaces => "/usr/bin/cantrip-workspaces",
+            Program::Python => "/usr/bin/python3",
         };
         let strings = |values: &[&str]| values.iter().map(OsString::from).collect::<Vec<_>>();
         match self {
