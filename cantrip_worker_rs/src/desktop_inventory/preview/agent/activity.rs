@@ -10,6 +10,7 @@ pub struct HostActivity<'a> {
     pub worker: &'a Value,
     pub thread: &'a JsString,
     pub turn: &'a JsString,
+    pub scope: &'a Value,
     pub item: &'a Value,
     pub request: Uuid,
     pub publish: &'a (dyn Fn(Value) + Send + Sync),
@@ -177,11 +178,7 @@ impl Drop for Record<'_> {
                 "sourceMethod":format!("computer-use/{}",self.operation),"diagnosticId":id,
                 "threadId":context.thread,"turnId":context.turn,"itemId":context.item,
             }),
-            "agentScope":json!({
-                "agentThreadId":context.thread,"rootThreadId":context.thread,"parentThreadId":Value::Null,
-                "rootTurnId":context.turn,"agentPath":["root"],"nickname":Value::Null,
-                "role":Value::Null,"depth":0,"isRoot":true,
-            }),
+            "agentScope":context.scope,
             "raw":json!({
                 "schemaVersion":1,"request":Value::Null,"response":Value::Null,"metadata":json!({
                     "source":"agent-mcp","operation":self.operation,"operationId":id,

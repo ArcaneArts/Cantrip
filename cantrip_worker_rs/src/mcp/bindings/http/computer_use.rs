@@ -135,7 +135,9 @@ impl Inner {
             return Err(revoked());
         }
         let request_id = uuid::Uuid::new_v4();
-        execution.executor.begin_call(request_id);
+        if !execution.executor.begin_call(request, request_id) {
+            return Err(revoked());
+        }
 
         let (cancel, signal) = Abort::new();
         let mut call = Call {

@@ -73,6 +73,7 @@ const { values } = parseArgs({
     "cua-console": { type: "string" },
     "cua-recovered": { type: "string" },
     "cua-autonomous": { type: "string" },
+    "cua-child": { type: "string" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -116,10 +117,13 @@ const providerKey = key("provider-credential");
 const cuaConsole = values["cua-console"];
 const recoveredCua = values["cua-recovered"];
 const autonomousCua = values["cua-autonomous"];
+const childCua = values["cua-child"];
 const cuaAgent =
   values["cua-agent"] || cuaConsole || recoveredCua || autonomousCua;
 const previewKey =
-  values["cua-preview"] || cuaAgent ? key("client-control-content") : null;
+  values["cua-preview"] || cuaAgent || childCua
+    ? key("client-control-content")
+    : null;
 const policyKey = values.policies ? key("policy-content") : null;
 const customizationKey =
   values["skill-settings"] || values["customization-inventory"]
@@ -133,7 +137,7 @@ const operationsKey = key("model-operation-content");
 const consoleInteractions = values["console-interactions"];
 const restoredInteractions = values["restored-interactions"];
 const subagentInteractions =
-  values["subagent-interactions"] || values["subagent-model"];
+  values["subagent-interactions"] || values["subagent-model"] || childCua;
 const planQuestion = values["plan-question"];
 const queuedHandoff =
   values["queued-handoff"] ||
@@ -3021,7 +3025,7 @@ try {
     if (values.cli)
       workerEnvironment.CANTRIP_CLI_BIN = path.resolve(values.cli);
   }
-  const cuaHelper = values["cua-preview"] ?? cuaAgent;
+  const cuaHelper = values["cua-preview"] ?? cuaAgent ?? childCua;
   if (cuaHelper) {
     const helper = path.join(root, "native-preview-helper");
     const executable = path.resolve(cuaHelper).replaceAll("'", "'\\''");
@@ -3082,7 +3086,7 @@ try {
         : null,
       openMessage,
     });
-  } else if (previewKey) {
+  } else if (previewKey && !childCua) {
     await verifyComputerUsePreview({
       call,
       eventually,
@@ -3242,6 +3246,7 @@ try {
       labelKey,
       interactionKey,
       customModel: values["subagent-model"],
+      computerUse: childCua ? { previewKey, openMessage } : null,
       startWorker,
       stopWorker,
       chatKey,

@@ -1,7 +1,40 @@
 //! Retained labels are presentation evidence; immutable bound ancestry supplies
 //! authority. Preserve all observed parents so a later label cannot erase one.
 use crate::native_items::{obj, s};
-use cantrip_wire::{JsString, Value};
+use anyhow::{Context, Result};
+use cantrip_wire::{JsString, Value, value::json};
+
+pub(crate) fn root_scope(thread: &JsString, turn: &JsString) -> Value {
+    json!({
+        "agentThreadId":thread,"rootThreadId":thread,"parentThreadId":Value::Null,
+        "rootTurnId":turn,"agentPath":["root"],"nickname":Value::Null,
+        "role":Value::Null,"depth":0,"isRoot":true,
+    })
+}
+
+pub(crate) fn child_scope(
+    thread: &Value,
+    root_turn: &Value,
+    ancestors: &[Value],
+    metadata: &Value,
+) -> Result<Value> {
+    let root = ancestors.first().context("Missing native root thread.")?;
+    let parent = ancestors.last().unwrap();
+    let mut path = segments(&metadata["agentPath"]);
+    if path.is_empty() {
+        path.push(s("root"));
+        path.extend(ancestors[1..].iter().cloned());
+        path.push(thread.clone());
+    }
+    crate::http::checked(
+        "agentScopeSchema",
+        &json!({
+            "rootThreadId":root,"parentThreadId":parent,"agentThreadId":thread,
+            "rootTurnId":root_turn,"agentPath":path,"depth":ancestors.len(),
+            "nickname":metadata["nickname"],"role":metadata["role"],"isRoot":false,
+        }),
+    )
+}
 fn optional(value: &Value) -> Value {
     value
         .as_js_string()

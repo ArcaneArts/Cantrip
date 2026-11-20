@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import { modelFunctions } from "../server-rust/task-model-provider.mjs";
 import { createPreparedProjectChat } from "./console-interaction-cases.mjs";
+import { previewOperations } from "./computer-use-preview-cases.mjs";
 
 export async function verifySubagentInteraction({
   call,
@@ -15,6 +16,7 @@ export async function verifySubagentInteraction({
   labelKey,
   interactionKey,
   customModel = false,
+  computerUse,
   startWorker,
   stopWorker,
   chatKey,
@@ -34,12 +36,28 @@ export async function verifySubagentInteraction({
             },
           },
         ]
-      : [],
+      : computerUse
+        ? {
+            modelMetadata: {
+              input_modalities: ["text", "image"],
+              supports_vision: true,
+            },
+          }
+        : [],
   );
+  if (computerUse) {
+    await call(
+      "POST",
+      `/api/settings/providers/${provider.id}/catalog/refresh?workerId=${workerId}`,
+      200,
+      {},
+    );
+  }
   await call("PATCH", "/api/settings", 200, {
     defaultModelId: profile.id,
     defaultChatPermissionProfileId: ":workspace",
     autoNameChats: false,
+    ...(computerUse ? { computerUseEnabled: true } : {}),
   });
   const { chatId, chatUrl } = await createPreparedProjectChat({
     call,
@@ -144,9 +162,10 @@ export async function verifySubagentInteraction({
       spawnTool = tool(discovered?.tools, "spawn_agent");
     }
     const next = [hold("after-spawn-1"), hold("after-spawn-2")];
-    const resumed = model.reply({
-      text: "Child observed the declined approval.",
-    });
+    const resumed = computerUse
+      ? hold()
+      : model.reply({ text: "Child observed the declined approval." });
+    if (computerUse) resumed.text = "The child captured its fixture window.";
     model.reply({
       onlyFor: ({ input }) =>
         input.model === model.model &&
@@ -164,7 +183,9 @@ export async function verifySubagentInteraction({
       {
         ...spawnTool,
         arguments: {
-          message: "Exercise a protected command approval in the child turn.",
+          message: computerUse
+            ? "Use the managed computer-use tool in the child turn."
+            : "Exercise a protected command approval in the child turn.",
           ...(spawnTool.namespace === "multi_agent_v1" ||
           spawnTool.name === "multi_agent_v1__spawn_agent"
             ? {}
@@ -190,6 +211,29 @@ export async function verifySubagentInteraction({
     assert.equal(metadata.root_turn_id, root.turn_id);
     assert.ok(metadata.turn_id);
     assert.notEqual(metadata.turn_id, root.turn_id);
+    if (computerUse) {
+      await verifyChildComputerUse({
+        call,
+        eventually,
+        chatUrl,
+        chatId,
+        ownerId,
+        workerId,
+        keyRevision,
+        interactionKey,
+        ...computerUse,
+        root,
+        metadata,
+        child,
+        parent,
+        resumed,
+      });
+      assert.deepEqual(model.failures, []);
+      console.log(
+        "Native child computer use kept approvals, images and retirement on the observed child turn.",
+      );
+      return;
+    }
     child.calls = [
       {
         ...tool(child.request.input.tools, "exec_command"),
@@ -383,4 +427,190 @@ export async function verifySubagentInteraction({
   } finally {
     for (const plan of held) plan.release();
   }
+}
+
+async function verifyChildComputerUse({
+  call,
+  eventually,
+  chatId,
+  chatUrl,
+  ownerId,
+  workerId,
+  keyRevision,
+  interactionKey,
+  previewKey,
+  openMessage,
+  root,
+  metadata,
+  child,
+  parent,
+  resumed,
+}) {
+  const tool = modelFunctions(child.request.input.tools).find(
+    ({ name, namespace }) =>
+      name === "mcp__cantrip_cua__js" ||
+      (name === "js" && namespace?.includes("cantrip_cua")),
+  );
+  assert.ok(tool, "The bundled child runtime exposes native computer use.");
+  const target = { targetId: "fake-window", targetGeneration: 1 };
+  child.calls = [
+    {
+      ...tool,
+      arguments: {
+        script:
+          "await cua.attach({targetId:'fake-window',targetGeneration:1}); await cua.snapshot()",
+      },
+    },
+  ];
+  child.release();
+
+  async function approve(kind, permission) {
+    const [record] = await eventually(
+      () =>
+        call("GET", `/api/agent-requests?chatId=${chatId}&status=pending`, 200),
+      (rows) => {
+        const outputs = resumed.request?.input?.input?.filter(
+          (item) => item.type === "function_call_output",
+        );
+        assert.equal(rows.length, 1, JSON.stringify(outputs));
+        assert.equal(rows[0].classification?.kind, kind);
+      },
+    );
+    assert.equal(record.provenance.chatId, chatId);
+    assert.equal(record.provenance.threadId, metadata.thread_id);
+    assert.equal(record.provenance.turnId, metadata.turn_id);
+    const material = {
+      ownerId,
+      keyRevision,
+      componentKey: interactionKey,
+      requestKey: record.requestKey,
+    };
+    const { payload } = await crypto.decryptInteractionRequestContent({
+      ...material,
+      encrypted: record.protectedPayload,
+      publicClassification: record.classification,
+    });
+    let response;
+    if (permission) {
+      assert.equal(record.provenance.owner, "computer-use");
+      const permissions = {
+        computerUse: { version: 1, classes: [permission], target },
+      };
+      assert.deepEqual(payload.requestedPermissions, permissions);
+      response = { kind, scope: "turn", permissions, strictAutoReview: false };
+    } else {
+      assert.equal(payload.serverName, "cantrip_cua");
+      response = { kind, action: "accept", content: {}, metadata: null };
+    }
+    const resolved = await call(
+      "POST",
+      `/api/agent-requests/${record.id}/respond`,
+      200,
+      {
+        idempotencyKey: randomUUID(),
+        classification: record.classification,
+        protectedResponse: await crypto.encryptInteractionResponseContent({
+          ...material,
+          content: {
+            version: 1,
+            classification: record.classification,
+            response,
+          },
+        }),
+      },
+    );
+    assert.equal(resolved.status, "resolved");
+  }
+  await approve("mcpElicitation");
+  await approve("permissions", "inventory");
+  await approve("permissions", "capture");
+  const result = await eventually(
+    () => resumed.request,
+    (value) =>
+      assert.equal(value?.input.client_metadata.turn_id, metadata.turn_id),
+  );
+  const image = result.input.input
+    .filter((item) => item.type === "function_call_output")
+    .flatMap((item) => item.output)
+    .find((part) => part.type === "input_image");
+  assert.match(image?.image_url ?? "", /^data:image\/png;base64,/);
+  const bytes = Buffer.from(image.image_url.split(",")[1], "base64");
+  const { server } = await call("GET", "/api/bootstrap", 200);
+  const base = chatUrl + "/computer-use";
+  const lease = await call("POST", base + "/preview", 200, {});
+  const preview = { ownerId, keyRevision, componentKey: previewKey };
+  const { operate } = previewOperations({
+    call,
+    base,
+    serverId: server.id,
+    workerId,
+    chatId,
+    lease,
+    seal: (context, plaintext) =>
+      crypto.encryptEndpointContentPayload({ ...preview, context, plaintext }),
+    open: (context, opaque) =>
+      crypto.decryptEndpointContentPayload({ ...preview, context, opaque }),
+  });
+  const list = { operation: "agent.sources.list" };
+  const sources = async () => (await operate(list)).result.data.sources;
+  const [source] = await eventually(sources, (items) =>
+    assert.equal(items.length, 1),
+  );
+  assert.equal(source.rootThreadId, root.thread_id);
+  assert.equal(source.binding.threadId, metadata.thread_id);
+  assert.equal(source.binding.turnId, metadata.turn_id);
+  const read = {
+    operation: "agent.observation.get",
+    sourceId: source.sourceId,
+  };
+  const observation = await operate(read);
+  assert.equal(observation.result.status, "ok");
+  assert.equal(Buffer.compare(observation.payload, bytes), 0);
+  observation.payload.fill(0);
+  bytes.fill(0);
+
+  await eventually(
+    async () => {
+      const history = await call("GET", `${chatUrl}/messages`, 200);
+      const messages = await Promise.all(history.messages.map(openMessage));
+      return messages
+        .flatMap(({ content }) => content)
+        .filter(
+          ({ type, activity }) =>
+            type === "activity" &&
+            activity.type === "computerUse" &&
+            activity.source === "agent-mcp",
+        )
+        .map(({ activity }) => activity);
+    },
+    (activities) => {
+      assert.deepEqual(
+        activities.map(({ operation }) => operation),
+        ["target.attach", "observation.snapshot", "js.evaluate"],
+      );
+      for (const activity of activities) {
+        assert.equal(activity.binding.threadId, metadata.thread_id);
+        assert.equal(activity.binding.turnId, metadata.turn_id);
+        assert.equal(activity.agentScope.agentThreadId, metadata.thread_id);
+        assert.equal(activity.agentScope.parentThreadId, root.thread_id);
+        assert.equal(activity.agentScope.rootThreadId, root.thread_id);
+        assert.equal(activity.agentScope.rootTurnId, root.turn_id);
+        assert.equal(activity.agentScope.isRoot, false);
+      }
+    },
+  );
+  resumed.release();
+  await eventually(sources, (items) => assert.deepEqual(items, []));
+  assert.equal((await operate(read)).result.code, "execution-unavailable");
+  assert.equal(
+    parent.request.completed,
+    false,
+    "The parent turn remains active.",
+  );
+  parent.text = "The root finished after the child capture.";
+  parent.release();
+  await eventually(
+    () => parent.request.completed,
+    (completed) => assert.ok(completed),
+  );
 }

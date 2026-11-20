@@ -375,7 +375,7 @@ async fn execute(
             let cua = if let Some(observer) = &observe_cua {
                 let epoch = turns.computer_use.previews.current_epoch();
                 let lifetime = computer_use::Turn::new(
-                    turns.computer_use.clone(), epoch, thread.clone(), emit.clone(),
+                    turns.computer_use.clone(), epoch, runtime, thread.clone(), emit.clone(),
                     Some(protection), Signal::any(vec![signal.clone(), transport.clone(), delivery_signal]),
                 );
                 let activation = mcp.as_ref().context("The console computer-use MCP attachment is unavailable.")?;

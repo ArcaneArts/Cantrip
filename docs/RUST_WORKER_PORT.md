@@ -9201,3 +9201,24 @@ preview PNGs, observation expiry on reset and completion, and the completed
 Goal state. The queued Goal provider handoff and managed console computer-use
 smokes passed using the same executable. The local test executable used the
 pinned Rust compiler and the installed LLVM 23 LTO library for linking.
+
+## 262. Run computer use on a managed child turn
+
+Reference commit `0b7b72f49289ac7aededd3771f939e513228f88d` (#3425).
+
+The worker checks the observed native thread ancestry and exact active child
+and root turns before admitting child computer-use calls. Each actor owns
+its evaluator, desktop session, call slot, and retained observation. The
+root command still owns Core authority, protected activity publication,
+and final settlement. Activity and preview bindings carry the child turn's
+identity and canonical agent scope. Child completion cancels its own session
+and expires its observation while the parent can continue running.
+
+On macOS ARM64, `standalone-turn-smoke.mjs --cua-child` used the production
+Rust worker, bundled Codex, Rust Core in PGlite mode, and the deterministic
+Host desktop helper. The fixture verified protected child approvals,
+encrypted History attribution, matching model and preview PNGs, and preview
+expiry while the parent remained active. Managed child command approval,
+root Chat and autonomous Goal computer-use smokes also passed locally. A
+worker unit test checks exact observed ancestry, duplicate start events,
+and cancellation at child completion.
