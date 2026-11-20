@@ -20,6 +20,7 @@ pub(super) struct Process {
     output: ChildStdout,
     sequence: u64,
     event_sequence: u64,
+    backend: String,
 }
 
 #[derive(Debug)]
@@ -68,6 +69,7 @@ impl Process {
             output,
             sequence: 0,
             event_sequence: 0,
+            backend: String::new(),
         })
     }
 
@@ -86,7 +88,12 @@ impl Process {
                     .is_some_and(|ops| ops.iter().any(|op| op == "targets.list")),
             "Unsupported Cantrip capture helper protocol."
         );
+        self.backend = data["backend"].as_str().unwrap_or_default().to_owned();
         Ok(())
+    }
+
+    pub(super) fn backend(&self) -> &str {
+        &self.backend
     }
 
     pub(super) async fn request(&mut self, operation: Value) -> Result<Value> {
@@ -127,7 +134,7 @@ impl Process {
                 // Drain the ordered response after cancellation. Dropping a
                 // partially read frame would desynchronize other participants.
                 Self::write(&mut self.input, json!({"kind":"cancel","requestId":sequence})).await?;
-                response.await
+                timeout(SHUTDOWN, response).await.context("Capture helper did not acknowledge cancellation.")?
             }
         }
     }

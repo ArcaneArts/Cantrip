@@ -14,6 +14,62 @@ fn controls(value: &JsString) -> bool {
         .iter()
         .any(|unit| matches!(*unit, 0..=31 | 127..=159))
 }
+
+fn cua_timeline(value: &Value) -> Result<bool, ValidationError> {
+    let mut held = HashSet::new();
+    let mut pointer = false;
+    let mut time = 0;
+    for frame in value.as_array().ok_or(ValidationError::Operation)? {
+        let at = frame["atMs"].as_u64().ok_or(ValidationError::Operation)?;
+        let down = frame["keyDown"]
+            .as_array()
+            .ok_or(ValidationError::Operation)?;
+        let up = frame["keyUp"]
+            .as_array()
+            .ok_or(ValidationError::Operation)?;
+        let key_modifiers = frame["keyModifiers"]
+            .as_array()
+            .ok_or(ValidationError::Operation)?;
+        let pointer_modifiers = frame["pointerModifiers"]
+            .as_array()
+            .ok_or(ValidationError::Operation)?;
+        let pointer_down = frame.get("pointerDown").is_some();
+        if at < time
+            || (frame.get("pointerButton").is_some() && !pointer_down)
+            || (!key_modifiers.is_empty() && down.is_empty())
+            || (!pointer_modifiers.is_empty() && !pointer_down)
+        {
+            return Ok(false);
+        }
+        time = at;
+        for key in up {
+            if !held.remove(text(key)?) {
+                return Ok(false);
+            }
+        }
+        for key in down {
+            if !held.insert(text(key)?) {
+                return Ok(false);
+            }
+        }
+        if held.len() > 16 {
+            return Ok(false);
+        }
+        if frame["pointerUp"] == true {
+            if !pointer {
+                return Ok(false);
+            }
+            pointer = false;
+        }
+        if pointer_down {
+            if pointer {
+                return Ok(false);
+            }
+            pointer = true;
+        }
+    }
+    Ok(held.is_empty() && !pointer)
+}
 pub(super) fn uuid(value: &Value) -> bool {
     static PATTERN: OnceLock<regress::Regex> = OnceLock::new();
     value.as_js_string().is_some_and(|value| {
@@ -285,6 +341,40 @@ pub(super) fn refine(
             };
             if text(value)?.lossy().len() > max {
                 custom(&[], message.unwrap_or("Invalid input"));
+            }
+        }
+        "worker-wire-cua-clipboard-bytes" => {
+            if text(value)?.lossy().len() > 1024 * 1024 {
+                custom(&[], message.unwrap_or("Invalid input"));
+            }
+        }
+        "worker-wire-cua-clipboard-unicode" | "worker-wire-cua-input-text" => {
+            let content = text(value)?;
+            let input_text = tag == "worker-wire-cua-input-text";
+            if (input_text && content.lossy().len() > 8192)
+                || std::char::decode_utf16(content.units().iter().copied()).any(|decoded| {
+                    match decoded {
+                        Err(_) => true,
+                        Ok(c) => input_text && matches!(c as u32, 0..=8 | 11 | 12 | 14..=31 | 127),
+                    }
+                })
+            {
+                custom(&[], message.unwrap_or("Invalid input"));
+            }
+        }
+        "worker-wire-cua-input-modifiers" => {
+            let items = value.as_array().ok_or(ValidationError::Operation)?;
+            if !items
+                .iter()
+                .enumerate()
+                .all(|(index, item)| !items[..index].contains(item))
+            {
+                custom(&[], message.unwrap_or("Invalid input"));
+            }
+        }
+        "worker-wire-cua-input-timeline" => {
+            if !cua_timeline(value)? {
+                custom(&[], message.unwrap_or("Timeline downs and ups must balance, with ordered times and at most 16 held keys."));
             }
         }
         "worker-wire-cua-target-ids" => {

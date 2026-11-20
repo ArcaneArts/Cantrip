@@ -1,6 +1,6 @@
 //! Publish the preview's terminal operation as an opaque trajectory message.
 use super::{
-    Lease,
+    Lease, input,
     native::{Rejected, ResultData, activity_session},
 };
 use crate::{chat_content::Scope, encryption::Service, http::checked, task_content};
@@ -16,6 +16,10 @@ pub(super) struct Audit {
     session: Value,
     image: Value,
     error: Option<String>,
+    input: Value,
+    input_method: Option<&'static str>,
+    click_position: Value,
+    uncertain: bool,
 }
 
 impl Audit {
@@ -27,6 +31,10 @@ impl Audit {
             session: Value::Null,
             image: Value::Null,
             error: None,
+            input: Value::Null,
+            input_method: None,
+            click_position: Value::Null,
+            uncertain: false,
         }
     }
 
@@ -37,6 +45,13 @@ impl Audit {
         if let Some(target) = action.get("targetId") {
             self.target = json!({"targetId":target,"targetGeneration":action["targetGeneration"]});
         }
+        self.input_method = input::method(action, "");
+        if action["operation"] == "input.click" {
+            self.click_position = action
+                .get("position")
+                .unwrap_or(&self.before["cursor"]["position"])
+                .clone();
+        }
     }
 
     pub(super) fn result(&mut self, result: &Result<ResultData>) {
@@ -44,12 +59,13 @@ impl Audit {
             Ok(result) => {
                 self.session = result.data["session"].clone();
                 self.image = result.data["image"].clone();
+                self.input = result.data["input"].clone();
             }
             Err(error) => {
+                let error = error.downcast_ref::<Rejected>();
+                self.uncertain = error.is_some_and(|error| error.outcome == "unknown");
                 self.error = Some(
-                    error
-                        .downcast_ref::<Rejected>()
-                        .map_or_else(|| "operation-failed".to_owned(), |error| error.code.clone()),
+                    error.map_or_else(|| "operation-failed".to_owned(), |error| error.code.clone()),
                 );
             }
         }
@@ -160,6 +176,18 @@ impl Audit {
         } else {
             Value::Null
         };
+        let receipt = if self.input.is_null() {
+            self.input_method.map_or(Value::Null, |method| {
+                let receipt_outcome = match outcome {
+                    _ if self.uncertain => "unknown",
+                    "completed" => "dispatched",
+                    other => other,
+                };
+                input::failed_receipt(method, &self.click_position, code, receipt_outcome)
+            })
+        } else {
+            self.input
+        };
         checked(
             "agentActivitySchema",
             &json!({
@@ -170,7 +198,7 @@ impl Audit {
                     "chatId":chat,"taskId":task_id,"workerId":lease.authority["workerId"],
                     "threadId":Value::Null,"turnId":Value::Null,"sessionId":session["binding"]["sessionId"],
                 }),
-                "target":target,"cursor":session["cursor"],"input":Value::Null,"observation":observation,
+                "target":target,"cursor":session["cursor"],"input":receipt,"observation":observation,
                 "outcome":outcome,"errorCode":code,"durationMs":duration,
                 "correlation":json!({
                     "sourceMethod":format!("computer-use/{name}"),"diagnosticId":id,

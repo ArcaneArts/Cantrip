@@ -708,6 +708,12 @@ const nativePreviewOperations = new Set<string>([
   "cursor.move",
   "observation.snapshot",
   "controls.inspect",
+  "input.press",
+  "input.click",
+  "input.perform",
+  "clipboard.read",
+  "clipboard.write",
+  "desktop.resize",
   "session.close",
 ]);
 const [firstNativePreviewAction, ...otherNativePreviewActions] =
@@ -728,6 +734,8 @@ export const computerUseNativePreviewResultSchema = z.discriminatedUnion(
         cuaSessionResultSchema,
         cuaSnapshotSchema,
         cuaControlsResultSchema,
+        cuaInputResultSchema,
+        cuaClipboardResultSchema,
         closedSchema,
       ]),
     }),

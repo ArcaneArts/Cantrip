@@ -82,6 +82,10 @@ impl Approvals {
             Some("observation.snapshot") => "capture",
             Some("target.detach" | "cursor.configure" | "cursor.move") => "cursor",
             Some("controls.inspect") => "controls",
+            Some(
+                "input.press" | "input.click" | "input.perform" | "clipboard.read"
+                | "clipboard.write" | "desktop.resize",
+            ) => "native-input",
             _ => {
                 return Err(reject(
                     "unavailable",
@@ -292,6 +296,14 @@ fn protect(
     let now = Utc::now();
     let grant = component(encryption, lease, None)?;
     let classification = json!({"kind":"permissions"});
+    let reason = if permissions["computerUse"]["classes"]
+        .as_array()
+        .is_some_and(|classes| classes.iter().any(|class| class == "native-input"))
+    {
+        "Allow real computer input on the selected target on this agent's worker? An approved action can change application state, focus and the system pointer."
+    } else {
+        "Allow the requested computer-use observation or logical cursor operations on this agent's worker? Native input requires separate approval."
+    };
     let protected = encrypt_communication(
         Communication::InteractionRequest,
         &grant.component.key,
@@ -300,7 +312,7 @@ fn protect(
             "version":1,"classification":classification,"payload":json!({
                 "kind":"permissions","source":"native-computer-use","startedAtMs":now.timestamp_millis(),
                 "environmentId":Value::Null,"cwd":Value::Null,
-                "reason":"Allow the requested computer-use observation or logical cursor operations on this agent's worker? Native input requires separate approval.",
+                "reason":reason,
                 "requestedPermissions":permissions,
             })
         }),

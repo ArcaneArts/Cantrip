@@ -67,10 +67,11 @@ impl<'a> Content<'a> {
     pub(super) fn respond(
         mut self,
         result: Result<ResultData>,
-        assert_current: impl Fn() -> Result<()>,
+        assert_delivery: impl Fn(bool) -> Result<()>,
         emit: impl Fn(Value) -> Result<()>,
     ) -> Result<Value> {
         let operation = &self.request["operation"];
+        let active_required = result.is_ok();
         let (result, pixels) = match result {
             Ok(result) => {
                 let chunks = result.pixels.len().div_ceil(CHUNK_BYTES);
@@ -93,21 +94,22 @@ impl<'a> Content<'a> {
                 )
             }
             Err(error) => {
-                let (code, message) = error.downcast_ref::<Rejected>().map_or(
+                let (code, message, outcome) = error.downcast_ref::<Rejected>().map_or(
                     (
                         "operation-failed",
                         "Computer-use operation could not be completed or authenticated.",
+                        "rejected",
                     ),
-                    |error| (error.code.as_str(), error.message),
+                    |error| (error.code.as_str(), error.message, error.outcome),
                 );
                 (
                     json!({"status":"error","operation":operation,"code":code,
-                    "message":message,"outcome":"rejected"}),
+                    "message":message,"outcome":outcome}),
                     None,
                 )
             }
         };
-        assert_current()?;
+        assert_delivery(active_required)?;
         self.binding["direction"] = json!("response");
         let protected = protect_endpoint_content(
             self.encryption,
@@ -119,7 +121,7 @@ impl<'a> Content<'a> {
         if let Some(pixels) = pixels {
             self.binding["direction"] = json!("event");
             for (sequence, slice) in pixels.chunks(CHUNK_BYTES).enumerate() {
-                assert_current()?;
+                assert_delivery(true)?;
                 self.binding["sequence"] = json!(sequence);
                 let content = protect_endpoint_bytes(self.encryption, &self.binding, slice)?;
                 ensure!(
@@ -135,7 +137,7 @@ impl<'a> Content<'a> {
                 )?)?;
             }
         }
-        assert_current()?;
+        assert_delivery(active_required)?;
         checked(
             "computerUseResponseSchema",
             &json!({"operationId":self.request["operationId"],"protectedContent":protected}),

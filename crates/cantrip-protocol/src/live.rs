@@ -97,6 +97,20 @@ pub(super) fn transform(
         result.value = Some(Value::Array(days.into_iter().map(|v| json!(v)).collect()));
         return Ok(());
     }
+    if tag == "cua-keyboard-key" {
+        let units = result
+            .value
+            .as_ref()
+            .and_then(Value::as_js_string)
+            .ok_or(ValidationError::Operation)?
+            .units();
+        if let [unit @ 97..=122] = units {
+            result.value = Some(json!(
+                char::from((*unit as u8).to_ascii_uppercase()).to_string()
+            ));
+        }
+        return Ok(());
+    }
     if tag == "native-event-identity" {
         return Ok(());
     }
