@@ -55,6 +55,7 @@ pub(super) async fn execute(
             id,
             COMMAND,
             json!({"execution":execution,"request":request}),
+            None,
             async |journal| {
                 let (mut session, native) = Session::connect(
                     &transport,

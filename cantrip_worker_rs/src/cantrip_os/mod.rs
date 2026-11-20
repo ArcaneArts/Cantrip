@@ -4,6 +4,7 @@ mod docker;
 mod linked;
 mod lock;
 pub(crate) mod operations;
+mod power;
 mod process;
 pub(crate) mod product_files;
 mod replacement;
@@ -135,6 +136,8 @@ impl Controller {
                 | OPERATION
                 | SOURCE_INSPECT
                 | SOURCE_PROVISION
+                | power::STATUS
+                | power::OPERATION
                 | run_definitions::COMMAND
         )
     }
@@ -183,6 +186,9 @@ impl Controller {
             return self
                 .operations
                 .inspect(dispatch, text(command, "operationId")?);
+        }
+        if matches!(kind, power::STATUS | power::OPERATION) {
+            return power::execute(&self.operations, command, lifetime).await;
         }
         let transport_value = checked("cantripOsTransportSchema", command["transport"].clone())?;
         let transport = Transport::from_value(&transport_value)?;
