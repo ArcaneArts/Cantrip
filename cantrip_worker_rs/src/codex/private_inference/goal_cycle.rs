@@ -25,6 +25,7 @@ impl Router {
             .get(thread)
             .filter(|input| &input.runner == runner)
             .and_then(|input| input.cycle.clone())
+            .filter(|owner| owner.reusable())
     }
 
     pub(in crate::codex) fn restore_task_goal(
@@ -50,13 +51,25 @@ impl Router {
     pub(super) fn goal_enqueue(
         &self,
         owner: Arc<GoalCycle>,
+        signal: Signal,
     ) -> crate::codex::admission::TaskQueued {
         Arc::new(move |cycle, operation, generation| {
             let owner = owner.clone();
+            let signal = signal.clone();
             Box::pin(async move {
                 owner.enqueued.send_replace(Some(json!({
                     "cycle":cycle,"admission":json!({"operationId":operation,"runtimeGeneration":generation}),
                 })));
+                if let Some(mut completion) = owner.handoff_completed.clone() {
+                    // The keeper has recorded this reservation. Keep the native scope
+                    // unbound until Core completes the selected handoff.
+                    crate::metadata::Guard::metadata(Some(signal), None)
+                        .run(async {
+                            completion.wait_for(|ready| *ready).await?;
+                            Ok(())
+                        })
+                        .await?;
+                }
                 Ok(())
             })
         })
@@ -74,6 +87,8 @@ impl Router {
             if let Some(owner) = &root.cycle
                 && owner.placement == candidate.placement
                 && owner.key == candidate.key
+                && candidate.handoff_completed.is_none()
+                && owner.reusable()
             {
                 return Ok(owner.clone());
             }

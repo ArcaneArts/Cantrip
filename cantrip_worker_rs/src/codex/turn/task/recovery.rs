@@ -76,7 +76,7 @@ impl Turns {
                 live
             } else {
                 let prepared = guard.run(self.preparation.prepare(&resolved, Intent::Configure)).await?;
-                let observer = self.install_task_cycle(&prepared, &resolved, key.clone(), route.clone())?;
+                let observer = self.install_task_cycle(&prepared, &resolved, key.clone(), route.clone(), None)?;
                 (prepared.thread, prepared.runner_generation, prepared.runtime, observer)
             };
             let epoch = &recovery["cycle"]["goalEpoch"];
@@ -105,19 +105,11 @@ impl Turns {
                 }));
             }
             manager.wake_recovery(Some(chat.clone()));
-            let mut updates = observer.enqueued.subscribe();
             if let Some(admission) = queued() {
                 return scheduled(admission);
             }
             wake(&runtime, thread.id(), &runner, &guard).await?;
-            let admission = guard.run(async {
-                let queued = updates.wait_for(|observed| observed.as_ref().is_some_and(|queued| {
-                    &queued["cycle"]["goalEpoch"] == epoch
-                        && ["cycleId", "modelRouteId", "providerAccountId","orderEpoch"].iter()
-                            .all(|key| queued["cycle"][*key] == route[*key])
-                })).await?;
-                Ok(queued.as_ref().unwrap()["admission"].clone())
-            }).await.map_err(|error| {
+            let admission = guard.run(observer.wait_for_enqueue(epoch)).await.map_err(|error| {
                 Failure::observation(format!("Task Goal queue was not acknowledged: {error}"))
             })?;
             scheduled(admission)
@@ -142,6 +134,7 @@ impl Turns {
         command: &Value,
         key: Key,
         placement: Value,
+        handoff_completed: Option<watch::Receiver<bool>>,
     ) -> Result<Arc<GoalCycle>> {
         prepared.thread.assert_current(&prepared.runtime)?;
         let emit: Emit = Arc::new(|_| Ok(()));
@@ -161,6 +154,7 @@ impl Turns {
                     project: command["session"]["projectId"].clone(),
                     worktree: command["session"]["worktreeId"].clone(),
                     enqueued: watch::channel(None).0,
+                    handoff_completed,
                     encryption: self.encryption.clone(),
                     client: self.task_inputs.clone(),
                     outcomes: self.task_outcomes.clone(),

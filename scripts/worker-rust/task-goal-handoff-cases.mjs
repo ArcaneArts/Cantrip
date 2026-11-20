@@ -12,6 +12,8 @@ export async function taskGoalHandoff({
   cycleId,
   provider,
   target,
+  interruptFinish,
+  available,
   cwd,
   attach,
   attachRecovery,
@@ -57,6 +59,7 @@ export async function taskGoalHandoff({
   };
   let withdrawals = 0;
   let lostResponse = false;
+  const completed = Promise.withResolvers();
   if (!taskGoalInput && !target) {
     attachRecovery((body) => {
       const request = nativeInferenceRecoverySchema.parse(body);
@@ -195,7 +198,8 @@ export async function taskGoalHandoff({
         assert.equal(request.outcome, target ? "completed" : "cancelled");
         assert.equal(state.queuedSource.withdrawn, true);
         state = { ...state, phase: request.outcome };
-        send(state);
+        if (interruptFinish) completed.resolve(state);
+        else send(state);
         break;
       default:
         assert.fail("Unexpected Task handoff action " + request.action);
@@ -207,7 +211,26 @@ export async function taskGoalHandoff({
       chatId: scope.chatId,
       operationId,
     };
-    const attempted = await invoke({ ...request, intent: "continue" });
+    const ongoing = invoke(
+      { ...request, intent: "continue" },
+      undefined,
+      undefined,
+      Boolean(interruptFinish),
+    );
+    if (interruptFinish) {
+      const durable = await available(
+        Promise.race([
+          completed.promise,
+          ongoing.then((reply) => assert.fail(JSON.stringify(reply))),
+        ]),
+      );
+      assert.equal(durable.phase, "completed");
+      assert.equal(withdrawals, 1);
+      await interruptFinish();
+      assert.equal((await ongoing).disconnected, true);
+      return durable;
+    }
+    const attempted = await ongoing;
     assert.equal(
       attempted.ok,
       Boolean(target),

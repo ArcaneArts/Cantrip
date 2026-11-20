@@ -12,6 +12,7 @@ use anyhow::{Result, ensure};
 use cantrip_history::content::Encryption;
 use cantrip_wire::{Value, value::json};
 use std::{sync::Arc, time::Duration};
+use tokio::sync::watch;
 
 pub(crate) const TASK_SOURCE: &str = "task.goal.source";
 
@@ -190,39 +191,35 @@ pub(super) fn prepare_configuration(state: &Value, configuration: &mut Value) ->
 }
 
 impl Transfer {
-    pub(super) async fn publish_task_goal(
+    pub(super) async fn queue_destination_task_goal(
         &self,
         state: &Value,
         config: &Value,
         prepared: &super::Prepared,
-    ) -> Result<()> {
-        if !config["task"].is_object() {
-            return Ok(());
+    ) -> Result<Option<watch::Sender<bool>>> {
+        if !config["task"].is_object() || state["queuedSource"]["taskGoalInput"].is_object() {
+            return Ok(None);
         }
         self.check()?;
         let chat = id(&state["chatId"], "transferred Task Goal chat")?;
-        let manager = self
-            .worker
-            .inference_manager(&self.identity.owner, &self.identity.server)?;
-        manager.wake_recovery(Some(chat.clone()));
-        if state["queuedSource"]["taskGoalInput"].is_object() {
-            return Ok(());
-        }
-        let guard = Guard::request(Some(self.signal.clone()));
+        let guard =
+            Guard::metadata_timeout(Some(self.signal.clone()), None, Duration::from_secs(8));
         let (goal, epoch, _) =
             read_native_goal(&prepared.runtime, &prepared.thread, &guard).await?;
         if epoch != config["task"]["goalEpoch"] || goal["status"] != "active" {
-            return Ok(());
+            return Ok(None);
         }
         let config = self.turns.preparation.resolve_routing(config).await?;
-        self.turns.install_task_cycle(
+        let (complete, pending) = watch::channel(false);
+        let observer = self.turns.install_task_cycle(
             prepared,
             &config,
             (self.identity.owner.clone(), self.identity.server.clone(), chat),
             json!({
-                "cycleId":config["task"]["cycleId"],"modelRouteId":config["model"]["routeId"],
-                "providerAccountId":config["provider"]["accountId"],"orderEpoch":config["task"]["orderEpoch"],
+                "cycleId":config["task"]["cycleId"], "modelRouteId":config["model"]["routeId"],
+                "providerAccountId":config["provider"]["accountId"], "orderEpoch":config["task"]["orderEpoch"],
             }),
+            Some(pending),
         )?;
         crate::codex::turn::task::recovery::wake(
             &prepared.runtime,
@@ -231,7 +228,19 @@ impl Transfer {
             &guard,
         )
         .await?;
-        self.check()
+        guard.run(observer.wait_for_enqueue(&epoch)).await?;
+        self.check()?;
+        Ok(Some(complete))
+    }
+
+    pub(super) fn wake_task_goal_recovery(&self, state: &Value) -> Result<()> {
+        if state["queuedSource"]["taskGoal"].is_object() {
+            let chat = id(&state["chatId"], "transferred Task Goal chat")?;
+            self.worker
+                .inference_manager(&self.identity.owner, &self.identity.server)?
+                .wake_recovery(Some(chat));
+        }
+        Ok(())
     }
 
     pub(super) async fn resume_cancelled_task_root(
