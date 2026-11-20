@@ -172,6 +172,7 @@ async fn cycle(
             surface_replay.clone(),
             &config.data_directory,
             guest_files.clone(),
+            chat_scratch.clone(),
         ));
     let (direct, direct_listener) =
         crate::worker_link::DirectBroker::bind(worker.clone(), logs.clone()).await?;
@@ -1331,7 +1332,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind,"explorer.operation"|"file-document.operation"|"chat.files.references") {
+                if matches!(kind,"explorer.operation"|"file-document.operation"|"chat.files.references"|"chat.scratch.files.operation") {
                     let operations=explorer_operations.clone();let encryption=encryption.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
                         let result=operations.execute(&request["command"],&encryption,&routing,&scope).await;

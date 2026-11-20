@@ -9306,3 +9306,25 @@ Reset expired the retained source and the worker required fresh scoped
 approvals for the new target generation. The fixture verified encrypted
 History and retirement of the guest desktop connection.
 The Host managed Project Goal and standalone Chat smokes also passed.
+
+## 267. Serve standalone Chat files from the Rust worker
+
+Reference commit `941be90c9381ca90c276d669372fa86d8c9d6be5` (#3430).
+
+The worker resolves the routing handle against the registered Chat and scratch
+root, then processes the existing encrypted surface stream. The native file
+commands list directories, resolve references, read UTF-8 and media chunks,
+save by file version, and delete entries with recursive confirmation. Directory
+handles keep scratch operations inside the registered root and prevent following
+symbolic links. The heartbeat advertises all six file intents.
+
+File and ZIP downloads use private snapshots with the existing size, count,
+time, and sequential-read limits. Each snapshot belongs to its scratch root
+and is released on EOF, cancellation, or worker exit. Preparing or reading a
+download reclaims snapshots past their five-minute lifetime. The Rust parser
+uses the generated TypeScript request contract and its download path refinement.
+
+The local macOS ARM64 standalone Chat Files fixture uses Rust Core in PGlite
+mode and the production Rust worker through the public encrypted API. It covers
+text versions, media chunks, path and capability checks, recursive deletion,
+immutable file downloads, ZIP contents, and download scoping.

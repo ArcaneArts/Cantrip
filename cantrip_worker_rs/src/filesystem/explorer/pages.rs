@@ -286,11 +286,17 @@ fn media_type<'a>(target: &Path, override_type: &'a Value) -> Result<(&'a str, &
         return Ok((kind, mime));
     }
     let name = target.file_name().unwrap_or_default().to_string_lossy();
+    media_type_for_name(&name).context("This file type is not available as media.")
+}
+
+pub(in crate::filesystem) fn media_type_for_name(
+    name: &str,
+) -> Option<(&'static str, &'static str)> {
     let extension = name
         .rsplit_once('.')
         .map(|(_, ext)| ext.to_ascii_lowercase())
         .unwrap_or_default();
-    Ok(match extension.as_str() {
+    Some(match extension.as_str() {
         "apng" => ("image", "image/apng"),
         "avif" => ("image", "image/avif"),
         "bmp" => ("image", "image/bmp"),
@@ -311,7 +317,7 @@ fn media_type<'a>(target: &Path, override_type: &'a Value) -> Result<(&'a str, &
         "mov" => ("video", "video/quicktime"),
         "ogv" => ("video", "video/ogg"),
         "webm" => ("video", "video/webm"),
-        _ => anyhow::bail!("This file type is not available as media."),
+        _ => return None,
     })
 }
 

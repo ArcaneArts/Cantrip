@@ -404,6 +404,18 @@ pub(super) fn apply(
                 custom(&[], message.ok_or(ValidationError::Operation)?);
             }
         }
+        "standalone-chat-file-download-path" => {
+            let root = value["path"] == "";
+            let all = value["kind"] == "all";
+            if all && !root {
+                custom(
+                    &["path"],
+                    "All-files downloads must target the scratch root.",
+                );
+            } else if !all && root {
+                custom(&["path"], "File and folder downloads require a path.");
+            }
+        }
         "external-import-selection" => {
             let ids = value["itemIds"]
                 .as_array()

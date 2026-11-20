@@ -4,9 +4,9 @@ use crate::{
     cantrip_os::product_files::ProductFiles,
     encryption::Service,
     filesystem::{
-        Scope, chat_references,
+        Scope, chat_references, chat_scratch,
         explorer::{self, binary_write, imports::Imports},
-        paths,
+        paths, scratch_files,
     },
     protected_content::{
         SurfaceStreamReplayGuard, open_private_state, open_surface_content_with_input,
@@ -28,6 +28,7 @@ pub struct ExplorerOperations {
     guests: Option<Arc<ProductFiles>>,
     binary_writes: Option<binary_write::Writer>,
     imports: Imports,
+    scratch: Option<(Arc<chat_scratch::Manager>, Arc<scratch_files::Files>)>,
 }
 impl ExplorerOperations {
     pub(crate) async fn close(&self) {
@@ -41,6 +42,7 @@ impl ExplorerOperations {
         replay: Arc<Mutex<SurfaceStreamReplayGuard>>,
         directory: &Path,
         guests: Arc<ProductFiles>,
+        scratch: Arc<chat_scratch::Manager>,
     ) -> Self {
         Self {
             replay,
@@ -50,6 +52,7 @@ impl ExplorerOperations {
                 &directory.join("binary-write-locks"),
             )),
             imports: Imports::default(),
+            scratch: Some((scratch, Arc::new(scratch_files::Files::new(directory)))),
         }
     }
     pub async fn execute(
@@ -62,7 +65,26 @@ impl ExplorerOperations {
         scope.check()?;
         // The public Node wrapper resolves all routing metadata before dispatch.
         let command = registry.resolve(command).await?;
+        let mut scratch_files = None;
         let (kind, id, schema) = match command["type"].as_str() {
+            Some("chat.scratch.files.operation") => {
+                let (scratch, files) = self
+                    .scratch
+                    .as_ref()
+                    .context("This worker does not support standalone Chat files.")?;
+                let root = scratch.resolve_path(&command).await?;
+                if command["root"].as_js_string() != Some(&paths::text(&root)) {
+                    bail!(
+                        "Standalone Chat file routing does not match its registered scratch root."
+                    );
+                }
+                scratch_files = Some((files, root));
+                (
+                    "chat-files",
+                    &command["chatId"],
+                    "standaloneChatFileOperationRequestContentSchema",
+                )
+            }
             Some("chat.files.references") => (
                 "chat-files",
                 &command["chatId"],
@@ -90,6 +112,10 @@ impl ExplorerOperations {
             schema,
         )?;
         let result = async {
+            if let Some((files, root)) = scratch_files {
+                let (result, complete) = files.execute(root, command["intent"].clone(), request, scope.clone()).await?;
+                return Ok((json!({"ok":true,"result":result}), complete));
+            }
             if kind == "file-document" {
                 let owner = service.owner_id()?;
                 let binding = json!({"serverId":command["serverId"],"resource":"file-document-row","resourceId":command["documentId"],"operationId":Value::Null,"recordKind":"file-document-state"});

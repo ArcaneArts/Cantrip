@@ -1057,6 +1057,7 @@ export const contractRoots = [
   "projectAutomationProtectedNameSchema",
   "projectAutomationProtectedPromptSchema",
   "projectAutomationProtectedConditionSchema",
+  "standaloneChatFileOperationRequestContentSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1428,6 +1429,14 @@ function registerCustom(schema, index, tag) {
     throw new Error("Conflicting native refinement registration: " + previous);
   explicitChecks.set(check, tag);
 }
+registerCustom(
+  protocol.standaloneChatFileOperationRequestContentSchema.options.find(
+    (option) => option.shape.type.value === "chat-files.download.prepare",
+  ),
+  0,
+  "standalone-chat-file-download-path",
+);
+
 function registerChecks(schema, tags) {
   const checks = (schema._zod.def.checks ?? []).filter(
     (c) => c._zod.def.check === "custom",

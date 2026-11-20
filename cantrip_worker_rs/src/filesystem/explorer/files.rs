@@ -17,7 +17,7 @@ impl std::fmt::Display for TextPreviewRequiredError {
     }
 }
 impl std::error::Error for TextPreviewRequiredError {}
-pub(super) fn decode(bytes: &[u8]) -> Result<&str> {
+pub(in crate::filesystem) fn decode(bytes: &[u8]) -> Result<&str> {
     if bytes.contains(&0) {
         bail!("Binary files cannot be previewed.");
     }
@@ -25,11 +25,12 @@ pub(super) fn decode(bytes: &[u8]) -> Result<&str> {
     std::str::from_utf8(bytes)
         .map_err(|_| anyhow::anyhow!("Only UTF-8 text files can be previewed."))
 }
-fn version(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+pub(in crate::filesystem) fn version(bytes: &[u8]) -> String {
+    hex_digest(&Sha256::digest(bytes))
+}
+
+pub(in crate::filesystem) fn hex_digest(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 pub async fn read_file(root: &Path, relative: &JsString) -> Result<Value> {
     let (metadata, target) = paths::resolve(root, relative).await?;

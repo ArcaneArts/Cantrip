@@ -8,7 +8,7 @@ use icu_collator::{
 };
 use std::{cmp::Ordering, collections::VecDeque, ffi::OsStr, path::Path};
 
-pub(super) struct Sorting {
+pub(in crate::filesystem) struct Sorting {
     locale: icu_locale_core::Locale,
     ordinary: CollatorBorrowed<'static>,
     primary: CollatorBorrowed<'static>,

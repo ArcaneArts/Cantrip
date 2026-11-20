@@ -7,6 +7,7 @@ pub mod explorer;
 pub mod folders;
 pub mod paths;
 pub mod repository;
+pub(crate) mod scratch_files;
 pub mod source_path;
 pub mod storage;
 pub use command::{ProcessError, Scope};
