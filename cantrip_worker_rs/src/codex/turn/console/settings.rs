@@ -91,13 +91,13 @@ async fn execute(view: &View, session: Value, mut frame: Value, open: &Signal) -
             session,
             &operation,
             &frame,
-            &view.permission,
+            &view.permission(),
             activation,
         )
         .await?;
     let (result, _) = view
         .turns
-        .dispatch_settings(runtime, &receipt, frame["params"].clone(), || {
+        .dispatch_settings(runtime, &receipt, frame["params"].clone(), None, || {
             open.check()?;
             view.assert_current()
         })

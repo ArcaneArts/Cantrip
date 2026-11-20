@@ -39,13 +39,16 @@ struct View {
     chat: JsString,
     cwd: JsString,
     local_directory: PathBuf,
-    permission: Value,
     command: Value,
     queue_key: Key,
     queue: Arc<import::Import>,
 }
 
 impl View {
+    fn permission(&self) -> Value {
+        self.prepared.permission.lock().unwrap().clone()
+    }
+
     fn assert_current(&self) -> Result<()> {
         self.turns
             .preparation
@@ -130,7 +133,6 @@ impl Turns {
             chat,
             cwd: placement,
             local_directory: cwd.clone(),
-            permission: command["permissionProfileId"].clone(),
             command,
             queue_key,
             queue,

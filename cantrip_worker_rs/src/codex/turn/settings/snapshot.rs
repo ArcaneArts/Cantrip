@@ -1,5 +1,6 @@
 //! Publish the settings of the already selected native thread. A refresh is
 //! an actual read through Core; notifications never acquire execution authority.
+use super::Delivery;
 use crate::{
     chat_content::Scope,
     codex::{
@@ -20,7 +21,12 @@ use anyhow::{Context, Result, anyhow, bail, ensure};
 use cantrip_crypto::content::protect_native_settings_snapshot;
 use cantrip_history::content::Encryption;
 use cantrip_wire::{JsString, Value, value::json};
-use std::{sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::sync::watch;
 
 pub(crate) const READ: &str = "chat.settings.read";
@@ -30,6 +36,7 @@ pub(in crate::codex) struct Factory {
     client: Client,
     encryption: Arc<Service>,
     logs: Arc<Logs>,
+    delivery: Arc<Delivery>,
 }
 
 impl Turns {
@@ -38,13 +45,13 @@ impl Turns {
             client: self.receipts.clone(),
             encryption: self.encryption.clone(),
             logs,
+            delivery: self.settings.clone(),
         })
     }
 }
 
 pub(in crate::codex) struct Publisher {
     pub source: Arc<Source>,
-    refresh: watch::Sender<()>,
     stop: Abort,
 }
 
@@ -57,7 +64,7 @@ impl Drop for Publisher {
 
 impl Publisher {
     pub fn wake(&self) {
-        self.refresh.send_replace(());
+        self.source.wake();
     }
 }
 
@@ -68,7 +75,9 @@ pub(in crate::codex) struct Source {
     runtime: WeakRuntime,
     generation: String,
     pub cwd: JsString,
-    pub permission: Value,
+    permission: Arc<Mutex<Value>>,
+    refresh: watch::Sender<()>,
+    pub(super) binding: Mutex<Option<Value>>,
     model_name: Value,
     attribution: Value,
     signal: Signal,
@@ -76,6 +85,28 @@ pub(in crate::codex) struct Source {
 }
 
 impl Source {
+    pub(in crate::codex) fn permission_state(&self) -> Arc<Mutex<Value>> {
+        self.permission.clone()
+    }
+
+    pub(super) fn permission(&self) -> Value {
+        self.permission.lock().unwrap().clone()
+    }
+
+    pub(super) fn confirm_permission(&self, effective: &Value) {
+        *self.permission.lock().unwrap() = effective.clone();
+    }
+
+    pub(super) fn wake(&self) {
+        self.refresh.send_replace(());
+    }
+
+    pub(super) fn permission_source(&self) -> Value {
+        let mut scope = self.scope.clone();
+        scope["runtimeGeneration"] = json!(self.generation);
+        scope
+    }
+
     pub(in crate::codex) fn runtime(&self) -> Result<Runtime> {
         self.signal.check()?;
         let runtime = self
@@ -135,6 +166,10 @@ impl Source {
         guard.check()?;
         self.runtime()?;
         Ok(reply["threadSettings"].clone())
+    }
+
+    pub(super) async fn read_current(&self) -> Result<Value> {
+        self.read_native(self.signal.clone()).await
     }
 
     pub(super) fn encryption_scope(&self) -> Result<Scope> {
@@ -206,13 +241,14 @@ impl Factory {
             && previous.source.bound == prepared.bound
             && previous.source.native == prepared.thread
             && previous.source.cwd == cwd
-            && &previous.source.permission == permission
+            && previous.source.permission() == *permission
             && previous.source.model_name == model["name"]
             && previous.source.attribution == attribution
         {
             return Ok(previous.clone());
         }
         let (stop, signal) = Abort::new();
+        let (refresh, wakes) = watch::channel(());
         let source = Arc::new(Source {
             scope,
             bound: prepared.bound.clone(),
@@ -220,7 +256,9 @@ impl Factory {
             runtime: prepared.runtime.downgrade(),
             generation: prepared.runtime.generation().into(),
             cwd,
-            permission: permission.clone(),
+            permission: prepared.permission.clone(),
+            refresh,
+            binding: Mutex::new(None),
             model_name: model["name"].clone(),
             attribution,
             signal,
@@ -263,12 +301,15 @@ impl Factory {
                 on_error: Arc::new(|_, _| Ok(())),
             },
         )?;
-        let (refresh, wakes) = watch::channel(());
+        self.delivery.register_source(&source)?;
         let publication = Publication {
             source: source.clone(),
             client: self.client.clone(),
             logs: self.logs.clone(),
             transport: subscription.signal(),
+            delivery: self.delivery.clone(),
+            recovered: HashSet::new(),
+            recovery_pending: false,
             updates,
             wakes,
             binding: None,
@@ -279,11 +320,7 @@ impl Factory {
             publication.run().await;
             subscription.close();
         });
-        Ok(Arc::new(Publisher {
-            source,
-            refresh,
-            stop,
-        }))
+        Ok(Arc::new(Publisher { source, stop }))
     }
 }
 
@@ -292,6 +329,9 @@ struct Publication {
     client: Client,
     logs: Arc<Logs>,
     transport: Signal,
+    delivery: Arc<Delivery>,
+    recovered: HashSet<(JsString, PathBuf)>,
+    recovery_pending: bool,
     updates: watch::Receiver<Option<Value>>,
     wakes: watch::Receiver<()>,
     binding: Option<Value>,
@@ -318,7 +358,7 @@ impl Publication {
                     failures = 0;
                     continue;
                 }
-                Ok(false) => None,
+                Ok(false) => self.recovery_pending.then_some(Duration::from_secs(2)),
                 Err(error) => {
                     if matches!(error.downcast_ref::<MetadataHttpError>(), Some(http) if http.code == "settings-binding-replaced")
                     {
@@ -371,6 +411,11 @@ impl Publication {
                 bail!("Core returned another managed settings source.");
             }
             self.published = state["effective"]["context"]["settingsVersion"].clone();
+            *self.source.binding.lock().unwrap() = Some(state["binding"].clone());
+            self.recovery_pending = self
+                .delivery
+                .recover_permissions(&self.source, &state["binding"], &mut self.recovered)
+                .await?;
             self.binding = Some(state["binding"].clone());
             self.pending = None;
             if !self.updates.has_changed().unwrap_or(false)
@@ -384,6 +429,12 @@ impl Publication {
             }
             return Ok(true);
         };
+        if self.recovery_pending {
+            self.recovery_pending = self
+                .delivery
+                .recover_permissions(&self.source, binding, &mut self.recovered)
+                .await?;
+        }
         let Some(latest) = latest else {
             return Ok(false);
         };

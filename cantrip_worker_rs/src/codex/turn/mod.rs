@@ -13,7 +13,8 @@ pub(super) use protected::runtime_text;
 mod receipt;
 pub(in crate::codex) mod settings;
 pub(crate) use settings::{
-    ACCOUNT_DEFAULTS, COMMAND as SETTINGS_UPDATE, snapshot::READ as SETTINGS_READ,
+    ACCOUNT_DEFAULTS, COMMAND as SETTINGS_UPDATE, PERMISSION_UPDATE,
+    snapshot::READ as SETTINGS_READ,
 };
 pub(in crate::codex) mod shell;
 pub(in crate::codex) mod task;
@@ -333,6 +334,7 @@ impl Turns {
                     params["operationId"]
                         .as_js_string()
                         .context("Missing native settings operation ID.")?,
+                    None,
                 )
             })();
             match observation {

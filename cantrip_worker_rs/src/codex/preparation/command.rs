@@ -53,6 +53,7 @@ pub(crate) struct Prepared {
     admission: Option<Value>,
     pub(in crate::codex) bound: (JsString, Value),
     pub(in crate::codex) queue: Option<Arc<import::Import>>,
+    pub(in crate::codex) permission: Arc<Mutex<Value>>,
 }
 
 enum TaskAttachment {
@@ -615,6 +616,7 @@ impl Ensurer {
                     let mut result = Prepared {
                         runtime: runtime.clone(), thread: loaded.clone(), codex_home, runner_generation: runner.clone(),
                         saved: held, environment, admission: admission.clone(), bound: bound.clone(), queue: None,
+                        permission: Arc::new(Mutex::new(command["permissionProfileId"].clone())),
                     };
                     {
                         let mut owners = this.0.live_threads.lock().unwrap();
@@ -624,28 +626,6 @@ impl Ensurer {
                         }
                         let native_session = native_session(&command, &runtime, loaded.id());
                         let goal_session = (!task && !guest).then(|| native_session.clone());
-                        if let (Some(autonomous), Some(session)) = (this.0.autonomous.get(), goal_session.as_ref())
-                            && context_kind == "project"
-                            && result.saved.is_none()
-                        {
-                            let broker = Arc::downgrade(&this.0);
-                            let authority = bound.clone();
-                            let admission = admission.clone();
-                            let thread = thread_id.clone();
-                            let activate = Arc::new(move |lane: &Value| {
-                                broker.upgrade().context("The managed MCP broker has closed.")?
-                                    .activate(&authority, Some(&thread), admission.as_ref(), lane)
-                            });
-                            runtime.inference_router().register_goal_producer(
-                                thread_id.clone(), runner.clone(), Arc::new(autonomous.producer(Runner {
-                                    runtime: runtime.downgrade(), thread: loaded.clone(), session: session.clone(),
-                                    bound: bound.clone(), cwd: cwd.clone(), provider: command["provider"].clone(),
-                                    permission: command["permissionProfileId"].clone(), activate,
-                                })),
-                            );
-                        } else {
-                            runtime.inference_router().remove_goal_producer(&thread_id);
-                        }
                         let queue = if !task && !stopping && result.saved.is_none() && !task_restoration
                             && let Some(factory) = this.0.queue_imports.get()
                         {
@@ -663,6 +643,31 @@ impl Ensurer {
                         } else {
                             None
                         };
+                        if let Some(settings) = &settings {
+                            result.permission = settings.source.permission_state();
+                        }
+                        if let (Some(autonomous), Some(session)) = (this.0.autonomous.get(), goal_session.as_ref())
+                            && context_kind == "project"
+                            && result.saved.is_none()
+                        {
+                            let broker = Arc::downgrade(&this.0);
+                            let authority = bound.clone();
+                            let admission = admission.clone();
+                            let thread = thread_id.clone();
+                            let activate = Arc::new(move |lane: &Value| {
+                                broker.upgrade().context("The managed MCP broker has closed.")?
+                                    .activate(&authority, Some(&thread), admission.as_ref(), lane)
+                            });
+                            runtime.inference_router().register_goal_producer(
+                                thread_id.clone(), runner.clone(), Arc::new(autonomous.producer(Runner {
+                                    runtime: runtime.downgrade(), thread: loaded.clone(), session: session.clone(),
+                                    bound: bound.clone(), cwd: cwd.clone(), provider: command["provider"].clone(),
+                                    permission: result.permission.clone(), activate,
+                                })),
+                            );
+                        } else {
+                            runtime.inference_router().remove_goal_producer(&thread_id);
+                        }
                         let task = latch.as_ref().map(|latch| task_root(&thread_id, latch));
                         router.set_task_root(&thread_id, task.clone());
                         let owner = ThreadOwner {

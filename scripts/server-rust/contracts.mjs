@@ -1000,6 +1000,8 @@ export const contractRoots = [
   "nativeAccountDefaultsWriteSchema",
   "nativeAccountDefaultsSnapshotSchema",
   "nativeAccountDefaultsResultSchema",
+  "nativePermissionUpdateCommandSchema",
+  "permissionTransitionSchema",
 ];
 
 export const projectExportContractRoots = [

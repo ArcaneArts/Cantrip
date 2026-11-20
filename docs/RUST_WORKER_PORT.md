@@ -7199,3 +7199,35 @@ of active thread settings. The Windows x64 GNU worker cross-check passed.
 Managed console account configuration writes, permission transitions
 and recovery, live-turn settings, alternate model attribution, approval
 replies and runtime handoff remain open.
+
+## 186. Apply and recover managed client permission transitions
+
+Reference commit 6458466edc9480a9cafe382f4227ad85bae6bc25 (#3349).
+
+The Rust worker handles Core's bound `chat.permissions.update` command
+using the selected thread, runtime, native epoch and existing durable
+settings admission. Codex applies the server-resolved profile at a
+quiescent boundary. A permission claim requires the correlated native
+application and matching resolved security fields. The executor, settings
+publisher and console share the prepared permission selection that Core
+confirms after publication.
+
+Permission registrations use the existing scoped settings evidence files.
+On a fresh binding the publisher reads the exact native operation journal
+and current settings. It preserves historical application separately
+from evidence for the new binding. A missing acknowledgment leaves the
+operation available for journal reconciliation. Recovery sends evidence
+without submitting the permission change again.
+
+The macOS ARM64 standalone smoke ran the production Rust server with
+PGlite, the production worker with an empty PATH, and bundled Codex. It
+changed the profile to read-only, rejected a stale policy revision and
+reconfirmed the same operation and policy revision after a worker
+restart and native runtime replacement. The guest settings and queue
+smoke passed with the existing Linux image. The Windows x64 GNU worker
+cross-check passed.
+
+Console-originated permission edits and automatic resumption of input
+deferred by a permission transition remain open. Live-turn settings,
+alternate model attribution, approval replies and runtime handoff also
+remain open.

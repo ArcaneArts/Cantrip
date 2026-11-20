@@ -17,7 +17,7 @@ pub(in crate::codex) struct Runner {
     pub bound: (JsString, Value),
     pub cwd: JsString,
     pub provider: Value,
-    pub permission: Value,
+    pub permission: Arc<Mutex<Value>>,
     pub activate: Activate,
 }
 
@@ -91,12 +91,19 @@ impl Autonomous {
                 .collect(),
         );
 
+        let permission;
         let (receipt, granted, owner, signal) = {
             self.released(&key, &admission_signal).await?;
             let _mutations = gate.lock().await;
             admission_signal.check()?;
             runner.thread.assert_current(&runtime)?;
-            authorize_settings(&runner, &attempt.request["input"]["threadSettings"]).await?;
+            permission = runner.permission.lock().unwrap().clone();
+            authorize_settings(
+                &runner,
+                &permission,
+                &attempt.request["input"]["threadSettings"],
+            )
+            .await?;
             let queue = self.receipts.queue_snapshot(&scope, &session).await?;
             if queue["paused"] == true {
                 bail!("Managed autonomy is paused.");
@@ -106,7 +113,7 @@ impl Autonomous {
             }
             let (receipt, grant) = self
                 .receipts
-                .admit_autonomous(scope, session, &attempt.request, &runner.permission, &queue)
+                .admit_autonomous(scope, session, &attempt.request, &permission, &queue)
                 .await?;
             let root = receipt.operation().clone();
             let (abort, signal) = Abort::new();
@@ -231,7 +238,7 @@ impl Autonomous {
                     Err(error) => Err(error),
                 };
                 let _ = owner.active.control.set(control::Binding::new(
-                    receipt.session().clone(), runner.permission.clone(), runner.thread.version(),
+                    receipt.session().clone(), permission.clone(), runner.thread.version(),
                 ));
                 owner.active.set(Phase::Running { runtime: runtime.clone(), thread: thread.clone(), turn: turn.clone() });
                 let acceptance = async {
@@ -304,11 +311,11 @@ impl Autonomous {
     }
 }
 
-async fn authorize_settings(runner: &Runner, settings: &Value) -> Result<()> {
-    let permission = if runner.permission == ":yolo" {
+async fn authorize_settings(runner: &Runner, profile: &Value, settings: &Value) -> Result<()> {
+    let permission = if profile == ":yolo" {
         json!(":danger-full-access")
     } else {
-        runner.permission.clone()
+        profile.clone()
     };
     if !settings.is_object()
         || !settings["activePermissionProfile"].is_null()
@@ -337,7 +344,7 @@ async fn authorize_settings(runner: &Runner, settings: &Value) -> Result<()> {
     {
         bail!("The native Goal settings exceed the managed execution scope.");
     }
-    let allowed_profile = if runner.permission == ":yolo" {
+    let allowed_profile = if profile == ":yolo" {
         json!({"type":"disabled"})
     } else {
         permission.clone()
@@ -345,7 +352,7 @@ async fn authorize_settings(runner: &Runner, settings: &Value) -> Result<()> {
     for (name, allowed) in [
         (
             "approvalPolicy",
-            json!(if runner.permission == ":yolo" {
+            json!(if profile == ":yolo" {
                 "never"
             } else {
                 "on-request"
@@ -354,7 +361,7 @@ async fn authorize_settings(runner: &Runner, settings: &Value) -> Result<()> {
         ("approvalsReviewer", json!("user")),
         ("permissions", permission),
         ("permissionProfile", allowed_profile),
-        ("permissionProfileId", runner.permission.clone()),
+        ("permissionProfileId", profile.clone()),
     ] {
         if !settings[name].is_null() && settings[name] != allowed {
             bail!("The native Goal differs from the authorized {name}.");

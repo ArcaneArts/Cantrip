@@ -1,10 +1,12 @@
 //! Native settings application is a separate fact from the RPC acknowledgment.
 //! Use the existing worker outbox so captured facts survive a worker upgrade.
 mod account_defaults;
+mod permission;
 pub(in crate::codex) mod snapshot;
 mod update;
 pub(crate) use account_defaults::COMMAND as ACCOUNT_DEFAULTS;
 pub(super) use account_defaults::WRITE as WRITE_DEFAULTS;
+pub(crate) use permission::COMMAND as PERMISSION_UPDATE;
 pub(crate) use update::COMMAND;
 
 use super::{
@@ -26,11 +28,11 @@ use cantrip_history::{
 };
 use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs,
     io::ErrorKind,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::Duration,
 };
 use tokio::{
@@ -75,6 +77,7 @@ impl Turns {
         runtime: &Runtime,
         receipt: &Receipt<'_>,
         params: Value,
+        permission: Option<permission::Change>,
         assert_current: impl Fn() -> Result<()>,
     ) -> Result<(Value, &'static str)> {
         let observation = async {
@@ -93,6 +96,7 @@ impl Turns {
                 params["operationId"]
                     .as_js_string()
                     .context("Missing native settings operation ID.")?,
+                permission,
             )
         }
         .await;
@@ -122,6 +126,7 @@ pub(crate) struct Delivery {
     live: Mutex<HashSet<PathBuf>>,
     pending_writes: Mutex<Vec<Capture>>,
     observations: Mutex<JoinSet<Result<()>>>,
+    sources: Mutex<HashMap<(PathBuf, JsString), Weak<snapshot::Source>>>,
     changed: Notify,
 }
 
@@ -140,6 +145,7 @@ impl Delivery {
             live: Mutex::default(),
             pending_writes: Mutex::default(),
             observations: Mutex::default(),
+            sources: Mutex::default(),
             changed: Notify::new(),
         }
     }
@@ -162,6 +168,7 @@ impl Delivery {
         receipt: &Receipt<'_>,
         bound: Scope,
         native_operation: &JsString,
+        permission: Option<permission::Change>,
     ) -> Result<Observation> {
         let operation = receipt.operation();
         let session = receipt.session();
@@ -210,6 +217,8 @@ impl Delivery {
             identity,
             marker,
             directory,
+            permission,
+            reconcile: false,
         };
         let observation = Observation {
             subscription,
@@ -327,8 +336,9 @@ impl Delivery {
                 {
                     bail!("Native settings evidence filename or worker identity changed.");
                 }
-                self.client.publish_settings(&event).await?;
+                let result = self.client.publish_settings(&event).await?;
                 bound.identity()?;
+                self.permission_published(&path, &event, &result)?;
                 remove(&path)
             }
             .await;
@@ -346,6 +356,8 @@ struct Registration {
     identity: Value,
     marker: PathBuf,
     directory: PathBuf,
+    permission: Option<permission::Change>,
+    reconcile: bool,
 }
 
 struct Capture {
@@ -365,49 +377,91 @@ impl Capture {
 }
 
 impl Registration {
+    fn recover_permission(&mut self) -> bool {
+        self.reconcile = self.permission.is_some();
+        self.reconcile
+    }
     fn track(&self) -> Result<()> {
         let recovery = self.event(
             "transport-lost",
             &Value::Null,
             &json!({"reason":"worker-recovered-before-settings-result"}),
+            None,
+            None,
         )?;
         ensure_directory(&self.directory)?;
-        let record = json!({"scope":self.identity,"recovery":recovery});
+        let mut record = json!({"scope":self.identity,"recovery":recovery});
+        if let Some(change) = &self.permission {
+            record["permission"] =
+                json!({"transition":change.transition,"source":change.source.permission_source()});
+        }
         if !write_immutable(&self.marker, &record.stringify())? {
             let existing = read_json(&self.marker)?;
-            if existing["scope"] != self.identity || existing.get("permission").is_some() {
+            if existing["scope"] != self.identity
+                || existing.get("permission") != record.get("permission")
+            {
                 bail!("Native settings registration identity was reused.");
             }
         }
         Ok(())
     }
 
-    fn event(&self, kind: &str, submission: &Value, content: &Value) -> Result<Value> {
+    fn event(
+        &self,
+        kind: &str,
+        submission: &Value,
+        content: &Value,
+        claim: Option<&Value>,
+        recovery_binding: Option<&Value>,
+    ) -> Result<Value> {
         let grant = self.bound.material(None)?;
         let event_id = uuid::Uuid::new_v4().to_string();
+        let mut plaintext =
+            json!({"scope":self.identity,"kind":kind,"submissionId":submission,"content":content});
+        if let Some(claim) = claim {
+            plaintext["permissionPolicy"] = claim.clone();
+        }
+        if let Some(binding) = recovery_binding {
+            plaintext["recoveryBindingId"] = binding.clone();
+        }
         let (envelope, digest) = protect_native_settings_evidence(
             &grant.key,
             &json!({"ownerId":grant.owner_id,"serverId":grant.server_id,"keyRevision":grant.key_revision,
                 "chatId":self.identity["chatId"],"operationId":self.identity["operationId"],"eventId":event_id}),
-            &json!({"scope":self.identity,"kind":kind,"submissionId":submission,"content":content}),
+            &plaintext,
         )?;
-        checked(
-            "nativeSettingsEvidenceSchema",
-            &json!({
-                "workerId":self.delivery.worker,"operationId":self.identity["operationId"],
-                "operationGeneration":self.identity["operationGeneration"],"eventId":event_id,
-                "threadId":self.identity["threadId"],"runtimeGeneration":self.identity["runtimeGeneration"],
-                "nativeOperationId":self.identity["nativeOperationId"],"kind":kind,"submissionId":submission,
-                "resultDigest":digest,"protectedResult":envelope,
-            }),
-        )
+        let mut event = json!({
+            "workerId":self.delivery.worker,"operationId":self.identity["operationId"],
+            "operationGeneration":self.identity["operationGeneration"],"eventId":event_id,
+            "threadId":self.identity["threadId"],"runtimeGeneration":self.identity["runtimeGeneration"],
+            "nativeOperationId":self.identity["nativeOperationId"],"kind":kind,"submissionId":submission,
+            "resultDigest":digest,"protectedResult":envelope,
+        });
+        if let Some(claim) = claim {
+            event["permissionPolicy"] = claim.clone();
+        }
+        if let Some(binding) = recovery_binding {
+            event["recoveryBindingId"] = binding.clone();
+        }
+        checked("nativeSettingsEvidenceSchema", &event)
     }
 
     fn record(&self, kind: &str, submission: &Value, content: &Value) -> Result<()> {
+        self.record_evidence(kind, submission, content, None, None)
+    }
+
+    fn record_evidence(
+        &self,
+        kind: &str,
+        submission: &Value,
+        content: &Value,
+        claim: Option<&Value>,
+        recovery_binding: Option<&Value>,
+    ) -> Result<()> {
         let capture = Capture {
-            event: self.event(kind, submission, content)?,
+            event: self.event(kind, submission, content, claim, recovery_binding)?,
             directory: self.directory.clone(),
-            marker: (kind != "queued").then(|| self.marker.clone()),
+            marker: (kind != "queued" && self.permission.is_none()).then(|| self.marker.clone()),
         };
         if capture.persist().is_err() {
             self.delivery.pending_writes.lock().unwrap().push(capture);
@@ -419,6 +473,11 @@ impl Registration {
 impl Drop for Registration {
     fn drop(&mut self) {
         self.delivery.live.lock().unwrap().remove(&self.marker);
+        if self.reconcile
+            && let Some(change) = &self.permission
+        {
+            change.source.wake();
+        }
         self.delivery.wake();
     }
 }
@@ -440,7 +499,7 @@ impl Observation {
     }
 
     async fn settle_with_status(
-        self,
+        mut self,
         receipt: &Receipt<'_>,
         reply: Result<Response>,
     ) -> Result<(Value, &'static str)> {
@@ -458,6 +517,7 @@ impl Observation {
                 Ok((result, status))
             }
             Ok(None) => {
+                self.registration.recover_permission();
                 receipt.uncertain().await?;
                 bail!("Codex did not return a native settings result.")
             }
@@ -470,6 +530,7 @@ impl Observation {
                     receipt.rejected(native).await?;
                     recorded?;
                 } else {
+                    self.registration.recover_permission();
                     receipt.uncertain().await?;
                 }
                 Err(error)
@@ -522,6 +583,9 @@ impl Observation {
             _ = tokio::time::sleep(RPC_TIMEOUT) => None,
         };
         let Some(frame) = frame else {
+            if self.registration.recover_permission() {
+                return Ok("uncertain");
+            }
             self.registration.record(
                 "transport-lost",
                 &submission,
@@ -543,6 +607,32 @@ impl Observation {
             self.registration
                 .record("correlation-conflict", observed, &frame["params"])?;
             return Ok("uncertain");
+        }
+        if kind == "applied"
+            && let Some(change) = &self.registration.permission
+        {
+            let params = &frame["params"];
+            match permission::claim(
+                &change.transition,
+                &params["threadSettings"],
+                &params["resolvedSecurity"],
+            ) {
+                Ok(claim) if claim["settingsVersion"]["epoch"] == change.epoch => {
+                    self.registration.record_evidence(
+                        kind,
+                        observed,
+                        params,
+                        Some(&claim),
+                        None,
+                    )?;
+                    return Ok(kind);
+                }
+                _ => {
+                    self.registration
+                        .record("correlation-conflict", observed, params)?;
+                    return Ok("uncertain");
+                }
+            }
         }
         self.registration.record(kind, observed, &frame["params"])?;
         Ok(kind)

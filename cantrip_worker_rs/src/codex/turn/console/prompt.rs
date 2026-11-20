@@ -91,7 +91,7 @@ async fn run(
             session,
             &operation,
             &frame,
-            &view.permission,
+            &view.permission(),
             &retained,
         )
         .await?;
@@ -163,10 +163,11 @@ async fn normalize(view: &View, requested: &Value) -> Result<(Value, &'static st
         "The console settings belong to another native thread."
     );
     let settings = &checked["threadSettings"];
-    let expected_permission = if view.permission == ":yolo" {
+    let permission = view.permission();
+    let expected_permission = if permission == ":yolo" {
         json!(":danger-full-access")
     } else {
-        view.permission.clone()
+        permission
     };
     ensure!(
         settings["activePermissionProfile"]["id"].is_null()
@@ -272,7 +273,7 @@ async fn execute(
             .all(|field| session[*field] == execution[*field])
             && session["placementId"] == execution[placement]
             && execution["executionLaneId"] == root.lane
-            && permission == view.permission
+            && permission == view.permission()
             && execution["workerId"].as_js_string() == Some(turns.encryption.worker_id()),
         "Core returned a different native console execution."
     );
@@ -289,7 +290,7 @@ async fn execute(
         project: session["projectId"].as_js_string().cloned(),
         control: OnceLock::from(control::Binding::new(
             session.clone(),
-            view.permission.clone(),
+            view.permission(),
             view.prepared.thread.version(),
         )),
         task: OnceLock::new(),
