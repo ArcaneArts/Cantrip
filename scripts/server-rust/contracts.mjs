@@ -1032,6 +1032,11 @@ export const contractRoots = [
   "customizationContentResultSchema",
   "skillListSchema",
   "skillSettingsReadContentSchema",
+  "skillSettingsWriteContentSchema",
+  "skillSettingsDeleteContentSchema",
+  "skillSettingsConfigureContentSchema",
+  "codexSkillConfigUpdateSchema",
+  "codexSkillConfigResultSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1213,6 +1218,22 @@ export function sourceContractSchema(name) {
       ? protocol.skillSettingsFileRequestSchema.pick({
           skillId: true,
           file: true,
+        })
+      : undefined) ??
+    (name === "skillSettingsWriteContentSchema"
+      ? protocol.skillSettingsFileUpdateSchema.pick({
+          skillId: true,
+          file: true,
+          content: true,
+        })
+      : undefined) ??
+    (name === "skillSettingsDeleteContentSchema"
+      ? protocol.skillSettingsDeleteRequestSchema.pick({ skillId: true })
+      : undefined) ??
+    (name === "skillSettingsConfigureContentSchema"
+      ? protocol.skillSettingsConfigUpdateSchema.pick({
+          skillId: true,
+          enabled: true,
         })
       : undefined) ??
     (name === "computerUseAuthorityChangeSchema"

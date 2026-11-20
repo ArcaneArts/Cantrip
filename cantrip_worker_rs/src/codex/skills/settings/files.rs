@@ -1,17 +1,25 @@
-use super::{Root, compare, item, library, sorting};
+use super::{Root, Skill, compare, item, library, sorting};
 use crate::filesystem::paths;
 use anyhow::{Context, Result, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cantrip_wire::{JsString, Value, text::trim, value::json};
 use regress::Regex;
-use std::{collections::VecDeque, fs, io::Read, path::Path, sync::LazyLock};
+use std::{
+    collections::VecDeque,
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
 const MAX_FILES: usize = 500;
 
-pub(super) fn read(roots: Vec<Root>, request: &Value) -> Result<Value> {
-    let id = request["skillId"]
-        .as_str()
-        .context("The requested skill id is invalid.")?;
+pub(super) fn select<'a>(
+    roots: &'a [Root],
+    id: &Value,
+    editable: bool,
+) -> Result<(&'a Root, Skill)> {
+    let id = id.as_str().context("The requested skill id is invalid.")?;
     let (location, encoded) = id
         .split_once(':')
         .filter(|(location, _)| !location.is_empty())
@@ -40,20 +48,44 @@ pub(super) fn read(roots: Vec<Root>, request: &Value) -> Result<Value> {
         .into_iter()
         .find(|skill| root.skill_id(skill) == id)
         .context("The requested skill was not found.")?;
+    ensure!(
+        !editable || skill.editable,
+        "Bundled and administrator-managed skills are read-only."
+    );
+    Ok((root, skill))
+}
+
+pub(super) fn file_path(directory: &Path, name: &Value) -> Result<PathBuf> {
+    let name = name
+        .as_js_string()
+        .context("The requested skill file path is invalid.")?;
+    let relative = paths::native(name);
+    ensure!(
+        !name.is_empty()
+            && !relative.has_root()
+            && !matches!(
+                relative.components().next(),
+                Some(std::path::Component::Prefix(_))
+            ),
+        "The requested skill file path is invalid."
+    );
+    let target = paths::canonical_sync(&directory.join(relative))?;
+    ensure!(
+        paths::within(directory, &target),
+        "The requested file is outside the selected skill."
+    );
+    Ok(target)
+}
+
+pub(super) fn read(roots: Vec<Root>, request: &Value) -> Result<Value> {
+    let (root, skill) = select(&roots, &request["skillId"], false)?;
     let files = list_files(&skill.canonical)?;
     let requested = &request["file"];
     let file = files
         .iter()
         .find(|file| file["path"] == *requested)
         .context("The requested skill file was not found.")?;
-    let name = requested
-        .as_js_string()
-        .context("The requested skill file path is invalid.")?;
-    let target = paths::canonical_sync(&skill.canonical.join(paths::native(name)))?;
-    ensure!(
-        paths::within(&skill.canonical, &target),
-        "The requested file is outside the selected skill."
-    );
+    let target = file_path(&skill.canonical, requested)?;
     let content = read_text(&target)?;
     ensure!(
         !content.contains('\0'),
@@ -97,7 +129,7 @@ fn list_files(root: &Path) -> Result<Vec<Value>> {
     Ok(files)
 }
 
-pub(super) fn read_text(path: &Path) -> Result<String> {
+pub(super) fn open_regular(path: &Path) -> Result<(fs::File, fs::Metadata)> {
     let mut options = fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -116,6 +148,11 @@ pub(super) fn read_text(path: &Path) -> Result<String> {
         metadata.is_file() && !library::is_link(&metadata),
         "The requested skill file was not found."
     );
+    Ok((file, metadata))
+}
+
+pub(super) fn read_text(path: &Path) -> Result<String> {
+    let (file, metadata) = open_regular(path)?;
     ensure!(
         metadata.len() <= library::MAX_SKILL_BYTES,
         "The requested skill file is too large to browse."

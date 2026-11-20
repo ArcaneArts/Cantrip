@@ -3,6 +3,34 @@ use super::{open_endpoint_content, protect_endpoint_content};
 use crate::{encryption::Service, http::checked};
 use anyhow::{Result, ensure};
 use cantrip_wire::{JsString, Value, value::json};
+use indexmap::IndexSet;
+use std::sync::Mutex;
+
+const MAX_REPLAY_RECORDS: usize = 20_000;
+
+#[derive(Default)]
+pub(crate) struct Replay(Mutex<IndexSet<String>>);
+
+impl Replay {
+    pub fn reserve(&self, operation: &Operation<'_>) -> Result<()> {
+        let key = Value::Array(vec![
+            operation.identity.1.clone(),
+            json!(operation.scope_id()),
+            operation.id.clone(),
+            operation.name.clone(),
+        ])
+        .stringify();
+        let mut completed = self.0.lock().unwrap();
+        ensure!(
+            completed.insert(key),
+            "Protected customization operation was already completed."
+        );
+        if completed.len() > MAX_REPLAY_RECORDS {
+            completed.shift_remove_index(0);
+        }
+        Ok(())
+    }
+}
 
 pub(crate) struct Operation<'a> {
     service: &'a Service,
@@ -37,17 +65,20 @@ impl<'a> Operation<'a> {
         &self.identity
     }
 
-    fn binding(&self, direction: &str) -> Value {
-        let scope_id = json!([
+    fn scope_id(&self) -> String {
+        json!([
             &self.scope["workerId"],
             &self.scope["projectId"],
             &self.scope["chatId"],
             &self.scope["providerId"],
         ])
-        .stringify();
+        .stringify()
+    }
+
+    fn binding(&self, direction: &str) -> Value {
         json!({
             "domain":"customization-content", "serverId":self.identity.1,
-            "workerId":self.scope["workerId"], "scopeId":scope_id,
+            "workerId":self.scope["workerId"], "scopeId":self.scope_id(),
             "operationId":self.id, "operation":self.name, "direction":direction, "sequence":0,
         })
     }

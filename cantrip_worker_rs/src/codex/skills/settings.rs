@@ -1,13 +1,17 @@
-//! Host skill inventory and documents returned as protected customization content.
+//! Host skill settings and Project Chat skill controls.
 mod files;
+mod mutations;
 
 use super::{
     library::{self, Location, Root, Skill},
     list,
 };
 use crate::{
-    codex::preparation::command::Ensurer, encryption::Service, filesystem::paths,
-    protected_content::customization::Operation, protected_secrets::open_runtime_provider,
+    codex::{managed::Runtime, preparation::command::Ensurer},
+    encryption::Service,
+    filesystem::paths,
+    protected_content::customization::{Operation, Replay},
+    protected_secrets::open_runtime_provider,
 };
 use anyhow::{Context, Result, ensure};
 use cantrip_wire::{JsString, Value, value::json};
@@ -18,14 +22,36 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tokio::sync::RwLock;
 
 const CHAT_LIST: &str = "skills.list";
+const CHAT_CONFIGURE: &str = "customization.skill.configure";
 const SETTINGS_LIST: &str = "skills.settings.list";
 const SETTINGS_READ: &str = "skills.settings.read";
+const SETTINGS_WRITE: &str = "skills.settings.write";
+const SETTINGS_DELETE: &str = "skills.settings.delete";
+const SETTINGS_CONFIGURE: &str = "skills.settings.configure";
 const RPC_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub(crate) fn supports(kind: &str) -> bool {
-    matches!(kind, CHAT_LIST | SETTINGS_LIST | SETTINGS_READ)
+    matches!(
+        kind,
+        CHAT_LIST
+            | CHAT_CONFIGURE
+            | SETTINGS_LIST
+            | SETTINGS_READ
+            | SETTINGS_WRITE
+            | SETTINGS_DELETE
+            | SETTINGS_CONFIGURE
+    )
+}
+
+#[derive(Default)]
+struct Changes {
+    replay: Replay,
+    // Account and global roots can be selected by multiple projects. Readers
+    // must see a complete generation across a recovery rename or config write.
+    access: RwLock<()>,
 }
 
 #[derive(Clone)]
@@ -34,6 +60,7 @@ pub(crate) struct Settings {
     encryption: Arc<Service>,
     data: PathBuf,
     global: Option<PathBuf>,
+    changes: Arc<Changes>,
 }
 
 impl Settings {
@@ -48,6 +75,7 @@ impl Settings {
             encryption,
             data,
             global,
+            changes: Arc::default(),
         }
     }
 
@@ -56,7 +84,7 @@ impl Settings {
         let kind = incoming["type"]
             .as_str()
             .context("Missing skill operation.")?;
-        let provider = if kind == CHAT_LIST {
+        let provider = if matches!(kind, CHAT_LIST | CHAT_CONFIGURE) {
             &incoming["provider"]["id"]
         } else {
             &incoming["providerId"]
@@ -65,22 +93,51 @@ impl Settings {
             operation.scope["providerId"] == *provider && !provider.is_null(),
             "The skill settings provider changed."
         );
-        let schema = match kind {
-            CHAT_LIST => "skillListSchema",
-            SETTINGS_LIST => "skillSettingsInventorySchema",
-            SETTINGS_READ => "skillSettingsDocumentSchema",
+        let changing = matches!(
+            kind,
+            SETTINGS_WRITE | SETTINGS_DELETE | SETTINGS_CONFIGURE | CHAT_CONFIGURE
+        );
+        if changing {
+            self.changes.replay.reserve(&operation)?;
+        }
+        let (input_schema, output_schema) = match kind {
+            CHAT_LIST => (None, "skillListSchema"),
+            CHAT_CONFIGURE => (
+                Some("codexSkillConfigUpdateSchema"),
+                "codexSkillConfigResultSchema",
+            ),
+            SETTINGS_LIST => (None, "skillSettingsInventorySchema"),
+            SETTINGS_READ => (
+                Some("skillSettingsReadContentSchema"),
+                "skillSettingsDocumentSchema",
+            ),
+            SETTINGS_WRITE => (
+                Some("skillSettingsWriteContentSchema"),
+                "skillSettingsMutationResultSchema",
+            ),
+            SETTINGS_DELETE => (
+                Some("skillSettingsDeleteContentSchema"),
+                "skillSettingsMutationResultSchema",
+            ),
+            SETTINGS_CONFIGURE => (
+                Some("skillSettingsConfigureContentSchema"),
+                "skillSettingsConfigResultSchema",
+            ),
             _ => unreachable!("Validated skill dispatch"),
         };
-        let input = if kind == SETTINGS_READ {
-            operation.open(
-                &incoming["protectedRequest"],
-                "skillSettingsReadContentSchema",
-            )?
+        let input = if let Some(schema) = input_schema {
+            operation.open(&incoming["protectedRequest"], schema)?
         } else {
             Value::Null
         };
+        let (_mutation, _read) = if changing {
+            (Some(self.changes.access.write().await), None)
+        } else {
+            (None, Some(self.changes.access.read().await))
+        };
+        operation.assert_current()?;
         let result = self.run(incoming, &operation, kind, &input).await;
-        operation.seal(result, schema)
+        operation.seal(result, output_schema)
     }
 
     async fn run(
@@ -97,8 +154,17 @@ impl Settings {
         let cwd = resolved["cwd"].as_js_string();
         if kind == CHAT_LIST {
             let cwd = cwd.context("Missing skill workspace.")?;
-            let (skills, _) = self.runtime_skills(incoming, operation, cwd, false).await?;
+            let runtime = self.runtime(incoming, operation).await?;
+            let (skills, _) = list(&runtime, cwd, false, RPC_TIMEOUT).await?;
             return chat_summary(skills);
+        }
+        if kind == CHAT_CONFIGURE {
+            let cwd = cwd.context("Missing skill workspace.")?;
+            let runtime = self.runtime(incoming, operation).await?;
+            let path = input["path"]
+                .as_js_string()
+                .context("Missing skill path.")?;
+            return configure(&runtime, cwd, path, input, operation).await;
         }
         let provider = incoming["providerId"]
             .as_js_string()
@@ -108,19 +174,50 @@ impl Settings {
             .context("Missing skill provider kind.")?;
         let roots = library::roots(&self.data, self.global.as_deref(), provider, provider_kind);
         let cwd_path = cwd.map(paths::native);
-        if kind == SETTINGS_READ {
+        if matches!(kind, SETTINGS_READ | SETTINGS_WRITE | SETTINGS_DELETE) {
             let input = input.clone();
+            let kind = kind.to_owned();
+            let data = self.data.clone();
+            let identity = operation.identity().clone();
+            let encryption = self.encryption.clone();
             return tokio::task::spawn_blocking(move || {
-                files::read(settings_roots(roots, cwd_path.as_deref())?, &input)
+                let roots = settings_roots(roots, cwd_path.as_deref())?;
+                let check = || {
+                    ensure!(
+                        encryption.bound_identity()? == identity,
+                        "The worker binding changed during customization."
+                    );
+                    Ok(())
+                };
+                match kind.as_str() {
+                    SETTINGS_WRITE => mutations::write(&roots, &input, check),
+                    SETTINGS_DELETE => mutations::delete(&roots, &input, &data, check),
+                    _ => files::read(roots, &input),
+                }
             })
             .await?;
+        }
+        let fallback = paths::text(&self.data);
+        let cwd = cwd.unwrap_or(&fallback);
+        if kind == SETTINGS_CONFIGURE {
+            let id = input["skillId"].clone();
+            let path = tokio::task::spawn_blocking(move || {
+                let roots = settings_roots(roots, cwd_path.as_deref())?;
+                let (_, skill) = files::select(&roots, &id, false)?;
+                Ok::<_, anyhow::Error>(paths::text(&skill.directory.join("SKILL.md")))
+            })
+            .await??;
+            let runtime = self.runtime(incoming, operation).await?;
+            let configured = configure(&runtime, cwd, &path, input, operation).await?;
+            return Ok(
+                json!({"skillId":input["skillId"],"effectiveEnabled":configured["effectiveEnabled"]}),
+            );
         }
         let (native, errors) = if incoming["model"].is_null() || incoming["provider"].is_null() {
             (Vec::new(), Vec::new())
         } else {
-            let fallback = paths::text(&self.data);
-            self.runtime_skills(incoming, operation, cwd.unwrap_or(&fallback), true)
-                .await?
+            let runtime = self.runtime(incoming, operation).await?;
+            list(&runtime, cwd, true, RPC_TIMEOUT).await?
         };
         tokio::task::spawn_blocking(move || {
             inventory(settings_roots(roots, cwd_path.as_deref())?, native, errors)
@@ -128,29 +225,55 @@ impl Settings {
         .await?
     }
 
-    async fn runtime_skills(
-        &self,
-        command: &Value,
-        operation: &Operation<'_>,
-        cwd: &JsString,
-        force_reload: bool,
-    ) -> Result<(Vec<Value>, Vec<Value>)> {
+    async fn runtime(&self, command: &Value, operation: &Operation<'_>) -> Result<Runtime> {
         let provider = open_runtime_provider(&self.encryption, &command["provider"])?;
         ensure!(
             provider["id"] == operation.scope["providerId"],
             "The skill runtime provider changed."
         );
-        let runtime = self
-            .preparation
+        self.preparation
             .helper_runtime(
                 &command["model"],
                 provider,
                 operation.identity(),
                 operation.scope["chatId"].as_js_string(),
             )
-            .await?;
-        list(&runtime, cwd, force_reload, RPC_TIMEOUT).await
+            .await
     }
+}
+
+async fn configure(
+    runtime: &Runtime,
+    cwd: &JsString,
+    path: &JsString,
+    input: &Value,
+    operation: &Operation<'_>,
+) -> Result<Value> {
+    let expected = paths::resolve(&paths::native(path))?;
+    let (skills, _) = list(runtime, cwd, true, RPC_TIMEOUT).await?;
+    let path = skills
+        .iter()
+        .filter_map(native_skill_path)
+        .find(|path| {
+            paths::resolve(&paths::native(path))
+                .is_ok_and(|candidate| paths::equal(&candidate, &expected))
+        })
+        .context(
+            "The requested skill path is not present in this project's native Codex inventory.",
+        )?;
+    operation.assert_current()?;
+    let response = runtime
+        .request(
+            "skills/config/write".into(),
+            Some(json!({"path":path,"enabled":input["enabled"]})),
+            Some(RPC_TIMEOUT),
+            None,
+        )
+        .await?;
+    let enabled = response
+        .and_then(|value| value["effectiveEnabled"].as_bool())
+        .context("Codex returned an invalid skill configuration result.")?;
+    Ok(json!({"path":path,"effectiveEnabled":enabled}))
 }
 
 fn settings_roots(mut roots: Vec<Root>, cwd: Option<&Path>) -> Result<Vec<Root>> {
@@ -214,18 +337,24 @@ fn text_path(path: &Path) -> Result<PathBuf> {
     Ok(library::optional_canonical(path)?.unwrap_or(paths::resolve(path)?))
 }
 
+fn native_skill_path(skill: &Value) -> Option<&JsString> {
+    let path = skill["path"]
+        .as_js_string()
+        .filter(|path| !path.is_empty())?;
+    (skill["name"]
+        .as_js_string()
+        .is_some_and(|name| !name.trim().is_empty())
+        && matches!(
+            skill["scope"].as_str(),
+            Some("user" | "repo" | "system" | "admin")
+        ))
+    .then_some(path)
+}
+
 fn inventory(roots: Vec<Root>, native: Vec<Value>, errors: Vec<Value>) -> Result<Value> {
     let mut enabled = HashMap::new();
     for skill in native {
-        if let Some(path) = skill["path"].as_js_string().filter(|path| !path.is_empty())
-            && skill["name"]
-                .as_js_string()
-                .is_some_and(|name| !name.trim().is_empty())
-            && matches!(
-                skill["scope"].as_str(),
-                Some("user" | "repo" | "system" | "admin")
-            )
-        {
+        if let Some(path) = native_skill_path(&skill) {
             enabled.insert(text_path(&paths::native(path))?, skill["enabled"] != false);
         }
     }

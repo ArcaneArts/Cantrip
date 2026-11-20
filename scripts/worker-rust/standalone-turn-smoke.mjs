@@ -2962,6 +2962,14 @@ try {
       call,
       eventually,
       createModel,
+      async restartWorker() {
+        assert.deepEqual(
+          await stopWorker(),
+          { code: 0, signal: null },
+          diagnostics.slice(-4_000),
+        );
+        await startWorker();
+      },
       ownerId,
       workerId,
       keyRevision,

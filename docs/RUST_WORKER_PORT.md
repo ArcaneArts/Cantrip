@@ -8516,3 +8516,31 @@ operation. The worker shut down cleanly. Host and Standalone Chat skill
 regressions and nine focused Node reference tests passed. Repeat the
 settings fixture with `scripts/worker-rust/standalone-turn-smoke.mjs --skill-settings`.
 Settings write, delete and configuration commands remain open.
+
+## 236. Edit, recover and configure protected skills
+
+Reference commit `210f2372997ca38608c0ba2225ac94bd9f4728f6` (#3399).
+
+The Rust worker implements settings file writes, recoverable deletion and
+enablement. Project Chat skill configuration uses the same native inventory
+and Codex write call. Mutating requests reserve their existing customization
+operation identity before opening ciphertext. The worker orders edits,
+deletions and native configuration writes across its shared skill roots and
+lets browsing read a complete state between mutations.
+
+File updates preserve the selected file's permissions and publish a complete
+replacement after validating `SKILL.md` where applicable. Deleting an editable
+skill moves it to the worker's existing date-based `skill-recovery` layout.
+Across volumes, the worker publishes the complete recovery copy before removing
+the live directory name. Relative symlinks remain relative in the copied tree.
+Linked skills and administrator-managed files retain their read-only editing
+behavior.
+
+On macOS ARM64, production Rust Core in PGlite mode, the Rust worker and
+bundled Codex 0.166.0 passed the public API fixture. It exercised write and
+read-back, rejected replay and invalid frontmatter, preserved file permissions,
+disabled a skill across a worker restart, re-enabled it from Project Chat, and
+reopened its recovery files after deletion. Repeat with
+`scripts/worker-rust/standalone-turn-smoke.mjs --skill-settings`. The Rust unit
+tests exercised the copy fallback with disposable directories on one volume.
+Nine focused Node reference tests passed.

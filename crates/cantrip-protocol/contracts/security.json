@@ -1007,7 +1007,12 @@
     "gitAgentDraftResultSchema": 14502,
     "customizationContentResultSchema": 14510,
     "skillListSchema": 14521,
-    "skillSettingsReadContentSchema": 14523
+    "skillSettingsReadContentSchema": 14523,
+    "skillSettingsWriteContentSchema": 14524,
+    "skillSettingsDeleteContentSchema": 14525,
+    "skillSettingsConfigureContentSchema": 14526,
+    "codexSkillConfigUpdateSchema": 14527,
+    "codexSkillConfigResultSchema": 14530
   },
   "nodes": [
     {
@@ -87175,6 +87180,46 @@
       "type": "object",
       "shape": { "skillId": 11192, "file": 11219 },
       "checks": []
-    }
+    },
+    {
+      "type": "object",
+      "shape": { "skillId": 11192, "file": 11219, "content": 11221 },
+      "checks": []
+    },
+    { "type": "object", "shape": { "skillId": 11192 }, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "skillId": 11192, "enabled": 11224 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "codexSkillConfigUpdateSchema",
+      "shape": { "path": 14528, "enabled": 14529 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "codexSkillConfigResultSchema",
+      "shape": { "path": 14531, "effectiveEnabled": 14532 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] }
   ]
 }
