@@ -16,6 +16,7 @@ pub(in crate::codex) struct Runner {
     pub session: Value,
     pub bound: (JsString, Value),
     pub cwd: JsString,
+    pub model: Value,
     pub provider: Value,
     pub permission: Arc<Mutex<Value>>,
     pub activate: Activate,
@@ -143,6 +144,7 @@ impl Autonomous {
                 receipt.session().clone(),
                 permission.clone(),
                 runner.thread.version(),
+                &json!({"model":runner.model,"provider":runner.provider}),
             ));
             let accepted = {
                 let mut state = self.active.lock().unwrap();

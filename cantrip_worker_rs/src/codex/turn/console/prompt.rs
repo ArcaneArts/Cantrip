@@ -293,6 +293,7 @@ async fn execute(
             session.clone(),
             view.permission(),
             view.prepared.thread.version(),
+            &view.command,
         )),
         queued_inference: OnceLock::new(),
         task: OnceLock::new(),

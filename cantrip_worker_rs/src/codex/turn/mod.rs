@@ -68,6 +68,7 @@ use tokio::sync::{Mutex as AsyncMutex, watch};
 pub(crate) const RUN: &str = "chat.turn";
 pub(crate) const INTERRUPT: &str = "chat.interrupt";
 pub(crate) const CONTROL: &str = "chat.native-control";
+pub(crate) const STEER: &str = "chat.steer";
 pub(crate) use control::PAUSE_SET;
 pub(crate) const RESUME: &str = "chat.suspension.resume";
 pub(crate) const STOP_SUSPENSION: &str = "chat.suspension.stop";
@@ -784,6 +785,7 @@ impl Turns {
                 receipt.session().clone(),
                 command["permissionProfileId"].clone(),
                 prepared.thread.version(),
+                &command,
             ));
         }
         signal.check()?;

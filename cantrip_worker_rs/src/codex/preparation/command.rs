@@ -981,6 +981,7 @@ impl Ensurer {
                                         session: session.clone(),
                                         bound: bound.clone(),
                                         cwd: cwd.clone(),
+                                        model: command["model"].clone(),
                                         provider: command["provider"].clone(),
                                         permission: result.permission.clone(),
                                         activate,

@@ -112,6 +112,7 @@ impl Turns {
             receipt.session().clone(),
             command["permissionProfileId"].clone(),
             prepared.thread.version(),
+            command,
         );
         let (subscription, mut events, capture) = output::subscribe(&runtime.history(), &thread)?;
         let transport = subscription.signal();

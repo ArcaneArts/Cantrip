@@ -36,6 +36,7 @@ import { verifySkillSettings } from "./skill-settings-smoke-cases.mjs";
 import { verifyCustomizationInventory } from "./customization-inventory-smoke-cases.mjs";
 import { startMcpOauthFixture } from "./mcp-oauth-fixture.mjs";
 import { verifyProjectAutomations } from "./project-automation-smoke-cases.mjs";
+import { verifyQueuedSteering } from "./queued-steering-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   fixtureCodex,
@@ -61,6 +62,7 @@ const { values } = parseArgs({
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
     "project-automations": { type: "boolean" },
+    "queued-steer": { type: "boolean" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -138,6 +140,7 @@ const interactionKey =
 const consoleStateKey =
   customizationKey ||
   workflowKey ||
+  values["queued-steer"] ||
   values["host-skills"] ||
   values.policies ||
   values.codegraph ||
@@ -2996,6 +2999,19 @@ try {
             assert.match(value, /event=automation\.schedule-sync\.completed/),
         );
       },
+    });
+  } else if (values["queued-steer"]) {
+    await verifyQueuedSteering({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      openMessage,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      chatKey,
     });
   } else if (mcpKey) {
     const oauth = await startMcpOauthFixture();
