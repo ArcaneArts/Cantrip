@@ -16,9 +16,17 @@ impl Inner {
         credential: Option<&str>,
         parts: &Parts,
         body: Incoming,
+        cua: bool,
     ) -> Reply {
         let (profile, allowed) = match self.authenticated(id, credential, |entry| {
-            Ok((entry.attachment.profile, entry.attachment.tools.clone()))
+            if cua {
+                if !entry.computer_use {
+                    return Err(super::computer_use::disabled());
+                }
+                Ok(("cua-linux", vec!["js".into(), "js_reset".into()]))
+            } else {
+                Ok((entry.attachment.profile, entry.attachment.tools.clone()))
+            }
         }) {
             Ok(attachment) => attachment,
             Err(error) => return error.reply(),
@@ -59,7 +67,12 @@ impl Inner {
                 "Unsupported Media Type: Content-Type must be application/json",
             );
         }
-        let Ok(body) = Limited::new(body, MAXIMUM_BODY).collect().await else {
+        let maximum = if cua {
+            crate::mcp::cua::MAXIMUM_REQUEST
+        } else {
+            MAXIMUM_BODY
+        };
+        let Ok(body) = Limited::new(body, maximum).collect().await else {
             return bad_request(StatusCode::BAD_REQUEST, -32700, "Parse error: Invalid JSON");
         };
         let body = body.to_bytes();
@@ -123,10 +136,21 @@ impl Inner {
                 .map(|frame| self.mcp_reply(id, credential, frame, profile, &allowed)),
         )
         .await;
+        let response = |payload| {
+            if cua {
+                super::json_response_with_limit(
+                    StatusCode::OK,
+                    payload,
+                    crate::mcp::cua::MAXIMUM_RESPONSE,
+                )
+            } else {
+                json_response(StatusCode::OK, payload)
+            }
+        };
         match responses.len() {
             0 => empty(StatusCode::ACCEPTED),
-            1 => json_response(StatusCode::OK, responses.into_iter().next().unwrap()),
-            _ => json_response(StatusCode::OK, Value::Array(responses)),
+            1 => response(responses.into_iter().next().unwrap()),
+            _ => response(Value::Array(responses)),
         }
     }
 
@@ -149,6 +173,22 @@ impl Inner {
                 let Some(name) = params["name"].as_str() else {
                     return rpc::rpc_error(id, -32602, "Invalid tool call parameters");
                 };
+                if profile_name == "cua-linux" {
+                    let payload = match crate::mcp::cua::request(
+                        name,
+                        params.get("arguments"),
+                        &params["_meta"],
+                    ) {
+                        Ok(request) => self
+                            .cua_call(binding, credential, request)
+                            .await
+                            .unwrap_or_else(|error| {
+                                crate::mcp::cua::failure(&error.message.lossy())
+                            }),
+                        Err(reply) => reply,
+                    };
+                    return crate::mcp::cua::bounded_result(id, payload);
+                }
                 let payload = rpc::call(
                     async |operation, arguments| {
                         self.mcp_operation(binding, credential, operation, arguments)

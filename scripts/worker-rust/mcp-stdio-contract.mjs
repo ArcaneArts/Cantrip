@@ -48,8 +48,11 @@ export async function sourceCatalog(profile, inspect) {
     throw new Error("Tool catalog export must not invoke the broker.");
   };
   const server =
-    profile === "cua"
-      ? createCuaMcpServer(unexpected)
+    profile === "cua" || profile === "cua-linux"
+      ? createCuaMcpServer(
+          unexpected,
+          profile === "cua-linux" ? "linux-desktop" : undefined,
+        )
       : createCantripMcpServer(unexpected, profile, undefined, inspect);
   const client = new Client({ name: "cantrip-mcp-export", version: "1" });
   try {
@@ -103,6 +106,7 @@ async function generate() {
         );
     }),
     cua: await sourceCatalog("cua"),
+    "cua-linux": await sourceCatalog("cua-linux"),
   };
   for (const profile of Object.values(profiles))
     delete profile.serverInfo.version;

@@ -1,3 +1,4 @@
+mod computer_use;
 mod policy;
 mod streamable;
 
@@ -93,7 +94,13 @@ impl Inner {
             .get(header::AUTHORIZATION)
             .and_then(|head| head.to_str().ok());
         if let Some(id) = binding_path(path, "/v1/mcp/") {
-            return self.streamable(&id, credential, &parts, body).await;
+            return self.streamable(&id, credential, &parts, body, false).await;
+        }
+        if let Some(id) = binding_path(path, "/v1/cua-mcp/") {
+            return self.streamable(&id, credential, &parts, body, true).await;
+        }
+        if parts.method == Method::POST && path == "/v1/computer-use" {
+            return self.cua_broker(credential, body).await;
         }
         if parts.method == Method::GET
             && let Some(id) = binding_path(path, "/v1/bindings/")
@@ -445,10 +452,14 @@ fn unauthorized() -> Failure {
     Failure::new(StatusCode::UNAUTHORIZED, None, "Unauthorized")
 }
 
-fn json_response(mut status: StatusCode, payload: Value) -> Reply {
+fn json_response(status: StatusCode, payload: Value) -> Reply {
+    json_response_with_limit(status, payload, MAXIMUM_RESPONSE)
+}
+
+fn json_response_with_limit(mut status: StatusCode, payload: Value, maximum: usize) -> Reply {
     let mut body = payload.stringify();
     body.push('\n');
-    if body.len() > MAXIMUM_RESPONSE {
+    if body.len() > maximum {
         status = StatusCode::PAYLOAD_TOO_LARGE;
         body = json!({
             "code":"output-too-large",

@@ -20,17 +20,36 @@ pub(super) async fn call(
     arguments: Option<&Value>,
     metadata: &Value,
 ) -> Value {
+    let request = match request(name, arguments, metadata) {
+        Ok(request) => request,
+        Err(reply) => return reply,
+    };
+    match broker.call_cua(request).await.and_then(validate_result) {
+        Ok(reply) => reply,
+        Err(error) => failure(&error.to_string()),
+    }
+}
+
+pub(super) fn request(
+    name: &str,
+    arguments: Option<&Value>,
+    metadata: &Value,
+) -> Result<Value, Value> {
     let schema = match name {
         "js" => "cuaMcpScriptArgumentsSchema",
         "js_reset" => "cuaMcpResetArgumentsSchema",
-        _ => return rpc::tool_error(format!("MCP error -32602: Tool {name} not found")),
+        _ => {
+            return Err(rpc::tool_error(format!(
+                "MCP error -32602: Tool {name} not found"
+            )));
+        }
     };
     let arguments = match mcp_host::parse(schema, arguments) {
         Ok(arguments) => arguments,
         Err(ValidationError::Invalid(issues)) => {
-            return rpc::input_error(name, Value::Array(issues));
+            return Err(rpc::input_error(name, Value::Array(issues)));
         }
-        Err(ValidationError::Operation) => return rpc::tool_error(INVALID_REQUEST),
+        Err(ValidationError::Operation) => return Err(rpc::tool_error(INVALID_REQUEST)),
     };
     let mut request = json!({
         "operation":name,"threadId":metadata["threadId"],
@@ -40,12 +59,11 @@ pub(super) async fn call(
     if name == "js" {
         request["script"] = arguments["script"].clone();
     }
-    match broker.call_cua(request).await.and_then(validate_result) {
-        Ok(reply) => reply,
-        Err(error) => rpc::tool_error(JsString::new(
-            error.to_string().encode_utf16().take(2000).collect(),
-        )),
-    }
+    Ok(request)
+}
+
+pub(super) fn failure(message: &str) -> Value {
+    rpc::tool_error(JsString::new(message.encode_utf16().take(2000).collect()))
 }
 
 pub(super) fn bounded_result(id: &Value, payload: Value) -> Value {
@@ -61,7 +79,7 @@ pub(super) fn bounded_result(id: &Value, payload: Value) -> Value {
     }
 }
 
-fn validate_result(raw: Value) -> Result<Value> {
+pub(super) fn validate_result(raw: Value) -> Result<Value> {
     let value = mcp_host::parse("cuaMcpResultSchema", Some(&raw))
         .map_err(|_| anyhow::anyhow!("CUA MCP result has unsupported content."))?;
     let mut total = 0;
