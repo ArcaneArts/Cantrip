@@ -52,6 +52,7 @@ const { values } = parseArgs({
     bundled: { type: "boolean" },
     codegraph: { type: "boolean" },
     policies: { type: "boolean" },
+    "host-skills": { type: "boolean" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -119,6 +120,7 @@ const interactionKey =
     ? key("interaction-content")
     : null;
 const consoleStateKey =
+  values["host-skills"] ||
   values.policies ||
   values.codegraph ||
   consoleInteractions ||
@@ -2594,6 +2596,69 @@ async function verifyPolicies() {
   );
 }
 
+const fixtureSkill = "cantrip-host-skill-fixture";
+const fixtureSkillBody = "The selected Cantrip skill body reached inference.";
+
+async function verifyHostSkills() {
+  const model = await createModel("Host skill fixture");
+  await call("PATCH", "/api/settings", 200, {
+    defaultModelId: model.profile.id,
+    autoNameChats: false,
+  });
+  const { chatUrl } = await createPreparedProjectChat({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    labelKey,
+    title: "Host skill mentions",
+  });
+  const answer = "The selected skill was applied.";
+  const reply = model.model.reply({ text: answer });
+  const missing = "cantrip-host-skill-missing-fixture";
+  const prompt = `Apply $${fixtureSkill} and $${missing}, then repeat $${fixtureSkill} now.`;
+  await call(
+    "POST",
+    chatUrl + "/turns",
+    202,
+    await encryptedTurn(prompt, model.profile.id),
+  );
+  await eventually(
+    () => reply.request,
+    (request) => assert.equal(request?.completed, true),
+    35_000,
+  );
+  const messages = reply.request.input.input
+    .filter((item) => item.type === "message" && item.role === "user")
+    .flatMap((item) => item.content.map((part) => part.text ?? ""));
+  assert.ok(messages.includes(prompt));
+  const skill = messages.filter((text) =>
+    text.includes(`<skill>\n<name>${fixtureSkill}</name>`),
+  );
+  assert.equal(skill.length, 1, JSON.stringify(messages));
+  assert.ok(skill[0].includes(fixtureSkillBody));
+  assert.ok(
+    messages.every((text) => !text.includes(`<name>${missing}</name>`)),
+  );
+  await eventually(
+    async () => {
+      const { messages } = await call("GET", chatUrl + "/messages", 200);
+      return Promise.all(messages.map(openMessage));
+    },
+    (messages) =>
+      assert.ok(
+        messages.some((message) =>
+          message.content.some((item) => item.text === answer),
+        ),
+      ),
+  );
+  assert.deepEqual(model.model.failures, []);
+  console.log(
+    JSON.stringify({ suite: "native-protected-host-skills", passed: true }),
+  );
+}
+
 async function verifyStandaloneBehavior() {
   await verifyProviderCatalog({
     call,
@@ -2686,6 +2751,16 @@ try {
   }
   const environment = fixtureEnvironment(path.join(root, "server"));
   environment.HOME = home;
+  if (values["host-skills"]) {
+    const codexHome = path.join(home, ".codex-fixture");
+    const skill = path.join(codexHome, "skills", fixtureSkill);
+    await mkdir(skill, { recursive: true });
+    await writeFile(
+      path.join(skill, "SKILL.md"),
+      `---\nname: ${fixtureSkill}\ndescription: Exercise explicit skill selection.\n---\n\n${fixtureSkillBody}\n`,
+    );
+    environment.CODEX_HOME = codexHome;
+  }
   environment.CANTRIP_BOOTSTRAP_MODE = "standalone";
   delete environment.CANTRIP_WORKER_TOKEN;
   server = await startServer(
@@ -2770,7 +2845,9 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (values.policies) {
+  if (values["host-skills"]) {
+    await verifyHostSkills();
+  } else if (values.policies) {
     await verifyPolicies();
   } else if (values.codegraph) {
     await verifyManagedCodeGraph(data);

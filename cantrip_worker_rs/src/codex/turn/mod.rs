@@ -39,7 +39,7 @@ use super::{
     preparation::{Intent, command::Ensurer},
     revocation::{REMOVED, Target},
     rpc_requests::Failure,
-    task_inputs,
+    skills, task_inputs,
 };
 use crate::{
     attachments::{Store, content::ServiceKeys},
@@ -901,7 +901,26 @@ impl Turns {
             }
             signal.check()?;
             let guest = prepared.environment.is_some();
-            let input = if is_queued
+            let skill_inputs = if retained.is_none() && !guest && command["contextKind"] == "project" {
+                let names = if protection.is_some()
+                    || command["resultMode"]["operation"]["classification"]["kind"] == "direct"
+                {
+                    skills::mentions(&prompt)
+                } else {
+                    command["skillNames"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Value::as_js_string)
+                        .cloned()
+                        .collect()
+                };
+                let cwd = id(&command["cwd"], "native workspace path")?;
+                skills::host_inputs(runtime, &cwd, &names, RPC_TIMEOUT).await?
+            } else {
+                Vec::new()
+            };
+            let mut input = if is_queued
                 || (guest
                     && command["attachments"]
                         .as_array()
@@ -928,6 +947,7 @@ impl Turns {
             } else {
                 vec![json!({"type":"text","text":prompt})]
             };
+            input.extend(skill_inputs);
             let mut params = params::native_input(
                 &command,
                 input,

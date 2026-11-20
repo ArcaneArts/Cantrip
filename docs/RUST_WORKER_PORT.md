@@ -8448,3 +8448,23 @@ matched Node decryption and rejected a body encrypted for a different row.
 Three focused Node policy tests passed. Repeat the Chat fixture with
 `scripts/worker-rust/standalone-turn-smoke.mjs --policies`. Guest and Windows
 execution were outside the fixture.
+
+## 233. Apply explicitly mentioned skills on the Host
+
+Reference commit `f19678c54d9279ed40700406830e762abe267d43` (#3396).
+
+The Rust worker resolves skill mentions on the same Codex runtime and admitted
+workspace that will execute the turn. It finds mentions inside protected Project
+Chat input and direct Task briefs, and accepts Core's skill names for visible
+Project input. Discovery uses the existing workspace and global skill roots.
+Enabled, available skills become native input items in mention order. Protected
+queue submissions with retained native input use their saved items. Relocation
+shares the UTF-16 mention parser.
+
+The macOS ARM64 fixture used Rust Core in PGlite mode, the Rust worker and
+bundled Codex 0.166.0. A protected Project Chat sent the selected global skill
+body once to a loopback Responses provider, skipped an unavailable skill, and
+committed the protected reply. Five focused Node reference tests passed.
+Repeat with `scripts/worker-rust/standalone-turn-smoke.mjs --host-skills`.
+Standalone audience-based skills, guest skills and customization commands
+remain open. The fixture covered protected Project Chat input on macOS.
