@@ -74,6 +74,7 @@ struct Inner {
     retirement: Promise<()>,
     external_auth: Option<Arc<dyn ExternalAuth>>,
     closing: Mutex<Option<Promise<()>>>,
+    standalone_skills: super::skills::standalone::RuntimeSkills,
 }
 
 impl Drop for Inner {
@@ -291,6 +292,7 @@ impl Runtime {
             retirement,
             external_auth,
             closing: Mutex::new(None),
+            standalone_skills: Default::default(),
         }));
         if let Err(error) = host
             .initialize(&runtime.0.session, &profile)
@@ -335,6 +337,10 @@ impl Runtime {
 
     pub fn id(&self) -> &JsString {
         &self.0.id
+    }
+
+    pub(super) fn standalone_skills(&self) -> &super::skills::standalone::RuntimeSkills {
+        &self.0.standalone_skills
     }
 
     pub(in crate::codex) fn version_raw(&self) -> &Value {

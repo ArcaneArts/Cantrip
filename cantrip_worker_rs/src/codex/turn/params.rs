@@ -30,9 +30,6 @@ pub(super) fn validate(command: &Value) -> Result<()> {
             && command["attachments"]
                 .as_array()
                 .is_some_and(|items| !items.is_empty()))
-        || command["chatSkillAudienceKeys"]
-            .as_array()
-            .is_some_and(|keys| !keys.is_empty())
         || ((guest || command["contextKind"] != "project")
             && command["skillNames"]
                 .as_array()

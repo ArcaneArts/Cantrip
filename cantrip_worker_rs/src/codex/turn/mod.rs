@@ -900,6 +900,18 @@ impl Turns {
                 title.report(&emit, result)?;
             }
             signal.check()?;
+            let _standalone_skills = if command["contextKind"] == "standalone" {
+                let sources = self.preparation.standalone_skill_sources(&command).await?;
+                let cwd = id(&command["cwd"], "native workspace path")?;
+                Some(
+                    runtime
+                        .standalone_skills()
+                        .prepare(runtime, sources, &cwd, &signal)
+                        .await?,
+                )
+            } else {
+                None
+            };
             let guest = prepared.environment.is_some();
             let skill_inputs = if retained.is_none() && !guest && command["contextKind"] == "project" {
                 let names = if protection.is_some()

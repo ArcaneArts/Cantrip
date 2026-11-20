@@ -124,6 +124,19 @@ struct Inner {
 }
 
 impl Ensurer {
+    pub(in crate::codex) async fn standalone_skill_sources(
+        &self,
+        command: &Value,
+    ) -> Result<crate::codex::skills::standalone::Sources> {
+        crate::codex::skills::standalone::sources(
+            &self.0.data,
+            self.0.skills.as_deref(),
+            &command["provider"],
+            &command["chatSkillAudienceKeys"],
+        )
+        .await
+    }
+
     pub(crate) fn new(
         codex: Worker,
         access: Access,

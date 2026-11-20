@@ -9,6 +9,8 @@ use std::{
     time::Duration,
 };
 
+pub(super) mod standalone;
+
 pub(super) fn mentions(text: &JsString) -> Vec<JsString> {
     static MENTION: LazyLock<Regex> = LazyLock::new(|| {
         Regex::with_flags(r"(?:^|[^A-Za-z0-9_$])\$([A-Za-z0-9][A-Za-z0-9_.:-]*)", "u").unwrap()
