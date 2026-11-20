@@ -6,6 +6,7 @@ pub(crate) const COMMAND: &str = "inference.task-revoke";
 const REVOKED: &str = "The Task input's dispatch fence was revoked for provider transfer.";
 
 pub(super) struct Attempt {
+    pub(super) interactions: OnceLock<interactions::Handle>,
     receipt: Value,
     revoked: AtomicBool,
     execution: OnceLock<Execution>,
@@ -21,6 +22,7 @@ impl Attempt {
             bail!("The Task input belongs to another worker.");
         }
         Ok(Self {
+            interactions: OnceLock::new(),
             receipt,
             revoked: AtomicBool::new(false),
             execution: OnceLock::new(),

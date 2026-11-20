@@ -24,7 +24,6 @@ pub(super) fn validate(command: &Value) -> Result<()> {
             && (!command["taskDispatchLease"].is_null()
                 || !command["taskInferenceInput"].is_null()
                 || !command["taskResumption"].is_null()))
-        || (task && !command["computerUseAuthority"].is_null())
         || (!guest
             && !queued
             && command["attachments"]
@@ -59,13 +58,20 @@ pub(super) fn preparation(command: &Value) -> Value {
             "chatId": command["chatId"], "contextKind": command["contextKind"],
             "projectId": command["policyProjectId"], "worktreeId": command["worktreeId"],
             "scratchRootId": command["scratchRootId"], "rootKind": command["rootKind"],
-            "computerUseEnabled": !command["computerUseAuthority"].is_null(),
+            "computerUseEnabled": computer_use_enabled(command),
         }),
     });
     if let Some(placement) = command.get("osExecution") {
         target["session"]["osExecution"] = placement.clone();
     }
     target
+}
+
+pub(super) fn computer_use_enabled(command: &Value) -> bool {
+    !command["computerUseAuthority"].is_null()
+        && (protected_mode(command)
+            || super::task::is_goal(command)
+            || (super::task::is_round(command) && !super::task::is_structured(command)))
 }
 
 pub(super) fn computer_use_context(guest: bool) -> Value {
@@ -173,7 +179,7 @@ pub(super) async fn native_input(
             "kind":"application", "value":environment.instructions,
         });
     }
-    if !command["computerUseAuthority"].is_null() {
+    if computer_use_enabled(command) {
         context["cantrip.computer-use"] = computer_use_context(environment.is_some());
     }
     let mut params = json!({

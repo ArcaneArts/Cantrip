@@ -189,7 +189,7 @@ impl Turns {
                 let cua = if let Some(observer) = &observe_cua {
                     let lifetime = computer_use::Turn::new(
                         self.computer_use.clone(), epoch.context("Computer use requires the Resume command socket.")?,
-                        runtime, thread.clone(), emit.clone(), Some(protection),
+                        runtime, thread.clone(), emit.clone(), computer_use::Publication::Chat(protection),
                         Signal::any(vec![signal.clone(), transport.clone(), delivery_signal]),
                     );
                     let activation = mcp.as_ref().context("The restored computer-use MCP attachment is unavailable.")?;
@@ -268,10 +268,10 @@ impl Turns {
 
                 let collecting = output::collect_restored(&mut events, &transport, &thread, &turn, &emit, saved, false);
                 let terminal = interactions::Turn {
-                    runtime, receipt: &receipt, thread: &thread, turn: &turn,
+                    runtime, authority: interactions::Authority::Receipt(&receipt), thread: &thread, turn: &turn,
                     thread_version: binding.thread_version, encryption: &self.encryption,
                     emit: &emit, protected: true,
-                }.observe(binding, &mut native_interactions.events, collecting).await;
+                }.observe(&binding.interactions, &mut native_interactions.events, collecting).await;
                 drop(native_interactions);
                 active.set(Phase::Terminal);
                 drop(emit);

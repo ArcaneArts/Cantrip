@@ -1,7 +1,7 @@
-//! Native interaction ownership follows one live physical turn and its Core receipt.
+//! Native interactions belong to one live physical turn and its Core command.
 pub(in crate::codex) mod protocol;
 
-use super::{Emit, Runtime, Turns, control::Binding, id, receipt::Receipt};
+use super::{Emit, Key, Phase, Runtime, Turns, id, receipt::Receipt, task_route::Attempt};
 use crate::{
     chat_content::Scope,
     encryption::Service,
@@ -15,7 +15,7 @@ use cantrip_history::content::Encryption;
 use cantrip_wire::{JsString, Value, value::json};
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 use tokio::{
@@ -92,10 +92,7 @@ impl Turns {
             }
             bail!("The agent interaction is no longer pending.");
         };
-        let binding = active
-            .control
-            .get()
-            .context("The agent interaction has no active binding.")?;
+        let binding = active.control.get();
         if native {
             let root = active
                 .root
@@ -103,16 +100,27 @@ impl Turns {
                 .context("The native turn has no active receipt.")?;
             ensure!(
                 command["nativeActivationGeneration"] == root.activation
-                    && binding.matches(command),
+                    && binding.is_some_and(|binding| binding.matches(command)),
                 "The reply does not match the active native turn."
             );
         } else {
+            let phase = active.phase.lock().unwrap();
+            let thread = binding
+                .map(|binding| &binding.session["threadId"])
+                .and_then(Value::as_js_string)
+                .or_else(|| match &*phase {
+                    Phase::Running { thread, .. } => Some(thread),
+                    _ => None,
+                });
             ensure!(
-                command["threadId"].is_null() || command["threadId"] == binding.session["threadId"],
+                command["threadId"].is_null() || command["threadId"].as_js_string() == thread,
                 "The reply belongs to a different native thread."
             );
         }
-        let handle = match binding.interactions.get() {
+        let handle = match binding
+            .and_then(|binding| binding.interactions.get())
+            .or_else(|| active.task_input.as_ref()?.interactions.get())
+        {
             Some(handle) => handle,
             None if cancel => return Ok(json!({"accepted":true})),
             None => bail!("The agent interaction is no longer pending."),
@@ -212,9 +220,15 @@ impl Pending {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum Authority<'a> {
+    Receipt(&'a Receipt<'a>),
+    Task(&'a Key, &'a Attempt),
+}
+
 pub(super) struct Turn<'a> {
     pub(super) runtime: &'a Runtime,
-    pub(super) receipt: &'a Receipt<'a>,
+    pub(super) authority: Authority<'a>,
     pub(super) thread: &'a JsString,
     pub(super) turn: &'a JsString,
     pub(super) thread_version: u64,
@@ -233,14 +247,13 @@ struct Owner<'a> {
 impl Turn<'_> {
     pub(super) async fn observe<T>(
         self,
-        binding: &Binding,
+        handle: &OnceLock<Handle>,
         events: &mut mpsc::Receiver<Value>,
         collecting: impl Future<Output = Result<T>>,
     ) -> Result<T> {
-        let (handle, commands) = Handle::channel();
-        binding
-            .interactions
-            .set(handle)
+        let (send, commands) = Handle::channel();
+        handle
+            .set(send)
             .map_err(|_| anyhow!("The native interaction owner already exists."))?;
         let (stop, stopping) = Abort::new();
         let mut owner = Owner {
@@ -268,7 +281,7 @@ impl Turn<'_> {
         let grant = self
             .encryption
             .bound_component("interaction-content", revision)?;
-        let (owner, server) = self.receipt.scope().identity()?;
+        let (owner, server) = self.identity()?;
         ensure!(
             grant.owner_id == owner && grant.server_id.as_js_string() == Some(&server),
             "The interaction encryption binding changed."
@@ -322,8 +335,26 @@ impl Turn<'_> {
         Ok(opened["response"].clone())
     }
 
+    fn identity(&self) -> Result<(JsString, JsString)> {
+        match self.authority {
+            Authority::Receipt(receipt) => receipt.scope().identity(),
+            Authority::Task((owner, server, _), attempt) => {
+                ensure!(
+                    !attempt.revoked(),
+                    "The Task input is no longer authorized."
+                );
+                let (current_owner, current_server) = self.encryption.bound_identity()?;
+                ensure!(
+                    &current_owner == owner && current_server.as_js_string() == Some(server),
+                    "The interaction no longer belongs to the current worker identity."
+                );
+                Ok((owner.clone(), server.clone()))
+            }
+        }
+    }
+
     fn current(&self) -> Result<()> {
-        self.receipt.scope().identity()?;
+        self.identity()?;
         ensure!(
             self.runtime.is_live()
                 && self.runtime.thread_version(self.thread) == self.thread_version,
@@ -407,7 +438,10 @@ impl Owner<'_> {
                 Pending {
                     id: native_id.clone(),
                     method: frame["method"].clone(),
-                    question: protocol::plan_question(&request),
+                    question: match self.turn.authority {
+                        Authority::Receipt(_) => protocol::plan_question(&request),
+                        Authority::Task(..) => None,
+                    },
                     request,
                     expires: now + timeout,
                     retry: Some(now),
@@ -451,16 +485,16 @@ impl Owner<'_> {
         }
         self.turn.current()?;
         let pending = self.pending.get_mut(&key).unwrap();
-        let guard = Guard::metadata_timeout(None, None, Duration::from_secs(2));
-        if self
-            .turn
-            .receipt
-            .register_interaction(&pending.descriptor(), &guard)
-            .await
-            .is_err()
-        {
-            pending.retry = Some(Instant::now() + Duration::from_millis(350));
-            return Ok(());
+        if let Authority::Receipt(receipt) = self.turn.authority {
+            let guard = Guard::metadata_timeout(None, None, Duration::from_secs(2));
+            if receipt
+                .register_interaction(&pending.descriptor(), &guard)
+                .await
+                .is_err()
+            {
+                pending.retry = Some(Instant::now() + Duration::from_millis(350));
+                return Ok(());
+            }
         }
         if self.stop.check().is_err() {
             return Ok(());
@@ -563,40 +597,48 @@ impl Owner<'_> {
         resolution: Option<Value>,
         terminal: Option<(&Value, &Signal)>,
     ) -> Result<Value> {
-        let scope = Scope::new(self.turn.encryption.clone())?;
-        let receipt = self
-            .turn
-            .receipt
-            .admit_interaction_reply(
-                scope,
-                self.turn.turn,
-                &self.pending(key)?.descriptor(),
-                &frame,
-                terminal.map(|(session, _)| session),
-            )
-            .await?;
-        if let Err(error) = receipt.dispatch().await {
-            let _ = receipt.uncertain().await;
-            self.cancel(
-                key,
-                &"Core did not dispatch the native interaction reply.".into(),
-                false,
-            )?;
-            return Err(error);
-        }
-        if let Err(error) = self
-            .pending(key)
-            .and_then(|_| terminal.map_or(Ok(()), |(_, open)| open.check()))
-        {
-            let _ = receipt.rejected(&json!({"code":-32000,"message":"The native reply no longer belongs to an active request."})).await;
-            // Core already claimed this request. Deny it so the turn cannot wait for an unusable reply.
-            self.cancel(
-                key,
-                &"The authorized reply ended before delivery.".into(),
-                false,
-            )?;
-            return Err(error);
-        }
+        let receipt = if let Authority::Receipt(root) = self.turn.authority {
+            let scope = Scope::new(self.turn.encryption.clone())?;
+            let receipt = root
+                .admit_interaction_reply(
+                    scope,
+                    self.turn.turn,
+                    &self.pending(key)?.descriptor(),
+                    &frame,
+                    terminal.map(|(session, _)| session),
+                )
+                .await?;
+            if let Err(error) = receipt.dispatch().await {
+                let _ = receipt.uncertain().await;
+                self.cancel(
+                    key,
+                    &"Core did not dispatch the native interaction reply.".into(),
+                    false,
+                )?;
+                return Err(error);
+            }
+            if let Err(error) = self
+                .pending(key)
+                .and_then(|_| terminal.map_or(Ok(()), |(_, open)| open.check()))
+            {
+                let _ = receipt.rejected(&json!({"code":-32000,"message":"The native reply no longer belongs to an active request."})).await;
+                // Core already claimed this request. Deny it so the turn cannot wait for an unusable reply.
+                self.cancel(
+                    key,
+                    &"The authorized reply ended before delivery.".into(),
+                    false,
+                )?;
+                return Err(error);
+            }
+            Some(receipt)
+        } else {
+            ensure!(
+                terminal.is_none(),
+                "A Task reply requires its owning command."
+            );
+            self.pending(key)?;
+            None
+        };
         // Claim before sending, even if the native transport subsequently fails.
         let pending = self
             .remove(key)
@@ -608,16 +650,21 @@ impl Owner<'_> {
         {
             Ok(true) => {}
             Ok(false) => {
-                receipt
-                    .rejected(&json!({"code":-32000,"message":"The native request already ended."}))
-                    .await?;
+                if let Some(receipt) = receipt {
+                    receipt
+                        .rejected(
+                            &json!({"code":-32000,"message":"The native request already ended."}),
+                        )
+                        .await?;
+                }
                 self.clear(&pending, false)?;
                 bail!("The native request already ended.");
             }
             Err(error) => {
-                let settled = receipt.uncertain().await;
                 let _ = self.clear(&pending, false);
-                settled?;
+                if let Some(receipt) = receipt {
+                    receipt.uncertain().await?;
+                }
                 return Err(error);
             }
         }
@@ -627,12 +674,14 @@ impl Owner<'_> {
             event["resolution"] = resolution;
         }
         let _ = pending.publish_terminal(self.turn.emit, event);
-        let acknowledged = if terminal.is_some() {
+        let acknowledged = if let (Some(receipt), Some(_)) = (&receipt, terminal) {
             json!({"delivered":true,"operationGeneration":receipt.operation().generation})
         } else {
             json!({"accepted":true})
         };
-        receipt.applied(&acknowledged, None).await?;
+        if let Some(receipt) = receipt {
+            receipt.applied(&acknowledged, None).await?;
+        }
         Ok(acknowledged)
     }
 

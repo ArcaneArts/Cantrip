@@ -376,7 +376,7 @@ async fn execute(
                 let epoch = turns.computer_use.previews.current_epoch();
                 let lifetime = computer_use::Turn::new(
                     turns.computer_use.clone(), epoch, runtime, thread.clone(), emit.clone(),
-                    Some(protection), Signal::any(vec![signal.clone(), transport.clone(), delivery_signal]),
+                    computer_use::Publication::Chat(protection), Signal::any(vec![signal.clone(), transport.clone(), delivery_signal]),
                 );
                 let activation = mcp.as_ref().context("The console computer-use MCP attachment is unavailable.")?;
                 lifetime.0.register(activation, computer_use)?;
@@ -458,9 +458,9 @@ async fn execute(
                 let binding = active.control.get().unwrap();
                 let collecting = output::collect(&mut events, &transport, thread, &turn, &emit);
                 let outcome = interactions::Turn {
-                    runtime, receipt, thread, turn: &turn, thread_version: binding.thread_version,
+                    runtime, authority: interactions::Authority::Receipt(receipt), thread, turn: &turn, thread_version: binding.thread_version,
                     encryption: &turns.encryption, emit: &emit, protected: true,
-                }.observe(binding, &mut native_interactions.events, collecting).await;
+                }.observe(&binding.interactions, &mut native_interactions.events, collecting).await;
                 drop(native_interactions);
                 active.set(Phase::Terminal);
                 drop(emit);
