@@ -52,7 +52,7 @@ export async function fixtureCodex(
 
 // Forward the actual worker control socket and HTTP requests. Before restart,
 // close only deferred receipt requests without forwarding them to Core.
-export async function deferredReceiptProxy(origin) {
+export async function deferredReceiptProxy(origin, { handoffAction } = {}) {
   const sockets = new Set();
   let hold = true;
   let withheld;
@@ -69,6 +69,10 @@ export async function deferredReceiptProxy(origin) {
           return;
         }
       }
+      const handoffRequest =
+        handoffAction && req.url === "/api/internal/native-runtime-handoffs"
+          ? JSON.parse(body)
+          : null;
       const upstream = request(
         origin + req.url,
         {
@@ -76,6 +80,17 @@ export async function deferredReceiptProxy(origin) {
           headers: { ...req.headers, host: new URL(origin).host },
         },
         (response) => {
+          if (
+            hold &&
+            handoffRequest &&
+            handoffRequest.action === handoffAction &&
+            response.statusCode === 200
+          ) {
+            withheld = handoffRequest.operationId;
+            response.resume();
+            reply.destroy();
+            return;
+          }
           reply.writeHead(response.statusCode, response.headers);
           response.pipe(reply);
         },
@@ -92,7 +107,9 @@ export async function deferredReceiptProxy(origin) {
   });
   relay.on("upgrade", (req, socket, head) => {
     const upstream = request(origin + req.url, { headers: req.headers });
+    socket.on("error", () => upstream.destroy());
     upstream.on("upgrade", (response, peer, remainder) => {
+      peer.on("error", () => socket.destroy());
       const raw = [
         `HTTP/1.1 ${response.statusCode} ${response.statusMessage}`,
         ...Object.entries(response.headers).map(

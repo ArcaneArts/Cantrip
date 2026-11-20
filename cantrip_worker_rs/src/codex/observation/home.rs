@@ -19,6 +19,10 @@ use std::{
 pub(in crate::codex) enum Source<'a> {
     Current(Option<&'a JsString>),
     Held(&'a crate::codex::suspension_store::Opened),
+    Staged {
+        thread: &'a JsString,
+        operation: &'a str,
+    },
 }
 
 pub(in crate::codex) async fn profile(
@@ -94,9 +98,11 @@ pub(in crate::codex) async fn profile(
             overlay = Some(configuration_home);
             saved.home.clone()
         }
-        Source::Current(_) if standalone => data
-            .join("codex-standalone-homes")
-            .join(sha256(&id.lossy())),
+        Source::Staged { thread, operation } => {
+            id = surround("", &id, &format!(":namespace:{operation}"));
+            overlay = Some(configuration_home);
+            root(data, scope, thread).join("homes").join(operation)
+        }
         Source::Current(thread) => {
             if let Some(thread) = thread
                 && let Some((operation, home)) =
@@ -105,6 +111,9 @@ pub(in crate::codex) async fn profile(
                 id = surround("", &id, &format!(":namespace:{operation}"));
                 overlay = Some(configuration_home);
                 home
+            } else if standalone {
+                data.join("codex-standalone-homes")
+                    .join(sha256(&id.lossy()))
             } else {
                 guest_home.unwrap_or(configuration_home)
             }
@@ -123,15 +132,36 @@ async fn selection(
     chat: Option<&JsString>,
     provider: &Value,
 ) -> Result<Option<(String, PathBuf)>> {
+    let root = root(data, scope, thread);
+    let Some(head) = current(&root, scope, thread).await? else {
+        return Ok(None);
+    };
+    if chat.is_some_and(|chat| head["chatId"].as_js_string() != Some(chat))
+        || ["id", "kind", "accountId"]
+            .iter()
+            .any(|field| head["provider"][*field] != provider[*field])
+    {
+        bail!("The managed runtime route changed. Reload the canonical conversation binding.");
+    }
+    let operation = head["operationId"].as_str().unwrap().to_owned();
+    Ok(Some((
+        operation.clone(),
+        root.join("homes").join(operation),
+    )))
+}
+
+fn root(data: &Path, scope: &Value, thread: &JsString) -> PathBuf {
     let scope_key = payload_digest(&json!([
         scope["serverId"].clone(),
         scope["ownerId"].clone(),
         scope["workerId"].clone()
     ]));
-    let root = data
-        .join("managed-native-namespaces")
+    data.join("managed-native-namespaces")
         .join(scope_key)
-        .join(payload_digest(&json!(thread)));
+        .join(payload_digest(&json!(thread)))
+}
+
+async fn current(root: &Path, scope: &Value, thread: &JsString) -> Result<Option<Value>> {
     let mut directory = match tokio::fs::read_dir(root.join("selections")).await {
         Ok(directory) => directory,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
@@ -162,7 +192,7 @@ async fn selection(
     let mut heads = records
         .iter()
         .filter(|(operation, _)| !parents.contains(*operation));
-    let Some((operation, head)) = heads.next().filter(|_| heads.next().is_none()) else {
+    let Some((_, head)) = heads.next().filter(|_| heads.next().is_none()) else {
         bail!("Managed runtime namespace history has conflicting selections.");
     };
     let mut visited = HashSet::new();
@@ -183,17 +213,95 @@ async fn selection(
     if visited.len() != records.len() {
         bail!("Managed runtime namespace history has disconnected selections.");
     }
-    if chat.is_some_and(|chat| head["chatId"].as_js_string() != Some(chat))
-        || ["id", "kind", "accountId"]
-            .iter()
-            .any(|field| head["provider"][*field] != provider[*field])
+    Ok(Some(head.clone()))
+}
+
+pub(in crate::codex) async fn current_operation(
+    data: &Path,
+    scope: &Value,
+    thread: &JsString,
+) -> Result<Value> {
+    Ok(current(&root(data, scope, thread), scope, thread)
+        .await?
+        .map_or(Value::Null, |record| record["operationId"].clone()))
+}
+
+/// Publish the native home only after Core commits the matching destination.
+pub(in crate::codex) async fn select_committed(
+    data: &Path,
+    scope: &Value,
+    handoff: &Value,
+    provider: &Value,
+    previous: &Value,
+) -> Result<()> {
+    use cantrip_history::files::{ensure_directory, queue, read_json, write_immutable};
+    let source = &handoff["source"];
+    let binding = &handoff["binding"];
+    let prepared = &handoff["prepared"];
+    let attributed = &prepared["snapshot"]["modelAttribution"]["selection"];
+    let thread = source["threadId"]
+        .as_js_string()
+        .context("Missing handoff thread")?
+        .clone();
+    if !matches!(handoff["phase"].as_str(), Some("committed" | "completed"))
+        || handoff["workerId"] != scope["workerId"]
+        || source["workerId"] != scope["workerId"]
+        || source["chatId"] != handoff["chatId"]
+        || binding["chatId"] != handoff["chatId"]
+        || binding["threadId"] != source["threadId"]
+        || binding["runtimeGeneration"] != prepared["runtimeGeneration"]
+        || prepared["threadId"] != source["threadId"]
+        || attributed["status"] != "resolved"
+        || attributed["workerId"] != scope["workerId"]
+        || attributed["routeId"] != handoff["targetModelRouteId"]
+        || attributed["providerId"] != provider["id"]
+        || attributed["providerAccountId"] != provider["accountId"]
+        || provider["accountId"] != handoff["targetProviderAccountId"]
     {
-        bail!("The managed runtime route changed. Reload the canonical conversation binding.");
+        bail!("A namespace selection requires the committed destination binding.");
     }
-    Ok(Some((
-        operation.clone(),
-        root.join("homes").join(operation),
-    )))
+    let record = json!({
+        "version":1, "scope":scope, "chatId":handoff["chatId"], "threadId":thread,
+        "operationId":handoff["operationId"], "previousOperationId":previous,
+        "provider":json!({"id":provider["id"],"kind":provider["kind"],"accountId":provider["accountId"]}),
+    });
+    let operation = validate_record(&record, scope, &thread)?.to_owned();
+    let root = root(data, scope, &thread);
+    let directory = root.join("selections");
+    let scope = scope.clone();
+    queue(&directory)
+        .run_async(async move {
+            let last = current(&root, &scope, &thread).await?;
+            if let Some(last) = last.as_ref()
+                && last["operationId"] == record["operationId"]
+            {
+                if last != &record {
+                    bail!("Conflicting managed namespace retry.");
+                }
+                return Ok(());
+            }
+            if last
+                .as_ref()
+                .map_or(&Value::Null, |last| &last["operationId"])
+                != &record["previousOperationId"]
+                || last
+                    .as_ref()
+                    .is_some_and(|last| last["chatId"] != record["chatId"])
+            {
+                bail!("Managed runtime namespace source was replaced.");
+            }
+            ensure_directory(&directory)?;
+            let filename = directory.join(format!("{operation}.json"));
+            if !write_immutable(&filename, &record.stringify())? && read_json(&filename)? != record
+            {
+                bail!("Conflicting managed namespace publication.");
+            }
+            if current(&root, &scope, &thread).await?.as_ref() != Some(&record) {
+                bail!("Managed runtime namespace was superseded during publication.");
+            }
+            Ok(())
+        })
+        .await
 }
 
 fn sha256(text: &str) -> String {

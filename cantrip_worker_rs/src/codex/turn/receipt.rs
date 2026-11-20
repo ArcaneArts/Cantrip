@@ -173,7 +173,7 @@ impl Client {
         checked(schema, &reply)
     }
 
-    async fn exchange(
+    pub(super) async fn exchange(
         &self,
         action: &str,
         path: &str,
@@ -189,6 +189,7 @@ impl Client {
         };
         let unacknowledged = || Unacknowledged(action.to_owned());
         let metadata = path.starts_with("/api/internal/native-queue/")
+            || path.starts_with("/api/internal/native-runtime-handoffs")
             || matches!(
                 action,
                 "settings-refresh" | "settings-observation" | "permission-transition"

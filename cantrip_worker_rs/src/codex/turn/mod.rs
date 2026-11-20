@@ -4,6 +4,7 @@ pub(crate) mod autonomous;
 pub(crate) mod console;
 mod control;
 mod deferred;
+pub(crate) mod handoff;
 pub(crate) mod interactions;
 pub(crate) mod label;
 mod output;
@@ -95,6 +96,7 @@ pub(crate) struct Turns {
     task_inputs: task_inputs::Client,
     task_outcomes: Arc<TaskDelivery>,
     suspensions: super::suspension_store::Store,
+    handoffs: handoff::Coordinator,
 }
 
 struct TaskTurn {
@@ -242,10 +244,11 @@ impl Turns {
         let settings = Arc::new(settings::Delivery::new(
             receipts.clone(),
             encryption.clone(),
-            worker,
+            worker.clone(),
             &data,
         ));
         Ok(Self {
+            handoffs: handoff::Coordinator::new(data.clone(), worker),
             suspensions: super::suspension_store::Store::new(&data, encryption.clone()),
             preparation,
             encryption,
