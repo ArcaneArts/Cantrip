@@ -7632,3 +7632,43 @@ with PGlite on the same worker build.
 
 Task Goal withdrawal and destination recovery still need to consume this
 capture through the runtime handoff.
+
+## 202. Withdraw queued Task Goal reservations during a provider handoff
+
+Reference commit 9612b0f94dc1036ca209d3140090118a700e7023 (#3365).
+
+Task handoff now uses the captured source to seal an unused first input or
+private Goal cycle through its actual keeper. A live worker holds the
+matching native Task root before sending the no-start proof to Core.
+The first input and a withdrawn private gate wait for the canonical
+acknowledgement. A deferred first input sends no Task failure outcome.
+After confirmation the handoff releases the canonical command or waits
+for Codex's negative acknowledgement of the private gate. Keeper records
+remain available for Task FIFO recovery after the handoff journal settles.
+
+The worker understands Core's Task handoff configuration and stages an
+inference-only native root with the original Task placement and thread.
+A transferred first input keeps its native producer parked until Core
+redelivers the canonical input.
+
+When a private cycle is withdrawn, the worker sends released keeper evidence
+to Core's existing inference reconciliation endpoint. The admission manager
+can then restore the approved queue position or retire it under Core authority.
+Cancellation releases the confirmed source and wakes the original active
+Goal on its retained epoch. The Goal ownership challenge still requires an
+actual keeper read before the worker confirms Core's fence.
+
+The local macOS ARM64 Task cycle fixture used the Rust worker, bundled Codex,
+a capacity-constrained loopback provider, and controlled Core receipts. It
+dropped the withdrawal response after confirming the no-start proof, then
+cancelled the transfer. The worker recovered the acknowledgement, denied
+the old native attempt, and resumed a fresh attempt at the retained
+provider-order epoch without replaying the Goal setter.
+The first-input fixture dropped the same acknowledgement while its
+reservation was still waiting. The original command returned the existing
+deferral code, with no provider request or Task outcome from that input.
+The live and recovered Project Goal handoff tests and queued Chat
+cancellation also passed against the production Rust server with PGlite.
+
+Standalone Task destination cycle recovery and full Task provider cutover
+validation remain open.

@@ -114,6 +114,29 @@ impl Client {
         Ok(source.clone())
     }
 
+    pub(in crate::codex) async fn reconcile_inference(
+        &self,
+        owner: &JsString,
+        server: &JsString,
+        record: &Value,
+        challenge: Option<&Value>,
+        signal: Signal,
+    ) -> Result<Value> {
+        let worker = self.config.lock().unwrap().worker_id.clone();
+        let mut input = json!({
+            "serverId":server,"workerId":worker,"workerGeneration":self.worker_generation,
+            "record":record,
+        });
+        if let Some(challenge) = challenge {
+            input["expectedGoalAdmission"] = challenge.clone();
+        }
+        let input = checked("nativeInferenceRecoverySchema", &input)?;
+        let result = self
+            .post(owner, server, "inference-recovery", &input, signal)
+            .await?;
+        checked("nativeInferenceRecoveryResultSchema", &result)
+    }
+
     pub(in crate::codex) async fn authorize_resource(
         &self,
         scope: &(JsString, Value),
