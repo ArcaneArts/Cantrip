@@ -886,6 +886,18 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == crate::codex::turn::ROLLBACK {
+                    let turns = turns.clone();
+                    let observation = chat_observation.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = turns.rollback(&request["command"], &observation).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if crate::codex::relocation::supports(kind) {
                     let relocation = chat_relocation.clone();
                     let preparation = thread_preparation.clone();

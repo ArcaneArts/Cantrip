@@ -73,6 +73,21 @@ impl Operation {
     }
 
     pub fn read(command: &Value) -> Result<Option<Self>> {
+        let Some(operation) = Self::for_gui_preparation(command)? else {
+            return Ok(None);
+        };
+        if operation.lane != command["executionLaneId"] {
+            bail!("The native GUI receipt does not match the admitted host turn.");
+        }
+        let digest = Sha256::digest(command["protectedPrompt"].stringify().as_bytes());
+        let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        if operation.payload != digest.as_str() {
+            bail!("The protected prompt does not match the admitted native command.");
+        }
+        Ok(Some(operation))
+    }
+
+    pub(super) fn for_gui_preparation(command: &Value) -> Result<Option<Self>> {
         let receipt = &command["nativeCommandReceipt"];
         if receipt.is_null() {
             return Ok(None);
@@ -81,18 +96,12 @@ impl Operation {
             || receipt["status"] != "accepted"
             || receipt["startsExecution"] != true
             || receipt["chatId"] != command["chatId"]
-            || receipt["executionLaneId"] != command["executionLaneId"]
             || (!receipt["threadId"].is_null() && receipt["threadId"] != command["threadId"])
             || (!receipt["logicalOperationId"].is_null()
                 && receipt["logicalOperationId"] != receipt["operationId"])
             || !receipt["previousOperationId"].is_null()
         {
             bail!("The native GUI receipt does not match the admitted host turn.");
-        }
-        let digest = Sha256::digest(command["protectedPrompt"].stringify().as_bytes());
-        let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-        if receipt["payloadDigest"] != digest {
-            bail!("The protected prompt does not match the admitted native command.");
         }
         Ok(Some(Self {
             operation: id(&receipt["operationId"], "native operation")?,

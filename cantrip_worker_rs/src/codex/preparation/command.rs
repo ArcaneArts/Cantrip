@@ -81,6 +81,8 @@ struct ThreadOwner {
     runtime: WeakRuntime,
     thread: native::LoadedThread,
     bound: (JsString, Value),
+    runner_base: JsString,
+    runner: JsString,
     session: Option<Value>,
     model_route: Value,
     provider_id: Value,
@@ -424,9 +426,11 @@ impl Ensurer {
         let chat = field(session, "chatId")?;
         let project = session["projectId"].as_js_string().cloned();
         let change_plan = incoming["type"] == PLAN_SET;
-        let guest_allowed = matches!(incoming["type"].as_str(), Some(COMMAND | PLAN_SET))
-            || (incoming["type"] == crate::codex::turn::RUN
-                && session.get("osExecution").is_some());
+        let guest_allowed = matches!(
+            incoming["type"].as_str(),
+            Some(COMMAND | PLAN_SET | crate::codex::turn::ROLLBACK)
+        ) || (incoming["type"] == crate::codex::turn::RUN
+            && session.get("osExecution").is_some());
         if !guest_allowed && session.get("osExecution").is_some() {
             bail!(
                 "This command requires guest execution support beyond native thread preparation."
@@ -693,12 +697,24 @@ impl Ensurer {
                             };
                             Some(admission)
                         };
-                        let runner: JsString = payload_digest(&json!([
+                        let runner_base: JsString = payload_digest(&json!([
                             json!(runtime.generation()),
                             json!(chat),
                             session[placement].clone()
                         ]))
                         .into();
+                        let runner = this
+                            .0
+                            .live_threads
+                            .lock()
+                            .unwrap()
+                            .get(&chat)
+                            .filter(|owner| {
+                                owner.runner_base == runner_base
+                                    && owner.bound == bound
+                                    && selection.thread_id.as_ref() == Some(owner.thread.id())
+                            })
+                            .map_or_else(|| runner_base.clone(), |owner| owner.runner.clone());
                         let first_message = command["taskGoalFirstInput"].as_js_string();
                         if let (Some(message), Some(thread)) =
                             (first_message, selection.thread_id.as_ref())
@@ -948,6 +964,8 @@ impl Ensurer {
                                 runtime: runtime.downgrade(),
                                 thread: loaded.clone(),
                                 bound: bound.clone(),
+                                runner_base,
+                                runner,
                                 session: goal_session,
                                 task,
                                 task_settings,
@@ -1137,6 +1155,26 @@ impl Ensurer {
                 session: owner.session.clone(),
             },
         ))
+    }
+
+    /// Revert closes the old managed gate while reloading the same thread ID.
+    /// The next admitted preparation installs a fresh gate with its own overlay.
+    pub(in crate::codex) fn rotate_reverted_runner(
+        &self,
+        chat: &JsString,
+        bound: &(JsString, Value),
+        runtime: &Runtime,
+        thread: &JsString,
+    ) {
+        let mut owners = self.0.live_threads.lock().unwrap();
+        if let Some(owner) = owners.get_mut(chat)
+            && &owner.bound == bound
+            && owner.thread.id() == thread
+            && owner.thread.assert_current(runtime).is_ok()
+            && owner.task.is_none()
+        {
+            owner.runner = uuid::Uuid::new_v4().to_string().into();
+        }
     }
 
     pub(in crate::codex) fn assert_console(

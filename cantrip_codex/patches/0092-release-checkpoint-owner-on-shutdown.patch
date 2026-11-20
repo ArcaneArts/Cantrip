@@ -1,0 +1,78 @@
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -195,7 +195,7 @@
+     epoch: AtomicU64,
+     requested: AtomicBool,
+     pub(crate) frozen: AtomicBool,
+-    store: Mutex<Option<LockedCheckpoint<SavedTurn>>>,
++    store: Mutex<CheckpointOwner>,
+     boundary: Mutex<Option<std::result::Result<NativeSuspension, String>>>,
+     live_resume: Mutex<Option<Arc<LiveResume>>>,
+     expected: Mutex<Option<NativeSuspension>>,
+@@ -208,6 +208,29 @@
+     imported_resources: tokio::sync::Mutex<Option<String>>,
+     restorations: tokio::sync::Mutex<()>,
+     last_resumed: Mutex<Option<NativeSuspension>>,
++}
++
++#[derive(Default)]
++enum CheckpointOwner {
++    #[default]
++    Unacquired,
++    Acquired(LockedCheckpoint<SavedTurn>),
++    Released,
++}
++
++/// A terminated runtime must release the OS lock before a replacement is
++/// attached, even while its app-server request still holds references to it.
++pub(super) fn release_checkpoint_on_shutdown(session: &Session) {
++    if let Some(owner) = session
++        .services
++        .thread_extension_data
++        .get::<DurableSuspension>()
++    {
++        *owner
++            .store
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner) = CheckpointOwner::Released;
++    }
+ }
+ 
+ struct ExtensionControl<'a> {
+@@ -648,14 +671,16 @@
+         let owner = Arc::clone(self);
+         tokio::task::spawn_blocking(move || {
+             let mut guard = owner.store.lock().map_err(io)?;
+-            if guard.is_none() {
+-                *guard = Some(LockedCheckpoint::acquire(&directory, &thread_id).map_err(io)?);
+-            }
+-            action(
+-                guard
+-                    .as_ref()
+-                    .ok_or_else(|| invalid("native checkpoint owner is missing"))?,
+-            )
++            if matches!(*guard, CheckpointOwner::Unacquired) {
++                *guard = CheckpointOwner::Acquired(
++                    LockedCheckpoint::acquire(&directory, &thread_id).map_err(io)?,
++                );
++            }
++            match &*guard {
++                CheckpointOwner::Acquired(store) => action(store),
++                CheckpointOwner::Released => Err(invalid("native checkpoint owner has shut down")),
++                CheckpointOwner::Unacquired => unreachable!("checkpoint acquisition ran above"),
++            }
+         })
+         .await
+         .map_err(io)?
+diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
+--- a/codex-rs/core/src/session/handlers.rs
++++ b/codex-rs/core/src/session/handlers.rs
+@@ -407,6 +407,7 @@
+         sess.send_event_raw(event).await;
+     }
+ 
++    super::durable_suspension::release_checkpoint_on_shutdown(sess);
+     let event = Event {
+         id: sub_id,
+         msg: EventMsg::ShutdownComplete,

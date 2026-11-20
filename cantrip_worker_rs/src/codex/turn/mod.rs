@@ -16,6 +16,8 @@ mod queued;
 pub(super) use protected::runtime_text;
 mod receipt;
 mod repository_draft;
+mod rollback;
+pub(crate) use rollback::COMMAND as ROLLBACK;
 pub(in crate::codex) mod settings;
 pub(crate) use settings::{
     ACCOUNT_DEFAULTS, COMMAND as SETTINGS_UPDATE, PERMISSION_UPDATE,
@@ -327,15 +329,21 @@ impl Turns {
             Some(gate) => Some(gate.lock_owned().await),
             None => None,
         };
-        let activation = self
-            .active
-            .lock()
-            .unwrap()
-            .active
-            .get(&key)
-            .and_then(|active| active.root.as_ref())
-            .map(|root| root.activation.clone())
-            .unwrap_or(Value::Null);
+        let activation = if method == rollback::METHOD
+            && command["session"].is_object()
+            && command["nativeCommandReceipt"].is_object()
+        {
+            command["nativeCommandReceipt"]["activationGeneration"].clone()
+        } else {
+            self.active
+                .lock()
+                .unwrap()
+                .active
+                .get(&key)
+                .and_then(|active| active.root.as_ref())
+                .map(|root| root.activation.clone())
+                .unwrap_or(Value::Null)
+        };
         let (receipt, awaiting_goal, _) = self
             .receipts
             .admit_command(scope, session, method, &params, command, activation)
