@@ -1,13 +1,12 @@
 use super::{Ensurer, field, home, native::LoadedThread, profile, provider};
 use crate::{
-    codex::{managed::Runtime, relocation::transcript, rpc_requests::Failure},
+    codex::{managed::Runtime, relocation::transcript, rpc_requests::Failure, skills},
     filesystem::{Scope, paths},
     protected_secrets::{open_mcp_servers, open_runtime_provider},
 };
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{JsString, Value, value::json};
-use regress::Regex;
-use std::{collections::HashSet, sync::LazyLock, time::Duration};
+use std::{collections::HashSet, time::Duration};
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_BATCH_SIZE: usize = 1_000_000;
@@ -223,9 +222,6 @@ impl Ensurer {
 }
 
 fn required_skills(command: &Value, messages: Option<&[Value]>) -> Result<HashSet<JsString>> {
-    static MENTION: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::with_flags(r"(?:^|[^A-Za-z0-9_$])\$([A-Za-z0-9][A-Za-z0-9_.:-]*)", "u").unwrap()
-    });
     let requested = command["requiredSkillNames"]
         .as_array()
         .context("Missing relocation skills.")?;
@@ -246,10 +242,7 @@ fn required_skills(command: &Value, messages: Option<&[Value]>) -> Result<HashSe
         if item["type"] == "text"
             && let Some(text) = item["text"].as_js_string()
         {
-            for found in MENTION.find_from_utf16(text.units(), 0) {
-                let range = found.group(1).unwrap();
-                names.insert(JsString::new(text.units()[range].to_vec()));
-            }
+            names.extend(skills::mentions(text));
         }
     }
     ensure!(

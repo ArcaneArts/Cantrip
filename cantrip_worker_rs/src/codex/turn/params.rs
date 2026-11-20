@@ -30,11 +30,13 @@ pub(super) fn validate(command: &Value) -> Result<()> {
             && command["attachments"]
                 .as_array()
                 .is_some_and(|items| !items.is_empty()))
-        || ["skillNames", "chatSkillAudienceKeys"].iter().any(|field| {
-            command[*field]
+        || command["chatSkillAudienceKeys"]
+            .as_array()
+            .is_some_and(|keys| !keys.is_empty())
+        || ((guest || command["contextKind"] != "project")
+            && command["skillNames"]
                 .as_array()
-                .is_some_and(|value| !value.is_empty())
-        })
+                .is_some_and(|names| !names.is_empty()))
     {
         bail!("This turn requires native features outside the text execution path.");
     }

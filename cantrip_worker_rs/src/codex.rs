@@ -19,6 +19,7 @@ pub mod rpc_client;
 pub mod rpc_protocol;
 pub mod rpc_requests;
 pub mod session;
+mod skills;
 pub mod startup;
 pub mod suspension_store;
 pub(crate) mod task_inputs;
