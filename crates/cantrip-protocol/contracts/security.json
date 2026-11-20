@@ -38225,6 +38225,9 @@
       "type": "object",
       "shape": {
         "type": 6295,
+        "session": 6242,
+        "subagentDefaults": 6243,
+        "mcpServers": 6245,
         "cwd": 6296,
         "threadId": 6297,
         "mode": 5328,

@@ -93,6 +93,7 @@ const { values } = parseArgs({
     coldResume: { type: "boolean" },
     durableStop: { type: "boolean" },
     coldStop: { type: "boolean" },
+    planMode: { type: "boolean" },
     protected: { type: "boolean" },
     receipts: { type: "boolean" },
     outcomes: { type: "boolean" },
@@ -739,6 +740,7 @@ async function ensure(
         fields.type === "chat.queue.prepare" ||
         fields.type === "chat.queue.changed" ||
         fields.type === "chat.settings.read" ||
+        fields.type?.startsWith("chat.plan.") ||
         fields.type?.startsWith("chat.native-logical.") ||
         fields.type?.startsWith("cantrip-os.") ||
         fields.type?.startsWith("terminal.") ||
@@ -3632,6 +3634,66 @@ try {
   if (values.coldResume) await verifyDurableChatPause(true);
   if (values.durableStop) await verifyDurableChatPause(false, true);
   if (values.coldStop) await verifyDurableChatPause(true, true);
+  if (values.planMode) {
+    const target = {
+      cwd: root,
+      model: {
+        id: "gpt-5",
+        routeId: "plan-fixture-route",
+        name: "gpt-5",
+        reasoningEffort: null,
+      },
+      provider: {
+        id: "plan-command-fixture",
+        kind: "openai-compatible",
+        name: "Fixture",
+        baseUrl: "http://127.0.0.1:1",
+      },
+      permissionProfileId: ":read-only",
+    };
+    const read = (threadId, fallbackMode) =>
+      expectSuccess({
+        ...target,
+        type: "chat.plan.get",
+        threadId,
+        fallbackMode,
+      });
+    const change = (threadId, mode) =>
+      expectSuccess({ ...target, type: "chat.plan.set", threadId, mode });
+    await start();
+    try {
+      const missing = randomUUID();
+      assert.deepEqual(await read(missing, "plan"), {
+        mode: "plan",
+        threadId: missing,
+      });
+      const created = await change(null, "plan");
+      assert.ok(created.threadId);
+      assert.equal(created.mode, "plan");
+      assert.deepEqual(await read(created.threadId, "default"), created);
+      assert.deepEqual(await read(missing, "default"), {
+        mode: "default",
+        threadId: missing,
+      });
+      await stop();
+      await start();
+      assert.deepEqual(await read(created.threadId, "default"), {
+        ...created,
+        mode: "default",
+      });
+      const updated = await change(created.threadId, "default");
+      assert.deepEqual(updated, {
+        threadId: created.threadId,
+        mode: "default",
+      });
+      assert.deepEqual(await read(created.threadId, "plan"), updated);
+    } finally {
+      await stop();
+    }
+    console.log(
+      "Legacy Plan Mode commands used the supplied fallback and changed the same cold native thread.",
+    );
+  }
   if (values.turns || values.outcomes) await verifyTurns();
   if (values.outcomes) {
     await verifyTaskOutcomeRecovery({

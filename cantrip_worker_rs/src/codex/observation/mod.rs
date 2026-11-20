@@ -94,7 +94,7 @@ impl Observer {
             &self.data,
             &scope,
             home::Source::Current(command["threadId"].as_js_string()),
-            chat,
+            Some(chat),
             &provider,
             execution,
             self.skill_root.clone(),

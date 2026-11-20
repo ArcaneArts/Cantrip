@@ -74,6 +74,12 @@ import {
   workerChatAttachmentSchema,
 } from "./worker-runtime-support.js";
 
+const managedThreadOptions = {
+  session: managedSessionContextSchema.optional(),
+  subagentDefaults: managedSessionSubagentDefaultsSchema.nullable().optional(),
+  mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).optional(),
+};
+
 /** Task Goals own input through Task dispatch, not a managed console session. */
 const taskGoalRuntimeSchema = z
   .object({
@@ -770,11 +776,7 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.clear"),
-    session: managedSessionContextSchema.optional(),
-    subagentDefaults: managedSessionSubagentDefaultsSchema
-      .nullable()
-      .optional(),
-    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).optional(),
+    ...managedThreadOptions,
     planMode: planModeSchema.optional(),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
@@ -844,6 +846,7 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.plan.set"),
+    ...managedThreadOptions,
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     mode: planModeSchema,

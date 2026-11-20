@@ -7,7 +7,7 @@ use crate::{
     },
     filesystem::paths,
 };
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use cantrip_wire::{JsString, Value, parse_json_text, payload_digest, value::json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -25,7 +25,7 @@ pub(in crate::codex) async fn profile(
     data: &Path,
     scope: &Value,
     source: Source<'_>,
-    chat: &JsString,
+    chat: Option<&JsString>,
     provider: &Value,
     execution: &str,
     global_skill_root: Option<PathBuf>,
@@ -56,6 +56,7 @@ pub(in crate::codex) async fn profile(
     // Callers without the admitted guest authority must never reopen a
     // recorded OS conversation in the default worker-local environment.
     if environment.is_none()
+        && let Some(chat) = chat
         && guest_environment::stored(&guest_environment::record_path(data, scope, chat))?.is_some()
     {
         bail!("Native observation of an OS-hosted conversation is not implemented yet.");
@@ -85,7 +86,7 @@ pub(in crate::codex) async fn profile(
                         .to_str()
                         .ok_or_else(|| anyhow!("Invalid native suspension home."))?
                 ),
-                json!(chat),
+                json!(chat.context("The saved suspension requires its chat identity.")?),
                 saved.source["threadId"].clone(),
                 saved.evidence["suspension"]["checkpointId"].clone(),
             ]));
@@ -119,7 +120,7 @@ async fn selection(
     data: &Path,
     scope: &Value,
     thread: &JsString,
-    chat: &JsString,
+    chat: Option<&JsString>,
     provider: &Value,
 ) -> Result<Option<(String, PathBuf)>> {
     let scope_key = payload_digest(&json!([
@@ -182,7 +183,7 @@ async fn selection(
     if visited.len() != records.len() {
         bail!("Managed runtime namespace history has disconnected selections.");
     }
-    if head["chatId"].as_js_string() != Some(chat)
+    if chat.is_some_and(|chat| head["chatId"].as_js_string() != Some(chat))
         || ["id", "kind", "accountId"]
             .iter()
             .any(|field| head["provider"][*field] != provider[*field])

@@ -1232,6 +1232,39 @@ async function verifyPlanQuestion() {
         assert.equal(state.question, null);
       },
     );
+    const planUrl = `${chatUrl}/plan`;
+    const settingsUrl = `${chatUrl}/native-settings`;
+    const { id: serverId } = (await call("GET", "/api/bootstrap", 200)).server;
+    const nativeMode = async () => {
+      const { effective } = await call(
+        "POST",
+        `${settingsUrl}/refresh`,
+        200,
+        {},
+      );
+      assert.ok(effective);
+      const settings = await crypto.decryptNativeSettingsSnapshot({
+        ownerId,
+        serverId,
+        keyRevision,
+        componentKey: chatKey,
+        context: effective.context,
+        snapshot: effective,
+      });
+      return {
+        threadId: effective.context.threadId,
+        mode: settings.collaborationMode.mode,
+      };
+    };
+    const initial = await eventually(nativeMode, (state) =>
+      assert.equal(state.mode, "default"),
+    );
+    await eventually(
+      () => call("PATCH", planUrl, 200, { mode: "plan" }),
+      (state) => assert.equal(state.mode, "plan"),
+    );
+    assert.deepEqual(await nativeMode(), { ...initial, mode: "plan" });
+    assert.equal((await call("GET", planUrl, 200)).mode, "plan");
     await call(
       "POST",
       `${chatUrl}/turns`,
@@ -1242,9 +1275,11 @@ async function verifyPlanQuestion() {
         "plan",
       ),
     );
+    const questionTool = await nativeTool(input, "request_user_input");
+    await call("PATCH", planUrl, 409, { mode: "default" });
     input.calls = [
       {
-        ...(await nativeTool(input, "request_user_input")),
+        ...questionTool,
         arguments: {
           isBlocking: true,
           questions: [
@@ -1339,9 +1374,34 @@ async function verifyPlanQuestion() {
       () => final.request,
       (request) => assert.equal(request?.completed, true),
     );
+    await eventually(
+      () => call("PATCH", planUrl, 200, { mode: "default" }),
+      (state) => {
+        assert.equal(state.mode, "default");
+        assert.equal(state.state, null);
+      },
+    );
+    assert.deepEqual(await nativeMode(), initial);
+    const scratch = await createChat(
+      "Default mode without a native thread",
+      false,
+    );
+    assert.equal(
+      (await call("PATCH", `${scratch.chatUrl}/plan`, 200, { mode: "default" }))
+        .mode,
+      "default",
+    );
+    const invalid = await call("PATCH", `${scratch.chatUrl}/plan`, 409, {
+      mode: "plan",
+    });
+    assert.match(invalid.error, /supports only default conversation mode/);
+    assert.equal(
+      (await call("GET", `${scratch.chatUrl}/plan`, 200)).mode,
+      "default",
+    );
     assert.deepEqual(model.failures, []);
     console.log(
-      "Native Plan Mode published and cleared one encrypted question while retaining plan steps.",
+      "Native Plan Mode applied both settings writes and answered an encrypted question on the same thread.",
     );
   } finally {
     for (const reply of [plan, input, final]) reply.release();
