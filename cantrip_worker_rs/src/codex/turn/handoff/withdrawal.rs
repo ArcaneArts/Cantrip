@@ -1,4 +1,4 @@
-//! Hold an accepted GUI command until Core commits its unused reservation.
+//! Hold a managed command until Core commits its unused reservation.
 use super::{
     super::{Active, Key, Phase},
     Transfer,
@@ -237,10 +237,7 @@ impl Transfer {
     }
 }
 
-pub(super) fn is_gui(state: &Value) -> bool {
+pub(super) fn has_managed_reservation(state: &Value) -> bool {
     let queued = &state["queuedSource"];
-    queued.is_object()
-        && ["autonomousAttempt", "goalRecovery", "taskGoal"]
-            .iter()
-            .all(|field| queued[*field].is_null())
+    queued.is_object() && queued["goalRecovery"].is_null() && queued["taskGoal"].is_null()
 }

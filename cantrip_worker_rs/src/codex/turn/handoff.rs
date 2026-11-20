@@ -10,11 +10,12 @@ use super::{
 use crate::{
     chat_content::Scope,
     codex::{
-        managed::Worker,
+        managed::{Runtime, Worker},
         observation::{home, provider},
         preparation::{
             Intent,
             command::{COMMAND as ENSURE, HandoffStage, Prepared},
+            native::LoadedThread,
         },
     },
     http::checked,
@@ -250,8 +251,8 @@ impl Transfer {
         if let Ok(state) = &result
             && state["queuedSource"]["withdrawn"] == true
         {
-            if withdrawal::is_gui(state) {
-                self.retire_gui_withdrawal(state).await?;
+            if withdrawal::has_managed_reservation(state) {
+                self.retire_managed_withdrawal(state).await?;
             } else if state["queuedSource"]["goalRecovery"].is_object() {
                 journal::Journal::new(self.data(), self.scope.clone(), state.clone())?
                     .retire_goal_withdrawal()
@@ -267,8 +268,8 @@ impl Transfer {
             .to_owned();
         let thread = id(&state["source"]["threadId"], "handoff thread")?;
         let recovering_goal = state["queuedSource"]["goalRecovery"].is_object();
-        if withdrawal::is_gui(&state) {
-            state = self.withdraw_gui(state).await?;
+        if withdrawal::has_managed_reservation(&state) {
+            state = self.withdraw_managed(state).await?;
             if state["phase"] == "cancelled" {
                 return Ok(state);
             }
@@ -439,7 +440,7 @@ impl Transfer {
         Ok(state)
     }
 
-    async fn withdraw_gui(&self, state: Value) -> Result<Value> {
+    async fn withdraw_managed(&self, state: Value) -> Result<Value> {
         if state["queuedSource"]["withdrawn"] == true {
             self.acknowledge_withdrawal(&state).await?;
             return Ok(state);
@@ -450,6 +451,7 @@ impl Transfer {
             None => match self.capture_withdrawal(&state).await {
                 Ok(record) => {
                     if let Some(record) = &record {
+                        self.hold_queued_goal(&state).await?;
                         journal.save_withdrawal(record).await?;
                     }
                     record
@@ -500,7 +502,36 @@ impl Transfer {
         Ok(state)
     }
 
-    async fn retire_gui_withdrawal(&self, state: &Value) -> Result<()> {
+    async fn hold_queued_goal(&self, state: &Value) -> Result<()> {
+        let attempt = &state["queuedSource"]["autonomousAttempt"];
+        if !attempt.is_object() {
+            return Ok(());
+        }
+        let chat = id(&state["chatId"], "handoff chat")?;
+        let bound = (self.identity.owner.clone(), json!(self.identity.server));
+        let binding = state
+            .get("binding")
+            .filter(|binding| !binding.is_null())
+            .unwrap_or(&state["source"]);
+        // After restart the old producer is gone. Its no-start receipt is
+        // still valid. A live producer must acknowledge the hold first.
+        if let Some((thread, owner)) = self.turns.preparation.selected_live_owner(&chat, &bound)
+            && binding["runtimeGeneration"] == owner.runtime.generation()
+        {
+            let runner = id(&attempt["runnerGeneration"], "queued Goal runner")?;
+            ensure!(
+                binding["threadId"].as_js_string() == Some(thread.id()),
+                "The queued Goal belongs to another native thread."
+            );
+            let operation = journal::operation_id(&state["operationId"])
+                .context("Invalid native handoff operation")?;
+            self.control_producer(&owner.runtime, &thread, &runner, "hold", operation)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn retire_managed_withdrawal(&self, state: &Value) -> Result<()> {
         self.check()?;
         let journal = journal::Journal::new(self.data(), self.scope.clone(), state.clone())?;
         let manager = self
@@ -555,9 +586,32 @@ impl Transfer {
     }
 
     async fn control(&self, prepared: &Prepared, action: &str, operation: &str) -> Result<()> {
-        let mut input = json!({"threadId":prepared.thread.id(),"runnerGeneration":prepared.runner_generation,"action":"read"});
+        self.control_producer(
+            &prepared.runtime,
+            &prepared.thread,
+            &prepared.runner_generation,
+            action,
+            operation,
+        )
+        .await
+    }
+
+    async fn control_producer(
+        &self,
+        runtime: &Runtime,
+        thread: &LoadedThread,
+        runner: &JsString,
+        action: &str,
+        operation: &str,
+    ) -> Result<()> {
+        let mut input = json!({"threadId":thread.id(),"runnerGeneration":runner,"action":"read"});
         let observed = self
-            .native(prepared, "thread/managedExecution/handoff", input.clone())
+            .native_on(
+                runtime,
+                thread,
+                "thread/managedExecution/handoff",
+                input.clone(),
+            )
             .await?;
         if observed["heldBy"] == operation && action == "hold" {
             return Ok(());
@@ -577,7 +631,7 @@ impl Transfer {
         input["operationId"] = json!(operation);
         input["expectedRevision"] = observed["revision"].clone();
         let confirmed = self
-            .native(prepared, "thread/managedExecution/handoff", input)
+            .native_on(runtime, thread, "thread/managedExecution/handoff", input)
             .await?;
         ensure!(
             if action == "hold" {
@@ -591,19 +645,29 @@ impl Transfer {
     }
 
     async fn native(&self, prepared: &Prepared, method: &str, params: Value) -> Result<Value> {
+        self.native_on(&prepared.runtime, &prepared.thread, method, params)
+            .await
+    }
+
+    async fn native_on(
+        &self,
+        runtime: &Runtime,
+        thread: &LoadedThread,
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
         self.check()?;
-        prepared.thread.assert_current(&prepared.runtime)?;
+        thread.assert_current(runtime)?;
         let reply = Guard::request(Some(self.signal.clone()))
             .run(async {
-                prepared
-                    .runtime
+                runtime
                     .request(method.into(), Some(params), Some(super::RPC_TIMEOUT), None)
                     .await?
                     .with_context(|| format!("Missing native handoff response to {method}."))
             })
             .await?;
         if method != "thread/unsubscribe" {
-            prepared.thread.assert_current(&prepared.runtime)?;
+            thread.assert_current(runtime)?;
         }
         self.check()?;
         Ok(reply)

@@ -63,6 +63,7 @@ const { values } = parseArgs({
     "queued-handoff": { type: "boolean" },
     "queued-handoff-recovery": { type: "boolean" },
     "queued-handoff-cancel": { type: "boolean" },
+    "goal-handoff": { type: "boolean" },
     "goal-handoff-recovery": { type: "boolean" },
   },
 });
@@ -103,7 +104,8 @@ const runtimeHandoff =
   values["runtime-handoff-recovery"] ||
   values["runtime-handoff-cancel"] ||
   queuedHandoff;
-const goalHandoff = values["goal-handoff-recovery"];
+const recoverGoalHandoff = values["goal-handoff-recovery"];
+const goalHandoff = recoverGoalHandoff || values["goal-handoff"];
 const interactionKey =
   values.interactions ||
   consoleInteractions ||
@@ -1441,9 +1443,9 @@ async function verifyPlanQuestion() {
   }
 }
 
-async function verifyRecoveredGoalHandoff() {
-  const source = await createModel("Recovery Goal source", 1);
-  const target = await createModel("Recovery Goal destination", 1);
+async function verifyGoalHandoff() {
+  const source = await createModel("Queued Goal source", 1);
+  const target = await createModel("Queued Goal destination", 1);
   await call("PATCH", "/api/settings", 200, {
     defaultModelId: source.profile.id,
     autoNameChats: false,
@@ -1455,7 +1457,7 @@ async function verifyRecoveredGoalHandoff() {
     workerId,
     keyRevision,
     labelKey,
-    title: "Recovered Goal provider handoff",
+    title: "Queued Goal provider handoff",
   });
   const blocker = await createChat("Unrelated Goal capacity fixture", false);
   const held = source.model.reply({
@@ -1479,7 +1481,12 @@ async function verifyRecoveredGoalHandoff() {
       () => held.request,
       (request) => assert.ok(request),
     );
-    const objective = "Finish the existing recovered Goal in the new provider.";
+    const settings = `${chatUrl}/native-settings`;
+    let binding;
+    if (!recoverGoalHandoff) {
+      ({ binding } = await call("POST", `${settings}/refresh`, 200, {}));
+    }
+    const objective = "Finish the existing queued Goal in the new provider.";
     await call("POST", `${chatUrl}/goal?encrypted=1`, 202, {
       objective,
       tokenBudget: 50_000,
@@ -1497,40 +1504,45 @@ async function verifyRecoveredGoalHandoff() {
         ),
       35_000,
     );
-    await stopWorker();
-    await startWorker();
-    const retained = await eventually(
-      () => goalHandoffFault.sourceAdmission?.intent.goalRecovery,
-      (value) => assert.ok(value?.goalEpoch),
-      35_000,
-    );
-    const settings = `${chatUrl}/native-settings`;
-    const { binding } = await call("POST", `${settings}/refresh`, 200, {});
-    assert.equal(binding.threadId, retained.threadId);
     const operationId = randomUUID();
     const url = `${chatUrl}/runtime-handoffs`;
     const transfer = `${url}/${operationId}`;
-    await call("POST", url, 202, {
-      operationId,
-      bindingId: binding.bindingId,
-      targetModelRouteId: target.profile.routes[0].id,
-      targetProviderAccountId: null,
-    });
-    const oldReceipt = await eventually(
-      () => goalHandoffFault.fence,
-      (receipt) => assert.equal(receipt?.operationId, operationId),
-      35_000,
-    );
-    assert.deepEqual(oldReceipt.source, retained);
-    const interrupted = await call("GET", transfer, 200);
-    assert.equal(interrupted.phase, "preparing");
-    assert.equal(interrupted.queuedSource.withdrawn, false);
-    assert.equal(
-      interrupted.binding.runtimeGeneration,
-      oldReceipt.runtimeGeneration,
-    );
-    await stopWorker();
-    await startWorker();
+    const initiate = () =>
+      call("POST", url, 202, {
+        operationId,
+        bindingId: binding.bindingId,
+        targetModelRouteId: target.profile.routes[0].id,
+        targetProviderAccountId: null,
+      });
+    let retained;
+    let oldReceipt;
+    if (recoverGoalHandoff) {
+      await stopWorker();
+      await startWorker();
+      retained = await eventually(
+        () => goalHandoffFault.sourceAdmission?.intent.goalRecovery,
+        (value) => assert.ok(value?.goalEpoch),
+        35_000,
+      );
+      ({ binding } = await call("POST", `${settings}/refresh`, 200, {}));
+      assert.equal(binding.threadId, retained.threadId);
+      await initiate();
+      oldReceipt = await eventually(
+        () => goalHandoffFault.fence,
+        (receipt) => assert.equal(receipt?.operationId, operationId),
+        35_000,
+      );
+      assert.deepEqual(oldReceipt.source, retained);
+      const interrupted = await call("GET", transfer, 200);
+      assert.equal(interrupted.phase, "preparing");
+      assert.equal(interrupted.queuedSource.withdrawn, false);
+      assert.equal(
+        interrupted.binding.runtimeGeneration,
+        oldReceipt.runtimeGeneration,
+      );
+      await stopWorker();
+      await startWorker();
+    }
     const destinationBlocker = await createChat(
       "Unrelated destination capacity",
       false,
@@ -1552,21 +1564,49 @@ async function verifyRecoveredGoalHandoff() {
       () => destinationHold.request,
       (request) => assert.ok(request),
     );
-    goalHandoffFault.allowFence = true;
     finish = target.model.reply({ hold: true });
     const answer = target.model.reply({
       text: "The retained native Goal finished on the destination.",
     });
-    await call("POST", `${transfer}/retry`, 202, {});
+    if (recoverGoalHandoff) {
+      goalHandoffFault.allowFence = true;
+      await call("POST", `${transfer}/retry`, 202, {});
+    } else {
+      await initiate();
+    }
     const completed = await eventually(
       () => call("GET", transfer, 200),
       (value) => assert.equal(value.phase, "completed", JSON.stringify(value)),
       35_000,
     );
-    assert.deepEqual(completed.queuedSource.goalRecovery, retained);
-    const fence = completed.queuedSource.goalWithdrawal;
-    assert.notEqual(fence.runtimeGeneration, oldReceipt.runtimeGeneration);
-    assert.notEqual(fence.workerGeneration, oldReceipt.workerGeneration);
+    assert.equal(completed.queuedSource.withdrawn, true);
+    if (recoverGoalHandoff) {
+      assert.deepEqual(completed.queuedSource.goalRecovery, retained);
+      const fence = completed.queuedSource.goalWithdrawal;
+      assert.notEqual(fence.runtimeGeneration, oldReceipt.runtimeGeneration);
+      assert.notEqual(fence.workerGeneration, oldReceipt.workerGeneration);
+    } else {
+      const admission = goalHandoffFault.liveSource;
+      assert.ok(admission?.intent.autonomousAttempt.goalEpoch);
+      assert.deepEqual(
+        completed.queuedSource.autonomousAttempt,
+        admission.intent.autonomousAttempt,
+      );
+      const proof = goalHandoffFault.withdrawal;
+      assert.equal(proof.state, "released");
+      assert.equal(proof.outcome, "never-started");
+      assert.ok(!proof.nativeExecution);
+      const recovered = proof.identity.recovery;
+      assert.equal(recovered.commandId, admission.operationId);
+      assert.equal(recovered.threadId, binding.threadId);
+      assert.equal(recovered.turnId, admission.intent.autonomousAttempt.turnId);
+      retained = {
+        operationId: recovered.commandId,
+        operationGeneration: recovered.commandGeneration,
+        threadId: recovered.threadId,
+        goalEpoch: admission.intent.autonomousAttempt.goalEpoch,
+      };
+    }
     assert.equal(completed.binding.threadId, retained.threadId);
     assert.equal(completed.binding.modelRouteId, target.profile.routes[0].id);
     await eventually(
@@ -1627,7 +1667,7 @@ async function verifyRecoveredGoalHandoff() {
     );
     assert.deepEqual(target.model.failures, []);
     console.log(
-      "The recovered Goal moved its existing epoch and resumed on the destination.",
+      `The ${recoverGoalHandoff ? "recovered" : "queued"} Goal moved its existing epoch and resumed on the destination.`,
     );
   } finally {
     held.release();
@@ -2363,16 +2403,23 @@ try {
       blockRequest(url, bytes) {
         if (url === "/api/internal/native-commands/admit") {
           const request = JSON.parse(bytes);
-          if (request.intent?.goalRecovery) {
+          if (request.intent?.autonomousAttempt) {
             if (request.session.modelRouteId === goalHandoffFault.sourceRoute) {
-              goalHandoffFault.sourceAdmission = request;
-              return true;
+              if (!request.intent.goalRecovery)
+                goalHandoffFault.liveSource = request;
+              else if (recoverGoalHandoff) {
+                goalHandoffFault.sourceAdmission = request;
+                return true;
+              }
+            } else if (request.intent.goalRecovery) {
+              goalHandoffFault.destinationAdmission = request;
             }
-            goalHandoffFault.destinationAdmission = request;
           }
         }
         if (url === "/api/internal/native-runtime-handoffs") {
           const request = JSON.parse(bytes);
+          if (request.action === "withdrawn")
+            goalHandoffFault.withdrawal = request.record;
           if (
             request.action === "goal-recovery-withdrawn" &&
             !goalHandoffFault.allowFence
@@ -2488,7 +2535,7 @@ try {
   } else if (planQuestion) {
     await verifyPlanQuestion();
   } else if (goalHandoff) {
-    await verifyRecoveredGoalHandoff();
+    await verifyGoalHandoff();
   } else if (runtimeHandoff) {
     await verifyRuntimeHandoff();
   } else if (values.settings) {

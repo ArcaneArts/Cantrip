@@ -138,6 +138,11 @@ impl Autonomous {
                 phase: Mutex::new(Phase::Preparing(Some(thread.clone()))),
                 changed: watch::channel(0).0,
             });
+            let _ = active.control.set(control::Binding::new(
+                receipt.session().clone(),
+                permission.clone(),
+                runner.thread.version(),
+            ));
             let accepted = {
                 let mut state = self.active.lock().unwrap();
                 if !state.restoring.contains_key(&key)
@@ -195,6 +200,9 @@ impl Autonomous {
         let root = receipt.operation();
         let source = Source::claimed(root.generation.clone(), Some(signal.clone()));
         let adapter = runtime.admission();
+        owner.active.queued_inference.get_or_init(|| {
+            handoff::withdrawal::QueuedInference::new(adapter.clone(), source.clone())
+        });
         let observation = recovery.is_object().then(|| {
             self.recoveries
                 .observe(&owner.key, &recovery, runtime.generation())
@@ -262,9 +270,6 @@ impl Autonomous {
                     }
                     Err(error) => Err(error),
                 };
-                let _ = owner.active.control.set(control::Binding::new(
-                    receipt.session().clone(), permission.clone(), runner.thread.version(),
-                ));
                 owner.active.set(Phase::Running { runtime: runtime.clone(), thread: thread.clone(), turn: turn.clone() });
                 let acceptance = async {
                     let result = match allowed {
@@ -309,10 +314,13 @@ impl Autonomous {
             result
         }.await;
         source.close();
-        subscription.close();
         if outcome.is_err() && !attempt.forwarded() {
+            if let Some(deferred) = owner.active.finish_withdrawal(&runtime, &signal).await {
+                return Err(deferred);
+            }
             receipt.not_started().await?;
         }
+        subscription.close();
         outcome
     }
 
