@@ -1,5 +1,5 @@
-//! Preview carriers pinned to privately recorded Cantrip OS placements.
-use super::{Lease, Request, native};
+//! Desktop carriers pinned to privately recorded Cantrip OS placements.
+use super::{Request, native};
 use crate::{
     cantrip_os::carrier::Transport,
     codex::guest_environment::{record_path, stored},
@@ -8,7 +8,7 @@ use crate::{
     metadata::Signal,
 };
 use anyhow::{Context, Result, ensure};
-use cantrip_wire::{JsString, Value, payload_digest, value::json};
+use cantrip_wire::{Value, payload_digest, value::json};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -48,21 +48,33 @@ const DESKTOP_FIELDS: &[(&str, &str)] = &[
 
 pub(super) struct Guests {
     data: PathBuf,
-    groups: Mutex<HashMap<String, Weak<Group>>>,
-    releases: Mutex<JoinSet<()>>,
+    registry: Mutex<Registry>,
 }
 
-pub(super) struct Group {
+#[derive(Default)]
+struct Registry {
+    groups: HashMap<String, Weak<Group>>,
+    jobs: JoinSet<()>,
+    closed: bool,
+}
+
+#[derive(Clone)]
+pub(super) struct GuestLease {
+    id: uuid::Uuid,
+    group: Arc<Group>,
+}
+
+struct Group {
     transport: Transport,
     placement: Value,
     attachment: Value,
-    pending: Semaphore,
+    pending: Arc<Semaphore>,
     state: AsyncMutex<State>,
 }
 
 #[derive(Default)]
 struct State {
-    owners: HashSet<JsString>,
+    owners: HashSet<uuid::Uuid>,
     carrier: Option<Carrier>,
 }
 
@@ -76,8 +88,7 @@ impl Guests {
     pub(super) fn new(data: PathBuf) -> Self {
         Self {
             data,
-            groups: Mutex::default(),
-            releases: Mutex::new(JoinSet::new()),
+            registry: Mutex::default(),
         }
     }
 
@@ -116,9 +127,15 @@ impl Guests {
         Ok(saved)
     }
 
-    fn group(&self, lease: &Lease, execution: &Value) -> Result<Arc<Group>> {
-        let mut connection = lease.guest.lock().unwrap();
-        lease.signal.check()?;
+    pub(super) fn submit(
+        &self,
+        authority: &Value,
+        slot: &Mutex<Option<GuestLease>>,
+        execution: &Value,
+        request: Request,
+    ) -> Result<()> {
+        let mut lease = slot.lock().unwrap();
+        request.signal.check()?;
         let scope = &execution["scope"];
         let transport = Transport::from_value(&execution["transport"])?;
         let placement = Value::object(
@@ -127,113 +144,166 @@ impl Guests {
                 .map(|(guest, field)| (*guest, scope[*field].clone())),
         );
         let key = payload_digest(&json!([
-            lease.authority["serverId"].clone(),
+            authority["serverId"].clone(),
             scope["ownerId"].clone(),
             scope["workerId"].clone(),
             scope["instanceId"].clone(),
             scope["workspaceId"].clone(),
         ]));
-        let mut groups = self.groups.lock().unwrap();
-        groups.retain(|_, group| group.strong_count() > 0);
-        let selected = match groups.get(&key).and_then(Weak::upgrade) {
-            Some(existing) => {
+        let mut registry = self.registry.lock().unwrap();
+        ensure!(!registry.closed, native::cancelled("not-sent"));
+        registry.groups.retain(|_, group| group.strong_count() > 0);
+        let group = match registry.groups.get(&key).and_then(Weak::upgrade) {
+            Some(group) => {
                 ensure!(
-                    existing.transport == transport
-                        && existing.placement == placement
-                        && existing.attachment == scope["attachmentGeneration"],
+                    group.transport == transport
+                        && group.placement == placement
+                        && group.attachment == scope["attachmentGeneration"],
                     native::reject(
                         "ownership-mismatch",
                         "The captured Cantrip OS desktop changed."
                     )
                 );
-                existing
+                group
             }
             None => {
                 let group = Arc::new(Group {
                     transport,
                     placement,
                     attachment: scope["attachmentGeneration"].clone(),
-                    pending: Semaphore::new(4),
+                    pending: Arc::new(Semaphore::new(4)),
                     state: AsyncMutex::default(),
                 });
-                groups.insert(key, Arc::downgrade(&group));
+                registry.groups.insert(key, Arc::downgrade(&group));
                 group
             }
         };
         ensure!(
-            connection
+            lease
                 .as_ref()
-                .is_none_or(|registered| Arc::ptr_eq(registered, &selected)),
+                .is_none_or(|bound| Arc::ptr_eq(&bound.group, &group)),
             native::reject(
                 "ownership-mismatch",
                 "The captured Cantrip OS desktop changed."
             )
         );
-        *connection = Some(selected.clone());
-        Ok(selected)
+        let permit = group
+            .pending
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| native::reject("capacity", "Computer-use guest requests are busy."))?;
+        let lease = lease
+            .get_or_insert_with(|| GuestLease {
+                id: uuid::Uuid::new_v4(),
+                group,
+            })
+            .clone();
+        while registry.jobs.try_join_next().is_some() {}
+        registry.jobs.spawn(async move {
+            // Once accepted the carrier owns framing, even if the requester
+            // stops waiting. Its cancellation drains or retires the pipe.
+            let _permit = permit;
+            lease.dispatch(request).await;
+        });
+        Ok(())
     }
 
-    pub(super) async fn dispatch(
+    pub(super) fn release(
         &self,
-        lease: &Arc<Lease>,
-        request: Request,
-        execution: &Value,
-    ) -> Result<()> {
-        let group = self.group(lease, execution)?;
-        let _permit = group
-            .pending
-            .try_acquire()
-            .map_err(|_| native::reject("capacity", "Computer-use preview is busy."))?;
+        slot: &Mutex<Option<GuestLease>>,
+        attachment: Arc<native::Attachment>,
+    ) {
+        let Some(lease) = slot.lock().unwrap().take() else {
+            return;
+        };
+        let mut registry = self.registry.lock().unwrap();
+        if registry.closed {
+            return;
+        }
+        while registry.jobs.try_join_next().is_some() {}
+        registry.jobs.spawn(async move {
+            let mut state = lease.group.state.lock().await;
+            state.owners.remove(&lease.id);
+            if state.owners.is_empty() {
+                if let Some(carrier) = state.carrier.take() {
+                    carrier.close(&lease.group.transport).await;
+                }
+            } else if let Some(carrier) = state.carrier.as_mut() {
+                native::release(&attachment, &mut carrier.helper).await;
+            }
+        });
+    }
+
+    pub(super) async fn close(&self) {
+        let (mut jobs, groups) = {
+            let mut registry = self.registry.lock().unwrap();
+            registry.closed = true;
+            let groups = registry
+                .groups
+                .drain()
+                .filter_map(|(_, group)| group.upgrade())
+                .collect::<Vec<_>>();
+            (std::mem::take(&mut registry.jobs), groups)
+        };
+        while jobs.join_next().await.is_some() {}
+        for group in groups {
+            jobs.spawn(async move {
+                let mut state = group.state.lock().await;
+                if let Some(carrier) = state.carrier.take() {
+                    carrier.close(&group.transport).await;
+                }
+            });
+        }
+        while jobs.join_next().await.is_some() {}
+    }
+}
+
+impl GuestLease {
+    async fn dispatch(&self, request: Request) {
         let mut state = tokio::select! {
             biased;
-            _ = lease.signal.cancelled() => return Err(native::cancelled("not-sent")),
-            state = group.state.lock() => state,
+            _ = request.signal.cancelled() => {
+                request.expired();
+                return;
+            },
+            state = self.group.state.lock() => state,
         };
         if request
             .deadline
             .is_some_and(|deadline| Instant::now() >= deadline)
         {
             request.expired();
-            return Ok(());
+            return;
         }
-        state.owners.insert(lease.id.clone());
+        state.owners.insert(self.id);
+        if state.carrier.as_mut().is_some_and(|carrier| {
+            carrier
+                .helper
+                .as_mut()
+                .is_none_or(|child| child.process.exited())
+        }) {
+            if let Some(carrier) = state.carrier.take() {
+                carrier.close(&self.group.transport).await;
+            }
+        }
         let starts_helper = matches!(
             request.action["operation"].as_str(),
             Some("capabilities.get" | "targets.list" | "session.open")
         );
         if state.carrier.is_none() && starts_helper {
-            state.carrier = Some(group.connect(&lease.signal).await?);
+            match self.group.connect(&request.signal).await {
+                Ok(carrier) => state.carrier = Some(carrier),
+                Err(error) => {
+                    request.fail(error);
+                    return;
+                }
+            }
         }
         if let Some(carrier) = state.carrier.as_mut() {
             native::run(request, &mut carrier.helper, None).await;
         } else {
             native::run(request, &mut None, None).await;
         }
-        Ok(())
-    }
-
-    pub(super) fn release(&self, lease: Arc<Lease>) {
-        let Some(group) = lease.guest.lock().unwrap().take() else {
-            return;
-        };
-        let mut releases = self.releases.lock().unwrap();
-        while releases.try_join_next().is_some() {}
-        releases.spawn(async move {
-            let mut state = group.state.lock().await;
-            state.owners.remove(&lease.id);
-            if state.owners.is_empty() {
-                if let Some(carrier) = state.carrier.take() {
-                    carrier.close(&group.transport).await;
-                }
-            } else if let Some(carrier) = state.carrier.as_mut() {
-                native::release(&lease.attachment, &mut carrier.helper).await;
-            }
-        });
-    }
-
-    pub(super) async fn close(&self) {
-        let mut releases = std::mem::take(&mut *self.releases.lock().unwrap());
-        while releases.join_next().await.is_some() {}
     }
 }
 

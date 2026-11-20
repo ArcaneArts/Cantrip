@@ -8989,3 +8989,31 @@ The desktop inventory smoke and the public preview smoke using Rust Core in
 PGlite mode passed with the new worker and the deterministic helper.
 Managed Codex registration, durable approval and activity routing,
 retained observations and the agent guest carrier remain open.
+
+## 254. Route agent computer use to the assigned Cantrip OS desktop
+
+Reference commit `4681470972512b620f3e2e46609255be9ad1e4e0` (#3417).
+
+The evaluator binds the observed turn to the worker's captured Host or guest
+placement. Each host action rechecks the captured record and worker authority
+around its policy callback. An assigned guest uses the same root-owned carrier
+as previews. Separate turns and previews retain independent native sessions
+while sharing their assigned workspace's carrier.
+
+The carrier owns accepted requests through their response or cancellation.
+Dropping the caller releases its response without dropping a partially read
+frame. The final owner, connection change, and worker shutdown retire the
+exact carrier. If the helper exits, a subsequent authorized open can acquire
+a fresh carrier without replaying the interrupted operation.
+
+The local Rust guest test uses a disposable network-isolated Linux container
+from an existing image on macOS ARM64. It checks stale-placement rejection,
+distinct native sessions on one carrier, guest clipboard and PNG capture,
+reset isolation and shutdown cleanup. The Host regression and 12 Node
+reference cases also passed. Set `CANTRIP_TEST_CUA_GUEST_IMAGE` and
+`CANTRIP_TEST_RUST_CUA_BIN` and run the `desktop_inventory::preview::agent::tests`
+library tests with `--ignored --test-threads=1`.
+The production worker build passed the desktop inventory and guest preview
+smoke tests, including carrier retirement after socket replacement.
+Managed Codex registration, durable approvals and activity, retained
+observations, and finalization remain open.
