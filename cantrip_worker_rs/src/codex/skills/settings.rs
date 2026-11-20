@@ -135,14 +135,22 @@ impl Settings {
         } else {
             Value::Null
         };
-        let (_mutation, _read) = if changing {
-            (Some(self.changes.access.write().await), None)
-        } else {
-            (None, Some(self.changes.access.read().await))
+        let (_mutation, _read) = match (customization, changing) {
+            (
+                Some(
+                    customizations::Command::McpOauthStart
+                    | customizations::Command::McpOauthStatus,
+                ),
+                _,
+            ) => (None, None),
+            (_, true) => (Some(self.changes.access.write().await), None),
+            (_, false) => (None, Some(self.changes.access.read().await)),
         };
         operation.assert_current()?;
         let result = self.run(incoming, &operation, kind, &input).await;
-        operation.seal(result, output_schema)
+        operation.seal(result, output_schema, |value| {
+            customization.and_then(|command| command.lifecycle(value))
+        })
     }
 
     async fn run(

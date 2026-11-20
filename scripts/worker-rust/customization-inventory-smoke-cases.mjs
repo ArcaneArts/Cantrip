@@ -5,6 +5,7 @@ import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import { mcpServerConfigurationSchema } from "../../packages/protocol/dist/index.js";
 import { createPreparedProjectChat } from "./console-interaction-cases.mjs";
+import { oauthServer } from "./mcp-oauth-fixture.mjs";
 
 const resourceUri = "fixture://private-note";
 const serverName = "inventory_fixture";
@@ -55,15 +56,13 @@ export async function verifyCustomizationInventory({
   mcpKey,
   data,
   codexHome,
+  oauth,
 }) {
   const fixture = path.join(data, "inventory-fixture.mjs");
   const runtimeHome = path.join(data, "codex-home");
   await mkdir(runtimeHome, { recursive: true });
   await writeFile(fixture, mcpFixture);
-  await writeFile(
-    path.join(runtimeHome, "config.toml"),
-    "[features]\nhooks = true\n",
-  );
+  await writeFile(path.join(runtimeHome, "config.toml"), oauth.config);
   await writeFile(
     path.join(runtimeHome, "hooks.json"),
     JSON.stringify({
@@ -104,6 +103,31 @@ export async function verifyCustomizationInventory({
     keyRevision,
   });
 
+  async function registerMcp(projectId, input) {
+    const id = randomUUID();
+    const config = mcpServerConfigurationSchema.parse(input);
+    const protectedConfiguration = await crypto.encryptProtectedSecret({
+      ownerId,
+      component: "mcp-secret",
+      table: "mcp_servers",
+      rowId: id,
+      field: "protected_configuration",
+      keyRevision,
+      componentKey: mcpKey,
+      content: config,
+      contentSchema: mcpServerConfigurationSchema,
+      maximumBytes: 1024 * 1024,
+    });
+    await call("POST", `/api/projects/${projectId}/mcp-servers`, 201, {
+      id,
+      workerId,
+      enabled: true,
+      audience: "ide",
+      nameBlindIndex: crypto.computeBlindLookupTag(lookup, config.name),
+      protectedConfiguration,
+    });
+  }
+
   async function createProject(marker, withRoots, workspaceId) {
     let projectId;
     let directory;
@@ -136,35 +160,16 @@ export async function verifyCustomizationInventory({
           );
           await symlink(outside, path.join(directory, "outside"), "dir");
         }
-        const id = randomUUID();
-        const config = mcpServerConfigurationSchema.parse({
+        await registerMcp(projectId, {
           name: serverName,
-          enabled: true,
           transport: "stdio",
           command: process.execPath,
           args: [fixture, marker],
-          url: null,
-          environment: {},
         });
-        const protectedConfiguration = await crypto.encryptProtectedSecret({
-          ownerId,
-          component: "mcp-secret",
-          table: "mcp_servers",
-          rowId: id,
-          field: "protected_configuration",
-          keyRevision,
-          componentKey: mcpKey,
-          content: config,
-          contentSchema: mcpServerConfigurationSchema,
-          maximumBytes: 1024 * 1024,
-        });
-        await call("POST", `/api/projects/${projectId}/mcp-servers`, 201, {
-          id,
-          workerId,
-          enabled: true,
-          audience: "ide",
-          nameBlindIndex: crypto.computeBlindLookupTag(lookup, serverName),
-          protectedConfiguration,
+        await registerMcp(projectId, {
+          name: oauthServer,
+          transport: "http",
+          url: oauth.url,
         });
       },
     });
@@ -242,6 +247,21 @@ export async function verifyCustomizationInventory({
     });
     const result = JSON.parse(new TextDecoder().decode(plaintext));
     assert.equal(result.status, wire.result);
+    if (result.value?.authorizationUrl)
+      assert.equal(
+        JSON.stringify(wire).includes(result.value.authorizationUrl),
+        false,
+      );
+    let lifecycle = null;
+    if (result.status === "succeeded") {
+      if (operation === "customization.mcp.oauth.start") lifecycle = "pending";
+      if (operation === "customization.mcp.oauth.status") {
+        lifecycle = ["unknown", "pending"].includes(result.value.status)
+          ? result.value.status
+          : "completed";
+      }
+    }
+    assert.equal(wire.lifecycle, lifecycle);
     return result;
   }
   function success(result) {
@@ -336,7 +356,77 @@ export async function verifyCustomizationInventory({
   assert.deepEqual(cleared.skillRoots, []);
   assert.ok(!cleared.skills.items.some(({ name }) => name === rootSkill));
   assert.ok(cleared.skills.items.some(({ name }) => name === globalSkill));
+  assert.equal(cleared.capabilities.mcp.oauth.available, true);
+
+  const startOauth = (chat, server = oauthServer) =>
+    request(chat, "customization.mcp.oauth.start", "POST", "/mcp-oauth", {
+      server,
+    });
+  const oauthStatus = (chat, server = oauthServer) =>
+    request(
+      chat,
+      "customization.mcp.oauth.status",
+      "POST",
+      "/mcp-oauth/status",
+      { server },
+    ).then(success);
+  assert.deepEqual(await oauthStatus(a), {
+    server: oauthServer,
+    status: "unknown",
+    error: null,
+  });
+  const allowed = success(await startOauth(a));
+  assert.equal((await oauthStatus(a)).status, "pending");
+  assert.equal((await oauthStatus(b)).status, "unknown");
+  const rejected = success(await startOauth(b));
+  assert.equal((await oauthStatus(b)).status, "pending");
+  await oauth.callback(rejected.authorizationUrl, false);
+  await eventually(
+    () => oauthStatus(b),
+    (status) =>
+      assert.deepEqual(status, {
+        server: oauthServer,
+        status: "failed",
+        error:
+          "MCP authorization failed. Review the authorization page and try again.",
+      }),
+  );
+  assert.equal((await oauthStatus(a)).status, "pending");
+  await oauth.callback(allowed.authorizationUrl, true);
+  await eventually(
+    () => oauthStatus(a),
+    (status) =>
+      assert.deepEqual(status, {
+        server: oauthServer,
+        status: "succeeded",
+        error: null,
+      }),
+  );
+  oauth.verifyExchange();
+  assert.equal((await oauthStatus(b)).status, "failed");
+  assert.deepEqual(await reload(), { reloaded: true });
+  await eventually(
+    () => inventory(a),
+    (view) => {
+      assert.equal(
+        view.mcpServers.find(({ name }) => name === oauthServer)?.authStatus,
+        "oAuth",
+      );
+      oauth.verifyConnection();
+    },
+    25_000,
+  );
+
+  const absent = "missing_oauth_fixture";
+  assert.deepEqual(await startOauth(a, absent), {
+    status: "failed",
+    error: { message: "Codex could not start MCP authorization." },
+  });
+  assert.equal((await oauthStatus(a, absent)).status, "failed");
   console.log(
-    JSON.stringify({ suite: "native-customization-inventory", passed: true }),
+    JSON.stringify({
+      suite: "native-customization-inventory-and-mcp-oauth",
+      passed: true,
+    }),
   );
 }

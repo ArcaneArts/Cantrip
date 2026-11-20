@@ -1044,6 +1044,9 @@ export const contractRoots = [
   "codexMcpResourceReadSchema",
   "codexMcpReloadRequestSchema",
   "codexMcpReloadResultSchema",
+  "codexMcpOauthStartSchema",
+  "codexMcpOauthStartResultSchema",
+  "codexMcpOauthStatusSchema",
 ];
 
 export const projectExportContractRoots = [

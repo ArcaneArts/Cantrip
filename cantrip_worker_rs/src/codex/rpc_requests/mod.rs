@@ -142,6 +142,9 @@ impl Requests {
             Some(super::rpc_protocol::RESOURCE_RESOLVE) => {
                 state.private.insert(id, "privateNativeResources");
             }
+            Some(super::customizations::oauth::LOGIN) => {
+                state.private.insert(id, "privateMcpOauth");
+            }
             _ => {}
         }
         if let Some(settlement) = &settlement {
@@ -204,6 +207,11 @@ impl Requests {
         }
     }
     pub fn diagnostic_payload(&self, message: &Value) -> Value {
+        if message["method"] == super::customizations::oauth::COMPLETED {
+            return json!({"method":message["method"],"params":json!({
+                "success":message["params"]["success"]
+            })});
+        }
         if !coercion::truthy(message.get("method"))
             && message.get("id").is_some()
             && let Some(kind) = numeric_id(&message["id"])
