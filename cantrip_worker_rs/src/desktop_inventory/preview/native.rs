@@ -43,16 +43,6 @@ fn rejection(code: &str, message: &'static str, outcome: &'static str) -> anyhow
     .into()
 }
 
-pub(super) fn require_host(lease: &Lease, action: &Value) -> Result<()> {
-    if action["operation"] != "session.close" && !lease.authority["osPlacement"].is_null() {
-        return Err(reject(
-            "unavailable",
-            "This preview requires its Cantrip OS desktop.",
-        ));
-    }
-    Ok(())
-}
-
 #[derive(Clone)]
 pub(super) struct Session {
     helper: uuid::Uuid,
@@ -79,7 +69,7 @@ pub(super) struct ResultData {
 pub(in crate::desktop_inventory) async fn run(
     request: Request,
     process: &mut Option<Helper>,
-    binary: &Path,
+    binary: Option<&Path>,
 ) {
     if request
         .deadline
@@ -173,7 +163,7 @@ pub(in crate::desktop_inventory) async fn release(lease: &Lease, process: &mut O
 
 async fn execute(
     process: &mut Option<Helper>,
-    binary: &Path,
+    binary: Option<&Path>,
     lease: &Lease,
     mut action: Value,
 ) -> Result<ResultData> {
@@ -210,7 +200,15 @@ async fn execute(
             });
         }
     }
-    let child = timeout(DEADLINE, helper(process, binary)).await??;
+    let child = match binary {
+        Some(binary) => timeout(DEADLINE, helper(process, binary)).await??,
+        None => process.as_mut().ok_or_else(|| {
+            reject(
+                "unavailable",
+                "The captured Cantrip OS desktop is no longer available.",
+            )
+        })?,
+    };
     if session
         .as_ref()
         .is_some_and(|session| session.helper != child.identity)

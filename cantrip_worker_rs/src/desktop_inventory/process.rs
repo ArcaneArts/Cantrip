@@ -2,7 +2,12 @@
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_interaction::geometry::MAX_SEQUENCE;
 use cantrip_wire::{Value, parse_json_text, value::json};
-use std::{future::Future, path::Path, process::Stdio, time::Duration};
+use std::{
+    ffi::{OsStr, OsString},
+    future::Future,
+    process::Stdio,
+    time::Duration,
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     process::{Child, ChildStdin, ChildStdout, Command},
@@ -41,7 +46,7 @@ impl std::fmt::Display for NativeError {
 impl std::error::Error for NativeError {}
 
 impl Process {
-    pub(super) fn spawn(binary: &Path, args: &[&str]) -> Result<Self> {
+    pub(super) fn spawn(binary: &OsStr, args: &[OsString]) -> Result<Self> {
         let mut command = Command::new(binary);
         command
             .args(args)

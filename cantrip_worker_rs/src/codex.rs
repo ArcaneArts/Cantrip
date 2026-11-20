@@ -7,7 +7,7 @@ pub mod diagnostics;
 pub mod discovery;
 pub(crate) mod external_home;
 pub(crate) mod goals;
-mod guest_environment;
+pub(crate) mod guest_environment;
 pub mod managed;
 pub(crate) mod observation;
 pub mod preparation;
