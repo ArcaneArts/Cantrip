@@ -6,6 +6,7 @@ use crate::{
     encryption::{Identity, Service},
     http,
 };
+use base64::{Engine, engine::general_purpose::STANDARD};
 use std::{
     future::ready,
     os::unix::fs::PermissionsExt,
@@ -120,6 +121,55 @@ async fn host_actions_use_the_live_attachment_and_authorize_each_native_operatio
         "observed-turn"
     );
     assert_eq!(snapshot.metadata["image"]["width"], 320);
+
+    let observed = host.desktop.observe_turn();
+    let registry = &host.desktop.0.observations;
+    let root = "observed-thread".into();
+    let image = ModelImage {
+        native: snapshot.metadata.clone(),
+        model: json!({
+            "width":snapshot.metadata["image"]["width"],"height":snapshot.metadata["image"]["height"],
+            "byteCount":snapshot.metadata["image"]["byteCount"],"sha256":snapshot.metadata["image"]["sha256"],
+        }),
+        png: STANDARD.encode(&*snapshot.pixels).into(),
+    };
+    let retain =
+        |call| host.retain_observation(&observed, call, &root, image.clone(), request.clone());
+    let first = uuid::Uuid::new_v4();
+    observed.begin(first);
+    retain(first);
+    let source_id = || {
+        registry.list(&authority, epoch).data["sources"]
+            .as_array()
+            .unwrap()[0]["sourceId"]
+            .clone()
+    };
+    let source = source_id();
+    let readers = (0..4)
+        .map(|_| registry.read(&authority, epoch, &source))
+        .collect::<Result<Vec<_>>>()?;
+    assert_eq!(readers[0].0.pixels.as_slice(), snapshot.pixels.as_slice());
+    let replacement = uuid::Uuid::new_v4();
+    observed.begin(replacement);
+    assert!(readers.iter().all(|(_, read)| read.check().is_err()));
+    retain(first);
+    assert_eq!(
+        registry.list(&authority, epoch).data["sources"],
+        json!(Vec::<Value>::new())
+    );
+    retain(replacement);
+    let source = source_id();
+    let blocked = registry
+        .read(&authority, epoch, &source)
+        .err()
+        .expect("retired readers retain their slots");
+    assert_eq!(
+        blocked.downcast_ref::<native::Rejected>().unwrap().code,
+        "capacity"
+    );
+    drop(readers);
+    assert!(registry.read(&authority, epoch, &source).is_ok());
+    observed.clear();
 
     let (cancel, pending_call) = Abort::new();
     let (submitted, observed) = oneshot::channel();

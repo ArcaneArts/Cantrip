@@ -6,6 +6,7 @@ mod approvals;
 mod guest;
 mod input;
 mod native;
+mod observations;
 mod protected;
 
 use super::{DEADLINE, Request as DesktopRequest, retire};
@@ -36,6 +37,7 @@ const OPERATION: &str = "computer-use.operation";
 const ANSWER: &str = "computer-use.approval.respond";
 pub use agent::{DesktopTurn, HostAction, HostActivity, HostEvaluation, HostSnapshot};
 pub(super) use native::{release, run};
+pub(crate) use observations::{ModelImage, ObservedTurn};
 
 pub(crate) fn supports(method: &str) -> bool {
     matches!(method, OPEN | STOP | REVOKE | OPERATION | ANSWER)
@@ -50,6 +52,7 @@ struct Manager {
     outgoing: Arc<Outbound>,
     approvals: approvals::Approvals,
     agent_approvals: agent_approvals::Approvals,
+    observations: Arc<observations::Registry>,
     guests: guest::Guests,
     requests: mpsc::Sender<DesktopRequest>,
     retirements: mpsc::UnboundedSender<Arc<native::Attachment>>,
@@ -117,6 +120,7 @@ impl Previews {
         let manager = Arc::new(Manager {
             leases: Mutex::default(),
             agent_approvals: agent_approvals::Approvals::new(encryption.clone(), outgoing.clone()),
+            observations: Arc::default(),
             encryption,
             approvals: approvals::Approvals::new(outgoing.clone()),
             guests: guest::Guests::new(data),
@@ -154,8 +158,13 @@ impl Previews {
                 .stop
                 .abort(anyhow::anyhow!("Computer-use worker stopped."));
             previews.remove_matching(|_| true);
+            previews.0.observations.revoke(|_| true);
             previews.0.guests.close().await;
         })
+    }
+
+    pub(crate) fn observe_turn(&self) -> ObservedTurn {
+        self.0.observations.turn()
     }
 
     pub(crate) async fn execute(
@@ -277,6 +286,7 @@ impl Previews {
         };
         self.remove_matching(|lease| matches(&lease.authority));
         self.0.agent_approvals.revoke(matches);
+        self.0.observations.revoke(matches);
         Ok(json!({"closed":true}))
     }
 
@@ -285,10 +295,14 @@ impl Previews {
         self.0
             .agent_approvals
             .revoke(|authority| authority["chatId"] == *chat);
+        self.0
+            .observations
+            .revoke(|authority| authority["chatId"] == *chat);
     }
 
     pub(super) fn expire(&self, epoch: u64) {
         self.remove_matching(|lease| lease.epoch != epoch);
+        self.0.observations.expire(epoch);
     }
 
     fn remove_matching(&self, matches: impl Fn(&Lease) -> bool) {
@@ -404,10 +418,25 @@ impl Previews {
         let lease = self.resolve(command, epoch)?;
         let request = &command["request"];
         let content = protected::Content::new(&self.0.encryption, &lease, request);
+        let mut read = None;
         let response = async {
             let action = content.open()?;
             audit.action(&lease, &action);
             lease.signal.check()?;
+            match action["operation"].as_str() {
+                Some("agent.sources.list") => {
+                    return Ok(self.0.observations.list(&lease.authority, epoch));
+                }
+                Some("agent.observation.get") => {
+                    let (result, owned) =
+                        self.0
+                            .observations
+                            .read(&lease.authority, epoch, &action["sourceId"])?;
+                    read = Some(owned);
+                    return Ok(result);
+                }
+                _ => {}
+            }
             let placement = self.0.guests.placement(&lease.authority)?;
             self.0.approvals.authorize(
                 &self.0.encryption,
@@ -446,6 +475,9 @@ impl Previews {
             |active_required| {
                 if active_required {
                     lease.signal.check()?;
+                    if let Some(read) = &read {
+                        read.check()?;
+                    }
                 }
                 ensure!(
                     self.0.outgoing.stream_current(epoch),
@@ -455,6 +487,7 @@ impl Previews {
             },
             &emit,
         );
+        drop(read);
         let publication = audit
             .event(
                 &self.0.encryption,

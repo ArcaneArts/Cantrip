@@ -3,7 +3,10 @@ mod activity;
 #[cfg(all(test, unix))]
 mod tests;
 
-use super::{DEADLINE, DesktopRequest, Previews, Request, agent_approvals, guest, native};
+use super::{
+    DEADLINE, DesktopRequest, ModelImage, ObservedTurn, Previews, Request, agent_approvals, guest,
+    native,
+};
 use crate::{
     computer_use::{HostError, Javascript},
     http::checked,
@@ -260,6 +263,27 @@ impl DesktopTurn {
 
     pub(crate) fn activity_session(&self) -> Value {
         self.attachment.lock().unwrap().native.data(None)
+    }
+
+    pub(crate) fn retain_observation(
+        &self,
+        observed: &ObservedTurn,
+        call: uuid::Uuid,
+        root: &JsString,
+        image: ModelImage,
+        active: Signal,
+    ) {
+        if self.placement_current() {
+            let attachment = self.attachment.lock().unwrap().native.clone();
+            observed.publish(
+                call,
+                root,
+                (&self.authority, self.epoch),
+                &attachment,
+                image,
+                Signal::any(vec![active, self.signal.clone()]),
+            );
+        }
     }
 
     fn evaluation_attachment(&self) -> EvaluationAttachment<'_> {

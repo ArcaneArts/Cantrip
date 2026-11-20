@@ -1186,6 +1186,7 @@ export const computerUseHttpContractRoots = [
   "cuaInventorySchema",
   "cuaControlsResultSchema",
   "cuaSnapshotSchema",
+  "cuaAgentObservationSchema",
 ];
 
 // Keep independently added roots self-contained. Numeric graph references must
@@ -1722,6 +1723,17 @@ registerChecks(protocol.cuaInventorySchema.shape.targets, [
 ]);
 registerChecks(protocol.cuaInventorySchema, [
   "worker-wire-cua-inventory-cursor",
+]);
+registerChecks(protocol.cuaAgentSourcesSchema.shape.sources, [
+  "worker-wire-cua-source-ids",
+]);
+registerCustom(
+  protocol.cuaAgentObservationSchema.shape.image,
+  1,
+  "worker-wire-cua-model-bytes",
+);
+registerChecks(protocol.cuaAgentObservationSchema, [
+  "worker-wire-cua-observation",
 ]);
 const cuaInputs = Object.fromEntries(
   protocol.cuaInputCommandSchema.options.map((schema) => [

@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import {
+  decryptEndpointContentPayload,
   decryptInteractionRequestContent,
+  encryptEndpointContentPayload,
   encryptInteractionResponseContent,
 } from "../../packages/crypto/dist/index.js";
 import { modelFunctions } from "../server-rust/task-model-provider.mjs";
+import { previewOperations } from "./computer-use-preview-cases.mjs";
 
 export async function verifyManagedComputerUse({
   call,
@@ -16,6 +19,7 @@ export async function verifyManagedComputerUse({
   workerId,
   keyRevision,
   interactionKey,
+  previewKey,
   openMessage,
 }) {
   const { model, profile, provider } = await createModel(
@@ -51,7 +55,11 @@ export async function verifyManagedComputerUse({
   );
   const tools = model.reply({ hold: true });
   const captured = model.reply({ hold: true });
-  const finished = model.reply({ text: "The fixture capture completed." });
+  const afterReset = model.reply({ hold: true });
+  const finished = model.reply({
+    hold: true,
+    text: "The fixture capture completed.",
+  });
   await call(
     "POST",
     chatUrl + "/turns",
@@ -78,18 +86,18 @@ export async function verifyManagedComputerUse({
       ...js,
       arguments: {
         script:
-          "const t = (await cua.targets()).targets.find(t => t.id === 'fake-window'); await cua.attach({targetId:t.id,targetGeneration:t.generation}); const image = await cua.snapshot(); let decline; try { await cua.readClipboard(); } catch (error) { decline = error.code; } ({imageIndex: image.imageIndex, decline, marker: 'fixture-private-script'})",
+          "const t = (await cua.targets()).targets.find(t => t.id === 'fake-window'); await cua.attach({targetId:t.id,targetGeneration:t.generation}); await cua.snapshot(); const image = await cua.snapshot(); let decline; try { await cua.readClipboard(); } catch (error) { decline = error.code; } ({imageIndex: image.imageIndex, decline, marker: 'fixture-private-script'})",
       },
     },
   ];
   tools.release();
 
   const material = { ownerId, keyRevision, componentKey: interactionKey };
+  const pendingRecords = () =>
+    call("GET", `/api/agent-requests?chatId=${chatId}&status=pending`, 200);
   async function pending() {
-    const [record] = await eventually(
-      () =>
-        call("GET", `/api/agent-requests?chatId=${chatId}&status=pending`, 200),
-      (items) => assert.equal(items.length, 1),
+    const [record] = await eventually(pendingRecords, (items) =>
+      assert.equal(items.length, 1),
     );
     const request = await decryptInteractionRequestContent({
       ...material,
@@ -122,15 +130,18 @@ export async function verifyManagedComputerUse({
     assert.equal(resolved.status, "resolved");
   }
 
-  const [confirmation, elicitation] = await pending();
-  assert.equal(elicitation.kind, "mcpElicitation");
-  assert.equal(elicitation.serverName, "cantrip_cua");
-  await respond(confirmation, {
-    kind: "mcpElicitation",
-    action: "accept",
-    content: {},
-    metadata: null,
-  });
+  async function confirmTool() {
+    const [confirmation, elicitation] = await pending();
+    assert.equal(elicitation.kind, "mcpElicitation");
+    assert.equal(elicitation.serverName, "cantrip_cua");
+    await respond(confirmation, {
+      kind: "mcpElicitation",
+      action: "accept",
+      content: {},
+      metadata: null,
+    });
+  }
+  await confirmTool();
 
   let provenance;
   for (const [permission, target] of [
@@ -167,7 +178,9 @@ export async function verifyManagedComputerUse({
       .filter((item) => item.type === "function_call_output")
       .flatMap((item) => item.output);
   const parts = toolOutputs(captured);
-  const image = parts.find((part) => part.type === "input_image");
+  const images = parts.filter((part) => part.type === "input_image");
+  assert.equal(images.length, 2);
+  const image = images.at(-1);
   assert.match(
     image?.image_url ?? "",
     /^data:image\/png;base64,[A-Za-z0-9+/]+/u,
@@ -179,7 +192,8 @@ export async function verifyManagedComputerUse({
   assert.ok(report);
   const result = JSON.parse(report.text);
   assert.equal(result.value.decline, "permission-denied");
-  const { native, model: rendition } = result.images[0];
+  assert.equal(result.value.imageIndex, 1);
+  const { native, model: rendition } = result.images.at(-1);
   const bytes = Buffer.from(image.image_url.split(",")[1], "base64");
   assert.equal(native.image.mediaType, "image/png");
   assert.equal(rendition.byteCount, bytes.length);
@@ -189,16 +203,96 @@ export async function verifyManagedComputerUse({
   );
   assert.equal(rendition.sha256, native.image.sha256);
 
+  const { server } = await call("GET", "/api/bootstrap", 200);
+  const previewMaterial = { ownerId, keyRevision, componentKey: previewKey };
+  async function preview(chatId, chatUrl) {
+    const base = chatUrl + "/computer-use";
+    const lease = await call("POST", base + "/preview", 200, {});
+    return previewOperations({
+      call,
+      base,
+      serverId: server.id,
+      workerId,
+      chatId,
+      lease,
+      seal: (context, plaintext) =>
+        encryptEndpointContentPayload({
+          ...previewMaterial,
+          context,
+          plaintext,
+        }),
+      open: (context, opaque) =>
+        decryptEndpointContentPayload({ ...previewMaterial, context, opaque }),
+    }).operate;
+  }
+  const operate = await preview(chatId, chatUrl);
+  const list = { operation: "agent.sources.list" };
+  const sources = (await operate(list)).result.data.sources;
+  assert.equal(sources.length, 1);
+  const [source] = sources;
+  assert.equal(source.rootThreadId, provenance.threadId);
+  assert.deepEqual(source.binding, native.session.binding);
+  assert.equal(source.observationRevision, native.session.observationRevision);
+  assert.ok(
+    source.observationRevision >
+      result.images[0].native.session.observationRevision,
+  );
+  const get = { operation: "agent.observation.get", sourceId: source.sourceId };
+  const observation = await operate(get);
+  assert.equal(observation.result.status, "ok");
+  assert.deepEqual(observation.result.data.source, source);
+  assert.deepEqual(observation.result.data.nativeImage, native.image);
+  assert.equal(Buffer.compare(observation.payload, bytes), 0);
+  observation.payload.fill(0);
+  bytes.fill(0);
+
+  const other = await createChat("Other preview", false);
+  const foreign = await preview(other.chatId, other.chatUrl);
+  assert.deepEqual((await foreign(list)).result.data.sources, []);
+  const unavailable = (await foreign(get)).result;
+  assert.equal(unavailable.code, "execution-unavailable");
+
   captured.calls = [{ ...reset, arguments: {} }];
   captured.release();
   await eventually(
-    () => finished.request,
-    (request) => assert.equal(request?.completed, true),
+    () => afterReset.entered,
+    (entered) => assert.equal(entered, true),
   );
   assert.ok(
-    toolOutputs(finished).some((part) =>
+    toolOutputs(afterReset).some((part) =>
       part.text?.includes("JavaScript state and target attachment reset."),
     ),
+  );
+  assert.deepEqual((await operate(list)).result.data.sources, []);
+  assert.equal((await operate(get)).result.code, "execution-unavailable");
+
+  afterReset.calls = [
+    {
+      ...js,
+      arguments: {
+        script:
+          "await cua.attach({targetId: 'fake-window', targetGeneration: 1}); await cua.snapshot()",
+      },
+    },
+  ];
+  afterReset.release();
+  await eventually(pendingRecords, (records) =>
+    assert.ok(finished.entered || records.length === 1),
+  );
+  if (!finished.entered) await confirmTool();
+  await eventually(
+    () => finished.entered,
+    (entered) => assert.equal(entered, true),
+  );
+  const afterResetSources = (await operate(list)).result.data.sources;
+  assert.equal(afterResetSources.length, 1);
+  const [replacement] = afterResetSources;
+  assert.notEqual(replacement.sourceId, source.sourceId);
+  assert.notEqual(replacement.binding.sessionId, source.binding.sessionId);
+  finished.release();
+  await eventually(
+    () => finished.request,
+    (request) => assert.equal(request?.completed, true),
   );
   await eventually(
     async () => {
@@ -221,7 +315,9 @@ export async function verifyManagedComputerUse({
         .flatMap(({ content }) => content)
         .filter(
           ({ type, activity }) =>
-            type === "activity" && activity.type === "computerUse",
+            type === "activity" &&
+            activity.type === "computerUse" &&
+            activity.source === "agent-mcp",
         )
         .map(({ activity }) => activity);
       assert.deepEqual(
@@ -230,13 +326,20 @@ export async function verifyManagedComputerUse({
           ["targets.list", "completed"],
           ["target.attach", "completed"],
           ["observation.snapshot", "completed"],
+          ["observation.snapshot", "completed"],
           ["clipboard.read", "declined"],
           ["js.evaluate", "completed"],
           ["js.reset", "completed"],
+          ["target.attach", "completed"],
+          ["observation.snapshot", "completed"],
+          ["js.evaluate", "completed"],
         ],
       );
       const captured = activities.find(
-        ({ operation }) => operation === "observation.snapshot",
+        ({ operation, observation, binding }) =>
+          operation === "observation.snapshot" &&
+          observation.revision === source.observationRevision &&
+          binding.sessionId === source.binding.sessionId,
       );
       assert.equal(captured.observation.image.sha256, native.image.sha256);
       assert.deepEqual(captured.target, {
@@ -255,8 +358,8 @@ export async function verifyManagedComputerUse({
         ({ operation }) => operation === "js.reset",
       );
       assert.notEqual(reset.requestId, terminal.requestId);
-      for (const activity of activities) {
-        if (activity !== reset)
+      for (const [index, activity] of activities.entries()) {
+        if (index < activities.indexOf(reset))
           assert.equal(activity.requestId, terminal.requestId);
         const { sessionId, ...binding } = activity.binding;
         assert.deepEqual(binding, {
@@ -270,7 +373,9 @@ export async function verifyManagedComputerUse({
           sessionId,
           activity.operation === "targets.list"
             ? null
-            : captured.binding.sessionId,
+            : index <= activities.indexOf(reset)
+              ? captured.binding.sessionId
+              : replacement.binding.sessionId,
         );
         assert.equal(activity.agentScope.agentThreadId, provenance.threadId);
         assert.equal(activity.agentScope.rootTurnId, provenance.turnId);
@@ -285,6 +390,11 @@ export async function verifyManagedComputerUse({
         /fixture-private-script|iVBORw0KGgo/,
       );
     },
+  );
+  assert.deepEqual((await operate(list)).result.data.sources, []);
+  assert.equal(
+    (await operate({ ...get, sourceId: replacement.sourceId })).result.code,
+    "execution-unavailable",
   );
   assert.deepEqual(model.failures, []);
   console.log(

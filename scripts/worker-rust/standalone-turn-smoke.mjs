@@ -109,7 +109,10 @@ const chatKey = key("chat-content");
 const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
-const previewKey = values["cua-preview"] ? key("client-control-content") : null;
+const previewKey =
+  values["cua-preview"] || values["cua-agent"]
+    ? key("client-control-content")
+    : null;
 const policyKey = values.policies ? key("policy-content") : null;
 const customizationKey =
   values["skill-settings"] || values["customization-inventory"]
@@ -3043,6 +3046,7 @@ try {
       workerId,
       keyRevision,
       interactionKey,
+      previewKey,
       openMessage,
     });
   } else if (previewKey) {

@@ -9101,3 +9101,29 @@ cases also passed.
 
 Retained agent observations for the preview, recovery, managed guest turn
 validation, and support in the remaining execution sources are open.
+
+## 258. Serve retained agent screenshots through the protected preview
+
+Reference commit `8bcc7041b9b9374b2fe149685d8c56055d1d63c3` (#3421).
+
+The Rust worker serves `agent.sources.list` and `agent.observation.get`
+over the existing preview lease and encrypted chunk transport. It retains
+the latest model PNG for an observed turn with the original native session
+and image metadata. Reads use the captured PNG and the current worker,
+Chat, placement and permission generation. The worker bounds retained
+sources and concurrent readers at four each. Starting another call, including
+reset, invalidates the prior source and any reads still encrypting it.
+Turn completion, helper retirement, and authority or connection loss also
+clear retained sources.
+
+Local managed Host coverage uses bundled Codex, a deterministic desktop
+helper, and Rust Core in PGlite mode on macOS ARM64. The preview retrieves
+the most recent of two captures with the exact bytes delivered to the
+model. A second Chat cannot list or read the source. Reset and turn
+completion invalidate the source. The native helper test also checks an
+invalidated read and a late result against the reader limit and call token.
+The ordinary Host preview smoke and 18 Node observation reference tests
+also passed locally. The Rust contract comparison matched the TypeScript
+fixtures for valid and invalid observation metadata.
+Managed guest turn validation, recovery, and the remaining execution
+sources are open.

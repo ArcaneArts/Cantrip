@@ -1,5 +1,6 @@
 use crate::{
     computer_use::{HostEvaluation, HostSnapshot},
+    desktop_inventory::preview::ModelImage,
     metadata::Signal,
 };
 use anyhow::{Context, Result, ensure};
@@ -22,7 +23,10 @@ pub(super) fn reset() -> Value {
     json!({"content":vec![json!({"type":"text","text":"Computer-use JavaScript state and target attachment reset. No native input was performed."})]})
 }
 
-pub(super) async fn result(output: HostEvaluation, signal: Signal) -> Result<Value> {
+pub(super) async fn result(
+    output: HostEvaluation,
+    signal: Signal,
+) -> Result<(Value, Option<ModelImage>)> {
     signal.check()?;
     let HostEvaluation {
         value,
@@ -31,6 +35,7 @@ pub(super) async fn result(output: HostEvaluation, signal: Signal) -> Result<Val
     } = output;
     let mut content = Vec::new();
     let mut metadata = Vec::new();
+    let mut latest = None;
     if !images.is_empty() {
         ensure!(images.len() <= 2, "Computer-use image capacity reached.");
         let slot = ENCODING
@@ -54,9 +59,10 @@ pub(super) async fn result(output: HostEvaluation, signal: Signal) -> Result<Val
             reason = signal.cancelled() => return Err(reason.into()),
             images = work => images??,
         };
-        for (info, image) in images {
-            metadata.push(info);
-            content.push(image);
+        latest = images.last().cloned();
+        for image in images {
+            metadata.push(json!({"native":image.native,"model":image.model}));
+            content.push(json!({"type":"image","mimeType":"image/png","data":image.png}));
         }
     }
     let mut report = json!({"value":value});
@@ -77,10 +83,10 @@ pub(super) async fn result(output: HostEvaluation, signal: Signal) -> Result<Val
     );
     signal.check()?;
     content.insert(0, json!({"type":"text","text":report.stringify()}));
-    Ok(json!({"content":content}))
+    Ok((json!({"content":content}), latest))
 }
 
-fn encode(snapshot: HostSnapshot) -> Result<(Value, Value)> {
+fn encode(snapshot: HostSnapshot) -> Result<ModelImage> {
     let image = &snapshot.metadata["image"];
     let width = image["width"].as_u64().context("Image width is missing.")? as u32;
     let height = image["height"]
@@ -132,10 +138,11 @@ fn encode(snapshot: HostSnapshot) -> Result<(Value, Value)> {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
-    Ok((
-        json!({"native":snapshot.metadata,"model":json!({"width":width,"height":height,"byteCount":bytes.len(),"sha256":sha})}),
-        json!({"type":"image","mimeType":"image/png","data":STANDARD.encode(&*bytes)}),
-    ))
+    Ok(ModelImage {
+        native: snapshot.metadata,
+        model: json!({"width":width,"height":height,"byteCount":bytes.len(),"sha256":sha}),
+        png: STANDARD.encode(&*bytes).into(),
+    })
 }
 
 fn resize<P: Pixel<Subpixel = u8> + 'static>(
@@ -172,20 +179,20 @@ mod tests {
         )?;
         assert!(png.len() > MAX_IMAGE_BYTES);
         let metadata = json!({"image":json!({"width":width,"height":height})});
-        let (info, part) = encode(HostSnapshot {
+        let image = encode(HostSnapshot {
             metadata: metadata.clone(),
             pixels: png,
         })?;
-        assert_eq!(info["native"], metadata);
-        let bytes = STANDARD.decode(part["data"].as_str().unwrap())?;
+        assert_eq!(image.native, metadata);
+        let bytes = STANDARD.decode(image.png.as_str().unwrap())?;
         let decoder = PngDecoder::new(Cursor::new(&bytes))?;
         let (model_width, model_height) = decoder.dimensions();
         assert!(model_width < width && model_height < height);
         assert!(model_width * model_height <= MAX_MODEL_PIXELS);
         assert!(bytes.len() <= MAX_IMAGE_BYTES);
-        assert_eq!(info["model"]["width"], json!(model_width));
-        assert_eq!(info["model"]["height"], json!(model_height));
-        assert_eq!(info["model"]["byteCount"], json!(bytes.len()));
+        assert_eq!(image.model["width"], json!(model_width));
+        assert_eq!(image.model["height"], json!(model_height));
+        assert_eq!(image.model["byteCount"], json!(bytes.len()));
         Ok(())
     }
 }

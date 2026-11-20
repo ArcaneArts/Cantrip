@@ -3,7 +3,7 @@ use super::{Request, native};
 use crate::{
     cantrip_os::carrier::Transport,
     codex::guest_environment::{record_path, stored},
-    desktop_inventory::{Helper, effects, process::Process, retire},
+    desktop_inventory::{Helper, process::Process, retire},
     filesystem::Scope,
     metadata::Signal,
 };
@@ -328,11 +328,7 @@ impl Group {
         let mut carrier = Carrier {
             context,
             id,
-            helper: Some(Helper {
-                identity: uuid::Uuid::new_v4(),
-                process: Process::spawn(program, &args)?,
-                effects: effects::NativeState::default(),
-            }),
+            helper: Some(Helper::new(Process::spawn(program, &args)?)),
         };
         let ready = tokio::select! {
             biased;

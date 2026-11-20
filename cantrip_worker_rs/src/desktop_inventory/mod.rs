@@ -6,7 +6,12 @@ pub(crate) mod process;
 pub(crate) use capture::{Capture, Captures, Frame, InputAuthority, Scope};
 pub(crate) use effects::Updates as EffectUpdates;
 
-use crate::{connection::Outbound, encryption::Service, http::checked};
+use crate::{
+    connection::Outbound,
+    encryption::Service,
+    http::checked,
+    metadata::{Abort, Signal},
+};
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{JsString, Value, value::json};
 use indexmap::IndexSet;
@@ -41,6 +46,27 @@ struct Helper {
     identity: uuid::Uuid,
     process: Process,
     effects: effects::NativeState,
+    lifetime: HelperLifetime,
+}
+
+struct HelperLifetime(Abort, Signal);
+
+impl Drop for HelperLifetime {
+    fn drop(&mut self) {
+        self.0.abort(anyhow::anyhow!("The desktop helper retired."));
+    }
+}
+
+impl Helper {
+    fn new(process: Process) -> Self {
+        let (abort, signal) = Abort::new();
+        Self {
+            identity: uuid::Uuid::new_v4(),
+            process,
+            effects: effects::NativeState::default(),
+            lifetime: HelperLifetime(abort, signal),
+        }
+    }
 }
 
 enum Request {
@@ -185,6 +211,7 @@ async fn run(
         }
         tokio::select! {
             _ = stopped(&mut stop) => break,
+            _ = helper_exited(&mut process) => retire(&mut process).await,
             _ = epoch.changed() => {
                 let current = *epoch.borrow_and_update();
                 previews.expire(current);
@@ -304,6 +331,14 @@ async fn connection_changed(epoch: &mut watch::Receiver<u64>, current: u64) {
     let _ = epoch.wait_for(|value| *value != current).await;
 }
 
+async fn helper_exited(process: &mut Option<Helper>) {
+    if let Some(helper) = process {
+        helper.process.wait().await;
+    } else {
+        std::future::pending::<()>().await;
+    }
+}
+
 fn authorize(
     encryption: &Service,
     outgoing: &Outbound,
@@ -348,11 +383,7 @@ async fn helper<'a>(current: &'a mut Option<Helper>, binary: &Path) -> Result<&'
         retire(current).await;
     }
     if current.is_none() {
-        let mut child = Helper {
-            identity: uuid::Uuid::new_v4(),
-            process: Process::spawn(binary.as_os_str(), &[])?,
-            effects: effects::NativeState::default(),
-        };
+        let mut child = Helper::new(Process::spawn(binary.as_os_str(), &[])?);
         match child.process.initialize().await {
             Ok(()) => {
                 *current = Some(child);
@@ -380,6 +411,7 @@ async fn targets(current: &mut Option<Helper>, binary: &Path) -> Result<Inventor
 
 async fn retire(process: &mut Option<Helper>) {
     if let Some(helper) = process.take() {
+        drop(helper.lifetime);
         helper.process.close().await;
     }
 }

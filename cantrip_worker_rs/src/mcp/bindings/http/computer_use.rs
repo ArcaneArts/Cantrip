@@ -134,6 +134,8 @@ impl Inner {
         if !execution.owns(request) {
             return Err(revoked());
         }
+        let request_id = uuid::Uuid::new_v4();
+        execution.executor.begin_call(request_id);
 
         let (cancel, signal) = Abort::new();
         let mut call = Call {
@@ -171,7 +173,7 @@ impl Inner {
             }
             let result = execution
                 .executor
-                .execute(request.clone(), uuid::Uuid::new_v4(), lifetime)
+                .execute(request.clone(), request_id, lifetime)
                 .await
                 .map_err(|error| Failure::invalid(&error.to_string()))?;
             if (self.identity)().as_ref().ok() != Some(&identity) {
