@@ -8027,3 +8027,37 @@ built JavaScript reference packages, and a local `alpine:3.23` image.
 with the fixture commands.
 
 System replacement and rollback remain open.
+
+## 217. Replace and roll back retained Cantrip OS systems in Rust
+
+Reference commit 82c03bb2a33d85bd9bb9d5cbedd1d93ba2567577 (#3380).
+
+The native worker authenticates same-instance checkpoints through the original
+encrypted archive before publishing private plaintext staging. A missing
+checkpoint image is loaded through its authorized archive on a stable file
+descriptor. Recovery can observe the exact imported image and the exact
+candidate after an uncertain receipt.
+
+The replacement retains the original container and its effective mounts,
+applies new image defaults alongside explicit container configuration, and
+pins each Docker transition with a durable claim. Rollback selects the
+original replacement journal and restores the retained physical identity
+after fencing the replacement. Core receives the original protected result
+and root receipt for explicit recovery.
+
+The macOS ARM64 fixture used the production Rust Core in PGlite mode and
+the native worker against local Docker. It removed the captured image,
+lost the real image-load reply, killed the worker, and observed the
+original import without a second upload. Continuation restored the
+checkpoint's root and kept the live volume and read-only host bind.
+The fixture recovered the restored attachment and rolled back to the
+original root and its current mounted data. It also replaced from a public
+base with a lost create reply, verified the exact unattached candidate and
+the new image default, and rolled back. Automatic enrollment of that
+unattached base was outside the small guest fixture.
+
+Run the local workspace fixture with `--system-replacement` and the
+dependencies described for system capture. Earlier runs encountered an
+intermittent graceful worker shutdown error before the replacement began.
+The successful run used deliberate crashes for recovery and completed its
+final orderly shutdown.

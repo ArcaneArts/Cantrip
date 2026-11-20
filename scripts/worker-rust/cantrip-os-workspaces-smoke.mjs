@@ -33,12 +33,14 @@ const { values } = parseArgs({
     "backup-restore": { type: "boolean", default: false },
     "system-status": { type: "boolean", default: false },
     "system-capture": { type: "boolean", default: false },
+    "system-replacement": { type: "boolean", default: false },
     "system-capture-image": { type: "string", default: "alpine:3.23" },
     power: { type: "boolean", default: false },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
   },
 });
+values["system-capture"] ||= values["system-replacement"];
 const backup = values["backup-capture"] || values["backup-restore"];
 assert.ok(values.worker && values.server);
 assert.ok(!values["guest-terminal"] || values.repository);
@@ -350,6 +352,13 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
     });
   }
   await startWorker(enrollment.code);
+  let repositoryKey;
+  if (values["system-replacement"] && !sources) {
+    const { grantCantripOsFixture } = await import("./cantrip-os-grant.mjs");
+    repositoryKey = (await grantCantripOsFixture(call, workerId, data)).get(
+      "repository-content",
+    );
+  }
 
   const transport = { kind: "docker", container: name };
   const inspect = () =>
@@ -419,7 +428,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       (entry) => entry.id === "uncertain",
     ),
   );
-  await stopWorker();
+  await (values["system-replacement"] ? crashWorker : stopWorker)();
   await startWorker();
   const outcome = await call(
     "POST",
@@ -463,7 +472,6 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
     ]),
   );
   assert.deepEqual(record.receipt, created.receipt);
-  let repositoryKey;
   if (sources) {
     repositoryKey = await sources.verifySources({
       call,
@@ -604,8 +612,9 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       scopeKey: key,
       repositoryKey,
       image: values["system-capture-image"],
+      replacement: values["system-replacement"],
       restartWorker: async (endpoint) => {
-        await stopWorker();
+        await (values["system-replacement"] ? crashWorker : stopWorker)();
         await startWorker(undefined, endpoint);
       },
     });
@@ -627,6 +636,9 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       ...(values["backup-restore"] ? { guestBackupRecovery: true } : {}),
       ...(values["system-status"] ? { retainedSystemDiscovery: true } : {}),
       ...(values["system-capture"] ? { retainedSystemCapture: true } : {}),
+      ...(values["system-replacement"]
+        ? { retainedSystemReplacement: true }
+        : {}),
     }),
   );
 } catch (error) {

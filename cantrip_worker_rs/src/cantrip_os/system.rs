@@ -4,6 +4,7 @@ mod carrier;
 mod checkpoints;
 mod identity;
 mod jobs;
+mod replacement;
 
 use super::{
     checked,
@@ -28,6 +29,8 @@ use uuid::Uuid;
 
 pub(super) const STATUS: &str = "cantrip-os.system.status";
 pub(super) const CAPTURE: &str = "cantrip-os.system.capture";
+pub(super) const REPLACE: &str = "cantrip-os.system.replace";
+pub(super) const ROLLBACK: &str = "cantrip-os.system.rollback";
 const STATUS_SCHEMA: &str = "cantripOsSystemStatusResultSchema";
 const TARGET_SCHEMA: &str = "cantripOsSystemTargetSchema";
 const MAX_JOB: u64 = 48 * 1024 * 1024;

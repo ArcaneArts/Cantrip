@@ -2,7 +2,9 @@
 use super::{
     Manager, account, checked,
     checkpoints::{Checkpoint, Mode},
-    key, load_record, same_placement, target,
+    identity, key, load_record,
+    replacement::{Mode as ReplacementMode, Replacement},
+    same_placement, target,
 };
 use crate::{
     cantrip_os::{
@@ -17,7 +19,7 @@ use crate::{
 use anyhow::{Context, Result, anyhow, ensure};
 use cantrip_crypto::content::seal_system_operation_result;
 use cantrip_wire::{JsString, Value, value::json};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const COMMAND: &str = "cantripOsSystemOperationCommandSchema";
 const UNKNOWN: &str =
@@ -47,6 +49,70 @@ fn load_job(file: &Path, command: &Value) -> Result<Option<Value>> {
         "The system operation ID belongs to a different immutable admission"
     );
     Ok(Some(record))
+}
+
+fn job_path(root: &Path, scope: &Value, id: &str) -> PathBuf {
+    root.join("cantrip-os-system-jobs")
+        .join(scope_key(scope))
+        .join(format!("{id}.json"))
+}
+
+fn same_owner(scope: &Value, original: &Value) -> Result<()> {
+    ensure!(
+        ["ownerId", "serverId", "workerId", "instanceId"]
+            .into_iter()
+            .all(|field| scope[field] == original[field]),
+        "The system source belongs to another owning instance"
+    );
+    Ok(())
+}
+
+fn previous_job(root: &Path, scope: &Value, reference: &Value) -> Result<(PathBuf, Value)> {
+    let original = &reference["scope"];
+    same_owner(scope, original)?;
+    let file = job_path(root, original, text(reference, "operationId")?);
+    let record = load_record(&file)?.context("The original replacement is unavailable")?;
+    let command = checked(COMMAND, record["command"].clone())?;
+    ensure!(
+        record["version"].as_u64() == Some(1)
+            && command["action"] == "replace"
+            && command["operationId"] == reference["operationId"]
+            && command["target"]["generation"] == reference["targetGeneration"]
+            && &command["scope"] == original,
+        "The original replacement belongs to another immutable admission."
+    );
+    Ok((file, record))
+}
+
+fn host_request(record: &Value, file: &Path) -> Result<Value> {
+    let command = &record["command"];
+    let stage = &record["stage"];
+    let mut request = json!({"operationId":command["operationId"],"container":command["target"]["containerName"],
+        "instanceId":command["scope"]["instanceId"],"scopeKey":digest(command.clone()),"startTarget":command["startTarget"],
+        "action":command["action"]});
+    if command["action"] == "replace" {
+        request["expectedContainerId"] = command["target"]["containerId"].clone();
+        request["source"] = if command["source"]["kind"] == "base" {
+            command["source"].clone()
+        } else {
+            let snapshot = &stage["manifest"]["snapshot"];
+            ensure!(
+                snapshot.is_object(),
+                "The original checkpoint has no authenticated manifest."
+            );
+            let context = &command["source"]["capture"]["context"];
+            json!({"kind":"checkpoint","imageId":snapshot["imageId"],"operationId":context["operationId"],
+                "requestSha256":snapshot["requestSha256"],"containerId":context["containerId"]})
+        };
+        request["archive"] = if stage.is_object() {
+            let path = file.with_extension("json.tar");
+            json!({"path":path.to_str().context("The private staging path is not representable.")?,
+                "bytes":stage["receipt"]["archiveBytes"],"sha256":stage["receipt"]["archiveSha256"]})
+        } else {
+            Value::Null
+        };
+    }
+    Ok(request)
 }
 
 fn operation_context(command: &Value) -> Value {
@@ -90,10 +156,17 @@ fn terminal(record: &Value) -> bool {
         && !record["protectedResult"].is_null()
 }
 
-fn protect(record: &mut Value, checkpoint: &Checkpoint<'_>, encryption: &Service) -> Result<()> {
+fn protect(
+    record: &mut Value,
+    checkpoint: Option<&Checkpoint<'_>>,
+    encryption: &Service,
+) -> Result<()> {
     let command = &record["command"];
     let scope = &command["scope"];
-    let capture = checkpoint.details(&record["capture"])?;
+    let capture = match checkpoint {
+        Some(checkpoint) => checkpoint.details(&record["capture"])?,
+        None => Value::Null,
+    };
     let diagnostic = record["diagnostic"]
         .as_js_string()
         .map(|value| JsString::new(value.units()[..value.len().min(32_768)].to_vec()));
@@ -131,16 +204,151 @@ async fn validate(command: &Value, lifetime: &Scope) -> Result<()> {
 
 struct Job<'a> {
     file: &'a Path,
-    checkpoint: &'a Checkpoint<'a>,
+    root: &'a Path,
+    checkpoint: Option<Checkpoint<'a>>,
     encryption: &'a Service,
     lifetime: &'a Scope,
 }
 
 impl Job<'_> {
+    async fn validate(&self, command: &Value) -> Result<()> {
+        let scope = &command["scope"];
+        let target = &command["target"];
+        if command["action"] != "rollback" {
+            return validate(command, self.lifetime).await;
+        }
+        ensure!(
+            target["expected"]["ownerId"] == scope["ownerId"]
+                && target["expected"]["workerId"] == scope["workerId"],
+            "The system target ownership changed."
+        );
+        let (_, prior) = previous_job(self.root, scope, &command["replacement"])?;
+        ensure!(
+            prior["command"]["target"] == *target,
+            "Rollback requires the original replacement's exact management target."
+        );
+        Ok(())
+    }
+
+    async fn stage(&self, record: &mut Value, mutate: bool) -> Result<bool> {
+        let command = &record["command"];
+        if command["source"]["kind"] != "checkpoint" {
+            return Ok(true);
+        }
+        let source = &command["source"]["capture"];
+        same_owner(&command["scope"], &source["context"])?;
+        if record["stage"].is_null() {
+            let checkpoint =
+                Checkpoint::new(source.clone(), self.root, self.encryption, self.lifetime)?;
+            let Some(stage) = checkpoint
+                .stage(&self.file.with_extension("json.tar"), mutate)
+                .await?
+            else {
+                return Ok(false);
+            };
+            record["stage"] = stage;
+            record["phase"] = json!("archive-authenticated");
+            save_job(self.file, record, false)?;
+        }
+        Ok(true)
+    }
+
+    async fn replace(&self, record: &mut Value, fresh: bool, mode: &str) -> Result<()> {
+        let mutate = fresh || mode == "continue";
+        if !self.stage(record, mutate).await? {
+            record["state"] = json!("unknown");
+            record["phase"] = json!("awaiting-archive-authentication");
+            return Ok(());
+        }
+        let command = record["command"].clone();
+        let scope = &command["scope"];
+        let mut request = host_request(record, self.file)?;
+        let mut prior = None;
+        if command["action"] == "rollback" {
+            let (file, source) = previous_job(self.root, scope, &command["replacement"])?;
+            let source_request = host_request(&source, &file)?;
+            request["replacementOperationId"] = source["command"]["operationId"].clone();
+            request["replacementRequestSha256"] = json!(digest(source_request));
+            request["expectedOriginalId"] = source["command"]["target"]["containerId"].clone();
+            prior = Some(file.with_extension("json.docker"));
+        }
+        let engine = LocalDocker::current(self.lifetime).await?;
+        let carrier = Replacement {
+            journal: &self.file.with_extension("json.docker"),
+            prior: prior.as_deref(),
+            request: &request,
+            owner: scope,
+            engine: &engine,
+            encryption: self.encryption,
+            lifetime: self.lifetime,
+        };
+        let mut observed = carrier.run(ReplacementMode::Observe).await?;
+        account(scope, self.encryption)?;
+        if observed.is_none() && mutate && record["hostRequested"] != true {
+            record["hostRequested"] = json!(true);
+            save_job(self.file, record, false)?;
+            observed = carrier.run(ReplacementMode::Execute).await?;
+        } else if observed.is_some() && mode == "continue" {
+            observed = carrier.run(ReplacementMode::Continue).await?;
+        }
+        if let Some(observed) = observed {
+            let operation = &observed["operation"];
+            record["state"] = operation["state"].clone();
+            record["phase"] = operation["phase"].clone();
+            record["diagnostic"] = operation["error"].clone();
+            record["root"] = self.root_proof(&engine, &command, operation).await?;
+            record["host"] = observed;
+            record["protectedResult"] = Value::Null;
+        } else {
+            record["state"] = json!("unknown");
+            record["diagnostic"] =
+                json!("The original root transition has no observable host admission");
+        }
+        account(scope, self.encryption)?;
+        save_job(self.file, record, false)
+    }
+
+    async fn root_proof(
+        &self,
+        engine: &LocalDocker,
+        command: &Value,
+        operation: &Value,
+    ) -> Result<Value> {
+        let scope = &command["scope"];
+        let mut guest = Value::Null;
+        let mut attachment = "unavailable";
+        if let Some(id) = operation["targetContainerId"].as_str()
+            && let Ok(current) = identity::current(
+                engine,
+                id,
+                command["target"]["expected"]["identityPath"].as_str(),
+                self.lifetime,
+            )
+            .await
+        {
+            if current.attachment.is_null() {
+                guest = current.id;
+                attachment = "unattached";
+            } else if current.attachment["owner_id"] == scope["ownerId"]
+                && current.attachment["worker_id"] == scope["workerId"]
+            {
+                guest = current.id;
+                attachment = "owned";
+            }
+        }
+        checked(
+            "cantripOsSystemRootReceiptSchema",
+            json!({"requestSha256":operation["requestSha256"],
+            "originalContainerId":operation["originalContainerId"],"targetContainerId":operation["targetContainerId"],
+            "retainedContainerId":operation["retainedContainerId"],"runtimeHandlesRestored":false,
+            "guestInstanceId":guest,"guestAttachment":attachment}),
+        )
+    }
+
     async fn advance(&self, record: &mut Value, fresh: bool, mode: &str) -> Result<()> {
         let command = record["command"].clone();
         if record["validated"] != true {
-            if let Err(error) = validate(&command, self.lifetime).await {
+            if let Err(error) = self.validate(&command).await {
                 self.lifetime.check()?;
                 record["state"] = json!("failed");
                 record["phase"] = json!("validation-failed");
@@ -151,15 +359,29 @@ impl Job<'_> {
             record["validated"] = json!(true);
             save_job(self.file, record, false)?;
         }
-        let mut child = self.checkpoint.run(Mode::Observe).await?;
+        if let Some(checkpoint) = &self.checkpoint {
+            return self.capture(record, checkpoint, fresh, mode).await;
+        }
+        self.replace(record, fresh, mode).await
+    }
+
+    async fn capture(
+        &self,
+        record: &mut Value,
+        checkpoint: &Checkpoint<'_>,
+        fresh: bool,
+        mode: &str,
+    ) -> Result<()> {
+        let command = record["command"].clone();
+        let mut child = checkpoint.run(Mode::Observe).await?;
         account(&command["scope"], self.encryption)?;
         if (fresh || mode == "continue") && record["captureRequested"] != true {
-            self.checkpoint.run(Mode::Prepare).await?;
+            checkpoint.run(Mode::Prepare).await?;
             record["captureRequested"] = json!(true);
             save_job(self.file, record, false)?;
-            child = self.checkpoint.run(Mode::Continue).await?;
+            child = checkpoint.run(Mode::Continue).await?;
         } else if mode == "continue" && child.is_some() {
-            child = self.checkpoint.run(Mode::Continue).await?;
+            child = checkpoint.run(Mode::Continue).await?;
         }
         if let Some(child) = child {
             record["state"] = child["state"].clone();
@@ -176,11 +398,10 @@ impl Job<'_> {
     }
 
     async fn complete(&self, record: &mut Value, fresh: bool, mode: &str) -> Result<Value> {
-        let prepared = record["phase"] == "prepared" && record["captureRequested"] != true;
+        let claimed = record["captureRequested"] == true || record["hostRequested"] == true;
+        let prepared = record["phase"] == "prepared" && !claimed;
         if mode == "prepare" || (mode == "observe" && prepared) {
-            if record["captureRequested"] == true
-                || (prepared && !record["protectedResult"].is_null())
-            {
+            if claimed || (prepared && !record["protectedResult"].is_null()) {
                 return output(record);
             }
             record["state"] = json!("running");
@@ -191,14 +412,14 @@ impl Job<'_> {
             }
             self.advance(record, fresh, mode).await?;
         }
-        protect(record, self.checkpoint, self.encryption)?;
+        protect(record, self.checkpoint.as_ref(), self.encryption)?;
         save_job(self.file, record, false)?;
         output(record)
     }
 }
 
 impl Manager {
-    pub async fn capture(
+    pub async fn operation(
         &self,
         raw: &Value,
         encryption: &Service,
@@ -217,12 +438,17 @@ impl Manager {
         let _lock =
             InstanceLock::acquire(&format!("system-job:{}", digest(reference)), lifetime).await?;
         account(scope, encryption)?;
-        let file = self
-            .data
-            .join("cantrip-os-system-jobs")
-            .join(scope_key(scope))
-            .join(format!("{id}.json"));
-        let checkpoint = Checkpoint::new(admission(&command), &self.data, encryption, lifetime)?;
+        let file = job_path(&self.data, scope, id);
+        let checkpoint = if command["action"] == "capture" {
+            Some(Checkpoint::new(
+                admission(&command),
+                &self.data,
+                encryption,
+                lifetime,
+            )?)
+        } else {
+            None
+        };
         let current = load_job(&file, &command)?;
         let fresh = current.is_none();
         let mut record = match (current, mode.as_str()) {
@@ -246,7 +472,8 @@ impl Manager {
         }
         let job = Job {
             file: &file,
-            checkpoint: &checkpoint,
+            root: &self.data,
+            checkpoint,
             encryption,
             lifetime,
         };
@@ -263,7 +490,7 @@ impl Manager {
                 record["protectedResult"] = Value::Null;
                 record["diagnostic"] = json!(error.to_string());
                 save_job(&file, &mut record, false)?;
-                protect(&mut record, &checkpoint, encryption)?;
+                protect(&mut record, job.checkpoint.as_ref(), encryption)?;
                 save_job(&file, &mut record, false)?;
                 output(&record)
             }

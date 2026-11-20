@@ -1,15 +1,27 @@
-use super::carrier::DeliveryUnknown;
+use super::{archive_io::hexadecimal, carrier::DeliveryUnknown};
 use crate::filesystem::Scope;
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use bytes::Bytes;
 use cantrip_wire::{Value, parse_json_text};
-use http_body_util::{BodyExt, Full, Limited};
-use hyper::{Method, Request, Response, StatusCode, body::Incoming, client::conn::http1};
+use http_body_util::{BodyExt, Full, Limited, StreamBody, combinators::UnsyncBoxBody};
+use hyper::{
+    Method, Request, Response, StatusCode,
+    body::{Frame, Incoming},
+    client::conn::http1,
+};
 use hyper_util::rt::TokioIo;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use std::{env, ffi::OsStr, fmt::Display, time::Duration};
+use sha2::{Digest, Sha256};
+use std::{
+    env,
+    ffi::OsStr,
+    fmt::Display,
+    io,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite},
     task::JoinSet,
     time::timeout,
 };
@@ -44,6 +56,17 @@ pub(super) struct ImageExport {
     body: Incoming,
     _connection: JoinSet<Result<(), hyper::Error>>,
 }
+
+#[derive(Debug)]
+pub(super) struct ImageUploadChanged;
+
+impl std::fmt::Display for ImageUploadChanged {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("The staged system archive changed during upload; no root was activated.")
+    }
+}
+
+impl std::error::Error for ImageUploadChanged {}
 
 impl ImageExport {
     pub async fn next(&mut self, scope: &Scope) -> Result<Option<Bytes>> {
@@ -194,11 +217,87 @@ impl LocalDocker {
         path: &str,
         body: Option<&Value>,
     ) -> Result<(Response<Incoming>, JoinSet<Result<(), hyper::Error>>)> {
+        let mut request = request_builder(method, path);
+        let payload = if let Some(body) = body {
+            request = request.header("content-type", "application/json");
+            Bytes::from(body.stringify())
+        } else {
+            Bytes::new()
+        };
+        let body = Full::new(payload)
+            .map_err(|never| match never {})
+            .boxed_unsync();
+        self.send(request.body(body)?).await
+    }
+
+    async fn send(
+        &self,
+        request: Request<UnsyncBoxBody<Bytes, io::Error>>,
+    ) -> Result<(Response<Incoming>, JoinSet<Result<(), hyper::Error>>)> {
         #[cfg(unix)]
         let socket = tokio::net::UnixStream::connect(&self.0).await?;
         #[cfg(windows)]
         let socket = tokio::net::windows::named_pipe::ClientOptions::new().open(&self.0)?;
-        response(socket, method, path, body).await
+        response(socket, request).await
+    }
+
+    pub async fn load_image(
+        &self,
+        file: tokio::fs::File,
+        size: u64,
+        sha256: &str,
+        scope: &Scope,
+    ) -> Result<()> {
+        scope.check()?;
+        let proof = Arc::new(Mutex::new((0_u64, Sha256::new())));
+        let stream =
+            futures::stream::try_unfold((file, proof.clone()), |(mut file, proof)| async {
+                let mut buffer = vec![0; 64 * 1024];
+                let size = file.read(&mut buffer).await?;
+                if size == 0 {
+                    return Ok::<_, io::Error>(None);
+                }
+                buffer.truncate(size);
+                {
+                    let mut proof = proof.lock().expect("image upload proof");
+                    proof.0 += size as u64;
+                    proof.1.update(&buffer);
+                }
+                Ok(Some((Frame::data(Bytes::from(buffer)), (file, proof))))
+            });
+        let request = request_builder(Method::POST, "/images/load?quiet=true")
+            .header("content-type", "application/x-tar")
+            .header("content-length", size)
+            .body(StreamBody::new(stream).boxed_unsync())?;
+        let exchange = async {
+            let (response, _connection) = self.send(request).await?;
+            let status = response.status();
+            let reply = collect(response).await?;
+            ensure!(
+                status == StatusCode::OK,
+                "Docker image load returned HTTP {status}."
+            );
+            let text = std::str::from_utf8(&reply)?;
+            for line in text.lines().filter(|line| !line.trim().is_empty()) {
+                let event = parse_json_text(line)
+                    .map_err(|_| anyhow!("Docker returned an invalid image-load receipt."))?;
+                ensure!(
+                    event.is_object() && event["error"].is_null() && event["errorDetail"].is_null(),
+                    "Docker reported an incomplete image load."
+                );
+            }
+            let (received, hash) = &*proof.lock().expect("image upload proof");
+            ensure!(
+                *received == size && hexadecimal(hash.clone()) == sha256,
+                ImageUploadChanged
+            );
+            Ok(())
+        };
+        tokio::select! {
+            biased;
+            _ = scope.stopped() => bail!("Worker stopped during Docker image load."),
+            result = timeout(Duration::from_secs(300), exchange) => result?,
+        }
     }
 
     async fn read_response(
@@ -232,27 +331,21 @@ impl LocalDocker {
     }
 }
 
+fn request_builder(method: Method, path: &str) -> hyper::http::request::Builder {
+    Request::builder()
+        .method(method)
+        .uri(format!("/v1.41{path}"))
+        .header("host", "localhost")
+        .header("connection", "close")
+}
+
 async fn response(
     socket: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    method: Method,
-    path: &str,
-    body: Option<&Value>,
+    request: Request<UnsyncBoxBody<Bytes, io::Error>>,
 ) -> Result<(Response<Incoming>, JoinSet<Result<(), hyper::Error>>)> {
     let (mut requests, connection) = http1::handshake(TokioIo::new(socket)).await?;
     let mut owned = JoinSet::new();
     owned.spawn(connection);
-    let mut request = Request::builder()
-        .method(method)
-        .uri(format!("/v1.41{path}"))
-        .header("host", "localhost")
-        .header("connection", "close");
-    let payload = if let Some(body) = body {
-        request = request.header("content-type", "application/json");
-        Bytes::from(body.stringify())
-    } else {
-        Bytes::new()
-    };
-    let request = request.body(Full::new(payload))?;
     Ok((requests.send_request(request).await?, owned))
 }
 

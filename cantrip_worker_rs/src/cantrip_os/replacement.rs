@@ -145,7 +145,11 @@ pub(super) async fn initialize_caches(
     Ok(())
 }
 
-fn mounted_configuration(original: &Value, instance: &Value, mounts: &[Value]) -> Result<Value> {
+pub(super) fn mounted_configuration(
+    original: &Value,
+    instance: &Value,
+    mounts: &[Value],
+) -> Result<Value> {
     let mut config = original["Config"].clone();
     let prior = load_mounts(instance, &bindings(original, instance)?)?;
     let previous_target = |path: &Value| prior.iter().any(|mount| &mount["Target"] == path);

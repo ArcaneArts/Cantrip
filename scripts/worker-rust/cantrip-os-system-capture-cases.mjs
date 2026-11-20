@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createReadStream } from "node:fs";
-import { access, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer, request } from "node:http";
 import path from "node:path";
 import { decryptCantripOsSystemOperationResult } from "../../packages/crypto/dist/index.js";
@@ -16,8 +16,10 @@ async function carrier(root, socket, container) {
   assert.equal(endpoint.protocol, "unix:");
   const proxyPath = path.join(root, "system-docker.sock");
   const effects = [];
+  const transitions = [];
   let dropped = false;
   let cutExport = false;
+  let dropTransition;
   const proxy = createServer((incoming, response) => {
     const url = new URL(incoming.url, "http://docker");
     const decoded = decodeURIComponent(url.pathname);
@@ -29,6 +31,10 @@ async function carrier(root, socket, container) {
     if (transition?.[1] === container) effects.push(transition[2]);
     const exporting = /\/images\/sha256:[a-f0-9]{64}\/get$/u.test(decoded);
     if (exporting) effects.push("export");
+    const mutation =
+      incoming.method === "POST" &&
+      /\/(load|create|rename|start|stop|update)$/u.exec(decoded)?.[1];
+    if (mutation) transitions.push(mutation);
     const upstream = request(
       {
         socketPath: decodeURIComponent(endpoint.pathname),
@@ -39,6 +45,16 @@ async function carrier(root, socket, container) {
       (reply) => {
         if (commit && reply.statusCode === 201 && !dropped) {
           dropped = true;
+          reply.once("end", () => response.destroy());
+          reply.resume();
+          return;
+        }
+        if (
+          mutation &&
+          mutation === dropTransition &&
+          (reply.statusCode === 200 || reply.statusCode === 201)
+        ) {
+          dropTransition = undefined;
           reply.once("end", () => response.destroy());
           reply.resume();
           return;
@@ -64,6 +80,10 @@ async function carrier(root, socket, container) {
   return {
     endpoint: "unix://" + proxyPath,
     effects,
+    transitions,
+    dropMutation: (mutation) => {
+      dropTransition = mutation;
+    },
     interruptExport: () => {
       cutExport = true;
     },
@@ -85,6 +105,7 @@ export async function verifyCantripOsSystemCapture({
   scopeKey,
   repositoryKey,
   image,
+  replacement,
   restartWorker,
 }) {
   // Reuse the attached guest's identity on a tiny fixture so Docker export
@@ -96,8 +117,13 @@ export async function verifyCantripOsSystemCapture({
   await docker("cp", `${container}:${stateDir}/instance.json`, identity);
   await docker("rename", container, name + "-placement");
   const ids = [];
+  const replacements = [];
+  const spareImages = [];
   let target, proxy;
   try {
+    const bind = path.join(root, "fixture-bind");
+    await mkdir(bind);
+    await writeFile(path.join(bind, "retained"), "host-bind");
     target = await docker(
       "run",
       "--detach",
@@ -108,6 +134,9 @@ export async function verifyCantripOsSystemCapture({
       "io.cantrip.os=foundation",
       "--mount",
       "type=volume,dst=/fixture-mount",
+      ...(replacement
+        ? ["--mount", `type=bind,source=${bind},dst=/fixture-bind,readonly`]
+        : []),
       "--name",
       name,
       image,
@@ -120,9 +149,9 @@ export async function verifyCantripOsSystemCapture({
     await docker(
       "exec",
       target,
-      "touch",
-      "/fixture-system-data",
-      "/fixture-mount/private",
+      "sh",
+      "-c",
+      "printf A > /fixture-system-data && printf one > /fixture-mount/private",
     );
     const socket =
       process.env.DOCKER_HOST ||
@@ -278,10 +307,45 @@ export async function verifyCantripOsSystemCapture({
           ),
       ),
     );
+    if (replacement) {
+      const { verifyCantripOsSystemReplacement } =
+        await import("./cantrip-os-system-replacement-cases.mjs");
+      await verifyCantripOsSystemReplacement({
+        call,
+        status,
+        operations,
+        fence,
+        open,
+        ready,
+        opened,
+        docker,
+        proxy,
+        target,
+        name,
+        image,
+        root,
+        stateDir,
+        config,
+        restartWorker,
+        replacements,
+        spareImages,
+      });
+    }
   } finally {
     try {
       await proxy?.close();
     } finally {
+      for (const id of replacements) {
+        const owned = await docker(
+          "ps",
+          "-aq",
+          "--filter",
+          `label=io.cantrip.os.replacement.operation=${id}`,
+        );
+        for (const container of owned.split("\n").filter(Boolean)) {
+          await docker("rm", "-f", "-v", container);
+        }
+      }
       if (target) await docker("rm", "-f", "-v", target);
       await docker("rename", container, name);
       for (const id of ids) {
@@ -289,6 +353,7 @@ export async function verifyCantripOsSystemCapture({
         const known = await docker("image", "ls", "--quiet", tag);
         if (known) await docker("image", "rm", tag);
       }
+      for (const tag of spareImages) await docker("image", "rm", tag);
     }
   }
 }
