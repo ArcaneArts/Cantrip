@@ -11,14 +11,23 @@ const prompt = "Retain this exact deferred input 🌲";
 const digest = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-export async function deferredCodex(root, codex) {
-  const executable = path.join(root, "codex-deferral-fixture");
+export async function fixtureCodex(
+  root,
+  codex,
+  {
+    scenario = "deferred",
+    marker = path.join(root, "deferred-codex-once"),
+    input = prompt,
+  } = {},
+) {
+  const executable = path.join(root, `codex-${scenario}-fixture`);
   const args = [
     process.execPath,
     fileURLToPath(new URL("./deferred-codex-peer.mjs", import.meta.url)),
     path.resolve(codex),
-    path.join(root, "deferred-codex-once"),
-    prompt,
+    marker,
+    input,
+    scenario,
   ];
   const quote = (text) => `'${text.replaceAll("'", "'\\''")}'`;
   await writeFile(

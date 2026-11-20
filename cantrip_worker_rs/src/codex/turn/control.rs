@@ -43,18 +43,20 @@ impl Action<'_> {
 }
 
 pub(super) struct Binding {
-    session: Value,
+    pub(super) session: Value,
     permission: Value,
     published: watch::Sender<Option<bool>>,
     checkpoint: OnceLock<output::Continuation>,
     pause_control: Mutex<()>,
-    thread_version: u64,
+    pub(super) thread_version: u64,
+    pub(super) interactions: OnceLock<super::interactions::Handle>,
 }
 
 impl Binding {
     pub(super) fn new(session: Value, permission: Value, thread_version: u64) -> Self {
         Self {
             session,
+            interactions: OnceLock::new(),
             permission,
             published: watch::channel(None).0,
             checkpoint: OnceLock::new(),
@@ -67,7 +69,7 @@ impl Binding {
         self.published.send_replace(Some(ok));
     }
 
-    fn matches(&self, command: &Value) -> bool {
+    pub(super) fn matches(&self, command: &Value) -> bool {
         (command["threadId"].is_null() || command["threadId"] == self.session["threadId"])
             && (command["nativeRuntimeGeneration"].is_null()
                 || command["nativeRuntimeGeneration"] == self.session["runtimeGeneration"])
@@ -143,6 +145,7 @@ impl Active {
 impl Turns {
     pub(crate) async fn control(&self, command: &Value) -> Result<Value> {
         let action = match command["control"]["kind"].as_str() {
+            Some("reply") => return self.interaction(command).await,
             Some("interrupt") => Action::Stop,
             Some("pause") => Action::Pause(command["control"]["paused"] == true),
             _ => bail!("This native control requires a different managed execution path."),

@@ -1,5 +1,6 @@
 //! Owns each managed Codex child, its RPC session and native inference router.
 mod history;
+mod interaction_requests;
 mod launch;
 mod resources;
 mod revocation;
@@ -65,6 +66,7 @@ struct Inner {
     router: Router,
     resources: Arc<resources::Resources>,
     queue_observers: QueueObservers,
+    interaction_requests: interaction_requests::Requests,
     retirement: Promise<()>,
     external_auth: Option<Arc<dyn ExternalAuth>>,
     closing: Mutex<Option<Promise<()>>>,
@@ -214,6 +216,7 @@ impl Runtime {
             adapter.generation().clone(),
         ));
         let queue_observers = QueueObservers::default();
+        let interaction_requests = interaction_requests::Requests::default();
         let retirement = Promise::spawn(pump(
             router.clone(),
             events,
@@ -225,6 +228,7 @@ impl Runtime {
                 external_auth: external_auth.clone(),
                 resources: resources.clone(),
                 queue_observers: queue_observers.clone(),
+                interaction_requests: interaction_requests.clone(),
             },
         ));
         let runtime = Self(Arc::new_cyclic(|inner| Inner {
@@ -241,6 +245,7 @@ impl Runtime {
             router,
             resources,
             queue_observers,
+            interaction_requests,
             retirement,
             external_auth,
             closing: Mutex::new(None),
@@ -358,6 +363,27 @@ impl Runtime {
         self.0.session.remember_secret(secret);
     }
 
+    pub(in crate::codex) fn interaction_requests(
+        &self,
+        thread: &JsString,
+    ) -> Result<interaction_requests::Subscription> {
+        self.assert_live()?;
+        self.0
+            .interaction_requests
+            .subscribe(&self.0.session, thread)
+    }
+
+    pub(in crate::codex) fn reply_to_interaction(
+        &self,
+        thread: &JsString,
+        frame: Value,
+    ) -> Result<bool> {
+        self.assert_live()?;
+        self.0
+            .interaction_requests
+            .reply(&self.0.session, thread, frame)
+    }
+
     pub fn send(&self, message: Value) -> Result<()> {
         self.assert_live()?;
         self.0.session.send(message)
@@ -395,6 +421,7 @@ struct NativeCallbacks {
     external_auth: Option<Arc<dyn ExternalAuth>>,
     resources: Arc<resources::Resources>,
     queue_observers: QueueObservers,
+    interaction_requests: interaction_requests::Requests,
 }
 
 async fn pump(
@@ -410,6 +437,7 @@ async fn pump(
         external_auth,
         resources,
         queue_observers,
+        interaction_requests,
     } = native;
     let mut callbacks = JoinSet::new();
     let started = Instant::now();
@@ -452,6 +480,11 @@ async fn pump(
                     if let Some(observer) = observer {
                         observer();
                     }
+                }
+                if let EventKind::Message(message) = &event_data.kind
+                    && interaction_requests.receive(&session, message)
+                {
+                    continue;
                 }
                 let exited = matches!(event_data.kind, EventKind::ProcessExited(_));
                 if matches!(event_data.kind, EventKind::TransportLost(_)) {

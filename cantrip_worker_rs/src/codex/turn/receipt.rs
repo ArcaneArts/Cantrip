@@ -657,6 +657,62 @@ impl<'a> Receipt<'a> {
         self.settle(body, "applied").await
     }
 
+    pub(super) async fn register_interaction(
+        &self,
+        descriptor: &Value,
+        guard: &Guard,
+    ) -> Result<()> {
+        self.scope.identity()?;
+        let body = checked(
+            "nativePendingRequestSchema",
+            &json!({
+                "workerId":self.client.configuration.lock().unwrap().worker_id,
+                "session":self.session,"activationGeneration":self.operation.activation,
+                "nativeRequestId":descriptor["nativeRequestId"],"requestMethod":descriptor["requestMethod"],"turnId":descriptor["turnId"],
+            }),
+        )?;
+        let result = self
+            .client
+            .exchange(
+                "pending",
+                "/api/internal/native-commands/pending",
+                &body,
+                guard,
+            )
+            .await?;
+        self.scope.identity()?;
+        anyhow::ensure!(
+            result == json!({"registered":true}),
+            "Core did not acknowledge the native pending request."
+        );
+        Ok(())
+    }
+
+    pub(super) async fn admit_interaction_reply(
+        &self,
+        scope: Scope,
+        descriptor: &Value,
+        result: &Value,
+    ) -> Result<Receipt<'_>> {
+        anyhow::ensure!(
+            scope.identity()? == self.scope.identity()?,
+            "The interaction owner changed."
+        );
+        let (receipt, _, _) = self
+            .client
+            .admit_native(
+                scope,
+                self.session.clone(),
+                "serverRequest/reply",
+                &json!({"result":result}),
+                &json!({"reply":descriptor}),
+                self.operation.activation.clone(),
+                "gui",
+            )
+            .await?;
+        Ok(receipt)
+    }
+
     pub async fn prepare(&self) -> Result<()> {
         self.bind("bind-preparation", "accepted").await
     }
@@ -1066,8 +1122,14 @@ impl Client {
         )?;
         let mut intent = json!({
             "scope":"thread", "settingKeys":Vec::<Value>::new(), "expectedTurnId":Value::Null,
-            "permissionProfileId":command["permissionProfileId"], "workerGeneration":self.generation,
+            "workerGeneration":self.generation,
         });
+        if let Some(permission) = command
+            .get("permissionProfileId")
+            .filter(|value| !value.is_null())
+        {
+            intent["permissionProfileId"] = permission.clone();
+        }
         if origin == "terminal" && matches!(method, "skills/list" | "turn/start") {
             intent["pathsWithinPlacement"] = json!(true);
         }
@@ -1128,6 +1190,10 @@ impl Client {
             "payloadDigest":digest, "protectedPayload":envelope,
             "expectedActivationGeneration":activation,
         });
+        if method == "serverRequest/reply" {
+            request["reply"] = command["reply"].clone();
+            request["intent"]["expectedTurnId"] = command["reply"]["turnId"].clone();
+        }
         if let Some(claim) = claim {
             request["queueClaim"] = claim.clone();
         }

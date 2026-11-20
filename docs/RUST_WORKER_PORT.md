@@ -7283,3 +7283,31 @@ delivery before Core received it. The worker reopened the Node-serialized
 pending record after restart, saved a matching acknowledgment, and the same
 queued input reached the local provider and chat history once. The settings
 smoke covered ordinary settings, account defaults and permission recovery.
+
+## 189. Route protected replies for managed GUI turns
+
+Reference commit 19df79b0a95d7e6110097acb8133c76452020a01 (#3352).
+
+The worker owns native interaction requests on the exact managed root
+thread. It registers command and file approvals, permission requests,
+user input, and MCP elicitation with Core before publishing the request.
+Protected requests and responses use the existing interaction component
+key and request-key context. The original tracked turn, native runtime,
+route, account, and activation constrain a reply.
+
+A separate Core receipt claims the native request before the worker
+responds on its owning connection. The connection consumes a request
+once and fences a reply that lost to native resolution. Cancel, expiry,
+and turn teardown retire pending requests and preserve safe native
+responses. The active turn waits for any submitted reply to finish its
+settlement before releasing local interaction ownership.
+
+The local macOS ARM64 smoke used the production Rust worker, Rust Core
+with PGlite, and bundled Codex. A controlled native approval tested the
+TypeScript crypto in both directions, a reply bound to a different request,
+and replay rejection. Exactly one native decline reached the connection,
+and the turn completed. The deferred-input restart and settings smokes
+also passed. The Windows x64 GNU worker check passed.
+
+Console-owned and restored turns, subagent interactions, and pending
+Plan Mode question projection require further integration.
