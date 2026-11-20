@@ -35,6 +35,7 @@ export function launchActualWorker(
     traceShutdown = false,
     isolatedProcessGroup = false,
     homeDirectory,
+    workerBinary = process.env.CANTRIP_TEST_WORKER_BINARY,
     workerPackage = process.env.CANTRIP_TEST_WORKER_PACKAGE ??
       path.join(repositoryRoot, "cantrip_worker"),
     environment: extraEnvironment = {},
@@ -75,7 +76,11 @@ export function launchActualWorker(
       : {}),
     ...extraEnvironment,
   };
-  if (homeDirectory) {
+  if (workerBinary) {
+    const home = homeDirectory ?? dataDirectory;
+    environment.HOME = home;
+    environment.USERPROFILE = home;
+  } else if (homeDirectory) {
     environment.CANTRIP_TEST_WORKER_HOME = homeDirectory;
     environment.NODE_OPTIONS = [
       environment.NODE_OPTIONS,
@@ -102,10 +107,10 @@ export function launchActualWorker(
       .join(" ");
   delete environment.CANTRIP_WORKER_TOKEN;
   const child = spawn(
-    process.execPath,
-    [path.join(workerPackage, "dist/index.js")],
+    workerBinary ? path.resolve(workerBinary) : process.execPath,
+    workerBinary ? [] : [path.join(workerPackage, "dist/index.js")],
     {
-      cwd: workerPackage,
+      cwd: workerBinary ? repositoryRoot : workerPackage,
       env: environment,
       detached: isolatedProcessGroup && process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],

@@ -7701,8 +7701,8 @@ The previous-model compaction request excluded the original prompt.
 The live Project Goal handoff regression passed against the production Rust
 server with PGlite.
 
-This fixture restarted after the first destination keeper record existed.
-Full Task provider handoff against the production Rust Core remains unverified.
+This fixture restarted after the first destination keeper record existed
+and used controlled Core responses.
 
 ## 204. Preserve the destination Task Goal across a lost finish response
 
@@ -7724,3 +7724,30 @@ The previous worker reached the same finish endpoint without a destination
 reservation. The Project Goal handoff regression passed against the
 production Rust server with PGlite. The Task fixture used controlled Core
 responses.
+
+## 205. Run the browser Task transfer against the production Rust services
+
+Reference commit 5179e137f5bf068895b0740df12aa371d9a5817a (#3368).
+
+Core and the worker share the Task retry classifier in
+`cantrip-protocol`. The worker preserves the bounded failure category
+from the native terminal error when redacting a Task response. Provider
+error text stays private. The worker encrypts summaries for explicit Task
+turns using the native turn identity, so terminal delivery updates the same
+summary the client received at turn start.
+
+The local macOS ARM64 browser fixture launched the production Rust server
+in PGlite mode, the production Rust worker and bundled Codex. Loopback
+providers supplied model responses. The browser transferred an unused
+autonomous Goal cycle and received the destination result while the source
+provider was still occupied. It reopened the same completed Goal and
+encrypted transcript across restarts without repeating inference. The
+fixture also verified manual retry after quota failure, completed
+encrypted turn summaries, and retention of a paused admission across
+server and worker restart. The native lost-finish regression from cycle
+204 passed on the same worker build.
+
+The existing browser fixture selects the native worker through
+`CANTRIP_TEST_WORKER_BINARY`. Use it with
+`CANTRIP_TEST_SERVER_BINARY` and `CANTRIP_CODEX_BIN`, then run
+`node --import tsx scripts/server-rust/actual-folder-client.mjs --runtime rust --task-goal-autonomous-provider-transfer`.

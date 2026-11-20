@@ -123,6 +123,33 @@ struct Pending {
     changed: bool,
 }
 
+#[derive(Debug)]
+pub(super) struct NativeFailure {
+    pub kind: &'static str,
+}
+
+impl NativeFailure {
+    fn classify(error: &Value) -> Self {
+        let evidence = &error["codexErrorInfo"];
+        let reason = evidence.as_js_string().or_else(|| {
+            let fields = evidence.as_object()?;
+            (fields.len() == 1).then(|| fields.keys().next()).flatten()
+        });
+        let kind = cantrip_protocol::task_retry::classify(
+            &json!({"reasonCode":reason, "message":error["message"]}),
+        );
+        Self { kind }
+    }
+}
+
+impl std::fmt::Display for NativeFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("The Codex turn failed.")
+    }
+}
+
+impl std::error::Error for NativeFailure {}
+
 pub(super) struct Settled {
     pub status: &'static str,
     pub result: Result<Value>,
@@ -135,7 +162,7 @@ pub(super) async fn collect(
     turn: &JsString,
     emit: &Emit,
 ) -> Result<Settled> {
-    collect_restored(events, signal, thread, turn, emit, &Value::Null).await
+    collect_restored(events, signal, thread, turn, emit, &Value::Null, false).await
 }
 
 pub(super) async fn collect_restored(
@@ -145,6 +172,7 @@ pub(super) async fn collect_restored(
     turn: &JsString,
     emit: &Emit,
     saved: &Value,
+    task_summary: bool,
 ) -> Result<Settled> {
     let restored = &saved["streamingAgentMessage"];
     let mut message = restored["id"].as_js_string().map(|id| {
@@ -218,6 +246,9 @@ pub(super) async fn collect_restored(
             continue;
         }
         match method {
+            "turn/started" if task_summary => {
+                publisher.summary(&params["turn"], "running", method);
+            }
             "item/agentMessage/delta" => {
                 let (Some(id), Some(part)) = (
                     params["itemId"].as_js_string(),
@@ -325,6 +356,17 @@ pub(super) async fn collect_restored(
                         "item/agentMessage/delta",
                     );
                 }
+                if task_summary {
+                    publisher.summary(
+                        &params["turn"],
+                        if status == "completed" {
+                            status
+                        } else {
+                            "failed"
+                        },
+                        method,
+                    );
+                }
                 let result = match status {
                     "completed" => match publisher.error {
                         Some(error) => Err(error),
@@ -337,7 +379,7 @@ pub(super) async fn collect_restored(
                         ),
                     },
                     "interrupted" => Err(anyhow::anyhow!("The Codex turn was interrupted.")),
-                    _ => Err(anyhow::anyhow!("The Codex turn failed.")),
+                    _ => Err(NativeFailure::classify(&params["turn"]["error"]).into()),
                 };
                 return Ok(Settled { status, result });
             }
@@ -358,6 +400,18 @@ impl Publisher<'_> {
             self.error.get_or_insert(error);
         }
     }
+    fn summary(&mut self, native: &Value, status: &str, method: &str) {
+        let id = concat(&["turn:".into(), self.turn.clone(), ":summary".into()]);
+        let mut correlation = self.correlation(&id, method);
+        correlation["itemId"] = Value::Null;
+        let activity = json!({
+            "type": "turnSummary", "id": id, "status": status,
+            "durationMs": native["durationMs"], "startedAt": native["startedAt"],
+            "completedAt": native["completedAt"], "correlation": correlation,
+        });
+        self.send(json!({"type": "agent.activity", "activity": activity}));
+    }
+
     fn message(
         &mut self,
         id: &JsString,
@@ -420,6 +474,7 @@ mod tests {
             &"turn".into(),
             &emit,
             &saved,
+            false,
         )
         .await?;
         assert_eq!(terminal.result?["text"], "text from before restart");

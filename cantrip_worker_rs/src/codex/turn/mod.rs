@@ -538,12 +538,10 @@ impl Turns {
                 .map_err(|error| protected::redact(incoming, error));
             return (result, None);
         }
-        let encrypted_error = || {
-            anyhow!(if goal {
-                "Encrypted Task turn failed."
-            } else {
-                "Encrypted Task operation failed."
-            })
+        let failure_context = if goal {
+            "Encrypted Task turn failed"
+        } else {
+            "Encrypted Task operation failed"
         };
         let task = (|| {
             params::validate(incoming)?;
@@ -562,7 +560,7 @@ impl Turns {
         })();
         let mut task = match task {
             Ok(task) => task,
-            Err(_) => return (Err(encrypted_error()), None),
+            Err(_) => return (Err(anyhow!("{failure_context}.")), None),
         };
         let restoring = !incoming["taskResumption"].is_null();
         let result = self.run_owned(incoming, emit, Some(&mut task)).await;
@@ -585,7 +583,7 @@ impl Turns {
         }
         let result = result.map_err(|error| {
             if !restoring {
-                encrypted_error()
+                anyhow!(task::failure_message(failure_context, Some(&error)))
             } else if error.is::<task::restore::Failure>() {
                 error
             } else {
@@ -1102,8 +1100,10 @@ impl Turns {
                     (Some(protection), None) => (protection.attach(emit), None),
                     (None, _) => (emit, None),
                 };
+                let task_summary = task.is_some();
                 let observe = async {
-                    let collecting = output::collect(&mut events, &transport, thread, &turn, &emit);
+                    let saved = Value::Null;
+                    let collecting = output::collect_restored(&mut events, &transport, thread, &turn, &emit, &saved, task_summary);
                     let result = if let (Some(receipt), Some(subscribed)) = (&receipt, native_interactions.as_mut()) {
                         let binding = active.control.get().unwrap();
                         interactions::Turn {

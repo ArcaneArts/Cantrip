@@ -32,6 +32,7 @@ pub mod response;
 mod run_configurations;
 mod suspension_storage;
 mod task_content;
+pub mod task_retry;
 mod tasks;
 mod terminals;
 pub use cantrip_wire::value;
