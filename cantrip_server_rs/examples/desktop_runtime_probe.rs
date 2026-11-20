@@ -86,7 +86,7 @@ fn main() -> Result<()> {
     } else {
         let mut child = OwnedChild(
             spawn_service(
-                node_service_command(&node, &resources.join("worker")),
+                worker_command(&node, &resources.join("worker")).map_err(anyhow::Error::msg)?,
                 &worker_environment(&data, &logs, &origin, &token),
                 true,
                 true,
@@ -105,6 +105,10 @@ fn main() -> Result<()> {
     std::io::stdin().read_to_end(&mut input)?;
     if let Some(worker) = worker.as_mut() {
         terminate_child(&mut worker.0);
+        println!(
+            "{}",
+            json!({"event":"desktop.worker.stopped", "exitCode":worker.0.wait()?.code()})
+        );
     }
     terminate_server(&mut server.0);
     let status = server.0.wait()?;

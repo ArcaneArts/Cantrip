@@ -7780,3 +7780,29 @@ comparison against the Node reference. The launcher read the packaged `.env`
 from another working directory and preserved supervisor variable precedence.
 The standalone artifact is opt-in. Desktop, Docker and release worker selection
 remain on the current production path.
+
+## 207. Supervise native workers from the desktop package
+
+Reference commit 8b9ffd67801255847eca7879c2746913911ba9f8 (#3370).
+
+Select the native worker with `pnpm package:desktop-runtime --worker-runtime rust`
+or `pnpm package:app --worker-runtime rust`. The `--from-artifacts` path stages
+the standalone Rust worker binaries and resources without carrying over an
+installation's `.env` or data. Both the embedded worker and packaged linked
+workers use the same `desktop-worker.json` launcher configuration. The
+supervisor owns the worker's stdin pipe and closes it to request shutdown.
+Existing packages can still launch their Node worker without a worker manifest.
+
+The desktop bundle can omit Node when the server's existing-profile converter
+is native. Packaging continues to include the profile converter and its Node
+runtime when the server artifact still uses the JavaScript upgrade path.
+
+On macOS ARM64, a headless probe using the production desktop launch and
+supervision code started both Rust services from the staged runtime in PGlite
+and bundled PostgreSQL modes. The worker answered version requests and
+retained its identity across desktop restarts. Normal shutdown returned zero
+from both services. Killing the supervisor released both child processes and
+the same profile reopened. The staged tree contained neither a Node executable
+nor worker Node modules. The legacy database fixture also upgraded a stopped
+PGlite profile and reopened it through the staged server launcher. The published
+package defaults remain on the current worker runtime.
