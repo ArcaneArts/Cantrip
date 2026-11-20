@@ -51,12 +51,13 @@ export async function createPreparedProjectChat({
     () => call("GET", `${projectUrl}/folder-setup`, 200),
     (row) => assert.equal(row.state, "succeeded", JSON.stringify(row)),
   );
-  await beforeChat?.({ projectId, workspaceId });
+  const placement = await beforeChat?.({ projectId, workspaceId });
   const chatId = randomUUID();
   await call("POST", `${projectUrl}/chats`, 201, {
     id: chatId,
     titleProtection: await label("chat", chatId, title),
     autoTitle: false,
+    ...(placement ? { cantripOsBindingId: placement.bindingId } : {}),
   });
   await eventually(
     () => call("GET", `/api/chats/${chatId}/preparation`, 200),
@@ -64,7 +65,7 @@ export async function createPreparedProjectChat({
       assert.equal(preparation?.phase, "ready", JSON.stringify(preparation)),
     35_000,
   );
-  return { chatId, chatUrl: `/api/chats/${chatId}`, workspaceId };
+  return { chatId, chatUrl: `/api/chats/${chatId}`, workspaceId, placement };
 }
 
 export async function openConsoleView(url, eventually) {

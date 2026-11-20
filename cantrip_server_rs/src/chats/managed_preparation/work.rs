@@ -250,7 +250,11 @@ impl Service {
                 .boxed()
             })
         };
-        let command = json!({"type":"terminal.open","terminalId":terminal["id"],"attachmentId":attachment,"operationId":uuid::Uuid::new_v4().to_string(),"serverId":self.server_id,"worktreePath":current["cwd"],"stateProtection":terminal["stateProtection"],"cols":100,"rows":30,"outputMode":"discard","managedPreparationGeneration":state["generation"],"launch":launch});
+        let location = current
+            .get("osExecution")
+            .filter(|value| !value.is_null())
+            .unwrap_or(&current["cwd"]);
+        let command = json!({"type":"terminal.open","terminalId":terminal["id"],"attachmentId":attachment,"operationId":uuid::Uuid::new_v4().to_string(),"serverId":self.server_id,"worktreePath":location,"stateProtection":terminal["stateProtection"],"cols":100,"rows":30,"outputMode":"discard","managedPreparationGeneration":state["generation"],"launch":launch});
         let opened = (self.request_worker)(
             owner.to_owned(),
             worker.to_owned(),
