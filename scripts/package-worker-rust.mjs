@@ -105,6 +105,14 @@ export async function packageNativeWorker({
     await bundleCantripCua(await realpath(inputs.cua), bin, {
       platform,
     });
+    const ptyNotices = path.join(bin, "licenses", "cantrip-pty");
+    await mkdir(ptyNotices, { recursive: true });
+    for (const name of ["LICENSE", "NOTICE"]) {
+      await cp(
+        path.join(root, "crates", "cantrip-pty", name),
+        path.join(ptyNotices, name),
+      );
+    }
     if (target.id === "win32-x64") {
       await execute("powershell.exe", [
         "-NoProfile",
