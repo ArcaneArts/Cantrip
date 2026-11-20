@@ -8468,3 +8468,26 @@ committed the protected reply. Five focused Node reference tests passed.
 Repeat with `scripts/worker-rust/standalone-turn-smoke.mjs --host-skills`.
 Standalone audience-based skills, guest skills and customization commands
 remain open. The fixture covered protected Project Chat input on macOS.
+
+## 234. Apply Standalone Chat skill audiences
+
+Reference commit `f5c2e274972839129c4e6776142ec381677ef0b0` (#3397).
+
+The Rust worker resolves Core's existing skill audience keys against the
+provider account, worker user and configured Codex skill directories. It
+builds private directory links for the accepted skills and registers them with
+the admitted Standalone Chat runtime. Codex suppresses its automatic scan of
+the worker user's own `.agents/skills` directory for this profile. Project
+runtimes keep their existing discovery behavior. A selection is shared by
+concurrent turns with the same admitted skills. Audience changes replace the
+runtime roots after turns using the previous selection finish.
+
+On macOS ARM64, the fixture used production Rust Core in PGlite mode, the
+Rust worker and rebuilt Codex 0.166.0. It set audiences through the public
+API and verified the skills in the loopback Responses requests after selecting,
+replacing and clearing the allowed user skills. Every turn committed its
+protected reply. The packaged Codex verification and the focused Node audience
+reference passed. Repeat with
+`scripts/worker-rust/standalone-turn-smoke.mjs --standalone-skills`.
+Guest skill selection and settings commands remain separate work. The
+runtime isolation was exercised with the patched macOS bundle.

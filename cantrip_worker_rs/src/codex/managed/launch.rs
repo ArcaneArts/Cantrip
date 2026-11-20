@@ -23,6 +23,7 @@ pub struct Profile {
     pub provider_environment: HashMap<String, String>,
     pub external_login: Option<Value>,
     pub extra_skill_roots: Vec<PathBuf>,
+    pub isolate_user_skills: bool,
     pub native_host: bool,
     pub diagnostic_policy: Policy,
     pub grok: Option<GrokAccount>,
@@ -42,6 +43,7 @@ impl Profile {
             provider_environment: HashMap::new(),
             external_login: None,
             extra_skill_roots: Vec::new(),
+            isolate_user_skills: false,
             native_host: false,
             diagnostic_policy: Policy::default(),
             grok: None,
@@ -112,6 +114,11 @@ impl Host {
                 .as_ref()
                 .map(|home| path_text(&self.cwd, &home.join("config.toml")))
                 .transpose()?,
+        );
+        set_env(
+            &mut options.environment,
+            "CANTRIP_CODEX_ISOLATE_USER_SKILLS",
+            profile.isolate_user_skills.then(|| "1".into()),
         );
         for (key, value) in &profile.provider_environment {
             set_env(&mut options.environment, key, Some(value.clone()));

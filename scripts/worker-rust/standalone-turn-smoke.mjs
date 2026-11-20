@@ -2,7 +2,7 @@
 // A disposable loopback provider is the only execution substitute.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -53,6 +53,7 @@ const { values } = parseArgs({
     codegraph: { type: "boolean" },
     policies: { type: "boolean" },
     "host-skills": { type: "boolean" },
+    "standalone-skills": { type: "boolean" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -2659,6 +2660,104 @@ async function verifyHostSkills() {
   );
 }
 
+const audienceSkills = [
+  ["account", "cantrip-account-audience-fixture"],
+  ["codexUser", "cantrip-global-audience-fixture"],
+  ["user", "cantrip-user-audience-fixture"],
+];
+
+async function setupAudienceSkills(data, home, codexHome) {
+  const roots = {
+    account: path.join(data, "codex-home", "skills"),
+    codexUser: path.join(codexHome, "skills"),
+    user: path.join(home, ".agents", "skills"),
+  };
+  return await Promise.all(
+    audienceSkills.map(async ([location, name]) => {
+      const directory = path.join(roots[location], name);
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        path.join(directory, "SKILL.md"),
+        `---\nname: ${name}\ndescription: Audience fixture for ${location}.\n---\n\nExample skill body.\n`,
+      );
+      const audienceKey = createHash("sha256")
+        .update(
+          `cantrip-skill-audience:v1\0${location}\0${roots[location]}\0${name}`,
+        )
+        .digest("base64url");
+      return { name, audienceKey };
+    }),
+  );
+}
+
+async function verifyStandaloneSkills(skills) {
+  const model = await createModel("Standalone skill audience fixture");
+  await call("PATCH", "/api/settings", 200, {
+    defaultModelId: model.profile.id,
+    autoNameChats: false,
+  });
+  const setAudience = ({ audienceKey }, audience) =>
+    call("PATCH", "/api/skill-audiences", 200, {
+      workerId,
+      providerId: model.provider.id,
+      audienceKey,
+      audience,
+    });
+  async function verify(visible) {
+    const { chatUrl } = await createChat("Standalone skill audiences", false);
+    const answer = "The standalone turn completed with its effective skills.";
+    const reply = model.model.reply({ text: answer });
+    await call(
+      "POST",
+      `${chatUrl}/turns`,
+      202,
+      await encryptedTurn("Inspect the available skills.", model.profile.id),
+    );
+    await eventually(
+      () => reply.request,
+      (request) => assert.equal(request?.completed, true),
+      35_000,
+    );
+    const input = JSON.stringify(reply.request.input.input);
+    for (const { name } of skills) {
+      assert.equal(
+        input.includes(name),
+        visible.includes(name),
+        `Native skill list for ${name}`,
+      );
+    }
+    await eventually(
+      async () => {
+        const { messages } = await call("GET", `${chatUrl}/messages`, 200);
+        return Promise.all(messages.map(openMessage));
+      },
+      (messages) =>
+        assert.ok(
+          messages.some((message) =>
+            message.content.some((item) => item.text === answer),
+          ),
+        ),
+    );
+  }
+  await setAudience(skills[0], "chat");
+  await setAudience(skills[1], "both");
+  await setAudience(skills[2], "ide");
+  await verify([skills[0].name, skills[1].name]);
+  await setAudience(skills[0], "ide");
+  await setAudience(skills[1], "ide");
+  await setAudience(skills[2], "chat");
+  await verify([skills[2].name]);
+  await setAudience(skills[2], "ide");
+  await verify([]);
+  assert.deepEqual(model.model.failures, []);
+  console.log(
+    JSON.stringify({
+      suite: "native-standalone-skill-audiences",
+      passed: true,
+    }),
+  );
+}
+
 async function verifyStandaloneBehavior() {
   await verifyProviderCatalog({
     call,
@@ -2740,6 +2839,10 @@ try {
   const data = path.join(root, "worker");
   const home = path.join(root, "home");
   await mkdir(home);
+  const codexFixtureHome = path.join(home, ".codex-fixture");
+  const standaloneSkills = values["standalone-skills"]
+    ? await setupAudienceSkills(data, home, codexFixtureHome)
+    : null;
   if (planQuestion) {
     const codexHome = path.join(data, "codex-home");
     await mkdir(codexHome, { recursive: true, mode: 0o700 });
@@ -2751,6 +2854,7 @@ try {
   }
   const environment = fixtureEnvironment(path.join(root, "server"));
   environment.HOME = home;
+  if (standaloneSkills) environment.CODEX_HOME = codexFixtureHome;
   if (values["host-skills"]) {
     const codexHome = path.join(home, ".codex-fixture");
     const skill = path.join(codexHome, "skills", fixtureSkill);
@@ -2845,7 +2949,9 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (values["host-skills"]) {
+  if (standaloneSkills) {
+    await verifyStandaloneSkills(standaloneSkills);
+  } else if (values["host-skills"]) {
     await verifyHostSkills();
   } else if (values.policies) {
     await verifyPolicies();

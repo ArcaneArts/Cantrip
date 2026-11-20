@@ -121,6 +121,7 @@ pub(in crate::codex) async fn profile(
     };
     let mut profile = Profile::new(id, runtime_home);
     profile.configuration_home = overlay;
+    profile.isolate_user_skills = standalone;
     profile.extra_skill_roots.extend(skill_root);
     Ok(profile)
 }
