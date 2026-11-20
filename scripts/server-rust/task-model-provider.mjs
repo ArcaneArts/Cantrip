@@ -17,6 +17,7 @@ export function modelFunctions(tools, namespace) {
 export async function taskModelProvider({
   allowMcpDiscoveryProbe = false,
   observeStreams = false,
+  modelMetadata = {},
   additionalModels = [],
 } = {}) {
   const replies = [],
@@ -26,7 +27,7 @@ export async function taskModelProvider({
     sockets = new Set();
   // Use the bundled runtime's normal model metadata against this local provider.
   const model = "gpt-5.5";
-  const models = [{ id: model }, ...additionalModels];
+  const models = [{ ...modelMetadata, id: model }, ...additionalModels];
   let nextResponse = 0;
   const send = (response, event) =>
     response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);

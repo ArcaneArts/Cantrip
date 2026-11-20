@@ -3,6 +3,7 @@
 mod acknowledged;
 pub(crate) mod autonomous;
 mod compact;
+mod computer_use;
 pub(crate) mod console;
 pub(crate) mod context;
 mod control;
@@ -109,6 +110,7 @@ pub(crate) struct Turns {
     suspensions: super::suspension_store::Store,
     handoffs: handoff::Coordinator,
     goal_recoveries: goal_recovery::Observations,
+    computer_use: computer_use::Desktop,
 }
 
 struct TaskTurn {
@@ -248,6 +250,7 @@ impl Turns {
         task_inputs: task_inputs::Client,
         task_outcomes: Arc<TaskDelivery>,
         guest_files: Arc<ProductFiles>,
+        desktop: &crate::desktop_inventory::DesktopInventory,
     ) -> Result<Self> {
         let (data, worker) = {
             let config = configuration.lock().unwrap();
@@ -262,6 +265,10 @@ impl Turns {
             &data,
         ));
         Ok(Self {
+            computer_use: computer_use::Desktop {
+                previews: desktop.previews(),
+                binary: desktop.helper_binary(),
+            },
             handoffs: handoff::Coordinator::new(data.clone(), worker),
             goal_recoveries: goal_recovery::Observations::default(),
             suspensions: super::suspension_store::Store::new(&data, encryption.clone()),
@@ -551,11 +558,16 @@ impl Turns {
         Ok(None)
     }
 
-    pub(crate) async fn run(&self, incoming: &Value, emit: Emit) -> (Result<Value>, Option<Value>) {
+    pub(crate) async fn run(
+        &self,
+        incoming: &Value,
+        emit: Emit,
+        epoch: Option<u64>,
+    ) -> (Result<Value>, Option<Value>) {
         let goal = task::is_goal(incoming);
         if !task::is_round(incoming) && !goal {
             let result = self
-                .run_owned(incoming, emit, None)
+                .run_owned(incoming, emit, None, epoch)
                 .await
                 .map_err(|error| protected::redact(incoming, error));
             return (result, None);
@@ -585,7 +597,7 @@ impl Turns {
             Err(_) => return (Err(anyhow!("{failure_context}.")), None),
         };
         let restoring = !incoming["taskResumption"].is_null();
-        let result = self.run_owned(incoming, emit, Some(&mut task)).await;
+        let result = self.run_owned(incoming, emit, Some(&mut task), epoch).await;
         if result.as_ref().err().is_some_and(|error| {
             crate::inference::withdrawal::Withdrawal::in_error(error).is_some()
         }) {
@@ -647,6 +659,7 @@ impl Turns {
         incoming: &Value,
         emit: Emit,
         mut task: Option<&mut TaskTurn>,
+        epoch: Option<u64>,
     ) -> Result<Value> {
         params::validate(incoming)?;
         let key = self.key(incoming)?;
@@ -976,8 +989,14 @@ impl Turns {
                 params["outputSchema"] = schema.clone();
             }
             prepared.thread.assert_current(runtime)?;
+            let cua = if command["computerUseAuthority"].is_null() {
+                None
+            } else {
+                Some(computer_use::Turn::new(self.computer_use.clone(), epoch.context("Computer use requires an active worker socket.")?,
+                    thread.clone(), emit.clone(), signal.clone()))
+            };
             let (subscription, mut events, capture) =
-                output::subscribe_with_context(&runtime.history(), thread, context.clone())?;
+                output::subscribe_with_context(&runtime.history(), thread, context.clone(), cua.as_ref().map(|lifetime| lifetime.0.clone()))?;
             let transport = subscription.signal();
             let result = async {
                 execution.bind_thread(thread.clone())?;
@@ -990,6 +1009,10 @@ impl Turns {
                     && let Some(activation) = mcp.as_ref().and_then(Option::as_ref)
                 {
                     activation.track_context(context.clone());
+                }
+                if let Some(cua) = &cua {
+                    let activation = mcp.as_ref().and_then(Option::as_ref).context("The computer-use MCP attachment is unavailable.")?;
+                    cua.0.register(activation, &command["computerUseAuthority"])?;
                 }
                 if task.is_some() {
                     self.task_inputs
@@ -1051,6 +1074,9 @@ impl Turns {
                     }
                     let pending_input = (!is_queued && receipt.is_some() && protection.is_some())
                         .then(|| params["input"].clone());
+                    if let Some(cua) = &cua {
+                        cua.0.dispatched();
+                    }
                     let reply = runtime
                         .request("turn/start".into(), Some(params), Some(RPC_TIMEOUT), None)
                         .await;
@@ -1138,6 +1164,9 @@ impl Turns {
                 } else {
                     send().await?
                 };
+                if let Some(cua) = &cua {
+                    cua.0.started(&turn);
+                }
                 if let Some(interactions) = &native_interactions {
                     interactions.bind_turn(&turn)?;
                 }
@@ -1187,6 +1216,9 @@ impl Turns {
                         }.observe(binding, &mut subscribed.events, collecting).await
                     } else { collecting.await };
                     drop(native_interactions.take());
+                    if let Some(cua) = &cua {
+                        cua.0.retire();
+                    }
                     active.set(Phase::Terminal);
                     result
                 };

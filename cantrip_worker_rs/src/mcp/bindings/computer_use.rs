@@ -8,6 +8,48 @@ use cantrip_wire::{JsString, Value};
 use futures::future::BoxFuture;
 use std::sync::Arc;
 
+pub(crate) struct Authority {
+    server: super::Server,
+    binding: Value,
+    server_id: JsString,
+    pub(crate) captured: Value,
+}
+
+impl Authority {
+    pub(super) fn new(
+        server: super::Server,
+        binding: Value,
+        server_id: JsString,
+        raw: &Value,
+    ) -> Result<Self> {
+        let captured = checked_authority(raw, &binding, &server_id)?;
+        Ok(Self {
+            server,
+            binding,
+            server_id,
+            captured,
+        })
+    }
+
+    pub(crate) async fn current(&self) -> Result<bool> {
+        let raw = self.server.computer_use_authority(&self.binding).await;
+        match raw {
+            Ok(raw) => Ok(checked_authority(&raw, &self.binding, &self.server_id)
+                .ok()
+                .as_ref()
+                == Some(&self.captured)),
+            Err(error)
+                if error
+                    .downcast_ref::<super::server::Rejected>()
+                    .is_some_and(|error| matches!(error.status, 401 | 403 | 409)) =>
+            {
+                Ok(false)
+            }
+            Err(error) => Err(error),
+        }
+    }
+}
+
 /// The native runtime is responsible for observing and retiring its own turns.
 /// Model metadata selects an observed identity and cannot establish ownership.
 pub trait ComputerUseExecutor: Send + Sync {

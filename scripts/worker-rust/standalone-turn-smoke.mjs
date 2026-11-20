@@ -39,6 +39,7 @@ import { verifyProjectAutomations } from "./project-automation-smoke-cases.mjs";
 import { verifyQueuedSteering } from "./queued-steering-cases.mjs";
 import { verifyConsoleSteering } from "./console-steering-cases.mjs";
 import { verifyComputerUsePreview } from "./computer-use-preview-cases.mjs";
+import { verifyManagedComputerUse } from "./managed-computer-use-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   fixtureCodex,
@@ -67,6 +68,7 @@ const { values } = parseArgs({
     "queued-steer": { type: "boolean" },
     "console-steer": { type: "boolean" },
     "cua-preview": { type: "string" },
+    "cua-agent": { type: "string" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -140,7 +142,8 @@ const interactionKey =
   restoredInteractions ||
   subagentInteractions ||
   planQuestion ||
-  values["cua-preview"]
+  values["cua-preview"] ||
+  values["cua-agent"]
     ? key("interaction-content")
     : null;
 const consoleStateKey =
@@ -367,10 +370,15 @@ async function encryptedTurn(prompt, modelId, mode = "default") {
   });
 }
 
-async function createModel(name, maxConcurrentInference, additionalModels) {
+async function createModel(
+  name,
+  maxConcurrentInference,
+  { additionalModels, modelMetadata } = {},
+) {
   const model = await taskModelProvider({
     observeStreams: true,
     additionalModels,
+    modelMetadata,
   });
   models.push(model);
   const provider = await call("POST", "/api/settings/providers", 201, {
@@ -1835,9 +1843,9 @@ async function verifyRuntimeHandoff() {
     "Handoff source",
     queuedHandoff ? 1 : undefined,
   );
-  const target = await createModel("Handoff destination", undefined, [
-    { id: "handoff-destination-model" },
-  ]);
+  const target = await createModel("Handoff destination", undefined, {
+    additionalModels: [{ id: "handoff-destination-model" }],
+  });
   const targetProfile = await call("POST", "/api/settings/models", 201, {
     name: "Handoff destination route",
     routes: [
@@ -2984,11 +2992,10 @@ try {
     if (values.cli)
       workerEnvironment.CANTRIP_CLI_BIN = path.resolve(values.cli);
   }
-  if (previewKey) {
+  const cuaHelper = values["cua-preview"] ?? values["cua-agent"];
+  if (cuaHelper) {
     const helper = path.join(root, "native-preview-helper");
-    const executable = path
-      .resolve(values["cua-preview"])
-      .replaceAll("'", "'\\''");
+    const executable = path.resolve(cuaHelper).replaceAll("'", "'\\''");
     await writeFile(
       helper,
       `#!/bin/sh\nexec '${executable}' --backend fake\n`,
@@ -3024,6 +3031,19 @@ try {
             assert.match(value, /event=automation\.schedule-sync\.completed/),
         );
       },
+    });
+  } else if (values["cua-agent"]) {
+    await verifyManagedComputerUse({
+      call,
+      eventually,
+      createChat,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      interactionKey,
+      openMessage,
     });
   } else if (previewKey) {
     await verifyComputerUsePreview({

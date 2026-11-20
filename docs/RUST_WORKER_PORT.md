@@ -9047,3 +9047,31 @@ Rust Core in PGlite mode also passed on macOS ARM64.
 Managed Codex registration still needs to supply the command publisher and
 refresh Core authority around the approval wait. Activity and turn
 finalization remain open.
+
+## 256. Run managed Chat computer use through the Rust worker
+
+Reference commit `c18cc8d4fd424401db37e898775f0a8b237d2f15` (#3419).
+
+For ordinary managed Chat turns with captured computer-use authority, the
+worker installs the reserved `cantrip_cua` MCP server. Host uses the native
+stdio helper with a private connection document. Cantrip OS uses the
+authenticated HTTP broker. The observed root thread and turn own the
+evaluator and desktop session. The worker refreshes Core authority before
+and after approval waits, and sends protected permission events on the
+owning command socket. Turn completion or observation loss retires the
+session. The model gets PNG bytes and separate native capture and model
+rendition metadata. Oversized captures are resized within the existing
+model byte and pixel limits.
+
+On macOS ARM64, `scripts/worker-rust/standalone-turn-smoke.mjs --cua-agent`
+ran bundled Codex, the production Rust worker and Rust Core in PGlite mode
+with the deterministic Host desktop helper and a local vision-capable provider.
+The fixture checked Codex MCP confirmation, three Core-committed protected
+permissions, a screenshot delivered to the model with its matching SHA-256,
+`js_reset`, and the encrypted assistant result. The Host preview smoke,
+managed thread preparation and restart smoke, 12 Node MCP reference tests,
+and the Rust oversized capture test also passed locally.
+
+Managed guest execution still needs an integrated turn fixture. Protected
+agent activity and retained observations, turn finalization and recovery,
+and the remaining execution sources still need coverage and implementation.

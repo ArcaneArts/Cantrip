@@ -3674,7 +3674,7 @@ try {
   assert.equal((await bindings()).length, 2);
   assert.equal(
     (await ensure({ session: { ...session, computerUseEnabled: true } })).ok,
-    false,
+    true,
   );
   await stop();
   assert.deepEqual(await bindings(), []);
