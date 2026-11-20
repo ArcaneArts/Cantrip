@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, readdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
+import { taskModelProvider } from "../server-rust/task-model-provider.mjs";
 
 export async function verifyProjectExport({
   call,
@@ -16,6 +17,7 @@ export async function verifyProjectExport({
   ownerId,
   restartWorker,
   checkout,
+  registerMetadata,
 }) {
   const list = await call("GET", `/api/projects/${projectId}/worktrees`);
   assert.equal(list.status, 200, JSON.stringify(list));
@@ -72,6 +74,8 @@ export async function verifyProjectExport({
   const labelKey = await grant("private-surface-metadata");
   const chatKey = await grant("chat-content");
   const mediaKey = await grant("attachment-content");
+  const providerKey = await grant("provider-credential");
+  const upstream = await taskModelProvider();
   try {
     const chatId = randomUUID();
     const title = "Private exported fixture";
@@ -236,6 +240,27 @@ export async function verifyProjectExport({
     );
     assert.equal(candidate?.title, title);
     assert.equal(candidate.match.worktreeId, worktreeId);
+    const provider = await call("POST", "/api/settings/providers", {
+      id: randomUUID(),
+      kind: "openai-compatible",
+      name: "Imported chat continuation fixture",
+      baseUrl: upstream.baseUrl,
+      initialAccount: null,
+      protectedApiKey: null,
+      maxConcurrentInference: 1,
+    });
+    assert.equal(provider.status, 201, JSON.stringify(provider));
+    const model = await call("POST", "/api/settings/models", {
+      name: "Imported chat fixture model",
+      routes: [
+        {
+          providerId: provider.body.id,
+          modelName: upstream.model,
+          enabled: true,
+        },
+      ],
+    });
+    assert.equal(model.status, 201, JSON.stringify(model));
     const imported = await call("POST", endpoint + "/chat-imports", {
       imports: [
         {
@@ -245,6 +270,7 @@ export async function verifyProjectExport({
           sourceThreadId: candidate.sourceThreadId,
           idempotencyKey: randomUUID(),
           target: { kind: "worktree", projectId, worktreeId },
+          modelId: model.body.id,
         },
       ],
     });
@@ -262,6 +288,15 @@ export async function verifyProjectExport({
       "native external import settled",
     );
     assert.equal(job.state, "succeeded", JSON.stringify(job));
+    if (!job.managedThreadId) {
+      const workers = await call("GET", "/api/workers");
+      const runtime = workers.body.find(
+        (worker) => worker.workerId === workerId,
+      )?.codexRuntime;
+      assert.fail(
+        `Import completed without a native thread. Runtime ${JSON.stringify(runtime)}`,
+      );
+    }
     assert.equal(job.attachmentCount, 1);
     assert.equal(job.attachmentWarningCount, 0);
     const importedMessages = await call(
@@ -354,9 +389,196 @@ export async function verifyProjectExport({
       createHash("sha256").update(first.threadId).digest("hex"),
     );
     await assert.rejects(lstat(sourceStage), { code: "ENOENT" });
+    const hydrationReceipt = JSON.parse(
+      await readFile(
+        path.join(workerDirectory, "chat-relocations", jobId, "state.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(hydrationReceipt.threadId, job.managedThreadId);
+    assert.equal(hydrationReceipt.status, "hydrated");
+    await assert.rejects(
+      lstat(
+        path.join(
+          workerDirectory,
+          "chat-relocations",
+          jobId,
+          "context.uploading",
+        ),
+      ),
+      { code: "ENOENT" },
+    );
+    const question = "Continue the imported conversation 🌲";
+    const reply = upstream.reply({
+      text: "Continuation from the imported history",
+    });
+    const next = await encryptedTurn({
+      ownerId,
+      chatKey,
+      modelId: model.body.id,
+      question,
+    });
+    const submitted = await call(
+      "POST",
+      `/api/chats/${job.chatId}/turns`,
+      next,
+    );
+    assert.equal(submitted.status, 202, JSON.stringify(submitted));
+    await eventually(
+      () => Promise.resolve(reply),
+      (turn) => {
+        assert.equal(turn.request?.completed, true);
+      },
+      "imported native conversation resumes after worker restart",
+    );
+    const context = JSON.stringify(reply.request.input.input);
+    assert.ok(context.includes(input));
+    assert.ok(context.includes("end of fixture answer"));
+    assert.ok(context.includes(question));
+    assert.deepEqual(upstream.failures, []);
+
+    const importedMessagesUrl = `/api/chats/${job.chatId}/messages`;
+    async function verifyAnswer(answer) {
+      await eventually(
+        async () => {
+          const messages = await call("GET", importedMessagesUrl);
+          assert.equal(messages.status, 200);
+          return Promise.all(messages.body.messages.map(openMessage));
+        },
+        (messages) => {
+          assert.ok(
+            messages.some((message) =>
+              message.content.some(
+                (item) => item.type === "text" && item.text === answer,
+              ),
+            ),
+          );
+        },
+        "native continuation committed protected output",
+      );
+    }
+    await verifyAnswer("Continuation from the imported history");
+
+    // Relocation requires clean source and destination worktrees at the
+    // admitted revision. Remove the two files created by this owned fixture.
+    await unlink(picture);
+    await unlink(path.join(checkout, "untouched.txt"));
+    const names = await registerMetadata(projectId, {
+      name: "Hydration destination",
+      branch: "chat-relocation-fixture",
+    });
+    const newWorktree = await call("POST", endpoint + "/worktrees", {
+      name: names.name,
+      mode: { type: "newBranch", branch: names.branch, startPoint: null },
+      sourceWorktreeId: worktreeId,
+    });
+    assert.equal(newWorktree.status, 201, JSON.stringify(newWorktree));
+    const queued = await call("POST", `/api/chats/${job.chatId}/relocations`, {
+      target: { kind: "worktree", projectId, worktreeId: newWorktree.body.id },
+      approved: true,
+      idempotencyKey: randomUUID(),
+    });
+    assert.equal(queued.status, 202, JSON.stringify(queued));
+    const { body: relocated } = await eventually(
+      () => call("GET", `/api/chat-relocations/${queued.body.id}`),
+      (value) => {
+        assert.equal(value.status, 200, JSON.stringify(value));
+        assert.ok(
+          ["succeeded", "blocked", "failed"].includes(value.body.state),
+          JSON.stringify(value.body),
+        );
+      },
+      "native protected chat relocation settled",
+    );
+    assert.equal(relocated.state, "succeeded", JSON.stringify(relocated));
+    assert.equal(relocated.targetPlacement.worktreeId, newWorktree.body.id);
+    assert.notEqual(relocated.targetRuntimeThreadId, job.managedThreadId);
+    await eventually(
+      () => call("GET", `/api/workers/${workerId}/logs?limit=500`),
+      (value) => {
+        assert.equal(value.status, 200);
+        assert.ok(
+          value.body.records.some(
+            (record) =>
+              record.context?.operation === "chat.relocation.thread.release" &&
+              record.context.event === "worker.command.completed",
+          ),
+        );
+      },
+      "source managed thread released after placement commit",
+    );
+    const nextQuestion = "Continue the relocated conversation";
+    const nextAnswer = "Continuation from the relocated history";
+    const relocatedReply = upstream.reply({ text: nextAnswer });
+    const relocatedTurn = await call(
+      "POST",
+      `/api/chats/${job.chatId}/turns`,
+      await encryptedTurn({
+        ownerId,
+        chatKey,
+        modelId: model.body.id,
+        question: nextQuestion,
+      }),
+    );
+    assert.equal(relocatedTurn.status, 202, JSON.stringify(relocatedTurn));
+    await verifyAnswer(nextAnswer);
+    const relocatedContext = JSON.stringify(relocatedReply.request.input.input);
+    assert.ok(relocatedContext.includes("end of fixture answer"));
+    assert.ok(
+      relocatedContext.includes("Continuation from the imported history"),
+    );
+    assert.ok(relocatedContext.includes(nextQuestion));
   } finally {
     labelKey.fill(0);
     chatKey.fill(0);
     mediaKey.fill(0);
+    providerKey.fill(0);
+    await upstream.close();
   }
+}
+
+async function encryptedTurn({ ownerId, chatKey, modelId, question }) {
+  const common = { ownerId, keyRevision: 1, componentKey: chatKey };
+  const messageId = randomUUID();
+  const promptId = randomUUID();
+  const idempotencyKey = randomUUID();
+  const classification = { mode: "default", attachmentIds: [] };
+  const messageClassification = { ...classification, role: "user" };
+  const message = {
+    id: messageId,
+    idempotencyKey,
+    classification: messageClassification,
+    reasoningEffort: null,
+    protectedContent: await crypto.encryptChatMessageProtectedContent({
+      ...common,
+      messageId,
+      content: {
+        version: 1,
+        classification: messageClassification,
+        content: [{ type: "text", text: question }],
+      },
+    }),
+  };
+  return {
+    modelId,
+    message,
+    queuedPrompt: {
+      id: promptId,
+      idempotencyKey,
+      modelId,
+      classification,
+      reasoningEffort: null,
+      frozen: false,
+      customSubagentModel: false,
+      subagentModelId: null,
+      subagentReasoningEffort: null,
+      worktreeId: null,
+      pendingMessage: message,
+      protectedContent: await crypto.encryptQueuedPromptProtectedContent({
+        ...common,
+        promptId,
+        content: { version: 1, classification, text: question },
+      }),
+    },
+  };
 }

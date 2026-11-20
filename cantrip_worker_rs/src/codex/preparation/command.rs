@@ -2,6 +2,7 @@
 //! and the native thread. It also installs the idle MCP attachment.
 mod plan;
 mod profile;
+mod relocation;
 pub(in crate::codex) mod task_pause;
 pub(crate) use plan::{PLAN_GET, PLAN_SET};
 pub(in crate::codex) use profile::collaboration_mode;

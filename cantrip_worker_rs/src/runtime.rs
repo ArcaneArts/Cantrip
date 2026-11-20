@@ -178,6 +178,7 @@ async fn cycle(
     let mut heartbeat = http::heartbeat(&config, host.platform, host.architecture, &started)?;
     heartbeat["codexVersion"] = codex_compatibility["version"]["raw"].clone();
     heartbeat["codexRuntime"] = codex_compatibility.clone();
+    heartbeat["chatRelocation"] = json!(true);
     heartbeat["externalCodexHistory"] = json!(crate::codex::external_home::supported());
     let managed_web = Arc::new(crate::managed_web::Runtimes::configure(
         &config.data_directory,
@@ -403,6 +404,7 @@ async fn cycle(
         browser_surfaces.clone(),
         codegraph.clone(),
     );
+    let chat_relocation = Arc::new(crate::codex::relocation::Manager::new(&data_directory));
     let history = crate::history::managed::runtime::open(
         configuration.clone(),
         encryption.clone(),
@@ -884,6 +886,21 @@ async fn cycle(
                     });
                     continue;
                 }
+                if crate::codex::relocation::supports(kind) {
+                    let relocation = chat_relocation.clone();
+                    let preparation = thread_preparation.clone();
+                    let routing = routing.clone();
+                    let encryption = encryption.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = relocation.execute(&request["command"], &routing, &encryption, &preparation, &scope).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if crate::codex::catalog::provider::handles(kind) {
                     let catalog = provider_catalog.clone();
                     let signal = command_signal.clone();
@@ -1297,6 +1314,7 @@ async fn cycle(
     }
     explorer_operations.close().await;
     project_exports.close().await;
+    chat_relocation.close().await;
     shares.shutdown().await;
     run_definitions.close().await;
     let runs_closed = runs.close().await;
