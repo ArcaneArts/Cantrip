@@ -1,4 +1,6 @@
 //! Private pipe to the worker-owned cantrip-cua executable.
+mod javascript;
+
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_interaction::geometry::MAX_SEQUENCE;
 use cantrip_wire::{Value, parse_json_text, value::json};
@@ -19,7 +21,7 @@ const MAX_HEADER: usize = 16 * 1024 * 1024;
 const MAX_PAYLOAD: usize = 16 * 1024 * 1024;
 const SHUTDOWN: Duration = Duration::from_secs(2);
 
-pub(super) struct Process {
+pub(crate) struct Process {
     child: Child,
     input: ChildStdin,
     output: ChildStdout,
@@ -29,10 +31,10 @@ pub(super) struct Process {
 }
 
 #[derive(Debug)]
-pub(super) struct NativeError(&'static str, String);
+pub struct NativeError(&'static str, String);
 
 impl NativeError {
-    pub(super) fn code(&self) -> &str {
+    pub fn code(&self) -> &str {
         &self.1
     }
 }
@@ -46,7 +48,7 @@ impl std::fmt::Display for NativeError {
 impl std::error::Error for NativeError {}
 
 impl Process {
-    pub(super) fn spawn(binary: &OsStr, args: &[OsString]) -> Result<Self> {
+    pub(crate) fn spawn(binary: &OsStr, args: &[OsString]) -> Result<Self> {
         let mut command = Command::new(binary);
         command
             .args(args)
@@ -101,7 +103,7 @@ impl Process {
         &self.backend
     }
 
-    pub(super) async fn request(&mut self, operation: Value) -> Result<Value> {
+    pub(crate) async fn request(&mut self, operation: Value) -> Result<Value> {
         self.exchange(operation, false).await.map(|(data, _)| data)
     }
 
@@ -197,7 +199,16 @@ impl Process {
         sequence: u64,
         expect_pixels: bool,
     ) -> Result<(Value, Vec<u8>)> {
-        let (frame, payload) = loop {
+        let (frame, payload) = Self::read_message(output, last_event, expect_pixels).await?;
+        Self::read_result(output, &frame["message"], payload, sequence, expect_pixels).await
+    }
+
+    async fn read_message(
+        output: &mut ChildStdout,
+        last_event: &mut u64,
+        expect_pixels: bool,
+    ) -> Result<(Value, usize)> {
+        loop {
             let size = output
                 .read_u32()
                 .await
@@ -236,9 +247,17 @@ impl Process {
                 *last_event += 1;
                 continue;
             }
-            break (frame, payload);
-        };
-        let message = &frame["message"];
+            return Ok((frame, payload));
+        }
+    }
+
+    async fn read_result(
+        output: &mut ChildStdout,
+        message: &Value,
+        payload: usize,
+        sequence: u64,
+        expect_pixels: bool,
+    ) -> Result<(Value, Vec<u8>)> {
         ensure!(
             message.as_object().is_some_and(|fields| fields.len() == 3)
                 && message["kind"] == "response"
@@ -295,6 +314,11 @@ impl Process {
                         "Desktop input delivery could not be confirmed."
                     }
                     Some("cancelled") => "Desktop target discovery was cancelled.",
+                    Some("script-syntax") => "The computer-use script could not be parsed.",
+                    Some("script-evaluation") => {
+                        "The computer-use script failed during evaluation."
+                    }
+                    Some("script-action") => "The computer-use script requested an invalid action.",
                     Some(
                         "stale-element"
                         | "control-not-found"
@@ -309,7 +333,7 @@ impl Process {
         }
     }
 
-    pub(super) async fn close(self) {
+    pub(crate) async fn close(self) {
         let Self {
             mut child,
             input,
