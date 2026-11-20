@@ -9,11 +9,11 @@ import { cantripVersion } from "@cantrip/version";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
 import {
   CANTRIP_CUA_MCP_MAX_RESPONSE_BYTES,
   cuaMcpRequestSchema,
-  cuaMcpScriptSchema,
+  cuaMcpScriptArgumentsSchema,
+  cuaMcpResetArgumentsSchema,
   parseCuaMcpResult,
   type CuaMcpRequest,
 } from "./cua-contract.js";
@@ -88,7 +88,7 @@ export function createCuaMcpServer(
     "js",
     {
       description: instructions,
-      inputSchema: z.strictObject({ script: cuaMcpScriptSchema }),
+      inputSchema: cuaMcpScriptArgumentsSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
@@ -103,7 +103,7 @@ export function createCuaMcpServer(
     {
       description:
         "Explicitly discard saved JavaScript variables and target attachment when that is desired. Not a startup step: new turns start clean, and failed evaluations already reset automatically. Does not grant new authority after Stop or a permission-profile change; start a new agent turn after revocation.",
-      inputSchema: z.strictObject({}),
+      inputSchema: cuaMcpResetArgumentsSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,

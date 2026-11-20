@@ -14,6 +14,13 @@ import {
 } from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
 import { createCantripMcpServer } from "../../cantrip_worker/src/mcp/server.ts";
+import { createCuaMcpServer } from "../../cantrip_worker/src/mcp/cua-server.ts";
+import {
+  cuaMcpBrokerRequestSchema,
+  cuaMcpResetArgumentsSchema,
+  cuaMcpScriptArgumentsSchema,
+  cuaMcpScriptSchema,
+} from "../../cantrip_worker/src/mcp/cua-contract.ts";
 import { cantripMcpToolHelp } from "../../cantrip_worker/src/mcp/tool-catalog.ts";
 
 const requireWorker = createRequire(
@@ -23,9 +30,13 @@ const { z } = requireWorker("zod");
 const { Client } = await import(
   requireWorker.resolve("@modelcontextprotocol/sdk/client/index.js")
 );
-const { LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS } = await import(
-  requireWorker.resolve("@modelcontextprotocol/sdk/types.js")
-);
+const {
+  LATEST_PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS,
+  CallToolResultSchema,
+  TextContentSchema,
+  ImageContentSchema,
+} = await import(requireWorker.resolve("@modelcontextprotocol/sdk/types.js"));
 const { InMemoryTransport } = await import(
   requireWorker.resolve("@modelcontextprotocol/sdk/inMemory.js")
 );
@@ -33,14 +44,13 @@ const { InMemoryTransport } = await import(
 export async function sourceCatalog(profile, inspect) {
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
-  const server = createCantripMcpServer(
-    async () => {
-      throw new Error("Tool catalog export must not invoke the broker.");
-    },
-    profile,
-    undefined,
-    inspect,
-  );
+  const unexpected = async () => {
+    throw new Error("Tool catalog export must not invoke the broker.");
+  };
+  const server =
+    profile === "cua"
+      ? createCuaMcpServer(unexpected)
+      : createCantripMcpServer(unexpected, profile, undefined, inspect);
   const client = new Client({ name: "cantrip-mcp-export", version: "1" });
   try {
     await server.connect(serverTransport);
@@ -59,6 +69,22 @@ export async function sourceCatalog(profile, inspect) {
 
 async function generate() {
   const schemas = {};
+  const cuaSchemas = {
+    cuaMcpBrokerRequestSchema,
+    cuaMcpResetArgumentsSchema,
+    cuaMcpScriptArgumentsSchema,
+    cuaMcpResultSchema: CallToolResultSchema.extend({
+      // Rust decodes and checks the image's canonical base64 and byte limits.
+      content: z
+        .array(
+          z.union([
+            TextContentSchema,
+            ImageContentSchema.extend({ data: z.string() }),
+          ]),
+        )
+        .default([]),
+    }),
+  };
   const profiles = {
     ide: await sourceCatalog("ide", (name, config) => {
       assert.ok(config.inputSchema && config.outputSchema, name);
@@ -76,6 +102,7 @@ async function generate() {
           config.inputSchema.shape,
         );
     }),
+    cua: await sourceCatalog("cua"),
   };
   for (const profile of Object.values(profiles))
     delete profile.serverInfo.version;
@@ -107,6 +134,7 @@ async function generate() {
   );
   const capabilities = workerCantripMcpServerCapabilitiesSchema.shape;
   const refinements = new Map([
+    [cuaMcpScriptSchema, "stdio-mcp-cua-script-size"],
     [capabilities.bindingProtocolVersions, "stdio-mcp-capability-unique"],
     [capabilities.operations, "stdio-mcp-capability-unique"],
     [output("policy_list").shape.data.shape.policies, "stdio-mcp-policy-keys"],
@@ -141,8 +169,12 @@ async function generate() {
           "cantripMcpToolHelpInputSchema",
           "cantripMcpContextGetInputSchema",
           "mcpHostSessionClaims",
+          ...Object.keys(cuaSchemas),
         ],
-        { schemas: { ...schemas, mcpHostSessionClaims }, refinements },
+        {
+          schemas: { ...schemas, mcpHostSessionClaims, ...cuaSchemas },
+          refinements,
+        },
       ),
     ],
     [

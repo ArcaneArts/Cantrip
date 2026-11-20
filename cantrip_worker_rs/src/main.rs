@@ -7,6 +7,9 @@ fn main() -> Result<()> {
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("mcp")) {
         return cantrip_worker::mcp::run(std::env::args_os().skip(2));
     }
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("cua-mcp")) {
+        return cantrip_worker::mcp::run_cua(std::env::args_os().skip(2));
+    }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("codegraph-mcp")) {
         return cantrip_worker::launch_codegraph_mcp(std::env::args_os().skip(2));
     }
@@ -26,7 +29,7 @@ fn main() -> Result<()> {
             "--shutdown-on-stdin-close" => stdin = true,
             "--help" => {
                 println!(
-                    "cantrip-worker [--shutdown-on-stdin-close] [--env-file-if-exists=<path>] [--version]\ncantrip-worker mcp --connection <path>\ncantrip-worker chromium-probe <executable>\nNative worker conversion in progress; see docs/RUST_WORKER_PORT.md for implemented capabilities."
+                    "cantrip-worker [--shutdown-on-stdin-close] [--env-file-if-exists=<path>] [--version]\ncantrip-worker mcp --connection <path>\ncantrip-worker cua-mcp --connection <path>\ncantrip-worker chromium-probe <executable>\nNative worker conversion in progress; see docs/RUST_WORKER_PORT.md for implemented capabilities."
                 );
                 return Ok(());
             }

@@ -119,7 +119,11 @@
     "workerCantripMcpServerCapabilitiesSchema": 1548,
     "cantripMcpToolHelpInputSchema": 1554,
     "cantripMcpContextGetInputSchema": 47,
-    "mcpHostSessionClaims": 1556
+    "mcpHostSessionClaims": 1556,
+    "cuaMcpBrokerRequestSchema": 1559,
+    "cuaMcpResetArgumentsSchema": 1576,
+    "cuaMcpScriptArgumentsSchema": 1578,
+    "cuaMcpResultSchema": 1580
   },
   "nodes": [
     {
@@ -15259,6 +15263,520 @@
         "scratchRootId": 1546
       },
       "catchall": 1547,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "bindingId": 1560,
+        "request": 1561
+      },
+      "catchall": 1575,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "options": [
+        1562,
+        1572
+      ],
+      "discriminator": "operation",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "threadId": 1563,
+        "turnId": 1564,
+        "itemId": 1565,
+        "callId": 1567,
+        "operation": 1569,
+        "script": 1570
+      },
+      "catchall": 1571,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 256,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 256,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 1566,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 256,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 1568,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 256,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": [
+        "js"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 2097152,
+          "when": "length"
+        },
+        {
+          "check": "refinement",
+          "tag": "stdio-mcp-cua-script-size",
+          "messageAfterPath": true,
+          "message": "CUA scripts cannot exceed 2 MiB of UTF-8."
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "threadId": 1563,
+        "turnId": 1564,
+        "itemId": 1565,
+        "callId": 1567,
+        "operation": 1573
+      },
+      "catchall": 1574,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "js_reset"
+      ],
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {},
+      "catchall": 1577,
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "script": 1570
+      },
+      "catchall": 1579,
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "_meta": 1581,
+        "content": 1591,
+        "structuredContent": 1619,
+        "isError": 1623
+      },
+      "catchall": 1625,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1582,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "progressToken": 1583,
+        "io.modelcontextprotocol/related-task": 1587
+      },
+      "catchall": 1590,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1584,
+      "checks": []
+    },
+    {
+      "type": "union",
+      "options": [
+        1585,
+        1586
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1588,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "taskId": 1589
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": []
+    },
+    {
+      "type": "unknown",
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1592,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 1593,
+      "checks": []
+    },
+    {
+      "type": "union",
+      "options": [
+        1594,
+        1610
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 1595,
+        "text": 1596,
+        "annotations": 1597,
+        "_meta": 1606
+      },
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "text"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1598,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "audience": 1599,
+        "priority": 1602,
+        "lastModified": 1604
+      },
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1600,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 1601,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "user",
+        "assistant"
+      ],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1603,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 1,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1605,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1607,
+      "checks": []
+    },
+    {
+      "type": "record",
+      "keyType": 1608,
+      "valueType": 1609,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": []
+    },
+    {
+      "type": "unknown",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 1611,
+        "data": 1612,
+        "mimeType": 1613,
+        "annotations": 1614,
+        "_meta": 1615
+      },
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "image"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1598,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1616,
+      "checks": []
+    },
+    {
+      "type": "record",
+      "keyType": 1617,
+      "valueType": 1618,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": []
+    },
+    {
+      "type": "unknown",
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1620,
+      "checks": []
+    },
+    {
+      "type": "record",
+      "keyType": 1621,
+      "valueType": 1622,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": []
+    },
+    {
+      "type": "unknown",
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1624,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "unknown",
       "checks": []
     }
   ]

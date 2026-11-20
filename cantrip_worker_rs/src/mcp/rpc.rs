@@ -54,7 +54,7 @@ pub(super) fn initialize(id: &Value, params: &Value, profile: &Value) -> Value {
     )
 }
 
-fn tool_error(message: impl Into<JsString>) -> Value {
+pub(super) fn tool_error(message: impl Into<JsString>) -> Value {
     let message = message.into();
     json!({"content":vec![json!({"type":"text","text":message})],"isError":true})
 }
@@ -92,7 +92,7 @@ fn custom_issue(field: &str, message: &str) -> Value {
     ])
 }
 
-fn input_error(tool: &str, issues: Value) -> Value {
+pub(super) fn input_error(tool: &str, issues: Value) -> Value {
     tool_error(format!(
         "MCP error -32602: Input validation error: Invalid arguments for tool {tool}: {}",
         issues.stringify_pretty()

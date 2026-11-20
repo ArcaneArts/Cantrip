@@ -8890,3 +8890,26 @@ smoke against production Rust Core and 12 Node reference tests also passed.
 SSH guest execution and the guest public API from Chat creation through
 placement capture still need integrated coverage. Agent computer use
 remains open.
+
+## 250. Add the native computer-use MCP stdio helper
+
+Reference commit `ed182bc364bdb69fe5fccc58c6108cd3a655607a` (#3413).
+
+`cantrip-worker cua-mcp --connection <path>` uses the existing authenticated
+loopback broker document. The executable advertises the established `js` and
+`js_reset` tools from the reference catalog and forwards exact Codex turn
+metadata to `/v1/computer-use`. It preserves cancellation, the CUA script and
+image limits, and the untimed broker operation. A canceled tool call releases
+its broker request while the same attachment remains usable.
+
+On macOS ARM64, the native subprocess ran with an empty PATH. The existing
+Node broker delivered a 600,000-byte image block, and the fixture verified
+metadata validation, reset, and cancellation through real stdio. The Node
+reference suite passed 14 cases, and the ordinary native MCP smoke passed
+31 comparisons. Re-run the CUA cases by setting
+`CANTRIP_TEST_RUST_CUA_MCP_BIN` to the native worker executable and running
+`test/cua-mcp-transport.test.ts` from the worker package.
+
+This milestone covers the helper and its broker compatibility. Managed
+Codex configuration, Rust broker execution, and authenticated CUA MCP HTTP
+remain open.
