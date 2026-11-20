@@ -7231,3 +7231,29 @@ Console-originated permission edits and automatic resumption of input
 deferred by a permission transition remain open. Live-turn settings,
 alternate model attribution, approval replies and runtime handoff also
 remain open.
+
+## 187. Resolve managed console permission choices through Core
+
+Reference commit 099791658739dd774929f9c73818c0ed9021a321 (#3350).
+
+The managed console resolves named permission selections through Core
+using its exact thread, placement, route and runtime. If Core needs a
+binding, the worker refreshes the actual thread settings and retries
+the resolution. The terminal admission retains both the Core operation
+identity and the native request identity.
+
+The worker forwards the server-resolved effective profile at the native
+quiescent boundary. Codex rejects attempts to combine that permission
+change with ordinary settings, and the console receives the native
+error. Custom sandbox overrides and mismatched approval policies are
+rejected before admission. Application and recovery use the existing
+versioned permission journal.
+
+The local guest console smoke used bundled Codex and verified the binding
+refresh, Core's stricter effective selection, native application and
+mixed-setting rejection against the protected receipts and evidence.
+The standalone Rust server and worker settings smoke passed with native
+PGlite. The Windows x64 GNU worker cross-check passed.
+
+Durable retention and automatic resumption of prompts deferred by a
+permission change remain open.

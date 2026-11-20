@@ -180,7 +180,10 @@ impl Client {
         };
         let unacknowledged = || Unacknowledged(action.to_owned());
         let metadata = path.starts_with("/api/internal/native-queue/")
-            || matches!(action, "settings-refresh" | "settings-observation");
+            || matches!(
+                action,
+                "settings-refresh" | "settings-observation" | "permission-transition"
+            );
         let mut request = self
             .http
             .post(url)
@@ -392,6 +395,29 @@ impl Client {
             )
             .await?;
         checked("nativeSettingsStateSchema", &reply)
+    }
+
+    pub(super) async fn resolve_permission(
+        &self,
+        session: &Value,
+        selected: &JsString,
+        guard: &Guard,
+    ) -> Result<Value> {
+        let request = checked(
+            "nativePermissionTransitionResolveSchema",
+            &json!({
+                "workerId":self.configuration.lock().unwrap().worker_id,"session":session,"selectedId":selected,
+            }),
+        )?;
+        let reply = self
+            .exchange(
+                "permission-transition",
+                "/api/internal/native-commands/permission-transition",
+                &request,
+                guard,
+            )
+            .await?;
+        checked("nativePermissionTransitionResolutionSchema", &reply)
     }
 
     pub(super) async fn observe_settings(
@@ -941,21 +967,17 @@ impl Client {
         &self,
         scope: Scope,
         session: Value,
-        operation: &str,
         frame: &Value,
-        permission: &Value,
+        command: &Value,
         activation: Value,
     ) -> Result<Receipt<'_>> {
-        let command = json!({
-            "permissionProfileId":permission, "nativeViewRequestId":frame["id"], "operationId":operation,
-        });
         let (receipt, _, _) = self
             .admit_native(
                 scope,
                 session,
                 super::settings::UPDATE,
                 &frame["params"],
-                &command,
+                command,
                 activation,
                 "terminal",
             )

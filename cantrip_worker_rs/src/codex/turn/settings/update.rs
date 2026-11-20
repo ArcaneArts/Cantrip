@@ -79,6 +79,7 @@ impl Turns {
                 transition,
                 epoch: binding["nativeEpoch"].clone(),
                 source: source.clone(),
+                binding: binding["bindingId"].clone(),
             }
         });
         let check = || {

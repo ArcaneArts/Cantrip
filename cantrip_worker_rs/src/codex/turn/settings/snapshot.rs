@@ -181,7 +181,7 @@ impl Source {
         Ok(scope)
     }
 
-    pub(super) fn assert_current(&self) -> Result<()> {
+    pub(in crate::codex::turn) fn assert_current(&self) -> Result<()> {
         self.runtime()?;
         self.encryption_scope()?;
         Ok(())

@@ -1002,6 +1002,7 @@ export const contractRoots = [
   "nativeAccountDefaultsResultSchema",
   "nativePermissionUpdateCommandSchema",
   "permissionTransitionSchema",
+  "nativePermissionTransitionResolutionSchema",
 ];
 
 export const projectExportContractRoots = [

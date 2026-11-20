@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
+  nativePermissionTransitionResolveSchema,
   nativeSettingsEvidenceSchema,
   nativeSettingsEvidenceResultSchema,
 } from "../../packages/protocol/dist/index.js";
@@ -11,13 +12,29 @@ import {
 
 const method = "thread/settings/update";
 
-export function consoleSettings({ available, oracle, threadId, chatId }) {
+export function consoleSettings({
+  available,
+  oracle,
+  threadId,
+  chatId,
+  workerId,
+  snapshot,
+}) {
   const admitted = new Map();
   const supplied = randomUUID();
+  const resolutions = [];
+  let missingBindingAt;
+  let profile = ":read-only";
+  let policyRevision = 0;
   const cases = [
     { effort: "low", serviceTier: null },
     { effort: null, unsetServiceTier: true, operationId: supplied },
+    { permissions: ":workspace", approvalPolicy: "on-request", effort: "low" },
+    { permissions: ":workspace", approvalPolicy: "on-request" },
+    { permissions: ":read-only" },
   ];
+  const selection = (index) =>
+    index === cases.length - 1 ? ":workspace" : cases[index].permissions;
   const open = async (direction, operationId, envelope, digest, eventId) => {
     const context = { chatId, operationId, direction, eventId };
     const args = { service: oracle, context };
@@ -28,6 +45,42 @@ export function consoleSettings({ available, oracle, threadId, chatId }) {
   };
 
   return {
+    resolve(value, send) {
+      const input = nativePermissionTransitionResolveSchema.parse(value);
+      const expected = cases[admitted.size].permissions;
+      assert.equal(input.selectedId, selection(admitted.size));
+      assert.equal(input.workerId, workerId);
+      const peer = snapshot();
+      const {
+        workerId: _worker,
+        bindingId,
+        nativeEpoch: _epoch,
+        ...session
+      } = peer.binding;
+      const { connectionId: _connection, ...resolved } = input.session;
+      assert.deepEqual(resolved, session);
+      if (missingBindingAt === undefined) {
+        missingBindingAt = peer.refreshes;
+        send({ code: "permission-binding-required" }, 409);
+        return;
+      }
+      assert.ok(
+        peer.refreshes > missingBindingAt,
+        "Refresh the real bound snapshot before retrying",
+      );
+      const resolution = {
+        bindingId,
+        permissionTransition: {
+          selectedId: input.selectedId,
+          resolvedSelectedId: input.selectedId,
+          effectiveId: expected,
+          expectedRevision: String(policyRevision),
+        },
+      };
+      resolutions.push(resolution);
+      send(resolution);
+    },
+
     async admit(call, payload) {
       const expected = cases[admitted.size];
       assert.ok(expected, "Unexpected console settings admission");
@@ -44,25 +97,38 @@ export function consoleSettings({ available, oracle, threadId, chatId }) {
         ),
         payload,
       );
+      const transition = expected.permissions ? resolutions.at(-1) : undefined;
+      assert.equal(call.intent.permissionProfileId, profile);
+      assert.deepEqual(
+        call.intent.permissionTransition,
+        transition?.permissionTransition,
+      );
+      assert.equal(call.intent.settingsBindingId, transition?.bindingId);
       assert.deepEqual(payload.params, {
         threadId,
-        sandboxPolicy: null,
-        permissions: null,
-        approvalPolicy: null,
+        ...(transition
+          ? {
+              applyAt: "quiescent",
+              approvalsReviewer: "user",
+              approvalPolicy: "on-request",
+            }
+          : { sandboxPolicy: null, permissions: null, approvalPolicy: null }),
         ...expected,
         operationId: nativeOperationId,
       });
       assert.deepEqual(
         call.intent.settingKeys,
         Object.keys(payload.params).filter(
-          (key) => key !== "threadId" && key !== "operationId",
+          (key) => !["threadId", "operationId", "applyAt"].includes(key),
         ),
       );
       admitted.set(call.operationId, {
         expected,
         nativeOperationId,
+        mixed: Boolean(expected.permissions && expected.effort),
         queued: Promise.withResolvers(),
         applied: Promise.withResolvers(),
+        rejected: Promise.withResolvers(),
       });
     },
 
@@ -78,8 +144,17 @@ export function consoleSettings({ available, oracle, threadId, chatId }) {
         ),
         content,
       );
-      assert.equal(content.result.operationId, entry.nativeOperationId);
-      assert.ok(content.result.submissionId);
+      if (entry.mixed) {
+        assert.equal(settlement.status, "rejected");
+        assert.match(
+          content.error.message,
+          /quiescent updates accept security fields only/u,
+        );
+      } else {
+        assert.equal(settlement.status, "applied", content.error?.message);
+        assert.equal(content.result.operationId, entry.nativeOperationId);
+        assert.ok(content.result.submissionId);
+      }
     },
 
     async evidence(input, receipt, send) {
@@ -100,7 +175,14 @@ export function consoleSettings({ available, oracle, threadId, chatId }) {
       assert.equal(content.submissionId, event.submissionId);
       assert.equal(content.scope.nativeOperationId, entry.nativeOperationId);
       assert.equal(content.scope.operationId, receipt.operationId);
-      if (event.kind === "queued") {
+      if (entry.mixed) {
+        assert.equal(event.kind, "rejected");
+        assert.equal(event.submissionId, null);
+        assert.match(
+          content.content.error.message,
+          /quiescent updates accept security fields only/u,
+        );
+      } else if (event.kind === "queued") {
         assert.equal(
           content.content.result.operationId,
           entry.nativeOperationId,
@@ -110,12 +192,36 @@ export function consoleSettings({ available, oracle, threadId, chatId }) {
         assert.equal(content.content.operationId, entry.nativeOperationId);
         assert.equal(
           content.content.threadSettings.effort,
-          entry.expected.effort,
+          entry.expected.effort ?? null,
         );
         assert.equal(
           content.content.threadSettings.serviceTier,
-          entry.expected.unsetServiceTier ? null : "default",
+          entry.expected.unsetServiceTier || entry.expected.permissions
+            ? null
+            : "default",
         );
+        if (entry.expected.permissions) {
+          const { threadSettings, resolvedSecurity } = content.content;
+          assert.equal(
+            threadSettings.activePermissionProfile.id,
+            entry.expected.permissions,
+          );
+          assert.deepEqual(content.permissionPolicy, event.permissionPolicy);
+          assert.deepEqual(event.permissionPolicy, {
+            effectiveId: entry.expected.permissions,
+            settingsVersion: threadSettings.settingsVersion,
+          });
+          for (const field of [
+            "approvalPolicy",
+            "approvalsReviewer",
+            "sandboxPolicy",
+            "permissionProfile",
+            "activePermissionProfile",
+          ])
+            assert.deepEqual(threadSettings[field], resolvedSecurity[field]);
+          profile = entry.expected.permissions;
+          policyRevision += 1;
+        }
       }
       send(
         nativeSettingsEvidenceResultSchema.parse({
@@ -125,9 +231,11 @@ export function consoleSettings({ available, oracle, threadId, chatId }) {
           application: {
             nativeOperationId: event.nativeOperationId,
             submissionId: event.submissionId,
-            status: event.kind === "applied" ? "applied" : "pending",
+            status: event.kind === "queued" ? "pending" : event.kind,
             evidenceCount: 1,
           },
+          permissionPolicyPublished:
+            event.kind === "applied" && Boolean(entry.expected.permissions),
         }),
       );
       entry[event.kind].resolve(event.submissionId);
@@ -150,14 +258,20 @@ export function consoleSettings({ available, oracle, threadId, chatId }) {
       );
       const rawPermission = await call(method, {
         threadId,
-        permissions: ":danger-full-access",
+        sandboxPolicy: { type: "dangerFullAccess" },
       });
       assert.match(
         rawPermission.error.message,
-        /managed permission transition/u,
+        /named managed permission profile/u,
       );
+      const invalidPair = await call(method, {
+        threadId,
+        permissions: ":workspace",
+        approvalPolicy: "never",
+      });
+      assert.match(invalidPair.error.message, /approval policy/u);
       assert.equal(admitted.size, 0);
-      for (const desired of cases) {
+      for (const [index, desired] of cases.entries()) {
         const frame = await call(method, {
           threadId,
           disabledPluginIds: null,
@@ -165,9 +279,24 @@ export function consoleSettings({ available, oracle, threadId, chatId }) {
           permissions: null,
           approvalPolicy: null,
           ...desired,
+          ...(desired.permissions ? { permissions: selection(index) } : {}),
         });
-        assert.ok(!frame.error, JSON.stringify(frame.error));
         const entry = [...admitted.values()].at(-1);
+        if (entry?.mixed) {
+          assert.match(
+            frame.error.message,
+            /quiescent updates accept security fields only/u,
+          );
+          await available(entry.rejected.promise);
+          const observed = await call("thread/settings/read", { threadId });
+          assert.equal(
+            observed.result.threadSettings.activePermissionProfile.id,
+            profile,
+          );
+          assert.equal(observed.result.threadSettings.effort, null);
+          continue;
+        }
+        assert.ok(!frame.error, JSON.stringify(frame.error));
         assert.equal(frame.result.operationId, entry.nativeOperationId);
         for (const evidence of [entry.queued, entry.applied]) {
           assert.equal(
@@ -176,15 +305,24 @@ export function consoleSettings({ available, oracle, threadId, chatId }) {
           );
         }
         const observed = await call("thread/settings/read", { threadId });
-        assert.equal(observed.result.threadSettings.effort, desired.effort);
+        assert.equal(
+          observed.result.threadSettings.effort,
+          desired.effort ?? null,
+        );
         assert.equal(
           observed.result.threadSettings.serviceTier,
-          desired.unsetServiceTier ? null : "default",
+          desired.unsetServiceTier || desired.permissions ? null : "default",
         );
+        if (desired.permissions)
+          assert.equal(
+            observed.result.threadSettings.activePermissionProfile.id,
+            desired.permissions,
+          );
       }
       assert.equal(admitted.size, cases.length);
+      assert.equal(resolutions.length, 3);
       console.log(
-        "Managed console settings matched the native reply and applied evidence, including an explicit cleared effort.",
+        "Managed console settings and permission choices matched Core admission, native readback and protected evidence.",
       );
     },
   };

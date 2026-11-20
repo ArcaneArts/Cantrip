@@ -219,6 +219,15 @@ impl Ensurer {
         self.settings_source(&scope, false)?.read(signal).await
     }
 
+    pub(in crate::codex) fn console_settings_source(
+        &self,
+        session: &Value,
+    ) -> Result<Arc<snapshot::Source>> {
+        let mut scope = session.clone();
+        scope["workerId"] = json!(self.0.worker);
+        self.settings_source(&scope, true)
+    }
+
     pub(in crate::codex) fn settings_source(
         &self,
         scope: &Value,

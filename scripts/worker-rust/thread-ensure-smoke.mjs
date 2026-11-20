@@ -295,9 +295,9 @@ const server = createServer(async (request, response) => {
     response.writeHead(401).end("{}");
     return;
   }
-  const send = (value) =>
+  const send = (value, status = 200) =>
     response
-      .writeHead(200, { "content-type": "application/json" })
+      .writeHead(status, { "content-type": "application/json" })
       .end(JSON.stringify(value));
   if (url.pathname === "/api/internal/project-alerts/goals") {
     try {
@@ -2660,8 +2660,14 @@ async function verifyGuestConsole({
     oracle,
     threadId,
     chatId: session.chatId,
+    workerId,
+    snapshot: () => snapshotPeer,
   });
   consolePeer = async (action, input, send) => {
+    if (action === "permission-transition") {
+      settings.resolve(input, send);
+      return;
+    }
     if (action === "admit") {
       const call = nativeCommandAdmissionSchema.parse(input);
       assert.equal(call.origin, "terminal");
@@ -2867,8 +2873,8 @@ async function verifyGuestConsole({
     } else {
       assert.equal(action, "receipt");
       const evidence = nativeCommandSettlementSchema.parse(input);
-      assert.equal(evidence.status, "applied");
       if (evidence.executionComplete) {
+        assert.equal(evidence.status, "applied");
         assert.equal(entry.receipt.method, "turn/start");
         assert.equal(entry.receipt.status, "applied");
         assert.equal(evidence.reconciliation.nativeTurnId, entry.turnId);
@@ -2889,6 +2895,9 @@ async function verifyGuestConsole({
         },
         envelope: evidence.protectedResult,
       });
+      if (entry.receipt.method !== "thread/settings/update") {
+        assert.equal(evidence.status, "applied", content.error?.message);
+      }
       if (entry.receipt.method === "thread/resume") {
         assert.equal(content.result.thread.id, threadId);
         assert.equal(
@@ -2908,7 +2917,8 @@ async function verifyGuestConsole({
         entry.turnId = content.result.turn.id;
         acknowledged.resolve();
       }
-      entry.receipt.status = "applied";
+      entry.receipt.status = evidence.status;
+      entry.receipt.rejectionCode = evidence.rejectionCode;
     }
     if (entry.receipt.method === "thread/resume") steps.push(action);
     send(
