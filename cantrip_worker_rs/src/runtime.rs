@@ -1172,7 +1172,6 @@ async fn cycle(
     let encryption_closed = encryption.close().await;
     drop(turns);
     drop(goals);
-    let preparation_closed = thread_preparation.close().await;
     let github_closed = github.drain().await;
     let terminals_closed = terminals.close().await;
     let (heartbeat_done, connection_done) = tokio::join!(
@@ -1189,6 +1188,9 @@ async fn cycle(
             }
         }
     );
+    // The command connection's reconnect callback still owns a Turns clone.
+    // Join it before closing the shared managed preparation service.
+    let preparation_closed = thread_preparation.close().await;
     outgoing.close();
     terminals_closed?;
     shells_closed?;

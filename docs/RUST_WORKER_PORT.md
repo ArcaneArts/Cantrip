@@ -8061,3 +8061,19 @@ dependencies described for system capture. Earlier runs encountered an
 intermittent graceful worker shutdown error before the replacement began.
 The successful run used deliberate crashes for recovery and completed its
 final orderly shutdown.
+
+## 218. Join the worker command connection before closing preparations
+
+Reference commit 6d91c9e4ab65ccd30b13965a77f593153163ad21 (#3381).
+
+The command connection's reconnect callback retains the turn service, which
+owns a reference to managed preparations. Worker shutdown now waits for the
+connection task to release the callback before closing the preparation
+service and its broker. This removes the race behind the intermittent
+`Managed preparations are still active` shutdown failure.
+
+The locally built macOS ARM64 worker passed the production Core control
+fixture with an empty runtime PATH for stdin closure and SIGTERM. Both runs
+verified same-process restart, credential rotation, and log archive drain.
+The local Cantrip OS workspace fixture also passed across an orderly worker
+restart and final shutdown.
