@@ -117,6 +117,7 @@ impl Turns {
         let transport = subscription.signal();
         binding.restore_capture(capture, output::restored_seed(saved));
         let active = Arc::new(Active {
+            context: OnceLock::new(),
             root: Some(root.clone()),
             project: receipt.session()["projectId"].as_js_string().cloned(),
             control: OnceLock::from(binding),

@@ -3,7 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
-import { taskModelProvider } from "../server-rust/task-model-provider.mjs";
+import {
+  modelFunctions,
+  taskModelProvider,
+} from "../server-rust/task-model-provider.mjs";
 
 export async function verifyProjectExport({
   call,
@@ -699,6 +702,130 @@ export async function verifyProjectExport({
       "a new compaction enters inference after Stop",
     );
     await verifyAnswer(afterCompactionAnswer);
+
+    function advertisedTool(record, tool) {
+      return modelFunctions([
+        ...record.input.tools,
+        ...record.input.input
+          .filter((item) => item.type === "tool_search_output")
+          .flatMap((item) => item.tools ?? []),
+      ]).find(({ name }) => name === tool || name.endsWith("__" + tool));
+    }
+    const agentAnswer = "The agent scheduled context compaction";
+    const agentSummary = "Keep the context summary scheduled by the agent";
+    upstream.reply({ toolSearch: { query: "context_get" } });
+    const contextCall = upstream.reply({ hold: true });
+    const contextResult = upstream.reply({
+      toolSearch: { query: "context_compact" },
+    });
+    const scheduling = upstream.reply({ hold: true });
+    const repeatScheduling = upstream.reply({ hold: true });
+    const scheduleResult = upstream.reply({ text: agentAnswer, hold: true });
+    const deferredCompaction = upstream.reply({ text: agentSummary });
+    try {
+      const turn = await call(
+        "POST",
+        `/api/chats/${job.chatId}/turns`,
+        await encryptedTurn({
+          ownerId,
+          chatKey,
+          modelId: model.body.id,
+          question: "Inspect and schedule Codex context compaction",
+        }),
+      );
+      assert.equal(turn.status, 202, JSON.stringify(turn));
+      await eventually(
+        async () => contextCall.request,
+        (record) => assert.ok(record),
+        "Codex discovers context_get",
+      );
+      const contextTool = advertisedTool(contextCall.request, "context_get");
+      assert.ok(contextTool);
+      contextCall.calls = [{ ...contextTool, arguments: {} }];
+      contextCall.release();
+      await eventually(
+        async () => scheduling.request,
+        (record) => assert.ok(record),
+        "Codex discovers context_compact",
+      );
+      const contextOutput = contextResult.request.input.input.find(
+        (item) =>
+          item.type === "function_call_output" &&
+          JSON.stringify(item.output).includes("contextWindow"),
+      );
+      assert.equal(typeof contextOutput?.output, "string");
+      assert.match(contextOutput.output, /"usedTokens":120/u);
+      assert.match(contextOutput.output, /"compactionScheduled":false/u);
+      const compactTool = advertisedTool(scheduling.request, "context_compact");
+      assert.ok(compactTool);
+      scheduling.calls = [{ ...compactTool, arguments: {} }];
+      scheduling.release();
+      await eventually(
+        async () => repeatScheduling.request,
+        (record) => assert.ok(record),
+        "Codex receives the first scheduling result",
+      );
+      const scheduled = (record) =>
+        record.input.input.filter(
+          (item) =>
+            item.type === "function_call_output" &&
+            typeof item.output === "string" &&
+            item.output.includes('"compactionScheduled":true'),
+        );
+      const firstSchedule = scheduled(repeatScheduling.request).at(-1);
+      assert.ok(
+        firstSchedule,
+        JSON.stringify(
+          repeatScheduling.request.input.input
+            .filter(({ type }) => type === "function_call_output")
+            .slice(-2),
+        ),
+      );
+      // A second call in the same turn still schedules only one follow-up.
+      repeatScheduling.calls = [{ ...compactTool, arguments: {} }];
+      repeatScheduling.release();
+      await eventually(
+        async () => scheduleResult.request,
+        (record) => assert.ok(record),
+        "Codex receives the repeated scheduling result",
+      );
+      assert.ok(
+        scheduled(scheduleResult.request).some(
+          ({ call_id }) => call_id !== firstSchedule.call_id,
+        ),
+        JSON.stringify(
+          scheduleResult.request.input.input
+            .filter(({ type }) => type === "function_call_output")
+            .slice(-3),
+        ),
+      );
+      assert.ok(!deferredCompaction.entered);
+    } finally {
+      contextCall.release();
+      scheduling.release();
+      repeatScheduling.release();
+      scheduleResult.release();
+    }
+    await eventually(
+      async () => deferredCompaction.request,
+      (request) => assert.equal(request?.completed, true),
+      "the scheduled compaction runs after the tool's turn",
+    );
+    await verifyAnswer(agentAnswer);
+    const final = upstream.reply({ text: "The agent summary carries forward" });
+    const nextTurn = await call(
+      "POST",
+      `/api/chats/${job.chatId}/turns`,
+      await encryptedTurn({
+        ownerId,
+        chatKey,
+        modelId: model.body.id,
+        question: "Continue after the agent's compaction",
+      }),
+    );
+    assert.equal(nextTurn.status, 202, JSON.stringify(nextTurn));
+    await verifyAnswer("The agent summary carries forward");
+    assert.ok(JSON.stringify(final.request.input.input).includes(agentSummary));
     assert.deepEqual(upstream.failures, []);
   } finally {
     labelKey.fill(0);

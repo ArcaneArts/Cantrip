@@ -4,6 +4,7 @@ mod acknowledged;
 pub(crate) mod autonomous;
 mod compact;
 pub(crate) mod console;
+pub(crate) mod context;
 mod control;
 mod deferred;
 pub(crate) mod goal_recovery;
@@ -119,6 +120,7 @@ struct TaskTurn {
 }
 
 struct Active {
+    context: OnceLock<Arc<context::ContextTurn>>,
     root: Option<receipt::Operation>,
     project: Option<JsString>,
     control: OnceLock<control::Binding>,
@@ -499,7 +501,7 @@ impl Turns {
         )
     }
 
-    pub(crate) fn logical(&self, command: &Value) -> Result<Value> {
+    pub(crate) fn logical(&self, command: &Value) -> Result<Option<context::Completion>> {
         let key = self.key(command)?;
         let selector = (
             key.clone(),
@@ -522,6 +524,9 @@ impl Turns {
             .cloned();
         if command["type"] == CANCEL {
             if let Some(active) = &active {
+                if let Some(context) = active.context.get() {
+                    context.cancel();
+                }
                 active.preparation.abort(anyhow!(
                     "The GUI request was stopped before native dispatch."
                 ));
@@ -537,8 +542,11 @@ impl Turns {
             if matches!(*active.phase.lock().unwrap(), Phase::Finished) {
                 sessions.active.remove(&key);
             }
+            if command["type"] == COMPLETE {
+                return Ok(context::Completion::pending(active));
+            }
         }
-        Ok(json!({}))
+        Ok(None)
     }
 
     pub(crate) async fn run(&self, incoming: &Value, emit: Emit) -> (Result<Value>, Option<Value>) {
@@ -647,6 +655,7 @@ impl Turns {
         let root = receipt::Operation::read(incoming)?;
         let (abort, signal) = Abort::new();
         let active = Arc::new(Active {
+            context: OnceLock::new(),
             logical_finished: AtomicBool::new(root.is_none()),
             root: root.clone(),
             project: incoming["policyProjectId"].as_js_string().cloned(),
@@ -739,6 +748,13 @@ impl Turns {
             .await?;
         let runtime = &prepared.runtime;
         let thread = prepared.thread.id();
+        let context = (root.is_some() && task.is_none() && command["contextKind"] == "project")
+            .then(|| {
+                active
+                    .context
+                    .get_or_init(|| Arc::new(context::ContextTurn::new(thread.clone())))
+                    .clone()
+            });
         active.set(Phase::Preparing(Some(thread.clone())));
         signal.check()?;
         if self.key(&command)? != key {
@@ -924,7 +940,7 @@ impl Turns {
             }
             prepared.thread.assert_current(runtime)?;
             let (subscription, mut events, capture) =
-                output::subscribe(&runtime.history(), thread)?;
+                output::subscribe_with_context(&runtime.history(), thread, context.clone())?;
             let transport = subscription.signal();
             let result = async {
                 execution.bind_thread(thread.clone())?;
@@ -933,6 +949,11 @@ impl Turns {
                     self.preparation
                         .activate(&prepared, &command["executionLaneId"])?
                 );
+                if let Some(context) = &context
+                    && let Some(activation) = mcp.as_ref().and_then(Option::as_ref)
+                {
+                    activation.track_context(context.clone());
+                }
                 if task.is_some() {
                     self.task_inputs
                         .authorize(
@@ -1084,6 +1105,9 @@ impl Turns {
                     interactions.bind_turn(&turn)?;
                 }
                 let bound = execution.bind_turn(turn.clone());
+                if let Some(context) = &context {
+                    context.bind(&turn);
+                }
                 active.set(Phase::Running {
                     runtime: runtime.clone(),
                     thread: thread.clone(),
@@ -1181,14 +1205,34 @@ impl Turns {
         if task.is_some() {
             execution.settled().await?;
         }
-        result.and_then(|value| {
+        let outcome = result.and_then(|value| {
             cleanup?;
             match (protection, task) {
                 (Some(protection), _) => protection.result(value),
                 (_, Some(task)) => task.turn.finish(value),
                 _ => Ok(value),
             }
-        })
+        });
+        if let Some(context) = context {
+            if outcome.is_ok() {
+                context.finish(|| {
+                    let mut next = params::preparation(&command);
+                    next["type"] = json!(COMPACT);
+                    next["chatId"] = command["chatId"].clone();
+                    next["threadId"] = json!(thread);
+                    context::Followup {
+                        key: key.clone(),
+                        runtime_generation: runtime.generation().to_owned(),
+                        thread_version: prepared.thread.version(),
+                        signal: signal.clone(),
+                        command: next,
+                    }
+                });
+            } else {
+                context.cancel();
+            }
+        }
+        outcome
     }
 
     fn task_goal_cycle(

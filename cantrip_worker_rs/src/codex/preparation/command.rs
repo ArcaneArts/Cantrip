@@ -671,14 +671,18 @@ impl Ensurer {
                                         .clone(),
                                 )
                             };
+                            let mut operations =
+                                vec!["context.get", "tool.help", "web.read", "web.search"];
+                            if !standalone && command["taskOwned"] != true {
+                                operations.push("context.compact");
+                            }
                             let admission = json!({
                                 "ownerId": bound.0, "workerId": this.0.worker, "chatId": chat,
                                 "contextKind": context_kind, "projectId": session["projectId"],
                                 "worktreeId": session["worktreeId"], "rootKind": session["rootKind"],
                                 "scratchRootId": session["scratchRootId"],
                                 "permissionProfileId": command["permissionProfileId"],
-                                "allowedOperations": ["context.get", "tool.help", "web.read", "web.search"]
-                                    .into_iter()
+                                "allowedOperations": operations.into_iter()
                                     .chain(crate::web::session::TOOLS.into_iter().map(|(operation, _)| operation))
                                     .collect::<Vec<_>>(),
                             });
