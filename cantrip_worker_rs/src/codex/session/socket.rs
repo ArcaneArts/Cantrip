@@ -17,6 +17,7 @@ pub(super) async fn run(
     history: Hub,
     threads: ThreadVersions,
     generation: String,
+    notification: Option<HistoryNotification>,
 ) {
     let (mut writer, mut reader) = socket.split();
     let (failed, mut failure) = tokio::sync::oneshot::channel();
@@ -57,8 +58,8 @@ pub(super) async fn run(
             changed=exit.changed()=>{if changed.is_err(){break "Codex app-server process observer closed.".into();}}
             error=&mut failure=>break error.unwrap_or_else(|_|"Codex app-server WebSocket closed.".into()),
             message=reader.next()=>match message {
-                Some(Ok(Message::Text(text)))=>observe(&requests, &history, &threads, &text, &emit),
-                Some(Ok(Message::Binary(bytes)))=>observe(&requests, &history, &threads, &String::from_utf8_lossy(&bytes), &emit),
+                Some(Ok(Message::Text(text)))=>observe(&requests, &history, &threads, &text, notification.as_ref(), &emit),
+                Some(Ok(Message::Binary(bytes)))=>observe(&requests, &history, &threads, &String::from_utf8_lossy(&bytes), notification.as_ref(), &emit),
                 Some(Ok(Message::Ping(bytes)))=>{let _=outgoing.send(Outgoing::Send(Message::Pong(bytes)));}
                 Some(Ok(Message::Close(_)))|None=>break "Codex app-server WebSocket closed.".into(),
                 Some(Err(error))=>break error.to_string().into(),
@@ -103,6 +104,7 @@ fn observe(
     history: &Hub,
     threads: &ThreadVersions,
     raw: &str,
+    notification: Option<&HistoryNotification>,
     emit: &impl Fn(EventKind),
 ) {
     let Some(message) = rpc_protocol::parse_text(raw) else {
@@ -133,9 +135,11 @@ fn observe(
         {
             threads.closed(thread.clone());
         }
+        let params = &message["params"];
+        let enriched = notification.and_then(|observe| observe(method, params));
         history.notification(
             method.clone(),
-            &message["params"],
+            enriched.as_ref().unwrap_or(params),
             message.get("historyCursor"),
         );
     }
@@ -184,6 +188,7 @@ mod tests {
             &history,
             &threads,
             r#"{"method":"turn/started","params":{"threadId":"thread"}}"#,
+            None,
             &emit,
         );
         assert_eq!(frames.try_recv()?["sequence"], json!(1));
@@ -194,7 +199,7 @@ mod tests {
             r#"{"method":"thread/managedExecution/requested","params":{"threadId":"thread","trigger":"inference"}}"#,
             r#"{"method":"turn/completed","params":{"threadId":"thread"},"historyCursor":{"epoch":"epoch","sequence":"42","previousSequence":"41"}}"#,
         ] {
-            observe(&requests, &history, &threads, raw, &emit);
+            observe(&requests, &history, &threads, raw, None, &emit);
         }
         let terminal = frames.try_recv()?;
         assert_eq!(terminal["method"], "turn/completed");
@@ -204,7 +209,7 @@ mod tests {
             r#"{{"id":{},"result":{{"thread":{{"id":"thread","status":{{"type":"idle"}},"turns":[]}}}}}}"#,
             request["id"].stringify()
         );
-        observe(&requests, &history, &threads, &reply, &emit);
+        observe(&requests, &history, &threads, &reply, None, &emit);
         let observed = reading.await?;
         assert_eq!(observed["readBarrierSequence"], json!(1));
         assert_eq!(observed["completedSequence"], json!(2));
@@ -215,6 +220,7 @@ mod tests {
             &history,
             &threads,
             r#"{"method":"thread/closed","params":{"threadId":"thread"}}"#,
+            None,
             &emit,
         );
         assert_eq!(threads.current(&"thread".into()), 1);

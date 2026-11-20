@@ -15,6 +15,9 @@ export async function verifySubagentInteraction({
   labelKey,
   interactionKey,
   customModel = false,
+  startWorker,
+  stopWorker,
+  chatKey,
 }) {
   const childName = "cantrip-approval-child-model";
   const childEffort = "high";
@@ -58,6 +61,7 @@ export async function verifySubagentInteraction({
     call("POST", `${chatUrl}/native-settings/refresh`, 200, {});
   let warm;
   let childConfiguration;
+  let childProfile;
   if (customModel) {
     warm = await eventually(refreshSettings, ({ effective }) =>
       assert.ok(effective),
@@ -84,7 +88,7 @@ export async function verifySubagentInteraction({
           ({ effort }) => effort === childEffort,
         ),
     );
-    const childProfile = await call("POST", "/api/settings/models", 201, {
+    childProfile = await call("POST", "/api/settings/models", 201, {
       name: "Custom child model",
       routes: [
         { providerId: provider.id, modelName: childName, enabled: true },
@@ -282,6 +286,94 @@ export async function verifySubagentInteraction({
       );
       console.log(
         "The configured child used its provider model on the existing native runtime.",
+      );
+      const rootTurn = { threadId: root.thread_id, turnId: root.turn_id };
+      const childTurn = {
+        threadId: metadata.thread_id,
+        turnId: metadata.turn_id,
+      };
+      const { id: serverId } = (await call("GET", "/api/bootstrap", 200))
+        .server;
+      const identities = [
+        { ...rootTurn, isRoot: true, model: profile },
+        { ...childTurn, isRoot: false, model: childProfile },
+      ];
+      const read = () =>
+        call("POST", `${chatUrl}/native-history/turns/read`, 200, {
+          turns: [rootTurn, childTurn],
+        });
+      const captures = ({ turns }) => {
+        assert.equal(turns.length, 2);
+        return identities.map(({ threadId, turnId, isRoot, model }) => {
+          const entry = turns.find(
+            ({ turn }) => turn.threadId === threadId && turn.turnId === turnId,
+          );
+          assert.equal(entry?.turn.status, "completed");
+          const { modelAttribution, usage } = entry.turn;
+          assert.deepEqual(modelAttribution?.selection, {
+            status: "resolved",
+            workerId,
+            providerId: provider.id,
+            providerAccountId: null,
+            modelId: model.id,
+            routeId: model.routes[0].id,
+          });
+          assert.equal(modelAttribution.isRoot, isRoot);
+          if (!isRoot)
+            assert.equal(modelAttribution.reasoningEffort, childEffort);
+          assert.deepEqual(usage?.modelAttribution, modelAttribution);
+          return entry;
+        });
+      };
+      const archive = await eventually(read, captures, 35_000);
+      for (const { turn, bindingId, workerId } of captures(archive)) {
+        const evidence = await crypto.decryptNativeHistoryTurn({
+          ownerId,
+          serverId,
+          componentKey: chatKey,
+          chatId,
+          bindingId,
+          workerId,
+          turn,
+        });
+        assert.deepEqual(
+          evidence.reducedTurn.metadata.cantripModelAttribution,
+          turn.modelAttribution,
+        );
+      }
+      const usage = () =>
+        call(
+          "GET",
+          `/api/analytics/provider-telemetry/${provider.id}/export`,
+          200,
+        );
+      const checkUsage = ({ tokenUsage }) => {
+        for (const { turn } of captures(archive)) {
+          const source = `native-turn:${JSON.stringify([chatId, turn.threadId, turn.turnId])}`;
+          const rows = tokenUsage.filter(
+            ({ sourceKey }) => sourceKey === source,
+          );
+          assert.equal(rows.length, 1);
+          const [row] = rows;
+          assert.equal(row.modelId, turn.modelAttribution.selection.modelId);
+          assert.equal(
+            row.modelRouteId,
+            turn.modelAttribution.selection.routeId,
+          );
+          assert.equal(
+            row.reasoningEffort,
+            turn.modelAttribution.reasoningEffort,
+          );
+          assert.ok(row.inputTokens > 0 && row.outputTokens > 0);
+        }
+      };
+      await eventually(usage, checkUsage);
+      assert.deepEqual(await stopWorker(), { code: 0, signal: null });
+      await startWorker();
+      captures(await read());
+      checkUsage(await usage());
+      console.log(
+        "Root and child attribution remained distinct in encrypted History and usage after worker restart.",
       );
     }
     assert.deepEqual(model.failures, []);

@@ -1,4 +1,5 @@
 //! Owns each managed Codex child, its RPC session and native inference router.
+mod attribution;
 mod history;
 mod interaction_requests;
 mod launch;
@@ -12,7 +13,7 @@ use super::{
     private_inference::{Hooks, Router, Routing},
     process_transport::{RetirementError, retirement_failed},
     rpc_requests::{Response, Settlement},
-    session::{Event, EventKind, Session},
+    session::{Event, EventKind, HistoryNotification, Session},
 };
 use crate::{
     history::live::observation::RuntimeHub,
@@ -69,6 +70,7 @@ struct Inner {
     queue_observers: QueueObservers,
     interaction_requests: interaction_requests::Requests,
     catalog: Option<tokio::sync::Mutex<model_catalog::Catalog>>,
+    attribution: Option<Arc<Mutex<attribution::Attribution>>>,
     retirement: Promise<()>,
     external_auth: Option<Arc<dyn ExternalAuth>>,
     closing: Mutex<Option<Promise<()>>>,
@@ -176,14 +178,41 @@ impl Runtime {
         if let Some(prepare) = prepare_home {
             prepare(home.clone()).await?;
         }
-        let catalog = if let Some(seed) = profile.managed_catalog.take() {
+        let (catalog, attribution) = if let Some(seed) = profile.managed_catalog.take() {
+            let inventory = seed.inventory().await;
+            let native_provider = seed.native_provider;
             let path = home.join("cantrip-model-catalog.json");
-            let catalog = seed.publish(&path).await?;
-            profile.model_catalog = Some(path);
-            Some(tokio::sync::Mutex::new(catalog))
+            let catalog = seed.publish(&path, &inventory).await?;
+            let attribution = attribution::Attribution::new(native_provider, inventory);
+            if catalog.is_some() {
+                profile.model_catalog = Some(path);
+            }
+            (
+                catalog.map(tokio::sync::Mutex::new),
+                Some(Arc::new(Mutex::new(attribution))),
+            )
         } else {
-            None
+            (None, None)
         };
+        let notification = attribution
+            .as_ref()
+            .map(|attribution| -> HistoryNotification {
+                let attribution = attribution.clone();
+                Arc::new(move |method, params| {
+                    if matches!(
+                        method.as_str(),
+                        Some(
+                            "turn/started"
+                                | "turn/completed"
+                                | "thread/closed"
+                                | "thread/status/changed"
+                        )
+                    ) {
+                        return attribution.lock().unwrap().notification(method, params);
+                    }
+                    None
+                })
+            });
 
         if let Some(auth) = &external_auth {
             profile.external_login = auth.login().await?;
@@ -196,7 +225,8 @@ impl Runtime {
         let resources = async {
             let environment = adapter.prepare_native_launch().await?;
             let (arguments, options) = host.process(&profile, environment)?;
-            Session::launch(host.binary.clone(), arguments, options).await
+            Session::launch_with_history(host.binary.clone(), arguments, options, notification)
+                .await
         }
         .await;
         let (session, events) = match resources {
@@ -257,6 +287,7 @@ impl Runtime {
             queue_observers,
             interaction_requests,
             catalog,
+            attribution,
             retirement,
             external_auth,
             closing: Mutex::new(None),
@@ -282,6 +313,18 @@ impl Runtime {
             catalog.synchronize(self, root, child).await?;
         }
         Ok(())
+    }
+
+    pub(in crate::codex) fn bind_model_attribution(
+        &self,
+        thread: &JsString,
+        root: &Value,
+        child: &Value,
+        scope: Value,
+    ) {
+        if let Some(attribution) = &self.0.attribution {
+            attribution.lock().unwrap().bind(thread, root, child, scope);
+        }
     }
 
     pub(in crate::codex) fn observe_queue(&self, thread: JsString, observer: &QueueObserver) {

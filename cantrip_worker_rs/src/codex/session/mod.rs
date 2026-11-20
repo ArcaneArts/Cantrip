@@ -30,6 +30,7 @@ pub struct Event {
     pub generation: String,
     pub kind: EventKind,
 }
+pub(super) type HistoryNotification = Arc<dyn Fn(&JsString, &Value) -> Option<Value> + Send + Sync>;
 #[derive(Clone, Default)]
 struct ThreadVersions(Arc<Mutex<HashMap<JsString, u64>>>);
 
@@ -95,6 +96,15 @@ impl Session {
         binary: PathBuf,
         arguments: Vec<String>,
         options: Options,
+    ) -> Work<(Self, mpsc::UnboundedReceiver<Event>)> {
+        Self::launch_with_history(binary, arguments, options, None)
+    }
+
+    pub(super) fn launch_with_history(
+        binary: PathBuf,
+        arguments: Vec<String>,
+        options: Options,
+        notification: Option<HistoryNotification>,
     ) -> Work<(Self, mpsc::UnboundedReceiver<Event>)> {
         cantrip_transport::lifecycle::owned(async move {
             let mut process = Process::launch(&binary, &arguments, &options).await?;
@@ -167,6 +177,7 @@ impl Session {
                 history.clone(),
                 threads.clone(),
                 generation.clone(),
+                notification,
             ));
             Ok((
                 Self(Arc::new(Inner {

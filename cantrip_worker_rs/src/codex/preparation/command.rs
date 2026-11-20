@@ -645,6 +645,15 @@ impl Ensurer {
                     loaded.assert_current(&runtime)?;
                     this.assert_bound(&bound)?;
                     let thread_id = loaded.id().clone();
+                    if !stopping {
+                        runtime.bind_model_attribution(
+                            &thread_id, &command["model"], &command["subagentDefaults"]["model"],
+                            json!({
+                                "workerId":this.0.worker, "providerId":command["provider"]["id"],
+                                "providerAccountId":command["provider"]["accountId"],
+                            }),
+                        );
+                    }
                     let mut result = Prepared {
                         runtime: runtime.clone(), thread: loaded.clone(), codex_home, runner_generation: runner.clone(),
                         saved: held, environment, admission: admission.clone(), bound: bound.clone(), queue: None,
