@@ -15,17 +15,21 @@ export async function createPreparedProjectChat({
   keyRevision,
   labelKey,
   title,
+  workspaceId: existingWorkspaceId,
+  projectName = "Interaction fixture",
   beforeChat,
 }) {
-  const workspaceId = randomUUID();
-  const { nameProtection } =
-    discoveryWireFixtures(projectLabel)
-      .encryptedProjectWorkspaceCreateSchema[0];
-  await call("POST", "/api/workspaces", 201, {
-    id: workspaceId,
-    nameProtection,
-    storage: { kind: "managed" },
-  });
+  const workspaceId = existingWorkspaceId ?? randomUUID();
+  if (!existingWorkspaceId) {
+    const { nameProtection } =
+      discoveryWireFixtures(projectLabel)
+        .encryptedProjectWorkspaceCreateSchema[0];
+    await call("POST", "/api/workspaces", 201, {
+      id: workspaceId,
+      nameProtection,
+      storage: { kind: "managed" },
+    });
+  }
   const label = (recordKind, rowId, title) =>
     crypto.encryptPrivateDisplayLabel({
       ownerId,
@@ -41,7 +45,7 @@ export async function createPreparedProjectChat({
     id: projectId,
     workerId,
     workspaceId,
-    nameProtection: await label("project", projectId, "Interaction fixture"),
+    nameProtection: await label("project", projectId, projectName),
   });
   await eventually(
     () => call("GET", `${projectUrl}/folder-setup`, 200),
@@ -60,7 +64,7 @@ export async function createPreparedProjectChat({
       assert.equal(preparation?.phase, "ready", JSON.stringify(preparation)),
     35_000,
   );
-  return { chatId, chatUrl: `/api/chats/${chatId}` };
+  return { chatId, chatUrl: `/api/chats/${chatId}`, workspaceId };
 }
 
 export async function verifyConsoleInteraction({

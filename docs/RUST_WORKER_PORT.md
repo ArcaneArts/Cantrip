@@ -8544,3 +8544,25 @@ reopened its recovery files after deletion. Repeat with
 `scripts/worker-rust/standalone-turn-smoke.mjs --skill-settings`. The Rust unit
 tests exercised the copy fallback with disposable directories on one volume.
 Nine focused Node reference tests passed.
+
+## 237. Inspect and update protected Project Chat customizations
+
+Reference commit `647d59ac079069ec2e6944fcc8a03d6239fba254` (#3400).
+
+The Rust worker reads the native skill and hook inventories and the paginated
+MCP server inventory through the existing encrypted customization endpoint.
+The worker redacts commands for untrusted hooks. Resource reads use the
+owning Codex thread, preserve text and blob entries, and enforce the existing
+size limit. MCP reload and skill-root changes use the customization replay
+guard. Extra skill roots resolve inside the selected checkout and preserve the
+worker's existing global root.
+
+On macOS ARM64, the local fixture ran production Rust Core in PGlite mode,
+the Rust worker and bundled Codex 0.166.0. Two Project Chats with the same MCP
+server name returned their own resource content before and after reload.
+The fixture exercised skill and hook discovery, rejected an extra root linked
+outside the checkout, used a skill from a registered root in a native turn,
+then cleared it while retaining the global skill. The skill settings
+regression and 13 focused Node reference tests passed. Repeat the inventory
+fixture with `scripts/worker-rust/standalone-turn-smoke.mjs --customization-inventory`.
+MCP OAuth and external configuration import still require Rust handlers.

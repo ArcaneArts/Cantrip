@@ -55,7 +55,7 @@ pub(super) async fn host_inputs(
         .collect())
 }
 
-async fn list(
+pub(super) async fn list(
     runtime: &Runtime,
     cwd: &JsString,
     force_reload: bool,
@@ -70,8 +70,19 @@ async fn list(
         )
         .await?
         .unwrap_or(Value::Null);
+    let group = group_for_cwd(&response, cwd)?;
+    let entries = |key| {
+        group
+            .and_then(|row| row[key].as_array())
+            .cloned()
+            .unwrap_or_default()
+    };
+    Ok((entries("skills"), entries("errors")))
+}
+
+pub(super) fn group_for_cwd<'a>(response: &'a Value, cwd: &JsString) -> Result<Option<&'a Value>> {
     let expected = paths::resolve(&paths::native(cwd))?;
-    let group = response["data"]
+    Ok(response["data"]
         .as_array()
         .into_iter()
         .flatten()
@@ -80,12 +91,5 @@ async fn list(
                 .as_js_string()
                 .and_then(|cwd| paths::resolve(&paths::native(cwd)).ok())
                 .is_some_and(|cwd| paths::equal(&cwd, &expected))
-        });
-    let entries = |key| {
-        group
-            .and_then(|row| row[key].as_array())
-            .cloned()
-            .unwrap_or_default()
-    };
-    Ok((entries("skills"), entries("errors")))
+        }))
 }

@@ -2,6 +2,7 @@
 pub(crate) mod account_auth;
 pub mod admission;
 pub mod catalog;
+mod customizations;
 pub mod diagnostics;
 pub mod discovery;
 pub(crate) mod external_home;

@@ -1012,7 +1012,14 @@
     "skillSettingsDeleteContentSchema": 14525,
     "skillSettingsConfigureContentSchema": 14526,
     "codexSkillConfigUpdateSchema": 14527,
-    "codexSkillConfigResultSchema": 14530
+    "codexSkillConfigResultSchema": 14530,
+    "codexCustomizationInventorySchema": 14533,
+    "codexSkillRootsUpdateSchema": 14630,
+    "codexSkillRootsResultSchema": 14633,
+    "codexMcpResourceReadRequestSchema": 14636,
+    "codexMcpResourceReadSchema": 14639,
+    "codexMcpReloadRequestSchema": 14654,
+    "codexMcpReloadResultSchema": 14656
   },
   "nodes": [
     {
@@ -87220,6 +87227,504 @@
         { "check": "max_length", "maximum": 8192, "when": "length" }
       ]
     },
-    { "type": "boolean", "checks": [] }
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "codexCustomizationInventorySchema",
+      "shape": {
+        "capabilities": 14534,
+        "skills": 14548,
+        "skillRoots": 14558,
+        "hooks": 14561,
+        "mcpServers": 14584
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "codexCustomizationCapabilitiesSchema",
+      "shape": {
+        "isolatedCodexHome": 14535,
+        "collaborationModes": 14536,
+        "threadGoals": 14536,
+        "nativeSubagents": 14541,
+        "customAgents": 14536,
+        "hooks": 14536,
+        "skills": 14544,
+        "mcp": 14545,
+        "plugins": 14546,
+        "externalImports": 14547
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "object",
+      "name": "customizationCapabilitySchema",
+      "shape": { "available": 14537, "reason": 14538, "stability": 14540 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 14539, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": ["stable", "experimental", "unsupported"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeSubagentCustomizationCapabilitySchema",
+      "shape": {
+        "available": 14537,
+        "reason": 14538,
+        "stability": 14540,
+        "protocolVersion": 14542
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14543, "checks": [] },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "list": 14536, "configure": 14536, "extraRoots": 14536 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "status": 14536,
+        "resourceRead": 14536,
+        "oauth": 14536,
+        "reload": 14536
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "list": 14536,
+        "read": 14536,
+        "install": 14536,
+        "uninstall": 14536
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "detect": 14536, "apply": 14536 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "items": 14549, "errors": 14554 },
+      "checks": []
+    },
+    { "type": "array", "element": 14550, "checks": [] },
+    {
+      "type": "object",
+      "name": "codexSkillInventoryItemSchema",
+      "shape": {
+        "name": 11188,
+        "description": 11189,
+        "displayName": 11190,
+        "path": 14551,
+        "scope": 14552,
+        "enabled": 14553
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": ["user", "repo", "system", "admin"],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "array", "element": 14555, "checks": [] },
+    {
+      "type": "object",
+      "name": "codexInventoryErrorSchema",
+      "shape": { "path": 14556, "message": 14557 },
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 14559,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14560,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "items": 14562, "warnings": 14581, "errors": 14583 },
+      "checks": []
+    },
+    { "type": "array", "element": 14563, "checks": [] },
+    {
+      "type": "object",
+      "name": "codexHookInventoryItemSchema",
+      "shape": {
+        "key": 14564,
+        "eventName": 14565,
+        "handlerType": 14566,
+        "matcher": 14567,
+        "command": 14569,
+        "timeoutSeconds": 14571,
+        "statusMessage": 14572,
+        "sourcePath": 14574,
+        "source": 14575,
+        "pluginId": 14576,
+        "enabled": 14578,
+        "managed": 14579,
+        "trust": 14580
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "preToolUse",
+        "permissionRequest",
+        "postToolUse",
+        "preCompact",
+        "postCompact",
+        "sessionStart",
+        "sessionEnd",
+        "userPromptSubmit",
+        "subagentStart",
+        "subagentStop",
+        "stop"
+      ],
+      "checks": []
+    },
+    { "type": "enum", "values": ["command", "prompt", "agent"], "checks": [] },
+    { "type": "nullable", "innerType": 14568, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14570, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 14573, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "system",
+        "user",
+        "project",
+        "mdm",
+        "sessionFlags",
+        "plugin",
+        "cloudRequirements",
+        "cloudManagedConfig",
+        "legacyManagedConfigFile",
+        "legacyManagedConfigMdm",
+        "unknown"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14577, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "enum",
+      "values": ["managed", "untrusted", "trusted", "modified"],
+      "checks": []
+    },
+    { "type": "array", "element": 14582, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "array", "element": 14555, "checks": [] },
+    { "type": "array", "element": 14585, "checks": [] },
+    {
+      "type": "object",
+      "name": "codexMcpServerSchema",
+      "shape": {
+        "name": 14586,
+        "serverInfo": 14587,
+        "authStatus": 14597,
+        "tools": 14598,
+        "resources": 14608,
+        "resourceTemplates": 14620
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14588, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "name": 14589,
+        "title": 14590,
+        "version": 14592,
+        "description": 14593,
+        "websiteUrl": 14595
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14591, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14594, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14596, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "enum",
+      "values": ["unsupported", "notLoggedIn", "bearerToken", "oAuth"],
+      "checks": []
+    },
+    { "type": "array", "element": 14599, "checks": [] },
+    {
+      "type": "object",
+      "name": "codexMcpToolSchema",
+      "shape": {
+        "name": 14600,
+        "title": 14601,
+        "description": 14603,
+        "inputSchema": 14605,
+        "outputSchema": 14606
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14602, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14604, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "nullable", "innerType": 14607, "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "array", "element": 14609, "checks": [] },
+    {
+      "type": "object",
+      "name": "codexMcpResourceSchema",
+      "shape": {
+        "uri": 14610,
+        "name": 14611,
+        "title": 14612,
+        "description": 14614,
+        "mimeType": 14616,
+        "size": 14618
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14613, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14615, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14617, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14619, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "array", "element": 14621, "checks": [] },
+    {
+      "type": "object",
+      "name": "codexMcpResourceTemplateSchema",
+      "shape": {
+        "uriTemplate": 14622,
+        "name": 14623,
+        "title": 14624,
+        "description": 14626,
+        "mimeType": 14628
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14625, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14627, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14629, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "object",
+      "name": "codexSkillRootsUpdateSchema",
+      "shape": { "roots": 14631 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14632,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "codexSkillRootsResultSchema",
+      "shape": { "roots": 14634 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14635,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "codexMcpResourceReadRequestSchema",
+      "shape": { "server": 14637, "uri": 14638 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "codexMcpResourceReadSchema",
+      "shape": { "contents": 14640 },
+      "checks": []
+    },
+    { "type": "array", "element": 14641, "checks": [] },
+    {
+      "type": "union",
+      "name": "codexMcpResourceContentSchema",
+      "options": [14642, 14648],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 14643,
+        "uri": 14644,
+        "mimeType": 14645,
+        "text": 14647
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["text"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14646, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 14649,
+        "uri": 14650,
+        "mimeType": 14651,
+        "blob": 14653
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["blob"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 14652, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "object",
+      "name": "codexMcpReloadRequestSchema",
+      "shape": {},
+      "catchall": 14655,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "codexMcpReloadResultSchema",
+      "shape": { "reloaded": 14657 },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] }
   ]
 }

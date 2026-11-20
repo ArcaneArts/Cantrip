@@ -7,7 +7,7 @@ use super::{
     list,
 };
 use crate::{
-    codex::{managed::Runtime, preparation::command::Ensurer},
+    codex::{customizations, managed::Runtime, preparation::command::Ensurer},
     encryption::Service,
     filesystem::paths,
     protected_content::customization::{Operation, Replay},
@@ -34,16 +34,17 @@ const SETTINGS_CONFIGURE: &str = "skills.settings.configure";
 const RPC_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub(crate) fn supports(kind: &str) -> bool {
-    matches!(
-        kind,
-        CHAT_LIST
-            | CHAT_CONFIGURE
-            | SETTINGS_LIST
-            | SETTINGS_READ
-            | SETTINGS_WRITE
-            | SETTINGS_DELETE
-            | SETTINGS_CONFIGURE
-    )
+    customizations::Command::find(kind).is_some()
+        || matches!(
+            kind,
+            CHAT_LIST
+                | CHAT_CONFIGURE
+                | SETTINGS_LIST
+                | SETTINGS_READ
+                | SETTINGS_WRITE
+                | SETTINGS_DELETE
+                | SETTINGS_CONFIGURE
+        )
 }
 
 #[derive(Default)]
@@ -84,7 +85,8 @@ impl Settings {
         let kind = incoming["type"]
             .as_str()
             .context("Missing skill operation.")?;
-        let provider = if matches!(kind, CHAT_LIST | CHAT_CONFIGURE) {
+        let customization = customizations::Command::find(kind);
+        let provider = if customization.is_some() || matches!(kind, CHAT_LIST | CHAT_CONFIGURE) {
             &incoming["provider"]["id"]
         } else {
             &incoming["providerId"]
@@ -93,10 +95,11 @@ impl Settings {
             operation.scope["providerId"] == *provider && !provider.is_null(),
             "The skill settings provider changed."
         );
-        let changing = matches!(
-            kind,
-            SETTINGS_WRITE | SETTINGS_DELETE | SETTINGS_CONFIGURE | CHAT_CONFIGURE
-        );
+        let changing = customization.is_some_and(customizations::Command::mutating)
+            || matches!(
+                kind,
+                SETTINGS_WRITE | SETTINGS_DELETE | SETTINGS_CONFIGURE | CHAT_CONFIGURE
+            );
         if changing {
             self.changes.replay.reserve(&operation)?;
         }
@@ -123,7 +126,9 @@ impl Settings {
                 Some("skillSettingsConfigureContentSchema"),
                 "skillSettingsConfigResultSchema",
             ),
-            _ => unreachable!("Validated skill dispatch"),
+            _ => customization
+                .expect("Validated customization dispatch")
+                .schemas(),
         };
         let input = if let Some(schema) = input_schema {
             operation.open(&incoming["protectedRequest"], schema)?
@@ -152,6 +157,24 @@ impl Settings {
             .resolve_routing(&json!({"cwd":incoming["cwd"]}))
             .await?;
         let cwd = resolved["cwd"].as_js_string();
+        if let Some(customization) = customizations::Command::find(kind) {
+            let cwd = cwd.context("Missing customization workspace.")?;
+            let runtime = self.runtime(incoming, operation).await?;
+            return customization
+                .run(
+                    customizations::Target {
+                        runtime: &runtime,
+                        cwd,
+                        thread: &incoming["threadId"],
+                        global: self.global.as_deref(),
+                        report: self.preparation.customization_compatibility(),
+                        force_reload: incoming["forceReload"] == true,
+                        operation,
+                    },
+                    input,
+                )
+                .await;
+        }
         if kind == CHAT_LIST {
             let cwd = cwd.context("Missing skill workspace.")?;
             let runtime = self.runtime(incoming, operation).await?;
@@ -232,11 +255,12 @@ impl Settings {
             "The skill runtime provider changed."
         );
         self.preparation
-            .helper_runtime(
+            .inspection_runtime(
                 &command["model"],
                 provider,
                 operation.identity(),
                 operation.scope["chatId"].as_js_string(),
+                command["threadId"].as_js_string(),
             )
             .await
     }
@@ -289,7 +313,7 @@ fn settings_roots(mut roots: Vec<Root>, cwd: Option<&Path>) -> Result<Vec<Root>>
     Ok(roots)
 }
 
-fn sorting() -> Result<CollatorBorrowed<'static>> {
+pub(in crate::codex) fn sorting() -> Result<CollatorBorrowed<'static>> {
     let locale: icu_locale_core::Locale = cantrip_wire::environment::locale()
         .unwrap_or("en-US")
         .parse()
@@ -298,7 +322,7 @@ fn sorting() -> Result<CollatorBorrowed<'static>> {
         .map_err(|e| anyhow::anyhow!("Skill sorting locale: {e}"))
 }
 
-fn compare(
+pub(in crate::codex) fn compare(
     collator: &CollatorBorrowed<'_>,
     left: &Value,
     right: &Value,
@@ -337,7 +361,7 @@ fn text_path(path: &Path) -> Result<PathBuf> {
     Ok(library::optional_canonical(path)?.unwrap_or(paths::resolve(path)?))
 }
 
-fn native_skill_path(skill: &Value) -> Option<&JsString> {
+pub(in crate::codex) fn native_skill_path(skill: &Value) -> Option<&JsString> {
     let path = skill["path"]
         .as_js_string()
         .filter(|path| !path.is_empty())?;
