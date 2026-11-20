@@ -77,16 +77,6 @@ struct PtyChildTerminator {
 }
 
 impl ChildTerminator for PtyChildTerminator {
-    fn hangup(&mut self) -> std::io::Result<()> {
-        #[cfg(unix)]
-        if let Some(group) = self.process_group_id {
-            return crate::process_group::hangup_process_group(group);
-        }
-        Err(std::io::Error::new(
-            ErrorKind::Unsupported,
-            "PTY hangup is unavailable",
-        ))
-    }
     fn signal(&mut self, signal: ProcessSignal) -> std::io::Result<()> {
         match signal {
             ProcessSignal::Interrupt => {
@@ -127,13 +117,6 @@ struct RawPidTerminator {
 
 #[cfg(unix)]
 impl ChildTerminator for RawPidTerminator {
-    fn terminate_gracefully(&mut self) -> std::io::Result<()> {
-        crate::process_group::terminate_process_group(self.process_group_id).map(|_| ())
-    }
-
-    fn hangup(&mut self) -> std::io::Result<()> {
-        crate::process_group::hangup_process_group(self.process_group_id)
-    }
     fn signal(&mut self, signal: ProcessSignal) -> std::io::Result<()> {
         match signal {
             ProcessSignal::Interrupt => {
@@ -186,71 +169,16 @@ pub async fn spawn_process(
     {
         // Keep portable-pty's PATH, argv0, and missing-cwd behavior for requests
         // whose launch settings require its command builder.
-        return spawn_process_preserving_fds(
-            program,
-            args,
-            cwd,
-            env,
-            arg0,
-            UnixPtyOptions {
-                size,
-                inherited_fds,
-                strict_cwd: false,
-            },
-        )
-        .await;
+        return spawn_process_preserving_fds(program, args, cwd, env, arg0, size, inherited_fds)
+            .await;
     }
     #[cfg(unix)]
     if !inherited_fds.as_slice().is_empty() {
-        return spawn_process_preserving_fds(
-            program,
-            args,
-            cwd,
-            env,
-            arg0,
-            UnixPtyOptions {
-                size,
-                inherited_fds,
-                strict_cwd: false,
-            },
-        )
-        .await;
+        return spawn_process_preserving_fds(program, args, cwd, env, arg0, size, inherited_fds)
+            .await;
     }
 
     spawn_process_portable(program, args, cwd, env, arg0, size).await
-}
-
-/// Worker-owned service launches require an actual chdir/exec failure for an
-/// invalid cwd. portable-pty's Unix CommandBuilder otherwise substitutes HOME.
-pub async fn spawn_process_strict(
-    program: &str,
-    args: &[String],
-    cwd: &Path,
-    env: &HashMap<String, String>,
-    arg0: &Option<String>,
-    size: TerminalSize,
-    descriptors: ChildFds<'_>,
-) -> Result<SpawnedProcess> {
-    #[cfg(unix)]
-    {
-        spawn_process_preserving_fds(
-            program,
-            args,
-            cwd,
-            env,
-            arg0,
-            UnixPtyOptions {
-                size,
-                inherited_fds: descriptors,
-                strict_cwd: true,
-            },
-        )
-        .await
-    }
-    #[cfg(not(unix))]
-    {
-        spawn_process(program, args, cwd, env, arg0, size, descriptors).await
-    }
 }
 
 async fn spawn_process_portable(
@@ -391,28 +319,15 @@ async fn spawn_process_portable(
 }
 
 #[cfg(unix)]
-struct UnixPtyOptions<'a> {
-    size: TerminalSize,
-    inherited_fds: ChildFds<'a>,
-    strict_cwd: bool,
-}
-
-#[cfg(unix)]
 async fn spawn_process_preserving_fds(
     program: &str,
     args: &[String],
     cwd: &Path,
     env: &HashMap<String, String>,
     arg0: &Option<String>,
-    options: UnixPtyOptions<'_>,
+    size: TerminalSize,
+    descriptors: ChildFds<'_>,
 ) -> Result<SpawnedProcess> {
-    let UnixPtyOptions {
-        size,
-        inherited_fds: descriptors,
-        strict_cwd,
-    } = options;
-    #[cfg(not(target_os = "linux"))]
-    let _ = strict_cwd;
     let (master, slave) = open_unix_pty(size)?;
     let io = crate::unix_io::PtyIo::new(master.as_raw_fd())?;
     let uses_portable_status = match descriptors {
@@ -452,7 +367,7 @@ async fn spawn_process_preserving_fds(
         command.stderr_file = Some(slave.try_clone()?.into());
         match crate::spawn_helper::spawn(&command, crate::spawn_helper::Setup::Pty).await? {
             Some(child) => child,
-            None if inherited_fds.is_empty() && !strict_cwd => {
+            None if inherited_fds.is_empty() => {
                 // Free the first PTY before allocating its portable replacement.
                 drop(command);
                 drop(io);
@@ -461,9 +376,8 @@ async fn spawn_process_preserving_fds(
                 return spawn_process_portable(program, args, cwd, env, arg0, size).await;
             }
             None => {
-                // Explicit descriptors and strict cwd both select the shared
-                // fallback. Preserve actual chdir/exec errors when this executable
-                // cannot run the helper, without portable-pty's HOME substitution.
+                // Explicit descriptors select the shared fallback on Linux. Keep
+                // terminal setup there when this executable cannot run the helper.
                 unsafe {
                     command.inner.pre_exec(configure_child_terminal);
                 }
@@ -515,14 +429,7 @@ async fn spawn_process_preserving_fds(
     let wait_exit_status = Arc::clone(&exit_status);
     let exit_code = Arc::new(StdMutex::new(None));
     let wait_exit_code = Arc::clone(&exit_code);
-    let native_status = Arc::new(StdMutex::new(None));
-    let wait_native_status = Arc::clone(&native_status);
     let on_exit = move |status: std::io::Result<std::process::ExitStatus>| {
-        if let Ok(status) = &status
-            && let Ok(mut captured) = wait_native_status.lock()
-        {
-            *captured = Some(*status);
-        }
         let code = match status {
             Ok(status) if uses_portable_status => {
                 portable_pty::ExitStatus::from(status).exit_code() as i32
@@ -560,8 +467,7 @@ async fn spawn_process_preserving_fds(
         exit_code,
         Some(handles),
         /*resizer*/ None,
-    )
-    .with_native_exit_status(native_status);
+    );
 
     Ok(SpawnedProcess {
         session: handle,

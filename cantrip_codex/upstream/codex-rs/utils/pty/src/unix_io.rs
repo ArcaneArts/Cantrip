@@ -35,10 +35,6 @@ impl PtyIo {
         // Async tasks can be aborted even when a detached child keeps the PTY open
         // or the output channel is full; blocking read/send tasks cannot.
         // AsyncFd panics if the current runtime has no I/O driver.
-        // Codex's pinned Tokio 1.52 lacks register(). This use of new() owns a
-        // File for the complete registration lifetime, satisfying I/O safety
-        // even when built by the worker with Tokio's newer compatibility API.
-        #[allow(deprecated)]
         let fd = std::panic::catch_unwind(move || AsyncFd::new(File::from(fd)))
             .map_err(|_| io::Error::other("PTY I/O requires a Tokio runtime with I/O enabled"))??;
         Ok(Self { fd: Arc::new(fd) })

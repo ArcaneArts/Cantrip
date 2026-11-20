@@ -7806,3 +7806,25 @@ the same profile reopened. The staged tree contained neither a Node executable
 nor worker Node modules. The legacy database fixture also upgraded a stopped
 PGlite profile and reopened it through the staged server launcher. The published
 package defaults remain on the current worker runtime.
+
+## 208. Keep the worker PTY fork separate from pinned Codex sources
+
+Reference commit a81c057984ad6f1fdd3c8c0ce6918251b34a2dc7 (#3371).
+
+The worker and native browser use `cantrip-pty` for PTYs, pipe transports,
+and process ownership. The crate carries the existing worker adaptations to
+Codex 0.166.0's PTY library. Its license and attribution ship with the native
+worker bundle.
+
+The Codex application source now matches its pinned manifest again. Building
+Codex from a clean checkout can use the existing integrity check and patch
+pipeline. The worker's terminal and child-process behavior continues to use its
+own adaptations.
+
+The server container build's Cargo workspace includes the shared interaction
+crate. The workspace resolves with the revised PTY crate and requires no
+Codex application source in the server build context.
+
+On macOS ARM64, the PTY test suite and worker build passed. The packaged
+worker retained its control connection, credentials and clean shutdown against
+Rust Core. The revised server build context resolved Cargo dependencies.

@@ -258,21 +258,6 @@ pub fn interrupt_process_group(process_group_id: u32) -> io::Result<()> {
     signal_process_group_id(process_group_id as libc::pid_t, libc::SIGINT).map(|_| ())
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
-pub(crate) fn hangup_process_group(process_group_id: u32) -> io::Result<()> {
-    signal_process_group_id(process_group_id as libc::pid_t, libc::SIGHUP).map(|_| ())
-}
-#[cfg(target_os = "macos")]
-pub(crate) fn hangup_process_group(process_group_id: u32) -> io::Result<()> {
-    signal_process_group_with_member_fallback(
-        process_group_id,
-        libc::SIGHUP,
-        signal_process_group_id,
-        signal_process_id,
-    )
-    .map(|_| ())
-}
-
 #[cfg(not(unix))]
 /// No-op on non-Unix platforms.
 pub fn interrupt_process_group(_process_group_id: u32) -> io::Result<()> {

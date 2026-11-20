@@ -21,4 +21,4 @@ uuid = "1"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-codex-utils-pty = { version = "0.166.0", path = "../../cantrip_codex/upstream/codex-rs/utils/pty" }
+codex-utils-pty = { package = "cantrip-pty", path = "../cantrip-pty" }

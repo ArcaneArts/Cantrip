@@ -320,6 +320,7 @@ test("builds the canonical server image without the Node server workspace", asyn
     "version.json",
     "policy_templates",
     "cantrip_server_rs",
+    "cantrip_interaction",
     "cantrip_server/drizzle",
   ]) {
     assert.match(dockerfile, new RegExp(`^COPY ${source}`, "mu"));
