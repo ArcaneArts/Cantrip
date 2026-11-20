@@ -172,6 +172,17 @@ export async function taskModelProvider({
       // Tool-only streams must remain open before the tool is delivered too.
       // Text streams already wait between their delta and completed item.
       if (plan.text === undefined && plan.gate) await plan.gate;
+      if (plan.toolSearch) {
+        send(response, {
+          type: "response.output_item.done",
+          item: {
+            type: "tool_search_call",
+            call_id: `${id}-search`,
+            execution: "client",
+            arguments: plan.toolSearch,
+          },
+        });
+      }
       for (const [index, call] of (plan.calls ?? []).entries()) {
         send(response, {
           type: "response.output_item.done",

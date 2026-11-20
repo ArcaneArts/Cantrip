@@ -369,7 +369,8 @@ async fn execute(
             receipt.dispatch().await?;
             open.check()?;
             view.assert_current()?;
-            let mut native_interactions = runtime.interaction_requests(thread)?;
+            let mut native_interactions = runtime.interaction_requests(
+                thread, session["contextKind"] == "project" && view.prepared.environment.is_none())?;
             active.dispatch(&signal, thread.clone())?;
             granted.dispatched()?;
             *sent = true;
@@ -408,6 +409,7 @@ async fn execute(
                 Some(value) => id(&value["turn"]["id"], "console native turn")?,
                 None => output::started(&mut events, &transport).await?,
             };
+            native_interactions.bind_turn(&turn)?;
             granted.bind_turn(turn.clone())?;
             active.set(Phase::Running { runtime:runtime.clone(), thread:thread.clone(), turn:turn.clone() });
             let applied = async {

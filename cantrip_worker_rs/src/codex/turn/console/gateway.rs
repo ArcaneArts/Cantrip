@@ -231,10 +231,10 @@ async fn relay<'a>(
                 for frame in frames {
                     let id = &frame["id"];
                     let key = id.stringify();
-                    pending_visible.insert(key.clone(), id.clone());
+                    pending_visible.insert(key.clone(), (id.clone(), frame["params"]["threadId"].clone()));
                     if !visible.contains_key(&key) { send(client, frame).await?; }
                 }
-                for (key, id) in &visible {
+                for (key, (id, thread)) in &visible {
                     if !pending_visible.contains_key(key) {
                         send(client, json!({"method":"serverRequest/resolved","params":json!({"threadId":thread,"requestId":id})})).await?;
                     }

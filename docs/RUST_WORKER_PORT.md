@@ -7408,3 +7408,29 @@ the unsupported Plan Mode setting. The direct command fixture exercised
 unloaded reads and the original Plan Mode payload across worker restart.
 The older TypeScript schema accepted the extended command by retaining
 its existing fields. The Windows x64 GNU worker compile check passed.
+
+## 194. Route protected subagent approvals through the active root turn
+
+Reference commit b72e5865ef7ba0a0f9e69f95f1cd14df48c53c5f (#3357).
+
+The Rust worker associates a native child with the active Host Project Chat
+using app-server ancestry and the child's exact root turn ID. Native
+collaboration items establish ancestry when Codex omits a child thread-start
+notification. Requests keep the child thread, turn, and item in their
+protected provenance. Core admits the reply against the root activation and
+the registered child request. The original app-server connection consumes the
+reply once. The linked console uses the child thread ID when forwarding
+resolution. A completed or unloaded child retires its pending requests.
+
+Local macOS ARM64 testing used the production Rust server with PGlite, the
+Rust worker with an empty PATH, bundled Codex, and a loopback model provider.
+Codex discovered and spawned a real child, which asked for command approval
+while its root turn was active. The TypeScript codec opened the child request,
+the server rejected a reply encrypted for another request, and the child
+received one decline. The API rejected a replay and the stored resolution
+decrypted to the same decline. Root GUI, linked-console and cold-resume
+approval smokes and the Plan Mode question smoke passed. The Windows x64
+GNU worker compile check passed.
+
+Alternate subagent model routing and attribution, and managed runtime handoff,
+remain open.

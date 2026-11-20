@@ -691,6 +691,7 @@ impl<'a> Receipt<'a> {
     pub(super) async fn admit_interaction_reply(
         &self,
         scope: Scope,
+        root_turn: &JsString,
         descriptor: &Value,
         frame: &Value,
         terminal: Option<&Value>,
@@ -700,7 +701,7 @@ impl<'a> Receipt<'a> {
             "The interaction owner changed."
         );
         let session = terminal.unwrap_or(&self.session);
-        let mut command = json!({"reply":descriptor});
+        let mut command = json!({"reply":descriptor,"expectedTurnId":root_turn});
         if terminal.is_some() {
             let mut bound = self.session.clone();
             bound["connectionId"] = session["connectionId"].clone();
@@ -1212,7 +1213,7 @@ impl Client {
         });
         if method == "serverRequest/reply" {
             request["reply"] = command["reply"].clone();
-            request["intent"]["expectedTurnId"] = command["reply"]["turnId"].clone();
+            request["intent"]["expectedTurnId"] = command["expectedTurnId"].clone();
         }
         if let Some(claim) = claim {
             request["queueClaim"] = claim.clone();

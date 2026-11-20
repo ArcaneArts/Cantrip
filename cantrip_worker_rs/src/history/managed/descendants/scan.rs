@@ -12,31 +12,12 @@ pub(super) fn children(frame: &Value) -> Vec<JsString> {
         vec![&frame["params"]["item"]]
     };
     let mut children = Vec::new();
-    for item in items {
-        let candidates = if item["type"] == "subAgentActivity" {
-            item["agentThreadId"]
-                .as_js_string()
-                .into_iter()
-                .cloned()
-                .collect::<Vec<_>>()
-        } else if item["type"] == "collabAgentToolCall" && item["tool"] == "spawnAgent" {
-            item["receiverThreadIds"]
-                .as_array()
-                .map(|v| {
-                    v.iter()
-                        .filter_map(Value::as_js_string)
-                        .filter(|v| !v.is_empty())
-                        .cloned()
-                        .collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        for child in candidates {
-            if !children.contains(&child) {
-                children.push(child);
-            }
+    for child in items
+        .into_iter()
+        .flat_map(crate::history::lineage::item_children)
+    {
+        if !children.contains(child) {
+            children.push(child.clone());
         }
     }
     children
