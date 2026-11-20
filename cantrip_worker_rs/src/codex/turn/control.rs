@@ -2,7 +2,7 @@
 mod chat_pause;
 pub(super) mod pause;
 mod restore;
-mod steer;
+pub(super) mod steer;
 mod stop;
 pub(crate) mod task_pause;
 pub(crate) const PAUSE_SET: &str = "chat.pause.set";

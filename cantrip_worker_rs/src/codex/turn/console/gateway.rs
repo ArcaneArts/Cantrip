@@ -2,7 +2,7 @@
 //! subscription. Attaching and detaching get Core receipts before dispatch.
 use super::{Scope, View, prompt, queue};
 use crate::{
-    codex::turn::receipt::Receipt,
+    codex::turn::{control::steer, receipt::Receipt},
     metadata::{Abort, Signal},
 };
 use anyhow::{Result, bail, ensure};
@@ -309,6 +309,31 @@ async fn relay<'a>(
                     }
                     continue;
                 }
+                if frame["method"] == steer::METHOD {
+                    if attached && valid_id(id) && !pending.contains_key(&key)
+                        && managed_ids.len() < 16 && frame["params"]["threadId"] == *thread
+                    {
+                        managed_ids.insert(key.clone());
+                        let (view, session, open) = (view.clone(), session.clone(), open.clone());
+                        managed_requests.push(cantrip_transport::lifecycle::owned(async move {
+                            let result = view.turns.steer_console(
+                                session, &view.permission(), &frame, open, || view.assert_current(),
+                            ).await;
+                            let id = &frame["id"];
+                            let response = match result {
+                                Ok(result) => json!({"id":id,"result":result}),
+                                Err(error) => match steer::native_error(&error) {
+                                    Some(native) => json!({"id":id,"error":native}),
+                                    None => fault(id, -32001, &error.to_string()),
+                                },
+                            };
+                            Ok((key, Some(response)))
+                        }));
+                    } else {
+                        send(client, fault(id, -32001, "The native console cannot steer this thread.")).await?;
+                    }
+                    continue;
+                }
                 if frame["method"] == "turn/start" {
                     if initialized && valid_id(id) && pending.len() < 1024
                         && !pending.contains_key(&key) && starting.is_none()
@@ -485,7 +510,14 @@ async fn client_request<'a>(
     let receipt = view
         .turns
         .receipts
-        .admit_console(scope, session.clone(), method, frame, &view.permission())
+        .admit_console(
+            scope,
+            session.clone(),
+            method,
+            frame,
+            &view.permission(),
+            Value::Null,
+        )
         .await?;
     if let Err(error) = async {
         view.assert_current()?;

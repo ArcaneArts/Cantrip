@@ -37,6 +37,7 @@ import { verifyCustomizationInventory } from "./customization-inventory-smoke-ca
 import { startMcpOauthFixture } from "./mcp-oauth-fixture.mjs";
 import { verifyProjectAutomations } from "./project-automation-smoke-cases.mjs";
 import { verifyQueuedSteering } from "./queued-steering-cases.mjs";
+import { verifyConsoleSteering } from "./console-steering-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   fixtureCodex,
@@ -63,6 +64,7 @@ const { values } = parseArgs({
     "customization-inventory": { type: "boolean" },
     "project-automations": { type: "boolean" },
     "queued-steer": { type: "boolean" },
+    "console-steer": { type: "boolean" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -141,6 +143,7 @@ const consoleStateKey =
   customizationKey ||
   workflowKey ||
   values["queued-steer"] ||
+  values["console-steer"] ||
   values["host-skills"] ||
   values.policies ||
   values.codegraph ||
@@ -2967,7 +2970,12 @@ try {
             input: approvalPrompt,
             ...(consoleInteractions ? { socketFile: consoleSocket } : {}),
           })
-        : path.resolve(values.codex);
+        : values["console-steer"]
+          ? await fixtureCodex(root, values.codex, {
+              scenario: "passthrough",
+              socketFile: consoleSocket,
+            })
+          : path.resolve(values.codex);
     if (values.cli)
       workerEnvironment.CANTRIP_CLI_BIN = path.resolve(values.cli);
   }
@@ -2999,6 +3007,18 @@ try {
             assert.match(value, /event=automation\.schedule-sync\.completed/),
         );
       },
+    });
+  } else if (values["console-steer"]) {
+    await verifyConsoleSteering({
+      call,
+      eventually,
+      createModel,
+      openMessage,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      socketFile: consoleSocket,
     });
   } else if (values["queued-steer"]) {
     await verifyQueuedSteering({
