@@ -911,7 +911,8 @@ impl Turns {
                         )
                     });
                 let mut native_interactions = if receipt.is_some() && task.is_none() {
-                    Some(runtime.interaction_requests(thread)?)
+                    Some(runtime.interaction_requests(thread,
+                        command["contextKind"] == "project" && prepared.environment.is_none())?)
                 } else { None };
                 let send = || async {
                     if goal {
@@ -1017,6 +1018,9 @@ impl Turns {
                 } else {
                     send().await?
                 };
+                if let Some(interactions) = &native_interactions {
+                    interactions.bind_turn(&turn)?;
+                }
                 let bound = execution.bind_turn(turn.clone());
                 active.set(Phase::Running {
                     runtime: runtime.clone(),

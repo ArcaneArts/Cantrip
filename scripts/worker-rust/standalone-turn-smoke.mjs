@@ -31,6 +31,7 @@ import {
 import { verifyDecisions } from "./model-decision-smoke-cases.mjs";
 import { verifyEmbeddings } from "./model-embedding-smoke-cases.mjs";
 import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
+import { verifySubagentInteraction } from "./subagent-interaction-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   fixtureCodex,
@@ -53,6 +54,7 @@ const { values } = parseArgs({
     interactions: { type: "boolean" },
     "console-interactions": { type: "boolean" },
     "restored-interactions": { type: "boolean" },
+    "subagent-interactions": { type: "boolean" },
     "plan-question": { type: "boolean" },
   },
 });
@@ -81,16 +83,20 @@ const providerKey = key("provider-credential");
 const operationsKey = key("model-operation-content");
 const consoleInteractions = values["console-interactions"];
 const restoredInteractions = values["restored-interactions"];
+const subagentInteractions = values["subagent-interactions"];
 const planQuestion = values["plan-question"];
 const interactionKey =
   values.interactions ||
   consoleInteractions ||
   restoredInteractions ||
+  subagentInteractions ||
   planQuestion
     ? key("interaction-content")
     : null;
 const consoleStateKey =
-  consoleInteractions || planQuestion ? key("surface-private-state") : null;
+  consoleInteractions || subagentInteractions || planQuestion
+    ? key("surface-private-state")
+    : null;
 const consoleSocket = path.join(root, "managed-console-socket");
 const approvalPrompt = "Exercise a protected native interaction 🌲";
 const approvalMarker = path.join(root, "native-approval-replies.jsonl");
@@ -1894,6 +1900,18 @@ try {
     });
   } else if (values.interactions || restoredInteractions) {
     await verifyInteraction();
+  } else if (subagentInteractions) {
+    await verifySubagentInteraction({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      interactionKey,
+    });
   } else if (planQuestion) {
     await verifyPlanQuestion();
   } else if (values.settings) {

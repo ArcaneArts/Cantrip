@@ -12,6 +12,21 @@ fn optional(value: &Value) -> Value {
 fn fallback<'a>(first: &'a Value, second: &'a Value) -> &'a Value {
     if first.is_null() { second } else { first }
 }
+pub(crate) fn item_children(item: &Value) -> impl Iterator<Item = &JsString> {
+    let activity = (item["type"] == "subAgentActivity")
+        .then(|| item["agentThreadId"].as_js_string())
+        .flatten();
+    let spawn = (item["type"] == "collabAgentToolCall" && item["tool"] == "spawnAgent")
+        .then(|| item["receiverThreadIds"].as_array())
+        .flatten();
+    activity.into_iter().chain(
+        spawn
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_js_string)
+            .filter(|id| !id.is_empty()),
+    )
+}
 pub fn segments(value: &Value) -> Vec<Value> {
     let Some(value) = value.as_js_string() else {
         return Vec::new();

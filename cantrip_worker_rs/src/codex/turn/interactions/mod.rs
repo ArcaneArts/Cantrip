@@ -375,9 +375,10 @@ impl Owner<'_> {
         } else {
             &frame["id"]
         };
-        if frame["params"]["threadId"].as_js_string() != Some(self.turn.thread)
-            || !(native_id.is_string() || native_id.is_number())
-        {
+        let Some(thread) = frame["params"]["threadId"].as_js_string() else {
+            return Ok(());
+        };
+        if !(native_id.is_string() || native_id.is_number()) {
             return Ok(());
         }
         let key = concat(&[
@@ -395,7 +396,8 @@ impl Owner<'_> {
         }
         let request = protocol::request(&frame, self.turn.runtime.generation());
         if let Ok((request, timeout)) = request
-            && (request["turnId"].is_null()
+            && (thread != self.turn.thread
+                || request["turnId"].is_null()
                 || request["turnId"].as_js_string() == Some(self.turn.turn))
             && self.pending.len() < 32
         {
@@ -567,6 +569,7 @@ impl Owner<'_> {
             .receipt
             .admit_interaction_reply(
                 scope,
+                self.turn.turn,
                 &self.pending(key)?.descriptor(),
                 &frame,
                 terminal.map(|(session, _)| session),

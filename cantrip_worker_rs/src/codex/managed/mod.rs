@@ -366,11 +366,12 @@ impl Runtime {
     pub(in crate::codex) fn interaction_requests(
         &self,
         thread: &JsString,
+        descendants: bool,
     ) -> Result<interaction_requests::Subscription> {
         self.assert_live()?;
         self.0
             .interaction_requests
-            .subscribe(&self.0.session, thread)
+            .subscribe(&self.0.session, thread, descendants)
     }
 
     pub(in crate::codex) fn interaction_changes(&self) -> tokio::sync::watch::Receiver<()> {
