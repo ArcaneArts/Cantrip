@@ -21,6 +21,7 @@ use tokio::{
 
 pub(crate) fn chat(command: &Value, response: &Value) -> Result<Option<Value>> {
     if command["type"] != "chat.turn"
+        || response["error"]["code"] == "native-settings-pending"
         || command.get("taskInferenceInput").is_some()
         || !matches!(
             command["resultMode"]["kind"].as_str(),

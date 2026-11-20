@@ -422,6 +422,8 @@ async fn cycle(
     let goal_delivery = tokio::spawn(project_goals.clone().run(stop_rx.clone()));
     let settings = turns.settings_delivery();
     let settings_delivery = tokio::spawn(settings.clone().run(stop_rx.clone(), logs.clone()));
+    let deferred_delivery =
+        tokio::spawn(turns.deferred_settlement_pump(stop_rx.clone(), logs.clone()));
     let (requests, mut received) = mpsc::unbounded_channel();
     let managed_web_task = {
         let manager = managed_web.clone();
@@ -450,12 +452,14 @@ async fn cycle(
             let observations = auth_observations.clone();
             let project_goals = project_goals.clone();
             let settings = settings.clone();
+            let turns = turns.clone();
             let settings_reconnect = thread_preparation.settings_reconnect();
             Arc::new(move || {
                 observations.reemit();
                 task_delivery.wake();
                 project_goals.wake();
                 settings.wake();
+                turns.wake_deferred_settlements();
                 settings_reconnect();
             })
         },
@@ -1106,6 +1110,7 @@ async fn cycle(
     let managed_web_closed = managed_web_task.await;
     let goal_delivery_closed = goal_delivery.await;
     let settings_delivery_closed = settings_delivery.await;
+    let deferred_delivery_closed = deferred_delivery.await;
     let shells_closed = shells.shutdown().await;
     while let Some(result) = commands.join_next().await {
         if let Err(error) = result {
@@ -1153,6 +1158,7 @@ async fn cycle(
     managed_web_closed??;
     goal_delivery_closed?;
     settings_delivery_closed?;
+    deferred_delivery_closed?;
     encryption_closed?;
     auth_stopped?;
     grok_stopped?;

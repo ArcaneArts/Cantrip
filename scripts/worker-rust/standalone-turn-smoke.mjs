@@ -22,6 +22,11 @@ import { verifyEmbeddings } from "./model-embedding-smoke-cases.mjs";
 import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
+  deferredCodex,
+  deferredReceiptProxy,
+  verifyDeferredReceipt,
+} from "./deferred-receipt-smoke-cases.mjs";
+import {
   modelFunctions,
   taskModelProvider,
 } from "../server-rust/task-model-provider.mjs";
@@ -33,6 +38,7 @@ const { values } = parseArgs({
     codex: { type: "string" },
     cli: { type: "string" },
     settings: { type: "boolean" },
+    deferred: { type: "boolean" },
   },
 });
 assert.ok(
@@ -59,6 +65,7 @@ const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const operationsKey = key("model-operation-content");
 let server;
+let receiptProxy;
 let child;
 let workerExit;
 let workerEnvironment;
@@ -1339,6 +1346,7 @@ try {
     ["--database", "pglite", "--port", "0", "--shutdown-on-stdin-close"],
     { cwd: root, env: environment },
   );
+  if (values.deferred) receiptProxy = await deferredReceiptProxy(server.origin);
   const enrollment = await call("POST", "/api/workers/enrollment-codes", 201, {
     label: "Rust standalone turn",
   });
@@ -1347,10 +1355,12 @@ try {
     PATH: "",
     NO_COLOR: "1",
     CANTRIP_LOG_LEVEL: "debug",
-    CANTRIP_SERVER_URL: server.origin,
+    CANTRIP_SERVER_URL: receiptProxy?.origin ?? server.origin,
     CANTRIP_WORKER_DATA_DIR: data,
     CANTRIP_WORKER_ID: workerId,
-    CANTRIP_CODEX_BIN: path.resolve(values.codex),
+    CANTRIP_CODEX_BIN: values.deferred
+      ? await deferredCodex(root, values.codex)
+      : path.resolve(values.codex),
     ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
   };
   await startWorker(enrollment.code);
@@ -1369,6 +1379,34 @@ try {
         staleLaneRejectedByCore: true,
       }),
     );
+  } else if (values.deferred) {
+    const model = await createModel("Deferred receipt model");
+    await call("PATCH", "/api/settings", 200, {
+      defaultModelId: model.profile.id,
+      autoNameChats: true,
+    });
+    const chat = await verifyTurn(model, model, "warmup", "Warmup", "Warmup");
+    await eventually(
+      () => call("GET", `${chat.chatUrl}/native-settings`, 200),
+      (state) => assert.ok(state.binding && state.effective),
+    );
+    await verifyDeferredReceipt({
+      ...chat,
+      data,
+      proxy: receiptProxy,
+      ownerId,
+      workerId,
+      model,
+      encryptedTurn,
+      call,
+      eventually,
+      startWorker,
+      stopWorker,
+      workerDiagnostics: () => diagnostics,
+    });
+    console.log(
+      "Deferred prompt receipt survived a worker restart and replayed once.",
+    );
   } else if (values.settings) {
     await verifySettingsSnapshot();
   } else {
@@ -1382,6 +1420,7 @@ try {
   try {
     const workerResult = await stopWorker();
     await Promise.all([
+      receiptProxy?.close(),
       server?.close(),
       ...models.map((model) => model.close()),
     ]);

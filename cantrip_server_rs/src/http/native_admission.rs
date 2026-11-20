@@ -9,7 +9,7 @@ use crate::{
     wire::{self, Value, coercion::truthy, value::json},
     workers::credentials,
 };
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use axum::{
     Extension, Router,
     extract::{Request, State},
@@ -313,7 +313,14 @@ async fn apply(
                 return Err(CommandError::new("stale-worker-generation", None, 409).into());
             }
         }
-        return service.execution.receipts.settle(&owner, &input).await;
+        let result = service.execution.receipts.settle(&owner, &input).await?;
+        if result["receipt"]["resumeQueue"] == true {
+            let chat = result["receipt"]["chatId"]
+                .as_str()
+                .context("Native receipt chat")?;
+            drop(service.execution.recovery.dispatch(&owner, chat));
+        }
+        return Ok(result);
     }
     let repo = Repository::new(service.repository.database.clone());
     if phase == "admit" || phase == "dispatch" {
@@ -345,7 +352,9 @@ async fn apply(
         );
     }
     if phase == "settings-evidence" {
-        let result = repo.record_settings_evidence(&owner, &input).await?;
+        let (result, permission_settled) = repo
+            .record_settings_evidence_and_permission(&owner, &input)
+            .await?;
         let worker = input["workerId"]
             .as_js_string()
             .unwrap()
@@ -363,6 +372,12 @@ async fn apply(
                 json!({"kind":"chat","chatId":receipt["chatId"]}),
                 &Value::Null,
             );
+            if permission_settled {
+                let chat = receipt["chatId"]
+                    .as_str()
+                    .context("Native settings receipt chat")?;
+                drop(service.execution.recovery.dispatch(&owner, chat));
+            }
         }
         return Ok(result);
     }

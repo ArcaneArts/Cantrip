@@ -380,9 +380,16 @@ async fn execute(
                     granted.settled().await?;
                     let mut fault = error.downcast_ref::<Failure>().unwrap().native_error.clone().unwrap();
                     if queued::deferred(&fault) {
-                        receipt.defer_queue_input(&fault).await?;
-                        fault["data"]["queueRetention"] = json!("retained");
+                        drop(_mcp);
+                        drop(_owner);
+                        let acknowledged = receipt.defer_queue_input(&fault, None).await?;
                         fault["data"]["clientUserMessageId"] = params["clientUserMessageId"].clone();
+                        if acknowledged {
+                            fault["data"]["queueRetention"] = json!("retained");
+                            fault["data"]["queueRetained"] = json!(true);
+                        } else {
+                            fault["data"]["queueRetention"] = json!("uncertain");
+                        }
                     } else {
                         receipt.reject_start(&fault, "failed").await?;
                     }

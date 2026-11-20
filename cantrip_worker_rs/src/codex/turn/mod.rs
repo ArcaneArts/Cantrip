@@ -3,6 +3,7 @@
 pub(crate) mod autonomous;
 pub(crate) mod console;
 mod control;
+mod deferred;
 pub(crate) mod label;
 mod output;
 mod params;
@@ -138,7 +139,12 @@ impl Drop for Owner {
     fn drop(&mut self) {
         let mut entries = self.sessions.lock().unwrap();
         self.active.set(Phase::Finished);
-        if self.active.logical_finished.load(Ordering::Relaxed) {
+        if self.active.logical_finished.load(Ordering::Relaxed)
+            && entries
+                .active
+                .get(&self.key)
+                .is_some_and(|active| Arc::ptr_eq(active, &self.active))
+        {
             entries.active.remove(&self.key);
         }
     }
@@ -256,6 +262,25 @@ impl Turns {
 
     pub(crate) fn settings_delivery(&self) -> Arc<settings::Delivery> {
         self.settings.clone()
+    }
+
+    pub(crate) fn wake_deferred_settlements(&self) {
+        self.receipts.deferred.wake();
+    }
+
+    pub(crate) fn deferred_settlement_pump(
+        &self,
+        stop: watch::Receiver<bool>,
+        logs: Arc<crate::logging::Logs>,
+    ) -> impl Future<Output = ()> + use<> {
+        let receipts = self.receipts.clone();
+        let encryption = self.encryption.clone();
+        async move {
+            receipts
+                .deferred
+                .run(&receipts, encryption, stop, logs)
+                .await
+        }
     }
 
     fn key(&self, command: &Value) -> Result<Key> {
@@ -629,11 +654,11 @@ impl Turns {
             }
             entries.active.insert(key.clone(), active.clone());
         }
-        let _owner = Owner {
+        let mut owner = Some(Owner {
             sessions: self.active.clone(),
             key: key.clone(),
             active: active.clone(),
-        };
+        });
         let command = self.preparation.resolve_routing(incoming).await?;
         if !command["taskResumption"].is_null() {
             let task = task.context("The restored Task has no canonical owner.")?;
@@ -841,9 +866,10 @@ impl Turns {
             let result = async {
                 execution.bind_thread(thread.clone())?;
                 execution.seal_input_dispatch().await?;
-                let _mcp = self
-                    .preparation
-                    .activate(&prepared, &command["executionLaneId"])?;
+                let mut mcp = Some(
+                    self.preparation
+                        .activate(&prepared, &command["executionLaneId"])?
+                );
                 if task.is_some() {
                     self.task_inputs
                         .authorize(
@@ -898,6 +924,8 @@ impl Turns {
                         let checkpoint = task.turn.checkpoint(&command, capture);
                         let _ = active.task.set(checkpoint);
                     }
+                    let pending_input = (!is_queued && receipt.is_some() && protection.is_some())
+                        .then(|| params["input"].clone());
                     let reply = runtime
                         .request("turn/start".into(), Some(params), Some(RPC_TIMEOUT), None)
                         .await;
@@ -914,8 +942,31 @@ impl Turns {
                             if let Some(receipt) = &receipt {
                                 let failure = error.downcast_ref::<Failure>().unwrap();
                                 let native = failure.native_error.as_ref().unwrap();
-                                if is_queued && queued::deferred(native) {
-                                    receipt.defer_queue_input(native).await?;
+                                if queued::deferred(native)
+                                    && (is_queued || pending_input.is_some())
+                                {
+                                    let retained = if let Some(input) = &pending_input {
+                                        Some(
+                                            crate::chat_content::queue::retain_gui(
+                                                receipt.scope(),
+                                                &command,
+                                                input,
+                                            )
+                                            .await?,
+                                        )
+                                    } else {
+                                        None
+                                    };
+                                    // Core may assign a new physical attempt as soon as
+                                    // the deferred receipt releases the canonical lane.
+                                    drop(mcp.take());
+                                    active.logical_finished.store(true, Ordering::Relaxed);
+                                    drop(owner.take());
+                                    receipt.defer_queue_input(native, retained).await?;
+                                    return Err(crate::encryption::ServiceError::new(
+                                        "native-settings-pending",
+                                        "The native input was deferred while its permission settings settle.",
+                                    ).into());
                                 } else {
                                     receipt.rejected(native).await?;
                                 }

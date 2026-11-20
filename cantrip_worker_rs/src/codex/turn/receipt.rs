@@ -1,5 +1,5 @@
 //! Core's durable GUI receipt is independent of the physical inference grant.
-use super::{Key, Runtime, id};
+use super::{Key, Runtime, deferred, id};
 use crate::{
     chat_content::Scope,
     config::Config,
@@ -24,6 +24,7 @@ pub(super) struct Client {
     configuration: Arc<Mutex<Config>>,
     generation: String,
     http: reqwest::Client,
+    pub(super) deferred: Arc<deferred::Delivery>,
 }
 
 #[derive(Debug)]
@@ -133,9 +134,17 @@ pub(super) struct Receipt<'a> {
 
 impl Client {
     pub fn new(configuration: Arc<Mutex<Config>>, generation: String) -> Result<Self> {
+        let deferred = {
+            let config = configuration.lock().unwrap();
+            Arc::new(deferred::Delivery::new(
+                &config.data_directory,
+                config.worker_id.clone(),
+            ))
+        };
         Ok(Self {
             configuration,
             generation,
+            deferred,
             http: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .retry(reqwest::retry::never())
@@ -147,7 +156,7 @@ impl Client {
         })
     }
 
-    async fn post(&self, action: &str, body: &Value, guard: &Guard) -> Result<Value> {
+    pub(super) async fn post(&self, action: &str, body: &Value, guard: &Guard) -> Result<Value> {
         let reply = self
             .exchange(
                 action,
@@ -700,7 +709,7 @@ impl<'a> Receipt<'a> {
             .await
     }
 
-    pub async fn defer_queue_input(&self, error: &Value) -> Result<()> {
+    pub async fn defer_queue_input(&self, error: &Value, retained: Option<Value>) -> Result<bool> {
         let (envelope, digest) = self.seal_result(&json!({"error":error}))?;
         let mut body = self.body();
         body["status"] = json!("rejected");
@@ -713,7 +722,21 @@ impl<'a> Receipt<'a> {
             "reason":"pendingSettings","inputConsumed":false,
             "threadId":self.session["threadId"],"runtimeGeneration":self.session["runtimeGeneration"],
         });
-        self.settle(body, "rejected").await
+        if let Some(retained) = retained {
+            body["deferred"]["retainedPrompt"] = retained["prompt"].clone();
+            body["deferred"]["attachments"] = retained["attachments"].clone();
+        }
+        let response = self
+            .client
+            .deferred
+            .submit(self.client, &self.scope, body)
+            .await?;
+        if let Some(response) = response {
+            self.verify(&response, "rejected")?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     fn seal_result(&self, content: &Value) -> Result<(Value, Value)> {

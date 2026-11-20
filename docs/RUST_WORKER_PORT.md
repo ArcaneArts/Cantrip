@@ -7257,3 +7257,29 @@ PGlite. The Windows x64 GNU worker cross-check passed.
 
 Durable retention and automatic resumption of prompts deferred by a
 permission change remain open.
+
+## 188. Recover permission-deferred native input after worker restart
+
+Reference commit ecc3233f8381dffca603fbd7d96997eaf3dac088 (#3351).
+
+An exact native `turn/start` rejection with `pendingSettings` and
+`inputConsumed: false` now produces the same durable settlement record
+as the Node worker. The worker preserves the admitted encrypted GUI input
+and its portable native input when Core has no queue claim. Existing claims
+retain their current prompt and placement. Core validates the settlement and
+releases the physical execution and queue claim together. The original
+command response leaves logical completion to Core.
+
+The worker retries the saved receipt on reconnect or restart. It stores the
+correlated acknowledgment before removing the pending file. Core resumes the
+canonical queue after a committed eligible receipt or when authoritative
+permission evidence settles the transition. Existing queue ownership, Pause,
+Stop, and unresolved permission checks still control admission.
+
+The local macOS ARM64 standalone smoke used the production Rust server with
+PGlite, the production Rust worker with an empty PATH, and bundled Codex. The
+fixture supplied one exact native no-consumption response and dropped receipt
+delivery before Core received it. The worker reopened the Node-serialized
+pending record after restart, saved a matching acknowledgment, and the same
+queued input reached the local provider and chat history once. The settings
+smoke covered ordinary settings, account defaults and permission recovery.
