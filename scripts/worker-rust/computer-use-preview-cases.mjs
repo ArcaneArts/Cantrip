@@ -4,10 +4,16 @@ import {
   encryptEndpointContentPayload,
   decryptEndpointContentPayload,
   decryptInteractionRequestContent,
+  decryptTaskMessageProtectedContent,
   encryptInteractionResponseContent,
+  encryptPrivateDisplayLabel,
+  encryptTaskProtectedContent,
   protectComputerUseRequest,
   openComputerUseResult,
 } from "../../packages/crypto/dist/index.js";
+import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
+import { projectLabel } from "../server-rust/security-fixtures.mjs";
+import { taskContent } from "../server-rust/task-wire-fixtures.mjs";
 
 export async function verifyComputerUsePreview({
   call,
@@ -19,6 +25,9 @@ export async function verifyComputerUsePreview({
   keyRevision,
   componentKey,
   interactionKey,
+  openMessage,
+  taskKey,
+  labelKey,
 }) {
   const { profile } = await createModel("Computer-use preview fixture");
   await call("PATCH", "/api/settings", 200, {
@@ -69,7 +78,10 @@ export async function verifyComputerUsePreview({
       JSON.stringify(packet),
       /fake-window|CUA fixture|targetGeneration/,
     );
-    return decode(context, packet);
+    return {
+      ...(await decode(context, packet)),
+      operationId: context.operationId,
+    };
   }
   const capabilities = await operate({ operation: "capabilities.get" });
   assert.equal(capabilities.result.data?.backend, "fake");
@@ -125,6 +137,41 @@ export async function verifyComputerUsePreview({
       closed: true,
     });
   }
+  const history = await activities(call, chatUrl, "chat", openMessage);
+  const auditFor = ({ operationId }) => {
+    const records = history.filter((item) => item.operationId === operationId);
+    assert.equal(records.length, 1);
+    return records[0];
+  };
+  const captured = auditFor(snapshot);
+  assert.equal(captured.operation, "observation.snapshot");
+  assert.equal(captured.outcome, "completed");
+  assert.deepEqual(captured.observation, {
+    revision: snapshot.result.data.session.observationRevision,
+    image: snapshot.result.data.image,
+  });
+  assert.deepEqual(captured.target, target);
+  assert.deepEqual(captured.binding, {
+    chatId,
+    taskId: null,
+    workerId,
+    threadId: null,
+    turnId: null,
+    sessionId,
+  });
+  const failed = auditFor(foreign);
+  assert.equal(failed.outcome, "failed");
+  assert.equal(failed.errorCode, "session-not-found");
+  assert.equal(failed.binding.sessionId, null);
+  assert.deepEqual(auditFor(detached).target, target);
+  assert.equal(auditFor(closed).binding.sessionId, sessionId);
+  const stops = history.filter(({ operation }) => operation === "preview.stop");
+  assert.equal(stops.length, 1);
+  assert.equal(stops[0].outcome, "completed");
+  assert.equal(
+    stops[0].binding.sessionId,
+    activeSession.result.data.session.binding.sessionId,
+  );
   await call("POST", base + "/operation", 502, body);
   const replacement = await call("POST", base + "/preview", 200, {});
   assert.notEqual(replacement.leaseId, lease.leaseId);
@@ -164,6 +211,19 @@ export async function verifyComputerUsePreview({
     operate,
     target,
     material: { ownerId, keyRevision, componentKey: interactionKey },
+    readActivity: () => activities(call, chatUrl, "chat", openMessage),
+  });
+  await verifyTaskActivity({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    labelKey,
+    taskKey,
+    serverId: server.id,
+    seal,
+    open,
   });
   console.log(
     JSON.stringify({ suite: "native-computer-use-preview", passed: true }),
@@ -180,6 +240,7 @@ async function verifyApprovals({
   operate,
   target,
   material,
+  readActivity,
 }) {
   const list = `/api/agent-requests?chatId=${chatId}&status=pending`;
   const classification = { kind: "permissions" };
@@ -311,6 +372,12 @@ async function verifyApprovals({
   const initial = await retry(capture);
   assert.equal(initial.result.code, "approval-required");
   assert.equal(initial.payload, null);
+  const approvalActivity = (await readActivity()).find(
+    ({ operationId }) => operationId === initial.operationId,
+  );
+  assert.equal(approvalActivity?.errorCode, "approval-required");
+  assert.equal(approvalActivity.outcome, "failed");
+  assert.equal(approvalActivity.observation, null);
   const denied = await pending("capture", target);
   await respond(
     denied.request,
@@ -350,4 +417,160 @@ async function verifyApprovals({
     (await retry(inventory, replacement)).result.code,
     "approval-required",
   );
+}
+
+async function activities(call, chatUrl, domain, open) {
+  const wire = await call("GET", chatUrl + "/messages", 200);
+  assert.equal(wire.kind, domain + "-encrypted");
+  assert.doesNotMatch(
+    JSON.stringify(wire),
+    /fake-window|targetGeneration|computer-use\//,
+  );
+  const contents = await Promise.all(wire.messages.map(open));
+  const history = contents.flatMap(({ content }) =>
+    content
+      .filter(
+        (part) =>
+          part.type === "activity" && part.activity.type === "computerUse",
+      )
+      .map(({ activity }) => activity),
+  );
+  for (const item of history) {
+    assert.equal(item.raw.request, null);
+    assert.equal(item.raw.response, null);
+    assert.equal(item.raw.metadata.operationId, item.operationId);
+    assert.equal(item.correlation.diagnosticId, item.operationId);
+    assert.ok(item.completedAtMs >= item.startedAtMs);
+    assert.equal(item.durationMs, item.completedAtMs - item.startedAtMs);
+  }
+  return history;
+}
+
+async function verifyTaskActivity({
+  call,
+  eventually,
+  ownerId,
+  workerId,
+  keyRevision,
+  labelKey,
+  taskKey,
+  serverId,
+  seal,
+  open,
+}) {
+  const workspaceId = randomUUID();
+  await call("POST", "/api/workspaces", 201, {
+    id: workspaceId,
+    nameProtection:
+      discoveryWireFixtures(projectLabel)
+        .encryptedProjectWorkspaceCreateSchema[0].nameProtection,
+    storage: { kind: "managed" },
+  });
+  const protectLabel = (recordKind, rowId, label) =>
+    encryptPrivateDisplayLabel({
+      ownerId,
+      keyRevision,
+      recordKind,
+      rowId,
+      label,
+      componentKey: labelKey,
+    });
+  const projectId = randomUUID();
+  const projectUrl = `/api/projects/${projectId}`;
+  await call("POST", "/api/projects/from-folder", 202, {
+    id: projectId,
+    workerId,
+    workspaceId,
+    nameProtection: await protectLabel(
+      "project",
+      projectId,
+      "Task preview activity fixture",
+    ),
+  });
+  await eventually(
+    () => call("GET", projectUrl + "/folder-setup", 200),
+    (result) => assert.equal(result.state, "succeeded", JSON.stringify(result)),
+  );
+  const chatId = randomUUID();
+  const { classification } = taskContent();
+  const material = { ownerId, keyRevision, componentKey: taskKey };
+  await call("POST", projectUrl + "/tasks", 201, {
+    chatId,
+    titleProtection: await protectLabel("chat", chatId, "Activity in a Task"),
+    autoTitle: false,
+    task: {
+      classification,
+      protectedContent: await encryptTaskProtectedContent({
+        ...material,
+        chatId,
+        content: {
+          version: 1,
+          classification,
+          briefMarkdown: "",
+          planMarkdown: null,
+          currentQuestions: [],
+          currentAnswers: [],
+          additionalDirection: "",
+          finalPlanMarkdown: null,
+          goalPrompt: null,
+          lastError: null,
+        },
+      }),
+    },
+  });
+  const chatUrl = `/api/chats/${chatId}`;
+  const base = chatUrl + "/computer-use";
+  const lease = await call("POST", base + "/preview", 200, {});
+  assert.equal(lease.contentDomain, "task");
+  const action = { operation: "capabilities.get" };
+  const context = {
+    serverId,
+    workerId,
+    chatId,
+    operationId: randomUUID(),
+    operation: action.operation,
+    previewLeaseId: lease.leaseId,
+  };
+  const body = await protectComputerUseRequest({
+    context,
+    request: action,
+    seal,
+  });
+  const packet = await call("POST", base + "/operation", 200, body);
+  const { result } = await openComputerUseResult({
+    context,
+    opaque: packet.response,
+    chunks: packet.chunks,
+    open,
+  });
+  assert.equal(result.status, "ok");
+  await call("POST", base + "/preview/stop", 200, {
+    workerId,
+    leaseId: lease.leaseId,
+  });
+  const history = await activities(call, chatUrl, "task", (message) =>
+    decryptTaskMessageProtectedContent({
+      ...material,
+      messageId: message.id,
+      encrypted: message.protectedContent,
+      publicClassification: message.classification ?? {
+        role: message.role,
+        mode: message.mode,
+        attachmentIds: message.attachmentIds,
+      },
+    }),
+  );
+  assert.deepEqual(
+    history.map(({ operation }) => operation),
+    ["capabilities.get", "preview.stop"],
+  );
+  assert.equal(history[0].operationId, context.operationId);
+  for (const item of history) {
+    assert.equal(item.binding.taskId, chatId);
+    assert.equal(item.binding.chatId, chatId);
+    assert.equal(item.binding.workerId, workerId);
+    assert.equal(item.binding.threadId, null);
+    assert.equal(item.binding.turnId, null);
+    assert.equal(item.outcome, "completed");
+  }
 }
