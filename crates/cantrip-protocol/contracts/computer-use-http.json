@@ -14,7 +14,10 @@
     "computerUseNativePreviewResultSchema": 267,
     "cuaSessionSchema": 319,
     "cuaInputResultSchema": 360,
-    "cuaClipboardResultSchema": 380
+    "cuaClipboardResultSchema": 380,
+    "cuaInventorySchema": 284,
+    "cuaControlsResultSchema": 346,
+    "cuaSnapshotSchema": 337
   },
   "nodes": [
     {

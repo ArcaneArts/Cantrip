@@ -139,6 +139,11 @@ impl Default for Outbound {
     }
 }
 impl Outbound {
+    #[cfg(all(test, unix))]
+    pub(crate) fn ready_for_test(&self) {
+        self.ready(true);
+    }
+
     pub(crate) fn command_ready(&self) -> bool {
         let queue = self.queue.lock().unwrap();
         queue.ready && !queue.closed

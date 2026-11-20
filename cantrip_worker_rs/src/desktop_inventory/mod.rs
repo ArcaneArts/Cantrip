@@ -44,7 +44,7 @@ struct Helper {
 
 enum Request {
     Scan(Scan),
-    Preview(preview::Request),
+    ComputerUse(preview::Request),
     Effects {
         preferences: Value,
         epoch: u64,
@@ -190,7 +190,7 @@ async fn run(
                     retire(&mut process).await;
                 }
             }
-            Some(lease) = previews.releases.recv() => preview::release(&lease, &mut process).await,
+            Some(attachment) = previews.releases.recv() => preview::release(&attachment, &mut process).await,
             Some(operation) = captures.requests.recv() => {
                 let current = operation.scope().epoch;
                 if !outgoing.stream_current(current) {
@@ -214,7 +214,7 @@ async fn run(
                 let Some(request) = request else { break };
                 let scan = match request {
                     Request::Scan(scan) => scan,
-                    Request::Preview(request) => {
+                    Request::ComputerUse(request) => {
                         let current = request.epoch();
                         if !outgoing.stream_current(current) {
                             request.expired();
