@@ -117,7 +117,7 @@ pub(super) async fn run(job: &Job<'_>, journal: &mut Journal<'_>) -> Result<Outc
         },
     )
     .await?;
-    if let Err(error) = archive::publish(pending, &destination, job.root) {
+    if let Err(error) = crate::cantrip_os::archive_io::publish(pending, &destination, job.root) {
         if !io_kind(&error, io::ErrorKind::AlreadyExists) {
             return Err(error);
         }

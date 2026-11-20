@@ -7993,3 +7993,37 @@ while excluding a private checkpoint image. Run the local workspace fixture
 with `--system-status`, the native executables, and built `@cantrip/crypto`.
 
 System checkpoint capture, replacement, and rollback remain open.
+
+## 216. Capture encrypted Cantrip OS system checkpoints in Rust
+
+Reference commit 3e741930a297aa0b0caf3286908bc6bba2de463d (#3379).
+
+The native worker journals the original system operation and its capture,
+keeps the physical container pinned, and claims each Docker mutation before
+sending it. Observation can recover an image by its complete admission label
+set. Explicit continuation performs the remaining unclaimed steps, including
+resuming the original guest when requested.
+
+The worker streams the retained image into the version-one private system
+archive through the local Docker Engine socket. It authenticates each frame,
+the manifest digest, and the complete export before publishing. It can verify
+a previously published archive with no new Docker export. Protected outcomes
+use the existing client envelope and preserve the original capture provenance.
+
+The macOS ARM64 fixture used production Rust Core with PGlite, a native
+worker, and a small Docker guest with an independently mounted volume.
+It dropped the commit acknowledgment, restarted the worker, and observed
+the original image without a second commit. Explicit continuation resumed
+the guest and verified an archive previously published by the TypeScript
+writer. A second capture interrupted Docker export and verified that no
+archive was published. Observation left it untouched. Continuation
+reopened the same image, and the TypeScript reader authenticated the Rust
+archive and decrypted the client outcome. The checkpoint receipt marked
+the mounted volume excluded and the private images stayed out of the base list.
+
+Run the workspace fixture with `--system-capture`, the native executables,
+built JavaScript reference packages, and a local `alpine:3.23` image.
+`--system-capture-image` selects another already available small Linux image
+with the fixture commands.
+
+System replacement and rollback remain open.

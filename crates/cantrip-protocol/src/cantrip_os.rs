@@ -21,6 +21,7 @@ pub(super) fn refine(
             | "cantrip-os-package-outcome"
             | "cantrip-os-system-envelope"
             | "cantrip-os-system-outcome"
+            | "cantrip-os-system-frame-receipt"
     ) {
         return Ok(false);
     }
@@ -39,6 +40,12 @@ pub(super) fn refine(
             }),
         "cantrip-os-package-outcome" | "cantrip-os-system-outcome" => {
             value["state"].as_str() != Some("ready") || !value["protectedResult"].is_null()
+        }
+        "cantrip-os-system-frame-receipt" => {
+            let frame = &value["frame"];
+            frame["kind"] == "result"
+                && frame["sequence"].as_u64() == Some(0)
+                && frame["envelope"]["keyRevision"] == value["keyRevision"]
         }
         "cantrip-os-file-placement" => {
             value.get("cantripOsBindingId").is_some()

@@ -991,7 +991,17 @@
     "cantripOsBackupRequestEnvelopeSchema": 6557,
     "cantripOsBackupResponseEnvelopeSchema": 11399,
     "cantripOsBackupRestoreCommandSchema": 6575,
-    "cantripOsBackupRollbackCommandSchema": 6580
+    "cantripOsBackupRollbackCommandSchema": 6580,
+    "cantripOsSystemCryptoContextSchema": 6496,
+    "cantripOsSystemSnapshotSchema": 11926,
+    "cantripOsSystemManifestSchema": 11924,
+    "cantripOsSystemFrameSchema": 14465,
+    "cantripOsSystemFileHeaderSchema": 14468,
+    "cantripOsSystemEndSchema": 14474,
+    "cantripOsSystemArchiveReceiptSchema": 11954,
+    "cantripOsSystemCaptureAdmissionSchema": 6495,
+    "cantripOsSystemProtectedResultSchema": 14476,
+    "cantripOsSystemCaptureOutcomeSchema": 14479
   },
   "nodes": [
     {
@@ -86775,6 +86785,158 @@
         { "check": "less_than", "value": 9007199254740991, "inclusive": true }
       ]
     },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 14466, "sequence": 11934, "envelope": 157 },
+      "catchall": 14467,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["manifest", "chunk", "end", "result"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "format": 14469,
+        "version": 14470,
+        "checkpointId": 14471,
+        "streamId": 14472,
+        "keyRevision": 13,
+        "manifest": 14465
+      },
+      "catchall": 14473,
+      "checks": []
+    },
+    { "type": "literal", "values": ["CantripOS-private-system"], "checks": [] },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "archiveBytes": 11955,
+        "archiveSha256": 6506,
+        "manifestSha256": 6506,
+        "chunks": 11956
+      },
+      "catchall": 14475,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "streamId": 14477, "keyRevision": 13, "frame": 14465 },
+      "catchall": 14478,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "cantrip-os-system-frame-receipt",
+          "messageAfterPath": true,
+          "message": "Invalid private system result frame"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operationId": 14480,
+        "checkpointId": 14481,
+        "state": 14482,
+        "phase": 14483,
+        "protectedResult": 14484
+      },
+      "catchall": 14485,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "cantrip-os-system-outcome",
+          "messageAfterPath": true,
+          "message": "Completed system checkpoints require a protected receipt"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["running", "ready", "failed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 14476, "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }
