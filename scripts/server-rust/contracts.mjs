@@ -1181,6 +1181,8 @@ export const computerUseHttpContractRoots = [
   "computerUseNativePreviewActionSchema",
   "computerUseNativePreviewResultSchema",
   "cuaSessionSchema",
+  "cuaInputResultSchema",
+  "cuaClipboardResultSchema",
 ];
 
 // Keep independently added roots self-contained. Numeric graph references must
@@ -1718,6 +1720,21 @@ registerChecks(protocol.cuaInventorySchema.shape.targets, [
 registerChecks(protocol.cuaInventorySchema, [
   "worker-wire-cua-inventory-cursor",
 ]);
+const cuaInputs = Object.fromEntries(
+  protocol.cuaInputCommandSchema.options.map((schema) => [
+    schema.shape.kind.value,
+    schema.shape,
+  ]),
+);
+registerChecks(protocol.cuaClipboardResultSchema.shape.text.unwrap(), [
+  "worker-wire-cua-clipboard-bytes",
+  "worker-wire-cua-clipboard-unicode",
+]);
+registerChecks(cuaInputs.text.text, ["worker-wire-cua-input-text"]);
+registerChecks(cuaInputs.timeline.frames, ["worker-wire-cua-input-timeline"]);
+registerChecks(cuaInputs.key.modifiers.removeDefault(), [
+  "worker-wire-cua-input-modifiers",
+]);
 registerChecks(protocol.eliteRevealConfigSchema, ["settings-elite-range"]);
 registerChecks(protocol.encryptedModelProviderAccountUpdateSchema, [
   "provider-account-update-fields",
@@ -1904,6 +1921,7 @@ registerChecks(protocol.nativeCommandEventSchema.shape.event._zod.def.in, [
   "native-command-event",
 ]);
 const transforms = new Map([
+  [cuaInputs.key.key._zod.def.in._zod.def.out, "cua-keyboard-key"],
   [
     protocol.embeddingItemSchema.options[0].shape.metadata.unwrap()._zod.def
       .out,

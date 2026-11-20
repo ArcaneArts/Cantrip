@@ -1,4 +1,4 @@
-use super::{Lease, Request, retire};
+use super::{Lease, Request, input, retire};
 use crate::desktop_inventory::{DEADLINE, Helper, helper, process::NativeError};
 use crate::http::checked;
 use anyhow::{Result, ensure};
@@ -12,6 +12,7 @@ use tokio::time::{Instant, timeout, timeout_at};
 pub(super) struct Rejected {
     pub(super) code: String,
     pub(super) message: &'static str,
+    pub(super) outcome: &'static str,
 }
 
 impl std::fmt::Display for Rejected {
@@ -22,9 +23,22 @@ impl std::fmt::Display for Rejected {
 impl std::error::Error for Rejected {}
 
 pub(super) fn reject(code: &str, message: &'static str) -> anyhow::Error {
+    rejection(code, message, "rejected")
+}
+
+pub(super) fn cancelled(outcome: &'static str) -> anyhow::Error {
+    rejection(
+        "cancelled",
+        "Computer-use preview authority expired.",
+        outcome,
+    )
+}
+
+fn rejection(code: &str, message: &'static str, outcome: &'static str) -> anyhow::Error {
     Rejected {
         code: code.into(),
         message,
+        outcome,
     }
     .into()
 }
@@ -67,40 +81,66 @@ pub(in crate::desktop_inventory) async fn run(
     process: &mut Option<Helper>,
     binary: &Path,
 ) {
-    if Instant::now() >= request.deadline {
-        let _ = request.reply.send(Err(reject(
+    if request
+        .deadline
+        .is_some_and(|deadline| Instant::now() >= deadline)
+    {
+        let _ = request.reply.send(Err(rejection(
             "timeout",
             "The native computer-use operation timed out.",
+            "not-sent",
         )));
         return;
     }
-    let result = match timeout_at(
-        request.deadline,
-        execute(process, binary, &request.lease, request.action),
-    )
-    .await
-    {
+    let mutating_input = matches!(
+        request.action["operation"].as_str(),
+        Some(
+            "input.press" | "input.click" | "input.perform" | "clipboard.write" | "desktop.resize"
+        )
+    );
+    let work = execute(process, binary, &request.lease, request.action);
+    let completed = match request.deadline {
+        Some(deadline) => timeout_at(deadline, work).await,
+        None => Ok(work.await),
+    };
+    let uncertain = if mutating_input {
+        "unknown"
+    } else {
+        "rejected"
+    };
+    let result = match completed {
+        Ok(Ok(_)) if request.lease.signal.check().is_err() => Err(cancelled(uncertain)),
         Ok(Ok(value)) => Ok(value),
         Ok(Err(error)) if error.is::<Rejected>() => Err(error),
         Ok(Err(error)) if error.is::<NativeError>() => {
             let error = error.downcast::<NativeError>().unwrap();
-            Err(reject(
-                error.code(),
-                "The native helper rejected the computer-use operation.",
-            ))
+            if error.code() == "input-unknown" {
+                Err(rejection(
+                    "input-unknown",
+                    "Input outcome is unknown. Do not retry or fall back; take a fresh snapshot to inspect the result.",
+                    "unknown",
+                ))
+            } else {
+                Err(reject(
+                    error.code(),
+                    "The native helper rejected the computer-use operation.",
+                ))
+            }
         }
         Ok(Err(_)) => {
             retire(process).await;
-            Err(reject(
+            Err(rejection(
                 "protocol-error",
                 "The native desktop helper could not confirm the operation.",
+                uncertain,
             ))
         }
         Err(_) => {
             retire(process).await;
-            Err(reject(
+            Err(rejection(
                 "timeout",
                 "The native computer-use operation timed out.",
+                uncertain,
             ))
         }
     };
@@ -138,10 +178,7 @@ async fn execute(
     mut action: Value,
 ) -> Result<ResultData> {
     if lease.signal.check().is_err() {
-        return Err(reject(
-            "cancelled",
-            "Computer-use preview authority expired.",
-        ));
+        return Err(cancelled("not-sent"));
     }
     let method = action["operation"].as_str().unwrap().to_owned();
     let opening = method == "session.open";
@@ -173,7 +210,7 @@ async fn execute(
             });
         }
     }
-    let child = helper(process, binary).await?;
+    let child = timeout(DEADLINE, helper(process, binary)).await??;
     if session
         .as_ref()
         .is_some_and(|session| session.helper != child.identity)
@@ -187,10 +224,7 @@ async fn execute(
         }
     }
     if lease.signal.check().is_err() {
-        return Err(reject(
-            "cancelled",
-            "Computer-use preview authority expired.",
-        ));
+        return Err(cancelled("not-sent"));
     }
     let binding = if opening {
         action["operation"] = json!("target.attach");
@@ -219,6 +253,24 @@ async fn execute(
         action["targetId"].clone(),
         action["targetGeneration"].clone(),
     );
+    let no_session = Value::Null;
+    let before = session
+        .as_ref()
+        .map_or(&no_session, |session| &session.data);
+    if method != "target.attach"
+        && !opening
+        && !target.0.is_null()
+        && (before["target"]["id"] != target.0 || before["target"]["generation"] != target.1)
+    {
+        return Err(reject(
+            "stale-target",
+            "The selected computer-use target changed.",
+        ));
+    }
+    if method == "input.click" && action.get("globalInput").is_none() {
+        action["globalInput"] = json!(false);
+    }
+    let input = input::Expected::new(&action, before, child.process.backend());
     let (mut result, pixels) = child
         .process
         .cancellable(action, method == "observation.snapshot", async {
@@ -241,11 +293,16 @@ async fn execute(
                             | "cursor.move"
                             | "controls.inspect"
                             | "observation.snapshot"
+                            | "input.press"
+                            | "input.click"
+                            | "input.perform"
+                            | "clipboard.read"
+                            | "clipboard.write"
+                            | "desktop.resize"
                     )
                 )
             });
         }
-        result["nativeInput"] = json!(false);
         result["javascript"] = json!(false);
     } else if method == "session.close" {
         ensure!(
@@ -254,6 +311,12 @@ async fn execute(
         );
         *lease.session.lock().unwrap() = None;
     } else if method != "targets.list" {
+        if let Some(expected) = input {
+            result = checked("cuaInputResultSchema", &result)?;
+            expected.validate(&result["input"])?;
+        } else if method == "clipboard.read" {
+            result = checked("cuaClipboardResultSchema", &result)?;
+        }
         let session = checked("cuaSessionSchema", &result["session"])?;
         ensure!(
             session["binding"] == binding
@@ -275,6 +338,11 @@ async fn execute(
                 && result["image"]["height"].as_u64() == Some(height.into()),
             "The native desktop capture dimensions changed."
         );
+    }
+    // The retirement queue still needs a newly allocated binding to close it.
+    // Its cached handle cannot authorize a revoked preview or expose the result.
+    if lease.signal.check().is_err() {
+        return Err(cancelled("unknown"));
     }
     Ok(ResultData {
         data: result,

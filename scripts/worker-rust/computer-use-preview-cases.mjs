@@ -368,6 +368,74 @@ async function verifyApprovals({
   const attached = await retry(attach);
   const sessionId = attached.result.data?.session.binding.sessionId;
   assert.ok(sessionId, JSON.stringify(attached.result));
+  const input = {
+    operation: "input.click",
+    sessionId,
+    ...target,
+    position: { x: 20, y: 30 },
+    delivery: "background",
+  };
+  assert.equal((await retry(input)).result.code, "approval-required");
+  const native = await pending("native-input", target);
+  await respond(
+    native.request,
+    200,
+    await response(native.request, native.permissions, "session"),
+  );
+  const unsupported = await retry(input);
+  assert.equal(unsupported.result.code, "unsupported");
+  assert.equal(unsupported.result.outcome, "rejected");
+  const rejectedInput = (await readActivity()).find(
+    ({ operationId }) => operationId === unsupported.operationId,
+  );
+  assert.deepEqual(rejectedInput?.input, {
+    method: "background-coordinate",
+    activation: false,
+    position: input.position,
+    outcome: "unsupported",
+  });
+  for (const action of [
+    { operation: "input.press", reference: "fixture-control" },
+    {
+      operation: "input.perform",
+      command: {
+        kind: "timeline",
+        frames: [
+          { atMs: 0, keyDown: ["a"] },
+          { atMs: 75, keyUp: ["a"] },
+        ],
+      },
+    },
+    { operation: "clipboard.read" },
+    { operation: "clipboard.write", text: "Private fake clipboard text" },
+    { operation: "desktop.resize", width: 100, height: 100 },
+  ]) {
+    const result = await retry({ ...action, sessionId, ...target });
+    assert.equal(
+      result.result.code,
+      "unsupported",
+      JSON.stringify(result.result),
+    );
+  }
+  const stale = await retry({
+    ...input,
+    targetGeneration: target.targetGeneration + 1,
+  });
+  assert.equal(stale.result.code, "approval-required");
+  const staleRequest = await pending("native-input", {
+    ...target,
+    targetGeneration: target.targetGeneration + 1,
+  });
+  await respond(
+    staleRequest.request,
+    200,
+    await response(staleRequest.request, staleRequest.permissions, "turn"),
+  );
+  assert.equal(
+    (await retry({ ...input, targetGeneration: target.targetGeneration + 1 }))
+      .result.code,
+    "stale-target",
+  );
   const capture = { operation: "observation.snapshot", sessionId, ...target };
   const initial = await retry(capture);
   assert.equal(initial.result.code, "approval-required");

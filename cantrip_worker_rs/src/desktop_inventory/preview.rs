@@ -1,6 +1,7 @@
 //! One authenticated native preview lifetime per Chat.
 mod activity;
 mod approvals;
+mod input;
 mod native;
 mod protected;
 
@@ -70,7 +71,7 @@ pub(super) struct Lease {
 pub(super) struct Request {
     lease: Arc<Lease>,
     action: Value,
-    deadline: Instant,
+    deadline: Option<Instant>,
     reply: oneshot::Sender<Result<native::ResultData>>,
 }
 
@@ -80,10 +81,7 @@ impl Request {
     }
 
     pub(super) fn expired(self) {
-        let _ = self.reply.send(Err(native::reject(
-            "cancelled",
-            "Computer-use preview authority expired.",
-        )));
+        let _ = self.reply.send(Err(native::cancelled("not-sent")));
     }
 }
 
@@ -358,8 +356,9 @@ impl Previews {
                 .requests
                 .try_send(DesktopRequest::Preview(Request {
                     lease: lease.clone(),
+                    deadline: (action["operation"] != "input.perform")
+                        .then(|| Instant::now() + DEADLINE),
                     action,
-                    deadline: Instant::now() + DEADLINE,
                     reply,
                 }))
                 .map_err(|_| native::reject("capacity", "Computer-use preview is busy."))?;
@@ -369,8 +368,10 @@ impl Previews {
         audit.result(&response);
         let delivery = content.respond(
             response,
-            || {
-                lease.signal.check()?;
+            |active_required| {
+                if active_required {
+                    lease.signal.check()?;
+                }
                 ensure!(
                     self.0.outgoing.stream_current(epoch),
                     "Computer-use preview authority expired."

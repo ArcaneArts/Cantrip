@@ -8832,3 +8832,32 @@ inventory regression and 148 focused reference and protocol tests passed.
 Repeat with `scripts/worker-rust/standalone-turn-smoke.mjs --cua-preview`.
 The fixture covered deterministic targets and pixels. Native input, guest
 previews, and agent computer use remain open.
+
+## 248. Route protected Host preview input through the native helper
+
+Reference commit `c80fa560d2e1c5f0a41f37dcd212a47b37b767ed` (#3411).
+
+Host previews now route control presses, clicks, input commands, clipboard
+operations, and desktop resize over the existing private helper pipe. The
+worker uses the target-bound native-input grant. The shared contract validates
+UTF-8 limits, keyboard normalization and balanced timelines before sending a
+command. The worker checks the input receipt against the requested delivery
+method and position before returning it and records the receipt in protected
+activity. Backend capability reporting and unsupported results come from the
+helper.
+
+Planned input may run beyond the ordinary native request deadline. Stop
+cancels the owned request, drains the native cancellation response, and fences
+late session data. An ambiguous mutation result is never automatically
+replayed. Long operations still serialize the shared desktop helper request
+queue, so overlapping capture and native input need further work.
+
+Local macOS ARM64 checks exercised separate native-input approval, rejection
+after a target generation change, all six native operation routes, and the
+protected unsupported-input activity against the real helper in deterministic
+fake mode. Two Rust tests covered receipt checks and timeline normalization.
+The native desktop inventory smoke and 60 Node reference cases passed.
+Repeat the integrated check with
+`scripts/worker-rust/standalone-turn-smoke.mjs --cua-preview`.
+The fixture did not dispatch input to a live desktop or exercise guest
+clipboard and resize. Guest previews and agent computer use remain open.
