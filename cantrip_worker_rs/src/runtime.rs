@@ -136,6 +136,10 @@ async fn cycle(
     ));
     let worktrees = repository_operations.worktrees()?;
     let github = repository_operations.github()?;
+    let folder_conversion = Arc::new(crate::github::conversion::Converter::new(
+        &config.data_directory,
+        folders.clone(),
+    ));
     let replicas = Arc::new(crate::replicas::Manager::new(
         &config.data_directory,
         &worker,
@@ -1008,6 +1012,19 @@ async fn cycle(
                             folders.execute_routed(command, &routing, &scope).await
                         }.await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
+                    });
+                    continue;
+                }
+                if crate::github::conversion::supports(kind) {
+                    let folder_conversion = folder_conversion.clone();
+                    let routing = routing.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = folder_conversion.execute_routed(&request["command"], &routing, &scope).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;
                 }
