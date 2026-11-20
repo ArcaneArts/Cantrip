@@ -15,7 +15,7 @@ use cantrip_crypto::{
 use cantrip_wire::{Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
 use std::path::Path;
-use tokio::io::{AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter};
 use uuid::Uuid;
 
 const FORMAT: &str = "CantripOS-private-system";
@@ -26,6 +26,45 @@ pub(super) struct Archive<'a> {
     pub context: &'a Value,
     pub encryption: &'a Service,
     pub lifetime: &'a Scope,
+}
+
+#[derive(Debug)]
+pub(super) struct StagingChanged;
+
+impl std::fmt::Display for StagingChanged {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("The staged system archive bytes do not match their authenticated receipt.")
+    }
+}
+
+impl std::error::Error for StagingChanged {}
+
+pub(super) async fn verified_plaintext(
+    path: &Path,
+    expected_bytes: u64,
+    expected_sha: &str,
+    lifetime: &Scope,
+) -> Result<tokio::fs::File> {
+    let mut file = tokio::fs::File::open(path).await?;
+    let mut digest = Sha256::new();
+    let mut count = 0;
+    let mut buffer = Zeroizing::new(vec![0; 64 * 1024]);
+    loop {
+        lifetime.check()?;
+        let size = file.read(&mut buffer).await?;
+        if size == 0 {
+            break;
+        }
+        count += size as u64;
+        ensure!(count <= expected_bytes, StagingChanged);
+        digest.update(&buffer[..size]);
+    }
+    ensure!(
+        count == expected_bytes && hexadecimal(digest) == expected_sha,
+        StagingChanged
+    );
+    file.rewind().await?;
+    Ok(file)
 }
 
 fn plaintext(schema: &str, bytes: &[u8]) -> Result<Value> {
@@ -132,6 +171,34 @@ impl Archive<'_> {
     }
 
     pub async fn verify(&self) -> Result<(Value, Value)> {
+        self.consume(None).await
+    }
+
+    pub async fn stage(
+        &self,
+        destination: &Path,
+        root: &Path,
+        manifest: &Value,
+        receipt: &Value,
+    ) -> Result<()> {
+        let pending = prepare(destination)?;
+        let mut output = BufWriter::new(tokio::fs::File::from_std(pending.reopen()?));
+        let (actual, proof) = self.consume(Some(&mut output)).await?;
+        ensure!(
+            &actual == manifest && &proof == receipt,
+            "The original system archive proof changed."
+        );
+        output.flush().await?;
+        output.get_ref().sync_all().await?;
+        drop(output);
+        self.active()?;
+        publish(pending, destination, root)
+    }
+
+    async fn consume(
+        &self,
+        mut output: Option<&mut BufWriter<tokio::fs::File>>,
+    ) -> Result<(Value, Value)> {
         self.active()?;
         let mut reader = BufReader::new(tokio::fs::File::open(self.file).await?);
         let header = checked(
@@ -189,6 +256,9 @@ impl Archive<'_> {
             size += bytes.len() as u64;
             ensure!(size <= (1 << 53) - 1, decryption_error());
             hash.update(&*bytes);
+            if let Some(writer) = &mut output {
+                writer.write_all(&bytes).await?;
+            }
             chunks += 1;
         }
     }

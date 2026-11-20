@@ -1,5 +1,10 @@
 //! Worker-private checkpoint transfer and recovery.
-use super::{account, archive::Archive, carrier::Capture, checked, key, load_record};
+use super::{
+    account,
+    archive::{Archive, verified_plaintext},
+    carrier::Capture,
+    checked, key, load_record,
+};
 use crate::{
     cantrip_os::{
         lock::InstanceLock,
@@ -69,6 +74,53 @@ impl<'a> Checkpoint<'a> {
     fn active(&self) -> Result<()> {
         self.lifetime.check()?;
         account(self.context(), self.encryption)
+    }
+
+    pub async fn stage(&self, destination: &Path, allow_write: bool) -> Result<Option<Value>> {
+        let _lock = InstanceLock::acquire(&self.lock_key(), self.lifetime).await?;
+        self.active()?;
+        let record = self
+            .load()?
+            .filter(|value| value["state"] == "ready")
+            .context("The original system checkpoint is not complete.")?;
+        let manifest = &record["manifest"];
+        let receipt = &record["archive"];
+        let source = Archive {
+            file: &self.file,
+            context: self.context(),
+            encryption: self.encryption,
+            lifetime: self.lifetime,
+        };
+        match verified_plaintext(
+            destination,
+            receipt["archiveBytes"].as_u64().context("Archive size")?,
+            text(receipt, "archiveSha256")?,
+            self.lifetime,
+        )
+        .await
+        {
+            Ok(_) => {
+                let (verified_manifest, verified_receipt) = source.verify().await?;
+                ensure!(
+                    &verified_manifest == manifest && &verified_receipt == receipt,
+                    "The original system archive proof changed."
+                );
+            }
+            Err(error)
+                if error
+                    .downcast_ref::<io::Error>()
+                    .is_some_and(|error| error.kind() == io::ErrorKind::NotFound) =>
+            {
+                if !allow_write {
+                    return Ok(None);
+                }
+                source
+                    .stage(destination, self.root, manifest, receipt)
+                    .await?;
+            }
+            Err(error) => return Err(error),
+        };
+        Ok(Some(json!({"manifest":manifest, "receipt":receipt})))
     }
 
     fn lock_key(&self) -> String {

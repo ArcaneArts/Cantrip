@@ -156,6 +156,8 @@ impl Controller {
                     | power::OPERATION
                     | system::STATUS
                     | system::CAPTURE
+                    | system::REPLACE
+                    | system::ROLLBACK
                     | run_definitions::COMMAND
             )
     }
@@ -226,8 +228,8 @@ impl Controller {
         if kind == system::STATUS {
             return self.system.status(command, encryption, lifetime).await;
         }
-        if kind == system::CAPTURE {
-            return self.system.capture(command, encryption, lifetime).await;
+        if matches!(kind, system::CAPTURE | system::REPLACE | system::ROLLBACK) {
+            return self.system.operation(command, encryption, lifetime).await;
         }
         let transport_value = checked("cantripOsTransportSchema", command["transport"].clone())?;
         let transport = Transport::from_value(&transport_value)?;
