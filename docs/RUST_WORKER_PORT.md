@@ -7338,3 +7338,27 @@ smokes passed. The Windows x64 GNU worker compile check passed.
 
 Restored turns, subagent interactions, and pending Plan Mode question
 projection remain open.
+
+## 191. Route protected replies after restoring a held Chat turn
+
+Reference commit ae6e04bdc306cd45567b3153bf24b9b79e8defb0 (#3354).
+
+Cold Resume reserves the native interaction channel before releasing a
+held Chat turn. It uses the same request owner as a new turn with the
+replacement runtime, Core receipt, and activation. Prompts carry the
+original thread and turn identities. Replies are admitted on the current
+activation before delivery to its app-server connection. When the turn
+ends, the owner drains accepted replies and releases the channel before
+the final turn receipt.
+
+Local macOS ARM64 validation ran the production Rust server with PGlite,
+the production Rust worker, and bundled Codex. The test paused at a real
+native boundary, restarted the worker and Codex, and injected one command
+approval after native Resume. It confirmed that the original turn was
+resumed, rejected a mismatched encrypted reply and a replay, delivered
+one decline on the current native connection, and opened the encrypted
+resolution and resumed assistant message stored by Core. The GUI and
+linked-console approval regressions, cold Resume and cold Stop transport
+fixtures, and Windows x64 GNU worker compile check passed.
+
+Subagent interactions and pending Plan Mode question projection remain open.

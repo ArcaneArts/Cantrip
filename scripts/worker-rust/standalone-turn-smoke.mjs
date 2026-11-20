@@ -42,6 +42,7 @@ const { values } = parseArgs({
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
     "console-interactions": { type: "boolean" },
+    "restored-interactions": { type: "boolean" },
   },
 });
 assert.ok(
@@ -68,8 +69,9 @@ const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const operationsKey = key("model-operation-content");
 const consoleInteractions = values["console-interactions"];
+const restoredInteractions = values["restored-interactions"];
 const interactionKey =
-  values.interactions || consoleInteractions
+  values.interactions || consoleInteractions || restoredInteractions
     ? key("interaction-content")
     : null;
 const consoleStateKey = consoleInteractions
@@ -328,6 +330,21 @@ async function createChat(label, autoTitle) {
   return { chatId, chatUrl };
 }
 
+function openMessage(message) {
+  return crypto.decryptChatMessageProtectedContent({
+    ownerId,
+    messageId: message.id,
+    keyRevision,
+    componentKey: chatKey,
+    encrypted: message.protectedContent,
+    publicClassification: message.classification ?? {
+      role: message.role,
+      mode: message.mode,
+      attachmentIds: message.attachmentIds,
+    },
+  });
+}
+
 async function verifyTurn(
   response,
   naming,
@@ -369,22 +386,7 @@ async function verifyTurn(
   );
   assert.ok(!JSON.stringify(messages).includes(prompt));
   assert.ok(!JSON.stringify(messages).includes(answer));
-  const opened = await Promise.all(
-    messages.messages.map((message) =>
-      crypto.decryptChatMessageProtectedContent({
-        ownerId,
-        messageId: message.id,
-        keyRevision,
-        componentKey: chatKey,
-        encrypted: message.protectedContent,
-        publicClassification: message.classification ?? {
-          role: message.role,
-          mode: message.mode,
-          attachmentIds: message.attachmentIds,
-        },
-      }),
-    ),
-  );
+  const opened = await Promise.all(messages.messages.map(openMessage));
   assert.ok(
     opened.some((message) =>
       message.content.some((item) => item.text === prompt),
@@ -977,6 +979,9 @@ async function verifyInteraction() {
     autoNameChats: false,
   });
   const { chatId, chatUrl } = await createChat("Native approval", false);
+  const beforePause = restoredInteractions
+    ? model.model.reply({ hold: true })
+    : null;
   const answer = model.model.reply({
     text: "Protected interaction complete.",
     hold: true,
@@ -987,6 +992,44 @@ async function verifyInteraction() {
     202,
     await encryptedTurn(approvalPrompt, model.profile.id),
   );
+  let heldTurn;
+  if (beforePause) {
+    await eventually(
+      () => beforePause.entered,
+      (entered) => assert.ok(entered),
+    );
+    const tool = modelFunctions(beforePause.request.input.tools).find(
+      ({ name }) => name === "exec_command" || name.endsWith("__exec_command"),
+    );
+    assert.ok(tool, "The bundled runtime advertises its shell tool");
+    beforePause.text = "Holding this turn for restart.";
+    beforePause.calls = [
+      {
+        ...tool,
+        arguments: { cmd: "printf pause-boundary", yield_time_ms: 1000 },
+      },
+    ];
+    const pause = call("PATCH", `${chatUrl}/pause`, 200, { paused: true });
+    // Always release the provider, including if Core rejects Pause.
+    heldTurn = await Promise.race([
+      eventually(
+        () => readFile(approvalMarker + ".pause", "utf8").then(JSON.parse),
+        (turn) => assert.ok(turn.threadId && turn.turnId),
+      ),
+      pause.then(() => {
+        throw new Error("Pause returned without reaching Codex.");
+      }),
+    ]).finally(() => beforePause.release());
+    const paused = await pause;
+    assert.equal(paused.paused, true);
+    assert.equal(answer.entered, false);
+    assert.deepEqual(await stopWorker(), { code: 0, signal: null });
+    await startWorker();
+    const resumed = await call("PATCH", `${chatUrl}/pause`, 200, {
+      paused: false,
+    });
+    assert.equal(resumed.paused, false);
+  }
   await eventually(
     () => answer,
     (plan) => assert.equal(plan.entered, true),
@@ -1007,6 +1050,10 @@ async function verifyInteraction() {
   };
   assert.equal(request.provenance.chatId, chatId);
   assert.ok(request.provenance.turnId);
+  if (heldTurn) {
+    assert.equal(request.provenance.threadId, heldTurn.threadId);
+    assert.equal(request.provenance.turnId, heldTurn.turnId);
+  }
   assert.ok(!JSON.stringify(request).includes("private fixture approval"));
   const opened = await crypto.decryptInteractionRequestContent({
     ...common,
@@ -1039,6 +1086,12 @@ async function verifyInteraction() {
   const payload = await encryptReply(request.requestKey);
   const saved = await call("POST", `${url}/respond`, 200, payload);
   assert.equal(saved.status, "resolved");
+  const resolution = await crypto.decryptInteractionResponseContent({
+    ...common,
+    encrypted: saved.protectedResponse,
+    publicClassification: saved.classification,
+  });
+  assert.deepEqual(resolution.response, response);
   await call("POST", `${url}/respond`, 409, {
     ...payload,
     idempotencyKey: randomUUID(),
@@ -1057,18 +1110,24 @@ async function verifyInteraction() {
     (plan) => assert.equal(plan.request?.completed, true),
   );
   await eventually(
-    () => call("GET", `${chatUrl}/messages`, 200),
-    ({ messages }) =>
-      assert.ok(
-        messages.some(
-          (message) =>
-            (message.classification?.role ?? message.role) === "assistant",
-        ),
-      ),
+    async () => {
+      const { messages } = await call("GET", `${chatUrl}/messages`, 200);
+      return Promise.all(messages.map(openMessage));
+    },
+    (messages) => {
+      assert.equal(
+        messages.filter(({ content }) =>
+          content.some((item) => item.text === answer.text),
+        ).length,
+        1,
+      );
+    },
   );
   assert.deepEqual(model.model.failures, []);
   console.log(
-    "Protected approval authenticated against its native request and reached Codex once.",
+    heldTurn
+      ? "A restored turn accepted one protected approval reply on its replacement runtime."
+      : "Protected approval authenticated against its native request and reached Codex once.",
   );
 }
 
@@ -1479,9 +1538,9 @@ try {
     CANTRIP_WORKER_ID: workerId,
     CANTRIP_CODEX_BIN: values.deferred
       ? await fixtureCodex(root, values.codex)
-      : values.interactions || consoleInteractions
+      : values.interactions || consoleInteractions || restoredInteractions
         ? await fixtureCodex(root, values.codex, {
-            scenario: "approval",
+            scenario: restoredInteractions ? "resume-approval" : "approval",
             marker: approvalMarker,
             input: approvalPrompt,
             ...(consoleInteractions ? { socketFile: consoleSocket } : {}),
@@ -1547,7 +1606,7 @@ try {
       marker: approvalMarker,
       socketFile: consoleSocket,
     });
-  } else if (values.interactions) {
+  } else if (values.interactions || restoredInteractions) {
     await verifyInteraction();
   } else if (values.settings) {
     await verifySettingsSnapshot();
