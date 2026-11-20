@@ -8647,3 +8647,36 @@ regression passed. Repeat with
 The GitHub-backed success path and Windows script execution need focused
 runtime coverage. Ordinary Chat pause exposed a separate gap in the
 `chat.pause.set` branch, which currently requires Task scope.
+
+## 241. Pause and resume ordinary native Chats
+
+Reference commit `201f92a93037aa74a4ea75f44e0a08b4057cf4f7` (#3404).
+
+The Rust worker applies the Chat pause to the selected native admission
+adapter and uses the existing durable checkpoint controls when a managed
+turn is active. Replacement thread preparations inherit the local hold.
+Core remains responsible for the durable pause, including after the worker
+restarts. Private Task controls keep their existing scoped route.
+
+On Resume, the prepared worker reconciles retained native queue input before
+reading Core's queue. It starts the first eligible prompt using the existing
+versioned queue-start operation ID and validates the protected start receipt.
+A revision conflict leaves Core free to dispatch from its latest queue state.
+When there is no eligible prompt, the worker can resume an active Goal through
+the existing managed Goal mutation.
+
+On macOS ARM64, production Rust Core in PGlite mode, the Rust worker and
+bundled Codex 0.166.0 exercised the public Pause and Resume controls. A
+scheduled occurrence queued its encrypted prompt while paused and retained
+the same prompt through a worker restart. The loopback provider saw the
+prompt after Resume, and Core completed the queue item. A separate fixture
+paused an active turn at a checkpoint, restarted the worker and resumed the
+same turn, which accepted one protected approval reply. Repeat with
+`scripts/worker-rust/standalone-turn-smoke.mjs --project-automations` and
+`--restored-interactions`. These fixtures did not exercise Windows or the
+empty-queue active Goal branch.
+
+The managed Codex CLI smoke and 40 focused Node reference cases passed.
+The separate Node queue execution fixture, enabled with the bundled Codex,
+timed out waiting for its first provider input. The GUI case reproduced
+the same timeout on the reference commit.

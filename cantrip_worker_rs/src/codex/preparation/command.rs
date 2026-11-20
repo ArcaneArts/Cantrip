@@ -1,5 +1,6 @@
 //! Worker command preparation joins authenticated scope, the durable association,
 //! and the native thread. It also installs the idle MCP attachment.
+pub(in crate::codex) mod chat_pause;
 mod plan;
 mod profile;
 mod relocation;
@@ -102,6 +103,7 @@ pub(in crate::codex) struct LiveThread {
 struct Inner {
     codex: Worker,
     live_threads: Mutex<HashMap<JsString, ThreadOwner>>,
+    chat_pauses: Mutex<HashMap<task_pause::Key, Arc<chat_pause::Latch>>>,
     task_pauses: Mutex<HashMap<task_pause::Key, Arc<Latch>>>,
     resources: Mutex<HashMap<task_pause::Key, Arc<Resource>>>,
     access: Access,
@@ -160,6 +162,7 @@ impl Ensurer {
         Self(Arc::new(Inner {
             codex,
             live_threads: Mutex::default(),
+            chat_pauses: Mutex::default(),
             task_pauses: Mutex::default(),
             resources: Mutex::default(),
             access,
@@ -394,6 +397,13 @@ impl Ensurer {
             .retain(|(owner, logical_server, chat), _| {
                 owner != &bound.0 || logical_server != server || !target.chats.contains(chat)
             });
+        self.0
+            .chat_pauses
+            .lock()
+            .unwrap()
+            .retain(|(owner, logical_server, chat), _| {
+                owner != &bound.0 || logical_server != server || !target.chats.contains(chat)
+            });
         let broker = self.0.broker.get().map_or(Ok(()), |broker| {
             broker.revoke_owned((&bound.0, server), |claims| {
                 target.matches(
@@ -441,7 +451,13 @@ impl Ensurer {
         let change_plan = incoming["type"] == PLAN_SET;
         let guest_allowed = matches!(
             incoming["type"].as_str(),
-            Some(COMMAND | PLAN_SET | crate::codex::turn::ROLLBACK | crate::codex::turn::COMPACT)
+            Some(
+                COMMAND
+                    | PLAN_SET
+                    | crate::codex::turn::ROLLBACK
+                    | crate::codex::turn::COMPACT
+                    | crate::codex::turn::queue_wake::RESUME
+            )
         ) || (incoming["type"] == crate::codex::turn::RUN
             && session.get("osExecution").is_some());
         if !guest_allowed && session.get("osExecution").is_some() {
@@ -768,6 +784,7 @@ impl Ensurer {
                         });
                         let task = command["taskOwned"] == true;
                         let latch = task.then(|| this.task_latch(&bound, &chat)).transpose()?;
+                        let chat_pause = !task && !staged && this.chat_paused(&bound, &chat);
                         let task_root = |thread: &JsString, latch: &Arc<Latch>| Root {
                             runner: runner.clone(),
                             binding: json!({
@@ -789,6 +806,8 @@ impl Ensurer {
                             if let Some(thread) = &selection.thread_id {
                                 router.set_task_root(thread, Some(task_root(thread, latch)));
                             }
+                        } else if chat_pause {
+                            runtime.admission().set_chat_paused(&chat, true)?;
                         }
                         if task
                             && let (Some(delivery), Some(thread)) =
@@ -882,6 +901,12 @@ impl Ensurer {
                         if !staged {
                             let mut owners = this.0.live_threads.lock().unwrap();
                             resource.signal.check()?;
+                            if !task {
+                                let paused = this.chat_paused(&bound, &chat);
+                                if paused || chat_pause {
+                                    runtime.admission().set_chat_paused(&chat, paused)?;
+                                }
+                            }
                             if let Some(delivery) = delivery {
                                 delivery.select(
                                     &bound,

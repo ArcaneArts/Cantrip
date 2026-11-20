@@ -253,7 +253,7 @@ impl Goals {
     }
 }
 
-async fn native_goal(prepared: &Prepared) -> Result<Value> {
+pub(super) async fn native_goal(prepared: &Prepared) -> Result<Value> {
     let value = request(
         prepared,
         "thread/goal/get",
@@ -263,7 +263,7 @@ async fn native_goal(prepared: &Prepared) -> Result<Value> {
     verify_goal(prepared.thread.id(), &value)
 }
 
-fn verify_goal(thread: &JsString, value: &Value) -> Result<Value> {
+pub(super) fn verify_goal(thread: &JsString, value: &Value) -> Result<Value> {
     let result = checked("chatGoalResponseSchema", value)?;
     let goal = &result["goal"];
     if !goal.is_null() && goal["threadId"].as_js_string() != Some(thread) {

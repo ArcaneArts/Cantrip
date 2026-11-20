@@ -1,13 +1,64 @@
 //! A queue revision wakes the prepared native owner after Core supplies its current queue.
-use super::{RPC_TIMEOUT, Scope, Turns, id};
-use crate::codex::managed::Worker;
-use anyhow::{Context, Result, bail};
+use super::{Intent, RPC_TIMEOUT, Scope, Turns, console, id};
+use crate::{
+    codex::{goals, managed::Worker, preparation::command::native_session},
+    metadata::Signal,
+};
+use anyhow::{Context, Result, bail, ensure};
 use cantrip_history::content::Encryption;
 use cantrip_wire::{Value, value::json};
 
 pub(crate) const CHANGED: &str = "chat.queue.changed";
+pub(crate) const RESUME: &str = "chat.automation.resume";
 
 impl Turns {
+    pub(crate) async fn resume_automation(&self, command: &Value, signal: Signal) -> Result<Value> {
+        let key = self.key(command)?;
+        let chat = &key.2;
+        let scope = Scope::new(self.encryption.clone())?;
+        let prepared = self.preparation.prepare(command, Intent::Preserve).await?;
+        let thread = prepared.thread.id();
+        ensure!(
+            prepared.bound == (key.0.clone(), json!(key.1))
+                && command["session"]["chatId"].as_js_string() == Some(chat)
+                && command["threadId"].as_js_string() == Some(thread),
+            "Automation Resume selected a different native session."
+        );
+        self.preparation.assert_console(chat, &prepared)?;
+        match console::resume_queue(self, &key, &prepared, &scope, &signal).await? {
+            console::Resume::Started => return Ok(json!({"resumed":true})),
+            // Core may dispatch the latest eligible input after a revision
+            // conflict. This attempt owns no claim and cannot resume a Goal.
+            console::Resume::Deferred => return Ok(json!({"resumed":false})),
+            console::Resume::Empty => {}
+        }
+        let goal = goals::native_goal(&prepared).await?;
+        self.preparation.assert_console(chat, &prepared)?;
+        signal.check()?;
+        if goal["status"] != "active" {
+            return Ok(json!({"resumed":false}));
+        }
+        // Use the existing managed Goal mutation so Core owns the execution
+        // receipt and Codex handles the same active-status transition.
+        let session = native_session(command, &prepared.runtime, thread);
+        let reply = self
+            .native_mutation(
+                &prepared.runtime,
+                &prepared.bound,
+                command,
+                session,
+                "thread/goal/set",
+                json!({"threadId":thread,"status":"active"}),
+            )
+            .await?;
+        self.preparation.assert_console(chat, &prepared)?;
+        ensure!(
+            goals::verify_goal(thread, &reply)?["status"] == "active",
+            "Codex did not resume the active Goal."
+        );
+        Ok(json!({"resumed":true}))
+    }
+
     pub(crate) async fn queue_changed(&self, command: &Value, worker: &Worker) -> Result<Value> {
         let chat = id(&command["chatId"], "queue notification chat")?;
         let scope = Scope::new(self.encryption.clone())?;
@@ -83,7 +134,12 @@ fn should_wake(snapshot: &Value) -> bool {
     if awaiting_goal || !snapshot["goalRecovery"].is_null() {
         return true;
     }
-    !snapshot["items"].as_array().unwrap().iter().any(|item| {
+    eligible_item(snapshot).is_none()
+}
+
+pub(super) fn eligible_item(snapshot: &Value) -> Option<&Value> {
+    let claims = snapshot["claims"].as_array().unwrap();
+    snapshot["items"].as_array().unwrap().iter().find(|item| {
         item["frozen"] != true
             && item["state"] == "pending"
             && !claims.iter().any(|claim| {

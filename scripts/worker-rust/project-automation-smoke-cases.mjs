@@ -228,13 +228,62 @@ export async function verifyProjectAutomations({
       JSON.stringify(idleReply.request.input.input).includes(idlePrompt),
     );
     await waitForIdle();
-    await restartWorker();
     assert.equal((await queue()).length, 0);
+    const paused = await call("PATCH", chatUrl + "/pause", 200, {
+      paused: true,
+    });
+    assert.equal(paused.paused, true);
+    const pausedPrompt = "Private occurrence queued by ordinary Chat Pause";
+    const pausedId = await create(null, {
+      startsAt: new Date(Date.now() + 2_000).toISOString(),
+      promptText: pausedPrompt,
+    });
+    const delayed = model.reply({ text: "The resumed automation ran." });
+    await eventually(
+      () => call("GET", base, 200),
+      (items) =>
+        assert.equal(
+          items.find((row) => row.id === pausedId).lastStatus,
+          "queued",
+        ),
+      30_000,
+    );
+    const [heldPrompt] = await queue();
+    assert.ok(heldPrompt.idempotencyKey.startsWith(`automation:${pausedId}:`));
+    assert.equal(delayed.entered, false);
+    await restartWorker();
+    const stillPaused = await call(
+      "GET",
+      `/api/projects/${projectId}/chats`,
+      200,
+    );
+    assert.equal(
+      stillPaused.find((chat) => chat.id === chatId)?.automationPaused,
+      true,
+    );
+    assert.deepEqual(
+      (await queue()).map(({ id }) => id),
+      [heldPrompt.id],
+    );
     const settled = (await call("GET", base, 200)).find(
       (row) => row.id === allowed,
     );
     assert.equal(settled.lastStatus, "queued");
     assert.equal(settled.nextRunAt, later);
+    assert.equal(delayed.entered, false);
+    const resumed = await call("PATCH", chatUrl + "/pause", 200, {
+      paused: false,
+    });
+    assert.equal(resumed.paused, false);
+    await eventually(
+      () => delayed.request,
+      (turn) => assert.equal(turn?.completed, true),
+      25_000,
+    );
+    assert.ok(
+      JSON.stringify(delayed.request.input.input).includes(pausedPrompt),
+    );
+    await eventually(queue, (items) => assert.equal(items.length, 0), 25_000);
     console.log(
       JSON.stringify({ suite: "native-project-automations", passed: true }),
     );
