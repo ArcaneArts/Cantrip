@@ -30,6 +30,7 @@ export async function verifyTaskGoalActivation({
   verifyPause,
   verifyTransferSource,
   verifyProviderHandoff,
+  interruptProviderHandoff,
   withdrawSource,
   attachHandoff,
   attachRecovery,
@@ -57,6 +58,7 @@ export async function verifyTaskGoalActivation({
   waitForFrame,
   diagnostics,
   stop,
+  crash,
   start,
 }) {
   const { goal, task } = result.structuredResult;
@@ -528,13 +530,15 @@ export async function verifyTaskGoalActivation({
     (frame) => frame.notification?.clientMessageId === clientMessageId,
   );
   const running = invoke(inputCommand, (event) => streaming.push(event));
-  const transferGoal = (source, target) =>
+  const transferGoal = (source, target, interruptFinish) =>
     taskGoalHandoff({
       capture: source,
       scope: transferSource.scope,
       cycleId: dispatch.cycleId,
       provider,
       target,
+      interruptFinish,
+      available,
       cwd,
       attach: attachHandoff,
       attachRecovery,
@@ -846,31 +850,49 @@ export async function verifyTaskGoalActivation({
         model: "gpt-5-mini",
       };
       await setCapacity(1, 1, target.provider);
-      await holdProvider(target.provider);
+      const releaseTarget = await holdProvider(target.provider);
       const before = modelCalls();
+      const disconnected = generation();
+      let destinationAdmission;
+      const interruptFinish = interruptProviderHandoff
+        ? async () => {
+            const pending = (await providerOperations(target.provider)).find(
+              (operation) => operation.chatId === chatId,
+            );
+            assert.equal(pending?.state, "waiting", diagnostics());
+            destinationAdmission = pending;
+            // Let the keeper grant the recorded reservation while Core's finish
+            // response is still held. It must remain incapable of sampling.
+            await release();
+            await releaseTarget();
+            const deadline = Date.now() + 8_000;
+            let granted;
+            while (Date.now() < deadline) {
+              granted = (await providerOperations(target.provider)).find(
+                (operation) => operation.operationId === pending.operationId,
+              );
+              if (granted?.state === "granted") break;
+              await delay(25);
+            }
+            assert.equal(granted?.state, "granted", diagnostics());
+            assert.equal(modelCalls(), before);
+            await crash();
+          }
+        : undefined;
       cycles.retarget(target, resumedMessage);
-      const handoff = await transferGoal(cycleSource, target);
-      const newSource = await capture(undefined, target);
-      const record = newSource.record;
-      const recovered = {
+      const handoff = await transferGoal(cycleSource, target, interruptFinish);
+      const recoveryFrom = (record) => ({
         sourceKey: record.key,
         operationId: record.identity.operationId,
         runtimeGeneration: record.identity.runtimeGeneration,
         workerGeneration: record.workerGeneration,
         workerId,
-        providerId: target.provider.id,
+        providerId: record.identity.providerId,
         threadId,
         turnId: record.identity.recovery.turnId,
         cycle: record.identity.recovery.taskGoalCycle,
-      };
-      assert.equal(recovered.cycle.goalEpoch, cycle.goalEpoch);
-      assert.equal(recovered.cycle.orderEpoch, cycle.orderEpoch + 1);
-      assert.equal(
-        handoff.binding.runtimeGeneration,
-        newSource.snapshot.context.runtimeGeneration,
-      );
-      assert.notEqual(record.key, cycleSource.record.key);
-      const recoverCommand = {
+      });
+      const recoverCommand = (recovery) => ({
         type: "task.goal.recover",
         chatId,
         threadId,
@@ -890,46 +912,69 @@ export async function verifyTaskGoalActivation({
         mcpServers: [],
         planMode: "default",
         permissionProfileId: ":workspace",
-        recovery: recovered,
-      };
-      const response = await invoke(recoverCommand);
-      assert.equal(
-        response.ok,
-        true,
-        JSON.stringify(response) + "\n" + diagnostics(),
-      );
-      assert.deepEqual(
-        taskGoalCycleRecoveryReceiptSchema.parse(response.result),
-        {
-          status: "scheduled",
-          sourceKey: record.key,
-          workerGeneration: generation(),
-          admission: {
-            operationId: record.identity.operationId,
-            runtimeGeneration: record.identity.runtimeGeneration,
+        recovery,
+      });
+      let liveRecord;
+      if (!interruptFinish) {
+        const source = await capture(undefined, target);
+        liveRecord = source.record;
+        assert.equal(
+          handoff.binding.runtimeGeneration,
+          source.snapshot.context.runtimeGeneration,
+        );
+        const response = await invoke(recoverCommand(recoveryFrom(liveRecord)));
+        assert.equal(
+          response.ok,
+          true,
+          JSON.stringify(response) + "\n" + diagnostics(),
+        );
+        const { operationId, runtimeGeneration } = liveRecord.identity;
+        assert.deepEqual(
+          taskGoalCycleRecoveryReceiptSchema.parse(response.result),
+          {
+            status: "scheduled",
+            sourceKey: liveRecord.key,
+            workerGeneration: disconnected,
+            admission: { operationId, runtimeGeneration },
           },
-        },
-      );
-      assert.equal(modelCalls(), before);
-      await release();
-      const disconnected = generation();
-      await stop();
+        );
+        destinationAdmission = { operationId, runtimeGeneration };
+        assert.equal(modelCalls(), before);
+        await release();
+        await stop();
+      }
       const reconciled = Promise.withResolvers();
       attachRecovery((body) => {
         const request = nativeInferenceRecoverySchema.parse(body);
-        if (request.record.key !== record.key) return undefined;
+        const record = request.record;
+        if (record.identity.operationId !== destinationAdmission.operationId)
+          return undefined;
         assert.notEqual(request.workerGeneration, disconnected);
-        assert.equal(request.record.workerGeneration, disconnected);
-        assert.deepEqual(request.record.identity, record.identity);
-        assert.equal(request.record.order, record.order);
-        assert.ok(
-          request.record.state === "waiting" ||
-            (request.record.state === "released" &&
-              ["never-started", "runtime-exited"].includes(
-                request.record.outcome,
-              )),
+        assert.equal(record.workerGeneration, disconnected);
+        assert.equal(record.identity.chatId, chatId);
+        assert.equal(record.identity.providerId, target.provider.id);
+        assert.equal(
+          record.identity.runtimeGeneration,
+          destinationAdmission.runtimeGeneration,
         );
-        reconciled.resolve();
+        assert.equal(record.identity.recovery.threadId, threadId);
+        assert.ok(record.nativeExecution == null);
+        assert.notEqual(record.key, cycleSource.record.key);
+        if (liveRecord) {
+          assert.equal(record.key, liveRecord.key);
+          assert.deepEqual(record.identity, liveRecord.identity);
+          assert.equal(record.order, liveRecord.order);
+        }
+        assert.ok(
+          ["waiting", "granted"].includes(record.state) ||
+            (record.state === "released" &&
+              ["never-started", "runtime-exited"].includes(record.outcome)),
+        );
+        const recovered = recoveryFrom(record);
+        assert.equal(recovered.cycle.goalEpoch, cycle.goalEpoch);
+        assert.equal(recovered.cycle.orderEpoch, cycle.orderEpoch + 1);
+        assert.equal(recovered.cycle.modelRouteId, target.routeId);
+        reconciled.resolve(recovered);
         return {
           key: record.key,
           chatId,
@@ -938,12 +983,12 @@ export async function verifyTaskGoalActivation({
           taskGoalRecovery: recovered,
         };
       });
-      cycles.retainSource(recovered);
       await start();
       assert.notEqual(generation(), disconnected);
       await setCapacity(1, 1, target.provider);
-      await available(reconciled.promise);
-      const restored = await invoke(recoverCommand);
+      const recovered = await available(reconciled.promise);
+      cycles.retainSource(recovered);
+      const restored = await invoke(recoverCommand(recovered));
       assert.equal(
         restored.ok,
         true,
@@ -951,15 +996,12 @@ export async function verifyTaskGoalActivation({
       );
       const receipt = taskGoalCycleRecoveryReceiptSchema.parse(restored.result);
       assert.equal(receipt.status, "scheduled");
-      assert.equal(receipt.sourceKey, record.key);
+      assert.equal(receipt.sourceKey, recovered.sourceKey);
       assert.equal(receipt.workerGeneration, generation());
-      assert.notEqual(
-        receipt.admission.operationId,
-        record.identity.operationId,
-      );
+      assert.notEqual(receipt.admission.operationId, recovered.operationId);
       assert.notEqual(
         receipt.admission.runtimeGeneration,
-        record.identity.runtimeGeneration,
+        recovered.runtimeGeneration,
       );
       assert.equal(modelCalls(), before);
       const verifyDestination = async (request) => {
@@ -991,7 +1033,9 @@ export async function verifyTaskGoalActivation({
         stop,
       });
       console.log(
-        "Recovered the transferred Task Goal after destination restart and published its original Goal through native cycles.",
+        interruptFinish
+          ? "Recovered the destination Task Goal after interrupting Core's finish response."
+          : "Recovered the transferred Task Goal after destination restart and published its original Goal through native cycles.",
       );
       return;
     }

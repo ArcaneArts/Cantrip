@@ -14,7 +14,7 @@ use std::{
     future::Future,
     sync::{Arc, Mutex},
 };
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, watch};
 
 use super::super::{Emit, Key, output};
 
@@ -24,7 +24,8 @@ pub(in crate::codex) struct GoalCycle {
     pub placement: Value,
     pub project: Value,
     pub worktree: Value,
-    pub enqueued: tokio::sync::watch::Sender<Option<Value>>,
+    pub enqueued: watch::Sender<Option<Value>>,
+    pub handoff_completed: Option<watch::Receiver<bool>>,
     pub encryption: Arc<Service>,
     pub client: task_inputs::Client,
     pub outcomes: Arc<TaskDelivery>,
@@ -93,6 +94,27 @@ impl Drop for ObservedCheckpoint {
 impl GoalCycle {
     pub fn placement(&self) -> Value {
         self.placement.clone()
+    }
+
+    pub fn reusable(&self) -> bool {
+        self.handoff_completed
+            .as_ref()
+            .is_none_or(|completion| *completion.borrow() || completion.has_changed().is_ok())
+    }
+
+    pub(in crate::codex::turn) async fn wait_for_enqueue(&self, epoch: &Value) -> Result<Value> {
+        let mut updates = self.enqueued.subscribe();
+        let queued = updates
+            .wait_for(|update| {
+                update.as_ref().is_some_and(|queued| {
+                    &queued["cycle"]["goalEpoch"] == epoch
+                        && ["cycleId", "modelRouteId", "providerAccountId", "orderEpoch"]
+                            .iter()
+                            .all(|key| queued["cycle"][*key] == self.placement[*key])
+                })
+            })
+            .await?;
+        Ok(queued.as_ref().unwrap()["admission"].clone())
     }
 
     pub async fn dispatch(

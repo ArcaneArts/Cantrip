@@ -7701,7 +7701,26 @@ The previous-model compaction request excluded the original prompt.
 The live Project Goal handoff regression passed against the production Rust
 server with PGlite.
 
-A worker exit between Core's completed handoff and creation of the first
-destination keeper record still needs a recovery path. The Task fixture
-exercises the real native transport with controlled Core responses. Full
-Task provider handoff against the production Rust Core remains unverified.
+This fixture restarted after the first destination keeper record existed.
+Full Task provider handoff against the production Rust Core remains unverified.
+
+## 204. Preserve the destination Task Goal across a lost finish response
+
+Reference commit e3a58e3812bfac045f5583b9964c21cba40888f6 (#3367).
+
+After Core commits its destination binding, the worker wakes the retained
+Goal and waits for its actual destination keeper enqueue before asking Core
+to finish. The native scope stays unbound and inference stays closed until
+Core acknowledges completion. The existing durable Task first-input
+redelivery still owns transfers of that input.
+
+The local macOS ARM64 fixture withheld Core's finish response, freed
+destination capacity, and stopped the worker with SIGKILL after the keeper
+granted the unbound reservation. No provider request was made. The fresh
+worker recovered the exact recorded operation, obtained the canonical
+replacement receipt, and ran the retained Goal on the destination.
+The fixture verified encrypted outcome delivery and replay after restart.
+The previous worker reached the same finish endpoint without a destination
+reservation. The Project Goal handoff regression passed against the
+production Rust server with PGlite. The Task fixture used controlled Core
+responses.

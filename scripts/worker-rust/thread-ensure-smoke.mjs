@@ -110,6 +110,7 @@ const { values } = parseArgs({
     taskGoalCycleWithdrawal: { type: "boolean" },
     taskGoalInputWithdrawal: { type: "boolean" },
     taskGoalProviderHandoff: { type: "boolean" },
+    taskGoalHandoffLostFinish: { type: "boolean" },
     taskGoalCheckpoint: { type: "boolean" },
     taskGoalRestart: { type: "boolean" },
     taskGoalStop: { type: "boolean" },
@@ -128,12 +129,14 @@ const taskStop =
   values.taskStop || values.taskStopRestart || values.taskRawStop;
 const directTask =
   values.directTask || values.taskCheckpoint || values.taskRestart || taskStop;
+const taskGoalProviderHandoff =
+  values.taskGoalProviderHandoff || values.taskGoalHandoffLostFinish;
 const taskGoals =
   values.taskGoal ||
   values.taskGoalTransferSource ||
   values.taskGoalCycleWithdrawal ||
   values.taskGoalInputWithdrawal ||
-  values.taskGoalProviderHandoff ||
+  taskGoalProviderHandoff ||
   values.taskPause ||
   values.taskGoalCheckpoint ||
   values.taskGoalRestart ||
@@ -234,7 +237,7 @@ async function responses(request, response, endpoint) {
   const body = await requestBody(request);
   assert.ok(
     body.model === "gpt-5" ||
-      (values.taskGoalProviderHandoff && body.model === "gpt-5-mini"),
+      (taskGoalProviderHandoff && body.model === "gpt-5-mini"),
     `Unexpected fixture model: ${body.model}`,
   );
   const number = ++providerCalls;
@@ -311,7 +314,7 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://127.0.0.1");
   if (
     url.pathname === "/fixture/v1/responses" ||
-    (values.taskGoalProviderHandoff &&
+    (taskGoalProviderHandoff &&
       url.pathname === "/fixture-task-target/v1/responses")
   ) {
     try {
@@ -766,6 +769,10 @@ async function start() {
 async function stop() {
   child.stdin.end();
   assert.deepEqual(await available(exited), [0, null], diagnostics);
+}
+async function crash() {
+  assert.equal(child.kill("SIGKILL"), true);
+  assert.deepEqual(await available(exited), [null, "SIGKILL"], diagnostics);
 }
 async function ensure(
   fields,
@@ -4006,8 +4013,9 @@ try {
                 values.taskGoalTransferSource ||
                 values.taskGoalCycleWithdrawal ||
                 values.taskGoalInputWithdrawal ||
-                values.taskGoalProviderHandoff,
-              verifyProviderHandoff: values.taskGoalProviderHandoff,
+                taskGoalProviderHandoff,
+              verifyProviderHandoff: taskGoalProviderHandoff,
+              interruptProviderHandoff: values.taskGoalHandoffLostFinish,
               withdrawSource: values.taskGoalInputWithdrawal
                 ? "input"
                 : values.taskGoalCycleWithdrawal
@@ -4036,6 +4044,7 @@ try {
               generation: () => workerGeneration,
               modelCalls: () => providerCalls,
               stop,
+              crash,
               start,
               setAnswer: (answer) => {
                 taskResponse = answer;

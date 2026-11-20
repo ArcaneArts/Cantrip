@@ -1194,6 +1194,7 @@ impl Turns {
             project: command["policyProjectId"].clone(),
             worktree: parent["worktreeId"].clone(),
             enqueued: watch::channel(None).0,
+            handoff_completed: None,
             encryption: self.encryption.clone(),
             key: key.clone(),
             client: self.task_inputs.clone(),

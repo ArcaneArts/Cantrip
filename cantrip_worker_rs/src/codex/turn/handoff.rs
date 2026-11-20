@@ -246,6 +246,9 @@ impl Transfer {
         let result = if matches!(state["phase"].as_str(), Some("completed" | "cancelled")) {
             self.settle_local(&state, state["phase"] == "cancelled")
                 .await?;
+            if state["phase"] == "completed" {
+                self.wake_task_goal_recovery(&state)?;
+            }
             Ok(state)
         } else {
             self.execute(state).await
@@ -464,10 +467,20 @@ impl Transfer {
             "The published handoff did not adopt the staged runtime."
         );
         self.settle_local(&state, false).await?;
+        let task = self
+            .queue_destination_task_goal(&state, &config, &selected)
+            .await?;
         let state = self
             .action("finish", json!({"outcome":"completed"}))
             .await?;
-        self.publish_task_goal(&state, &config, &selected).await?;
+        ensure!(
+            state["phase"] == "completed",
+            "Core did not complete the native handoff."
+        );
+        if let Some(task) = task {
+            task.send_replace(true);
+        }
+        self.wake_task_goal_recovery(&state)?;
         if let Some(queue) = selected.queue {
             queue.reconcile_on_prepare();
         }

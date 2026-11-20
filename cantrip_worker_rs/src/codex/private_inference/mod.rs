@@ -638,7 +638,7 @@ impl Router {
                         }),
                         on_task_goal_queued: cycle
                             .as_ref()
-                            .map(|cycle| self.goal_enqueue(cycle.clone()))
+                            .map(|cycle| self.goal_enqueue(cycle.clone(), signal.clone()))
                             .or(context.on_task_goal_queued),
                         on_task_goal_dispatch: dispatch.or(context.on_task_goal_dispatch),
                         thread_id: gate.key.thread_id.clone(),
