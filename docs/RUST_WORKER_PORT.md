@@ -8491,3 +8491,28 @@ reference passed. Repeat with
 `scripts/worker-rust/standalone-turn-smoke.mjs --standalone-skills`.
 Guest skill selection and settings commands remain separate work. The
 runtime isolation was exercised with the patched macOS bundle.
+
+## 235. Read encrypted skill settings and the Project Chat skill list
+
+Reference commit `6940ee1e6a7edf951ca334165f913ff570f580dc` (#3398).
+
+The Rust worker implements `skills.list`, `skills.settings.list` and
+`skills.settings.read`. It preserves the existing skill IDs, audience keys,
+display names, file sizes and location ordering. It merges Codex's enabled
+state by canonical path when the provider has a native model route. Global
+inventory also works before a provider has any model routes. Standalone Chat
+audience selection shares the same discovery and key derivation.
+
+The worker opens and seals customization payloads using the existing endpoint
+encryption, binding each payload to its operation, worker, server and scope.
+Inventory metadata, file contents and browsing errors travel in encrypted
+responses. File reads only open regular files from the selected skill directory.
+
+The macOS ARM64 fixture used production Rust Core in PGlite mode, the Rust
+worker and bundled Codex 0.166.0. It listed global and Project skills,
+compared Codex enablement, read a nested UTF-8 document, and rejected a
+linked external file, binary content and ciphertext bound to another
+operation. The worker shut down cleanly. Host and Standalone Chat skill
+regressions and nine focused Node reference tests passed. Repeat the
+settings fixture with `scripts/worker-rust/standalone-turn-smoke.mjs --skill-settings`.
+Settings write, delete and configuration commands remain open.

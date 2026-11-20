@@ -1029,6 +1029,9 @@ export const contractRoots = [
   "gitAgentDraftCreateSchema",
   "gitAgentDraftModelOutputSchema",
   "gitAgentDraftResultSchema",
+  "customizationContentResultSchema",
+  "skillListSchema",
+  "skillSettingsReadContentSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1205,6 +1208,12 @@ export function sourceContractSchema(name) {
       : undefined) ??
     (name === "scriptCommandOperationIdSchema"
       ? protocol.endpointContentContextSchema.shape.operationId
+      : undefined) ??
+    (name === "skillSettingsReadContentSchema"
+      ? protocol.skillSettingsFileRequestSchema.pick({
+          skillId: true,
+          file: true,
+        })
       : undefined) ??
     (name === "computerUseAuthorityChangeSchema"
       ? computerUsePreview.cuaPreviewAuthoritySchema

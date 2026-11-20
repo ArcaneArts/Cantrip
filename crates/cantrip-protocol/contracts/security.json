@@ -1004,7 +1004,10 @@
     "cantripOsSystemCaptureOutcomeSchema": 14479,
     "gitAgentDraftCreateSchema": 14486,
     "gitAgentDraftModelOutputSchema": 14500,
-    "gitAgentDraftResultSchema": 14502
+    "gitAgentDraftResultSchema": 14502,
+    "customizationContentResultSchema": 14510,
+    "skillListSchema": 14521,
+    "skillSettingsReadContentSchema": 14523
   },
   "nodes": [
     {
@@ -87116,6 +87119,62 @@
           "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
         }
       ]
+    },
+    {
+      "type": "union",
+      "name": "customizationContentResultSchema",
+      "options": [14511, 14515],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "status": 14512, "value": 14513 },
+      "catchall": 14514,
+      "checks": []
+    },
+    { "type": "literal", "values": ["succeeded"], "checks": [] },
+    { "type": "unknown", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "status": 14516, "error": 14517 },
+      "catchall": 14520,
+      "checks": []
+    },
+    { "type": "literal", "values": ["failed"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "message": 14518 },
+      "catchall": 14519,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "skillListSchema",
+      "element": 14522,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "skillSummarySchema",
+      "shape": { "name": 11188, "description": 11189, "displayName": 11190 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "skillId": 11192, "file": 11219 },
+      "checks": []
     }
   ]
 }
