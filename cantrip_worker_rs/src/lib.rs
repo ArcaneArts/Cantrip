@@ -27,6 +27,7 @@ pub mod history;
 pub mod http;
 pub mod inference;
 pub mod installation;
+mod log_stream;
 pub mod logging;
 mod managed_web;
 pub mod mcp;

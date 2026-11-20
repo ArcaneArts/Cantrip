@@ -25,6 +25,7 @@ const { values } = parseArgs({
     worker: { type: "string" },
     server: { type: "string" },
     shutdown: { type: "string", default: "stdin" },
+    "log-stream": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -154,6 +155,17 @@ try {
       (record) => record.context?.event === "worker.connection.connected",
     ),
   );
+  if (values["log-stream"]) {
+    const { verifyWorkerLogStream } =
+      await import("./control-log-stream-cases.mjs");
+    await verifyWorkerLogStream({
+      server,
+      call,
+      version,
+      eventually,
+      initial: initialLogs.body,
+    });
+  }
   const chatId = randomUUID();
   const chatUrl = `/api/chats/${chatId}`;
   const created = await call("POST", "/api/chats", {
@@ -376,6 +388,7 @@ try {
       credentialRevocation: true,
       standaloneScratchLifecycle: true,
       archiveDrained: true,
+      ...(values["log-stream"] ? { liveLogReplayAndDelivery: true } : {}),
       cleanShutdown: true,
       shutdownTrigger: values.shutdown,
       scope:
