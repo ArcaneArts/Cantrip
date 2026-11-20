@@ -8913,3 +8913,23 @@ reference suite passed 14 cases, and the ordinary native MCP smoke passed
 This milestone covers the helper and its broker compatibility. Managed
 Codex configuration, Rust broker execution, and authenticated CUA MCP HTTP
 remain open.
+
+## 251. Authenticate computer-use MCP calls in the Rust broker
+
+Reference commit `3108b05e779e92cc4ace80d5c81b8a1f24b91964` (#3414).
+
+The Rust loopback broker serves the existing stdio relay and the Linux
+streamable HTTP computer-use MCP endpoint. A prepared binding advertises
+computer use only when enabled. An active lane registers its native runtime,
+which must recognize the requested thread and turn. Each admitted request
+fetches current Core authority with the worker credential and verifies the
+worker, account, Chat, placement, lane, generation and permission profile.
+Lost authority revokes the registration. Disconnect cancels the request, and
+retiring the lane cancels both in-flight calls and retained observations.
+
+The local macOS ARM64 broker fixture uses a test Core endpoint and registered
+test runtime. It exercises both transports, foreign-turn and invalid-credential
+rejection, a 600,000-byte image, cancellation, and authority changes. Ordinary
+MCP attachment expiry and placement tests and 14 Node reference cases passed.
+Run the Rust tests with `scripts/worker-rust/cargo.mjs test --lib mcp::bindings::`.
+The native evaluator and managed Codex registration remain open.

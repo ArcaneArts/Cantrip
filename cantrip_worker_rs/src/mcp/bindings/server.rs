@@ -52,6 +52,24 @@ impl Server {
         })
     }
 
+    pub(super) async fn computer_use_authority(&self, binding: &Value) -> Result<Value> {
+        let request = crate::http::checked(
+            "cuaAgentAuthorityRequestSchema",
+            &json!({"binding":binding}),
+        )?;
+        let response = self
+            .http
+            .post(self.endpoint.join("/api/internal/computer-use/authority")?)
+            .bearer_auth((self.token)()?)
+            .header(header::CONTENT_TYPE, "application/json")
+            .timeout(Duration::from_secs(10))
+            .body(request.stringify())
+            .send()
+            .await
+            .map_err(|_| anyhow!("Computer-use authorization is unavailable."))?;
+        body(response, 16 * 1024).await
+    }
+
     pub(super) async fn capabilities(&self, worker: &JsString) -> Result<Capabilities> {
         let mut url = self
             .endpoint

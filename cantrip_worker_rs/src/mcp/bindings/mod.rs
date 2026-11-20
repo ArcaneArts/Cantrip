@@ -1,9 +1,11 @@
 //! Worker-owned loopback broker. A host credential identifies a prepared
 //! session. Only the current admitted lane can authorize an operation.
+mod computer_use;
 mod http;
 mod server;
 mod store;
 
+pub use computer_use::ComputerUseExecutor;
 pub use server::{Server, WorkerToken};
 
 use anyhow::{Result, anyhow, bail};
@@ -83,6 +85,16 @@ struct Active {
     context: OnceLock<Arc<crate::codex::turn::context::ContextTurn>>,
     stale: Mutex<Option<JsString>>,
     stopped: watch::Sender<bool>,
+    computer_use: OnceLock<computer_use::Execution>,
+}
+
+impl Active {
+    fn stop(&self) {
+        if let Some(execution) = self.computer_use.get() {
+            execution.revoke();
+        }
+        self.stopped.send_replace(true);
+    }
 }
 
 struct Entry {
@@ -93,8 +105,10 @@ struct Entry {
     expires_at: i64,
     capabilities: Capabilities,
     legacy_root: Option<Value>,
+    computer_use: bool,
     active: Option<Arc<Active>>,
     requests: Arc<AtomicUsize>,
+    computer_use_requests: Arc<AtomicUsize>,
 }
 
 #[derive(Default)]
@@ -138,6 +152,32 @@ impl Activation {
         let _ = self.active.context.set(context);
     }
 
+    pub fn register_computer_use(
+        &self,
+        authority: &Value,
+        executor: Arc<dyn ComputerUseExecutor>,
+    ) -> Result<()> {
+        let identity = (self.inner.identity)()?;
+        let entries = self.inner.entries.lock().unwrap();
+        let enabled = entries.by_id.get(&self.binding_id).is_some_and(|entry| {
+            entry.identity == identity
+                && entry.computer_use
+                && entry
+                    .active
+                    .as_ref()
+                    .is_some_and(|active| Arc::ptr_eq(active, &self.active))
+        });
+        if !enabled || *self.active.stopped.borrow() {
+            bail!("Computer use does not belong to the active MCP attachment.");
+        }
+        let authority =
+            computer_use::checked_authority(authority, &self.active.binding, &identity.1)?;
+        self.active
+            .computer_use
+            .set(computer_use::Execution::new(authority, executor))
+            .map_err(|_| anyhow!("Computer use is already registered for this execution binding."))
+    }
+
     pub fn release(self) -> bool {
         self.deactivate()
     }
@@ -155,7 +195,7 @@ impl Activation {
             return false;
         }
         if let Some(active) = entry.active.take() {
-            active.stopped.send_replace(true);
+            active.stop();
         }
         true
     }
@@ -216,10 +256,15 @@ impl Broker {
 
     /// Called by managed preparation with the resolved chat placement. Scope
     /// and permission data comes from the worker owner, never the MCP child.
-    pub async fn prepare(
+    pub async fn prepare(&self, claims: Value, legacy_root: Option<Value>) -> Result<Attachment> {
+        self.prepare_for_turn(claims, legacy_root, false).await
+    }
+
+    pub async fn prepare_for_turn(
         &self,
         mut claims: Value,
         legacy_root: Option<Value>,
+        computer_use: bool,
     ) -> Result<Attachment> {
         let binding = (self.inner.identity)()?;
         if !claims.is_object()
@@ -309,6 +354,7 @@ impl Broker {
             if entry.identity == binding
                 && entry.expires_at > now
                 && store::same_scope(&entry.claims, &claims)
+                && entry.computer_use == computer_use
             {
                 if entry.active.is_none() {
                     let mut attachment = entry.attachment.clone();
@@ -352,8 +398,10 @@ impl Broker {
                 expires_at,
                 capabilities,
                 legacy_root,
+                computer_use,
                 active: None,
                 requests: Arc::new(AtomicUsize::new(0)),
+                computer_use_requests: Arc::new(AtomicUsize::new(0)),
             },
         );
         Ok(attachment)
@@ -385,9 +433,10 @@ impl Broker {
             context: OnceLock::new(),
             stale: Mutex::new(None),
             stopped: watch::channel(false).0,
+            computer_use: OnceLock::new(),
         });
         if let Some(previous) = entry.active.replace(active.clone()) {
-            previous.stopped.send_replace(true);
+            previous.stop();
         }
         Ok(Some(Activation {
             inner: self.inner.clone(),
@@ -471,7 +520,7 @@ impl Inner {
             return Ok(false);
         };
         if let Some(active) = &entry.active {
-            active.stopped.send_replace(true);
+            active.stop();
         }
         store::remove(&entry)?;
         Ok(true)
@@ -497,7 +546,7 @@ impl Inner {
         let mut outcome = Ok(());
         for entry in entries.by_id.drain().map(|(_, entry)| entry) {
             if let Some(active) = &entry.active {
-                active.stopped.send_replace(true);
+                active.stop();
             }
             if let Err(error) = store::remove(&entry) {
                 outcome = Err(error);
