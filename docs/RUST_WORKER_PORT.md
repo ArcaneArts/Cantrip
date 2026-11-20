@@ -8182,4 +8182,35 @@ shutdown. Use `scripts/worker-rust/control-smoke.mjs --codegraph-install`
 with the linked server and worker executables to repeat the upstream test.
 [CodeGraph 1.6.3 release](https://github.com/colbymchenry/codegraph/releases/tag/v1.6.3)
 
-Managed MCP injection into agent sessions is a separate integration.
+Managed MCP injection into agent sessions is covered in cycle 223.
+
+## 223. Attach CodeGraph to managed Host Project Chats
+
+Reference commit `e2e1ea96ea87cccc79cfe5e95cf844deeef7e405` (#3386).
+
+Managed native preparation resolves CodeGraph against the admitted project,
+worktree identity, and canonical working directory. It requests catch-up
+against the authorized index and waits up to one second for that work.
+Standalone chats, guest sessions, and structured tasks omit this managed
+server. Native preparation continues filtering reserved names from the
+user-configured MCP servers.
+
+Codex launches `cantrip-worker codegraph-mcp <worker-data-dir> <project-root>`
+with the managed index and telemetry settings. The launcher opens the current
+version pointer on each launch and forwards MCP stdio directly to the
+installed distribution. The launcher and index supervisor share a
+per-project file lock for initial database creation and replica retirement.
+This prevents a cold agent attachment from racing the first index writer.
+
+The macOS ARM64 fixture used production Rust Core in PGlite mode, the Rust
+worker, bundled Codex 0.166.0, and the installed upstream CodeGraph 1.6.3.
+The loopback model discovered `codegraph_explore` through Codex, called it,
+and received the indexed source from the managed Project Chat. A separate
+Standalone Chat received no CodeGraph tool. Run
+`scripts/worker-rust/standalone-turn-smoke.mjs --codegraph` with linked
+server and worker executables and the Codex binary to repeat the test.
+
+The existing replica lifecycle fixture also passed with an installed
+CodeGraph 1.6.0 distribution and release downloads disabled. It verified
+index retirement, preservation of an ignored user file, index recovery, and
+successful deletion when the blocked job was retried.

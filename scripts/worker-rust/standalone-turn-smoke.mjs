@@ -50,6 +50,7 @@ const { values } = parseArgs({
     codex: { type: "string" },
     cli: { type: "string" },
     bundled: { type: "boolean" },
+    codegraph: { type: "boolean" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -116,6 +117,7 @@ const interactionKey =
     ? key("interaction-content")
     : null;
 const consoleStateKey =
+  values.codegraph ||
   consoleInteractions ||
   subagentInteractions ||
   planQuestion ||
@@ -559,6 +561,119 @@ async function verifyManagedCli(response, workerDirectory) {
     (await call("GET", "/api/chats?context=standalone", 200)).some(
       (chat) => chat.id === chatId,
     ),
+  );
+}
+
+async function verifyManagedCodeGraph(workerDirectory) {
+  const model = await createModel("Managed CodeGraph model");
+  await call("PATCH", "/api/settings", 200, {
+    defaultModelId: model.profile.id,
+    autoNameChats: false,
+  });
+  await eventually(
+    () => call("GET", "/api/workers", 200),
+    (workers) => {
+      const graph = workers.find(
+        (worker) => worker.workerId === workerId,
+      )?.codegraph;
+      assert.equal(graph?.mcpInjectionAvailable, true, JSON.stringify(graph));
+    },
+    180_000,
+  );
+  const { chatUrl } = await createPreparedProjectChat({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    labelKey,
+    title: "Managed CodeGraph",
+    async beforeChat({ workspaceId, projectId }) {
+      await writeFile(
+        path.join(
+          workerDirectory,
+          "workspaces",
+          workspaceId,
+          "folders",
+          projectId,
+          "greeting.ts",
+        ),
+        'export function cantripFixtureGreeting() { return "private graph fixture greeting"; }\n',
+      );
+    },
+  });
+  const search = { query: "codegraph_explore" };
+  const discovered = (record) =>
+    modelFunctions([
+      ...(record?.input.tools ?? []),
+      ...(record?.input.input ?? [])
+        .filter((item) => item.type === "tool_search_output")
+        .flatMap((item) => item.tools ?? []),
+    ]).find(
+      ({ name }) =>
+        name === "codegraph_explore" || name.endsWith("__codegraph_explore"),
+    );
+  model.model.reply({ toolSearch: search });
+  const explore = model.model.reply({ hold: true });
+  const answer = model.model.reply({
+    text: "I used the managed graph for this project.",
+  });
+  await call(
+    "POST",
+    `${chatUrl}/turns`,
+    202,
+    await encryptedTurn(
+      "Read the fixture symbol with CodeGraph.",
+      model.profile.id,
+    ),
+  );
+  await eventually(
+    () => explore.request,
+    (record) => assert.ok(record),
+    35_000,
+  );
+  const tool = discovered(explore.request);
+  assert.ok(tool, "Codex discovered the native managed CodeGraph tool");
+  explore.calls = [{ ...tool, arguments: { query: "cantripFixtureGreeting" } }];
+  explore.release();
+  await eventually(
+    () => answer.request,
+    (record) => assert.equal(record?.completed, true),
+    35_000,
+  );
+  assert.ok(
+    answer.request.input.input.some(
+      (item) =>
+        item.type === "function_call_output" &&
+        JSON.stringify(item.output).includes("private graph fixture greeting"),
+    ),
+    "The tool queried only the authorized, indexed fixture project and returned its source",
+  );
+  const standalone = await createChat("Standalone CodeGraph exclusion", false);
+  model.model.reply({ toolSearch: search });
+  const excluded = model.model.reply({
+    text: "Standalone graph check complete.",
+  });
+  await call(
+    "POST",
+    `${standalone.chatUrl}/turns`,
+    202,
+    await encryptedTurn("Check available graph tools.", model.profile.id),
+  );
+  await eventually(
+    () => excluded.request,
+    (record) => assert.equal(record?.completed, true),
+    35_000,
+  );
+  assert.equal(discovered(excluded.request), undefined);
+  assert.deepEqual(model.model.failures, []);
+  console.log(
+    JSON.stringify({
+      suite: "native-managed-codegraph-mcp",
+      passed: true,
+      realProjectToolCall: true,
+      standaloneOmitsCodeGraph: true,
+    }),
   );
 }
 
@@ -2438,7 +2553,7 @@ try {
   });
   workerEnvironment = {
     ...environment,
-    PATH: "",
+    PATH: values.codegraph ? "/usr/bin:/bin" : "",
     NO_COLOR: "1",
     ...(consoleStateKey ? { TERM: "xterm-256color" } : {}),
     CANTRIP_LOG_LEVEL: "debug",
@@ -2462,7 +2577,9 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (values.cli || values.bundled) {
+  if (values.codegraph) {
+    await verifyManagedCodeGraph(data);
+  } else if (values.cli || values.bundled) {
     // This disposable profile permits a shell connection to the local broker.
     await call("PATCH", "/api/settings", 200, {
       defaultChatPermissionProfileId: ":yolo",

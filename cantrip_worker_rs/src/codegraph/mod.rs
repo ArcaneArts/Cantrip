@@ -1,8 +1,10 @@
 //! Own the CodeGraph indexes selected through the worker's existing routing.
+mod agent;
 mod project;
 mod release;
 mod runtime;
 mod storage;
+pub use agent::launch_mcp;
 #[cfg(all(test, unix))]
 mod tests;
 
@@ -332,13 +334,17 @@ impl Supervisor {
         }
     }
 
-    fn install(&self, root: PathBuf, common: Option<PathBuf>, target: Value) -> Result<()> {
+    fn install(
+        &self,
+        root: PathBuf,
+        common: Option<PathBuf>,
+        target: Value,
+    ) -> Result<Arc<Project>> {
         self.inner.scope.check()?;
         if let Some(common) = common {
             project::exclude(&common)?;
         }
-        self.start(root, target);
-        Ok(())
+        Ok(self.start(root, target))
     }
 
     fn start(&self, root: PathBuf, target: Value) -> Arc<Project> {
@@ -352,6 +358,44 @@ impl Supervisor {
             },
         );
         project
+    }
+
+    async fn ensure_target(&self, desired: &mut Vec<Value>, target: Value) -> Result<Arc<Project>> {
+        let (root, common, target) = self.authorize(vec![target]).await?.pop().unwrap();
+        desired.retain(|existing| !identity(existing, &target));
+        if desired.len() >= MAX_TARGETS {
+            desired.remove(0);
+        }
+        desired.push(target.clone());
+        ensure!(
+            self.inner.runtime.active().is_some(),
+            "CodeGraph is unavailable."
+        );
+        let retired = {
+            let mut projects = self.projects.lock().unwrap();
+            let mut retired: Vec<_> = projects
+                .extract_if(.., |existing, entry| {
+                    (existing == &root || identity(&entry.project.target, &target))
+                        && entry.project.target != target
+                })
+                .map(|(_, entry)| entry)
+                .collect();
+            if projects.len() == MAX_TARGETS && !projects.contains_key(&root) {
+                retired.extend(projects.shift_remove_index(0).map(|(_, entry)| entry));
+            }
+            retired
+        };
+        stop_all(retired).await;
+        let existing = self
+            .projects
+            .lock()
+            .unwrap()
+            .get(&root)
+            .map(|entry| entry.project.clone());
+        match existing {
+            Some(project) => Ok(project),
+            None => self.install(root, common, target),
+        }
     }
 
     pub(crate) async fn execute(&self, command: &Value, routing: &Registry) -> Result<Value> {
@@ -369,28 +413,7 @@ impl Supervisor {
                 let target = json!({"projectId":command["projectId"],"worktreeId":command["worktreeId"],
                     "rootKind":command["rootKind"],"sourcePath":command["sourcePath"],
                     "worktreePath":command["worktreePath"]});
-                let (root, common, target) = self.authorize(vec![target]).await?.pop().unwrap();
-                desired.retain(|existing| !identity(existing, &target));
-                if desired.len() >= MAX_TARGETS {
-                    desired.remove(0);
-                }
-                desired.push(target.clone());
-                ensure!(self.inner.runtime.active().is_some(), "CodeGraph is unavailable.");
-                let retired = {
-                    let mut projects = self.projects.lock().unwrap();
-                    let mut retired: Vec<_> = projects.extract_if(.., |existing, entry| {
-                        (existing == &root || identity(&entry.project.target, &target))
-                            && entry.project.target != target
-                    }).map(|(_, entry)| entry).collect();
-                    if projects.len() == MAX_TARGETS && !projects.contains_key(&root) {
-                        retired.extend(projects.shift_remove_index(0).map(|(_, entry)| entry));
-                    }
-                    retired
-                };
-                stop_all(retired).await;
-                if !self.projects.lock().unwrap().contains_key(&root) {
-                    self.install(root, common, target)?;
-                }
+                self.ensure_target(&mut desired, target).await?;
             }
             let project = self.projects.lock().unwrap().values()
                 .find(|entry| identity(&entry.project.target, &command))
@@ -426,10 +449,21 @@ impl Supervisor {
             Some(entry) => Some(entry.stop().await),
             None => None,
         };
-        if let Err(error) = self.retire_index(&root).await {
-            self.warn("retirement", &error);
+        let initialization = self
+            .inner
+            .runtime
+            .project_lock(&root, &self.inner.scope)
+            .await;
+        match &initialization {
+            Ok(_) => {
+                if let Err(error) = self.retire_index(&root).await {
+                    self.warn("retirement", &error);
+                }
+            }
+            Err(error) => self.warn("retirement", error),
         }
         let result = operation.await;
+        drop(initialization);
         if result
             .as_ref()
             .is_ok_and(|value| value["status"] == "removed")

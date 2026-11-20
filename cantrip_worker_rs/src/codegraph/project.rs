@@ -34,6 +34,8 @@ const INDEX_LIMIT: Duration = Duration::from_secs(1800);
 const CHECK_INTERVAL: Duration = Duration::from_secs(120);
 const CLEAN_INTERVAL: Duration = Duration::from_secs(1800);
 const WATCH_RETRY: Duration = Duration::from_secs(5);
+const AGENT_CATCH_UP_INTERVAL: Duration = Duration::from_secs(30);
+const AGENT_WAIT: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Action {
@@ -57,6 +59,8 @@ struct State {
     request: Option<(Action, Instant)>,
     failures: u32,
     published: bool,
+    working: bool,
+    last_sync: Option<Instant>,
 }
 
 pub(super) struct Project {
@@ -65,6 +69,7 @@ pub(super) struct Project {
     pub stop: watch::Sender<bool>,
     state: Mutex<State>,
     wake: Notify,
+    settled: Notify,
     failed_watch: AtomicBool,
 }
 
@@ -83,8 +88,11 @@ impl Project {
                 request: Some((Action::Ensure, Instant::now())),
                 failures: 0,
                 published: false,
+                working: false,
+                last_sync: None,
             }),
             wake: Notify::new(),
+            settled: Notify::new(),
             failed_watch: AtomicBool::new(false),
         })
     }
@@ -121,6 +129,45 @@ impl Project {
             state.request = Some((Action::Sync, now + Duration::from_secs(1)));
         }
         self.wake.notify_one();
+    }
+
+    pub(super) async fn prepare_for_agent(&self) {
+        let mut stop = self.stop.subscribe();
+        let now = Instant::now();
+        {
+            let mut state = self.state.lock().unwrap();
+            let stale = state
+                .last_sync
+                .is_none_or(|last| now.saturating_duration_since(last) >= AGENT_CATCH_UP_INTERVAL)
+                || state.status["pendingChanges"].as_u64() != Some(0)
+                || state.status["state"] == "degraded";
+            if stale && !state.working {
+                let action = state.request.map_or(Action::Sync, |(action, _)| action);
+                state.request = Some((action, now));
+                self.wake.notify_one();
+            }
+        }
+        let deadline = tokio::time::sleep_until(now + AGENT_WAIT);
+        tokio::pin!(deadline);
+        loop {
+            let settled = self.settled.notified();
+            tokio::pin!(settled);
+            settled.as_mut().enable();
+            {
+                let state = self.state.lock().unwrap();
+                if *stop.borrow()
+                    || (!state.working
+                        && state.request.is_none_or(|(_, due)| due > now + AGENT_WAIT))
+                {
+                    return;
+                }
+            }
+            tokio::select! {
+                _ = stop.changed() => return,
+                _ = &mut deadline => return,
+                _ = settled => {},
+            }
+        }
     }
 
     fn watcher(self: &Arc<Self>) -> Result<RecommendedWatcher> {
@@ -199,6 +246,7 @@ impl Project {
                 let action = match state.request {
                     Some((action, due)) if due <= now => {
                         state.request = None;
+                        state.working = true;
                         Some(action)
                     }
                     _ => None,
@@ -218,6 +266,8 @@ impl Project {
                     return;
                 };
                 self.perform(&inner, &installed, &scope, action).await;
+                self.state.lock().unwrap().working = false;
+                self.settled.notify_waiters();
                 drop(permit);
                 let status = self.status();
                 next_check = Instant::now()
@@ -278,7 +328,12 @@ impl Project {
             id
         };
         self.publish(inner);
-        let result = apply(installation, scope, &self.root, action).await;
+        let result = match inner.runtime.project_lock(&self.root, scope).await {
+            Ok(initialization) => {
+                apply(installation, scope, &self.root, action, initialization).await
+            }
+            Err(error) => Err(error),
+        };
         if scope.check().is_err() {
             return;
         }
@@ -287,6 +342,7 @@ impl Project {
         match result {
             Ok(snapshot) => {
                 state.failures = 0;
+                state.last_sync = Some(Instant::now());
                 state.status["state"] = json!("ready");
                 state.status["lastSuccessfulSyncAt"] = json!(now());
                 for field in [
@@ -357,9 +413,11 @@ async fn apply(
     scope: &Scope,
     root: &Path,
     action: Action,
+    initialization: fs::File,
 ) -> Result<Value> {
     safe_index(root)?;
     let before = inspect(installation, scope, root, true).await?;
+    let _initialization = (before["initialized"] != true).then_some(initialization);
     if action == Action::Sync
         && before["initialized"] == true
         && before["pendingChanges"].as_u64() == Some(0)
@@ -374,6 +432,27 @@ async fn apply(
     } else {
         "sync"
     };
+    run_operation(installation, scope, root, name).await
+}
+
+pub(super) async fn ensure_mcp_index(
+    installation: &Installation,
+    scope: &Scope,
+    root: &Path,
+) -> Result<()> {
+    safe_index(root)?;
+    if inspect(installation, scope, root, true).await?["initialized"] != true {
+        run_operation(installation, scope, root, "init").await?;
+    }
+    Ok(())
+}
+
+async fn run_operation(
+    installation: &Installation,
+    scope: &Scope,
+    root: &Path,
+    name: &str,
+) -> Result<Value> {
     let result = installation
         .run(
             scope,

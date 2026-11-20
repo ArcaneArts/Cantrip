@@ -8,6 +8,7 @@ mod cantrip_os;
 pub(crate) mod chat_content;
 mod cli;
 mod codegraph;
+pub use codegraph::launch_mcp as launch_codegraph_mcp;
 pub mod codex;
 pub mod config;
 pub mod connection;
