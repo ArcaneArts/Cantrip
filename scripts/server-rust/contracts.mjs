@@ -1013,6 +1013,8 @@ export const contractRoots = [
   "cantripOsBackupPhaseSchema",
   "cantripOsBackupRequestEnvelopeSchema",
   "cantripOsBackupResponseEnvelopeSchema",
+  "cantripOsBackupRestoreCommandSchema",
+  "cantripOsBackupRollbackCommandSchema",
 ];
 
 export const projectExportContractRoots = [

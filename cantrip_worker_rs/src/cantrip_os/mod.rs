@@ -134,25 +134,24 @@ impl Controller {
     }
 
     pub fn supports(kind: &str) -> bool {
-        matches!(
-            kind,
-            INSPECT
-                | ATTACH
-                | LIST
-                | CREATE
-                | OPERATION
-                | SOURCE_INSPECT
-                | SOURCE_PROVISION
-                | desktop::STATUS
-                | desktop::OPERATION
-                | packages::STATUS
-                | packages::OPERATION
-                | backup::CAPTURE
-                | backup::OBSERVE
-                | power::STATUS
-                | power::OPERATION
-                | run_definitions::COMMAND
-        )
+        backup::supports(kind)
+            || matches!(
+                kind,
+                INSPECT
+                    | ATTACH
+                    | LIST
+                    | CREATE
+                    | OPERATION
+                    | SOURCE_INSPECT
+                    | SOURCE_PROVISION
+                    | desktop::STATUS
+                    | desktop::OPERATION
+                    | packages::STATUS
+                    | packages::OPERATION
+                    | power::STATUS
+                    | power::OPERATION
+                    | run_definitions::COMMAND
+            )
     }
 
     pub async fn execute(
@@ -212,7 +211,7 @@ impl Controller {
                 .execute(&self.operations, command, encryption, lifetime)
                 .await;
         }
-        if matches!(kind, backup::CAPTURE | backup::OBSERVE) {
+        if backup::supports(kind) {
             return self
                 .backup
                 .execute(&self.operations, command, encryption, lifetime)

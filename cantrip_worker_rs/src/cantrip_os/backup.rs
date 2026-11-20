@@ -2,8 +2,10 @@
 mod archive;
 mod capture;
 mod carrier;
+mod restore;
 
 use super::{
+    assert_scope,
     carrier::{DeliveryUnknown, Transport},
     checked,
     operations::{Journal, Operations, digest, now, scope_key},
@@ -19,10 +21,13 @@ use cantrip_crypto::{
     content::{BackupCipher, BackupFrame},
 };
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
-use std::path::{Path, PathBuf};
+use std::{
+    fs::File,
+    io,
+    path::{Path, PathBuf},
+};
 
-pub(super) const CAPTURE: &str = "cantrip-os.backup.capture";
-pub(super) const OBSERVE: &str = "cantrip-os.backup.observe";
+const OBSERVE: &str = "cantrip-os.backup.observe";
 const COMPONENT: &str = "repository-content";
 const INCOMPLETE: &str = "The backup operation is incomplete. Observe or recover its saved admission; uncertain mutations were not replayed.";
 
@@ -35,6 +40,50 @@ enum Mode {
     New,
     Observe,
     Recover,
+    Continue,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Action {
+    Capture,
+    Restore,
+    Rollback,
+    Reset,
+}
+
+impl Action {
+    const ALL: [Self; 4] = [Self::Capture, Self::Restore, Self::Rollback, Self::Reset];
+
+    fn kind(self) -> &'static str {
+        match self {
+            Self::Capture => "cantrip-os.backup.capture",
+            Self::Restore => "cantrip-os.backup.restore",
+            Self::Rollback => "cantrip-os.backup.rollback",
+            Self::Reset => "cantrip-os.backup.reset",
+        }
+    }
+
+    fn tag(self) -> &'static str {
+        match self {
+            Self::Capture => "capture",
+            Self::Restore => "restore",
+            Self::Rollback => "rollback",
+            Self::Reset => "reset",
+        }
+    }
+
+    fn schema(self) -> &'static str {
+        match self {
+            Self::Capture => "cantripOsBackupCaptureCommandSchema",
+            Self::Restore => "cantripOsBackupRestoreCommandSchema",
+            Self::Rollback => "cantripOsBackupRollbackCommandSchema",
+            Self::Reset => "cantripOsBackupResetCommandSchema",
+        }
+    }
+}
+
+pub(super) fn supports(kind: &str) -> bool {
+    kind == OBSERVE || Action::ALL.iter().any(|action| action.kind() == kind)
 }
 
 struct Job<'a> {
@@ -43,6 +92,8 @@ struct Job<'a> {
     encryption: &'a Service,
     lifetime: &'a Scope,
     mode: Mode,
+    action: Action,
+    mutation_scope: &'a Value,
 }
 
 struct Outcome {
@@ -65,9 +116,19 @@ impl Manager {
         encryption: &Service,
         lifetime: &Scope,
     ) -> Result<Value> {
-        let capture = raw["type"] == CAPTURE;
-        let schema = if capture {
-            "cantripOsBackupCaptureCommandSchema"
+        let new = raw["type"] != OBSERVE;
+        let action = Action::ALL
+            .into_iter()
+            .find(|action| {
+                if new {
+                    raw["type"] == action.kind()
+                } else {
+                    raw["action"] == action.tag()
+                }
+            })
+            .context("Unsupported backup action")?;
+        let schema = if new {
+            action.schema()
         } else {
             "cantripOsBackupObserveCommandSchema"
         };
@@ -75,20 +136,22 @@ impl Manager {
         let scope = &command["scope"];
         let id = text(&command, "operationId")?;
         account(encryption, scope)?;
-        let record = if capture {
+        let record = if new {
             let job = Job {
                 root: &self.root,
                 command: &command,
                 encryption,
                 lifetime,
                 mode: Mode::New,
+                action,
+                mutation_scope: scope,
             };
             job.request()?;
             operations.execute_record(
-                scope, id, CAPTURE, command.clone(),
+                scope, id, action.kind(), command.clone(),
                 Some(json!({"version":1,"command":command,"phase":"admitted"})),
                 async |journal| {
-                    let result = capture::run(&job, journal).await;
+                    let result = job.run(journal).await;
                     match result {
                         Ok(outcome) if outcome.state == "ready" => Ok(outcome.receipt),
                         Ok(outcome) if outcome.state == "failed" => {
@@ -96,38 +159,40 @@ impl Manager {
                             bail!("{message}");
                         }
                         Ok(_) => Err(DeliveryUnknown("Guest operation did not return a completed receipt.".into()).into()),
-                        Err(error) if journal.checkpoint()["phase"] != "admitted" => {
+                        Err(error) if !matches!(journal.checkpoint()["phase"].as_str(), Some("admitted" | "verifying")) => {
                             Err(DeliveryUnknown(format!("The admitted guest operation requires observation or recovery: {error}")).into())
+                        }
+                        Err(error) if action == Action::Restore => {
+                            job.clear_staging().await.with_context(|| format!(
+                                "{error} Worker restore staging cleanup could not be confirmed."
+                            ))?;
+                            Err(error)
                         }
                         Err(error) => Err(error),
                     }
                 },
             ).await?
         } else {
-            ensure!(
-                command["action"] == "capture",
-                "This worker does not support the requested backup action."
-            );
-            let mode = if command["mode"] == "observe" {
-                Mode::Observe
-            } else {
-                Mode::Recover
+            let mode = match text(&command, "mode")? {
+                "observe" => Mode::Observe,
+                "continue" => Mode::Continue,
+                _ => Mode::Recover,
             };
-            if !command["continuationScope"].is_null() {
+            let mutation_scope = if !command["continuationScope"].is_null() {
                 let mut expected = scope.clone();
                 expected["runtimeGeneration"] =
                     command["continuationScope"]["runtimeGeneration"].clone();
                 ensure!(
-                    command["mode"] == "continue" && command["continuationScope"] == expected,
+                    mode == Mode::Continue && command["continuationScope"] == expected,
                     "Continuation cannot change the saved attachment, instance, owner or Worker."
                 );
-            }
+                &command["continuationScope"]
+            } else {
+                scope
+            };
             operations
-                .reconcile_existing(scope, id, CAPTURE, async |journal| {
-                    let stored = checked(
-                        "cantripOsBackupCaptureCommandSchema",
-                        journal.checkpoint()["command"].clone(),
-                    )?;
+                .reconcile_existing(scope, id, action.kind(), async |journal| {
+                    let stored = checked(action.schema(), journal.checkpoint()["command"].clone())?;
                     checked(
                         "cantripOsBackupPhaseSchema",
                         journal.checkpoint()["phase"].clone(),
@@ -137,7 +202,7 @@ impl Manager {
                             && stored["operationId"] == id
                             && &stored["scope"] == scope
                             && journal.record()["admissionFingerprint"]
-                                == digest(Value::Array(vec![json!(CAPTURE), stored.clone()])),
+                                == digest(Value::Array(vec![json!(action.kind()), stored.clone()])),
                         "Stored backup admission has changed or is incomplete."
                     );
                     let job = Job {
@@ -146,8 +211,10 @@ impl Manager {
                         encryption,
                         lifetime,
                         mode,
+                        action,
+                        mutation_scope,
                     };
-                    let outcome = capture::run(&job, journal).await?;
+                    let outcome = job.run(journal).await?;
                     let error = if outcome.receipt.is_null() && outcome.error.is_null() {
                         journal.record()["error"].clone()
                     } else {
@@ -158,7 +225,7 @@ impl Manager {
                 })
                 .await?
         };
-        result(encryption, scope, id, &record)
+        result(encryption, scope, id, action, &record)
     }
 }
 
@@ -199,12 +266,18 @@ fn protect(service: &Service, scope: &Value, id: &str, value: Value) -> Result<V
     )
 }
 
-fn result(service: &Service, scope: &Value, id: &str, record: &Value) -> Result<Value> {
+fn result(
+    service: &Service,
+    scope: &Value,
+    id: &str,
+    action: Action,
+    record: &Value,
+) -> Result<Value> {
     let mut protected = Value::Null;
     let receipt = &record["receipt"];
     if !receipt.is_null() {
         ensure!(
-            receipt["kind"] == "backup-result" && receipt["action"] == "capture",
+            receipt["kind"] == "backup-result" && receipt["action"] == action.tag(),
             "The backup result belongs to another action."
         );
         protected = checked(
@@ -217,7 +290,7 @@ fn result(service: &Service, scope: &Value, id: &str, record: &Value) -> Result<
             service,
             scope,
             id,
-            json!({"action":"error","operationAction":"capture","message":message}),
+            json!({"action":"error","operationAction":action.tag(),"message":message}),
         )
         .unwrap_or(Value::Null);
     }
@@ -232,7 +305,7 @@ fn result(service: &Service, scope: &Value, id: &str, record: &Value) -> Result<
     checked(
         "cantripOsBackupOperationResultSchema",
         json!({
-            "operationId":id,"action":"capture","state":state,"phase":phase,
+            "operationId":id,"action":action.tag(),"state":state,"phase":phase,
             "startedAt":record["startedAt"],"updatedAt":time,"protectedResult":protected,
             "error":if matches!(state,"ready" | "running") { Value::Null } else { json!(INCOMPLETE) },
         }),
@@ -240,6 +313,15 @@ fn result(service: &Service, scope: &Value, id: &str, record: &Value) -> Result<
 }
 
 impl Job<'_> {
+    async fn run(&self, journal: &mut Journal<'_>) -> Result<Outcome> {
+        match self.action {
+            Action::Capture => capture::run(self, journal).await,
+            Action::Restore => restore::restore(self, journal).await,
+            Action::Rollback => restore::rollback(self, journal).await,
+            Action::Reset => restore::reset(self, journal).await,
+        }
+    }
+
     fn request(&self) -> Result<Value> {
         let frame = checked(
             "cantripOsBackupRequestEnvelopeSchema",
@@ -260,19 +342,35 @@ impl Job<'_> {
         let request = checked("cantripOsBackupPrivateRequestSchema", value)?;
         ensure!(
             request["workspaceId"] == self.command["workspace"]["id"]
-                && request["action"] == "capture",
+                && request["action"] == self.action.tag()
+                && (self.action != Action::Restore
+                    || (request["backupId"] == self.command["backupId"]
+                        && request["replace"] == self.command["replace"]))
+                && (self.action != Action::Rollback
+                    || request["restoreOperationId"] == self.command["restoreOperationId"]),
             "Private backup intent does not match its canonical admission."
         );
         Ok(request)
     }
 
     fn location(&self) -> Result<PathBuf> {
-        Ok(self
-            .root
-            .join("cantrip-os-backups")
-            .join(scope_key(&self.command["scope"]))
-            .join(text(self.command, "operationId")?)
-            .join("archive.ctos"))
+        Ok(backup_directory(self.root, &self.command["scope"], self.id()?).join("archive.ctos"))
+    }
+
+    fn id(&self) -> Result<&str> {
+        text(self.command, "operationId")
+    }
+
+    fn staging(&self) -> Result<PathBuf> {
+        Ok(backup_directory(self.root, &self.command["scope"], self.id()?).join("restore-staging"))
+    }
+
+    async fn clear_staging(&self) -> Result<()> {
+        match tokio::fs::remove_dir_all(self.staging()?).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
     }
 
     fn transport(&self) -> Result<Transport> {
@@ -280,7 +378,11 @@ impl Job<'_> {
     }
 
     fn expected(&self, mutation: bool) -> String {
-        let scope = &self.command["scope"];
+        let scope = if mutation {
+            self.mutation_scope
+        } else {
+            &self.command["scope"]
+        };
         let mut expected = json!({"guestInstanceId":scope["guestInstanceId"],"ownerId":scope["ownerId"],
             "workerId":scope["workerId"]});
         if mutation {
@@ -288,6 +390,107 @@ impl Job<'_> {
         }
         expected.stringify()
     }
+
+    fn workspace(&self) -> Value {
+        let workspace = &self.command["workspace"];
+        json!({"id":workspace["guestWorkspaceId"],"uid":workspace["uid"],
+            "gid":workspace["gid"],"home":workspace["homeGuestPath"]})
+    }
+
+    fn workspace_matches(&self, actual: &Value) -> bool {
+        let expected = self.workspace();
+        ["id", "uid", "gid", "home"]
+            .into_iter()
+            .all(|field| actual[field] == expected[field])
+    }
+
+    async fn assert_current(&self, transport: &Transport) -> Result<()> {
+        assert_scope(transport, self.mutation_scope, true, self.lifetime).await?;
+        Ok(())
+    }
+
+    async fn control(
+        &self,
+        transport: &Transport,
+        mutation: bool,
+        arguments: &[&str],
+        input: Option<File>,
+    ) -> Result<Value> {
+        let expected = self.expected(mutation);
+        let mut args = vec!["--expect", expected.as_str()];
+        let workspace = self.workspace();
+        let identity =
+            json!({"uid":workspace["uid"],"gid":workspace["gid"],"home":workspace["home"]})
+                .stringify();
+        if mutation {
+            args.extend(["--expect-workspace", &identity]);
+        }
+        args.extend(arguments);
+        let observed = carrier::control(transport, &args, self.lifetime, input).await?;
+        ensure!(
+            observed["operation_id"] == self.command["operationId"]
+                && observed["action"] == self.action.tag(),
+            "Guest recovery receipt belongs to another operation."
+        );
+        Ok(observed)
+    }
+
+    async fn observe_guest(
+        &self,
+        transport: &Transport,
+        journal: &mut Journal<'_>,
+    ) -> Result<Value> {
+        let id = self.id()?;
+        let saved = self
+            .control(transport, false, &["inspect", id], None)
+            .await?;
+        let unfinished = matches!(saved["state"].as_str(), Some("unknown" | "restoring"))
+            || (saved["maintenance"].is_object() && saved["maintenance"]["released"] != true);
+        if !unfinished || saved["active"] == true {
+            return Ok(saved);
+        }
+        if self.mode == Mode::Observe {
+            phase(journal, "recovery-required")?;
+            return Ok(saved);
+        }
+        self.control(transport, false, &["recover", id], None).await
+    }
+
+    async fn cleanup_guest(&self, transport: &Transport) -> Result<Vec<&'static str>> {
+        if self.mode == Mode::Observe {
+            return Ok(vec![
+                "Guest transfer staging cleanup was not requested during observation.",
+            ]);
+        }
+        if self
+            .control(transport, false, &["forget", self.id()?], None)
+            .await
+            .is_err()
+        {
+            return Ok(vec![
+                "Guest transfer staging cleanup could not be confirmed.",
+            ]);
+        }
+        Ok(vec![])
+    }
+
+    fn complete(&self, journal: &mut Journal<'_>, value: Value) -> Result<Outcome> {
+        let envelope = protect(self.encryption, &self.command["scope"], self.id()?, value)?;
+        phase(journal, "complete")?;
+        let receipt =
+            json!({"kind":"backup-result","action":self.action.tag(),"protectedResult":envelope});
+        Ok(Outcome {
+            state: "ready",
+            receipt,
+            error: Value::Null,
+        })
+    }
+}
+
+fn backup_directory(root: &Path, scope: &Value, id: &str) -> PathBuf {
+    root.join("cantrip-os-backups")
+        .join(scope_key(scope))
+        .join(id)
 }
 
 fn phase(journal: &mut Journal<'_>, value: &str) -> Result<()> {

@@ -30,11 +30,13 @@ const { values } = parseArgs({
     "guest-terminal": { type: "boolean", default: false },
     desktop: { type: "boolean", default: false },
     "backup-capture": { type: "boolean", default: false },
+    "backup-restore": { type: "boolean", default: false },
     power: { type: "boolean", default: false },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
   },
 });
+const backup = values["backup-capture"] || values["backup-restore"];
 assert.ok(values.worker && values.server);
 assert.ok(!values["guest-terminal"] || values.repository);
 assert.ok(
@@ -42,7 +44,7 @@ assert.ok(
   "--linked uses the source fixture",
 );
 assert.ok(
-  !values["executor-package"] || values.repository || values["backup-capture"],
+  !values["executor-package"] || values.repository || backup,
   "--executor-package uses the source or backup fixture",
 );
 assert.ok(
@@ -59,13 +61,15 @@ const trace = path.join(root, "guest-create.log");
 const backupTrace = path.join(root, "guest-backup.log");
 const backupPublished = path.join(root, "backup-published");
 const backupRelease = path.join(root, "backup-release");
+const recoveryTrace = path.join(root, "guest-recovery.log");
+const dropRecovery = path.join(root, "drop-recovery");
 let container, server, worker, powerProxy, realDockerHost;
 const linked = values.linked
   ? { name, journals: [], volumes: [], operations: [] }
   : undefined;
 
 async function docker(...args) {
-  const timeout = values["backup-capture"] ? 120_000 : 20_000;
+  const timeout = backup ? 120_000 : 20_000;
   return (await execute("docker", args, { timeout })).stdout.trim();
 }
 
@@ -192,10 +196,7 @@ try {
     const response = await fetch(server.origin + url, {
       method,
       signal: AbortSignal.timeout(
-        values.power ||
-          values.desktop ||
-          values["package-artifact"] ||
-          values["backup-capture"]
+        values.power || values.desktop || values["package-artifact"] || backup
           ? 180_000
           : 25_000,
       ),
@@ -254,6 +255,15 @@ if [ -n "$CANTRIP_TEST_BACKUP_TRACE" ] && [ "$1" = exec ] && [ "$7" = /usr/bin/c
       if [ "\${12}" = capture ]; then
         printf '%s\\n' "\${13}" >> "$CANTRIP_TEST_BACKUP_TRACE"
       fi
+      case "\${12}" in
+        receive|restore|rollback|reset)
+          printf '%s %s\\n' "\${12}" "\${13}" >> "$CANTRIP_TEST_RECOVERY_TRACE"
+          if [ -f "$CANTRIP_TEST_DROP_RECOVERY" ] && [ "\${12} \${13}" = "$(/bin/cat "$CANTRIP_TEST_DROP_RECOVERY")" ]; then
+            "$CANTRIP_TEST_DOCKER_CLI" "$@" >/dev/null || exit "$?"
+            exit 17
+          fi
+          ;;
+      esac
       ;;
     forget)
       printf '%s\\n' "\${11}" > "$CANTRIP_TEST_BACKUP_PUBLISHED"
@@ -286,11 +296,13 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
           CANTRIP_WORKER_DATA_DIR: data,
           CANTRIP_WORKER_ID: workerId,
           CANTRIP_SERVER_URL: server.origin,
-          ...(values["backup-capture"]
+          ...(backup
             ? {
                 CANTRIP_TEST_BACKUP_TRACE: backupTrace,
                 CANTRIP_TEST_BACKUP_PUBLISHED: backupPublished,
                 CANTRIP_TEST_BACKUP_RELEASE: backupRelease,
+                CANTRIP_TEST_RECOVERY_TRACE: recoveryTrace,
+                CANTRIP_TEST_DROP_RECOVERY: dropRecovery,
               }
             : {}),
           ...(values["package-artifact"]
@@ -502,7 +514,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       },
     });
   }
-  if (values["backup-capture"]) {
+  if (backup) {
     const { verifyCantripOsCapture } =
       await import("./cantrip-os-backup-cases.mjs");
     await verifyCantripOsCapture({
@@ -524,6 +536,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       eventually,
       crashWorker,
       startWorker,
+      restore: values["backup-restore"] && { recoveryTrace, dropRecovery },
     });
   }
   if (values["package-artifact"]) {
@@ -560,7 +573,8 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       ...(values.desktop ? { guestDesktopLifecycle: true } : {}),
       ...(powerProxy ? { retainedPowerControls: true } : {}),
       ...(values["package-artifact"] ? { guestPackageManagement: true } : {}),
-      ...(values["backup-capture"] ? { encryptedGuestBackup: true } : {}),
+      ...(backup ? { encryptedGuestBackup: true } : {}),
+      ...(values["backup-restore"] ? { guestBackupRecovery: true } : {}),
     }),
   );
 } catch (error) {
@@ -582,7 +596,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
   throw error;
 } finally {
   try {
-    if (values["backup-capture"]) await writeFile(backupRelease, "");
+    if (backup) await writeFile(backupRelease, "");
     await stopWorker();
   } finally {
     try {

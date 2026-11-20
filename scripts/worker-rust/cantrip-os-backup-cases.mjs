@@ -32,6 +32,7 @@ export async function verifyCantripOsCapture({
   eventually,
   crashWorker,
   startWorker,
+  restore,
 }) {
   const componentKey =
     repositoryKey ??
@@ -193,6 +194,29 @@ export async function verifyCantripOsCapture({
       recovered.result.protectedResult,
     );
     assert.equal(await readFile(backupTrace, "utf8"), operationId + "\n");
+    if (restore) {
+      const { verifyCantripOsRecovery } =
+        await import("./cantrip-os-restore-cases.mjs");
+      await verifyCantripOsRecovery({
+        call,
+        workerId,
+        data,
+        serverId,
+        os,
+        workspaceUrl,
+        storageKey,
+        docker,
+        container,
+        startWorker,
+        crashWorker,
+        context,
+        componentKey,
+        marker,
+        source,
+        metadata: opened.metadata,
+        ...restore,
+      });
+    }
   } finally {
     if (!repositoryKey) componentKey.fill(0);
   }
