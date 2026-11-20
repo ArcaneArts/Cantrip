@@ -404,6 +404,15 @@ pub(super) fn apply(
                 custom(&[], message.ok_or(ValidationError::Operation)?);
             }
         }
+        "external-import-selection" => {
+            let ids = value["itemIds"]
+                .as_array()
+                .ok_or(ValidationError::Operation)?;
+            let mut seen = std::collections::HashSet::with_capacity(ids.len());
+            if ids.iter().any(|id| !seen.insert(id.as_js_string())) {
+                custom(&["itemIds"], "Import item ids must be unique.");
+            }
+        }
         "embedding-unique-items" => {
             let items = value["items"]
                 .as_array()

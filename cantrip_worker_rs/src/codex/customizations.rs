@@ -1,4 +1,5 @@
 //! Protected Project Chat inventory and the native customization operations.
+pub(super) mod external;
 mod inventory;
 mod mcp;
 pub(super) mod oauth;
@@ -22,6 +23,9 @@ pub(super) enum Command {
     McpReload,
     McpOauthStart,
     McpOauthStatus,
+    ExternalPreview,
+    ExternalApply,
+    ExternalStatus,
 }
 
 impl Command {
@@ -33,6 +37,9 @@ impl Command {
             "customization.mcp.reload" => Self::McpReload,
             "customization.mcp.oauth.start" => Self::McpOauthStart,
             "customization.mcp.oauth.status" => Self::McpOauthStatus,
+            "customization.external.preview" => Self::ExternalPreview,
+            "customization.external.apply" => Self::ExternalApply,
+            "customization.external.status" => Self::ExternalStatus,
             _ => return None,
         })
     }
@@ -40,7 +47,7 @@ impl Command {
     pub fn mutating(self) -> bool {
         matches!(
             self,
-            Self::SkillRoots | Self::McpReload | Self::McpOauthStart
+            Self::SkillRoots | Self::McpReload | Self::McpOauthStart | Self::ExternalApply
         )
     }
 
@@ -67,17 +74,28 @@ impl Command {
                 Some("codexMcpOauthStartSchema"),
                 "codexMcpOauthStatusSchema",
             ),
+            Self::ExternalPreview => (None, "codexExternalImportPreviewSchema"),
+            Self::ExternalApply => (
+                Some("codexExternalImportApplySchema"),
+                "codexExternalImportStatusSchema",
+            ),
+            Self::ExternalStatus => (
+                Some("codexExternalImportStatusRequestSchema"),
+                "codexExternalImportStatusSchema",
+            ),
         }
     }
 
     pub fn lifecycle(self, value: &Value) -> Option<&'static str> {
         match self {
             Self::McpOauthStart => Some("pending"),
-            Self::McpOauthStatus => Some(match value["status"].as_str() {
-                Some("pending") => "pending",
-                Some("unknown") => "unknown",
-                _ => "completed",
-            }),
+            Self::McpOauthStatus | Self::ExternalApply | Self::ExternalStatus => {
+                Some(match value["status"].as_str() {
+                    Some("pending") => "pending",
+                    Some("unknown") => "unknown",
+                    _ => "completed",
+                })
+            }
             _ => None,
         }
     }
@@ -90,6 +108,9 @@ impl Command {
             Self::McpReload => mcp::reload(&target).await,
             Self::McpOauthStart => oauth::start(&target, input).await,
             Self::McpOauthStatus => oauth::status(&target, input),
+            Self::ExternalPreview => external::preview(&target).await,
+            Self::ExternalApply => external::apply(&target, input).await,
+            Self::ExternalStatus => external::status(&target, input),
         }
     }
 }

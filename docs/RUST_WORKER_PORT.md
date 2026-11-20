@@ -8589,3 +8589,29 @@ focused Rust correlation tests, protected skill-settings smoke and 13 Node
 reference tests passed. Repeat the integration fixture with
 `scripts/worker-rust/standalone-turn-smoke.mjs --customization-inventory`.
 External configuration import remains open.
+
+## 239. Preview and apply external project configuration imports
+
+Reference commit `e06af56b9f0e529e814d98cbb932f9ff90a32b3f` (#3402).
+
+The Rust worker implements preview, apply, and status through Project Chat's
+existing encrypted API. Codex detects candidates for the selected checkout.
+The worker preserves the Node candidate IDs and repeats detection before
+submitting the requested items. Home-scoped candidates and plugin imports
+follow the existing restrictions. The shared content contract rejects
+duplicate selected IDs.
+
+The worker binds the native import identifier to the protected Chat scope.
+It retains progress and completion in the running Codex generation, including
+completion received before the request task sees the receipt. Public results
+carry counts and bounded failure classifications. Native paths, source
+contents, and raw failure details stay out of RPC diagnostics.
+
+On macOS ARM64, production Rust Core in PGlite mode, the Rust worker and
+bundled Codex 0.166.0 imported a disposable project's `CLAUDE.md` into
+`AGENTS.md`. The public API rejected a stale candidate and a candidate
+from another checkout. The other project's status request returned unknown,
+and neither the neighboring project nor the managed Codex home was changed.
+The same fixture rechecked skill, hook, and MCP behavior. Repeat with
+`scripts/worker-rust/standalone-turn-smoke.mjs --customization-inventory`.
+Four focused Rust customization tests and 13 Node reference tests passed.
