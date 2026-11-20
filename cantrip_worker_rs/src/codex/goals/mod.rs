@@ -134,7 +134,6 @@ impl Goals {
         let goal = &command["objective"];
         let target = &command["taskRuntime"];
         if command["osExecution"].is_object()
-            || target["computerUseEnabled"] == true
             || !target.is_object()
             || command["subagentDefaults"].is_object()
         {
@@ -195,7 +194,7 @@ impl Goals {
         prepare["session"] = json!({
             "contextKind":"project","chatId":scope["chatId"],"projectId":target["projectId"],
             "worktreeId":target["worktreeId"],"rootKind":target["rootKind"],"scratchRootId":Value::Null,
-            "computerUseEnabled":false,
+            "computerUseEnabled":target["computerUseEnabled"],
         });
         self.assert_bound(binding)?;
         let prepared = self
