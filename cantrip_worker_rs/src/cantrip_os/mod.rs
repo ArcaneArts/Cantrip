@@ -1,5 +1,6 @@
 //! Administrative commands admitted by Core and executed by the owning worker.
 pub(crate) mod carrier;
+mod desktop;
 mod docker;
 mod linked;
 mod lock;
@@ -136,6 +137,8 @@ impl Controller {
                 | OPERATION
                 | SOURCE_INSPECT
                 | SOURCE_PROVISION
+                | desktop::STATUS
+                | desktop::OPERATION
                 | power::STATUS
                 | power::OPERATION
                 | run_definitions::COMMAND
@@ -189,6 +192,9 @@ impl Controller {
         }
         if matches!(kind, power::STATUS | power::OPERATION) {
             return power::execute(&self.operations, command, lifetime).await;
+        }
+        if matches!(kind, desktop::STATUS | desktop::OPERATION) {
+            return desktop::execute(&self.operations, command, lifetime).await;
         }
         let transport_value = checked("cantripOsTransportSchema", command["transport"].clone())?;
         let transport = Transport::from_value(&transport_value)?;

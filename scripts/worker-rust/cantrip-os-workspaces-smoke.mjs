@@ -8,6 +8,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs, promisify } from "node:util";
 import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
+import { verifyCantripOsDesktop } from "./cantrip-os-desktop-cases.mjs";
 import {
   proxyPowerCarrier,
   verifyCantripOsPower,
@@ -20,10 +21,12 @@ const { values } = parseArgs({
     server: { type: "string" },
     repository: { type: "string" },
     "executor-package": { type: "string" },
+    "workspaces-package": { type: "string" },
     "run-plan": { type: "boolean", default: false },
     "run-runtime": { type: "boolean", default: false },
     "product-files": { type: "boolean", default: false },
     "guest-terminal": { type: "boolean", default: false },
+    desktop: { type: "boolean", default: false },
     power: { type: "boolean", default: false },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
@@ -136,15 +139,17 @@ try {
     assert.equal(status.attachment, null);
     return status;
   });
-  if (values["executor-package"]) {
-    const guestPackage = "/tmp/cantrip-os-executor-test.deb";
-    await docker(
-      "cp",
-      path.resolve(values["executor-package"]),
-      `${container}:${guestPackage}`,
-    );
+  async function installPackage(file, name) {
+    const guestPackage = `/tmp/cantrip-os-${name}-test.deb`;
+    await docker("cp", path.resolve(file), `${container}:${guestPackage}`);
     await docker("exec", "--user", "0", container, "dpkg", "-i", guestPackage);
     await docker("exec", "--user", "0", container, "unlink", guestPackage);
+  }
+  if (values["workspaces-package"]) {
+    await installPackage(values["workspaces-package"], "workspaces");
+  }
+  if (values["executor-package"]) {
+    await installPackage(values["executor-package"], "executor");
     const upgraded = await eventually(async () => {
       const status = await guest("cantrip-executor", "status");
       assert.equal(status.service, "running");
@@ -167,7 +172,9 @@ try {
   const call = async (method, url, body, expected = 200) => {
     const response = await fetch(server.origin + url, {
       method,
-      signal: AbortSignal.timeout(values.power ? 180_000 : 25_000),
+      signal: AbortSignal.timeout(
+        values.power || values.desktop ? 180_000 : 25_000,
+      ),
       headers: {
         origin: "http://127.0.0.1:5173",
         ...(body === undefined ? {} : { "content-type": "application/json" }),
@@ -416,6 +423,19 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       },
     });
   }
+  if (values.desktop) {
+    await verifyCantripOsDesktop({
+      call,
+      os,
+      workspaceUrl,
+      guestWorkspaceId: actual.id,
+      observeGuest: () =>
+        guest("cantrip-workspaces", "desktop-target", actual.id),
+      journalDir: path.dirname(file),
+      stopWorker,
+      startWorker,
+    });
+  }
   if (powerProxy) {
     await verifyCantripOsPower({
       call,
@@ -443,6 +463,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       observedAfterRestart: true,
       uncertainNeverReplayed: true,
       nodeCompatibleJournal: true,
+      ...(values.desktop ? { guestDesktopLifecycle: true } : {}),
       ...(powerProxy ? { retainedPowerControls: true } : {}),
     }),
   );
