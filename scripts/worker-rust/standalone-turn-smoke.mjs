@@ -68,6 +68,7 @@ const { values } = parseArgs({
     "host-skills": { type: "boolean" },
     "standalone-skills": { type: "boolean" },
     "scratch-files": { type: "boolean" },
+    "permission-profiles": { type: "boolean" },
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
     "project-automations": { type: "boolean" },
@@ -192,6 +193,7 @@ const consoleStateKey =
   autonomousCua ||
   values["host-skills"] ||
   values["scratch-files"] ||
+  values["permission-profiles"] ||
   values.policies ||
   values.codegraph ||
   consoleInteractions ||
@@ -3085,6 +3087,20 @@ try {
       ownerId,
       keyRevision,
       componentKey: consoleStateKey,
+    });
+  } else if (values["permission-profiles"]) {
+    const { verifyPermissionProfiles } =
+      await import("./permission-profile-smoke-cases.mjs");
+    await verifyPermissionProfiles({
+      call,
+      eventually,
+      createModel,
+      createChat,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      data,
     });
   } else if (workflowKey) {
     await verifyProjectAutomations({

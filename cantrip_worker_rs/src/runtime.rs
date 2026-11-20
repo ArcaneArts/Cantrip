@@ -951,6 +951,17 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == crate::codex::preparation::command::PERMISSION_PROFILES {
+                    let preparation = thread_preparation.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = preparation.list_permission_profiles(&request["command"]).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if matches!(kind, crate::codex::preparation::command::PLAN_GET | crate::codex::preparation::command::PLAN_SET) {
                     let preparation = thread_preparation.clone();
                     let logs = logs.clone();

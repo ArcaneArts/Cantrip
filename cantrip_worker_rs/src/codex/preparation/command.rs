@@ -6,6 +6,7 @@ mod profile;
 mod relocation;
 pub(in crate::codex) mod task_pause;
 pub(crate) use plan::{PLAN_GET, PLAN_SET};
+pub(crate) use profile::PERMISSION_PROFILES;
 pub(in crate::codex) use profile::collaboration_mode;
 
 use super::{
