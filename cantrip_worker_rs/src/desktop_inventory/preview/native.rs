@@ -29,34 +29,8 @@ pub(super) fn reject(code: &str, message: &'static str) -> anyhow::Error {
     .into()
 }
 
-pub(super) fn authorize(lease: &Lease, operation: &str) -> Result<()> {
-    match operation {
-        "session.close" => return Ok(()),
-        "capabilities.get" => {}
-        "targets.list"
-        | "session.open"
-        | "session.state"
-        | "target.attach"
-        | "target.detach"
-        | "observation.snapshot"
-        | "cursor.configure"
-        | "cursor.move"
-        | "controls.inspect" => {
-            if lease.authority["profile"]["selectedId"] != ":yolo" {
-                return Err(reject(
-                    "approval-required",
-                    "Computer use requires approval through the active permission profile.",
-                ));
-            }
-        }
-        _ => {
-            return Err(reject(
-                "unavailable",
-                "This computer-use preview operation is unavailable.",
-            ));
-        }
-    }
-    if !lease.authority["osPlacement"].is_null() {
+pub(super) fn require_host(lease: &Lease, action: &Value) -> Result<()> {
+    if action["operation"] != "session.close" && !lease.authority["osPlacement"].is_null() {
         return Err(reject(
             "unavailable",
             "This preview requires its Cantrip OS desktop.",

@@ -8782,3 +8782,30 @@ Host target access requires the existing exact `:yolo` selection in this
 cycle. Durable approval publication and response, activity publication,
 native input, guest previews and agent computer use remain open. The
 fixture used deterministic targets and pixels.
+
+## 246. Resolve protected Host preview approvals from Rust
+
+Reference commit `f1fe5317f04c3f6118d484c5de3540db76a9a338` (#3409).
+
+Host previews under ordinary permission profiles now publish encrypted
+permission requests through Core's durable interaction API. The worker binds
+each request and its grant to the live preview lease, permission class, and
+target generation. A turn answer permits one retry. A session answer applies
+for the life of the lease. Duplicate pending requests reuse the same protected
+content and request key. Matching accepted replies are idempotent. Stop,
+authority changes, and command disconnect retire the lease's grants and
+pending requests. Unanswered requests expire after five minutes.
+
+On macOS ARM64, production Rust Core with PGlite, the Rust worker, and the
+native helper's deterministic backend exercised the public preview and
+interaction routes. The TypeScript client codec decrypted the permission
+request. Core rejected answers protected for the wrong request key and
+answers with a different permission class or target generation. The fixture
+approved one retry, verified a session grant across repeated calls, denied a
+snapshot, and then approved and decrypted a PNG on the next request. Stop
+persisted an interrupted request and the replacement lease required a new
+grant. Repeat with `scripts/worker-rust/standalone-turn-smoke.mjs --cua-preview`.
+The 154 focused Node reference tests passed. The fixture did not wait for
+the five-minute expiration or exercise real desktop pixels. Computer-use
+activity publication, native input, guest previews, and agent computer use
+remain open.
