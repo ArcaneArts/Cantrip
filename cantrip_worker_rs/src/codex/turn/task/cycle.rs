@@ -223,7 +223,13 @@ impl GoalCycle {
                 "interrupted" => {
                     json!({"ok":false,"error":"The autonomous Task Goal turn was interrupted."})
                 }
-                _ => json!({"ok":false,"error":"The autonomous Task Goal turn failed."}),
+                _ => json!({
+                    "ok": false,
+                    "error": super::failure_message(
+                        "The autonomous Task Goal turn failed",
+                        settled.result.as_ref().err(),
+                    ),
+                }),
             };
             outcomes.goal_cycle(&owner, &server, &source, outcome).await
         });

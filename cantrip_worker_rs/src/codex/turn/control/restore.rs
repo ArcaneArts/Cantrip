@@ -244,7 +244,7 @@ impl Turns {
                     acknowledge(result);
                 }
 
-                let collecting = output::collect_restored(&mut events, &transport, &thread, &turn, &emit, saved);
+                let collecting = output::collect_restored(&mut events, &transport, &thread, &turn, &emit, saved, false);
                 let terminal = interactions::Turn {
                     runtime, receipt: &receipt, thread: &thread, turn: &turn,
                     thread_version: binding.thread_version, encryption: &self.encryption,

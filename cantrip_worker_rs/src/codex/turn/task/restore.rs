@@ -224,7 +224,7 @@ impl Turns {
                 _ => {}
             }
             let emit = task.turn.events(emit);
-            let terminal = output::collect_restored(&mut events, &transport, thread, turn, &emit, saved).await;
+            let terminal = output::collect_restored(&mut events, &transport, thread, turn, &emit, saved, true).await;
             active.set(Phase::Terminal);
             if transport.check().is_err() { runtime.retired().await?; }
             execution.settled().await?;

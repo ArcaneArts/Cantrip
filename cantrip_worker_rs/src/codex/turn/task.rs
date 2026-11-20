@@ -1,6 +1,7 @@
 //! Protected Task rounds use the same physical turn runner as host Chat.
 pub(super) mod checkpoint;
 pub(in crate::codex) mod cycle;
+
 pub(super) mod first_input;
 pub(crate) mod recovery;
 pub(super) mod restore;
@@ -20,6 +21,25 @@ use std::{
     sync::{Arc, Mutex},
 };
 use subtle::ConstantTimeEq;
+
+pub(super) fn failure_message(prefix: &str, error: Option<&anyhow::Error>) -> String {
+    let kind = error.map_or("runtime", |error| {
+        if let Some(native) = error.downcast_ref::<super::output::NativeFailure>() {
+            return native.kind;
+        }
+        let code = error
+            .downcast_ref::<crate::encryption::ServiceError>()
+            .and_then(|error| error.code);
+        cantrip_protocol::task_retry::classify(
+            &cantrip_wire::value::json!({"code":code,"message":error.to_string()}),
+        )
+    });
+    if kind == "runtime" {
+        format!("{prefix}.")
+    } else {
+        format!("{prefix}: task-{kind}.")
+    }
+}
 
 pub(super) fn is_round(command: &Value) -> bool {
     command["resultMode"]["kind"] == "task-encrypted"
@@ -188,11 +208,12 @@ fn task_key(service: &Service, key: &Key) -> Result<BoundComponentKey> {
 impl Messages {
     fn events(self: &Arc<Self>, emit: Emit) -> Emit {
         let messages = self.clone();
-        Arc::new(move |event| {
-            if event["type"] != "agent.message" {
-                return Ok(());
+        Arc::new(move |event| match event["type"].as_str() {
+            Some("agent.message") => messages.publish(&event["message"], &emit),
+            Some("agent.activity") if event["activity"]["type"] == "turnSummary" => {
+                messages.publish_summary(&event["activity"], &emit)
             }
-            messages.publish(&event["message"], &emit)
+            _ => Ok(()),
         })
     }
 
@@ -219,12 +240,6 @@ impl Messages {
                 .context("Invalid native Task message identity.")?,
         ]);
         let mut output = self.output.lock().unwrap();
-        let id = output
-            .ids
-            .entry(key.clone())
-            .or_insert_with(|| uuid::Uuid::new_v4().to_string());
-        let mut context = self.context.clone();
-        context["messageId"] = json!(id.as_str());
         let mut content = json!({
             "type":"text","text":message["text"],"phase":message["phase"],
             "correlation":message["correlation"],
@@ -234,6 +249,57 @@ impl Messages {
             content["streaming"] = json!(true);
             telemetry["streaming"] = json!(true);
         }
+        let cipher = self.emit_message(&mut output, key, content, telemetry, emit)?;
+        if message["phase"] != "commentary" && message["streaming"] != true {
+            output.final_message = Some(FinalMessage {
+                turn: turn.clone(),
+                thread: message["correlation"]["threadId"].clone(),
+                text: message["text"].clone(),
+                cipher,
+            });
+        }
+        Ok(())
+    }
+
+    fn publish_summary(&self, summary: &Value, emit: &Emit) -> Result<()> {
+        self.assert_bound()?;
+        let summary = checked("agentActivitySchema", summary)?;
+        let turn = &summary["correlation"]["turnId"];
+        let key = concat(&[
+            "activity:".into(),
+            turn.as_js_string()
+                .cloned()
+                .context("Missing Task summary turn")?,
+            ":".into(),
+            summary["id"]
+                .as_js_string()
+                .cloned()
+                .context("Missing Task summary identity")?,
+        ]);
+        self.emit_message(
+            &mut self.output.lock().unwrap(),
+            key,
+            json!({"type":"activity","activity":summary}),
+            json!({"kind":"activity","activityType":"turnSummary","turnId":turn}),
+            emit,
+        )?;
+        Ok(())
+    }
+
+    fn emit_message(
+        &self,
+        output: &mut Output,
+        key: JsString,
+        content: Value,
+        telemetry: Value,
+        emit: &Emit,
+    ) -> Result<Value> {
+        let id = output
+            .ids
+            .entry(key.clone())
+            .or_insert_with(|| uuid::Uuid::new_v4().to_string());
+        let mut context = self.context.clone();
+        context["messageId"] = json!(id.as_str());
         let cipher = seal_message(
             &self.binding.component.key,
             &context,
@@ -245,15 +311,7 @@ impl Messages {
         emit(
             json!({"type":"agent.protected-task-message","message":cipher,"telemetry":telemetry}),
         )?;
-        if message["phase"] != "commentary" && message["streaming"] != true {
-            output.final_message = Some(FinalMessage {
-                turn: turn.clone(),
-                thread: message["correlation"]["threadId"].clone(),
-                text: message["text"].clone(),
-                cipher,
-            });
-        }
-        Ok(())
+        Ok(cipher)
     }
 
     fn restore_output(&self, saved: &Value) -> Result<()> {
