@@ -17,6 +17,7 @@ mod desktop_inventory;
 pub mod encryption;
 pub mod error;
 pub mod explorer_operations;
+mod external_history;
 pub mod filesystem;
 pub mod git;
 pub mod github;

@@ -744,7 +744,7 @@ try {
     if (values["project-export-only"]) {
       await verifyProjectExport({
         call,
-        origin: () => server.origin,
+        eventually,
         projectId,
         workerId,
         workerDirectory,
@@ -1176,6 +1176,7 @@ try {
         passed: true,
         durableExternalCodexSession: true,
         replayReusesThread: true,
+        recoveredProtectedChatAndAttachment: true,
       }),
     );
   else if (values["run-runtime-only"])

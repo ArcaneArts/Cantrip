@@ -8289,3 +8289,32 @@ The production flag covers both export and external-history import and can
 be advertised once the native import path is available. Run
 `scripts/worker-rust/workspace-smoke.mjs --project-export-only` with linked
 Core and worker executables and the bundled Codex binary.
+
+## 227. Import local Codex transcripts and attachments through the Rust worker
+
+Reference commit `ec222c3129bac1c56e125ff7cded85fb5dad2061` (#3390).
+
+The native worker discovers configured and default external Codex homes and
+matches eligible transcripts to authorized project worktrees, replicas, or a
+unique Git origin. The read command checks the match again and projects the
+transcript into the existing history format. The worker advertises the shared
+`externalCodexHistory` capability for macOS and Windows, enabling both import
+and native project export.
+
+The source stages eligible local media in the existing private layout and
+uses the existing attachment IDs and encrypted relay format. The destination
+uses the native attachment store for upload, integrity checks, subsequent
+downloads and cleanup. Unsupported media remains visible as a placeholder.
+Core retains ownership of the import job and commits the protected messages
+and attachment references.
+
+The macOS ARM64 fixture used production Rust Core with PGlite, the Rust
+worker and bundled Codex 0.166.0. It exported a project chat, discovered it
+through the public API, and imported its transcript and local PNG. It opened
+the protected canonical messages and verified the original PNG bytes in the
+destination store and through an encrypted download after worker restart.
+The fixture also checked source staging cleanup and export receipt reuse.
+Repeat it with `scripts/worker-rust/workspace-smoke.mjs --project-export-only`.
+The 21 focused Node reference tests for history, attachments and export
+passed. Windows runtime validation and destination hydration for native
+continuation remain open.
