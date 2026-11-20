@@ -1,5 +1,5 @@
 //! Install and supervise the signed managed web runtimes.
-mod archive;
+use crate::runtime_archive as archive;
 mod launch;
 mod searxng;
 mod source;
@@ -455,7 +455,7 @@ impl Manager {
         let stop = self.stop.subscribe();
         tokio::task::spawn_blocking({
             let unpacked = unpacked.clone();
-            move || archive::unpack(&archive, &format, &unpacked, expanded, stop)
+            move || archive::unpack(&archive, &format, &unpacked, expanded, 4_000_000_000, stop)
         })
         .await
         .map_err(|error| {

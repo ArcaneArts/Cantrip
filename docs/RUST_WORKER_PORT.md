@@ -8126,7 +8126,7 @@ Adding `--replica-lifecycle-only` exercised real index retirement, a deletion
 refused for an ignored user file, index recovery, and deletion after retrying
 the same job. The ignored file survived the refusal with its contents intact.
 
-Native installation, update checks, and managed MCP injection remain open.
+The native installation and update path is covered in cycle 222.
 
 ## 221. Package an opt-in Rust worker image for hosted Compose
 
@@ -8147,3 +8147,39 @@ JavaScript modules, and launch of the bundled binaries. Compose rendered
 both worker selectors and the 15 deployment tests passed. Linux x64 image
 execution and an image built from the latest worker remain to be exercised
 at cutover.
+
+## 222. Install and update CodeGraph from the Rust worker
+
+Reference commit `f5e162432e447943d7ac1bd6d9f06be20edfbdf6` (#3385).
+
+On startup the worker reopens the installed distribution from the existing
+v1 pointer. It checks for a stable release in the background and accepts
+`codegraph.update.check` through the existing command channel. The updater
+uses the legacy update lock and ETag cache. It streams the two assets within
+their published sizes and verifies their GitHub digests and the release
+`SHA256SUMS` entry before extracting the archive into private staging.
+
+The updater verifies the CLI version, disables telemetry, and initializes
+the candidate MCP server before and after moving it into its version
+directory. It then atomically updates the existing pointer. A failed update
+keeps the verified installation active and reports degraded update
+health. Running index operations keep their version until they finish.
+The worker refreshes the authorized project indexes after activation.
+The third-party distribution supplies its own runtime.
+
+The local release fixture verified first install, ETag reuse, upgrades,
+an in-use older version, restart from the v1 pointer, and rejected
+asset digests, checksums, and MCP initialization. Rejected candidates
+left the published pointer intact and released staging and the update
+lock. The shared archive path validation test also passed.
+
+On macOS ARM64, the production Rust worker downloaded and installed
+CodeGraph 1.6.3 in a fresh disposable profile. Production Rust Core in
+PGlite mode returned the existing update-check acknowledgment and reported
+the installed version and telemetry state on heartbeat. The same run
+passed native control reconnect, credential rotation, worker restart, and
+shutdown. Use `scripts/worker-rust/control-smoke.mjs --codegraph-install`
+with the linked server and worker executables to repeat the upstream test.
+[CodeGraph 1.6.3 release](https://github.com/colbymchenry/codegraph/releases/tag/v1.6.3)
+
+Managed MCP injection into agent sessions is a separate integration.

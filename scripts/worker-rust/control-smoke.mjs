@@ -26,6 +26,7 @@ const { values } = parseArgs({
     server: { type: "string" },
     shutdown: { type: "string", default: "stdin" },
     "log-stream": { type: "boolean", default: false },
+    "codegraph-install": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -37,8 +38,8 @@ const root = await mkdtemp(
 );
 let server, child, completion, failure;
 let diagnostics = "";
-async function eventually(read, check, label) {
-  const deadline = Date.now() + 20_000;
+async function eventually(read, check, label, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
   for (;;) {
     try {
       const value = await read();
@@ -97,11 +98,16 @@ try {
   const dataDirectory = path.join(root, "worker");
   const cleanEnvironment = fixtureEnvironment(path.join(root, "unused"));
   delete cleanEnvironment.CANTRIP_WORKER_TOKEN;
+  const codegraphHome = path.join(root, "codegraph-home");
+  if (values["codegraph-install"]) await mkdir(codegraphHome);
   child = spawn(path.resolve(values.worker), ["--shutdown-on-stdin-close"], {
     cwd: root,
     env: {
       ...cleanEnvironment,
       PATH: "",
+      ...(values["codegraph-install"]
+        ? { HOME: codegraphHome, PATH: "/usr/bin:/bin" }
+        : {}),
       NO_COLOR: "1",
       CANTRIP_WORKER_DATA_DIR: dataDirectory,
       CANTRIP_WORKER_NAME: "Native Rust worker smoke",
@@ -138,6 +144,44 @@ try {
   );
   assert.equal(publishedVersion.status, 0, publishedVersion.stderr);
   assert.equal(JSON.parse(publishedVersion.stdout).version, first.body.version);
+  if (values["codegraph-install"]) {
+    const accepted = await call(
+      "POST",
+      "/api/workers/native-control-worker/codegraph/update-check",
+      {},
+    );
+    assert.equal(accepted.status, 202, JSON.stringify(accepted));
+    assert.equal(accepted.body.action, "update-check");
+    assert.equal(accepted.body.status, "queued");
+    const installed = await eventually(
+      () => call("GET", "/api/workers"),
+      (response) => {
+        assert.equal(response.status, 200);
+        const graph = response.body.find(
+          (worker) => worker.workerId === "native-control-worker",
+        )?.codegraph;
+        assert.equal(graph?.runtimeState, "ready", JSON.stringify(graph));
+        assert.equal(graph.installedVersion, graph.latestVersion);
+        assert.ok(graph.lastCheckedAt);
+        assert.equal(graph.cliAvailable, true);
+        assert.equal(graph.telemetryDisabled, true);
+      },
+      "native installation from the upstream CodeGraph release",
+      180_000,
+    );
+    const graph = installed.body.find(
+      (worker) => worker.workerId === "native-control-worker",
+    ).codegraph;
+    const tool = path.join(dataDirectory, "tools", "codegraph");
+    const pointer = JSON.parse(
+      await readFile(path.join(tool, "bin", "current.json"), "utf8"),
+    );
+    assert.equal(pointer.version, graph.installedVersion);
+    assert.equal(pointer.schemaVersion, 1);
+    assert.equal(pointer.telemetryDisabled, true);
+    assert.ok((await stat(path.join(tool, pointer.executable))).isFile());
+    console.log(JSON.stringify({ codeGraphInstalled: graph.installedVersion }));
+  }
   const credentialPath = path.join(dataDirectory, "worker-credential.json");
   const encryptionPath = path.join(dataDirectory, "worker-encryption-key.json");
   let encryptionRecord = await readFile(encryptionPath, "utf8");
@@ -379,7 +423,7 @@ try {
     JSON.stringify({
       suite: "native-worker-control-integration",
       passed: true,
-      workerPathEmpty: true,
+      workerPathEmpty: !values["codegraph-install"],
       enrollmentAndHeartbeat: true,
       versionRoundTrip: true,
       credentialRotationAndReconnect: true,

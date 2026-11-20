@@ -1,7 +1,7 @@
 //! One writer and one watcher for each authorized index.
 use super::{
     Inner,
-    runtime::{INDEX_DIRECTORY, Installation},
+    runtime::{INDEX_DIRECTORY, Installation, now},
 };
 use crate::{
     filesystem::{Scope, paths},
@@ -68,10 +68,6 @@ pub(super) struct Project {
     failed_watch: AtomicBool,
 }
 
-fn now() -> String {
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-}
-
 impl Project {
     pub(super) fn start(target: Value, root: PathBuf) -> Arc<Self> {
         let (stop, _) = watch::channel(false);
@@ -115,7 +111,7 @@ impl Project {
         json!({"jobId":id,"action":action.label(),"acceptedAt":at,"status":"queued"})
     }
 
-    fn touched(&self) {
+    pub(super) fn touched(&self) {
         let now = Instant::now();
         let mut state = self.state.lock().unwrap();
         if state
@@ -169,18 +165,6 @@ impl Project {
     pub(super) async fn run(self: Arc<Self>, inner: Arc<Inner>) {
         let mut stop = self.stop.subscribe();
         let scope = Scope::with_stop(stop.clone());
-        let installed = match inner.runtime.ready(&inner.scope).await {
-            Ok(installed) => installed,
-            Err(error) => {
-                {
-                    let mut state = self.state.lock().unwrap();
-                    state.status["state"] = json!("unavailable");
-                    state.status["statusMessage"] = public_message(&error);
-                }
-                self.publish(&inner);
-                return;
-            }
-        };
         let mut watcher = None;
         let mut next_watch = Instant::now();
         let mut next_check = Instant::now() + CHECK_INTERVAL;
@@ -230,7 +214,10 @@ impl Project {
                     _ = scope.stopped() => return,
                     result = inner.slots.acquire() => match result { Ok(permit) => permit, Err(_) => return },
                 };
-                self.perform(&inner, installed, &scope, action).await;
+                let Some(installed) = inner.runtime.active() else {
+                    return;
+                };
+                self.perform(&inner, &installed, &scope, action).await;
                 drop(permit);
                 let status = self.status();
                 next_check = Instant::now()

@@ -11,19 +11,20 @@ use tokio::sync::watch;
 use unicode_normalization::UnicodeNormalization;
 
 const MAX_ENTRIES: usize = 100_000;
-const MAX_ENTRY_BYTES: u64 = 4_000_000_000;
 
-pub(super) fn unpack(
+pub(crate) fn unpack(
     archive: &Path,
     format: &str,
     staging: &Path,
     maximum: u64,
+    maximum_entry: u64,
     stop: watch::Receiver<bool>,
 ) -> Result<()> {
     let mut output = Extraction {
         root: staging,
         seen: HashSet::new(),
         remaining: maximum,
+        maximum_entry,
         stop,
     };
     let file = BufReader::new(File::open(archive)?);
@@ -66,7 +67,7 @@ pub(super) fn unpack(
     Ok(())
 }
 
-pub(super) fn relative(name: &str) -> Result<PathBuf> {
+pub(crate) fn relative(name: &str) -> Result<PathBuf> {
     let name = name.trim_end_matches('/');
     let bytes = name.as_bytes();
     let drive_prefix =
@@ -110,6 +111,7 @@ struct Extraction<'a> {
     root: &'a Path,
     seen: HashSet<String>,
     remaining: u64,
+    maximum_entry: u64,
     stop: watch::Receiver<bool>,
 }
 
@@ -138,8 +140,8 @@ impl Extraction<'_> {
             "Archive contains too many entries or a duplicate name."
         );
         ensure!(
-            size <= self.remaining && size <= MAX_ENTRY_BYTES,
-            "Archive exceeds its signed extraction budget."
+            size <= self.remaining && size <= self.maximum_entry,
+            "Archive exceeds its extraction budget."
         );
         self.remaining -= size;
         let output = self.root.join(path);
