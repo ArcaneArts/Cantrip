@@ -1,6 +1,7 @@
 //! Authenticated Host desktop target discovery and protected fleet inventory.
 mod capture;
 mod effects;
+pub(crate) mod preview;
 mod process;
 pub(crate) use capture::{Capture, Captures, Frame, InputAuthority, Scope};
 pub(crate) use effects::Updates as EffectUpdates;
@@ -29,6 +30,7 @@ const HELPER_INVENTORY_LIMIT: usize = 4_096;
 pub(crate) struct DesktopInventory {
     queue: mpsc::Sender<Request>,
     effects: EffectUpdates,
+    previews: preview::Previews,
     captures: Captures,
     task: JoinHandle<()>,
 }
@@ -41,6 +43,7 @@ struct Helper {
 
 enum Request {
     Scan(Scan),
+    Preview(preview::Request),
     Effects {
         preferences: Value,
         epoch: u64,
@@ -73,6 +76,8 @@ impl DesktopInventory {
         let (queue, input) = mpsc::channel(4);
         let (captures, operations) = Captures::channel();
         let (effects, preferences) = EffectUpdates::channel();
+        let (previews, retirements) =
+            preview::Previews::new(encryption.clone(), outgoing.clone(), queue.clone());
         let task = tokio::spawn(run(
             binary,
             encryption,
@@ -80,11 +85,12 @@ impl DesktopInventory {
             input,
             operations,
             stop,
-            (effects.clone(), preferences),
+            (effects.clone(), preferences, retirements),
         ));
         Self {
             queue,
             effects,
+            previews,
             captures,
             task,
         }
@@ -96,6 +102,10 @@ impl DesktopInventory {
 
     pub(crate) fn effect_updates(&self) -> EffectUpdates {
         self.effects.clone()
+    }
+
+    pub(crate) fn previews(&self) -> preview::Previews {
+        self.previews.clone()
     }
 
     pub(crate) fn submit_effects(
@@ -145,7 +155,11 @@ async fn run(
     mut input: mpsc::Receiver<Request>,
     mut captures: capture::Operations,
     mut stop: watch::Receiver<bool>,
-    (effects, mut preferences): (EffectUpdates, watch::Receiver<Value>),
+    (effects, mut preferences, mut previews): (
+        EffectUpdates,
+        watch::Receiver<Value>,
+        preview::Retirements,
+    ),
 ) {
     let mut process = None;
     let mut replay = IndexSet::new();
@@ -157,13 +171,18 @@ async fn run(
         }
         tokio::select! {
             _ = stopped(&mut stop) => break,
-            _ = epoch.changed() => retire(&mut process).await,
+            _ = epoch.changed() => {
+                let current = *epoch.borrow_and_update();
+                previews.expire(current);
+                retire(&mut process).await;
+            },
             _ = preferences.changed() => {},
             Some(release) = captures.releases.recv() => {
                 if timeout_at(Instant::now() + DEADLINE, release.close(&mut process)).await.is_err() {
                     retire(&mut process).await;
                 }
             }
+            Some(lease) = previews.releases.recv() => preview::release(&lease, &mut process).await,
             Some(operation) = captures.requests.recv() => {
                 let current = operation.scope().epoch;
                 if !outgoing.stream_current(current) {
@@ -187,6 +206,22 @@ async fn run(
                 let Some(request) = request else { break };
                 let scan = match request {
                     Request::Scan(scan) => scan,
+                    Request::Preview(request) => {
+                        let current = request.epoch();
+                        if !outgoing.stream_current(current) {
+                            request.expired();
+                            continue;
+                        }
+                        tokio::select! {
+                            biased;
+                            _ = stopped(&mut stop) => break,
+                            _ = connection_changed(&mut epoch, current) => {
+                                retire(&mut process).await;
+                            }
+                            _ = preview::run(request, &mut process, &binary) => {}
+                        }
+                        continue;
+                    }
                     Request::Effects { preferences, epoch: current, reply } => {
                         let status = if outgoing.stream_current(current) {
                             effects.publish(preferences);

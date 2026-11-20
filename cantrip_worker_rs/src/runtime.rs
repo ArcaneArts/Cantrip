@@ -9,7 +9,7 @@ use crate::{
     logging::{self, Logs},
     platform, version,
 };
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use cantrip_config::Environment;
 use cantrip_wire::{Value, value::json};
 use std::{
@@ -832,6 +832,9 @@ async fn cycle(
                     continue;
                 }
                 if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::STEER | crate::codex::turn::STOP_SUSPENSION | crate::codex::turn::PAUSE_SET) {
+                    if kind == crate::codex::turn::INTERRUPT {
+                        desktop_inventory.previews().cancel_chat(&command["chatId"]);
+                    }
                     let observations = worker_link.clone();
                     let turns = turns.clone();
                     let signal = command_signal.clone();
@@ -1096,6 +1099,25 @@ async fn cycle(
                     let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
                         let result = crate::browser_services::discover(&worker, &scope).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
+                if crate::desktop_inventory::preview::supports(kind) {
+                    let previews = desktop_inventory.previews();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = async {
+                            let epoch = request["socketEpoch"].as_u64()
+                                .context("Computer-use preview has no connected socket.")?;
+                            previews.execute(&request["command"], epoch, |event| {
+                                ensure!(outgoing.send(json!({"kind":"event","requestId":request["requestId"],"event":event}))?,
+                                    "The protected computer-use response could not be delivered.");
+                                Ok(())
+                            }).await
+                        }.await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;

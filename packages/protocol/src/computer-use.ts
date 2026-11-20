@@ -696,6 +696,45 @@ export const computerUseResultContentSchema = z
     }
   });
 
+// Native preview uses these existing operation shapes at its encrypted boundary.
+const nativePreviewOperations = new Set<string>([
+  "capabilities.get",
+  "targets.list",
+  "session.open",
+  "session.state",
+  "target.attach",
+  "target.detach",
+  "cursor.configure",
+  "cursor.move",
+  "observation.snapshot",
+  "controls.inspect",
+  "session.close",
+]);
+const [firstNativePreviewAction, ...otherNativePreviewActions] =
+  computerUseActionSchema.options.filter((action) =>
+    nativePreviewOperations.has(action.shape.operation.value),
+  );
+export const computerUseNativePreviewActionSchema = z.discriminatedUnion(
+  "operation",
+  [firstNativePreviewAction!, ...otherNativePreviewActions],
+);
+export const computerUseNativePreviewResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    computerUseResultContentSchema.options[0].extend({
+      data: z.union([
+        cuaCapabilitiesSchema,
+        cuaInventorySchema,
+        cuaSessionResultSchema,
+        cuaSnapshotSchema,
+        cuaControlsResultSchema,
+        closedSchema,
+      ]),
+    }),
+    computerUseResultContentSchema.options[1],
+  ],
+);
+
 export type CuaScope = z.infer<typeof cuaScopeSchema>;
 export type CuaBinding = z.infer<typeof cuaBindingSchema>;
 export type CuaSession = z.infer<typeof cuaSessionSchema>;

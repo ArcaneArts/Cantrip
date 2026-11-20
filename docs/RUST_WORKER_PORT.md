@@ -8751,3 +8751,34 @@ helper shutdown. Repeat with
 controller cases and the persisted settings revision test passed. Live
 window rendering and the agent and preview computer-use paths still need
 coverage and implementation as applicable.
+
+## 245. Open protected Host computer-use previews from Rust
+
+Reference commit `992a322b1d6c9b5369f05bc6804129c41699feed` (#3408).
+
+The worker allocates one preview lease per chat using Core's owner, worker,
+placement, generation, and permission state. A repeated open with the same
+authority returns the same lease. Stop, authority changes, chat interruption
+and command connection replacement revoke the lease and release its native
+session. The helper uses the existing private pipe and ordered event frames.
+
+The authorized Host path exposes capability discovery, target inventory,
+session attach, detach and close, logical cursor controls, control inspection,
+and PNG snapshots. The worker validates encrypted actions against the shared
+protocol shapes. Results and bounded image chunks use the existing
+client-control-content format and bind to the specific preview lease.
+
+On macOS ARM64, the public API fixture used production Rust Core with
+PGlite, the Rust worker, and the native helper's deterministic backend.
+It listed targets, attached, authenticated and decrypted a PNG, detached,
+reattached, closed, and reopened. It rejected a foreign session, denied
+carrying ciphertext across leases, and invalidated a lease after a chat
+permission change. Stop also revoked a preview that still held a session.
+Repeat with `scripts/worker-rust/standalone-turn-smoke.mjs --cua-preview`
+and the built native helper. The desktop inventory regression and 53
+focused Node reference cases passed.
+
+Host target access requires the existing exact `:yolo` selection in this
+cycle. Durable approval publication and response, activity publication,
+native input, guest previews and agent computer use remain open. The
+fixture used deterministic targets and pixels.
