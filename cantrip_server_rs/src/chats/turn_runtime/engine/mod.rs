@@ -283,6 +283,17 @@ impl Runtime {
                         }));
                         return Ok(());
                     }
+                    // The worker persisted exact no-consumption evidence before
+                    // returning this response. Only the receipt can retire the lane.
+                    if turn.native_receipt.is_some()
+                        && matches!(error.downcast_ref::<CommandFailure>(),
+                            Some(CommandFailure::Bridge(reply)) if !reply.unavailable
+                                && reply.request_id.is_some()
+                                && reply.code.as_deref() == Some("native-settings-pending"))
+                    {
+                        self.record_deferred_input(&sink, index, began).await;
+                        return Ok(());
+                    }
                     if let Some(receipt) = &turn.native_receipt
                         && Commands::new(self.dependencies.events.database.clone())
                             .has_deferred_logical_gui(

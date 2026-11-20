@@ -14,7 +14,7 @@ use anyhow::Result;
 fn reject<T>(code: &str, message: &str) -> Result<T> {
     Err(CommandError::new(code, Some(message), 409).into())
 }
-async fn record(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value> {
+async fn record(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<(Value, bool)> {
     let operation = text(&input["operationId"])?;
     let generation = text(&input["operationGeneration"])?;
     let worker = text(&input["workerId"])?;
@@ -152,12 +152,26 @@ async fn record(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
     } else {
         false
     };
-    Ok(
+    let permission_settled =
+        published || (status == "rejected" && truthy(intent.get("permissionTransition")));
+    Ok((
         json!({"operationId":input["operationId"],"operationGeneration":input["operationGeneration"],"eventId":input["eventId"],"application":application,"permissionPolicyPublished":published}),
-    )
+        permission_settled,
+    ))
 }
 impl Repository {
     pub async fn record_settings_evidence(&self, owner: &str, value: &Value) -> Result<Value> {
+        Ok(self
+            .record_settings_evidence_and_permission(owner, value)
+            .await?
+            .0)
+    }
+
+    pub(crate) async fn record_settings_evidence_and_permission(
+        &self,
+        owner: &str,
+        value: &Value,
+    ) -> Result<(Value, bool)> {
         let input = settings_persistence::parse("nativeSettingsEvidenceSchema", value)?;
         let owner = owner.to_owned();
         self.database

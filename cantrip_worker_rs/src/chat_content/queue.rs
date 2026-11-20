@@ -165,6 +165,92 @@ pub(crate) async fn retain_console(
     }))
 }
 
+pub(crate) async fn retain_gui(scope: &Scope, command: &Value, input: &Value) -> Result<Value> {
+    let message = &command["protectedPrompt"];
+    let chat = &command["chatId"];
+    let attachments = array(&command["attachments"])?;
+    let ids = attachments
+        .iter()
+        .map(|attachment| attachment["id"].clone())
+        .collect();
+    anyhow::ensure!(
+        message["classification"]["role"] == "user"
+            && message["id"] == command["clientMessageId"]
+            && message["classification"]["attachmentIds"] == Value::Array(ids)
+            && attachments
+                .iter()
+                .all(|attachment| attachment["chatId"] == *chat),
+        "The retained GUI input does not match its original message and attachments."
+    );
+    let previous = scope.material(Some(revision(&message["protectedContent"])?))?;
+    let opened = decrypt_communication(
+        Communication::Message,
+        &previous.key,
+        &json!({"ownerId":previous.owner_id,"messageId":message["id"],"keyRevision":previous.key_revision}),
+        &message["protectedContent"],
+        message.get("classification"),
+    )?;
+    let text = join(
+        array(&opened["content"])?.iter().filter_map(|item| {
+            if item["type"] == "text" {
+                item["text"].as_js_string().cloned()
+            } else {
+                None
+            }
+        }),
+        "\n",
+    );
+    let id = json!(stable_id(&Value::Array(vec![
+        json!("cantrip:deferred-gui"),
+        json!(scope.server),
+        chat.clone(),
+        message["id"].clone(),
+    ])));
+    let classification = json!({
+        "mode":message["classification"]["mode"],"attachmentIds":message["classification"]["attachmentIds"],
+    });
+    let cwd = crate::filesystem::paths::native(
+        command["cwd"]
+            .as_js_string()
+            .context("Missing GUI placement.")?,
+    );
+    let native = media::capture(validated_input(input)?, &cwd).await?;
+    let native = seal_native(
+        scope,
+        chat,
+        &id,
+        &json!({
+            "version":1,"input":native.input,"displayText":text,"action":"literal","executionMethod":"turn/start",
+            "retainedGui":true,"attachmentMap":Vec::<Value>::new(),"representedAttachmentIds":classification["attachmentIds"],
+        }),
+    )?;
+    let grant = scope.material(None)?;
+    let protected = encrypt_communication(
+        Communication::QueuedPrompt,
+        &grant.key,
+        &json!({"ownerId":grant.owner_id,"promptId":id,"keyRevision":grant.key_revision}),
+        &json!({"version":1,"classification":classification,"text":text}),
+    )?;
+    let message_id = message["id"]
+        .as_js_string()
+        .context("Missing admitted message ID.")?;
+    let prompt = checked(
+        "queuedPromptOpaqueContentSchema",
+        &json!({
+            "id":id,"classification":classification,"protectedContent":protected,"pendingMessage":message,
+            "modelId":command["model"]["id"],"reasoningEffort":message["reasoningEffort"],
+            "customSubagentModel":command["subagentDefaults"].is_object(),
+            "subagentModelId":command["subagentDefaults"]["model"]["id"],
+            "subagentReasoningEffort":command["subagentDefaults"]["model"]["reasoningEffort"],
+            "worktreeId":command["worktreeId"],"frozen":false,
+            "idempotencyKey":crate::native_items::concat(&["deferred-gui:".into(), message_id.clone()]),
+            "protectedNativeInput":native,"nativeAction":"literal","executionMethod":"turn/start",
+            "nativeClientUserMessageId":crate::native_items::concat(&["cantrip:".into(), message_id.clone()]),
+        }),
+    )?;
+    Ok(json!({"prompt":prompt,"attachments":attachments}))
+}
+
 pub(crate) fn validated_input(input: &Value) -> Result<Vec<Value>> {
     let mut request = checked(
         NATIVE_INPUT,
