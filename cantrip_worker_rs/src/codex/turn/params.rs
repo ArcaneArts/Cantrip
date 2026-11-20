@@ -68,6 +68,17 @@ pub(super) fn preparation(command: &Value) -> Value {
     target
 }
 
+pub(super) fn computer_use_context(guest: bool) -> Value {
+    let placement = if guest {
+        "Use cua.targets(), cua.attach(), and cua.snapshot() on the assigned Cantrip OS desktop."
+    } else {
+        "Use cua.openWindow({application, title}) or cua.targets(), cua.attach(), and cua.snapshot() on the assigned Host desktop."
+    };
+    json!({"kind":"application","value":format!(
+        "Computer use is enabled for this turn through the managed cantrip_cua/js and cantrip_cua/js_reset tools. {placement}"
+    )})
+}
+
 pub(super) async fn native_input(
     command: &Value,
     input: Vec<Value>,
@@ -163,14 +174,7 @@ pub(super) async fn native_input(
         });
     }
     if !command["computerUseAuthority"].is_null() {
-        let placement = if environment.is_some() {
-            "Use cua.targets(), cua.attach(), and cua.snapshot() on the assigned Cantrip OS desktop."
-        } else {
-            "Use cua.openWindow({application, title}) or cua.targets(), cua.attach(), and cua.snapshot() on the assigned Host desktop."
-        };
-        context["cantrip.computer-use"] = json!({"kind":"application","value":format!(
-            "Computer use is enabled for this turn through the managed cantrip_cua/js and cantrip_cua/js_reset tools. {placement}"
-        )});
+        context["cantrip.computer-use"] = computer_use_context(environment.is_some());
     }
     let mut params = json!({
         "threadId": thread,

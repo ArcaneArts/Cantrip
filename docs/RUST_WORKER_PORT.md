@@ -9127,3 +9127,26 @@ also passed locally. The Rust contract comparison matched the TypeScript
 fixtures for valid and invalid observation metadata.
 Managed guest turn validation, recovery, and the remaining execution
 sources are open.
+
+## 259. Run managed console computer use through the Rust worker
+
+Reference commit `e3a1a022811a575cb55d380712871d68f5541818` (#3422).
+
+When Core admits a console turn with computer-use authority, the worker
+binds the existing managed MCP attachment to that native thread and turn.
+Approvals and encrypted trajectory activity use the console command's
+durable event route. The worker drains those events before settlement and
+cancels the computer-use session if Core rejects event delivery. Closing a
+console connection after dispatch leaves the accepted execution with its
+existing owner.
+
+The macOS ARM64 `standalone-turn-smoke.mjs --cua-console` fixture uses the
+managed console gateway, bundled Codex, production Rust Core in PGlite mode,
+and the deterministic Host helper. It closes the console client after
+turn acceptance, then verifies protected allow and decline decisions,
+encrypted activity and assistant history, matching model and preview PNGs,
+and observation expiry on reset and completion. The ordinary managed Chat
+computer-use and console steering smokes also passed locally.
+
+Managed Cantrip OS computer-use validation, recovered turns, autonomous
+turns, child agents, and Task execution remain open.

@@ -996,7 +996,8 @@ impl Turns {
                     thread.clone(), emit.clone(), protection.clone(), signal.clone()))
             };
             let (subscription, mut events, capture) =
-                output::subscribe_with_context(&runtime.history(), thread, context.clone(), cua.as_ref().map(|lifetime| lifetime.0.clone()))?;
+                output::subscribe_with_context(&runtime.history(), thread, context.clone(),
+                    cua.as_ref().map(|lifetime| Arc::new(OnceLock::from(Arc::downgrade(&lifetime.0)))))?;
             let transport = subscription.signal();
             let result = async {
                 execution.bind_thread(thread.clone())?;

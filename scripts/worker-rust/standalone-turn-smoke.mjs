@@ -69,6 +69,7 @@ const { values } = parseArgs({
     "console-steer": { type: "boolean" },
     "cua-preview": { type: "string" },
     "cua-agent": { type: "string" },
+    "cua-console": { type: "string" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -109,10 +110,10 @@ const chatKey = key("chat-content");
 const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
+const cuaConsole = values["cua-console"];
+const cuaAgent = values["cua-agent"] || cuaConsole;
 const previewKey =
-  values["cua-preview"] || values["cua-agent"]
-    ? key("client-control-content")
-    : null;
+  values["cua-preview"] || cuaAgent ? key("client-control-content") : null;
 const policyKey = values.policies ? key("policy-content") : null;
 const customizationKey =
   values["skill-settings"] || values["customization-inventory"]
@@ -146,7 +147,7 @@ const interactionKey =
   subagentInteractions ||
   planQuestion ||
   values["cua-preview"] ||
-  values["cua-agent"]
+  cuaAgent
     ? key("interaction-content")
     : null;
 const consoleStateKey =
@@ -154,6 +155,7 @@ const consoleStateKey =
   workflowKey ||
   values["queued-steer"] ||
   values["console-steer"] ||
+  cuaConsole ||
   values["host-skills"] ||
   values.policies ||
   values.codegraph ||
@@ -2986,7 +2988,7 @@ try {
             input: approvalPrompt,
             ...(consoleInteractions ? { socketFile: consoleSocket } : {}),
           })
-        : values["console-steer"]
+        : values["console-steer"] || cuaConsole
           ? await fixtureCodex(root, values.codex, {
               scenario: "passthrough",
               socketFile: consoleSocket,
@@ -2995,7 +2997,7 @@ try {
     if (values.cli)
       workerEnvironment.CANTRIP_CLI_BIN = path.resolve(values.cli);
   }
-  const cuaHelper = values["cua-preview"] ?? values["cua-agent"];
+  const cuaHelper = values["cua-preview"] ?? cuaAgent;
   if (cuaHelper) {
     const helper = path.join(root, "native-preview-helper");
     const executable = path.resolve(cuaHelper).replaceAll("'", "'\\''");
@@ -3035,7 +3037,7 @@ try {
         );
       },
     });
-  } else if (values["cua-agent"]) {
+  } else if (cuaAgent) {
     await verifyManagedComputerUse({
       call,
       eventually,
@@ -3047,6 +3049,7 @@ try {
       keyRevision,
       interactionKey,
       previewKey,
+      console: cuaConsole ? { socketFile: consoleSocket, labelKey } : null,
       openMessage,
     });
   } else if (previewKey) {

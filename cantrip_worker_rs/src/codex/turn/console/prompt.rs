@@ -2,8 +2,8 @@
 //! the native acceptance; the worker retains the operation until settlement.
 use super::{View, gateway::fault};
 use crate::codex::turn::{
-    Active, Owner, Phase, RPC_TIMEOUT, autonomous::same_workspace, control, id, interactions,
-    output, protected, queued, receipt::Receipt,
+    Active, Owner, Phase, RPC_TIMEOUT, autonomous::same_workspace, computer_use, control, id,
+    interactions, output, params as turn_params, protected, queued, receipt::Receipt,
 };
 use crate::{
     chat_content::{Scope, queue},
@@ -222,7 +222,7 @@ async fn execute(
     view: &View,
     receipt: &Receipt<'_>,
     grant: &Value,
-    params: Value,
+    mut params: Value,
     open: Signal,
     reply: &mut Reply,
     sent: &mut bool,
@@ -260,17 +260,16 @@ async fn execute(
             .unwrap_or_else(|| json!(":workspace"))
         };
     ensure!(
-        grant["computerUseAuthority"].is_null()
-            && [
-                "chatId",
-                "threadId",
-                "modelRouteId",
-                "providerAccountId",
-                "contextKind",
-                "projectId"
-            ]
-            .iter()
-            .all(|field| session[*field] == execution[*field])
+        [
+            "chatId",
+            "threadId",
+            "modelRouteId",
+            "providerAccountId",
+            "contextKind",
+            "projectId"
+        ]
+        .iter()
+        .all(|field| session[*field] == execution[*field])
             && session["placementId"] == execution[placement]
             && execution["executionLaneId"] == root.lane
             && permission == view.permission()
@@ -323,7 +322,11 @@ async fn execute(
         key,
         active: active.clone(),
     };
-    let (subscription, mut events, _) = output::subscribe(&runtime.history(), thread)?;
+    let computer_use = &grant["computerUseAuthority"];
+    let observe_cua: Option<output::ComputerUseObserver> =
+        (!computer_use.is_null()).then(Arc::default);
+    let (subscription, mut events, _) =
+        output::subscribe_with_context(&runtime.history(), thread, None, observe_cua.clone())?;
     let transport = subscription.signal();
     let source = Source::claimed(
         root.generation.clone(),
@@ -358,7 +361,7 @@ async fn execute(
         let result = async {
             granted.bind_thread(thread.clone())?;
             granted.seal_input_dispatch().await?;
-            let _mcp = turns.preparation.activate(&view.prepared, &root.lane)?;
+            let mcp = turns.preparation.activate(&view.prepared, &root.lane)?;
             let protection = protected::Protected::for_native_output(Scope::new(turns.encryption.clone())?, json!(view.chat));
             ensure!(protection.scope().identity()? == receipt.scope().identity()?, "The console worker identity changed.");
             let canonical = (session["contextKind"] == "project").then(|| turns.history.capture_outputs(
@@ -367,6 +370,38 @@ async fn execute(
                     provenance: Some(json!({"kind":"command","operationId":root.operation,"operationGeneration":root.generation})),
                 }, transport.clone(),
             ));
+            let publisher = protection.clone();
+            let client = turns.receipts.clone();
+            let operation = root.clone();
+            let (delivery_abort, delivery_signal) = Abort::new();
+            let delivery_abort = Arc::new(delivery_abort);
+            let (emit, published) = protection.publish_with(canonical, move |event| {
+                let (client, operation, publisher) = (client.clone(), operation.clone(), publisher.clone());
+                let delivery_abort = delivery_abort.clone();
+                async move {
+                    let result = client.event(publisher.scope(), &operation, event).await;
+                    if result.is_err() {
+                        delivery_abort.abort(anyhow!("Core could not apply a protected console event."));
+                    }
+                    result
+                }
+            });
+            let cua = if let Some(observer) = &observe_cua {
+                let epoch = turns.computer_use.previews.current_epoch();
+                let lifetime = computer_use::Turn::new(
+                    turns.computer_use.clone(), epoch, thread.clone(), emit.clone(),
+                    Some(protection), Signal::any(vec![signal.clone(), transport.clone(), delivery_signal]),
+                );
+                let activation = mcp.as_ref().context("The console computer-use MCP attachment is unavailable.")?;
+                lifetime.0.register(activation, computer_use)?;
+                let _ = observer.set(Arc::downgrade(&lifetime.0));
+                params["additionalContext"] = json!({
+                    "cantrip.computer-use":turn_params::computer_use_context(view.prepared.environment.is_some()),
+                });
+                Some(lifetime)
+            } else {
+                None
+            };
             open.check()?;
             view.assert_current()?;
             receipt.dispatch().await?;
@@ -376,6 +411,9 @@ async fn execute(
                 thread, session["contextKind"] == "project" && view.prepared.environment.is_none())?;
             active.dispatch(&signal, thread.clone())?;
             granted.dispatched()?;
+            if let Some(cua) = &cua {
+                cua.0.dispatched();
+            }
             *sent = true;
             let native = runtime.request("turn/start".into(), Some(params.clone()), Some(RPC_TIMEOUT), None).await;
             let native = match native {
@@ -386,7 +424,7 @@ async fn execute(
                     let mut fault = error.downcast_ref::<Failure>().unwrap().native_error.clone().unwrap();
                     if queued::deferred(&fault) {
                         drop(native_interactions);
-                        drop(_mcp);
+                        drop(mcp);
                         drop(_owner);
                         let acknowledged = receipt.defer_queue_input(&fault, None).await?;
                         fault["data"]["clientUserMessageId"] = params["clientUserMessageId"].clone();
@@ -412,6 +450,9 @@ async fn execute(
                 Some(value) => id(&value["turn"]["id"], "console native turn")?,
                 None => output::started(&mut events, &transport).await?,
             };
+            if let Some(cua) = &cua {
+                cua.0.started(&turn);
+            }
             native_interactions.bind_turn(&turn)?;
             granted.bind_turn(turn.clone())?;
             active.set(Phase::Running { runtime:runtime.clone(), thread:thread.clone(), turn:turn.clone() });
@@ -427,13 +468,6 @@ async fn execute(
                 }
                 Ok::<(), anyhow::Error>(())
             };
-            let publisher = protection.clone();
-            let client = turns.receipts.clone();
-            let operation = root.clone();
-            let (emit, published) = protection.publish_with(canonical, move |event| {
-                let (client, operation, publisher) = (client.clone(), operation.clone(), publisher.clone());
-                async move { client.event(publisher.scope(), &operation, event).await }
-            });
             let terminal = async {
                 let binding = active.control.get().unwrap();
                 let collecting = output::collect(&mut events, &transport, thread, &turn, &emit);
@@ -447,12 +481,20 @@ async fn execute(
                 outcome
             };
             let (terminal, applied) = tokio::join!(terminal, applied);
+            let cua_finished = if let Some(cua) = &cua {
+                cua.0.finish().await
+            } else {
+                Ok(())
+            };
+            drop(mcp);
+            drop(cua);
             if transport.check().is_err() {
                 runtime.retired().await?;
             }
             granted.settled().await?;
             let terminal = terminal?;
             applied?;
+            cua_finished?;
             published.await?;
             let contents = match terminal.status {
                 "completed" => terminal.result?,
