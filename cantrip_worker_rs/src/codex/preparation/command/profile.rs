@@ -1,13 +1,105 @@
-use super::native::{Configuration, LoadedThread};
+use super::{
+    Ensurer,
+    native::{Configuration, LoadedThread},
+};
 use crate::{
-    codex::{guest_environment::Environment, managed::Runtime},
+    codex::{guest_environment::Environment, managed::Runtime, rpc_requests::Failure},
     history::live::observation::{Observer, Runtime as _},
+    http::checked,
+    protected_secrets::open_runtime_provider,
 };
 use anyhow::{Context, Result, bail};
 use cantrip_wire::{JsString, Value, value::json};
-use std::{io::ErrorKind, path::Path, sync::Arc, time::Duration};
+use std::{collections::HashSet, io::ErrorKind, path::Path, sync::Arc, time::Duration};
 
 const WAIT: Duration = Duration::from_secs(120);
+
+pub(crate) const PERMISSION_PROFILES: &str = "permission-profiles.list";
+
+impl Ensurer {
+    pub(crate) async fn list_permission_profiles(&self, command: &Value) -> Result<Value> {
+        let bound = self.identity()?;
+        let command = self.resolve_routing(command).await?;
+        let provider = open_runtime_provider(&self.0.encryption, &command["provider"])?;
+        let runtime = self
+            .helper_runtime(&command["model"], provider, &bound, None)
+            .await?;
+        let result = permission_profiles(&runtime, &command["cwd"]).await?;
+        self.assert_bound(&bound)?;
+        Ok(result)
+    }
+}
+
+async fn permission_profiles(runtime: &Runtime, cwd: &Value) -> Result<Value> {
+    const METHOD: &str = "permissionProfile/list";
+    const SCHEMA: &str = "permissionProfileCapabilitySchema";
+
+    let mut profiles = Vec::new();
+    let mut cursor = Value::Null;
+    let mut seen = HashSet::new();
+    loop {
+        let page = match call(
+            runtime,
+            METHOD,
+            json!({"cwd":cwd,"cursor":cursor,"limit":100}),
+        )
+        .await
+        {
+            Ok(page) => page,
+            Err(error) if cursor.is_null() && permission_profiles_unsupported(&error) => {
+                return checked(
+                    SCHEMA,
+                    &json!({
+                        "available":false, "profiles":profiles,
+                        "reason":"The installed Codex runtime does not advertise permission profiles; Cantrip is using its legacy sandbox policy."
+                    }),
+                );
+            }
+            Err(error) => return Err(error),
+        };
+        if let Some(rows) = page["data"].as_array() {
+            let mut rows = rows.clone();
+            for row in &mut rows {
+                if row.is_object() && !row["description"].is_string() {
+                    row["description"] = json!("");
+                }
+            }
+            let parsed = cantrip_protocol::parse_property(SCHEMA, "profiles", &Value::Array(rows))
+                .map_err(cantrip_protocol::response::response_error)?;
+            profiles.extend_from_slice(
+                parsed
+                    .as_array()
+                    .context("Invalid permission profile page.")?,
+            );
+        }
+        let Some(next) = page["nextCursor"]
+            .as_js_string()
+            .filter(|next| !next.is_empty())
+        else {
+            break;
+        };
+        if !seen.insert(next.clone()) {
+            bail!("Codex permissionProfile/list repeated a pagination cursor.");
+        }
+        cursor = json!(next);
+    }
+    checked(
+        SCHEMA,
+        &json!({"available":true,"profiles":profiles,"reason":Value::Null}),
+    )
+}
+
+fn permission_profiles_unsupported(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<Failure>()
+        .and_then(|failure| failure.native_error.as_ref())
+        .is_some_and(|native| {
+            native["code"].as_i64() == Some(-32601)
+                || (native["code"].as_i64() == Some(-32600)
+                    && native["message"]
+                        == "permissionProfile/list requires experimentalApi capability")
+        })
+}
 
 pub(super) fn external_servers(servers: Vec<Value>, guest: bool) -> Result<Value> {
     let mut mcp = json!({});

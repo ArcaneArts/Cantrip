@@ -9328,3 +9328,22 @@ The local macOS ARM64 standalone Chat Files fixture uses Rust Core in PGlite
 mode and the production Rust worker through the public encrypted API. It covers
 text versions, media chunks, path and capability checks, recursive deletion,
 immutable file downloads, ZIP contents, and download scoping.
+
+## 268. Discover permission profiles on the selected Rust worker runtime
+
+Reference commit `d051493ec3512e63a14f89a6c5be60519cf2188a` (#3431).
+
+The Rust worker resolves the checkout routing handle and opens the scoped
+native runtime for the selected model and provider. It asks Codex for all
+permission profile pages at that checkout, preserves Codex's eligibility
+decisions, and normalizes absent descriptions to empty strings. A native
+method-unavailable response selects the legacy capability result. Other
+native errors reach Core's existing error handling.
+
+The macOS ARM64 `standalone-turn-smoke.mjs --permission-profiles` fixture ran
+against Rust Core in PGlite mode, the Rust worker, and bundled Codex. Both
+Project and standalone Chats received 101 configured profiles across multiple
+pages. Only the trusted Project checkout exposed its local profile. The
+fixture also verified the built-in entries, Core's YOLO alias, and the absence
+of inference requests. The existing permission-transition tests and wire
+comparisons for the two permission response contracts passed locally.
