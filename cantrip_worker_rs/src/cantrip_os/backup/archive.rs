@@ -120,6 +120,38 @@ pub(super) async fn verify(
     key_for: impl FnOnce(u64) -> Result<Zeroizing<Vec<u8>>>,
     scope: &Scope,
 ) -> Result<Value> {
+    consume(source, context, key_for, scope, None).await
+}
+
+/// Only an authenticated archive with the requested provenance can be
+/// published as verified plaintext. An interrupted read drops the staging file.
+pub(super) async fn unpack(
+    source: &Path,
+    destination: &Path,
+    root: &Path,
+    context: &Value,
+    key_for: impl FnOnce(u64) -> Result<Zeroizing<Vec<u8>>>,
+    scope: &Scope,
+    check_metadata: impl FnOnce(&Value) -> Result<()>,
+) -> Result<Value> {
+    let pending = prepare(destination)?;
+    let mut writer = BufWriter::new(tokio::fs::File::from_std(pending.reopen()?));
+    let metadata = consume(source, context, key_for, scope, Some(&mut writer)).await?;
+    check_metadata(&metadata)?;
+    writer.flush().await?;
+    writer.get_ref().sync_all().await?;
+    drop(writer);
+    publish(pending, destination, root)?;
+    Ok(metadata)
+}
+
+async fn consume(
+    source: &Path,
+    context: &Value,
+    key_for: impl FnOnce(u64) -> Result<Zeroizing<Vec<u8>>>,
+    scope: &Scope,
+    mut output: Option<&mut BufWriter<tokio::fs::File>>,
+) -> Result<Value> {
     let mut reader = BufReader::new(tokio::fs::File::open(source).await?);
     let header = checked(
         "cantripOsBackupFileHeaderSchema",
@@ -168,6 +200,9 @@ pub(super) async fn verify(
         size += bytes.len() as u64;
         ensure!(size <= expected, decryption_error());
         archive_hash.update(&*bytes);
+        if let Some(writer) = &mut output {
+            writer.write_all(&bytes).await?;
+        }
         count += 1;
     }
 }

@@ -1,5 +1,5 @@
-use super::{Job, Mode, Outcome, archive, carrier, context, material, phase, protect};
-use crate::cantrip_os::{assert_scope, checked, operations::Journal, text};
+use super::{Job, Mode, Outcome, archive, carrier, context, material, phase};
+use crate::cantrip_os::{carrier::Transport, checked, operations::Journal, text};
 use anyhow::{Context, Result, ensure};
 use cantrip_wire::{Value, value::json};
 use std::{io, path::Path};
@@ -24,7 +24,7 @@ pub(super) async fn run(job: &Job<'_>, journal: &mut Journal<'_>) -> Result<Outc
                     &captured["scope"] == scope && &captured["workspace"] == workspace,
                     "Published backup has a different captured placement."
                 );
-                return complete(job, journal, metadata).await;
+                return complete(job, &transport, journal, metadata).await;
             }
             Err(error) if io_kind(&error, io::ErrorKind::NotFound) => {}
             Err(error) => return Err(error),
@@ -32,7 +32,7 @@ pub(super) async fn run(job: &Job<'_>, journal: &mut Journal<'_>) -> Result<Outc
     }
 
     let guest = if job.mode == Mode::New {
-        assert_scope(&transport, scope, true, job.lifetime).await?;
+        job.assert_current(&transport).await?;
         let request = job.request()?;
         let sources: Vec<Value> = command["sources"]
             .as_array()
@@ -49,59 +49,23 @@ pub(super) async fn run(job: &Job<'_>, journal: &mut Journal<'_>) -> Result<Outc
             })
             .collect();
         let input = json!({"exclusions":request["exclusions"],"sources":sources}).stringify();
-        let expected_workspace = json!({"uid":workspace["uid"],"gid":workspace["gid"],
-            "home":workspace["homeGuestPath"]})
-        .stringify();
         phase(journal, "capturing")?;
-        carrier::control(
+        job.control(
             &transport,
+            true,
             &[
-                "--expect",
-                &job.expected(true),
-                "--expect-workspace",
-                &expected_workspace,
                 "capture",
                 id,
                 text(workspace, "guestWorkspaceId")?,
                 "--request",
                 &input,
             ],
-            job.lifetime,
+            None,
         )
         .await?
     } else {
-        let saved = carrier::control(
-            &transport,
-            &["--expect", &expected, "inspect", id],
-            job.lifetime,
-        )
-        .await?;
-        ensure!(
-            saved["operation_id"] == id,
-            "Guest recovery receipt belongs to another operation."
-        );
-        let unfinished = saved["state"] == "unknown"
-            || (saved["maintenance"].is_object() && saved["maintenance"]["released"] != true);
-        if unfinished && saved["active"] != true {
-            if job.mode == Mode::Observe {
-                phase(journal, "recovery-required")?;
-                saved
-            } else {
-                carrier::control(
-                    &transport,
-                    &["--expect", &expected, "recover", id],
-                    job.lifetime,
-                )
-                .await?
-            }
-        } else {
-            saved
-        }
+        job.observe_guest(&transport, journal).await?
     };
-    ensure!(
-        guest["operation_id"] == id,
-        "Misrouted guest capture receipt."
-    );
     if guest["state"] != "captured" || guest["maintenance"]["released"] != true {
         let state = if guest["state"] == "failed" {
             "failed"
@@ -122,14 +86,7 @@ pub(super) async fn run(job: &Job<'_>, journal: &mut Journal<'_>) -> Result<Outc
     let mut manifest = captured["manifest"].clone();
     let actual = &manifest["workspace"];
     ensure!(
-        [
-            ("id", "guestWorkspaceId"),
-            ("uid", "uid"),
-            ("gid", "gid"),
-            ("home", "homeGuestPath")
-        ]
-        .into_iter()
-        .all(|(guest, admitted)| actual[guest] == workspace[admitted]),
+        job.workspace_matches(actual),
         "Captured workspace account differs from its admission."
     );
     manifest["cantrip"] = json!({"scope":scope,"workspace":workspace,
@@ -169,7 +126,7 @@ pub(super) async fn run(job: &Job<'_>, journal: &mut Journal<'_>) -> Result<Outc
             "A different backup occupies this admission's destination."
         );
     }
-    complete(job, journal, metadata).await
+    complete(job, &transport, journal, metadata).await
 }
 
 async fn verify(job: &Job<'_>, destination: &Path, context: &Value) -> Result<Value> {
@@ -184,38 +141,17 @@ async fn verify(job: &Job<'_>, destination: &Path, context: &Value) -> Result<Va
     .await
 }
 
-async fn complete(job: &Job<'_>, journal: &mut Journal<'_>, metadata: Value) -> Result<Outcome> {
-    let id = text(job.command, "operationId")?;
-    let mut warnings = Vec::new();
-    if job.mode == Mode::Observe {
-        warnings.push("Guest transfer staging cleanup was not requested during observation.");
-    } else {
-        let transport = job.transport()?;
-        let expected = job.expected(false);
-        if carrier::control(
-            &transport,
-            &["--expect", &expected, "forget", id],
-            job.lifetime,
-        )
-        .await
-        .is_err()
-        {
-            warnings.push("Guest transfer staging cleanup could not be confirmed.");
-        }
-    }
-    let envelope = protect(
-        job.encryption,
-        &job.command["scope"],
-        id,
+async fn complete(
+    job: &Job<'_>,
+    transport: &Transport,
+    journal: &mut Journal<'_>,
+    metadata: Value,
+) -> Result<Outcome> {
+    let warnings = job.cleanup_guest(transport).await?;
+    job.complete(
+        journal,
         json!({"action":"capture","metadata":metadata,"cleanupWarnings":warnings}),
-    )?;
-    phase(journal, "complete")?;
-    let receipt = json!({"kind":"backup-result","action":"capture","protectedResult":envelope});
-    Ok(Outcome {
-        state: "ready",
-        receipt,
-        error: Value::Null,
-    })
+    )
 }
 
 fn io_kind(error: &anyhow::Error, kind: io::ErrorKind) -> bool {

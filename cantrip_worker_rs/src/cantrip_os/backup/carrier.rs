@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::{Result, ensure};
 use cantrip_wire::{Value, parse_json_text};
-use std::process::Stdio;
+use std::{fs::File, process::Stdio};
 use tokio::{
     io::AsyncReadExt,
     process::{ChildStdout, Command},
@@ -15,10 +15,11 @@ pub(super) async fn control(
     transport: &Transport,
     arguments: &[&str],
     scope: &Scope,
+    input: Option<File>,
 ) -> Result<Value> {
     let (program, args) = transport.spec(Program::Recovery, arguments);
     let result = scope
-        .capture_file(program, &args, 32 * 1024 * 1024, None)
+        .capture_file(program, &args, 32 * 1024 * 1024, input)
         .await
         .map_err(|error| DeliveryUnknown(format!("Recovery carrier failed: {error}")))?;
     if result.code != Some(0) || result.overflow.is_some() {
@@ -31,17 +32,43 @@ pub(super) async fn control(
     }
     let value = parse_json_text(&String::from_utf8_lossy(&result.stdout))
         .map_err(|_| DeliveryUnknown("Recovery carrier returned an unreadable receipt.".into()))?;
-    ensure!(
-        value["version"] == 1
-            && value["action"] == "capture"
+    let valid_version = if value["action"] == "reset" {
+        value["version"] == 2
             && matches!(
                 value["state"].as_str(),
-                Some("admitted" | "capturing" | "captured" | "failed" | "forgotten" | "unknown")
+                Some("admitted" | "restoring" | "reset" | "failed" | "unknown")
             )
+    } else {
+        value["version"] == 1
+            && matches!(
+                value["action"].as_str(),
+                Some("capture" | "restore" | "rollback")
+            )
+            && matches!(
+                value["state"].as_str(),
+                Some(
+                    "admitted"
+                        | "capturing"
+                        | "captured"
+                        | "receiving"
+                        | "received"
+                        | "restoring"
+                        | "restored"
+                        | "rolled-back"
+                        | "failed"
+                        | "forgotten"
+                        | "unknown"
+                )
+            )
+    };
+    ensure!(
+        valid_version
+            && value["operation_id"].as_str().is_some()
             && value["active"].as_bool().is_some()
+            && (value["error"].is_null() || value["error"].is_string())
             && (value["receipt"].is_null() || value["receipt"].is_object())
             && (value["maintenance"].is_null() || value["maintenance"].is_object()),
-        "Invalid guest capture receipt."
+        "Invalid guest recovery receipt."
     );
     Ok(value)
 }

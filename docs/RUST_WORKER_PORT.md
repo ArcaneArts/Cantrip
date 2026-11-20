@@ -7944,3 +7944,29 @@ with the native executables and the current guest packages. On an older
 test base image provide `--executor-package`, `--workspaces-package`, and
 `--recovery-package`. The interoperability fixture uses the existing
 Node development dependencies and the built `@cantrip/crypto` package.
+
+## 214. Restore, roll back, and reset guest workspaces in Rust
+
+Reference commit ed2ae07dc38ca6e2b9f5aa0ea34f367e0edbc341 (#3377).
+
+Restore authenticates the complete captured archive and its original
+placement before publishing private transfer staging. The worker journals
+the accepted digest before sending the archive. An uncertain transfer can
+be observed through the guest journal. An explicit continuation can
+activate the already received archive against the authorized placement.
+Rollback and selected-path reset preserve the guest journal and retained
+homes. Private paths, receipts, and errors use the existing encrypted
+operation format.
+
+The macOS ARM64 fixture ran Rust Core with PGlite and a native worker against
+a disposable Docker guest. It checked that a truncated archive created no
+transfer, dropped a successful upload's acknowledgment, and restarted the
+worker. Observation and recovery left the original home in place. Explicit
+continuation activated the archive once, retained the original inode, and
+removed worker transfer staging. The same fixture verified rollback, reset
+after a lost acknowledgment, and rollback of the reset. Capture and archive
+interoperability were exercised on the same build. SSH execution remains
+unverified at runtime.
+
+Run the local workspace fixture with `--backup-restore`, the native
+executables, and the guest packages listed in the capture fixture.

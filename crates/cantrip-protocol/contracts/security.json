@@ -989,7 +989,9 @@
     "cantripOsBackupEndSchema": 14462,
     "cantripOsBackupPhaseSchema": 11393,
     "cantripOsBackupRequestEnvelopeSchema": 6557,
-    "cantripOsBackupResponseEnvelopeSchema": 11399
+    "cantripOsBackupResponseEnvelopeSchema": 11399,
+    "cantripOsBackupRestoreCommandSchema": 6575,
+    "cantripOsBackupRollbackCommandSchema": 6580
   },
   "nodes": [
     {
