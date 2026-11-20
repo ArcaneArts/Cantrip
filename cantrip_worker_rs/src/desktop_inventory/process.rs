@@ -19,10 +19,17 @@ pub(super) struct Process {
     input: ChildStdin,
     output: ChildStdout,
     sequence: u64,
+    event_sequence: u64,
 }
 
 #[derive(Debug)]
-pub(super) struct NativeError(&'static str);
+pub(super) struct NativeError(&'static str, String);
+
+impl NativeError {
+    pub(super) fn code(&self) -> &str {
+        &self.1
+    }
+}
 
 impl std::fmt::Display for NativeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -60,6 +67,7 @@ impl Process {
             input,
             output,
             sequence: 0,
+            event_sequence: 0,
         })
     }
 
@@ -90,18 +98,36 @@ impl Process {
         request: Value,
         revoked: impl Future<Output = ()>,
     ) -> Result<Value> {
-        let sequence = self
-            .begin(json!({"operation":"interaction.request","request":request}))
-            .await?;
-        let response = Self::read_response(&mut self.output, sequence, false);
+        self.cancellable(
+            json!({"operation":"interaction.request","request":request}),
+            false,
+            revoked,
+        )
+        .await
+        .map(|(data, _)| data)
+    }
+
+    pub(super) async fn cancellable(
+        &mut self,
+        operation: Value,
+        expect_pixels: bool,
+        revoked: impl Future<Output = ()>,
+    ) -> Result<(Value, Vec<u8>)> {
+        let sequence = self.begin(operation).await?;
+        let response = Self::read_response(
+            &mut self.output,
+            &mut self.event_sequence,
+            sequence,
+            expect_pixels,
+        );
         tokio::pin!(response);
         tokio::select! {
-            result = &mut response => result.map(|(data, _)| data),
+            result = &mut response => result,
             _ = revoked => {
                 // Drain the ordered response after cancellation. Dropping a
                 // partially read frame would desynchronize other participants.
                 Self::write(&mut self.input, json!({"kind":"cancel","requestId":sequence})).await?;
-                response.await.map(|(data, _)| data)
+                response.await
             }
         }
     }
@@ -116,7 +142,13 @@ impl Process {
         expect_pixels: bool,
     ) -> Result<(Value, Vec<u8>)> {
         let sequence = self.begin(operation).await?;
-        Self::read_response(&mut self.output, sequence, expect_pixels).await
+        Self::read_response(
+            &mut self.output,
+            &mut self.event_sequence,
+            sequence,
+            expect_pixels,
+        )
+        .await
     }
 
     async fn begin(&mut self, operation: Value) -> Result<u64> {
@@ -149,32 +181,54 @@ impl Process {
 
     async fn read_response(
         output: &mut ChildStdout,
+        last_event: &mut u64,
         sequence: u64,
         expect_pixels: bool,
     ) -> Result<(Value, Vec<u8>)> {
-        let size = output
-            .read_u32()
-            .await
-            .context("Capture helper stopped before replying.")? as usize;
-        let payload = output.read_u32().await? as usize;
-        ensure!(
-            size > 0
-                && size <= MAX_HEADER
-                && payload <= MAX_PAYLOAD
-                && (expect_pixels || payload == 0),
-            "Invalid capture helper inventory frame."
-        );
-        let mut bytes = vec![0; size];
-        output.read_exact(&mut bytes).await?;
-        let frame = std::str::from_utf8(&bytes)
-            .ok()
-            .and_then(|text| parse_json_text(text).ok())
-            .context("Invalid capture helper response encoding.")?;
+        let (frame, payload) = loop {
+            let size = output
+                .read_u32()
+                .await
+                .context("Capture helper stopped before replying.")?
+                as usize;
+            let payload = output.read_u32().await? as usize;
+            ensure!(
+                size > 0
+                    && size <= MAX_HEADER
+                    && payload <= MAX_PAYLOAD
+                    && (expect_pixels || payload == 0),
+                "Invalid capture helper inventory frame."
+            );
+            let mut bytes = vec![0; size];
+            output.read_exact(&mut bytes).await?;
+            let frame = std::str::from_utf8(&bytes)
+                .ok()
+                .and_then(|text| parse_json_text(text).ok())
+                .context("Invalid capture helper response encoding.")?;
+            let message = &frame["message"];
+            ensure!(
+                frame.as_object().is_some_and(|fields| fields.len() == 2)
+                    && frame["version"] == VERSION,
+                "Invalid capture helper frame header."
+            );
+            if message["kind"] == "event" {
+                let sequence = message["sequence"].as_u64();
+                ensure!(
+                    payload == 0
+                        && message.as_object().is_some_and(|fields| fields.len() == 4)
+                        && sequence == Some(*last_event + 1)
+                        && message["sessionId"].is_string()
+                        && message["event"]["kind"].is_string(),
+                    "Invalid capture helper event."
+                );
+                *last_event += 1;
+                continue;
+            }
+            break (frame, payload);
+        };
         let message = &frame["message"];
         ensure!(
-            frame.as_object().is_some_and(|fields| fields.len() == 2)
-                && frame["version"] == VERSION
-                && message.as_object().is_some_and(|fields| fields.len() == 3)
+            message.as_object().is_some_and(|fields| fields.len() == 3)
                 && message["kind"] == "response"
                 && message["requestId"].as_u64() == Some(sequence),
             "Invalid capture helper response correlation."
@@ -206,7 +260,10 @@ impl Process {
                         && error["message"].as_js_string().is_some(),
                     "Invalid capture helper error."
                 );
-                let message = match error["code"].as_str() {
+                let code = error["code"]
+                    .as_str()
+                    .context("Invalid capture helper error code.")?;
+                let message = match Some(code) {
                     Some("permission-denied") => {
                         "The OS denied access to desktop target discovery."
                     }
@@ -226,9 +283,15 @@ impl Process {
                         "Desktop input delivery could not be confirmed."
                     }
                     Some("cancelled") => "Desktop target discovery was cancelled.",
+                    Some(
+                        "stale-element"
+                        | "control-not-found"
+                        | "control-ambiguous"
+                        | "control-inspection-incomplete",
+                    ) => "The desktop control changed or is unavailable.",
                     _ => bail!("Unexpected capture helper inventory error."),
                 };
-                Err(NativeError(message).into())
+                Err(NativeError(message, code.to_owned()).into())
             }
             _ => bail!("Invalid capture helper response status."),
         }

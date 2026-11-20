@@ -277,6 +277,42 @@ pub(super) fn refine(
                 custom(&[], message.unwrap_or("Invalid input"));
             }
         }
+        "worker-wire-cua-title-size" | "worker-wire-cua-application-size" => {
+            let max = if tag == "worker-wire-cua-title-size" {
+                4096
+            } else {
+                1024
+            };
+            if text(value)?.lossy().len() > max {
+                custom(&[], message.unwrap_or("Invalid input"));
+            }
+        }
+        "worker-wire-cua-target-ids" => {
+            let targets = value.as_array().ok_or(ValidationError::Operation)?;
+            let mut ids = std::collections::HashSet::new();
+            if targets
+                .iter()
+                .any(|target| !ids.insert(target["id"].as_js_string()))
+            {
+                custom(&[], message.unwrap_or("Invalid input"));
+            }
+        }
+        "worker-wire-cua-inventory-cursor" => {
+            if let Some(cursor) = value.get("nextCursor") {
+                let targets = value["targets"]
+                    .as_array()
+                    .ok_or(ValidationError::Operation)?;
+                if value["truncated"] != true
+                    || targets.last().is_none_or(|last| &last["id"] != cursor)
+                    || targets.windows(2).any(|pair| {
+                        pair[0]["id"].as_js_string().map(JsString::units)
+                            >= pair[1]["id"].as_js_string().map(JsString::units)
+                    })
+                {
+                    custom(&[], message.unwrap_or("Invalid input"));
+                }
+            }
+        }
         "worker-wire-interaction-storage" => {
             if value.stringify().encode_utf16().count() > 1_000_000 {
                 custom(&[], message.unwrap_or("Invalid input"));

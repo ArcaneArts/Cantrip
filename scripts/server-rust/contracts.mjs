@@ -1178,6 +1178,9 @@ export const computerUseHttpContractRoots = [
   "cuaPreviewStopSchema",
   "cuaPreviewStoppedSchema",
   "cuaAgentAuthorityRequestSchema",
+  "computerUseNativePreviewActionSchema",
+  "computerUseNativePreviewResultSchema",
+  "cuaSessionSchema",
 ];
 
 // Keep independently added roots self-contained. Numeric graph references must
@@ -1702,6 +1705,18 @@ registerChecks(protocol.mobileProjectTabConfigurationsSchema, [
 registerChecks(cuaCursorPreferenceRecordSchema.shape.protectedContent, [
   "endpoint-protected-bytes",
   "settings-cursor-content",
+]);
+registerChecks(protocol.cuaTargetSchema.shape.title.unwrap(), [
+  "worker-wire-cua-title-size",
+]);
+registerChecks(protocol.cuaTargetSchema.shape.application.unwrap(), [
+  "worker-wire-cua-application-size",
+]);
+registerChecks(protocol.cuaInventorySchema.shape.targets, [
+  "worker-wire-cua-target-ids",
+]);
+registerChecks(protocol.cuaInventorySchema, [
+  "worker-wire-cua-inventory-cursor",
 ]);
 registerChecks(protocol.eliteRevealConfigSchema, ["settings-elite-range"]);
 registerChecks(protocol.encryptedModelProviderAccountUpdateSchema, [

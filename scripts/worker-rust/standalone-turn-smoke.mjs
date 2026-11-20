@@ -38,6 +38,7 @@ import { startMcpOauthFixture } from "./mcp-oauth-fixture.mjs";
 import { verifyProjectAutomations } from "./project-automation-smoke-cases.mjs";
 import { verifyQueuedSteering } from "./queued-steering-cases.mjs";
 import { verifyConsoleSteering } from "./console-steering-cases.mjs";
+import { verifyComputerUsePreview } from "./computer-use-preview-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   fixtureCodex,
@@ -65,6 +66,7 @@ const { values } = parseArgs({
     "project-automations": { type: "boolean" },
     "queued-steer": { type: "boolean" },
     "console-steer": { type: "boolean" },
+    "cua-preview": { type: "string" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -105,6 +107,7 @@ const chatKey = key("chat-content");
 const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
+const previewKey = values["cua-preview"] ? key("client-control-content") : null;
 const policyKey = values.policies ? key("policy-content") : null;
 const customizationKey =
   values["skill-settings"] || values["customization-inventory"]
@@ -292,6 +295,7 @@ async function setupEncryption() {
     ["private-surface-metadata", labelKey],
     ["task-content", taskKey],
     ["provider-credential", providerKey],
+    ...(previewKey ? [["client-control-content", previewKey]] : []),
     ...(policyKey ? [["policy-content", policyKey]] : []),
     ...(customizationKey ? [["customization-content", customizationKey]] : []),
     ...(mcpKey ? [["mcp-secret", mcpKey]] : []),
@@ -2979,6 +2983,18 @@ try {
     if (values.cli)
       workerEnvironment.CANTRIP_CLI_BIN = path.resolve(values.cli);
   }
+  if (previewKey) {
+    const helper = path.join(root, "native-preview-helper");
+    const executable = path
+      .resolve(values["cua-preview"])
+      .replaceAll("'", "'\\''");
+    await writeFile(
+      helper,
+      `#!/bin/sh\nexec '${executable}' --backend fake\n`,
+      { mode: 0o700 },
+    );
+    workerEnvironment.CANTRIP_CUA_BIN = helper;
+  }
   await startWorker(enrollment.code);
   await setupEncryption();
   if (workflowKey) {
@@ -3007,6 +3023,16 @@ try {
             assert.match(value, /event=automation\.schedule-sync\.completed/),
         );
       },
+    });
+  } else if (previewKey) {
+    await verifyComputerUsePreview({
+      call,
+      createChat,
+      createModel,
+      ownerId,
+      workerId,
+      keyRevision,
+      componentKey: previewKey,
     });
   } else if (values["console-steer"]) {
     await verifyConsoleSteering({

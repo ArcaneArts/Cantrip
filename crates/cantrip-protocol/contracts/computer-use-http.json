@@ -9,7 +9,10 @@
     "cuaPreviewLeaseSchema": 86,
     "cuaPreviewStopSchema": 92,
     "cuaPreviewStoppedSchema": 95,
-    "cuaAgentAuthorityRequestSchema": 100
+    "cuaAgentAuthorityRequestSchema": 100,
+    "computerUseNativePreviewActionSchema": 127,
+    "computerUseNativePreviewResultSchema": 178,
+    "cuaSessionSchema": 230
   },
   "nodes": [
     {
@@ -940,6 +943,740 @@
       ]
     },
     { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "computerUseNativePreviewActionSchema",
+      "options": [128, 131, 135, 139, 142, 145, 148, 161, 168, 171, 175],
+      "discriminator": "operation",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "operation": 129 },
+      "catchall": 130,
+      "checks": []
+    },
+    { "type": "literal", "values": ["capabilities.get"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "operation": 132, "after": 133 },
+      "catchall": 134,
+      "checks": []
+    },
+    { "type": "literal", "values": ["targets.list"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 88,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "operation": 136, "targetId": 88, "targetGeneration": 137 },
+      "catchall": 138,
+      "checks": []
+    },
+    { "type": "literal", "values": ["session.open"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "operation": 140, "sessionId": 88 },
+      "catchall": 141,
+      "checks": []
+    },
+    { "type": "literal", "values": ["session.state"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 143,
+        "sessionId": 88,
+        "targetId": 88,
+        "targetGeneration": 137
+      },
+      "catchall": 144,
+      "checks": []
+    },
+    { "type": "literal", "values": ["target.attach"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "operation": 146, "sessionId": 88 },
+      "catchall": 147,
+      "checks": []
+    },
+    { "type": "literal", "values": ["target.detach"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 149,
+        "sessionId": 88,
+        "targetId": 88,
+        "targetGeneration": 137,
+        "appearance": 150
+      },
+      "catchall": 160,
+      "checks": []
+    },
+    { "type": "literal", "values": ["cursor.configure"], "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaCursorAppearanceSchema",
+      "shape": {
+        "version": 151,
+        "style": 152,
+        "color": 153,
+        "size": 154,
+        "label": 155,
+        "trail": 157,
+        "visible": 158
+      },
+      "catchall": 159,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["arrow", "dot", "ring", "crosshair"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^#[\\da-f]{6}(?:[\\da-f]{2})?$",
+          "flags": "iu",
+          "displayPattern": "/^#[\\da-f]{6}(?:[\\da-f]{2})?$/iu"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 8, "inclusive": true },
+        { "check": "less_than", "value": 96, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 156, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-utf8-256",
+          "messageAfterPath": true
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cursor-label",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 162,
+        "sessionId": 88,
+        "targetId": 88,
+        "targetGeneration": 137,
+        "position": 163
+      },
+      "catchall": 167,
+      "checks": []
+    },
+    { "type": "literal", "values": ["cursor.move"], "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaPointSchema",
+      "shape": { "x": 164, "y": 165 },
+      "catchall": 166,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 169,
+        "sessionId": 88,
+        "targetId": 88,
+        "targetGeneration": 137
+      },
+      "catchall": 170,
+      "checks": []
+    },
+    { "type": "literal", "values": ["observation.snapshot"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 172,
+        "sessionId": 88,
+        "targetId": 88,
+        "targetGeneration": 137,
+        "position": 173
+      },
+      "catchall": 174,
+      "checks": []
+    },
+    { "type": "literal", "values": ["controls.inspect"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 163,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "operation": 176, "sessionId": 88 },
+      "catchall": 177,
+      "checks": []
+    },
+    { "type": "literal", "values": ["session.close"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "computerUseNativePreviewResultSchema",
+      "options": [179, 276],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "status": 180,
+        "operation": 2,
+        "data": 181,
+        "chunkCount": 274
+      },
+      "catchall": 275,
+      "checks": []
+    },
+    { "type": "literal", "values": ["ok"], "checks": [] },
+    {
+      "type": "union",
+      "options": [182, 195, 229, 248, 257, 271],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "cuaCapabilitiesSchema",
+      "shape": {
+        "protocolVersion": 183,
+        "runtimeVersion": 184,
+        "backend": 185,
+        "capture": 186,
+        "nativeInput": 187,
+        "javascript": 188,
+        "cursorAppearanceVersion": 189,
+        "operations": 190,
+        "maxSessions": 192,
+        "maxImageBytes": 193
+      },
+      "catchall": 194,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "array",
+      "element": 191,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 16, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 16777216, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaInventorySchema",
+      "shape": { "truncated": 196, "nextCursor": 198, "targets": 199 },
+      "catchall": 228,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cua-inventory-cursor",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 197,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 88,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 200,
+      "checks": [
+        { "check": "max_length", "maximum": 256, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cua-target-ids",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "cuaTargetSchema",
+      "shape": {
+        "id": 88,
+        "generation": 137,
+        "kind": 201,
+        "title": 202,
+        "application": 204,
+        "processId": 206,
+        "bounds": 208,
+        "pixelWidth": 214,
+        "pixelHeight": 215,
+        "scaleFactor": 216,
+        "focused": 217,
+        "minimized": 219,
+        "access": 221
+      },
+      "catchall": 227,
+      "checks": []
+    },
+    { "type": "enum", "values": ["monitor", "window"], "checks": [] },
+    { "type": "nullable", "innerType": 203, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cua-title-size",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 205, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cua-application-size",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 207, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 4294967295, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "x": 209, "y": 210, "width": 211, "height": 212 },
+      "catchall": 213,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 4294967295, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 4294967295, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    { "type": "nullable", "innerType": 218, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 220, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 222,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "allowed": 223, "reason": 224 },
+      "catchall": 226,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 225, "checks": [] },
+    {
+      "type": "enum",
+      "values": ["cantrip-app-protected", "display-may-include-cantrip"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaSessionResultSchema",
+      "shape": { "session": 230 },
+      "catchall": 247,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "cuaSessionSchema",
+      "shape": {
+        "binding": 231,
+        "target": 236,
+        "cursor": 237,
+        "observationRevision": 239
+      },
+      "catchall": 246,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "cuaBindingSchema",
+      "shape": {
+        "workerId": 88,
+        "chatId": 88,
+        "taskId": 232,
+        "threadId": 233,
+        "turnId": 234,
+        "sessionId": 88
+      },
+      "catchall": 235,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 88, "checks": [] },
+    { "type": "nullable", "innerType": 88, "checks": [] },
+    { "type": "nullable", "innerType": 88, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 200, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "appearance": 150,
+        "position": 163,
+        "trailPoints": 238,
+        "updatedAtMs": 239,
+        "revision": 137,
+        "action": 240
+      },
+      "catchall": 245,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 163,
+      "checks": [{ "check": "max_length", "maximum": 24, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 241,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "method": 242, "outcome": 243, "atMs": 239 },
+      "catchall": 244,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "accessibility",
+        "coordinate",
+        "process-coordinate",
+        "background-coordinate",
+        "background-text",
+        "background-key",
+        "background-move",
+        "system-media",
+        "background-drag",
+        "background-scroll",
+        "background-timeline",
+        "background-prepared-press",
+        "focus",
+        "window-input"
+      ],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["dispatched", "failed", "cancelled", "unsupported", "unknown"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaSnapshotSchema",
+      "shape": { "session": 230, "image": 249 },
+      "catchall": 247,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "cuaImageSchema",
+      "shape": {
+        "mediaType": 250,
+        "width": 251,
+        "height": 252,
+        "byteCount": 253,
+        "sha256": 254,
+        "cursorIncluded": 255
+      },
+      "catchall": 256,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-image-pixels",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    { "type": "literal", "values": ["image/png"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 4194304, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 4194304, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 16777216, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaControlsResultSchema",
+      "shape": { "session": 230, "inspection": 258 },
+      "catchall": 270,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "controls": 259, "truncated": 268 },
+      "catchall": 269,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 260,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "reference": 88,
+        "role": 261,
+        "label": 262,
+        "bounds": 264,
+        "actions": 265
+      },
+      "catchall": 267,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 263, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 320, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 208, "checks": [] },
+    {
+      "type": "array",
+      "element": 266,
+      "checks": [{ "check": "max_length", "maximum": 1, "when": "length" }]
+    },
+    { "type": "literal", "values": ["press"], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "closed": 272 },
+      "catchall": 273,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 64, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "status": 277,
+        "operation": 2,
+        "code": 278,
+        "message": 279,
+        "outcome": 280
+      },
+      "catchall": 281,
+      "checks": []
+    },
+    { "type": "literal", "values": ["error"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 80, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["not-sent", "unknown", "rejected"],
+      "checks": []
+    },
     { "type": "never", "checks": [] }
   ]
 }
