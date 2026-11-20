@@ -36,6 +36,7 @@ pub(in crate::codex::turn) fn failed(stage: &'static str, cause: anyhow::Error) 
 struct HeldTask {
     prepared: Prepared,
     selected: Selection,
+    epoch: Option<u64>,
 }
 
 impl Turns {
@@ -46,6 +47,7 @@ impl Turns {
         active: &Arc<Active>,
         signal: &Signal,
         emit: Emit,
+        epoch: Option<u64>,
     ) -> Result<Value> {
         let opened = self
             .open_task_checkpoint(command, task)
@@ -77,7 +79,11 @@ impl Turns {
             thread_version: prepared.thread.version(),
         };
         active.set(Phase::Preparing(Some(selected.thread.clone())));
-        let held = HeldTask { prepared, selected };
+        let held = HeldTask {
+            prepared,
+            selected,
+            epoch,
+        };
         let result = self
             .run_held_task(command, task, active, signal, emit, &held)
             .await;
@@ -101,7 +107,11 @@ impl Turns {
         emit: Emit,
         held: &HeldTask,
     ) -> Result<Value> {
-        let HeldTask { prepared, selected } = held;
+        let HeldTask {
+            prepared,
+            selected,
+            epoch,
+        } = held;
         let opened = prepared
             .saved
             .as_ref()
@@ -171,17 +181,23 @@ impl Turns {
                 return Err(failed("admit", error));
             }
         };
-        let (subscription, mut events, capture) =
-            match output::subscribe(&runtime.history(), thread) {
-                Ok(observer) => observer,
-                Err(error) => {
-                    let cleanup = execution.not_dispatched();
-                    source.close();
-                    cleanup?;
-                    execution.settled().await?;
-                    return Err(failed("admit", error));
-                }
-            };
+        let observe_cua: Option<output::ComputerUseObserver> =
+            params::computer_use_enabled(command).then(Arc::default);
+        let (subscription, mut events, capture) = match output::subscribe_with_context(
+            &runtime.history(),
+            thread,
+            None,
+            observe_cua.clone(),
+        ) {
+            Ok(observer) => observer,
+            Err(error) => {
+                let cleanup = execution.not_dispatched();
+                source.close();
+                cleanup?;
+                execution.settled().await?;
+                return Err(failed("admit", error));
+            }
+        };
         let transport = subscription.signal();
         let mut observer = task.turn.checkpoint(command, capture);
         observer.restore_observer(saved);
@@ -202,12 +218,34 @@ impl Turns {
                     runtime.inference_router().restore_task_goal(thread, &prepared.runner_generation,
                         &id(&restoration["source"]["clientMessageId"], "restored Goal parent")?, cycle)?;
                 }
+                let cua = if let Some(observer) = &observe_cua {
+                    let epoch = epoch.context("Computer use requires the Task command socket.")?;
+                    let lifetime = computer_use::Turn::new(
+                        self.computer_use.clone(), epoch, runtime, thread.clone(), emit.clone(),
+                        computer_use::Publication::Task(task.turn.messages()),
+                        Signal::any(vec![signal.clone(), transport.clone()]),
+                    );
+                    let binding = activation.as_ref().context("The restored Task's computer-use MCP attachment is unavailable.")?;
+                    lifetime.0.register(binding, &command["computerUseAuthority"])?;
+                    let _ = observer.set(Arc::downgrade(&lifetime.0));
+                    Some(lifetime)
+                } else { None };
+                let native_interactions = if !super::is_structured(command) {
+                    let interactions = runtime.interaction_requests(thread, prepared.environment.is_none())?;
+                    interactions.bind_turn(turn)?;
+                    Some(interactions)
+                } else { None };
                 active.dispatch(signal, thread.clone())?;
                 execution.dispatched()?;
                 active.set(Phase::Running {runtime:runtime.clone(),thread:thread.clone(),turn:turn.clone()});
-                Ok::<_, anyhow::Error>(activation)
+                if let Some(cua) = &cua {
+                    cua.0.dispatched();
+                    cua.0.started(turn);
+                }
+                Ok::<_, anyhow::Error>((activation, cua, native_interactions))
             };
-            let _mcp = dispatch.await.map_err(|error| failed("dispatch", error))?;
+            let (_mcp, cua, mut native_interactions) =
+                dispatch.await.map_err(|error| failed("dispatch", error))?;
             let response = runtime.request(
                 "turn/suspension".into(),
                 Some(json!({"threadId":thread,"operation":json!({"type":"resume","suspension":checkpoint})})),
@@ -223,12 +261,25 @@ impl Turns {
                 // terminal state. Continue collecting from the exact native owner.
                 _ => {}
             }
-            let emit = task.turn.events(emit);
-            let terminal = output::collect_restored(&mut events, &transport, thread, turn, &emit, saved, true).await;
+            let messages = task.turn.events(emit.clone());
+            let collecting = output::collect_restored(&mut events, &transport, thread, turn, &messages, saved, true);
+            let terminal = if let Some(interactions) = &mut native_interactions {
+                interactions::Turn {
+                    runtime,
+                    authority: interactions::Authority::Task(&task.key, &task.input),
+                    thread, turn, thread_version: selected.thread_version,
+                    encryption: &self.encryption, emit: &emit, protected: true,
+                }.observe(&task.input.interactions, &mut interactions.events, collecting).await
+            } else { collecting.await };
+            drop(native_interactions);
             active.set(Phase::Terminal);
+            let cua_finished = if let Some(cua) = &cua {
+                cua.0.finish().await
+            } else { Ok(()) };
             if transport.check().is_err() { runtime.retired().await?; }
             execution.settled().await?;
             let terminal = terminal.map_err(|error| failed("complete", error))?;
+            cua_finished.map_err(|error| failed("complete", error))?;
             task.restored_finished = true;
             task.turn.finish(terminal.result?).map_err(|error| failed("complete", error))
         }.await;

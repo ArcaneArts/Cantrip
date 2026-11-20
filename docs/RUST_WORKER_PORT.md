@@ -9265,3 +9265,23 @@ read back matching PNGs, published encrypted Task History, retired the
 preview, and completed the Goal. The direct Task smoke also passed locally.
 
 Saved Task reattachment still needs computer-use integration.
+
+## 265. Restore computer use on a saved Task turn
+
+Reference commit `ed7e91205ccf08a936dd0a74fe99fe778e067732` (#3428).
+
+The worker attaches computer use to the saved native thread and turn after
+checking the held checkpoint and the fresh Task input receipt. The resumed
+command owns the MCP attachment, protected native tool confirmation, and
+desktop permission events. Activity is sealed with the Task content key.
+Cancellation and transport retirement revoke the resumed session and the
+worker drains admitted calls before settling the Task result.
+
+The macOS ARM64 `standalone-turn-smoke.mjs --cua-task-recovered` and
+`--cua-task-goal-recovered` fixtures paused a direct Task and a Task Goal,
+restarted the production Rust worker, and resumed through production Rust
+Core in PGlite mode. Bundled Codex and the deterministic Host helper preserved
+the original native thread and turn, confirmed the protected approvals,
+returned matching model and preview PNGs, and expired both observations.
+The encrypted Task History retained a single input and the recovered result.
+The saved Chat computer-use smoke also passed locally.
