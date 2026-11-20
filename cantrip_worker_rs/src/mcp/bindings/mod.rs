@@ -543,6 +543,9 @@ mod tests {
             capabilities: Capabilities {
                 version: 2,
                 context: true,
+                compact: false,
+                policy_list: false,
+                policy_read: false,
             },
             until: Instant::now() + Duration::from_secs(60),
         });
