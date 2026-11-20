@@ -20,7 +20,13 @@ pub(in crate::codex) fn launch(
     subagent: &Value,
 ) -> Result<Launch> {
     let portable = configure(&mut profile, &provider, true)?;
-    profile.managed_catalog = model_catalog::Seed::new(&provider, model, subagent, access.clone());
+    profile.managed_catalog = model_catalog::Seed::new(
+        &provider,
+        model,
+        subagent,
+        access.clone(),
+        model_provider(&provider),
+    );
     Ok(Launch {
         profile,
         private_inference: Hooks {

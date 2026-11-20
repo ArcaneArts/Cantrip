@@ -39,7 +39,14 @@ impl Runtime {
             reply => reply?,
         }
         .ok_or_else(|| anyhow!("Native history read returned no result."))?;
-        cantrip_history::native::snapshot(&reply, thread)
+        let mut snapshot = cantrip_history::native::snapshot(&reply, thread)?;
+        if let Some(attribution) = &self.0.attribution {
+            attribution
+                .lock()
+                .unwrap()
+                .add_to_snapshot(thread, &mut snapshot);
+        }
+        Ok(snapshot)
     }
 }
 

@@ -1917,6 +1917,9 @@ try {
       labelKey,
       interactionKey,
       customModel: values["subagent-model"],
+      startWorker,
+      stopWorker,
+      chatKey,
     });
   } else if (planQuestion) {
     await verifyPlanQuestion();

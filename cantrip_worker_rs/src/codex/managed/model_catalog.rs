@@ -11,6 +11,7 @@ type Models = IndexMap<JsString, Value>;
 
 pub(in crate::codex) struct Seed {
     provider: Value,
+    pub(super) native_provider: &'static str,
     explicit: Models,
     access: Access,
 }
@@ -29,8 +30,9 @@ impl Seed {
         root: &Value,
         child: &Value,
         access: Access,
+        native_provider: &'static str,
     ) -> Option<Self> {
-        if provider["kind"] == "chatgpt" || !root.is_object() {
+        if !root.is_object() {
             return None;
         }
         let mut explicit = Models::new();
@@ -40,17 +42,26 @@ impl Seed {
             provider: json!({
                 "id":provider["id"], "accountId":provider["accountId"], "kind":provider["kind"],
             }),
+            native_provider,
             explicit,
             access,
         })
     }
 
-    pub(super) async fn publish(self, path: &Path) -> Result<Catalog> {
+    pub(super) async fn inventory(&self) -> Value {
+        self.access
+            .native_model_inventory(&self.provider)
+            .await
+            .unwrap_or(Value::Null)
+    }
+
+    pub(super) async fn publish(self, path: &Path, found: &Value) -> Result<Option<Catalog>> {
+        if self.provider["kind"] == "chatgpt" {
+            return Ok(None);
+        }
         let mut inventory = Models::new();
-        if let Ok(found) = self.access.native_model_inventory(&self.provider).await {
-            for model in found["models"].as_array().unwrap() {
-                add(&mut inventory, model);
-            }
+        for model in found["models"].as_array().into_iter().flatten() {
+            add(&mut inventory, model);
         }
         let mut catalog = Catalog {
             kind: self.provider["kind"].clone(),
@@ -71,7 +82,7 @@ impl Seed {
             Ok(())
         })
         .await??;
-        Ok(catalog)
+        Ok(Some(catalog))
     }
 }
 

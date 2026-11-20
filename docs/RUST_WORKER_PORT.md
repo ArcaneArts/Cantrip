@@ -7465,3 +7465,36 @@ Windows x64 GNU worker compile check passed.
 
 Live native picker inventory refresh, per-turn model attribution and managed
 runtime handoff remain open.
+
+## 196. Preserve the model selected at each canonical native turn
+
+Reference commit 2559a105f21d1cc97db8e72ed9686686269af3ea (#3359).
+
+The worker binds the configured root and child routes to the prepared
+native thread. It records the route context when Codex starts each turn.
+A native child inherits the context of its exact causal root turn, and
+the history binder verifies the child's ancestry before publication.
+Model selection uses Codex's immutable initial settings and the provider
+scope. An exact configured route takes precedence over other candidates
+with the same native name. An unexpected model uses only that provider's
+inventory.
+
+The socket adds observed attribution before the history notification is
+captured. A history read can carry the same evidence to a child whose
+subscription started after the turn. If Codex supplies the initial
+settings in retained history, the worker joins them to the captured
+route context. Canonical projection uses the existing protected turn
+envelope and response usage contract. Existing committed attribution
+survives worker restarts through the history journal and Core.
+
+The macOS ARM64 fixture ran the production Rust server with PGlite, the
+Rust worker, bundled Codex, and a loopback Responses provider. The
+TypeScript codec opened separate canonical records for the root and its
+real subagent. The child kept its own route and high reasoning effort.
+The usage export showed measured tokens under the correct route for
+each turn. Both records remained readable after restarting the worker
+and the usage export still contained one row per turn. The Plan Mode
+question and cold-resume approval regression fixtures passed.
+
+Live attribution for output outside canonical history, native picker
+inventory refresh, and managed runtime handoff remain open.
