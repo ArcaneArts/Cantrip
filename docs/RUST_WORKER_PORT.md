@@ -7828,3 +7828,21 @@ Codex application source in the server build context.
 On macOS ARM64, the PTY test suite and worker build passed. The packaged
 worker retained its control connection, credentials and clean shutdown against
 Rust Core. The revised server build context resolved Cargo dependencies.
+
+## 209. Reopen a Node worker's enrollment in Rust
+
+Reference commit 402266b314a7790b498bc4200f71d8be118c4e9e (#3372).
+
+The local profile-upgrade fixture starts both production workers sequentially
+against the same Rust Core. The Node worker enrolls, registers its endpoint
+key and accepts two revisions of a scoped grant. After it stops, the Rust
+worker starts from that data directory with no enrollment code or worker ID
+supplied by the fixture. It answers a Core command and reopens the existing
+grant. The fixture checks the exact persisted worker and principal identities,
+credential, endpoint keypair and accepted grant revisions.
+
+On macOS ARM64 the upgrade fixture passed in PGlite mode. Build the legacy
+worker with `pnpm --filter @cantrip/worker... build`, then run
+`node --import tsx scripts/worker-rust/profile-upgrade-smoke.mjs` with `--server`
+and `--worker` pointing to the Rust executables. Use `--cli` and `--codex` to
+select local helper binaries when they are outside the worker's normal layout.
