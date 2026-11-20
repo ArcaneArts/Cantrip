@@ -13,6 +13,7 @@ pub mod preparation;
 pub mod private_inference;
 pub mod process_transport;
 pub mod provider_errors;
+pub(crate) mod relocation;
 pub(crate) mod revocation;
 pub mod rpc_client;
 pub mod rpc_protocol;

@@ -8318,3 +8318,32 @@ Repeat it with `scripts/worker-rust/workspace-smoke.mjs --project-export-only`.
 The 21 focused Node reference tests for history, attachments and export
 passed. Windows runtime validation and destination hydration for native
 continuation remain open.
+
+## 228. Restore canonical chats into managed Codex sessions
+
+Reference commit `586e4093a9f726b00937cc2ce1d16696b51b502e` (#3391).
+
+The Rust worker accepts ordered relocation chunks in the existing private
+layout, verifies the declared byte count and transcript digest, and opens
+protected Chat or Task content inside the worker. Project export shares the
+same transcript decoder and response-item projection. Hydration uses the
+selected native provider, worktree configuration, permissions and skills, then
+injects bounded batches and applies the requested collaboration mode. The
+receipt records the allocated thread before injection and the verified thread
+after completion. Retries can reopen legacy receipts and detect changed
+transcripts. The worker reads the actual Codex thread before reusing a receipt
+so it can rebuild a target that was discarded after a failed placement. New
+receipts also bind the chat to the worker's current owner and server. The
+worker advertises chat relocation, while Core owns placement and releases the
+source thread after commit.
+
+On macOS ARM64, the production Rust Core in PGlite mode, Rust worker and bundled
+Codex 0.166.0 imported a protected transcript and continued the managed thread
+after worker restart. The same chat then moved to another worktree on the same
+worker. Core committed the placement and the worker acknowledged the old
+thread's release. A loopback Responses provider received the original history
+and the previous continuation, and Core committed the new protected answer.
+Repeat with `scripts/worker-rust/workspace-smoke.mjs --project-export-only`.
+The Rust journal test reopened the legacy format and rejected changed digest
+and binding values. Seven focused Node reference tests passed. Cross-worker
+relocation and Windows runtime execution were outside the local fixture.

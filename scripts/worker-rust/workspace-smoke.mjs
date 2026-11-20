@@ -255,7 +255,11 @@ function startWorker(code) {
     ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
     ...(values.codex ? { CANTRIP_CODEX_BIN: path.resolve(values.codex) } : {}),
     ...(values["project-export-only"]
-      ? { HOME: exportHome, CODEX_HOME: exportCodex }
+      ? {
+          HOME: exportHome,
+          CODEX_HOME: exportCodex,
+          CANTRIP_LOG_LEVEL: "debug",
+        }
       : {}),
     ...(values["terminal-relay-only"] || values["run-runtime-only"]
       ? { SHELL: "/bin/sh" }
@@ -327,6 +331,37 @@ async function restartWorker() {
     },
     "native runtime restart and command socket readiness",
   );
+}
+async function enableFixtureWorktrees() {
+  // Match the existing actual-project-worktrees catalog fixture. Production
+  // servers and workers are stopped while the owned profile is seeded natively.
+  const worktreePort = Number(new URL(server.origin).port);
+  await stopWorker();
+  await server.close();
+  server = undefined;
+  const seed = await repositoryFixture({
+    kind: "rust",
+    root,
+    dataDirectory: serverDirectory,
+    executable: path.join(
+      path.dirname(path.resolve(values.server)),
+      "examples",
+      "project-repository-fixture" +
+        (process.platform === "win32" ? ".exe" : ""),
+    ),
+    databaseMode: "pglite",
+  });
+  try {
+    await seed.seed(
+      "UPDATE projects SET origin_kind='github',folder_management=NULL,git_capability=true,github_capability=true,worktree_policy='agent-managed',github_repository_blind_index='native-worktree-fixture' WHERE id=" +
+        literal(projectId),
+    );
+  } finally {
+    await seed.close();
+  }
+  await start(worktreePort);
+  startWorker();
+  await ready();
 }
 async function seedReplicaSiblings(entries) {
   // Owned stopped-profile fixture: an offline sibling source is required by
@@ -742,6 +777,7 @@ try {
     );
     assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
     if (values["project-export-only"]) {
+      await enableFixtureWorktrees();
       await verifyProjectExport({
         call,
         eventually,
@@ -754,6 +790,7 @@ try {
         ownerId: repository.ownerId,
         restartWorker,
         checkout,
+        registerMetadata: repository.registerMetadata,
       });
       break exercise;
     }
@@ -1028,35 +1065,7 @@ try {
       await reopenTerminals();
       gitRuntimeCoverage = await reopenGit();
     }
-    // Match the existing actual-project-worktrees catalog fixture. Production
-    // servers and workers are stopped while the owned profile is seeded natively.
-    const worktreePort = Number(new URL(server.origin).port);
-    await stopWorker();
-    await server.close();
-    server = undefined;
-    const seed = await repositoryFixture({
-      kind: "rust",
-      root,
-      dataDirectory: serverDirectory,
-      executable: path.join(
-        path.dirname(path.resolve(values.server)),
-        "examples",
-        "project-repository-fixture" +
-          (process.platform === "win32" ? ".exe" : ""),
-      ),
-      databaseMode: "pglite",
-    });
-    try {
-      await seed.seed(
-        "UPDATE projects SET origin_kind='github',folder_management=NULL,git_capability=true,github_capability=true,worktree_policy='agent-managed',github_repository_blind_index='native-worktree-fixture' WHERE id=" +
-          literal(projectId),
-      );
-    } finally {
-      await seed.close();
-    }
-    await start(worktreePort);
-    startWorker();
-    await ready();
+    await enableFixtureWorktrees();
     if (
       values["github-operations-only"] ||
       values["pull-request-lifecycle-only"] ||
@@ -1172,11 +1181,12 @@ try {
   else if (values["project-export-only"])
     console.log(
       JSON.stringify({
-        suite: "actual-native-project-export-worker-server",
+        suite: "actual-native-project-history-worker-server",
         passed: true,
         durableExternalCodexSession: true,
         replayReusesThread: true,
         recoveredProtectedChatAndAttachment: true,
+        continuedImportedAndRelocatedChat: true,
       }),
     );
   else if (values["run-runtime-only"])
