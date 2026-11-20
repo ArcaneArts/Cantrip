@@ -11,13 +11,14 @@
     "cuaPreviewStoppedSchema": 95,
     "cuaAgentAuthorityRequestSchema": 100,
     "computerUseNativePreviewActionSchema": 127,
-    "computerUseNativePreviewResultSchema": 267,
-    "cuaSessionSchema": 319,
-    "cuaInputResultSchema": 360,
-    "cuaClipboardResultSchema": 380,
-    "cuaInventorySchema": 284,
-    "cuaControlsResultSchema": 346,
-    "cuaSnapshotSchema": 337
+    "computerUseNativePreviewResultSchema": 274,
+    "cuaSessionSchema": 326,
+    "cuaInputResultSchema": 367,
+    "cuaClipboardResultSchema": 387,
+    "cuaInventorySchema": 291,
+    "cuaControlsResultSchema": 353,
+    "cuaSnapshotSchema": 344,
+    "cuaAgentObservationSchema": 397
   },
   "nodes": [
     {
@@ -953,8 +954,8 @@
       "type": "union",
       "name": "computerUseNativePreviewActionSchema",
       "options": [
-        128, 132, 136, 141, 144, 148, 151, 154, 157, 160, 173, 180, 183, 187,
-        190, 198, 264
+        128, 132, 136, 141, 144, 147, 151, 155, 158, 161, 164, 167, 180, 187,
+        190, 194, 197, 205, 271
       ],
       "discriminator": "operation",
       "checks": []
@@ -1050,8 +1051,37 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "operation": 145, "after": 146 },
-      "catchall": 147,
+      "shape": { "operation": 145 },
+      "catchall": 146,
+      "checks": []
+    },
+    { "type": "literal", "values": ["agent.sources.list"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "operation": 148, "sourceId": 149 },
+      "catchall": 150,
+      "checks": []
+    },
+    { "type": "literal", "values": ["agent.observation.get"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "operation": 152, "after": 153 },
+      "catchall": 154,
       "checks": []
     },
     { "type": "literal", "values": ["targets.list"], "checks": [] },
@@ -1065,16 +1095,16 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "operation": 149, "targetId": 88, "targetGeneration": 130 },
-      "catchall": 150,
+      "shape": { "operation": 156, "targetId": 88, "targetGeneration": 130 },
+      "catchall": 157,
       "checks": []
     },
     { "type": "literal", "values": ["session.open"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "operation": 152, "sessionId": 88 },
-      "catchall": 153,
+      "shape": { "operation": 159, "sessionId": 88 },
+      "catchall": 160,
       "checks": []
     },
     { "type": "literal", "values": ["session.state"], "checks": [] },
@@ -1082,20 +1112,20 @@
     {
       "type": "object",
       "shape": {
-        "operation": 155,
+        "operation": 162,
         "sessionId": 88,
         "targetId": 88,
         "targetGeneration": 130
       },
-      "catchall": 156,
+      "catchall": 163,
       "checks": []
     },
     { "type": "literal", "values": ["target.attach"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "operation": 158, "sessionId": 88 },
-      "catchall": 159,
+      "shape": { "operation": 165, "sessionId": 88 },
+      "catchall": 166,
       "checks": []
     },
     { "type": "literal", "values": ["target.detach"], "checks": [] },
@@ -1103,13 +1133,13 @@
     {
       "type": "object",
       "shape": {
-        "operation": 161,
+        "operation": 168,
         "sessionId": 88,
         "targetId": 88,
         "targetGeneration": 130,
-        "appearance": 162
+        "appearance": 169
       },
-      "catchall": 172,
+      "catchall": 179,
       "checks": []
     },
     { "type": "literal", "values": ["cursor.configure"], "checks": [] },
@@ -1117,15 +1147,15 @@
       "type": "object",
       "name": "cuaCursorAppearanceSchema",
       "shape": {
-        "version": 163,
-        "style": 164,
-        "color": 165,
-        "size": 166,
-        "label": 167,
-        "trail": 169,
-        "visible": 170
+        "version": 170,
+        "style": 171,
+        "color": 172,
+        "size": 173,
+        "label": 174,
+        "trail": 176,
+        "visible": 177
       },
-      "catchall": 171,
+      "catchall": 178,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -1154,7 +1184,7 @@
         { "check": "less_than", "value": 96, "inclusive": true }
       ]
     },
-    { "type": "nullable", "innerType": 168, "checks": [] },
+    { "type": "nullable", "innerType": 175, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1177,60 +1207,26 @@
     {
       "type": "object",
       "shape": {
-        "operation": 174,
+        "operation": 181,
         "sessionId": 88,
         "targetId": 88,
         "targetGeneration": 130,
-        "position": 175
+        "position": 182
       },
-      "catchall": 179,
+      "catchall": 186,
       "checks": []
     },
     { "type": "literal", "values": ["cursor.move"], "checks": [] },
     {
       "type": "object",
       "name": "cuaPointSchema",
-      "shape": { "x": 176, "y": 177 },
-      "catchall": 178,
+      "shape": { "x": 183, "y": 184 },
+      "catchall": 185,
       "checks": []
     },
     { "type": "number", "checks": [] },
     { "type": "number", "checks": [] },
     { "type": "never", "checks": [] },
-    { "type": "never", "checks": [] },
-    {
-      "type": "object",
-      "shape": {
-        "operation": 181,
-        "sessionId": 88,
-        "targetId": 88,
-        "targetGeneration": 130
-      },
-      "catchall": 182,
-      "checks": []
-    },
-    { "type": "literal", "values": ["observation.snapshot"], "checks": [] },
-    { "type": "never", "checks": [] },
-    {
-      "type": "object",
-      "shape": {
-        "operation": 184,
-        "sessionId": 88,
-        "targetId": 88,
-        "targetGeneration": 130,
-        "position": 185
-      },
-      "catchall": 186,
-      "checks": []
-    },
-    { "type": "literal", "values": ["controls.inspect"], "checks": [] },
-    {
-      "type": "optional",
-      "optionalIn": true,
-      "optionalOut": true,
-      "innerType": 175,
-      "checks": []
-    },
     { "type": "never", "checks": [] },
     {
       "type": "object",
@@ -1238,13 +1234,12 @@
         "operation": 188,
         "sessionId": 88,
         "targetId": 88,
-        "targetGeneration": 130,
-        "reference": 88
+        "targetGeneration": 130
       },
       "catchall": 189,
       "checks": []
     },
-    { "type": "literal", "values": ["input.press"], "checks": [] },
+    { "type": "literal", "values": ["observation.snapshot"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
@@ -1253,11 +1248,46 @@
         "sessionId": 88,
         "targetId": 88,
         "targetGeneration": 130,
-        "position": 192,
-        "globalInput": 193,
-        "delivery": 195
+        "position": 192
       },
-      "catchall": 197,
+      "catchall": 193,
+      "checks": []
+    },
+    { "type": "literal", "values": ["controls.inspect"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 182,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 195,
+        "sessionId": 88,
+        "targetId": 88,
+        "targetGeneration": 130,
+        "reference": 88
+      },
+      "catchall": 196,
+      "checks": []
+    },
+    { "type": "literal", "values": ["input.press"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "operation": 198,
+        "sessionId": 88,
+        "targetId": 88,
+        "targetGeneration": 130,
+        "position": 199,
+        "globalInput": 200,
+        "delivery": 202
+      },
+      "catchall": 204,
       "checks": []
     },
     { "type": "literal", "values": ["input.click"], "checks": [] },
@@ -1265,14 +1295,14 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 175,
+      "innerType": 182,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 194,
+      "innerType": 201,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -1280,7 +1310,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 196,
+      "innerType": 203,
       "checks": []
     },
     { "type": "enum", "values": ["process", "background"], "checks": [] },
@@ -1288,43 +1318,43 @@
     {
       "type": "object",
       "shape": {
-        "operation": 199,
+        "operation": 206,
         "sessionId": 88,
         "targetId": 88,
         "targetGeneration": 130,
-        "command": 200
+        "command": 207
       },
-      "catchall": 263,
+      "catchall": 270,
       "checks": []
     },
     { "type": "literal", "values": ["input.perform"], "checks": [] },
     {
       "type": "union",
       "name": "cuaInputCommandSchema",
-      "options": [201, 204, 207, 214, 237, 241, 245, 248, 251, 256],
+      "options": [208, 211, 214, 221, 244, 248, 252, 255, 258, 263],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 202 },
-      "catchall": 203,
+      "shape": { "kind": 209 },
+      "catchall": 210,
       "checks": []
     },
     { "type": "literal", "values": ["focus"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 205 },
-      "catchall": 206,
+      "shape": { "kind": 212 },
+      "catchall": 213,
       "checks": []
     },
     { "type": "literal", "values": ["window-input"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 208, "point": 209, "holdMs": 210, "button": 211 },
-      "catchall": 213,
+      "shape": { "kind": 215, "point": 216, "holdMs": 217, "button": 218 },
+      "catchall": 220,
       "checks": []
     },
     { "type": "literal", "values": ["prepared-press"], "checks": [] },
@@ -1332,7 +1362,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 175,
+      "innerType": 182,
       "checks": []
     },
     {
@@ -1347,7 +1377,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 212,
+      "innerType": 219,
       "checks": []
     },
     {
@@ -1358,14 +1388,14 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 215, "frames": 216 },
-      "catchall": 236,
+      "shape": { "kind": 222, "frames": 223 },
+      "catchall": 243,
       "checks": []
     },
     { "type": "literal", "values": ["timeline"], "checks": [] },
     {
       "type": "array",
-      "element": 217,
+      "element": 224,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
         { "check": "max_length", "maximum": 131072, "when": "length" },
@@ -1380,16 +1410,16 @@
     {
       "type": "object",
       "shape": {
-        "atMs": 218,
-        "keyDown": 219,
-        "keyUp": 226,
-        "pointerDown": 228,
-        "pointerUp": 229,
-        "pointerModifiers": 231,
-        "pointerButton": 234,
-        "keyModifiers": 231
+        "atMs": 225,
+        "keyDown": 226,
+        "keyUp": 233,
+        "pointerDown": 235,
+        "pointerUp": 236,
+        "pointerModifiers": 238,
+        "pointerButton": 241,
+        "keyModifiers": 238
       },
-      "catchall": 235,
+      "catchall": 242,
       "checks": []
     },
     {
@@ -1403,17 +1433,17 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 220,
+      "innerType": 227,
       "defaultValue": [],
       "checks": []
     },
     {
       "type": "array",
-      "element": 221,
+      "element": 228,
       "checks": [{ "check": "max_length", "maximum": 16, "when": "length" }]
     },
-    { "type": "pipe", "in": 222, "out": 225, "checks": [] },
-    { "type": "pipe", "in": 223, "out": 224, "checks": [] },
+    { "type": "pipe", "in": 229, "out": 232, "checks": [] },
+    { "type": "pipe", "in": 230, "out": 231, "checks": [] },
     { "type": "string", "checks": [] },
     {
       "type": "transform",
@@ -1511,26 +1541,26 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 227,
+      "innerType": 234,
       "defaultValue": [],
       "checks": []
     },
     {
       "type": "array",
-      "element": 221,
+      "element": 228,
       "checks": [{ "check": "max_length", "maximum": 16, "when": "length" }]
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 175,
+      "innerType": 182,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 230,
+      "innerType": 237,
       "defaultValue": false,
       "checks": []
     },
@@ -1538,13 +1568,13 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 232,
+      "innerType": 239,
       "defaultValue": [],
       "checks": []
     },
     {
       "type": "array",
-      "element": 233,
+      "element": 240,
       "checks": [
         { "check": "max_length", "maximum": 4, "when": "length" },
         {
@@ -1563,15 +1593,15 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 212,
+      "innerType": 219,
       "checks": []
     },
     { "type": "never", "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 238, "key": 239, "modifiers": 231 },
-      "catchall": 240,
+      "shape": { "kind": 245, "key": 246, "modifiers": 238 },
+      "catchall": 247,
       "checks": []
     },
     { "type": "literal", "values": ["media"], "checks": [] },
@@ -1592,8 +1622,8 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 242, "text": 243 },
-      "catchall": 244,
+      "shape": { "kind": 249, "text": 250 },
+      "catchall": 251,
       "checks": []
     },
     { "type": "literal", "values": ["text"], "checks": [] },
@@ -1612,31 +1642,31 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 246, "key": 221, "modifiers": 231 },
-      "catchall": 247,
+      "shape": { "kind": 253, "key": 228, "modifiers": 238 },
+      "catchall": 254,
       "checks": []
     },
     { "type": "literal", "values": ["key"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 249, "point": 175 },
-      "catchall": 250,
+      "shape": { "kind": 256, "point": 182 },
+      "catchall": 257,
       "checks": []
     },
     { "type": "literal", "values": ["move"], "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 252, "start": 175, "end": 175, "durationMs": 253 },
-      "catchall": 255,
+      "shape": { "kind": 259, "start": 182, "end": 182, "durationMs": 260 },
+      "catchall": 262,
       "checks": []
     },
     { "type": "literal", "values": ["drag"], "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 254,
+      "innerType": 261,
       "defaultValue": 200,
       "checks": []
     },
@@ -1651,15 +1681,15 @@
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "kind": 257, "deltaX": 258, "deltaY": 260, "point": 261 },
-      "catchall": 262,
+      "shape": { "kind": 264, "deltaX": 265, "deltaY": 267, "point": 268 },
+      "catchall": 269,
       "checks": []
     },
     { "type": "literal", "values": ["scroll"], "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 259,
+      "innerType": 266,
       "defaultValue": 0,
       "checks": []
     },
@@ -1683,15 +1713,15 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 175,
+      "innerType": 182,
       "checks": []
     },
     { "type": "never", "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "operation": 265, "sessionId": 88 },
-      "catchall": 266,
+      "shape": { "operation": 272, "sessionId": 88 },
+      "catchall": 273,
       "checks": []
     },
     { "type": "literal", "values": ["session.close"], "checks": [] },
@@ -1699,43 +1729,43 @@
     {
       "type": "union",
       "name": "computerUseNativePreviewResultSchema",
-      "options": [268, 388],
+      "options": [275, 405],
       "discriminator": "status",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "status": 269,
+        "status": 276,
         "operation": 2,
-        "data": 270,
-        "chunkCount": 386
+        "data": 277,
+        "chunkCount": 403
       },
-      "catchall": 387,
+      "catchall": 404,
       "checks": []
     },
     { "type": "literal", "values": ["ok"], "checks": [] },
     {
       "type": "union",
-      "options": [271, 284, 318, 337, 346, 360, 380, 383],
+      "options": [278, 291, 325, 344, 353, 367, 387, 390, 397, 400],
       "checks": []
     },
     {
       "type": "object",
       "name": "cuaCapabilitiesSchema",
       "shape": {
-        "protocolVersion": 272,
-        "runtimeVersion": 273,
-        "backend": 274,
-        "capture": 275,
-        "nativeInput": 276,
-        "javascript": 277,
-        "cursorAppearanceVersion": 278,
-        "operations": 279,
-        "maxSessions": 281,
-        "maxImageBytes": 282
+        "protocolVersion": 279,
+        "runtimeVersion": 280,
+        "backend": 281,
+        "capture": 282,
+        "nativeInput": 283,
+        "javascript": 284,
+        "cursorAppearanceVersion": 285,
+        "operations": 286,
+        "maxSessions": 288,
+        "maxImageBytes": 289
       },
-      "catchall": 283,
+      "catchall": 290,
       "checks": []
     },
     { "type": "literal", "values": [1], "checks": [] },
@@ -1759,7 +1789,7 @@
     { "type": "literal", "values": [1], "checks": [] },
     {
       "type": "array",
-      "element": 280,
+      "element": 287,
       "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
     },
     {
@@ -1789,8 +1819,8 @@
     {
       "type": "object",
       "name": "cuaInventorySchema",
-      "shape": { "truncated": 285, "nextCursor": 287, "targets": 288 },
-      "catchall": 317,
+      "shape": { "truncated": 292, "nextCursor": 294, "targets": 295 },
+      "catchall": 324,
       "checks": [
         {
           "check": "refinement",
@@ -1803,7 +1833,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 286,
+      "innerType": 293,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -1816,7 +1846,7 @@
     },
     {
       "type": "array",
-      "element": 289,
+      "element": 296,
       "checks": [
         { "check": "max_length", "maximum": 256, "when": "length" },
         {
@@ -1832,23 +1862,23 @@
       "shape": {
         "id": 88,
         "generation": 130,
-        "kind": 290,
-        "title": 291,
-        "application": 293,
-        "processId": 295,
-        "bounds": 297,
-        "pixelWidth": 303,
-        "pixelHeight": 304,
-        "scaleFactor": 305,
-        "focused": 306,
-        "minimized": 308,
-        "access": 310
+        "kind": 297,
+        "title": 298,
+        "application": 300,
+        "processId": 302,
+        "bounds": 304,
+        "pixelWidth": 310,
+        "pixelHeight": 311,
+        "scaleFactor": 312,
+        "focused": 313,
+        "minimized": 315,
+        "access": 317
       },
-      "catchall": 316,
+      "catchall": 323,
       "checks": []
     },
     { "type": "enum", "values": ["monitor", "window"], "checks": [] },
-    { "type": "nullable", "innerType": 292, "checks": [] },
+    { "type": "nullable", "innerType": 299, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1859,7 +1889,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 294, "checks": [] },
+    { "type": "nullable", "innerType": 301, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1870,7 +1900,7 @@
         }
       ]
     },
-    { "type": "nullable", "innerType": 296, "checks": [] },
+    { "type": "nullable", "innerType": 303, "checks": [] },
     {
       "type": "number",
       "checks": [
@@ -1881,8 +1911,8 @@
     },
     {
       "type": "object",
-      "shape": { "x": 298, "y": 299, "width": 300, "height": 301 },
-      "catchall": 302,
+      "shape": { "x": 305, "y": 306, "width": 307, "height": 308 },
+      "catchall": 309,
       "checks": []
     },
     { "type": "number", "checks": [] },
@@ -1916,25 +1946,25 @@
       "type": "number",
       "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
     },
-    { "type": "nullable", "innerType": 307, "checks": [] },
+    { "type": "nullable", "innerType": 314, "checks": [] },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 309, "checks": [] },
+    { "type": "nullable", "innerType": 316, "checks": [] },
     { "type": "boolean", "checks": [] },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 311,
+      "innerType": 318,
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "allowed": 312, "reason": 313 },
-      "catchall": 315,
+      "shape": { "allowed": 319, "reason": 320 },
+      "catchall": 322,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 314, "checks": [] },
+    { "type": "nullable", "innerType": 321, "checks": [] },
     {
       "type": "enum",
       "values": ["cantrip-app-protected", "display-may-include-cantrip"],
@@ -1946,20 +1976,20 @@
     {
       "type": "object",
       "name": "cuaSessionResultSchema",
-      "shape": { "session": 319 },
-      "catchall": 336,
+      "shape": { "session": 326 },
+      "catchall": 343,
       "checks": []
     },
     {
       "type": "object",
       "name": "cuaSessionSchema",
       "shape": {
-        "binding": 320,
-        "target": 325,
-        "cursor": 326,
-        "observationRevision": 328
+        "binding": 327,
+        "target": 332,
+        "cursor": 333,
+        "observationRevision": 335
       },
-      "catchall": 335,
+      "catchall": 342,
       "checks": []
     },
     {
@@ -1968,35 +1998,35 @@
       "shape": {
         "workerId": 88,
         "chatId": 88,
-        "taskId": 321,
-        "threadId": 322,
-        "turnId": 323,
+        "taskId": 328,
+        "threadId": 329,
+        "turnId": 330,
         "sessionId": 88
       },
-      "catchall": 324,
+      "catchall": 331,
       "checks": []
     },
     { "type": "nullable", "innerType": 88, "checks": [] },
     { "type": "nullable", "innerType": 88, "checks": [] },
     { "type": "nullable", "innerType": 88, "checks": [] },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 289, "checks": [] },
+    { "type": "nullable", "innerType": 296, "checks": [] },
     {
       "type": "object",
       "shape": {
-        "appearance": 162,
-        "position": 175,
-        "trailPoints": 327,
-        "updatedAtMs": 328,
+        "appearance": 169,
+        "position": 182,
+        "trailPoints": 334,
+        "updatedAtMs": 335,
         "revision": 130,
-        "action": 329
+        "action": 336
       },
-      "catchall": 334,
+      "catchall": 341,
       "checks": []
     },
     {
       "type": "array",
-      "element": 175,
+      "element": 182,
       "checks": [{ "check": "max_length", "maximum": 24, "when": "length" }]
     },
     {
@@ -2011,13 +2041,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 330,
+      "innerType": 337,
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "method": 331, "outcome": 332, "atMs": 328 },
-      "catchall": 333,
+      "shape": { "method": 338, "outcome": 339, "atMs": 335 },
+      "catchall": 340,
       "checks": []
     },
     {
@@ -2052,22 +2082,22 @@
     {
       "type": "object",
       "name": "cuaSnapshotSchema",
-      "shape": { "session": 319, "image": 338 },
-      "catchall": 336,
+      "shape": { "session": 326, "image": 345 },
+      "catchall": 343,
       "checks": []
     },
     {
       "type": "object",
       "name": "cuaImageSchema",
       "shape": {
-        "mediaType": 339,
-        "width": 340,
-        "height": 341,
-        "byteCount": 342,
-        "sha256": 343,
-        "cursorIncluded": 344
+        "mediaType": 346,
+        "width": 347,
+        "height": 348,
+        "byteCount": 349,
+        "sha256": 350,
+        "cursorIncluded": 351
       },
-      "catchall": 345,
+      "catchall": 352,
       "checks": [
         {
           "check": "refinement",
@@ -2118,46 +2148,46 @@
     {
       "type": "object",
       "name": "cuaControlsResultSchema",
-      "shape": { "session": 319, "inspection": 347 },
-      "catchall": 359,
+      "shape": { "session": 326, "inspection": 354 },
+      "catchall": 366,
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "controls": 348, "truncated": 357 },
-      "catchall": 358,
+      "shape": { "controls": 355, "truncated": 364 },
+      "catchall": 365,
       "checks": []
     },
     {
       "type": "array",
-      "element": 349,
+      "element": 356,
       "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
     },
     {
       "type": "object",
       "shape": {
         "reference": 88,
-        "role": 350,
-        "label": 351,
-        "bounds": 353,
-        "actions": 354
+        "role": 357,
+        "label": 358,
+        "bounds": 360,
+        "actions": 361
       },
-      "catchall": 356,
+      "catchall": 363,
       "checks": []
     },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 352, "checks": [] },
+    { "type": "nullable", "innerType": 359, "checks": [] },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 320, "when": "length" }]
     },
-    { "type": "nullable", "innerType": 297, "checks": [] },
+    { "type": "nullable", "innerType": 304, "checks": [] },
     {
       "type": "array",
-      "element": 355,
+      "element": 362,
       "checks": [{ "check": "max_length", "maximum": 1, "when": "length" }]
     },
     { "type": "literal", "values": ["press"], "checks": [] },
@@ -2168,31 +2198,31 @@
     {
       "type": "object",
       "name": "cuaInputResultSchema",
-      "shape": { "session": 319, "input": 361 },
-      "catchall": 379,
+      "shape": { "session": 326, "input": 368 },
+      "catchall": 386,
       "checks": []
     },
     {
       "type": "object",
       "name": "cuaInputReceiptSchema",
       "shape": {
-        "control": 362,
-        "method": 363,
-        "activation": 364,
-        "outcome": 365,
-        "windowDelivery": 366,
-        "position": 368,
-        "globalPosition": 369,
-        "effects": 370
+        "control": 369,
+        "method": 370,
+        "activation": 371,
+        "outcome": 372,
+        "windowDelivery": 373,
+        "position": 375,
+        "globalPosition": 376,
+        "effects": 377
       },
-      "catchall": 378,
+      "catchall": 385,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 349,
+      "innerType": 356,
       "checks": []
     },
     {
@@ -2221,7 +2251,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 367,
+      "innerType": 374,
       "checks": []
     },
     { "type": "literal", "values": ["unverified"], "checks": [] },
@@ -2229,35 +2259,35 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 175,
+      "innerType": 182,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 175,
+      "innerType": 182,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 371,
+      "innerType": 378,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "sampling": 372,
-        "beforeAtMs": 328,
-        "afterAtMs": 328,
-        "pointer": 373,
-        "foregroundApplication": 374,
-        "foregroundWindow": 375,
-        "windowOrder": 376
+        "sampling": 379,
+        "beforeAtMs": 335,
+        "afterAtMs": 335,
+        "pointer": 380,
+        "foregroundApplication": 381,
+        "foregroundWindow": 382,
+        "windowOrder": 383
       },
-      "catchall": 377,
+      "catchall": 384,
       "checks": []
     },
     { "type": "literal", "values": ["before-after-dispatch"], "checks": [] },
@@ -2287,16 +2317,122 @@
     {
       "type": "object",
       "name": "cuaClipboardResultSchema",
-      "shape": { "session": 319, "text": 381 },
-      "catchall": 382,
+      "shape": { "session": 326, "text": 388 },
+      "catchall": 389,
       "checks": []
     },
     { "type": "nullable", "innerType": 134, "checks": [] },
     { "type": "never", "checks": [] },
     {
       "type": "object",
-      "shape": { "closed": 384 },
-      "catchall": 385,
+      "name": "cuaAgentSourcesSchema",
+      "shape": { "sources": 391 },
+      "catchall": 396,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 392,
+      "checks": [
+        { "check": "max_length", "maximum": 4, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cua-source-ids",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "cuaAgentSourceSchema",
+      "shape": {
+        "sourceId": 393,
+        "rootThreadId": 88,
+        "binding": 394,
+        "target": 296,
+        "cursorRevision": 130,
+        "observationRevision": 130,
+        "observedAtMs": 335
+      },
+      "catchall": 395,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "workerId": 88,
+        "chatId": 88,
+        "taskId": 328,
+        "threadId": 88,
+        "turnId": 88,
+        "sessionId": 88
+      },
+      "catchall": 331,
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaAgentObservationSchema",
+      "shape": {
+        "source": 392,
+        "session": 326,
+        "image": 398,
+        "nativeImage": 345
+      },
+      "catchall": 399,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cua-observation",
+          "messageAfterPath": true,
+          "message": "Agent observation attribution and rendition must match the captured session."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "mediaType": 346,
+        "width": 347,
+        "height": 348,
+        "byteCount": 349,
+        "sha256": 350,
+        "cursorIncluded": 351
+      },
+      "catchall": 352,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-image-pixels",
+          "messageAfterPath": true
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cua-model-bytes",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "closed": 401 },
+      "catchall": 402,
       "checks": []
     },
     { "type": "literal", "values": [true], "checks": [] },
@@ -2313,13 +2449,13 @@
     {
       "type": "object",
       "shape": {
-        "status": 389,
+        "status": 406,
         "operation": 2,
-        "code": 390,
-        "message": 391,
-        "outcome": 392
+        "code": 407,
+        "message": 408,
+        "outcome": 409
       },
-      "catchall": 393,
+      "catchall": 410,
       "checks": []
     },
     { "type": "literal", "values": ["error"], "checks": [] },

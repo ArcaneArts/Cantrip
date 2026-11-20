@@ -15,6 +15,52 @@ import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mj
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { taskContent } from "../server-rust/task-wire-fixtures.mjs";
 
+export function previewOperations({
+  call,
+  base,
+  serverId,
+  workerId,
+  chatId,
+  lease,
+  seal,
+  open,
+}) {
+  async function protect(action, selected = lease) {
+    const context = {
+      serverId,
+      workerId,
+      chatId,
+      operationId: randomUUID(),
+      operation: action.operation,
+      previewLeaseId: selected.leaseId,
+    };
+    return {
+      context,
+      body: await protectComputerUseRequest({ context, request: action, seal }),
+    };
+  }
+  const decode = (context, packet) =>
+    openComputerUseResult({
+      context,
+      opaque: packet.response,
+      chunks: packet.chunks,
+      open,
+    });
+  async function operate(action, selected = lease) {
+    const { context, body } = await protect(action, selected);
+    const packet = await call("POST", base + "/operation", 200, body);
+    assert.doesNotMatch(
+      JSON.stringify(packet),
+      /fake-window|CUA fixture|targetGeneration/,
+    );
+    return {
+      ...(await decode(context, packet)),
+      operationId: context.operationId,
+    };
+  }
+  return { protect, decode, operate };
+}
+
 export async function verifyComputerUsePreview({
   call,
   eventually,
@@ -49,40 +95,16 @@ export async function verifyComputerUsePreview({
     encryptEndpointContentPayload({ ...material, context, plaintext });
   const open = (context, opaque) =>
     decryptEndpointContentPayload({ ...material, context, opaque });
-  async function protect(action, selected = lease) {
-    const context = {
-      serverId: server.id,
-      workerId,
-      chatId,
-      operationId: randomUUID(),
-      operation: action.operation,
-      previewLeaseId: selected.leaseId,
-    };
-    return {
-      context,
-      body: await protectComputerUseRequest({ context, request: action, seal }),
-    };
-  }
-  async function decode(context, packet) {
-    return openComputerUseResult({
-      context,
-      opaque: packet.response,
-      chunks: packet.chunks,
-      open,
-    });
-  }
-  async function operate(action, selected = lease) {
-    const { context, body } = await protect(action, selected);
-    const packet = await call("POST", base + "/operation", 200, body);
-    assert.doesNotMatch(
-      JSON.stringify(packet),
-      /fake-window|CUA fixture|targetGeneration/,
-    );
-    return {
-      ...(await decode(context, packet)),
-      operationId: context.operationId,
-    };
-  }
+  const { protect, decode, operate } = previewOperations({
+    call,
+    base,
+    serverId: server.id,
+    workerId,
+    chatId,
+    lease,
+    seal,
+    open,
+  });
   const capabilities = await operate({ operation: "capabilities.get" });
   assert.equal(capabilities.result.data?.backend, "fake");
   const inventory = await operate({ operation: "targets.list" });

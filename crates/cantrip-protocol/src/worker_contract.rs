@@ -377,12 +377,37 @@ pub(super) fn refine(
                 custom(&[], message.unwrap_or("Timeline downs and ups must balance, with ordered times and at most 16 held keys."));
             }
         }
-        "worker-wire-cua-target-ids" => {
+        "worker-wire-cua-target-ids" | "worker-wire-cua-source-ids" => {
             let targets = value.as_array().ok_or(ValidationError::Operation)?;
             let mut ids = std::collections::HashSet::new();
+            let field = if tag == "worker-wire-cua-target-ids" {
+                "id"
+            } else {
+                "sourceId"
+            };
             if targets
                 .iter()
-                .any(|target| !ids.insert(target["id"].as_js_string()))
+                .any(|target| !ids.insert(target[field].as_js_string()))
+            {
+                custom(&[], message.unwrap_or("Invalid input"));
+            }
+        }
+        "worker-wire-cua-model-bytes" => {
+            if number(&value["byteCount"])? > 2.5 * 1024.0 * 1024.0 {
+                custom(&[], message.unwrap_or("Invalid input"));
+            }
+        }
+        "worker-wire-cua-observation" => {
+            let source = &value["source"];
+            let session = &value["session"];
+            let image = &value["image"];
+            let native = &value["nativeImage"];
+            if source["binding"] != session["binding"]
+                || source["target"] != session["target"]
+                || source["cursorRevision"] != session["cursor"]["revision"]
+                || source["observationRevision"] != session["observationRevision"]
+                || number(&image["width"])? > number(&native["width"])?
+                || number(&image["height"])? > number(&native["height"])?
             {
                 custom(&[], message.unwrap_or("Invalid input"));
             }

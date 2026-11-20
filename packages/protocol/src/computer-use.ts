@@ -699,6 +699,8 @@ export const computerUseResultContentSchema = z
 // Native preview uses these existing operation shapes at its encrypted boundary.
 const nativePreviewOperations = new Set<string>([
   "capabilities.get",
+  "agent.sources.list",
+  "agent.observation.get",
   "targets.list",
   "session.open",
   "session.state",
@@ -736,6 +738,8 @@ export const computerUseNativePreviewResultSchema = z.discriminatedUnion(
         cuaControlsResultSchema,
         cuaInputResultSchema,
         cuaClipboardResultSchema,
+        cuaAgentSourcesSchema,
+        cuaAgentObservationSchema,
         closedSchema,
       ]),
     }),

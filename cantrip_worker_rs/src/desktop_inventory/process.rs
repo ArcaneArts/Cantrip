@@ -84,6 +84,10 @@ impl Process {
         !matches!(self.child.try_wait(), Ok(None))
     }
 
+    pub(super) async fn wait(&mut self) {
+        let _ = self.child.wait().await;
+    }
+
     pub(super) async fn initialize(&mut self) -> Result<()> {
         let data = self
             .request(json!({"operation":"capabilities.get"}))

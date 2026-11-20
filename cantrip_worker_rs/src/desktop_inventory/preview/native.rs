@@ -48,6 +48,7 @@ fn rejection(code: &str, message: &'static str, outcome: &'static str) -> anyhow
 #[derive(Clone)]
 struct Session {
     helper: uuid::Uuid,
+    lifetime: Signal,
     data: Value,
 }
 
@@ -86,6 +87,26 @@ impl Attachment {
                     .is_none_or(|requested| session.data["binding"]["sessionId"] == *requested)
             })
             .map_or(Value::Null, |session| session.data.clone())
+    }
+
+    pub(super) fn observation_signal(&self, captured: &Value) -> Option<Signal> {
+        let session = self.session.lock().unwrap();
+        let current = session.as_ref()?;
+        let latest = &current.data;
+        (current.lifetime.check().is_ok()
+            && !captured["target"].is_null()
+            && ["binding", "observationRevision"]
+                .into_iter()
+                .all(|field| latest[field] == captured[field])
+            && ["id", "generation"]
+                .into_iter()
+                .all(|field| latest["target"][field] == captured["target"][field])
+            && latest["cursor"]["revision"] == captured["cursor"]["revision"])
+            .then(|| current.lifetime.clone())
+    }
+
+    pub(super) fn matches_observation(&self, captured: &Value) -> bool {
+        self.observation_signal(captured).is_some()
     }
 }
 
@@ -399,6 +420,7 @@ async fn execute(
         );
         *attachment.session.lock().unwrap() = Some(Session {
             helper: child.identity,
+            lifetime: child.lifetime.1.clone(),
             data: session,
         });
     }

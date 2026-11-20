@@ -4,7 +4,7 @@ mod model;
 use super::{Emit, Signal, protected::Protected};
 use crate::{
     computer_use::{DesktopTurn, HostActivity, HostError, Javascript, NativeError},
-    desktop_inventory::preview::Previews,
+    desktop_inventory::preview::{ObservedTurn, Previews},
     mcp::bindings::{Activation, ComputerUseAuthority, ComputerUseExecutor},
     metadata::Abort,
 };
@@ -42,6 +42,7 @@ pub(super) struct Turn {
     cancel: Abort,
     signal: Signal,
     session: AsyncMutex<Option<Session>>,
+    observations: ObservedTurn,
     calls: Mutex<Calls>,
     drained: Notify,
 }
@@ -104,6 +105,7 @@ impl Turn {
         parent: Signal,
     ) -> Lifetime {
         let (cancel, signal) = Abort::new();
+        let observations = desktop.previews.observe_turn();
         Lifetime(Arc::new(Self {
             desktop,
             epoch,
@@ -116,6 +118,7 @@ impl Turn {
             cancel,
             signal: Signal::any(vec![parent, signal]),
             session: AsyncMutex::default(),
+            observations,
             calls: Mutex::default(),
             drained: Notify::new(),
         }))
@@ -167,6 +170,7 @@ impl Turn {
         *self.phase.lock().unwrap() = Phase::Retired;
         self.cancel
             .abort(anyhow::anyhow!("The native computer-use turn ended."));
+        self.observations.clear();
     }
 
     pub(super) async fn finish(&self) -> Result<()> {
@@ -261,6 +265,10 @@ impl ComputerUseExecutor for Turn {
             && matches!(&*self.phase.lock().unwrap(), Phase::Running(current) if current == turn)
     }
 
+    fn begin_call(&self, request_id: uuid::Uuid) {
+        self.observations.begin(request_id);
+    }
+
     fn execute(
         &self,
         request: Value,
@@ -346,7 +354,17 @@ impl ComputerUseExecutor for Turn {
                         },
                     )
                     .await?;
-                model::result(result, active).await
+                let (response, latest) = model::result(result, active.clone()).await?;
+                if let Some(image) = latest {
+                    desktop.retain_observation(
+                        &self.observations,
+                        request_id,
+                        &self.thread,
+                        image,
+                        active,
+                    );
+                }
+                Ok(response)
             }
             .await;
             if let Some(record) = &mut terminal {
