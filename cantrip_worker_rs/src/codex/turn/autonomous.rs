@@ -268,7 +268,7 @@ impl Autonomous {
                     let activation = mcp.as_ref().context("The autonomous computer-use MCP attachment is unavailable.")?;
                     let epoch = self.computer_use.previews.current_epoch();
                     let lifetime = computer_use::Turn::new(
-                        self.computer_use.clone(), epoch, thread.clone(), emit.clone(),
+                        self.computer_use.clone(), epoch, &runtime, thread.clone(), emit.clone(),
                         Some(protection), Signal::any(vec![signal.clone(), delivery_signal]),
                     );
                     lifetime.0.register(activation, authority)?;

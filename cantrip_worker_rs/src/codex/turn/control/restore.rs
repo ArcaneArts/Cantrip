@@ -189,7 +189,7 @@ impl Turns {
                 let cua = if let Some(observer) = &observe_cua {
                     let lifetime = computer_use::Turn::new(
                         self.computer_use.clone(), epoch.context("Computer use requires the Resume command socket.")?,
-                        thread.clone(), emit.clone(), Some(protection),
+                        runtime, thread.clone(), emit.clone(), Some(protection),
                         Signal::any(vec![signal.clone(), transport.clone(), delivery_signal]),
                     );
                     let activation = mcp.as_ref().context("The restored computer-use MCP attachment is unavailable.")?;

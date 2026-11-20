@@ -84,26 +84,7 @@ impl Verified {
             bail!("Native child history has no retained root turn.");
         }
         let child = self.0.contexts.child_metadata(ancestors.last().unwrap())?;
-        let mut path = lineage::segments(&child["agentPath"]);
-        if path.is_empty() {
-            path.push(s("root"));
-            path.extend(ancestors[1..].iter().cloned());
-            path.push(self.0.options.binding["threadId"].clone());
-        }
-        checked(
-            "agentScopeSchema",
-            &obj([
-                ("rootThreadId", ancestors[0].clone()),
-                ("parentThreadId", ancestors.last().unwrap().clone()),
-                ("agentThreadId", self.0.options.binding["threadId"].clone()),
-                ("rootTurnId", root.clone()),
-                ("agentPath", Value::Array(path)),
-                ("depth", Value::Number(ancestors.len() as f64)),
-                ("nickname", child["nickname"].clone()),
-                ("role", child["role"].clone()),
-                ("isRoot", Value::Bool(false)),
-            ]),
-        )
+        lineage::child_scope(&self.0.options.binding["threadId"], root, ancestors, &child)
     }
 }
 impl Adapters for Verified {

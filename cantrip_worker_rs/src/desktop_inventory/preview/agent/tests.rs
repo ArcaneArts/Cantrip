@@ -181,6 +181,10 @@ async fn host_actions_use_the_live_attachment_and_authorize_each_native_operatio
         worker: &authority["workerId"],
         thread: &"observed-thread".into(),
         turn: &"observed-turn".into(),
+        scope: &crate::history::lineage::root_scope(
+            &"observed-thread".into(),
+            &"observed-turn".into(),
+        ),
         item: &json!("snapshot-item"),
         request: uuid::Uuid::new_v4(),
         publish: &|activity| records.lock().unwrap().push(activity),

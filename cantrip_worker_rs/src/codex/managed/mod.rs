@@ -471,6 +471,18 @@ impl Runtime {
             .subscribe(&self.0.session, thread, descendants)
     }
 
+    pub(in crate::codex) fn child_turn(
+        &self,
+        root: &JsString,
+        root_turn: &JsString,
+        thread: &JsString,
+        turn: &JsString,
+    ) -> Option<(Value, crate::metadata::Signal)> {
+        self.0
+            .interaction_requests
+            .child_turn(root, root_turn, thread, turn)
+    }
+
     pub(in crate::codex) fn interaction_changes(&self) -> tokio::sync::watch::Receiver<()> {
         self.0.interaction_requests.changes()
     }

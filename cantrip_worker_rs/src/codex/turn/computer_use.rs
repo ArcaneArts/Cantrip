@@ -3,8 +3,10 @@ mod model;
 
 use super::{Emit, Signal, protected::Protected};
 use crate::{
+    codex::managed::{Runtime, WeakRuntime},
     computer_use::{DesktopTurn, HostActivity, HostError, Javascript, NativeError},
     desktop_inventory::preview::{ObservedTurn, Previews},
+    history::lineage,
     mcp::bindings::{Activation, ComputerUseAuthority, ComputerUseExecutor},
     metadata::Abort,
 };
@@ -12,6 +14,7 @@ use anyhow::{Context, Result, ensure};
 use cantrip_wire::{JsString, Value, value::json};
 use futures::future::BoxFuture;
 use std::{
+    collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex, OnceLock},
 };
@@ -36,21 +39,23 @@ pub(super) struct Turn {
     emit: Emit,
     protection: Option<Arc<Protected>>,
     publication_failed: Mutex<bool>,
+    runtime: WeakRuntime,
     thread: JsString,
     phase: Mutex<Phase>,
     authority: OnceLock<ComputerUseAuthority>,
     cancel: Abort,
     signal: Signal,
-    session: AsyncMutex<Option<Session>>,
-    observations: ObservedTurn,
-    calls: Mutex<Calls>,
+    actors: Mutex<HashMap<(JsString, JsString), Arc<Actor>>>,
+    calls: Mutex<usize>,
     drained: Notify,
 }
 
-#[derive(Default)]
-struct Calls {
-    pending: Option<Pending>,
-    active: usize,
+struct Actor {
+    signal: Signal,
+    scope: Value,
+    session: AsyncMutex<Option<Session>>,
+    observations: ObservedTurn,
+    pending: Mutex<Option<Pending>>,
 }
 
 struct Pending {
@@ -61,6 +66,7 @@ struct Pending {
 
 struct Call<'a> {
     turn: &'a Turn,
+    actor: &'a Actor,
     id: uuid::Uuid,
     signal: Signal,
 }
@@ -68,15 +74,12 @@ struct Call<'a> {
 impl Drop for Call<'_> {
     fn drop(&mut self) {
         let mut calls = self.turn.calls.lock().unwrap();
-        if calls
-            .pending
-            .as_ref()
-            .is_some_and(|call| call.id == self.id)
-        {
-            calls.pending.take();
+        let mut pending = self.actor.pending.lock().unwrap();
+        if pending.as_ref().is_some_and(|call| call.id == self.id) {
+            pending.take();
         }
-        calls.active -= 1;
-        if calls.active == 0 {
+        *calls -= 1;
+        if *calls == 0 {
             self.turn.drained.notify_one();
         }
     }
@@ -99,13 +102,13 @@ impl Turn {
     pub(super) fn new(
         desktop: Desktop,
         epoch: u64,
+        runtime: &Runtime,
         thread: JsString,
         emit: Emit,
         protection: Option<Arc<Protected>>,
         parent: Signal,
     ) -> Lifetime {
         let (cancel, signal) = Abort::new();
-        let observations = desktop.previews.observe_turn();
         Lifetime(Arc::new(Self {
             desktop,
             epoch,
@@ -113,12 +116,12 @@ impl Turn {
             emit,
             protection,
             publication_failed: Mutex::default(),
+            runtime: runtime.downgrade(),
             phase: Mutex::new(Phase::Preparing),
             authority: OnceLock::new(),
             cancel,
             signal: Signal::any(vec![parent, signal]),
-            session: AsyncMutex::default(),
-            observations,
+            actors: Mutex::default(),
             calls: Mutex::default(),
             drained: Notify::new(),
         }))
@@ -170,12 +173,14 @@ impl Turn {
         *self.phase.lock().unwrap() = Phase::Retired;
         self.cancel
             .abort(anyhow::anyhow!("The native computer-use turn ended."));
-        self.observations.clear();
+        for (_, actor) in self.actors.lock().unwrap().drain() {
+            actor.observations.clear();
+        }
     }
 
     pub(super) async fn finish(&self) -> Result<()> {
         self.retire();
-        while self.calls.lock().unwrap().active != 0 {
+        while *self.calls.lock().unwrap() != 0 {
             self.drained.notified().await;
         }
         ensure!(
@@ -185,10 +190,27 @@ impl Turn {
         Ok(())
     }
 
-    fn invoke(&self, id: uuid::Uuid, reset: bool) -> Result<Call<'_>> {
+    fn scope(&self, thread: &JsString, turn: &JsString) -> Option<(Value, Signal)> {
+        self.signal.check().ok()?;
+        let Phase::Running(root_turn) = &*self.phase.lock().unwrap() else {
+            return None;
+        };
+        if thread == &self.thread {
+            return (root_turn == turn)
+                .then(|| (lineage::root_scope(thread, turn), self.signal.clone()));
+        }
+        let (scope, child) =
+            self.runtime
+                .upgrade()?
+                .child_turn(&self.thread, root_turn, thread, turn)?;
+        Some((scope, Signal::any(vec![self.signal.clone(), child])))
+    }
+
+    fn invoke<'a>(&'a self, actor: &'a Actor, id: uuid::Uuid, reset: bool) -> Result<Call<'a>> {
         let mut calls = self.calls.lock().unwrap();
-        self.signal.check()?;
-        if let Some(current) = calls.pending.as_ref() {
+        actor.signal.check()?;
+        let mut pending = actor.pending.lock().unwrap();
+        if let Some(current) = pending.as_ref() {
             ensure!(
                 reset && !current.reset,
                 "The native turn already has a computer-use call in progress."
@@ -198,10 +220,11 @@ impl Turn {
             ));
         }
         let (cancel, signal) = Abort::new();
-        calls.pending = Some(Pending { id, reset, cancel });
-        calls.active += 1;
+        *pending = Some(Pending { id, reset, cancel });
+        *calls += 1;
         Ok(Call {
             turn: self,
+            actor,
             id,
             signal,
         })
@@ -237,15 +260,20 @@ impl Turn {
         }
     }
 
-    fn session(&self, authority: &ComputerUseAuthority, turn: &JsString) -> Result<Session> {
+    fn session(
+        &self,
+        authority: &ComputerUseAuthority,
+        actor: &Actor,
+        turn: &JsString,
+    ) -> Result<Session> {
         let javascript = Javascript::new(
             self.desktop.binary.clone(),
             Vec::new(),
             json!({
                 "sessionId":uuid::Uuid::new_v4().to_string(),"workerId":authority.captured["workerId"],
-                "chatId":authority.captured["chatId"],"taskId":Value::Null,"threadId":self.thread,"turnId":turn,
+                "chatId":authority.captured["chatId"],"taskId":Value::Null,"threadId":actor.scope["agentThreadId"],"turnId":turn,
             }),
-            self.signal.clone(),
+            actor.signal.clone(),
         )?;
         let desktop =
             self.desktop
@@ -260,13 +288,48 @@ impl Turn {
 
 impl ComputerUseExecutor for Turn {
     fn owns_turn(&self, thread: &JsString, turn: &JsString) -> bool {
-        *thread == self.thread
-            && self.signal.check().is_ok()
-            && matches!(&*self.phase.lock().unwrap(), Phase::Running(current) if current == turn)
+        self.scope(thread, turn)
+            .is_some_and(|(_, signal)| signal.check().is_ok())
     }
 
-    fn begin_call(&self, request_id: uuid::Uuid) {
-        self.observations.begin(request_id);
+    fn begin_call(&self, request: &Value, request_id: uuid::Uuid) -> bool {
+        let (Some(thread), Some(turn)) = (
+            request["threadId"].as_js_string(),
+            request["turnId"].as_js_string(),
+        ) else {
+            return false;
+        };
+        let Some((scope, signal)) = self.scope(thread, turn) else {
+            return false;
+        };
+        let mut actors = self.actors.lock().unwrap();
+        actors.retain(|_, actor| actor.signal.check().is_ok());
+        if signal.check().is_err() {
+            return false;
+        }
+        let key = (thread.clone(), turn.clone());
+        if let Some(actor) = actors.get(&key) {
+            actor.observations.begin(request_id);
+            return true;
+        }
+        // Keep the same bound on simultaneous native agent lifetimes as the
+        // Node worker. Expired children release their slot before the next call.
+        if actors.len() >= 16 {
+            return false;
+        }
+        let observations = self.desktop.previews.observe_turn();
+        observations.begin(request_id);
+        actors.insert(
+            key,
+            Arc::new(Actor {
+                signal,
+                scope,
+                observations,
+                session: AsyncMutex::default(),
+                pending: Mutex::default(),
+            }),
+        );
+        true
     }
 
     fn execute(
@@ -291,15 +354,23 @@ impl ComputerUseExecutor for Turn {
                 self.owns_turn(thread, turn),
                 "The computer-use native turn is no longer active."
             );
+            let actor = self
+                .actors
+                .lock()
+                .unwrap()
+                .get(&(thread.clone(), turn.clone()))
+                .cloned()
+                .context("The computer-use native turn ended before its call.")?;
             let reset = request["operation"] == "js_reset";
-            let call = self.invoke(request_id, reset)?;
-            let active = Signal::any(vec![self.signal.clone(), signal, call.signal.clone()]);
+            let call = self.invoke(&actor, request_id, reset)?;
+            let active = Signal::any(vec![actor.signal.clone(), signal, call.signal.clone()]);
             let publish = |activity| self.activity(activity);
             let activity = HostActivity {
                 chat: &authority.captured["chatId"],
                 worker: &authority.captured["workerId"],
                 thread,
                 turn,
+                scope: &actor.scope,
                 item: &request["itemId"],
                 request: request_id,
                 publish: &publish,
@@ -311,7 +382,7 @@ impl ComputerUseExecutor for Turn {
             session = tokio::select! {
                 biased;
                 reason = active.cancelled() => return Err(reason.into()),
-                session = self.session.lock() => session,
+                session = actor.session.lock() => session,
             };
             if let (Some(record), Some(current)) = (&mut terminal, session.as_ref()) {
                 record.session(current.desktop.activity_session());
@@ -327,7 +398,7 @@ impl ComputerUseExecutor for Turn {
                     .as_js_string()
                     .context("Missing computer-use script.")?;
                 if session.is_none() {
-                    *session = Some(self.session(authority, turn)?);
+                    *session = Some(self.session(authority, &actor, turn)?);
                 }
                 let Session {
                     desktop,
@@ -357,7 +428,7 @@ impl ComputerUseExecutor for Turn {
                 let (response, latest) = model::result(result, active.clone()).await?;
                 if let Some(image) = latest {
                     desktop.retain_observation(
-                        &self.observations,
+                        &actor.observations,
                         request_id,
                         &self.thread,
                         image,

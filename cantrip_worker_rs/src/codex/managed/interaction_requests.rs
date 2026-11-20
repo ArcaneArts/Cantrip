@@ -1,6 +1,10 @@
 //! One physical execution may own native requests on a thread at a time.
 use super::Session;
-use crate::{codex::turn::interactions::protocol, history::lineage};
+use crate::{
+    codex::turn::interactions::protocol,
+    history::lineage,
+    metadata::{Abort, Signal},
+};
 use anyhow::{Result, ensure};
 use cantrip_wire::{JsString, Value, value::json};
 use indexmap::IndexMap;
@@ -27,7 +31,22 @@ struct Route {
 #[derive(Default)]
 struct Descendant {
     parent: Option<JsString>,
-    turn: Option<(JsString, JsString)>,
+    metadata: Value,
+    turn: Option<ChildTurn>,
+}
+
+struct ChildTurn {
+    id: JsString,
+    root: JsString,
+    cancel: Abort,
+    signal: Signal,
+}
+
+impl Drop for ChildTurn {
+    fn drop(&mut self) {
+        self.cancel
+            .abort(anyhow::anyhow!("The native child turn ended."));
+    }
 }
 
 #[derive(Default)]
@@ -100,6 +119,43 @@ impl Drop for Subscription {
 }
 
 impl Requests {
+    pub(super) fn child_turn(
+        &self,
+        root: &JsString,
+        root_turn: &JsString,
+        thread: &JsString,
+        turn: &JsString,
+    ) -> Option<(Value, Signal)> {
+        let state = self.0.registry.lock().unwrap();
+        if state.routes.contains_key(thread) {
+            return None;
+        }
+        let child = state.descendants.get(thread)?;
+        let active = child.turn.as_ref()?;
+        if &active.id != turn || &active.root != root_turn {
+            return None;
+        }
+        let mut ancestry = Vec::new();
+        for parent in state.ancestors(thread) {
+            ancestry.push(json!(parent));
+            if parent == root {
+                ancestry.reverse();
+                let scope = lineage::child_scope(
+                    &json!(thread),
+                    &json!(root_turn),
+                    &ancestry,
+                    &child.metadata,
+                )
+                .ok()?;
+                return Some((scope, active.signal.clone()));
+            }
+            if state.routes.contains_key(parent) {
+                return None;
+            }
+        }
+        None
+    }
+
     pub(super) fn subscribe(
         &self,
         session: &Session,
@@ -267,6 +323,11 @@ impl Requests {
 }
 
 impl Registry {
+    fn ancestors<'a>(&'a self, thread: &'a JsString) -> impl Iterator<Item = &'a JsString> {
+        let parent = |thread: &'a JsString| self.descendants.get(thread)?.parent.as_ref();
+        std::iter::successors(parent(thread), move |thread| parent(thread)).take(32)
+    }
+
     fn root(&self, params: &Value) -> Option<JsString> {
         let thread = params["threadId"].as_js_string()?;
         let requested = params["turnId"].as_js_string();
@@ -277,20 +338,17 @@ impl Registry {
                     || route.turn.as_ref() == requested))
                 .then(|| thread.clone());
         }
-        let child = self.descendants.get(thread)?;
-        let (turn, root_turn) = child.turn.as_ref()?;
-        if requested.is_some_and(|requested| requested != turn) {
+        let child = self.descendants.get(thread)?.turn.as_ref()?;
+        if requested.is_some_and(|requested| requested != &child.id) {
             return None;
         }
-        let mut parent = child.parent.as_ref()?;
-        for _ in 0..32 {
+        for parent in self.ancestors(thread) {
             if let Some(route) = self.routes.get(parent) {
                 return (route.descendants
                     && !route.ended
-                    && route.turn.as_ref() == Some(root_turn))
+                    && route.turn.as_ref() == Some(&child.root))
                 .then(|| parent.clone());
             }
-            parent = self.descendants.get(parent)?.parent.as_ref()?;
         }
         None
     }
@@ -302,7 +360,9 @@ impl Registry {
                 if let Some(metadata) = lineage::child(&p["thread"]) {
                     let thread = metadata["threadId"].as_js_string().unwrap();
                     let parent = metadata["parentThreadId"].as_js_string().unwrap();
-                    self.relate(thread, parent);
+                    if let Some(child) = self.relate(thread, parent) {
+                        child.metadata = metadata;
+                    }
                 }
             }
             Some("item/started" | "item/completed") => {
@@ -328,10 +388,19 @@ impl Registry {
                         .as_js_string()
                         .filter(|root| *root != turn)
                         && let Some(entry) = self.descendant(thread)
+                        && entry
+                            .turn
+                            .as_ref()
+                            .is_none_or(|known| &known.id != turn || &known.root != root)
                     {
-                        let previous = entry.turn.replace((turn.clone(), root.clone()));
-                        return previous.is_some_and(|(previous, _)| previous != *turn)
-                            && self.retire(thread);
+                        let (cancel, signal) = Abort::new();
+                        let previous = entry.turn.replace(ChildTurn {
+                            id: turn.clone(),
+                            root: root.clone(),
+                            cancel,
+                            signal,
+                        });
+                        return previous.is_some() && self.retire(thread);
                     }
                 }
             }
@@ -343,7 +412,7 @@ impl Registry {
                             route.ended = true;
                         }
                     } else if let Some(child) = self.descendants.get_mut(thread) {
-                        if child.turn.as_ref().map(|(id, _)| id) == turn {
+                        if child.turn.as_ref().map(|active| &active.id) == turn {
                             child.turn = None;
                             return self.retire(thread);
                         }
@@ -363,13 +432,15 @@ impl Registry {
         false
     }
 
-    fn relate(&mut self, child: &JsString, parent: &JsString) {
-        if child != parent
-            && let Some(entry) = self.descendant(child)
-            && entry.parent.is_none()
-        {
+    fn relate(&mut self, child: &JsString, parent: &JsString) -> Option<&mut Descendant> {
+        if child == parent {
+            return None;
+        }
+        let entry = self.descendant(child)?;
+        if entry.parent.is_none() {
             entry.parent = Some(parent.clone());
         }
+        (entry.parent.as_ref() == Some(parent)).then_some(entry)
     }
 
     fn descendant(&mut self, thread: &JsString) -> Option<&mut Descendant> {
@@ -403,5 +474,70 @@ impl Registry {
             });
         }
         changed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn computer_use_child_lifetime_requires_exact_native_ancestry() {
+        let requests = Requests::default();
+        let observe = |frame| requests.0.registry.lock().unwrap().observe(&frame);
+        let thread = JsString::from("child");
+        let root = JsString::from("root");
+        let turn = JsString::from("child-turn");
+        let root_turn = JsString::from("root-turn");
+        let start = json!({
+            "method":"turn/started","params":json!({
+                "threadId":thread,"turn":json!({"id":turn,"rootTurnId":root_turn}),
+            }),
+        });
+        observe(start.clone());
+        assert!(
+            requests
+                .child_turn(&root, &root_turn, &thread, &turn)
+                .is_none()
+        );
+        observe(json!({
+            "method":"thread/started","params":json!({
+                "thread":json!({"id":thread,"parentThreadId":root,"agentNickname":"child label"}),
+            }),
+        }));
+        let (scope, lifetime) = requests
+            .child_turn(&root, &root_turn, &thread, &turn)
+            .unwrap();
+        assert_eq!(scope["parentThreadId"], json!(root));
+        assert_eq!(scope["nickname"], "child label");
+        assert_eq!(scope["isRoot"], false);
+        assert!(
+            requests
+                .child_turn(&root, &"wrong-root-turn".into(), &thread, &turn)
+                .is_none()
+        );
+        assert!(
+            requests
+                .child_turn(&"foreign-root".into(), &root_turn, &thread, &turn)
+                .is_none()
+        );
+        assert!(
+            requests
+                .child_turn(&root, &root_turn, &thread, &"foreign-turn".into())
+                .is_none()
+        );
+        observe(start);
+        assert!(lifetime.check().is_ok());
+        observe(json!({
+            "method":"turn/completed","params":json!({
+                "threadId":thread,"turn":json!({"id":turn}),
+            }),
+        }));
+        assert!(lifetime.check().is_err());
+        assert!(
+            requests
+                .child_turn(&root, &root_turn, &thread, &turn)
+                .is_none()
+        );
     }
 }

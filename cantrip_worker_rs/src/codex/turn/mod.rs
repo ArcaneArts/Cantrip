@@ -993,7 +993,7 @@ impl Turns {
                 None
             } else {
                 Some(computer_use::Turn::new(self.computer_use.clone(), epoch.context("Computer use requires an active worker socket.")?,
-                    thread.clone(), emit.clone(), protection.clone(), signal.clone()))
+                    runtime, thread.clone(), emit.clone(), protection.clone(), signal.clone()))
             };
             let (subscription, mut events, capture) =
                 output::subscribe_with_context(&runtime.history(), thread, context.clone(),

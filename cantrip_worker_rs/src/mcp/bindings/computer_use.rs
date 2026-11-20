@@ -55,7 +55,9 @@ impl Authority {
 pub trait ComputerUseExecutor: Send + Sync {
     fn owns_turn(&self, thread: &JsString, turn: &JsString) -> bool;
 
-    fn begin_call(&self, _request_id: uuid::Uuid) {}
+    fn begin_call(&self, _request: &Value, _request_id: uuid::Uuid) -> bool {
+        true
+    }
 
     fn execute(
         &self,
