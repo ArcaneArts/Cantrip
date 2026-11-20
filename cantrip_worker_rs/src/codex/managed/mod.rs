@@ -10,6 +10,7 @@ mod worker;
 
 use super::{
     admission::{Adapter, OnRevoked},
+    customizations::oauth::{self, Attempts},
     private_inference::{Hooks, Router, Routing},
     process_transport::{RetirementError, retirement_failed},
     rpc_requests::{Response, Settlement},
@@ -76,6 +77,7 @@ struct Inner {
     closing: Mutex<Option<Promise<()>>>,
     standalone_skills: super::skills::standalone::RuntimeSkills,
     project_skill_roots: tokio::sync::RwLock<Vec<JsString>>,
+    mcp_oauth: Attempts,
 }
 
 impl Drop for Inner {
@@ -259,6 +261,7 @@ impl Runtime {
         ));
         let queue_observers = QueueObservers::default();
         let interaction_requests = interaction_requests::Requests::default();
+        let mcp_oauth = Attempts::default();
         let retirement = Promise::spawn(pump(
             router.clone(),
             events,
@@ -271,6 +274,7 @@ impl Runtime {
                 resources: resources.clone(),
                 queue_observers: queue_observers.clone(),
                 interaction_requests: interaction_requests.clone(),
+                mcp_oauth: mcp_oauth.clone(),
             },
         ));
         let runtime = Self(Arc::new_cyclic(|inner| Inner {
@@ -295,6 +299,7 @@ impl Runtime {
             closing: Mutex::new(None),
             standalone_skills: Default::default(),
             project_skill_roots: Default::default(),
+            mcp_oauth,
         }));
         if let Err(error) = host
             .initialize(&runtime.0.session, &profile)
@@ -347,6 +352,10 @@ impl Runtime {
 
     pub(super) fn project_skill_roots(&self) -> &tokio::sync::RwLock<Vec<JsString>> {
         &self.0.project_skill_roots
+    }
+
+    pub(super) fn mcp_oauth(&self) -> &Attempts {
+        &self.0.mcp_oauth
     }
 
     pub(in crate::codex) fn version_raw(&self) -> &Value {
@@ -514,6 +523,7 @@ struct NativeCallbacks {
     resources: Arc<resources::Resources>,
     queue_observers: QueueObservers,
     interaction_requests: interaction_requests::Requests,
+    mcp_oauth: Attempts,
 }
 
 async fn pump(
@@ -530,6 +540,7 @@ async fn pump(
         resources,
         queue_observers,
         interaction_requests,
+        mcp_oauth,
     } = native;
     let mut callbacks = JoinSet::new();
     let started = Instant::now();
@@ -561,6 +572,13 @@ async fn pump(
                             event(&logs, "warn", "Native resource protection failed", &id, "native-resources", "failed", started);
                         }
                     });
+                    continue;
+                }
+                if let EventKind::Message(message) = &event_data.kind
+                    && message["method"] == oauth::COMPLETED
+                    && message.get("id").is_none()
+                {
+                    mcp_oauth.complete(&message["params"]);
                     continue;
                 }
                 if let EventKind::Message(message) = &event_data.kind

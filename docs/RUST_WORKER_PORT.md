@@ -8566,3 +8566,26 @@ then cleared it while retaining the global skill. The skill settings
 regression and 13 focused Node reference tests passed. Repeat the inventory
 fixture with `scripts/worker-rust/standalone-turn-smoke.mjs --customization-inventory`.
 MCP OAuth and external configuration import still require Rust handlers.
+
+## 238. Authorize MCP servers from Project Chat
+
+Reference commit `730d9100a6285596c7f4e7b34069731ce6d31403` (#3401).
+
+The Rust worker starts an MCP sign-in against the selected Codex account
+configuration and reports status through the existing encrypted endpoint.
+Each Chat tracks its own attempt in the running app-server generation.
+Native login IDs match completions to their attempts, including a completion
+that arrives before the start reply. Older app servers without an ID finish
+one attempt for a given server at a time. The start URL and provider errors
+stay out of RPC diagnostics.
+
+On macOS ARM64, production Rust Core in PGlite mode, the Rust worker and
+bundled Codex 0.166.0 passed the public API fixture. The loopback provider
+processed one approval and one denial for two chats with the same MCP server
+name. Each chat returned its own status. The provider received the actual
+token exchange, and MCP authenticated with the saved credential after reload.
+The fixture also verified an encrypted failure for an unknown server. The
+focused Rust correlation tests, protected skill-settings smoke and 13 Node
+reference tests passed. Repeat the integration fixture with
+`scripts/worker-rust/standalone-turn-smoke.mjs --customization-inventory`.
+External configuration import remains open.

@@ -34,6 +34,7 @@ import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
 import { verifySubagentInteraction } from "./subagent-interaction-cases.mjs";
 import { verifySkillSettings } from "./skill-settings-smoke-cases.mjs";
 import { verifyCustomizationInventory } from "./customization-inventory-smoke-cases.mjs";
+import { startMcpOauthFixture } from "./mcp-oauth-fixture.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   fixtureCodex,
@@ -2963,20 +2964,26 @@ try {
   await startWorker(enrollment.code);
   await setupEncryption();
   if (mcpKey) {
-    await verifyCustomizationInventory({
-      call,
-      eventually,
-      createModel,
-      encryptedTurn,
-      ownerId,
-      workerId,
-      keyRevision,
-      labelKey,
-      componentKey: customizationKey,
-      mcpKey,
-      data,
-      codexHome: codexFixtureHome,
-    });
+    const oauth = await startMcpOauthFixture();
+    try {
+      await verifyCustomizationInventory({
+        call,
+        eventually,
+        createModel,
+        encryptedTurn,
+        ownerId,
+        workerId,
+        keyRevision,
+        labelKey,
+        componentKey: customizationKey,
+        mcpKey,
+        data,
+        codexHome: codexFixtureHome,
+        oauth,
+      });
+    } finally {
+      oauth.close();
+    }
   } else if (customizationKey) {
     await verifySkillSettings({
       call,

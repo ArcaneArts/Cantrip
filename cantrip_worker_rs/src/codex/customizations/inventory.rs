@@ -145,7 +145,7 @@ fn capabilities(report: &Value) -> Value {
         }),
         "mcp":json!({
             "status":method("mcpServerStatus/list","stable"),"resourceRead":method("mcpServer/resource/read","stable"),
-            "reload":method("config/mcpServer/reload","stable"), "oauth":capability(false,"MCP OAuth is pending in the Rust worker.","stable"),
+            "reload":method("config/mcpServer/reload","stable"),"oauth":method(super::oauth::LOGIN,"stable"),
         }),
         "plugins":json!({"list":plugins,"read":plugins,"install":plugins,"uninstall":plugins}),
         "externalImports":json!({"detect":external,"apply":external}),

@@ -98,9 +98,17 @@ impl<'a> Operation<'a> {
         Ok(content)
     }
 
-    pub fn seal(&self, result: Result<Value>, schema: &str) -> Result<Value> {
-        let content = match result.and_then(|value| checked(schema, &value)) {
-            Ok(value) => json!({"status":"succeeded","value":value}),
+    pub fn seal(
+        &self,
+        result: Result<Value>,
+        schema: &str,
+        lifecycle: impl FnOnce(&Value) -> Option<&'static str>,
+    ) -> Result<Value> {
+        let (content, lifecycle) = match result.and_then(|value| checked(schema, &value)) {
+            Ok(value) => {
+                let phase = lifecycle(&value);
+                (json!({"status":"succeeded","value":value}), phase)
+            }
             Err(error) => {
                 let message = JsString::from(error.to_string().as_str());
                 let message = message.trim();
@@ -109,7 +117,10 @@ impl<'a> Operation<'a> {
                 } else {
                     JsString::new(message.units()[..message.units().len().min(2_000)].to_vec())
                 };
-                json!({"status":"failed","error":json!({"message":message})})
+                (
+                    json!({"status":"failed","error":json!({"message":message})}),
+                    None,
+                )
             }
         };
         self.assert_current()?;
@@ -124,7 +135,7 @@ impl<'a> Operation<'a> {
             "protectedCustomizationResponseSchema",
             &json!({
                 "operationId":self.id,"operation":self.name,"scope":self.scope,
-                "result":content["status"],"lifecycle":Value::Null,"protectedResponse":protected,
+                "result":content["status"],"lifecycle":lifecycle,"protectedResponse":protected,
             }),
         )
     }

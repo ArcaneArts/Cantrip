@@ -1019,7 +1019,10 @@
     "codexMcpResourceReadRequestSchema": 14636,
     "codexMcpResourceReadSchema": 14639,
     "codexMcpReloadRequestSchema": 14654,
-    "codexMcpReloadResultSchema": 14656
+    "codexMcpReloadResultSchema": 14656,
+    "codexMcpOauthStartSchema": 14658,
+    "codexMcpOauthStartResultSchema": 14660,
+    "codexMcpOauthStatusSchema": 14664
   },
   "nodes": [
     {
@@ -87725,6 +87728,64 @@
       "shape": { "reloaded": 14657 },
       "checks": []
     },
-    { "type": "literal", "values": [true], "checks": [] }
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "object",
+      "name": "codexMcpOauthStartSchema",
+      "shape": { "server": 14659 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "codexMcpOauthStartResultSchema",
+      "shape": { "server": 14661, "authorizationUrl": 14662, "status": 14663 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "string_format", "format": "url", "abort": false },
+        { "check": "max_length", "maximum": 8192, "when": "length" }
+      ]
+    },
+    { "type": "literal", "values": ["pending"], "checks": [] },
+    {
+      "type": "object",
+      "name": "codexMcpOauthStatusSchema",
+      "shape": { "server": 14665, "status": 14666, "error": 14667 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 256, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["pending", "succeeded", "failed", "unknown"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 14668, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    }
   ]
 }

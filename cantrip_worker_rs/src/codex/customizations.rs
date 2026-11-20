@@ -1,6 +1,7 @@
 //! Protected Project Chat inventory and the native customization operations.
 mod inventory;
 mod mcp;
+pub(super) mod oauth;
 
 use super::{managed::Runtime, skills};
 use crate::{filesystem::paths, protected_content::customization::Operation};
@@ -19,6 +20,8 @@ pub(super) enum Command {
     SkillRoots,
     McpRead,
     McpReload,
+    McpOauthStart,
+    McpOauthStatus,
 }
 
 impl Command {
@@ -28,12 +31,17 @@ impl Command {
             "customization.skill-roots.set" => Self::SkillRoots,
             "customization.mcp.resource.read" => Self::McpRead,
             "customization.mcp.reload" => Self::McpReload,
+            "customization.mcp.oauth.start" => Self::McpOauthStart,
+            "customization.mcp.oauth.status" => Self::McpOauthStatus,
             _ => return None,
         })
     }
 
     pub fn mutating(self) -> bool {
-        matches!(self, Self::SkillRoots | Self::McpReload)
+        matches!(
+            self,
+            Self::SkillRoots | Self::McpReload | Self::McpOauthStart
+        )
     }
 
     pub fn schemas(self) -> (Option<&'static str>, &'static str) {
@@ -51,6 +59,26 @@ impl Command {
                 Some("codexMcpReloadRequestSchema"),
                 "codexMcpReloadResultSchema",
             ),
+            Self::McpOauthStart => (
+                Some("codexMcpOauthStartSchema"),
+                "codexMcpOauthStartResultSchema",
+            ),
+            Self::McpOauthStatus => (
+                Some("codexMcpOauthStartSchema"),
+                "codexMcpOauthStatusSchema",
+            ),
+        }
+    }
+
+    pub fn lifecycle(self, value: &Value) -> Option<&'static str> {
+        match self {
+            Self::McpOauthStart => Some("pending"),
+            Self::McpOauthStatus => Some(match value["status"].as_str() {
+                Some("pending") => "pending",
+                Some("unknown") => "unknown",
+                _ => "completed",
+            }),
+            _ => None,
         }
     }
 
@@ -60,6 +88,8 @@ impl Command {
             Self::SkillRoots => set_roots(&target, input).await,
             Self::McpRead => mcp::read(&target, input).await,
             Self::McpReload => mcp::reload(&target).await,
+            Self::McpOauthStart => oauth::start(&target, input).await,
+            Self::McpOauthStatus => oauth::status(&target, input),
         }
     }
 }
