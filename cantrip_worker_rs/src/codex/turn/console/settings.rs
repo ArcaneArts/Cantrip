@@ -5,7 +5,7 @@ use crate::{
     chat_content::Scope,
     codex::{
         rpc_requests::Failure,
-        turn::{autonomous::same_workspace, settings::assert_ordinary_settings},
+        turn::{autonomous::same_workspace, settings::permission},
     },
     metadata::Signal,
 };
@@ -81,26 +81,38 @@ async fn execute(view: &View, session: Value, mut frame: Value, open: &Signal) -
         .and_then(|active| active.root.as_ref())
         .map_or(Value::Null, |root| root.activation.clone());
 
-    open.check()?;
-    view.assert_current()?;
+    let mut command = json!({"nativeViewRequestId":frame["id"],"operationId":operation});
+    let change = if permission::has_update(&frame["params"]) {
+        let change = view
+            .turns
+            .resolve_console_permission(&session, &frame["params"], open)
+            .await?;
+        permission::apply(&mut frame["params"], &change.transition);
+        command["settingsBindingId"] = change.binding.clone();
+        command["permissionTransition"] = change.transition.clone();
+        Some(change)
+    } else {
+        None
+    };
+    command["permissionProfileId"] = view.permission();
+    let permission_source = change.as_ref().map(|change| change.source.clone());
+    let check = || {
+        open.check()?;
+        view.assert_current()?;
+        if let Some(source) = &permission_source {
+            source.assert_current()?;
+        }
+        Ok(())
+    };
+    check()?;
     let receipt = view
         .turns
         .receipts
-        .admit_console_settings(
-            scope,
-            session,
-            &operation,
-            &frame,
-            &view.permission(),
-            activation,
-        )
+        .admit_console_settings(scope, session, &frame, &command, activation)
         .await?;
     let (result, _) = view
         .turns
-        .dispatch_settings(runtime, &receipt, frame["params"].clone(), None, || {
-            open.check()?;
-            view.assert_current()
-        })
+        .dispatch_settings(runtime, &receipt, frame["params"].clone(), change, check)
         .await?;
     Ok(result)
 }
@@ -110,7 +122,6 @@ async fn validate(view: &View, params: &Value) -> Result<()> {
         params.is_object() && params["threadId"].as_js_string() == Some(view.prepared.thread.id()),
         "Managed settings require the bound thread ID."
     );
-    assert_ordinary_settings(params)?;
     for key in [
         "config",
         "managedConfig",

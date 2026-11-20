@@ -1,7 +1,7 @@
 //! Native settings application is a separate fact from the RPC acknowledgment.
 //! Use the existing worker outbox so captured facts survive a worker upgrade.
 mod account_defaults;
-mod permission;
+pub(super) mod permission;
 pub(in crate::codex) mod snapshot;
 mod update;
 pub(crate) use account_defaults::COMMAND as ACCOUNT_DEFAULTS;
@@ -43,20 +43,10 @@ use tokio::{
 pub(in crate::codex) const UPDATE: &str = "thread/settings/update";
 
 pub(super) fn assert_ordinary_settings(params: &Value) -> Result<()> {
-    for key in [
-        "approvalPolicy",
-        "approvalsReviewer",
-        "sandbox",
-        "sandboxPolicy",
-        "permissions",
-        "permissionProfile",
-        "permissionProfileId",
-    ] {
-        ensure!(
-            params[key].is_null(),
-            "Changing native permissions requires the managed permission transition."
-        );
-    }
+    ensure!(
+        !permission::has_update(params),
+        "Changing native permissions requires the managed permission transition."
+    );
     Ok(())
 }
 

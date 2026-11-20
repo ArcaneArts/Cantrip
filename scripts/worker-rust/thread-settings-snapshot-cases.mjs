@@ -16,6 +16,7 @@ export function settingsSnapshotPeer({ ensure, available, oracle, scope }) {
   let effective;
   let binding;
   let lost;
+  let refreshes = 0;
   const requestRead = (fields = {}) =>
     ensure({ type: "chat.settings.read", scope: { ...scope, ...fields } });
   async function verify(snapshot) {
@@ -39,8 +40,15 @@ export function settingsSnapshotPeer({ ensure, available, oracle, scope }) {
     return settings;
   }
   return {
+    get binding() {
+      return binding;
+    },
+    get refreshes() {
+      return refreshes;
+    },
     async apply(action, body, send, drop) {
       if (action === "settings-refresh") {
+        refreshes += 1;
         assert.deepEqual(nativeSettingsRefreshRequestSchema.parse(body), {
           workerId: scope.workerId,
           chatId: scope.chatId,

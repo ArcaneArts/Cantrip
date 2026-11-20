@@ -978,7 +978,8 @@
     "nativeAccountDefaultsSnapshotSchema": 14433,
     "nativeAccountDefaultsResultSchema": 14437,
     "nativePermissionUpdateCommandSchema": 5487,
-    "permissionTransitionSchema": 5489
+    "permissionTransitionSchema": 5489,
+    "nativePermissionTransitionResolutionSchema": 14446
   },
   "nodes": [
     {
@@ -86650,6 +86651,15 @@
       "values": ["read", "confirmed", "changed", "unavailable", "rejected"],
       "checks": []
     },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "nativePermissionTransitionResolutionSchema",
+      "shape": { "permissionTransition": 5489, "bindingId": 14447 },
+      "catchall": 14448,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5760, "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }
