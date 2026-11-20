@@ -5,8 +5,6 @@ use crate::codex::{
 };
 use task::{checkpoint::Checkpoint, cycle::GoalCycle};
 
-pub(crate) const COMMAND: &str = "chat.pause.set";
-
 enum Observer {
     Round(Arc<Active>),
     Goal(Arc<GoalCycle>, Arc<Checkpoint>),

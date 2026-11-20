@@ -2,15 +2,18 @@
 pub(in crate::codex) mod import;
 mod prompt;
 
-use super::{View, gateway::fault};
+use super::{Turns, View, gateway::fault};
 use crate::{
     chat_content::Scope,
-    codex::turn::{
-        Key,
-        receipt::{MetadataHttpError, Unacknowledged},
+    codex::{
+        preparation::command::Prepared,
+        turn::{
+            Key,
+            receipt::{Client, MetadataHttpError, Unacknowledged},
+        },
     },
     metadata::Signal,
-    native_items::array,
+    native_items::{array, concat},
 };
 use anyhow::{Context, Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -126,16 +129,7 @@ async fn execute(view: &View, session: &Value, frame: &Value, signal: &Signal) -
     } else {
         validate_mutation(params)?;
         let operation = required(&params["managed"]["operationId"], "operation ID")?;
-        let activation = view
-            .turns
-            .active
-            .lock()
-            .unwrap()
-            .active
-            .get(&key)
-            .and_then(|active| active.root.as_ref())
-            .map(|root| root.activation.clone())
-            .unwrap_or(Value::Null);
+        let activation = activation(&view.turns, &key);
         let admission = client.queue_admission(
             &scope,
             session,
@@ -192,6 +186,115 @@ async fn execute(view: &View, session: &Value, frame: &Value, signal: &Signal) -
         .await?;
     view.assert_current()?;
     complete(view, &scope, session, &admission, &result, signal).await
+}
+
+pub(in crate::codex::turn) enum Resume {
+    Started,
+    Empty,
+    Deferred,
+}
+
+pub(in crate::codex::turn) async fn resume(
+    turns: &Turns,
+    key: &Key,
+    prepared: &Prepared,
+    scope: &Scope,
+    signal: &Signal,
+) -> Result<Resume> {
+    let queue = prepared
+        .queue
+        .as_ref()
+        .context("Automation Resume requires its bound managed queue.")?;
+    queue.synchronize(scope).await?;
+    signal.check()?;
+    let session = queue.session();
+    let client = &turns.receipts;
+    let snapshot = client
+        .queue(
+            scope,
+            "read",
+            json!({"session":session}),
+            Some(signal.clone()),
+        )
+        .await?;
+    queue.current(scope)?;
+    observe(&queue.state, &snapshot);
+    if snapshot["paused"] == true {
+        return Ok(Resume::Deferred);
+    }
+    let Some(item) = super::super::queue_wake::eligible_item(&snapshot) else {
+        return Ok(Resume::Empty);
+    };
+    let revision = revision(&snapshot["revision"])?;
+    let operation = concat(&[
+        "queue-resume:".into(),
+        key.2.clone(),
+        ":".into(),
+        required(&item["id"], "item ID")?,
+        format!(":{}:{}", item["revision"], revision).into(),
+    ]);
+    let permission = prepared.permission.lock().unwrap().clone();
+    let managed = json!({"operationId":operation});
+    let params = json!({
+        "threadId":session["threadId"],"queuedSubmissionId":item["id"],
+        "expectedRevision":revision,"managed":managed,
+    });
+    let admission = client.queue_admission(
+        scope,
+        session,
+        &permission,
+        &operation,
+        &json!({"method":"thread/queue/start","params":params}),
+        activation(turns, key),
+    )?;
+    let previous = client
+        .queue(
+            scope,
+            "lookup",
+            json!({"admission":admission}),
+            Some(signal.clone()),
+        )
+        .await?;
+    queue.current(scope)?;
+    let result = if previous["found"] == true {
+        previous
+    } else {
+        let mutation = json!({"kind":"start","id":item["id"]});
+        client
+            .queue(
+                scope,
+                "mutate",
+                json!({"admission":admission,"expectedRevision":revision,"mutation":mutation}),
+                Some(signal.clone()),
+            )
+            .await?
+    };
+    queue.current(scope)?;
+    let receipt = validate_receipt(session, &admission, &result)?;
+    observe(&queue.state, &result);
+    if receipt["status"] == "rejected" && receipt["rejectionCode"] == "queue-revision-conflict" {
+        return Ok(Resume::Deferred);
+    }
+    ensure!(
+        receipt["status"] == "applied",
+        "Core did not apply the automation queue start."
+    );
+    start_receipt(client, scope, session, &admission, &result, signal).await?;
+    queue.current(scope)?;
+    signal.check()?;
+    Ok(Resume::Started)
+}
+
+fn activation(turns: &Turns, key: &Key) -> Value {
+    turns
+        .active
+        .lock()
+        .unwrap()
+        .active
+        .get(key)
+        .and_then(|active| active.root.as_ref())
+        .map(|root| root.activation.clone())
+        .unwrap_or(Value::Null)
 }
 
 fn validate_mutation(params: &Value) -> Result<()> {
@@ -415,18 +518,8 @@ async fn complete(
     result: &Value,
     signal: &Signal,
 ) -> Result<Value> {
-    let receipt = &result["receipt"];
+    let receipt = validate_receipt(session, admission, result)?;
     let method = admission["method"].as_str().unwrap();
-    if ["operationId", "payloadDigest", "method"]
-        .iter()
-        .any(|key| receipt[*key] != admission[*key])
-        || ["chatId", "threadId"]
-            .iter()
-            .any(|key| receipt[*key] != session[*key])
-        || receipt["startsExecution"] != false
-    {
-        return Err(Unacknowledged("queue operation identity".into()).into());
-    }
     observe(&view.queue.state, result);
     if receipt["status"] == "rejected" && result["claim"].is_null() {
         bail!("Canonical queue operation is rejected; reconcile this operation before retrying.");
@@ -443,27 +536,15 @@ async fn complete(
         }
         "thread/queue/delete" => json!({"deleted":true}),
         "thread/queue/start" => {
-            let claim = &result["claim"];
-            if claim["requestOperationId"] != admission["operationId"]
-                || claim["chatId"] != session["chatId"]
-                || !claim["id"].is_string()
-            {
-                return Err(Unacknowledged("queue start claim".into()).into());
-            }
-            let client = &view.turns.receipts;
-            let result = client
-                .queue(
-                    scope,
-                    "start-receipt",
-                    json!({
-                        "session":session,"claimId":claim["id"],
-                    }),
-                    Some(signal.clone()),
-                )
-                .await?;
-            client
-                .open_queue_start(scope, session, claim, &result)
-                .map_err(|_| Unacknowledged("queue start receipt".into()))?
+            start_receipt(
+                &view.turns.receipts,
+                scope,
+                session,
+                admission,
+                result,
+                signal,
+            )
+            .await?
         }
         _ => json!({}),
     };
@@ -471,4 +552,51 @@ async fn complete(
     view.assert_current()?;
     scope.identity()?;
     Ok(acknowledgment)
+}
+
+fn validate_receipt<'a>(
+    session: &Value,
+    admission: &Value,
+    result: &'a Value,
+) -> Result<&'a Value> {
+    let receipt = &result["receipt"];
+    if ["operationId", "payloadDigest", "method"]
+        .iter()
+        .any(|key| receipt[*key] != admission[*key])
+        || ["chatId", "threadId"]
+            .iter()
+            .any(|key| receipt[*key] != session[*key])
+        || receipt["startsExecution"] != false
+    {
+        return Err(Unacknowledged("queue operation identity".into()).into());
+    }
+    Ok(receipt)
+}
+
+async fn start_receipt(
+    client: &Client,
+    scope: &Scope,
+    session: &Value,
+    admission: &Value,
+    result: &Value,
+    signal: &Signal,
+) -> Result<Value> {
+    let claim = &result["claim"];
+    if claim["requestOperationId"] != admission["operationId"]
+        || claim["chatId"] != session["chatId"]
+        || !claim["id"].is_string()
+    {
+        return Err(Unacknowledged("queue start claim".into()).into());
+    }
+    let result = client
+        .queue(
+            scope,
+            "start-receipt",
+            json!({"session":session,"claimId":claim["id"]}),
+            Some(signal.clone()),
+        )
+        .await?;
+    client
+        .open_queue_start(scope, session, claim, &result)
+        .map_err(|_| Unacknowledged("queue start receipt".into()).into())
 }

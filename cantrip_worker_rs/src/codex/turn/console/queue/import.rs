@@ -201,7 +201,11 @@ impl Import {
         result
     }
 
-    fn current(&self, scope: &Scope) -> Result<Runtime> {
+    pub(super) fn session(&self) -> &Value {
+        &self.session
+    }
+
+    pub(super) fn current(&self, scope: &Scope) -> Result<Runtime> {
         ensure!(
             self.selected.strong_count() > 0,
             "The managed queue owner was replaced."

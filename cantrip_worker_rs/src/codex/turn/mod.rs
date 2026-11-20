@@ -68,7 +68,7 @@ use tokio::sync::{Mutex as AsyncMutex, watch};
 pub(crate) const RUN: &str = "chat.turn";
 pub(crate) const INTERRUPT: &str = "chat.interrupt";
 pub(crate) const CONTROL: &str = "chat.native-control";
-pub(crate) use control::task_pause::COMMAND as TASK_PAUSE;
+pub(crate) use control::PAUSE_SET;
 pub(crate) const RESUME: &str = "chat.suspension.resume";
 pub(crate) const STOP_SUSPENSION: &str = "chat.suspension.stop";
 pub(crate) const COMPLETE: &str = "chat.native-logical.complete";

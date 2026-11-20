@@ -7,6 +7,7 @@ mod settings;
 pub(crate) use gateway::Gateway;
 pub(super) use queue::Views as QueueViews;
 pub(in crate::codex) use queue::import;
+pub(super) use queue::{Resume, resume as resume_queue};
 
 use super::{Key, Scope, Turns, id};
 use crate::{
