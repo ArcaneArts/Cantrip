@@ -989,11 +989,16 @@ impl Turns {
                 params["outputSchema"] = schema.clone();
             }
             prepared.thread.assert_current(runtime)?;
-            let cua = if command["computerUseAuthority"].is_null() {
-                None
-            } else {
+            let cua = if params::computer_use_enabled(&command) {
+                let publication = if let Some(task) = &task {
+                    computer_use::Publication::Task(task.turn.messages())
+                } else {
+                    computer_use::Publication::Chat(protection.clone().context("Missing protected Chat context.")?)
+                };
                 Some(computer_use::Turn::new(self.computer_use.clone(), epoch.context("Computer use requires an active worker socket.")?,
-                    runtime, thread.clone(), emit.clone(), protection.clone(), signal.clone()))
+                    runtime, thread.clone(), emit.clone(), publication, signal.clone()))
+            } else {
+                None
             };
             let (subscription, mut events, capture) =
                 output::subscribe_with_context(&runtime.history(), thread, context.clone(),
@@ -1054,7 +1059,17 @@ impl Turns {
                             transport.clone(),
                         )
                     });
-                let mut native_interactions = if receipt.is_some() && task.is_none() {
+                let task_interactions = active.task_input.as_deref().filter(|_| !task::is_structured(&command));
+                let interactions = if let Some(attempt) = task_interactions {
+                    Some((&attempt.interactions, interactions::Authority::Task(&key, attempt)))
+                } else if task.is_none() {
+                    receipt.as_ref().zip(active.control.get()).map(|(receipt, binding)| {
+                        (&binding.interactions, interactions::Authority::Receipt(receipt))
+                    })
+                } else {
+                    None
+                };
+                let mut native_interactions = if interactions.is_some() {
                     Some(runtime.interaction_requests(thread,
                         command["contextKind"] == "project" && prepared.environment.is_none())?)
                 } else { None };
@@ -1191,6 +1206,7 @@ impl Turns {
                     active.control.get().unwrap().published(result.is_ok());
                     result
                 };
+                let interaction_events = emit.clone();
                 let emit = match &task {
                     Some(task) => task.turn.events(emit),
                     None => emit,
@@ -1207,14 +1223,14 @@ impl Turns {
                 let observe = async {
                     let saved = Value::Null;
                     let collecting = output::collect_restored(&mut events, &transport, thread, &turn, &emit, &saved, task_summary);
-                    let result = if let (Some(receipt), Some(subscribed)) = (&receipt, native_interactions.as_mut()) {
-                        let binding = active.control.get().unwrap();
+                    let result = if let (Some((handle, authority)), Some(subscribed)) = (interactions, native_interactions.as_mut()) {
                         interactions::Turn {
-                            runtime, receipt, thread, turn: &turn,
-                            thread_version: binding.thread_version,
-                            encryption: &self.encryption, emit: &emit,
-                            protected: protection.is_some(),
-                        }.observe(binding, &mut subscribed.events, collecting).await
+                            runtime, authority, thread, turn: &turn,
+                            thread_version: prepared.thread.version(),
+                            encryption: &self.encryption,
+                            emit: if task_interactions.is_some() { &interaction_events } else { &emit },
+                            protected: task_interactions.is_some() || protection.is_some(),
+                        }.observe(handle, &mut subscribed.events, collecting).await
                     } else { collecting.await };
                     drop(native_interactions.take());
                     if let Some(cua) = &cua {

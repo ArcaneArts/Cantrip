@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub struct HostActivity<'a> {
     pub chat: &'a Value,
     pub worker: &'a Value,
+    pub task: &'a Value,
     pub thread: &'a JsString,
     pub turn: &'a JsString,
     pub scope: &'a Value,
@@ -169,7 +170,7 @@ impl Drop for Record<'_> {
             "source":"agent-mcp","operation":self.operation,"operationId":id,
             "requestId":context.request.to_string(),
             "binding":json!({
-                "chatId":context.chat,"taskId":Value::Null,"workerId":context.worker,
+                "chatId":context.chat,"taskId":context.task,"workerId":context.worker,
                 "threadId":context.thread,"turnId":context.turn,"sessionId":self.session["binding"]["sessionId"],
             }),
             "target":target,"cursor":self.session["cursor"],"input":receipt,"observation":observation,

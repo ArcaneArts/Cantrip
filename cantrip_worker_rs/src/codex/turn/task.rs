@@ -90,6 +90,13 @@ impl Turn {
         }
     }
 
+    pub(super) fn messages(&self) -> Arc<Messages> {
+        match self {
+            Self::Round(round) => round.messages.clone(),
+            Self::Goal(goal) => goal.messages.clone(),
+        }
+    }
+
     pub(super) fn finish(&self, result: Value) -> Result<Value> {
         match self {
             Self::Goal(goal) => goal.finish(result),
@@ -116,7 +123,7 @@ pub(super) struct Goal {
     response: Value,
 }
 
-struct Messages {
+pub(super) struct Messages {
     service: Arc<Service>,
     binding: BoundComponentKey,
     context: Value,
@@ -211,7 +218,7 @@ impl Messages {
         Arc::new(move |event| match event["type"].as_str() {
             Some("agent.message") => messages.publish(&event["message"], &emit),
             Some("agent.activity") if event["activity"]["type"] == "turnSummary" => {
-                messages.publish_summary(&event["activity"], &emit)
+                messages.publish_activity(&event["activity"], &emit)
             }
             _ => Ok(()),
         })
@@ -261,26 +268,37 @@ impl Messages {
         Ok(())
     }
 
-    fn publish_summary(&self, summary: &Value, emit: &Emit) -> Result<()> {
+    pub(super) fn computer_use_activity(&self, activity: &Value, emit: &Emit) -> Result<()> {
+        if activity["binding"]["chatId"] != self.context["chatId"]
+            || activity["binding"]["taskId"] != self.context["chatId"]
+            || activity["type"] != "computerUse"
+            || activity["source"] != "agent-mcp"
+        {
+            bail!("The computer-use activity belongs to another Task.");
+        }
+        self.publish_activity(activity, emit)
+    }
+
+    fn publish_activity(&self, activity: &Value, emit: &Emit) -> Result<()> {
         self.assert_bound()?;
-        let summary = checked("agentActivitySchema", summary)?;
-        let turn = &summary["correlation"]["turnId"];
+        let activity = checked("agentActivitySchema", activity)?;
+        let turn = &activity["correlation"]["turnId"];
         let key = concat(&[
             "activity:".into(),
             turn.as_js_string()
                 .cloned()
-                .context("Missing Task summary turn")?,
+                .context("Missing Task activity turn")?,
             ":".into(),
-            summary["id"]
+            activity["id"]
                 .as_js_string()
                 .cloned()
-                .context("Missing Task summary identity")?,
+                .context("Missing Task activity identity")?,
         ]);
         self.emit_message(
             &mut self.output.lock().unwrap(),
             key,
-            json!({"type":"activity","activity":summary}),
-            json!({"kind":"activity","activityType":"turnSummary","turnId":turn}),
+            json!({"type":"activity","activity":activity}),
+            json!({"kind":"activity","activityType":activity["type"],"turnId":turn}),
             emit,
         )?;
         Ok(())

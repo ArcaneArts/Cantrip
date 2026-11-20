@@ -269,7 +269,7 @@ impl Autonomous {
                     let epoch = self.computer_use.previews.current_epoch();
                     let lifetime = computer_use::Turn::new(
                         self.computer_use.clone(), epoch, &runtime, thread.clone(), emit.clone(),
-                        Some(protection), Signal::any(vec![signal.clone(), delivery_signal]),
+                        computer_use::Publication::Chat(protection), Signal::any(vec![signal.clone(), delivery_signal]),
                     );
                     lifetime.0.register(activation, authority)?;
                     let _ = observe_cua.set(Arc::downgrade(&lifetime.0));
@@ -313,10 +313,10 @@ impl Autonomous {
                         }
                     };
                     let result = interactions::Turn {
-                        runtime: &runtime, receipt: &receipt, thread, turn,
+                        runtime: &runtime, authority: interactions::Authority::Receipt(&receipt), thread, turn,
                         thread_version: binding.thread_version, encryption: &self.encryption,
                         emit: &emit, protected: true,
-                    }.observe(binding, &mut native_interactions.events, collecting).await;
+                    }.observe(&binding.interactions, &mut native_interactions.events, collecting).await;
                     drop(native_interactions);
                     drop(emit);
                     owner.active.set(Phase::Terminal);

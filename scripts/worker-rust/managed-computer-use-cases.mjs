@@ -8,7 +8,10 @@ import {
   encryptInteractionResponseContent,
 } from "../../packages/crypto/dist/index.js";
 import { modelFunctions } from "../server-rust/task-model-provider.mjs";
-import { previewOperations } from "./computer-use-preview-cases.mjs";
+import {
+  createComputerUseTask,
+  previewOperations,
+} from "./computer-use-preview-cases.mjs";
 import { recoverHeldTurn } from "./deferred-receipt-smoke-cases.mjs";
 import {
   createPreparedProjectChat,
@@ -29,6 +32,7 @@ export async function verifyManagedComputerUse({
   console: managedConsole,
   recovery,
   autonomous,
+  task,
   openMessage,
 }) {
   const { model, profile, provider } = await createModel(
@@ -60,17 +64,30 @@ export async function verifyManagedComputerUse({
   });
   const title = "Managed native computer use";
   const project = managedConsole ?? autonomous;
-  const { chatId, chatUrl } = project
-    ? await createPreparedProjectChat({
+  const preparedTask = task
+    ? await createComputerUseTask({
         call,
         eventually,
         ownerId,
         workerId,
         keyRevision,
-        labelKey: project.labelKey,
-        title,
+        ...task,
+        brief: "Observe the fixture window.",
       })
-    : await createChat(title, false);
+    : null;
+  const { chatId, chatUrl } =
+    preparedTask ??
+    (project
+      ? await createPreparedProjectChat({
+          call,
+          eventually,
+          ownerId,
+          workerId,
+          keyRevision,
+          labelKey: project.labelKey,
+          title,
+        })
+      : await createChat(title, false));
   const beforePause = recovery ? model.reply({ hold: true }) : null;
   const tools = model.reply({ hold: true });
   const captured = model.reply({ hold: true });
@@ -109,6 +126,11 @@ export async function verifyManagedComputerUse({
     await call("POST", `${chatUrl}/goal?encrypted=1`, 202, {
       objective: prompt,
       tokenBudget: 50_000,
+    });
+  } else if (preparedTask) {
+    await call("POST", `/api/tasks/${chatId}/start`, 202, {
+      operationId: randomUUID(),
+      rowVersion: preparedTask.rowVersion,
     });
   } else {
     await call(
@@ -288,6 +310,8 @@ export async function verifyManagedComputerUse({
   async function preview(chatId, chatUrl) {
     const base = chatUrl + "/computer-use";
     const lease = await call("POST", base + "/preview", 200, {});
+    if (preparedTask && chatId === preparedTask.chatId)
+      assert.equal(lease.contentDomain, "task");
     return previewOperations({
       call,
       base,
@@ -312,6 +336,7 @@ export async function verifyManagedComputerUse({
   const [source] = sources;
   assert.equal(source.rootThreadId, provenance.threadId);
   assert.deepEqual(source.binding, native.session.binding);
+  assert.equal(source.binding.taskId, preparedTask ? chatId : null);
   assert.equal(source.observationRevision, native.session.observationRevision);
   assert.ok(
     source.observationRevision >
@@ -394,7 +419,10 @@ export async function verifyManagedComputerUse({
         JSON.stringify(history),
         /fixture-private-script|fake-window|computer-use\//,
       );
-      return Promise.all(history.messages.map(openMessage));
+      if (preparedTask) assert.equal(history.kind, "task-encrypted");
+      return Promise.all(
+        history.messages.map(preparedTask?.openMessage ?? openMessage),
+      );
     },
     (messages) => {
       assert.ok(
@@ -465,7 +493,7 @@ export async function verifyManagedComputerUse({
         const { sessionId, ...binding } = activity.binding;
         assert.deepEqual(binding, {
           chatId,
-          taskId: null,
+          taskId: preparedTask ? chatId : null,
           workerId,
           threadId: provenance.threadId,
           turnId: provenance.turnId,
@@ -507,16 +535,63 @@ export async function verifyManagedComputerUse({
       ({ goal }) => assert.equal(goal?.status, "complete"),
     );
   }
+  if (preparedTask) {
+    await eventually(
+      () => call("GET", `/api/tasks/${chatId}`, 200),
+      ({ state }) => assert.equal(state, "complete"),
+    );
+    const plan = await createComputerUseTask({
+      call,
+      eventually,
+      ownerId,
+      workerId,
+      keyRevision,
+      ...task,
+      brief: "Plan the read-only fixture.",
+      planGoalEnabled: true,
+      projectId: preparedTask.projectId,
+    });
+    const planner = model.reply({
+      hold: true,
+      text: JSON.stringify({
+        planMarkdown: "# Inspect the fixture",
+        questions: [],
+      }),
+    });
+    const taskUrl = `/api/tasks/${plan.chatId}`;
+    await call("POST", taskUrl + "/plan", 202, {
+      operationId: randomUUID(),
+      rowVersion: plan.rowVersion,
+    });
+    await eventually(
+      () => planner.entered,
+      (entered) => assert.equal(entered, true),
+    );
+    assert.ok(
+      modelFunctions(planner.request.input.tools).every(
+        ({ name, namespace }) =>
+          !name.includes("cantrip_cua") && !namespace?.includes("cantrip_cua"),
+      ),
+      "A read-only Task plan does not receive computer-use tools.",
+    );
+    planner.release();
+    await eventually(
+      () => call("GET", taskUrl, 200),
+      ({ state }) => assert.equal(state, "review"),
+    );
+  }
   assert.deepEqual(model.failures, []);
   console.log(
     JSON.stringify({
-      suite: managedConsole
-        ? "native-console-computer-use"
-        : recovery
-          ? "native-recovered-computer-use"
-          : autonomous
-            ? "native-autonomous-computer-use"
-            : "native-managed-computer-use",
+      suite: preparedTask
+        ? "native-task-computer-use"
+        : managedConsole
+          ? "native-console-computer-use"
+          : recovery
+            ? "native-recovered-computer-use"
+            : autonomous
+              ? "native-autonomous-computer-use"
+              : "native-managed-computer-use",
       passed: true,
     }),
   );

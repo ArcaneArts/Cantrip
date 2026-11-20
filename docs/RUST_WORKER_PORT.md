@@ -9222,3 +9222,26 @@ expiry while the parent remained active. Managed child command approval,
 root Chat and autonomous Goal computer-use smokes also passed locally. A
 worker unit test checks exact observed ancestry, duplicate start events,
 and cancellation at child completion.
+
+## 263. Run computer use during direct Task execution
+
+Reference commit `c6e9a154a4f83b91d72ecacba1e0bce6b3fe6deb` (#3426).
+
+Direct Task turns bind Core's computer-use authority to the existing physical
+Task input and native turn. The Task command carries protected Codex tool
+confirmation and desktop permissions. The worker seals activity with the
+Task content key and records the Task, worker and native actor identities.
+Retained observations use the existing preview lease and expire on reset or
+turn completion. Structured Task planning and finalization continue using
+the read-only native configuration when computer use is enabled.
+
+The `standalone-turn-smoke.mjs --cua-task` fixture uses production Rust Core
+in PGlite mode, the production Rust worker, bundled Codex and the deterministic
+Host desktop helper on macOS ARM64. It checks protected tool confirmation,
+allow and decline decisions, matching model and preview PNGs, encrypted
+Task History, and observation expiry. The direct Task reached completion,
+and its read-only planning counterpart reached review without advertising
+computer-use tools. Managed Chat, child agent, and preview smokes also passed.
+
+Task Goal activation, autonomous cycles and recovered Task computer use still
+need integration and validation.

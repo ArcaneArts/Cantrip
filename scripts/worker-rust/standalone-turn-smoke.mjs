@@ -74,6 +74,7 @@ const { values } = parseArgs({
     "cua-recovered": { type: "string" },
     "cua-autonomous": { type: "string" },
     "cua-child": { type: "string" },
+    "cua-task": { type: "string" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -118,8 +119,9 @@ const cuaConsole = values["cua-console"];
 const recoveredCua = values["cua-recovered"];
 const autonomousCua = values["cua-autonomous"];
 const childCua = values["cua-child"];
+const taskCua = values["cua-task"];
 const cuaAgent =
-  values["cua-agent"] || cuaConsole || recoveredCua || autonomousCua;
+  values["cua-agent"] || cuaConsole || recoveredCua || autonomousCua || taskCua;
 const previewKey =
   values["cua-preview"] || cuaAgent || childCua
     ? key("client-control-content")
@@ -3084,6 +3086,7 @@ try {
       autonomous: autonomousCua
         ? { labelKey, admission: () => goalAdmission }
         : null,
+      task: taskCua ? { labelKey, taskKey } : null,
       openMessage,
     });
   } else if (previewKey && !childCua) {

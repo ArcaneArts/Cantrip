@@ -536,7 +536,7 @@ async function activities(call, chatUrl, domain, open) {
   return history;
 }
 
-async function verifyTaskActivity({
+export async function createComputerUseTask({
   call,
   eventually,
   ownerId,
@@ -544,18 +544,10 @@ async function verifyTaskActivity({
   keyRevision,
   labelKey,
   taskKey,
-  serverId,
-  seal,
-  open,
+  brief = "",
+  planGoalEnabled = false,
+  projectId: existingProject,
 }) {
-  const workspaceId = randomUUID();
-  await call("POST", "/api/workspaces", 201, {
-    id: workspaceId,
-    nameProtection:
-      discoveryWireFixtures(projectLabel)
-        .encryptedProjectWorkspaceCreateSchema[0].nameProtection,
-    storage: { kind: "managed" },
-  });
   const protectLabel = (recordKind, rowId, label) =>
     encryptPrivateDisplayLabel({
       ownerId,
@@ -565,29 +557,41 @@ async function verifyTaskActivity({
       label,
       componentKey: labelKey,
     });
-  const projectId = randomUUID();
+  const projectId = existingProject ?? randomUUID();
   const projectUrl = `/api/projects/${projectId}`;
-  await call("POST", "/api/projects/from-folder", 202, {
-    id: projectId,
-    workerId,
-    workspaceId,
-    nameProtection: await protectLabel(
-      "project",
-      projectId,
-      "Task preview activity fixture",
-    ),
-  });
-  await eventually(
-    () => call("GET", projectUrl + "/folder-setup", 200),
-    (result) => assert.equal(result.state, "succeeded", JSON.stringify(result)),
-  );
+  if (!existingProject) {
+    const workspaceId = randomUUID();
+    await call("POST", "/api/workspaces", 201, {
+      id: workspaceId,
+      nameProtection:
+        discoveryWireFixtures(projectLabel)
+          .encryptedProjectWorkspaceCreateSchema[0].nameProtection,
+      storage: { kind: "managed" },
+    });
+    await call("POST", "/api/projects/from-folder", 202, {
+      id: projectId,
+      workerId,
+      workspaceId,
+      nameProtection: await protectLabel(
+        "project",
+        projectId,
+        "Task preview activity fixture",
+      ),
+    });
+    await eventually(
+      () => call("GET", projectUrl + "/folder-setup", 200),
+      (result) =>
+        assert.equal(result.state, "succeeded", JSON.stringify(result)),
+    );
+  }
   const chatId = randomUUID();
   const { classification } = taskContent();
   const material = { ownerId, keyRevision, componentKey: taskKey };
-  await call("POST", projectUrl + "/tasks", 201, {
+  const created = await call("POST", projectUrl + "/tasks", 201, {
     chatId,
     titleProtection: await protectLabel("chat", chatId, "Activity in a Task"),
     autoTitle: false,
+    planGoalEnabled,
     task: {
       classification,
       protectedContent: await encryptTaskProtectedContent({
@@ -596,7 +600,7 @@ async function verifyTaskActivity({
         content: {
           version: 1,
           classification,
-          briefMarkdown: "",
+          briefMarkdown: brief,
           planMarkdown: null,
           currentQuestions: [],
           currentAnswers: [],
@@ -609,6 +613,47 @@ async function verifyTaskActivity({
     },
   });
   const chatUrl = `/api/chats/${chatId}`;
+  const openMessage = (message) =>
+    decryptTaskMessageProtectedContent({
+      ...material,
+      messageId: message.id,
+      encrypted: message.protectedContent,
+      publicClassification: message.classification ?? {
+        role: message.role,
+        mode: message.mode,
+        attachmentIds: message.attachmentIds,
+      },
+    });
+  return {
+    chatId,
+    chatUrl,
+    projectId,
+    rowVersion: created.task.rowVersion,
+    openMessage,
+  };
+}
+
+async function verifyTaskActivity({
+  call,
+  eventually,
+  ownerId,
+  workerId,
+  keyRevision,
+  labelKey,
+  taskKey,
+  serverId,
+  seal,
+  open,
+}) {
+  const { chatId, chatUrl, openMessage } = await createComputerUseTask({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    labelKey,
+    taskKey,
+  });
   const base = chatUrl + "/computer-use";
   const lease = await call("POST", base + "/preview", 200, {});
   assert.equal(lease.contentDomain, "task");
@@ -638,18 +683,7 @@ async function verifyTaskActivity({
     workerId,
     leaseId: lease.leaseId,
   });
-  const history = await activities(call, chatUrl, "task", (message) =>
-    decryptTaskMessageProtectedContent({
-      ...material,
-      messageId: message.id,
-      encrypted: message.protectedContent,
-      publicClassification: message.classification ?? {
-        role: message.role,
-        mode: message.mode,
-        attachmentIds: message.attachmentIds,
-      },
-    }),
-  );
+  const history = await activities(call, chatUrl, "task", openMessage);
   assert.deepEqual(
     history.map(({ operation }) => operation),
     ["capabilities.get", "preview.stop"],

@@ -1,7 +1,7 @@
 //! Computer-use MCP authority belongs to a turn observed on this app-server.
 mod model;
 
-use super::{Emit, Signal, protected::Protected};
+use super::{Emit, Signal, protected::Protected, task};
 use crate::{
     codex::managed::{Runtime, WeakRuntime},
     computer_use::{DesktopTurn, HostActivity, HostError, Javascript, NativeError},
@@ -37,7 +37,7 @@ pub(super) struct Turn {
     desktop: Desktop,
     epoch: u64,
     emit: Emit,
-    protection: Option<Arc<Protected>>,
+    protection: Publication,
     publication_failed: Mutex<bool>,
     runtime: WeakRuntime,
     thread: JsString,
@@ -90,6 +90,11 @@ struct Session {
     javascript: Javascript,
 }
 
+pub(super) enum Publication {
+    Chat(Arc<Protected>),
+    Task(Arc<task::Messages>),
+}
+
 pub(super) struct Lifetime(pub(super) Arc<Turn>);
 
 impl Drop for Lifetime {
@@ -105,7 +110,7 @@ impl Turn {
         runtime: &Runtime,
         thread: JsString,
         emit: Emit,
-        protection: Option<Arc<Protected>>,
+        protection: Publication,
         parent: Signal,
     ) -> Lifetime {
         let (cancel, signal) = Abort::new();
@@ -231,12 +236,13 @@ impl Turn {
     }
 
     fn activity(&self, activity: Value) {
-        if let Some(protection) = &self.protection
-            && protection
+        let result = match &self.protection {
+            Publication::Chat(protection) => protection
                 .computer_use_activity(&activity)
-                .and_then(|event| (self.emit)(event))
-                .is_err()
-        {
+                .and_then(|event| (self.emit)(event)),
+            Publication::Task(messages) => messages.computer_use_activity(&activity, &self.emit),
+        };
+        if result.is_err() {
             *self.publication_failed.lock().unwrap() = true;
         }
     }
@@ -260,6 +266,13 @@ impl Turn {
         }
     }
 
+    fn task_id(&self, authority: &ComputerUseAuthority) -> Value {
+        match self.protection {
+            Publication::Chat(_) => Value::Null,
+            Publication::Task(_) => authority.captured["chatId"].clone(),
+        }
+    }
+
     fn session(
         &self,
         authority: &ComputerUseAuthority,
@@ -271,7 +284,7 @@ impl Turn {
             Vec::new(),
             json!({
                 "sessionId":uuid::Uuid::new_v4().to_string(),"workerId":authority.captured["workerId"],
-                "chatId":authority.captured["chatId"],"taskId":Value::Null,"threadId":actor.scope["agentThreadId"],"turnId":turn,
+                "chatId":authority.captured["chatId"],"taskId":self.task_id(authority),"threadId":actor.scope["agentThreadId"],"turnId":turn,
             }),
             actor.signal.clone(),
         )?;
@@ -365,9 +378,11 @@ impl ComputerUseExecutor for Turn {
             let call = self.invoke(&actor, request_id, reset)?;
             let active = Signal::any(vec![actor.signal.clone(), signal, call.signal.clone()]);
             let publish = |activity| self.activity(activity);
+            let task_id = self.task_id(authority);
             let activity = HostActivity {
                 chat: &authority.captured["chatId"],
                 worker: &authority.captured["workerId"],
+                task: &task_id,
                 thread,
                 turn,
                 scope: &actor.scope,
@@ -375,17 +390,16 @@ impl ComputerUseExecutor for Turn {
                 request: request_id,
                 publish: &publish,
             };
-            let activity = self.protection.as_ref().map(|_| &activity);
             // Publish the terminal record before releasing the session to a reset.
             let mut session;
-            let mut terminal = activity.map(|a| a.terminal(reset, active.clone()));
+            let mut terminal = activity.terminal(reset, active.clone());
             session = tokio::select! {
                 biased;
                 reason = active.cancelled() => return Err(reason.into()),
                 session = actor.session.lock() => session,
             };
-            if let (Some(record), Some(current)) = (&mut terminal, session.as_ref()) {
-                record.session(current.desktop.activity_session());
+            if let Some(current) = session.as_ref() {
+                terminal.session(current.desktop.activity_session());
             }
             let result = async {
                 if reset {
@@ -410,7 +424,7 @@ impl ComputerUseExecutor for Turn {
                         javascript,
                         source,
                         active.clone(),
-                        activity,
+                        Some(&activity),
                         |action, call| async move {
                             self.refresh(authority, &call).await?;
                             desktop
@@ -438,12 +452,10 @@ impl ComputerUseExecutor for Turn {
                 Ok(response)
             }
             .await;
-            if let Some(record) = &mut terminal {
-                if let Some(current) = session.as_ref() {
-                    record.session(current.desktop.activity_session());
-                }
-                record.complete(result.as_ref().err().map(activity_error));
+            if let Some(current) = session.as_ref() {
+                terminal.session(current.desktop.activity_session());
             }
+            terminal.complete(result.as_ref().err().map(activity_error));
             result
         })
     }

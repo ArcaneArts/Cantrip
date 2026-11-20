@@ -179,6 +179,7 @@ async fn host_actions_use_the_live_attachment_and_authorize_each_native_operatio
     let audit = HostActivity {
         chat: &authority["chatId"],
         worker: &authority["workerId"],
+        task: &Value::Null,
         thread: &"observed-thread".into(),
         turn: &"observed-turn".into(),
         scope: &crate::history::lineage::root_scope(
