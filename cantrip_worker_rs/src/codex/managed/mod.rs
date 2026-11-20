@@ -2,6 +2,7 @@
 mod history;
 mod interaction_requests;
 mod launch;
+pub(in crate::codex) mod model_catalog;
 mod resources;
 mod revocation;
 mod worker;
@@ -67,6 +68,7 @@ struct Inner {
     resources: Arc<resources::Resources>,
     queue_observers: QueueObservers,
     interaction_requests: interaction_requests::Requests,
+    catalog: Option<tokio::sync::Mutex<model_catalog::Catalog>>,
     retirement: Promise<()>,
     external_auth: Option<Arc<dyn ExternalAuth>>,
     closing: Mutex<Option<Promise<()>>>,
@@ -174,6 +176,14 @@ impl Runtime {
         if let Some(prepare) = prepare_home {
             prepare(home.clone()).await?;
         }
+        let catalog = if let Some(seed) = profile.managed_catalog.take() {
+            let path = home.join("cantrip-model-catalog.json");
+            let catalog = seed.publish(&path).await?;
+            profile.model_catalog = Some(path);
+            Some(tokio::sync::Mutex::new(catalog))
+        } else {
+            None
+        };
 
         if let Some(auth) = &external_auth {
             profile.external_login = auth.login().await?;
@@ -246,6 +256,7 @@ impl Runtime {
             resources,
             queue_observers,
             interaction_requests,
+            catalog,
             retirement,
             external_auth,
             closing: Mutex::new(None),
@@ -258,6 +269,19 @@ impl Runtime {
             return failed_start(error, runtime.close().await);
         }
         Ok(runtime)
+    }
+
+    pub(in crate::codex) async fn synchronize_models(
+        &self,
+        root: &Value,
+        child: &Value,
+    ) -> Result<()> {
+        if let Some(catalog) = &self.0.catalog {
+            let mut catalog = catalog.lock().await;
+            self.assert_live()?;
+            catalog.synchronize(self, root, child).await?;
+        }
+        Ok(())
     }
 
     pub(in crate::codex) fn observe_queue(&self, thread: JsString, observer: &QueueObserver) {

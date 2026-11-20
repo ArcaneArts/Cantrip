@@ -7434,3 +7434,34 @@ GNU worker compile check passed.
 
 Alternate subagent model routing and attribution, and managed runtime handoff,
 remain open.
+
+## 195. Route configured subagent models on the existing native runtime
+
+Reference commit a0a53062b73574da7db35d38078b913754057a84 (#3358).
+
+The Rust worker sends its probed Codex compatibility report at enrollment and
+in heartbeats. Core can select a custom Host Project Chat subagent route using
+the existing protocol. Before native preparation the worker opens both
+provider envelopes and requires the same provider, kind, account and
+credential home. The selected child model and effort travel through the
+existing managed thread configuration.
+
+For endpoint providers, the app-server starts with a static catalog from the
+explicit model selections and the available provider-scoped inventory.
+Configured selections remain usable if inventory is unavailable. A reused
+process installs newly selected models through its serialized, revisioned
+catalog update. It retains other models already used by that process and
+checks the native acknowledgment. Native discovery owns the ChatGPT catalog.
+Changing the child model keeps the root thread and provider process.
+
+Local macOS ARM64 validation used the production Rust server with PGlite,
+the production Rust worker, bundled Codex and a loopback Responses provider.
+The real child requested the custom model with high reasoning effort after
+its root runtime was prepared. The parent retained its model, thread, and
+native runtime generation. Core rejected the incompatible provider route.
+The child approval and replay checks passed. Default subagent, Plan Mode,
+linked-console approval and cold-resume approval smokes also passed. The
+Windows x64 GNU worker compile check passed.
+
+Live native picker inventory refresh, per-turn model attribution and managed
+runtime handoff remain open.

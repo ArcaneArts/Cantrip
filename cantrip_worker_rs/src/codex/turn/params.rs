@@ -25,7 +25,6 @@ pub(super) fn validate(command: &Value) -> Result<()> {
                 || !command["taskInferenceInput"].is_null()
                 || !command["taskResumption"].is_null()))
         || !command["computerUseAuthority"].is_null()
-        || (!guest && !command["subagentDefaults"].is_null())
         || (!guest
             && !queued
             && command["attachments"]
@@ -59,6 +58,7 @@ pub(super) fn preparation(command: &Value) -> Value {
         "structuredTask": super::task::is_structured(command),
         "model": command["model"],
         "provider": command["provider"],
+        "subagentDefaults": command["subagentDefaults"],
         "mcpServers": command["mcpServers"],
         "permissionProfileId": command["permissionProfileId"],
         "session": json!({

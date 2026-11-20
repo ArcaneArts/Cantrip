@@ -55,6 +55,7 @@ const { values } = parseArgs({
     "console-interactions": { type: "boolean" },
     "restored-interactions": { type: "boolean" },
     "subagent-interactions": { type: "boolean" },
+    "subagent-model": { type: "boolean" },
     "plan-question": { type: "boolean" },
   },
 });
@@ -83,7 +84,8 @@ const providerKey = key("provider-credential");
 const operationsKey = key("model-operation-content");
 const consoleInteractions = values["console-interactions"];
 const restoredInteractions = values["restored-interactions"];
-const subagentInteractions = values["subagent-interactions"];
+const subagentInteractions =
+  values["subagent-interactions"] || values["subagent-model"];
 const planQuestion = values["plan-question"];
 const interactionKey =
   values.interactions ||
@@ -300,8 +302,11 @@ async function encryptedTurn(prompt, modelId, mode = "default") {
   });
 }
 
-async function createModel(name, maxConcurrentInference) {
-  const model = await taskModelProvider({ observeStreams: true });
+async function createModel(name, maxConcurrentInference, additionalModels) {
+  const model = await taskModelProvider({
+    observeStreams: true,
+    additionalModels,
+  });
   models.push(model);
   const provider = await call("POST", "/api/settings/providers", 201, {
     id: randomUUID(),
@@ -1911,6 +1916,7 @@ try {
       keyRevision,
       labelKey,
       interactionKey,
+      customModel: values["subagent-model"],
     });
   } else if (planQuestion) {
     await verifyPlanQuestion();
