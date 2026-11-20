@@ -22,14 +22,17 @@ export async function fixtureCodex(
   } = {},
 ) {
   const executable = path.join(root, `codex-${scenario}-fixture`);
-  const args = [
-    process.execPath,
-    fileURLToPath(new URL("./deferred-codex-peer.mjs", import.meta.url)),
-    path.resolve(codex),
-    marker,
-    input,
-    scenario,
-  ];
+  const args =
+    scenario === "passthrough"
+      ? [path.resolve(codex)]
+      : [
+          process.execPath,
+          fileURLToPath(new URL("./deferred-codex-peer.mjs", import.meta.url)),
+          path.resolve(codex),
+          marker,
+          input,
+          scenario,
+        ];
   const quote = (text) => `'${text.replaceAll("'", "'\\''")}'`;
   await writeFile(
     executable,

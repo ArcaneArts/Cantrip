@@ -3,7 +3,7 @@
 use super::{Active, Failure, Phase, RPC_TIMEOUT, Scope, Selection, Turns};
 use crate::{
     attachments::content::ServiceKeys,
-    codex::turn::{STEER, id, protected::user_prompt_text, queued},
+    codex::turn::{STEER, id, protected::user_prompt_text, queued, receipt::Receipt},
     metadata::{Guard, Signal},
     native_items::{array, concat},
 };
@@ -11,7 +11,7 @@ use anyhow::{Context, Result, anyhow, bail, ensure};
 use cantrip_history::{canonical::open_message, content::Encryption};
 use cantrip_wire::{Value, value::json};
 
-const METHOD: &str = "turn/steer";
+pub(in crate::codex::turn) const METHOD: &str = "turn/steer";
 
 impl Turns {
     pub(crate) async fn steer(&self, command: &Value, signal: Signal) -> Result<Value> {
@@ -153,66 +153,177 @@ impl Turns {
                     root.activation.clone(),
                 )
                 .await?;
-            if let Err(error) = receipt.dispatch().await {
-                receipt
-                    .rejected(&json!({"code":-32000,"message":"Native dispatch did not complete."}))
-                    .await?;
-                return Err(error);
-            }
             Some(receipt)
         } else {
             None
         };
-        let start = (|| {
+        let result = dispatch(&active, &selected, params, receipt.as_ref(), || {
             ensure!(
                 self.key(command)? == key,
                 "The worker binding changed during Chat steering."
             );
-            signal.check()?;
-            let phase = active.phase.lock().unwrap();
-            ensure!(
-                selected.current(&phase),
-                "The native turn ended before steering was forwarded."
-            );
-            Ok(selected
-                .runtime
-                .request(METHOD.into(), Some(params), Some(RPC_TIMEOUT), None))
-        })();
-        let request = match start {
-            Ok(request) => request,
-            Err(error) => {
-                if let Some(receipt) = &receipt {
-                    receipt
-                        .rejected(&json!({"code":-32000,"message":"The steer was not forwarded."}))
-                        .await?;
+            signal.check()
+        })
+        .await;
+        match result {
+            Ok(_) => Ok(json!({"steered":true,"turnId":selected.turn})),
+            Err(error) if error.is::<Failure>() => {
+                bail!("Codex could not confirm steering for the selected turn.")
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    pub(in crate::codex::turn) async fn steer_console(
+        &self,
+        session: Value,
+        permission: &Value,
+        frame: &Value,
+        signal: Signal,
+        assert_view: impl Fn() -> Result<()>,
+    ) -> Result<Value> {
+        assert_view()?;
+        signal.check()?;
+        let key = self.key(&session)?;
+        let active = self
+            .active
+            .lock()
+            .unwrap()
+            .active
+            .get(&key)
+            .cloned()
+            .context("The Codex thread does not have an active turn.")?;
+        let (binding, root) = active
+            .control
+            .get()
+            .zip(active.root.as_ref())
+            .context("The console steer has no current managed turn.")?;
+        ensure!(
+            active.task_input.is_none()
+                && active.task.get().is_none()
+                && [
+                    "chatId",
+                    "threadId",
+                    "runtimeGeneration",
+                    "contextKind",
+                    "projectId",
+                    "placementId",
+                    "modelRouteId",
+                    "providerAccountId",
+                ]
+                .iter()
+                .all(|field| session[*field] == binding.session[*field]),
+            "The console steer does not identify the current managed turn."
+        );
+        let params = &frame["params"];
+        ensure!(
+            params
+                .as_object()
+                .is_some_and(|fields| fields.keys().all(|key| matches!(
+                    key.as_str(),
+                    Some("threadId" | "expectedTurnId" | "input" | "clientUserMessageId")
+                )))
+                && params["threadId"] == session["threadId"]
+                && params["input"].is_array(),
+            "The console steer requires native input for its bound thread."
+        );
+        let selected = Guard::request(Some(signal.clone()))
+            .run(active.select_control(binding, false))
+            .await?
+            .context("The Codex thread no longer has an active turn.")?;
+        ensure!(
+            params["expectedTurnId"].as_js_string() == Some(&selected.turn),
+            "The console steer targets a different native turn."
+        );
+        assert_view()?;
+        signal.check()?;
+        let scope = Scope::new(self.encryption.clone())?;
+        ensure!(
+            scope.owner == key.0 && scope.server == key.1,
+            "The worker binding changed before console steering."
+        );
+        let receipt = self
+            .receipts
+            .admit_console(
+                scope,
+                session,
+                METHOD,
+                frame,
+                permission,
+                root.activation.clone(),
+            )
+            .await?;
+        dispatch(&active, &selected, params.clone(), Some(&receipt), || {
+            assert_view()?;
+            signal.check()
+        })
+        .await
+    }
+}
+
+async fn dispatch(
+    active: &Active,
+    selected: &Selection,
+    params: Value,
+    receipt: Option<&Receipt<'_>>,
+    assert_current: impl FnOnce() -> Result<()>,
+) -> Result<Value> {
+    if let Some(receipt) = receipt
+        && let Err(error) = receipt.dispatch().await
+    {
+        receipt
+            .rejected(&json!({"code":-32000,"message":"Native dispatch did not complete."}))
+            .await?;
+        return Err(error);
+    }
+    let start = (|| {
+        assert_current()?;
+        let phase = active.phase.lock().unwrap();
+        ensure!(
+            selected.current(&phase),
+            "The native turn ended before steering was forwarded."
+        );
+        Ok(selected
+            .runtime
+            .request(METHOD.into(), Some(params), Some(RPC_TIMEOUT), None))
+    })();
+    let request = match start {
+        Ok(request) => request,
+        Err(error) => {
+            if let Some(receipt) = receipt {
+                receipt
+                    .rejected(&json!({"code":-32000,"message":"The steer was not forwarded."}))
+                    .await?;
+            }
+            return Err(error);
+        }
+    };
+    match request.await {
+        Ok(Some(reply)) if reply["turnId"].as_js_string() == Some(&selected.turn) => {
+            if let Some(receipt) = receipt {
+                receipt.applied(&json!({"result":reply}), None).await?;
+            }
+            Ok(reply)
+        }
+        result => {
+            if let Err(error) = result
+                && let Some(native) = native_error(&error)
+            {
+                if let Some(receipt) = receipt {
+                    receipt.rejected(native).await?;
                 }
                 return Err(error);
             }
-        };
-        match request.await {
-            Ok(Some(reply)) if reply["turnId"].as_js_string() == Some(&selected.turn) => {
-                if let Some(receipt) = &receipt {
-                    receipt.applied(&json!({"result":reply}), None).await?;
-                }
-                Ok(json!({"steered":true,"turnId":selected.turn}))
+            if let Some(receipt) = receipt {
+                receipt.uncertain().await?;
             }
-            result => {
-                if let Some(receipt) = &receipt {
-                    if let Some(native) = result
-                        .as_ref()
-                        .err()
-                        .and_then(|error| error.downcast_ref::<Failure>())
-                        .and_then(|failure| failure.native_error.as_ref())
-                    {
-                        receipt.rejected(native).await?;
-                    } else {
-                        receipt.uncertain().await?;
-                    }
-                }
-                bail!("Codex could not confirm steering for the selected turn.");
-            }
+            bail!("Codex could not confirm steering for the selected turn.");
         }
     }
+}
+
+pub(in crate::codex::turn) fn native_error(error: &anyhow::Error) -> Option<&Value> {
+    error.downcast_ref::<Failure>()?.native_error.as_ref()
 }
 
 fn legacy_turn(active: &Active, requested: &Value) -> Result<Selection> {

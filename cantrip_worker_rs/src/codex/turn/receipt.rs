@@ -1069,6 +1069,7 @@ impl Client {
         method: &'static str,
         frame: &Value,
         permission: &Value,
+        activation: Value,
     ) -> Result<Receipt<'_>> {
         let command = json!({"permissionProfileId":permission, "nativeViewRequestId":frame["id"]});
         let (receipt, _, _) = self
@@ -1078,7 +1079,7 @@ impl Client {
                 method,
                 &frame["params"],
                 &command,
-                Value::Null,
+                activation,
                 "terminal",
             )
             .await?;
@@ -1177,7 +1178,7 @@ impl Client {
         {
             intent["permissionProfileId"] = permission.clone();
         }
-        if origin == "terminal" && matches!(method, "skills/list" | "turn/start") {
+        if origin == "terminal" && matches!(method, "skills/list" | "turn/start" | "turn/steer") {
             intent["pathsWithinPlacement"] = json!(true);
         }
         if let Some(status) = params.get("status") {

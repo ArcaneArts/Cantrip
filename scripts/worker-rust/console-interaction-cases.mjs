@@ -67,6 +67,47 @@ export async function createPreparedProjectChat({
   return { chatId, chatUrl: `/api/chats/${chatId}`, workspaceId };
 }
 
+export async function openConsoleView(url, eventually) {
+  const { WebSocket } = createRequire(
+    new URL("../../cantrip_worker/package.json", import.meta.url),
+  )("ws");
+  const socket = new WebSocket(url.trim());
+  const frames = [];
+  socket.on("message", (raw) => frames.push(JSON.parse(String(raw))));
+  try {
+    await once(socket, "open");
+    const read = (match) =>
+      eventually(
+        () => frames.find(match),
+        (frame) => assert.ok(frame),
+      );
+    const request = (id, method, params) => {
+      socket.send(JSON.stringify({ id, method, params }));
+      return read((frame) => frame.id === id && !frame.method);
+    };
+    const initialized = await request(1, "initialize", {
+      clientInfo: { name: "cantrip-fixture", version: "0" },
+      capabilities: { experimentalApi: true },
+    });
+    assert.equal(
+      initialized.result?.cantripManagedGateway?.replyMethod,
+      "cantrip/managed/reply",
+      JSON.stringify(initialized),
+    );
+    socket.send(JSON.stringify({ method: "initialized" }));
+    return {
+      request,
+      read,
+      frames,
+      close: () => socket.terminate(),
+      threadId: initialized.result.cantripManagedGateway.threadId,
+    };
+  } catch (error) {
+    socket.terminate();
+    throw error;
+  }
+}
+
 export async function verifyConsoleInteraction({
   call,
   eventually,
@@ -99,41 +140,11 @@ export async function verifyConsoleInteraction({
     (value) => assert.ok(value.startsWith("ws://127.0.0.1:")),
   );
 
-  const { WebSocket } = createRequire(
-    new URL("../../cantrip_worker/package.json", import.meta.url),
-  )("ws");
-  const sockets = [];
+  const views = [];
   const connect = async () => {
-    const socket = new WebSocket(url.trim());
-    sockets.push(socket);
-    const frames = [];
-    socket.on("message", (raw) => frames.push(JSON.parse(String(raw))));
-    await once(socket, "open");
-    const read = (match) =>
-      eventually(
-        () => frames.find(match),
-        (frame) => assert.ok(frame),
-      );
-    const request = (id, method, params) => {
-      socket.send(JSON.stringify({ id, method, params }));
-      return read((frame) => frame.id === id && !frame.method);
-    };
-    const initialized = await request(1, "initialize", {
-      clientInfo: { name: "cantrip-fixture", version: "0" },
-      capabilities: { experimentalApi: true },
-    });
-    assert.equal(
-      initialized.result?.cantripManagedGateway?.replyMethod,
-      "cantrip/managed/reply",
-      JSON.stringify(initialized),
-    );
-    socket.send(JSON.stringify({ method: "initialized" }));
-    return {
-      request,
-      read,
-      frames,
-      threadId: initialized.result.cantripManagedGateway.threadId,
-    };
+    const view = await openConsoleView(url, eventually);
+    views.push(view);
+    return view;
   };
   const answer = model.model.reply({
     text: "Console interaction completed.",
@@ -223,6 +234,6 @@ export async function verifyConsoleInteraction({
     );
   } finally {
     answer.release();
-    for (const socket of sockets) socket.terminate();
+    for (const view of views) view.close();
   }
 }

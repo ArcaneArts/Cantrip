@@ -8704,3 +8704,27 @@ queue revision. Repeat with
 The restored-interaction regression and 65 focused Node reference cases
 passed. The older unbound worker command was compile-checked. Terminal-originated
 steering through the managed gateway and Windows runtime coverage remain open.
+
+## 243. Steer active native Chats from the managed console
+
+Reference commit `4fe05af70861f9631b1d81862110e45a99efa07e` (#3406).
+
+The console gateway accepts `turn/steer` from a view attached to its exact
+thread. The worker checks the active turn, activation, placement and runtime
+before requesting a terminal-origin receipt from Core. It shares the
+app's steering dispatch and settlement, forwards the existing native input
+format, and returns the native reply to the console. An already forwarded
+request retains its settlement work if the console connection closes.
+
+On macOS ARM64, production Rust Core with PGlite, the Rust worker and
+bundled Codex 0.166.0 started and steered a turn through the managed
+console gateway. Requests for a stale turn, another thread, and an
+approval policy override were rejected before reaching the model. The
+valid request returned the original turn ID. The loopback provider
+received the steering prompt and public history showed exactly one
+encrypted entry for each of the initial input, steer and answer. Repeat
+with `scripts/worker-rust/standalone-turn-smoke.mjs --console-steer`.
+
+The public queued-steering and console approval regressions and 61 Node
+reference cases passed. The gateway fixture used WebSocket RPC on a
+real attached console session. Windows runtime was outside this check.
