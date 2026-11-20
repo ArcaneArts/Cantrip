@@ -33,6 +33,7 @@ export async function verifyManagedComputerUse({
   recovery,
   autonomous,
   task,
+  guest,
   openMessage,
 }) {
   const { model, profile, provider } = await createModel(
@@ -63,7 +64,7 @@ export async function verifyManagedComputerUse({
     autoNameChats: false,
   });
   const title = "Managed native computer use";
-  const project = managedConsole ?? autonomous;
+  const project = managedConsole ?? autonomous ?? guest;
   const preparedTask = task
     ? await createComputerUseTask({
         call,
@@ -76,7 +77,7 @@ export async function verifyManagedComputerUse({
         planGoalEnabled: task.goal ?? false,
       })
     : null;
-  const { chatId, chatUrl } =
+  const { chatId, chatUrl, placement } =
     preparedTask ??
     (project
       ? await createPreparedProjectChat({
@@ -87,6 +88,17 @@ export async function verifyManagedComputerUse({
           keyRevision,
           labelKey: project.labelKey,
           title,
+          beforeChat: guest
+            ? ({ projectId }) =>
+                guest.desktop.placeProject({
+                  call,
+                  projectId,
+                  workerId,
+                  ownerId,
+                  keyRevision,
+                  repositoryKey: guest.repositoryKey,
+                })
+            : undefined,
         })
       : await createChat(title, false));
   const taskUrl = preparedTask ? `/api/tasks/${chatId}` : null;
@@ -196,12 +208,15 @@ export async function verifyManagedComputerUse({
   const reset = tool("js_reset");
   assert.ok(js, `Native CUA tool is missing from ${JSON.stringify(available)}`);
   assert.ok(reset);
+  const matchTarget = guest ? "t.kind === 'monitor'" : "t.id === 'fake-window'";
+  const findTarget = `const t = (await cua.targets()).targets.find(t => ${matchTarget});`;
+  const attachTarget =
+    "await cua.attach({targetId:t.id,targetGeneration:t.generation});";
   tools.calls = [
     {
       ...js,
       arguments: {
-        script:
-          "const t = (await cua.targets()).targets.find(t => t.id === 'fake-window'); await cua.attach({targetId:t.id,targetGeneration:t.generation}); await cua.snapshot(); const image = await cua.snapshot(); let decline; try { await cua.readClipboard(); } catch (error) { decline = error.code; } ({imageIndex: image.imageIndex, decline, marker: 'fixture-private-script'})",
+        script: `${findTarget} ${attachTarget} await cua.snapshot(); const image = await cua.snapshot(); let decline; try { await cua.readClipboard(); } catch (error) { decline = error.code; } ({imageIndex: image.imageIndex, decline, marker: 'fixture-private-script'})`,
       },
     },
   ];
@@ -263,13 +278,22 @@ export async function verifyManagedComputerUse({
   await confirmTool(captured);
 
   let provenance;
-  for (const [permission, target] of [
-    ["inventory", null],
-    ["inventory", { targetId: "fake-window", targetGeneration: 1 }],
-    ["capture", { targetId: "fake-window", targetGeneration: 1 }],
-    ["native-input", { targetId: "fake-window", targetGeneration: 1 }],
+  let scopedTarget = guest
+    ? null
+    : { targetId: "fake-window", targetGeneration: 1 };
+  for (const [permission, scoped] of [
+    ["inventory", false],
+    ["inventory", true],
+    ["capture", true],
+    ["native-input", true],
   ]) {
     const [record, request] = await pending();
+    if (scoped && !scopedTarget) {
+      scopedTarget = request.requestedPermissions.computerUse?.target;
+      assert.ok(scopedTarget?.targetId && scopedTarget?.targetGeneration);
+      assert.notEqual(scopedTarget.targetId, "fake-window");
+    }
+    const target = scoped ? scopedTarget : null;
     assert.equal(record.provenance.owner, "computer-use");
     assert.equal(record.provenance.chatId, chatId);
     assert.equal(record.provenance.workerId, workerId);
@@ -333,7 +357,7 @@ export async function verifyManagedComputerUse({
     const lease = await call("POST", base + "/preview", 200, {});
     if (preparedTask && chatId === preparedTask.chatId)
       assert.equal(lease.contentDomain, "task");
-    return previewOperations({
+    const operations = previewOperations({
       call,
       base,
       serverId: server.id,
@@ -348,9 +372,21 @@ export async function verifyManagedComputerUse({
         }),
       open: (context, opaque) =>
         decryptEndpointContentPayload({ ...previewMaterial, context, opaque }),
-    }).operate;
+    });
+    return {
+      operate: operations.operate,
+      stop: () =>
+        call("POST", base + "/preview/stop", 200, {
+          workerId,
+          leaseId: lease.leaseId,
+        }),
+    };
   }
-  const operate = await preview(chatId, chatUrl);
+  const { operate, stop } = await preview(chatId, chatUrl);
+  if (guest) {
+    const connections = await guest.desktop.connections();
+    assert.equal(connections[placement.guestWorkspaceId]?.running, true);
+  }
   const list = { operation: "agent.sources.list" };
   const sources = (await operate(list)).result.data.sources;
   assert.equal(sources.length, 1);
@@ -373,7 +409,7 @@ export async function verifyManagedComputerUse({
   bytes.fill(0);
 
   const other = await createChat("Other preview", false);
-  const foreign = await preview(other.chatId, other.chatUrl);
+  const { operate: foreign } = await preview(other.chatId, other.chatUrl);
   assert.deepEqual((await foreign(list)).result.data.sources, []);
   const unavailable = (await foreign(get)).result;
   assert.equal(unavailable.code, "execution-unavailable");
@@ -396,8 +432,9 @@ export async function verifyManagedComputerUse({
     {
       ...js,
       arguments: {
-        script:
-          "await cua.attach({targetId: 'fake-window', targetGeneration: 1}); await cua.snapshot()",
+        script: guest
+          ? `${findTarget} ${attachTarget} await cua.snapshot()`
+          : `await cua.attach(${JSON.stringify(scopedTarget)}); await cua.snapshot()`,
       },
     },
   ];
@@ -406,13 +443,43 @@ export async function verifyManagedComputerUse({
   await eventually(pendingRecords, (records) =>
     assert.ok(afterCapture.entered || records.length === 1),
   );
-  if (!afterCapture.entered) await confirmTool();
+  if (guest) {
+    let approval = await pending(afterCapture);
+    if (approval[1].kind === "mcpElicitation") {
+      await confirmTool(afterCapture);
+      approval = await pending(afterCapture);
+    }
+    const newTarget = approval[1].requestedPermissions.computerUse.target;
+    assert.ok(newTarget?.targetId && newTarget?.targetGeneration);
+    assert.notDeepEqual(newTarget, scopedTarget);
+    for (const permission of ["inventory", "capture"]) {
+      const [record, request] = approval;
+      assert.deepEqual(record.provenance, provenance);
+      const permissions = {
+        computerUse: { version: 1, classes: [permission], target: newTarget },
+      };
+      assert.deepEqual(request.requestedPermissions, permissions);
+      await respond(record, {
+        kind: "permissions",
+        scope: "turn",
+        permissions,
+        strictAutoReview: false,
+      });
+      if (permission === "inventory") approval = await pending(afterCapture);
+    }
+  } else if (!afterCapture.entered) {
+    await confirmTool();
+  }
   await eventually(
     () => afterCapture.entered,
     (entered) => assert.equal(entered, true),
   );
   const afterResetSources = (await operate(list)).result.data.sources;
-  assert.equal(afterResetSources.length, 1);
+  assert.equal(
+    afterResetSources.length,
+    1,
+    "A fresh capture is retained after reset.",
+  );
   const [replacement] = afterResetSources;
   assert.notEqual(replacement.sourceId, source.sourceId);
   assert.notEqual(replacement.binding.sessionId, source.binding.sessionId);
@@ -482,6 +549,7 @@ export async function verifyManagedComputerUse({
           ["clipboard.read", "declined"],
           ["js.evaluate", "completed"],
           ["js.reset", "completed"],
+          ...(guest ? [["targets.list", "completed"]] : []),
           ["target.attach", "completed"],
           ["observation.snapshot", "completed"],
           ["js.evaluate", "completed"],
@@ -494,10 +562,7 @@ export async function verifyManagedComputerUse({
           binding.sessionId === source.binding.sessionId,
       );
       assert.equal(captured.observation.image.sha256, native.image.sha256);
-      assert.deepEqual(captured.target, {
-        targetId: "fake-window",
-        targetGeneration: 1,
-      });
+      assert.deepEqual(captured.target, scopedTarget);
       assert.equal(
         captured.binding.sessionId,
         native.session.binding.sessionId,
@@ -552,6 +617,13 @@ export async function verifyManagedComputerUse({
     (await operate({ ...get, sourceId: replacement.sourceId })).result.code,
     "execution-unavailable",
   );
+  if (guest) {
+    await stop();
+    await eventually(
+      () => guest.desktop.connections(),
+      (connections) => assert.deepEqual(connections, {}),
+    );
+  }
   if (autonomous) {
     await eventually(
       () => call("GET", `${chatUrl}/goal?encrypted=1`, 200),
@@ -583,14 +655,14 @@ export async function verifyManagedComputerUse({
     JSON.stringify({
       suite: [
         "native",
-        reviewed ? "task-goal" : preparedTask ? "task" : null,
+        guest ? "guest" : reviewed ? "task-goal" : preparedTask ? "task" : null,
         recovery
           ? "recovered"
           : managedConsole
             ? "console"
             : autonomous
               ? "autonomous"
-              : preparedTask
+              : preparedTask || guest
                 ? null
                 : "managed",
         "computer-use",

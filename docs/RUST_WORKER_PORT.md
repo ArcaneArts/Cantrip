@@ -9285,3 +9285,24 @@ the original native thread and turn, confirmed the protected approvals,
 returned matching model and preview PNGs, and expired both observations.
 The encrypted Task History retained a single input and the recovered result.
 The saved Chat computer-use smoke also passed locally.
+
+## 266. Run managed computer use on the assigned Cantrip OS desktop
+
+Reference commit `e26b4fc68ea702c4259335f2cba28687298b5b63` (#3429).
+
+Core now passes the captured Cantrip OS placement as the managed terminal
+location. This lets the prepared Codex thread and its linked console agree
+on the same Linux workspace. Host consoles continue using their source
+directory.
+
+On macOS ARM64, `standalone-turn-smoke.mjs --cua-guest` with
+`--guest-image cantrip-os-local-qa:2938-rekeyed` ran the production Rust
+server in PGlite mode, the production Rust worker, bundled Codex and an
+isolated Linux guest from an existing image. The fixture used public routes
+for guest attachment, workspace creation, source provisioning and Chat
+preparation. The turn obtained protected approvals, captured the assigned
+desktop, and returned the same PNG through the model and protected preview.
+Reset expired the retained source and the worker required fresh scoped
+approvals for the new target generation. The fixture verified encrypted
+History and retirement of the guest desktop connection.
+The Host managed Project Goal and standalone Chat smokes also passed.

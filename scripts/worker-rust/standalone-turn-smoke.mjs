@@ -39,6 +39,10 @@ import { verifyProjectAutomations } from "./project-automation-smoke-cases.mjs";
 import { verifyQueuedSteering } from "./queued-steering-cases.mjs";
 import { verifyConsoleSteering } from "./console-steering-cases.mjs";
 import { verifyComputerUsePreview } from "./computer-use-preview-cases.mjs";
+import {
+  guestDockerEnvironment,
+  startManagedGuestDesktop,
+} from "./cantrip-os-preview-cases.mjs";
 import { verifyManagedComputerUse } from "./managed-computer-use-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
@@ -70,6 +74,8 @@ const { values } = parseArgs({
     "console-steer": { type: "boolean" },
     "cua-preview": { type: "string" },
     "cua-agent": { type: "string" },
+    "cua-guest": { type: "string" },
+    "guest-image": { type: "string" },
     "cua-console": { type: "string" },
     "cua-recovered": { type: "string" },
     "cua-autonomous": { type: "string" },
@@ -119,6 +125,8 @@ const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const cuaConsole = values["cua-console"];
+const guestCua = values["cua-guest"];
+const repositoryKey = guestCua ? key("repository-content") : null;
 const recoveredTaskGoalCua = values["cua-task-goal-recovered"];
 const recoveredTaskCua = values["cua-task-recovered"] || recoveredTaskGoalCua;
 const recoveredCua = values["cua-recovered"] || recoveredTaskCua;
@@ -127,7 +135,12 @@ const childCua = values["cua-child"];
 const taskGoalCua = values["cua-task-goal"] || recoveredTaskGoalCua;
 const taskCua = values["cua-task"] || taskGoalCua || recoveredTaskCua;
 const cuaAgent =
-  values["cua-agent"] || cuaConsole || recoveredCua || autonomousCua || taskCua;
+  values["cua-agent"] ||
+  guestCua ||
+  cuaConsole ||
+  recoveredCua ||
+  autonomousCua ||
+  taskCua;
 const previewKey =
   values["cua-preview"] || cuaAgent || childCua
     ? key("client-control-content")
@@ -174,6 +187,7 @@ const consoleStateKey =
   values["queued-steer"] ||
   values["console-steer"] ||
   cuaConsole ||
+  guestCua ||
   autonomousCua ||
   values["host-skills"] ||
   values.policies ||
@@ -195,6 +209,7 @@ let goalAdmission;
 let child;
 let workerExit;
 let workerEnvironment;
+let guestDesktop;
 const models = [];
 let diagnostics = "";
 const readyTimeout = 20_000;
@@ -323,6 +338,7 @@ async function setupEncryption() {
     ["chat-content", chatKey],
     ["private-surface-metadata", labelKey],
     ["task-content", taskKey],
+    ...(repositoryKey ? [["repository-content", repositoryKey]] : []),
     ["provider-credential", providerKey],
     ...(previewKey ? [["client-control-content", previewKey]] : []),
     ...(policyKey ? [["policy-content", policyKey]] : []),
@@ -3033,6 +3049,17 @@ try {
     if (values.cli)
       workerEnvironment.CANTRIP_CLI_BIN = path.resolve(values.cli);
   }
+  if (guestCua) {
+    assert.ok(
+      values["guest-image"],
+      "Managed guest computer use requires an existing guest image.",
+    );
+    const environment = await guestDockerEnvironment(root);
+    Object.assign(workerEnvironment, environment, {
+      PATH: environment.PATH + ":/usr/bin:/bin",
+    });
+    guestDesktop = await startManagedGuestDesktop(values["guest-image"]);
+  }
   const cuaHelper = values["cua-preview"] ?? cuaAgent ?? childCua;
   if (cuaHelper) {
     const helper = path.join(root, "native-preview-helper");
@@ -3093,6 +3120,9 @@ try {
         ? { labelKey, admission: () => goalAdmission }
         : null,
       task: taskCua ? { labelKey, taskKey, goal: Boolean(taskGoalCua) } : null,
+      guest: guestDesktop
+        ? { desktop: guestDesktop, labelKey, repositoryKey }
+        : null,
       openMessage,
     });
   } else if (previewKey && !childCua) {
@@ -3279,6 +3309,7 @@ try {
   try {
     const workerResult = await stopWorker();
     await Promise.all([
+      guestDesktop?.close(),
       receiptProxy?.close(),
       server?.close(),
       ...models.map((model) => model.close()),
@@ -3293,6 +3324,7 @@ try {
     chatKey.fill(0);
     labelKey.fill(0);
     taskKey.fill(0);
+    repositoryKey?.fill(0);
     providerKey.fill(0);
     policyKey?.fill(0);
     customizationKey?.fill(0);

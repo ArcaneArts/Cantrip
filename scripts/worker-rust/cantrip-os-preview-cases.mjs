@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import {
   decryptEndpointContentPayload,
   encryptEndpointContentPayload,
+  encryptRepositoryOperationPayload,
   openComputerUseResult,
   protectComputerUseRequest,
 } from "../../packages/crypto/dist/index.js";
@@ -47,6 +48,114 @@ async function eventually(action) {
       await delay(100);
     }
   }
+}
+
+export async function startManagedGuestDesktop(image) {
+  const container = await docker(
+    "run",
+    "-d",
+    "--rm",
+    "--pull=never",
+    "--network",
+    "none",
+    "--shm-size=256m",
+    "--name",
+    "cantrip-managed-cua-" + randomUUID(),
+    image,
+  );
+  const guest = (...args) => docker("exec", "--user", "0", container, ...args);
+  const guestWorkspaceId = "managed-cua";
+  return {
+    connections: async () =>
+      JSON.parse(await guest("cantrip-remote", "status")).connections,
+    async placeProject({
+      call,
+      projectId,
+      workerId,
+      ownerId,
+      keyRevision,
+      repositoryKey,
+    }) {
+      await eventually(async () => {
+        const status = JSON.parse(await guest("cantrip-executor", "status"));
+        assert.equal(status.service, "running");
+        assert.equal(status.attachment, null);
+      });
+      await guest("cantrip-remote", "enable");
+      const transport = { kind: "docker", container };
+      const observed = await call("POST", "/api/cantrip-os/inspect", 200, {
+        workerId,
+        transport,
+      });
+      const { instance } = await call("POST", "/api/cantrip-os/attach", 200, {
+        workerId,
+        transport,
+        name: "Disposable managed computer use",
+        guestInstanceId: observed.guestInstanceId,
+        expectedAttachmentGeneration: null,
+      });
+      const workspaces = `/api/cantrip-os/${instance.id}/workspaces`;
+      const created = await call("POST", workspaces, 200, {
+        operationId: randomUUID(),
+        guestWorkspaceId,
+        attachmentGeneration: instance.attachmentGeneration,
+        runtimeGeneration: instance.runtimeGeneration,
+      });
+      assert.equal(created.state, "ready", JSON.stringify(created));
+      const workspace = (await call("GET", workspaces, 200)).find(
+        (entry) => entry.guestWorkspaceId === guestWorkspaceId,
+      );
+      assert.ok(workspace);
+      const bindings = `/api/projects/${projectId}/cantrip-os/bindings`;
+      const binding = await call("POST", bindings, 200, {
+        mode: "linux-owned",
+        workspaceId: workspace.id,
+        sourceKind: "folder",
+      });
+      const { server } = await call("GET", "/api/bootstrap", 200);
+      const operationId = randomUUID();
+      const used = {
+        serverId: server.id,
+        projectId,
+        worktreeId: binding.worktreeId,
+        operationId,
+        direction: "request",
+      };
+      const protectedRequest = await encryptRepositoryOperationPayload({
+        ownerId,
+        keyRevision,
+        componentKey: repositoryKey,
+        context: used,
+        plaintext: new TextEncoder().encode(
+          JSON.stringify({
+            type: "cantrip-os.source.provision",
+            instanceId: instance.id,
+            workspaceId: workspace.id,
+            bindingId: binding.id,
+            bindingGeneration: binding.bindingGeneration,
+            intent: { mode: "linux-owned", source: { kind: "folder" } },
+          }),
+        ),
+      });
+      const ready = await call(
+        "POST",
+        `${bindings}/${binding.id}/provision`,
+        200,
+        {
+          operationId,
+          bindingGeneration: binding.bindingGeneration,
+          protectedRequest,
+        },
+      );
+      assert.equal(ready.state, "ready", JSON.stringify(ready));
+      return {
+        bindingId: binding.id,
+        workspaceId: workspace.id,
+        guestWorkspaceId,
+      };
+    },
+    close: () => docker("rm", "-f", container),
+  };
 }
 
 export async function verifyCantripOsPreview({
