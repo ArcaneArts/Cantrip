@@ -69,6 +69,7 @@ const { values } = parseArgs({
     "standalone-skills": { type: "boolean" },
     "scratch-files": { type: "boolean" },
     "permission-profiles": { type: "boolean" },
+    "mcp-discovery": { type: "boolean" },
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
     "project-automations": { type: "boolean" },
@@ -152,7 +153,10 @@ const customizationKey =
   values["skill-settings"] || values["customization-inventory"]
     ? key("customization-content")
     : null;
-const mcpKey = values["customization-inventory"] ? key("mcp-secret") : null;
+const mcpKey =
+  values["customization-inventory"] || values["mcp-discovery"]
+    ? key("mcp-secret")
+    : null;
 const workflowKey = values["project-automations"]
   ? key("workflow-content")
   : null;
@@ -214,6 +218,7 @@ let child;
 let workerExit;
 let workerEnvironment;
 let guestDesktop;
+let mcpDiscovery;
 const models = [];
 let diagnostics = "";
 const readyTimeout = 20_000;
@@ -2898,6 +2903,11 @@ try {
   const data = path.join(root, "worker");
   const home = path.join(root, "home");
   await mkdir(home);
+  if (values["mcp-discovery"]) {
+    const { startMcpDiscoveryFixture } =
+      await import("./mcp-discovery-smoke-cases.mjs");
+    mcpDiscovery = await startMcpDiscoveryFixture(root, home);
+  }
   const codexFixtureHome = path.join(home, ".codex-fixture");
   const standaloneSkills = values["standalone-skills"]
     ? await setupAudienceSkills(data, home, codexFixtureHome)
@@ -3019,7 +3029,10 @@ try {
   });
   workerEnvironment = {
     ...environment,
-    PATH: values.codegraph ? "/usr/bin:/bin" : "",
+    PATH: mcpDiscovery?.bin ?? (values.codegraph ? "/usr/bin:/bin" : ""),
+    ...(mcpDiscovery
+      ? { CANTRIP_MCP_FIXTURE_TOKEN: "mcp-fixture-private-value" }
+      : {}),
     NO_COLOR: "1",
     ...(consoleStateKey ? { TERM: "xterm-256color" } : {}),
     CANTRIP_LOG_LEVEL: "debug",
@@ -3101,6 +3114,20 @@ try {
       keyRevision,
       labelKey,
       data,
+    });
+  } else if (mcpDiscovery) {
+    const { verifyMcpDiscovery } =
+      await import("./mcp-discovery-smoke-cases.mjs");
+    await verifyMcpDiscovery({
+      call,
+      eventually,
+      fixture: mcpDiscovery,
+      data,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      componentKey: mcpKey,
     });
   } else if (workflowKey) {
     await verifyProjectAutomations({
@@ -3339,6 +3366,7 @@ try {
     const workerResult = await stopWorker();
     await Promise.all([
       guestDesktop?.close(),
+      mcpDiscovery?.close(),
       receiptProxy?.close(),
       server?.close(),
       ...models.map((model) => model.close()),

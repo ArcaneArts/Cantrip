@@ -87,26 +87,50 @@ pub fn open_mcp_servers(service: &Service, servers: &[Value]) -> Result<Vec<Valu
         })
         .collect()
 }
+pub(crate) fn is_managed_mcp_name(name: &JsString) -> bool {
+    matches!(
+        name.trim().lowercase().as_str(),
+        Some("codegraph" | "cantrip" | "cantrip_cua")
+    )
+}
+
 pub fn protect_discovered_mcp(
     service: &Service,
     worker: &Value,
     configuration: &Value,
 ) -> Result<Value> {
+    let configuration = importable_mcp_configuration(configuration)?;
+    let grant = service.bound_component("mcp-secret", None)?;
+    seal_discovered_mcp(&grant, worker, &configuration)
+}
+
+pub(crate) fn protect_discovered_mcp_for_grant(
+    grant: &BoundComponentKey,
+    worker: &Value,
+    configuration: &Value,
+) -> Result<Value> {
+    let configuration = importable_mcp_configuration(configuration)?;
+    seal_discovered_mcp(grant, worker, &configuration)
+}
+
+fn importable_mcp_configuration(configuration: &Value) -> Result<Value> {
     let mut configuration = configuration.clone();
     set(&mut configuration, "enabled", json!(true))?;
     let configuration = checked("mcpServerConfigurationSchema", &configuration)?;
-    let name = configuration["name"]
-        .as_js_string()
-        .unwrap()
-        .trim()
-        .lowercase();
-    if matches!(name.as_str(), Some("codegraph" | "cantrip" | "cantrip_cua")) {
+    if is_managed_mcp_name(configuration["name"].as_js_string().unwrap()) {
         bail!("Managed MCP server names cannot be imported.");
     }
+    Ok(configuration)
+}
+
+fn seal_discovered_mcp(
+    grant: &BoundComponentKey,
+    worker: &Value,
+    configuration: &Value,
+) -> Result<Value> {
     let id = json!(uuid::Uuid::new_v4().to_string());
-    let grant = service.bound_component("mcp-secret", None)?;
     let lookup_context = context(
-        &grant,
+        grant,
         "mcp-secret",
         "mcp_servers",
         &id,
@@ -115,7 +139,7 @@ pub fn protect_discovered_mcp(
     );
     let lookup = derive_lookup_key(&grant.component.key, &lookup_context)?;
     let secret_context = context(
-        &grant,
+        grant,
         "mcp-secret",
         "mcp_servers",
         &id,
@@ -125,7 +149,7 @@ pub fn protect_discovered_mcp(
     let encrypted = encrypt_secret(
         &grant.component.key,
         &secret_context,
-        &configuration,
+        configuration,
         "mcpServerConfigurationSchema",
         Some(1024 * 1024),
     )?;

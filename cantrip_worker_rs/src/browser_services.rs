@@ -24,9 +24,9 @@ const PROBE_CONCURRENCY: usize = 24;
 const MAX_TITLE_UNITS: usize = 64 * 1024;
 
 #[derive(Debug, PartialEq, Eq)]
-struct Listener {
-    host: String,
-    port: u16,
+pub(crate) struct Listener {
+    pub(crate) host: String,
+    pub(crate) port: u16,
     pid: Option<u32>,
     executable: Option<String>,
 }
@@ -147,7 +147,7 @@ async fn output(scope: &Scope, command: &str, arguments: &[&str]) -> Result<Stri
     })
 }
 
-async fn listeners(scope: &Scope) -> Result<Vec<Listener>> {
+pub(crate) async fn listeners(scope: &Scope) -> Result<Vec<Listener>> {
     let platform = std::env::consts::OS;
     let candidates = if platform == "windows" {
         netstat_listeners(&output(scope, "netstat", &["-ano", "-p", "tcp"]).await?)
