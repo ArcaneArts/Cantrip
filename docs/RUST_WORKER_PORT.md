@@ -8809,3 +8809,26 @@ The 154 focused Node reference tests passed. The fixture did not wait for
 the five-minute expiration or exercise real desktop pixels. Computer-use
 activity publication, native input, guest previews, and agent computer use
 remain open.
+
+## 247. Record protected Host preview activity from Rust
+
+Reference commit `cfd541177e3f019e9297642f07b31e251d537a8f` (#3410).
+
+The worker publishes one terminal Trajectory activity per authorized Host
+preview command. It uses the existing Chat or Task message protection and
+preserves the user-preview actor, operation correlation, timing, outcome,
+and applicable session, target, cursor, and image metadata. It clears the
+capture bytes before publishing activity. Stop revokes the lease first and
+reports an audit delivery failure separately. Repeated Stop on the closed
+lease creates no additional record.
+
+On macOS ARM64, the public preview fixture used production Rust Core in
+PGlite mode and the Rust worker with the native helper's deterministic
+backend. The TypeScript client codec opened durable Chat history for a
+snapshot, a foreign-session rejection, an approval-required response,
+detach, close, and Stop. It opened separate Task history for capability
+discovery and Stop and verified the Task binding. The native desktop
+inventory regression and 148 focused reference and protocol tests passed.
+Repeat with `scripts/worker-rust/standalone-turn-smoke.mjs --cua-preview`.
+The fixture covered deterministic targets and pixels. Native input, guest
+previews, and agent computer use remain open.

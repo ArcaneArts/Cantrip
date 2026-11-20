@@ -1,4 +1,5 @@
 //! One authenticated native preview lifetime per Chat.
+mod activity;
 mod approvals;
 mod native;
 mod protected;
@@ -120,7 +121,7 @@ impl Previews {
         );
         match command["type"].as_str() {
             Some(OPEN) => self.open(&command["authority"], &command["contentDomain"], epoch),
-            Some(STOP) => self.stop(command, epoch),
+            Some(STOP) => self.stop(command, epoch, emit),
             Some(REVOKE) => self.revoke(command, epoch),
             Some(ANSWER) => self.answer(command, epoch),
             Some(OPERATION) => self.operation(command, epoch, emit).await,
@@ -171,19 +172,42 @@ impl Previews {
         Ok(result)
     }
 
-    fn stop(&self, command: &Value, epoch: u64) -> Result<Value> {
+    fn stop(
+        &self,
+        command: &Value,
+        epoch: u64,
+        emit: impl Fn(Value) -> Result<()>,
+    ) -> Result<Value> {
+        let started_at = chrono::Utc::now().timestamp_millis();
         self.identity(command)?;
         self.expire(epoch);
         let mut leases = self.0.leases.lock().unwrap();
         let id = command["leaseId"]
             .as_js_string()
             .context("Missing preview lease.")?;
-        if let Some(lease) = leases.get(id) {
-            ensure!(
-                lease.authority["chatId"] == command["chatId"],
-                "Computer use belongs to another execution context."
-            );
-            self.retire(leases.remove(id).unwrap());
+        let Some(lease) = leases.get(id) else {
+            return Ok(json!({"closed":true}));
+        };
+        ensure!(
+            lease.authority["chatId"] == command["chatId"],
+            "Computer use belongs to another execution context."
+        );
+        let lease = leases.remove(id).unwrap();
+        let mut audit = activity::Audit::new(started_at);
+        audit.before = native::activity_session(&lease, None);
+        self.retire(lease.clone());
+        drop(leases);
+        let publication = audit
+            .event(
+                &self.0.encryption,
+                &lease,
+                &json!("preview.stop"),
+                &command["operationId"],
+                false,
+            )
+            .and_then(emit);
+        if publication.is_err() {
+            return Ok(json!({"closed":true,"activityPublicationFailed":true}));
         }
         Ok(json!({"closed":true}))
     }
@@ -313,11 +337,13 @@ impl Previews {
         epoch: u64,
         emit: impl Fn(Value) -> Result<()> + Send,
     ) -> Result<Value> {
+        let mut audit = activity::Audit::new(chrono::Utc::now().timestamp_millis());
         let lease = self.resolve(command, epoch)?;
         let request = &command["request"];
         let content = protected::Content::new(&self.0.encryption, &lease, request);
         let response = async {
             let action = content.open()?;
+            audit.action(&lease, &action);
             lease.signal.check()?;
             native::require_host(&lease, &action)?;
             self.0.approvals.authorize(
@@ -340,7 +366,8 @@ impl Previews {
             result.await.context("The native desktop helper stopped.")?
         }
         .await;
-        content.respond(
+        audit.result(&response);
+        let delivery = content.respond(
             response,
             || {
                 lease.signal.check()?;
@@ -350,8 +377,22 @@ impl Previews {
                 );
                 self.authorize(&lease.authority)
             },
-            emit,
-        )
+            &emit,
+        );
+        let publication = audit
+            .event(
+                &self.0.encryption,
+                &lease,
+                &request["operation"],
+                &request["operationId"],
+                delivery.is_err(),
+            )
+            .and_then(emit);
+        ensure!(
+            publication.is_ok(),
+            "Protected computer-use activity could not be published."
+        );
+        delivery
     }
 }
 

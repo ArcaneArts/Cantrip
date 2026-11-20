@@ -45,6 +45,18 @@ pub(super) struct Session {
     data: Value,
 }
 
+pub(super) fn activity_session(lease: &Lease, session_id: Option<&Value>) -> Value {
+    lease
+        .session
+        .lock()
+        .unwrap()
+        .as_ref()
+        .filter(|session| {
+            session_id.is_none_or(|requested| session.data["binding"]["sessionId"] == *requested)
+        })
+        .map_or(Value::Null, |session| session.data.clone())
+}
+
 pub(super) struct ResultData {
     pub(super) data: Value,
     pub(super) pixels: Zeroizing<Vec<u8>>,

@@ -3036,6 +3036,9 @@ try {
       keyRevision,
       componentKey: previewKey,
       interactionKey,
+      openMessage,
+      taskKey,
+      labelKey,
     });
   } else if (values["console-steer"]) {
     await verifyConsoleSteering({
