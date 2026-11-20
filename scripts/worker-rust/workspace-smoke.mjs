@@ -26,6 +26,10 @@ import * as cryptoClient from "../../packages/crypto/dist/index.js";
 import * as protocol from "../../packages/protocol/dist/index.js";
 import { verifyManagedFolders } from "./folder-smoke-cases.mjs";
 import {
+  folderConversionFixture,
+  verifyFolderConversion,
+} from "./folder-conversion-smoke.mjs";
+import {
   assertSurfaceGrantRefresh,
   verifyExplorer,
 } from "./explorer-smoke-cases.mjs";
@@ -71,6 +75,7 @@ const { values } = parseArgs({
     "github-operations-only": { type: "boolean", default: false },
     "replica-provision-only": { type: "boolean", default: false },
     "replica-lifecycle-only": { type: "boolean", default: false },
+    "folder-conversion-only": { type: "boolean", default: false },
     "terminal-relay-only": { type: "boolean", default: false },
     "terminal-direct-broker": { type: "string" },
     "worker-link-local": { type: "boolean", default: false },
@@ -113,6 +118,7 @@ if (
   !values["pull-request-actions-only"] &&
   !values["pull-request-lifecycle-only"] &&
   !values["github-operations-only"] &&
+  !values["folder-conversion-only"] &&
   !values["terminal-relay-only"] &&
   !values["run-definitions-only"] &&
   !values["binary-writes-only"] &&
@@ -141,6 +147,9 @@ const githubFixture =
               : values["pull-request-only"]
                 ? await pullRequestFixture(root, bin)
                 : undefined;
+const conversionFixture = values["folder-conversion-only"]
+  ? await folderConversionFixture(root, git)
+  : undefined;
 execFileSync(git, [
   "-c",
   "init.defaultBranch=main",
@@ -241,7 +250,10 @@ function startWorker(code) {
     CANTRIP_WORKER_ID: workerId,
     CANTRIP_SERVER_URL: server.origin,
     ...(code ? { CANTRIP_WORKER_ENROLLMENT_CODE: code } : {}),
-    ...(githubFixture ? { GH_TOKEN: "", GITHUB_TOKEN: "" } : {}),
+    ...(githubFixture || conversionFixture
+      ? { GH_TOKEN: "", GITHUB_TOKEN: "" }
+      : {}),
+    ...conversionFixture?.environment,
     ...(values["replica-provision-only"] || values["replica-lifecycle-only"]
       ? githubFixture.environment
       : {}),
@@ -589,6 +601,20 @@ try {
       registerMetadata: repository.registerMetadata,
       restartWorker,
       eventually,
+    });
+  } else if (conversionFixture) {
+    await verifyFolderConversion({
+      call,
+      eventually,
+      workerId,
+      workerDirectory,
+      registerMetadata: repository.registerMetadata,
+      restartWorker,
+      projectLabel,
+      workspaceName:
+        discoveryWireFixtures(projectLabel)
+          .encryptedProjectWorkspaceCreateSchema[0].nameProtection,
+      fixture: conversionFixture,
     });
   } else if (values["github-catalog-only"]) {
     githubCoverage = await verifyGithubCatalog({
@@ -1083,7 +1109,16 @@ try {
   await stopWorker();
   await server.close();
   server = undefined;
-  if (values["run-runtime-only"])
+  if (conversionFixture)
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-folder-conversion-worker-server",
+        passed: true,
+        preservesLocalEditsAcrossRetry: true,
+        reconcilesCommittedPushWithoutReplay: true,
+      }),
+    );
+  else if (values["run-runtime-only"])
     console.log(
       JSON.stringify({
         suite: "actual-native-host-run-worker-server",

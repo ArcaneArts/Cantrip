@@ -8214,3 +8214,31 @@ The existing replica lifecycle fixture also passed with an installed
 CodeGraph 1.6.0 distribution and release downloads disabled. It verified
 index retirement, preservation of an ignored user file, index recovery, and
 successful deletion when the blocked job was retried.
+
+## 224. Convert a local project folder to a GitHub repository
+
+Reference commit `d79474aaff0a54556f2da64a8dba8b585aa802cf` (#3387).
+
+The native worker handles the existing conversion preflight and execution
+commands for managed folders and eligible external Git sources. It resolves the
+worker-held routing handles, checks the GitHub repository identity, computes the
+existing confirmation token and preserves the protected result shape. It links
+existing history only when the local origin, branch and commit match. For an
+empty remote it pushes the named branch and requires explicit approval before
+creating an initial commit.
+
+The worker records the confirmed operation before Git initialization and pins
+the prepared commit before push. It recognizes the legacy marker and can
+reconcile a retry against the live remote ref if the first push completed.
+The server still owns conversion admission, retry and durable project updates.
+
+On macOS ARM64, the local PGlite fixture used production Rust Core and the
+production worker with an owned bare Git remote and a controlled GitHub CLI
+fixture. It checked the legacy confirmation token, opaque metadata, the
+approved initial commit and a real push. It then lost the push reply and
+restarted the worker. The server requeued the job, the worker reconciled the
+same remote commit, and the project gained Git capabilities without another
+push or changes to a local edit. Run
+`scripts/worker-rust/workspace-smoke.mjs --folder-conversion-only` with the
+linked server and worker executables to repeat the fixture. The native
+replica lifecycle smoke also passed.

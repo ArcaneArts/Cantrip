@@ -4,6 +4,7 @@ mod actions;
 mod api;
 mod catalog;
 mod common;
+pub(crate) mod conversion;
 mod inbox;
 mod issues;
 pub(crate) mod process;

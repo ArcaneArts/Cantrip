@@ -36,7 +36,7 @@ pub(super) async fn ancestor(
     process::check_output("git", &args, &output)?;
     Ok(true)
 }
-pub(super) async fn run(
+pub(crate) async fn run(
     path: &Path,
     arguments: &[&str],
     maximum: usize,
@@ -46,7 +46,7 @@ pub(super) async fn run(
     args.extend(arguments.iter().map(|v| JsString::from(*v)));
     Ok(JsString::from(process::run_program("git", &args, maximum, scope).await?).trim())
 }
-pub(super) async fn commit(path: &Path, revision: &str, scope: &Scope) -> Option<JsString> {
+pub(crate) async fn commit(path: &Path, revision: &str, scope: &Scope) -> Option<JsString> {
     run(
         path,
         &["rev-parse", "--verify", &format!("{revision}^{{commit}}")],
@@ -57,7 +57,7 @@ pub(super) async fn commit(path: &Path, revision: &str, scope: &Scope) -> Option
     .ok()
     .map(|v| v.lowercase())
 }
-pub(super) async fn directory(path: &Path, kind: &str, scope: &Scope) -> Result<PathBuf> {
+pub(crate) async fn directory(path: &Path, kind: &str, scope: &Scope) -> Result<PathBuf> {
     let value = paths::native(&run(path, &["rev-parse", kind], 1024 * 1024, scope).await?);
     Ok(paths::canonical(&if paths::absolute(&value) {
         value
@@ -116,7 +116,7 @@ pub(super) async fn attach_unborn(path: &Path, scope: &Scope) -> Result<Option<J
     .await?;
     Ok(Some(revision))
 }
-pub(super) async fn policy(path: &Path) -> Value {
+pub(crate) async fn policy(path: &Path) -> Value {
     let result = async {
         let file = path.join(".cantrip/project.json");
         let metadata = tokio::fs::symlink_metadata(&file).await?;

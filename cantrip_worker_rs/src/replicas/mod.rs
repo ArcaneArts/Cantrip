@@ -1,7 +1,7 @@
 //! Worker-local replica provisioning, ownership and managed-link repair.
 //! Existing persistent formats are preserved; no server/database is linked.
 mod clone;
-mod git;
+pub(crate) mod git;
 pub mod placement;
 mod provision;
 mod remove;

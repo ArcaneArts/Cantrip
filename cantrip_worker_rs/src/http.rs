@@ -30,6 +30,7 @@ pub fn heartbeat(
             "managedFolders": json!({
                 "create":true,"remove":true,"attachExisting":true,"workspaceScopedRoots":true,
                 "attachWorkspaceRoot":true,"discoverWorkspaceRepositories":true,
+                "convertToGithub":true,"convertExternalGitToGithub":true,
             }),
             "standaloneChat": json!({
                 "protocolVersion": 1,
