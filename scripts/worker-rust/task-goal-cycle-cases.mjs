@@ -272,7 +272,11 @@ export function goalCycles({
   let firstDelivery;
   let finalDelivery;
   let afterRestart = false;
+  let retainedSource;
   return {
+    retainSource(source) {
+      retainedSource = source;
+    },
     authorize(body, reply) {
       assert.ok(
         parentCommitted,
@@ -299,22 +303,34 @@ export function goalCycles({
       assert.equal(dispatch.cycle.modelRouteId, receipt.modelRouteId);
       assert.equal(dispatch.cycle.orderEpoch, orderEpoch);
       assert.equal(dispatch.cycle.providerAccountId, receipt.providerAccountId);
-      assert.equal(
-        dispatch.freshRuntimeGeneration,
-        dispatch.nativeRuntimeGeneration,
-      );
-      assert.equal(
-        dispatch.sourceKey,
-        createHash("sha256")
-          .update(
-            JSON.stringify([
-              dispatch.workerGeneration,
-              dispatch.freshRuntimeGeneration,
-              dispatch.operationId,
-            ]),
-          )
-          .digest("hex"),
-      );
+      if (retainedSource) {
+        assert.equal(dispatch.sourceKey, retainedSource.sourceKey);
+        assert.equal(dispatch.freshRuntimeGeneration, undefined);
+        assert.notEqual(dispatch.turnId, retainedSource.turnId);
+        assert.equal(dispatch.cycle.goalEpoch, retainedSource.cycle.goalEpoch);
+        assert.equal(
+          dispatch.cycle.orderEpoch,
+          retainedSource.cycle.orderEpoch,
+        );
+        retainedSource = undefined;
+      } else {
+        assert.equal(
+          dispatch.freshRuntimeGeneration,
+          dispatch.nativeRuntimeGeneration,
+        );
+        assert.equal(
+          dispatch.sourceKey,
+          createHash("sha256")
+            .update(
+              JSON.stringify([
+                dispatch.workerGeneration,
+                dispatch.freshRuntimeGeneration,
+                dispatch.operationId,
+              ]),
+            )
+            .digest("hex"),
+        );
+      }
       const source = taskGoalCycleDispatchResultSchema.parse({
         accepted: true,
         suspensionSource: {

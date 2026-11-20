@@ -107,6 +107,8 @@ const { values } = parseArgs({
     structuredTasks: { type: "boolean" },
     taskGoal: { type: "boolean" },
     taskGoalTransferSource: { type: "boolean" },
+    taskGoalCycleWithdrawal: { type: "boolean" },
+    taskGoalInputWithdrawal: { type: "boolean" },
     taskGoalCheckpoint: { type: "boolean" },
     taskGoalRestart: { type: "boolean" },
     taskGoalStop: { type: "boolean" },
@@ -128,6 +130,8 @@ const directTask =
 const taskGoals =
   values.taskGoal ||
   values.taskGoalTransferSource ||
+  values.taskGoalCycleWithdrawal ||
+  values.taskGoalInputWithdrawal ||
   values.taskPause ||
   values.taskGoalCheckpoint ||
   values.taskGoalRestart ||
@@ -185,6 +189,8 @@ let guiPeer,
   taskDispatch,
   taskGoalDispatch,
   goalMutation,
+  taskHandoff,
+  taskRecovery,
   goalQueue,
   projectGoal,
   taskResponse,
@@ -377,6 +383,29 @@ const server = createServer(async (request, response) => {
       upstream.emit("failure", error);
       response.writeHead(400).end("{}");
     }
+    return;
+  }
+  if (
+    url.pathname.startsWith("/api/internal/native-runtime-handoffs") &&
+    taskHandoff
+  ) {
+    try {
+      taskHandoff(url.pathname, await requestBody(request), response, send);
+    } catch (error) {
+      upstream.emit("failure", error);
+      response.writeHead(400).end("{}");
+    }
+    return;
+  }
+  if (url.pathname === "/api/internal/native-commands/inference-recovery") {
+    const body = await requestBody(request);
+    send(
+      taskRecovery?.(body) ?? {
+        key: body.record.key,
+        chatId: body.record.identity.chatId,
+        disposition: "unresolved",
+      },
+    );
     return;
   }
   if (
@@ -742,6 +771,7 @@ async function ensure(
         fields.type === "chat.queue.prepare" ||
         fields.type === "chat.queue.changed" ||
         fields.type === "chat.settings.read" ||
+        fields.type === "chat.runtime.handoff" ||
         fields.type?.startsWith("chat.plan.") ||
         fields.type?.startsWith("chat.native-logical.") ||
         fields.type?.startsWith("cantrip-os.") ||
@@ -3945,7 +3975,22 @@ try {
             return verifyTaskGoalActivation({
               ...input,
               verifyPause: values.taskPause,
-              verifyTransferSource: values.taskGoalTransferSource,
+              verifyTransferSource:
+                values.taskGoalTransferSource ||
+                values.taskGoalCycleWithdrawal ||
+                values.taskGoalInputWithdrawal,
+              withdrawSource: values.taskGoalInputWithdrawal
+                ? "input"
+                : values.taskGoalCycleWithdrawal
+                  ? "cycle"
+                  : null,
+              attachHandoff: (handler) => {
+                taskHandoff = handler;
+              },
+              attachRecovery: (handler) => {
+                taskRecovery = handler;
+              },
+              cwd: root,
               verifyCheckpoint:
                 values.taskGoalCheckpoint ||
                 values.taskGoalRestart ||

@@ -50,6 +50,7 @@ pub(super) struct Coordinator {
 struct Retained {
     source: Option<Arc<Prepared>>,
     destination: Option<Arc<Prepared>>,
+    task_withdrawal: Option<task::WithdrawalAttempt>,
 }
 
 impl Coordinator {
@@ -226,10 +227,16 @@ impl Transfer {
         ensure!(
             result["side"] == side
                 && result["state"] == *state
-                && configuration["session"]["chatId"] == state["chatId"]
+                && configuration
+                    .get("session")
+                    .or_else(|| configuration.get("task"))
+                    .is_some_and(|context| context["chatId"] == state["chatId"])
                 && configuration["threadId"] == state["source"]["threadId"],
             "Core returned a different native handoff configuration."
         );
+        if configuration["task"].is_object() {
+            task::prepare_configuration(state, &mut configuration)?;
+        }
         configuration["type"] = json!(ENSURE);
         Ok(configuration)
     }
@@ -237,7 +244,8 @@ impl Transfer {
     async fn run(&self) -> Result<Value> {
         let state = self.action("read", json!({})).await?;
         let result = if matches!(state["phase"].as_str(), Some("completed" | "cancelled")) {
-            self.settle_local(state["phase"] == "cancelled").await?;
+            self.settle_local(&state, state["phase"] == "cancelled")
+                .await?;
             Ok(state)
         } else {
             self.execute(state).await
@@ -255,6 +263,10 @@ impl Transfer {
         {
             if withdrawal::has_managed_reservation(state) {
                 self.retire_managed_withdrawal(state).await?;
+            } else if state["queuedSource"]["taskGoal"].is_object() {
+                journal::Journal::new(self.data(), self.scope.clone(), state.clone())?
+                    .retire_withdrawal()
+                    .await?;
             } else if state["queuedSource"]["goalRecovery"].is_object() {
                 journal::Journal::new(self.data(), self.scope.clone(), state.clone())?
                     .retire_goal_withdrawal()
@@ -272,6 +284,11 @@ impl Transfer {
         let recovering_goal = state["queuedSource"]["goalRecovery"].is_object();
         if withdrawal::has_managed_reservation(&state) {
             state = self.withdraw_managed(state).await?;
+            if state["phase"] == "cancelled" {
+                return Ok(state);
+            }
+        } else if state["queuedSource"]["taskGoal"].is_object() {
+            state = self.withdraw_task(state).await?;
             if state["phase"] == "cancelled" {
                 return Ok(state);
             }
@@ -310,14 +327,28 @@ impl Transfer {
                 state = self.withdraw_recovered_goal(state, &prepared).await?;
             }
             if state["cancelRequested"] == true {
-                self.turns
+                let restored = self
+                    .turns
                     .preparation
                     .prepare(&config, Intent::Preserve)
                     .await?;
+                ensure!(
+                    restored.runtime.generation() == prepared.runtime.generation()
+                        && restored.thread.id() == prepared.thread.id(),
+                    "Cancellation restored a different handoff source."
+                );
+                self.turns
+                    .handoffs
+                    .retained
+                    .lock()
+                    .unwrap()
+                    .entry(self.local_key.clone())
+                    .or_default()
+                    .source = Some(Arc::new(restored));
                 let state = self
                     .action("finish", json!({"outcome":"cancelled"}))
                     .await?;
-                self.settle_local(true).await?;
+                self.settle_local(&state, true).await?;
                 return Ok(state);
             }
             source = Some(prepared);
@@ -432,7 +463,7 @@ impl Transfer {
             selected.runtime.generation() == staged.runtime.generation(),
             "The published handoff did not adopt the staged runtime."
         );
-        self.settle_local(false).await?;
+        self.settle_local(&state, false).await?;
         let state = self
             .action("finish", json!({"outcome":"completed"}))
             .await?;
@@ -547,7 +578,7 @@ impl Transfer {
         journal.retire_withdrawal().await
     }
 
-    async fn settle_local(&self, cancelled: bool) -> Result<()> {
+    async fn settle_local(&self, state: &Value, cancelled: bool) -> Result<()> {
         let retained = self
             .turns
             .handoffs
@@ -566,6 +597,7 @@ impl Transfer {
                 let operation = journal::operation_id(&self.request["operationId"])
                     .context("Handoff operation")?;
                 self.control(&source, "release", operation).await?;
+                self.resume_cancelled_task_root(state, &source).await?;
             } else {
                 self.native(
                     &source,

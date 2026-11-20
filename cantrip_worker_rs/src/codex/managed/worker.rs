@@ -6,6 +6,7 @@ use crate::{
         admission::{Options as AdmissionOptions, Subscription},
         ownership,
     },
+    metadata::Guard,
 };
 use futures::{FutureExt, future::join_all};
 use std::sync::{
@@ -615,6 +616,53 @@ impl Worker {
         if let Some(client) = self.0.task_inputs.get().cloned() {
             let owner = admission.scope.owner_id.clone();
             let server = admission.scope.server_id.clone();
+            let reconcile_client = client.clone();
+            let reconcile_scope = binding.clone();
+            let worker = Arc::downgrade(&self.0);
+            admission.reconcile = Some(Arc::new(move |record, signal| {
+                let (client, scope, worker) = (
+                    reconcile_client.clone(),
+                    reconcile_scope.clone(),
+                    worker.clone(),
+                );
+                Box::pin(async move {
+                    let result = client
+                        .reconcile_inference(
+                            &scope.owner,
+                            &scope.server,
+                            &record,
+                            None,
+                            signal.clone(),
+                        )
+                        .await?;
+                    let Some(challenge) = result.get("goalOwnershipChallenge") else {
+                        return Ok(result);
+                    };
+                    anyhow::ensure!(
+                        record["identity"]["recovery"]["autonomousGoal"].is_object()
+                            && result["key"] == record["key"],
+                        "Inference recovery returned another Goal's ownership challenge."
+                    );
+                    let worker = Worker(worker.upgrade().context("The inference worker retired.")?);
+                    Guard::request(Some(signal.clone()))
+                        .run(worker.confirm_inference_ownership(&scope.owner, &scope.server))
+                        .await?;
+                    let confirmed = client
+                        .reconcile_inference(
+                            &scope.owner,
+                            &scope.server,
+                            &record,
+                            Some(challenge),
+                            signal,
+                        )
+                        .await?;
+                    anyhow::ensure!(
+                        confirmed.get("goalOwnershipChallenge").is_none(),
+                        "Goal recovery ownership changed during fencing."
+                    );
+                    Ok(confirmed)
+                })
+            }));
             admission.task_bound = Some(Arc::new(move |receipt, execution, generation, signal| {
                 let (client, owner, server) = (client.clone(), owner.clone(), server.clone());
                 Box::pin(async move {

@@ -4,6 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { goalCycles } from "./task-goal-cycle-cases.mjs";
+import { cancelTaskGoalHandoff } from "./task-goal-handoff-cases.mjs";
 import {
   editAndResumeTaskGoal,
   verifyManagedGoalClear,
@@ -26,6 +27,10 @@ import {
 export async function verifyTaskGoalActivation({
   verifyPause,
   verifyTransferSource,
+  withdrawSource,
+  attachHandoff,
+  attachRecovery,
+  cwd,
   verifyCheckpoint,
   verifyRestart,
   verifyStop,
@@ -506,22 +511,49 @@ export async function verifyTaskGoalActivation({
     release = await holdProvider();
   }
   const streaming = [];
-  const providerRequest = untilProvider();
+  const providerRequest = withdrawSource === "input" ? null : untilProvider();
   const notification = waitForFrame(
     (frame) => frame.notification?.clientMessageId === clientMessageId,
   );
   const running = invoke(inputCommand, (event) => streaming.push(event));
-  const earlyReply = running.then((reply) => {
-    throw new Error(JSON.stringify(reply) + "\n" + diagnostics());
-  });
+  const cancelWithdrawal = (source) =>
+    cancelTaskGoalHandoff({
+      capture: source,
+      scope: transferSource.scope,
+      cycleId: dispatch.cycleId,
+      provider,
+      cwd,
+      attach: attachHandoff,
+      attachRecovery,
+      observeRecovery: cycles.retainSource,
+      invoke,
+      diagnostics,
+    });
   let inputSource;
   if (verifyTransferSource) {
     inputSource = await capture(receipt);
     assert.deepEqual(inputSource.record.identity.recovery.taskInput, receipt);
     assert.equal(inputSource.taskGoalInput.orderEpoch, receipt.queueOrderEpoch);
     assert.equal(modelCalls(), calls);
+    if (withdrawSource === "input") {
+      await cancelWithdrawal(inputSource);
+      const deferred = await running;
+      assert.equal(deferred.ok, false, JSON.stringify(deferred));
+      assert.equal(deferred.error.code, "worker-inference-deferred");
+      assert.deepEqual(phases, ["claim"]);
+      assert.equal(delivery, undefined);
+      assert.equal(modelCalls(), calls);
+      await release();
+      console.log(
+        "Withdrew the exact queued Task input through a lost acknowledgement without sending it to the provider.",
+      );
+      return;
+    }
     await release();
   }
+  const earlyReply = running.then((reply) => {
+    throw new Error(JSON.stringify(reply) + "\n" + diagnostics());
+  });
   const { native, acknowledge } = await available(
     Promise.race([
       admissions.promise,
@@ -777,6 +809,19 @@ export async function verifyTaskGoalActivation({
     );
     assert.equal(cycle.orderEpoch, receipt.queueOrderEpoch);
     assert.equal(modelCalls(), calls + 1);
+    if (withdrawSource === "cycle") {
+      await cancelWithdrawal(cycleSource);
+      const resumed = await capture();
+      assert.notEqual(resumed.record.key, cycleSource.record.key);
+      assert.equal(
+        resumed.record.identity.recovery.taskGoalCycle.goalEpoch,
+        cycle.goalEpoch,
+      );
+      assert.equal(modelCalls(), calls + 1);
+      console.log(
+        "Recovered the private cycle withdrawal acknowledgement and released its original Task root.",
+      );
+    }
     await release();
     console.log(
       "Captured the unused Task Goal input and its private native cycle through the worker command.",

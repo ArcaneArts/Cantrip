@@ -564,25 +564,40 @@ impl Turns {
             Err(_) => return (Err(encrypted_error()), None),
         };
         let restoring = !incoming["taskResumption"].is_null();
-        let result = self
-            .run_owned(incoming, emit, Some(&mut task))
-            .await
-            .map_err(|error| {
-                if !restoring {
-                    encrypted_error()
-                } else if error.is::<task::restore::Failure>() {
-                    error
-                } else {
-                    task::restore::failed(
-                        if task.restored_finished {
-                            "complete"
-                        } else {
-                            "attach"
-                        },
-                        error,
-                    )
-                }
-            });
+        let result = self.run_owned(incoming, emit, Some(&mut task)).await;
+        if result.as_ref().err().is_some_and(|error| {
+            crate::inference::withdrawal::Withdrawal::in_error(error).is_some()
+        }) {
+            let note = task
+                .input
+                .revoked()
+                .then(|| self.task_route_notification(&task))
+                .flatten();
+            return (
+                Err(crate::encryption::ServiceError::new(
+                    "worker-inference-deferred",
+                    "The unused Task input was deferred for a runtime handoff.",
+                )
+                .into()),
+                note,
+            );
+        }
+        let result = result.map_err(|error| {
+            if !restoring {
+                encrypted_error()
+            } else if error.is::<task::restore::Failure>() {
+                error
+            } else {
+                task::restore::failed(
+                    if task.restored_finished {
+                        "complete"
+                    } else {
+                        "attach"
+                    },
+                    error,
+                )
+            }
+        });
         if task.input.revoked() {
             return (result, self.task_route_notification(&task));
         }
@@ -829,6 +844,16 @@ impl Turns {
             Ok(acquired) => acquired,
             Err(error) => {
                 source.close();
+                if task.is_some()
+                    && let Some(withdrawal) =
+                        crate::inference::withdrawal::Withdrawal::in_error(&error)
+                {
+                    tokio::select! {
+                        _ = withdrawal.wait(Some(signal.clone())) => {},
+                        _ = runtime.retired() => {},
+                    }
+                    return Err(error);
+                }
                 return Err(active
                     .finish_withdrawal(runtime, &signal)
                     .await
