@@ -190,6 +190,50 @@ pub(super) fn prepare_configuration(state: &Value, configuration: &mut Value) ->
 }
 
 impl Transfer {
+    pub(super) async fn publish_task_goal(
+        &self,
+        state: &Value,
+        config: &Value,
+        prepared: &super::Prepared,
+    ) -> Result<()> {
+        if !config["task"].is_object() {
+            return Ok(());
+        }
+        self.check()?;
+        let chat = id(&state["chatId"], "transferred Task Goal chat")?;
+        let manager = self
+            .worker
+            .inference_manager(&self.identity.owner, &self.identity.server)?;
+        manager.wake_recovery(Some(chat.clone()));
+        if state["queuedSource"]["taskGoalInput"].is_object() {
+            return Ok(());
+        }
+        let guard = Guard::request(Some(self.signal.clone()));
+        let (goal, epoch, _) =
+            read_native_goal(&prepared.runtime, &prepared.thread, &guard).await?;
+        if epoch != config["task"]["goalEpoch"] || goal["status"] != "active" {
+            return Ok(());
+        }
+        let config = self.turns.preparation.resolve_routing(config).await?;
+        self.turns.install_task_cycle(
+            prepared,
+            &config,
+            (self.identity.owner.clone(), self.identity.server.clone(), chat),
+            json!({
+                "cycleId":config["task"]["cycleId"],"modelRouteId":config["model"]["routeId"],
+                "providerAccountId":config["provider"]["accountId"],"orderEpoch":config["task"]["orderEpoch"],
+            }),
+        )?;
+        crate::codex::turn::task::recovery::wake(
+            &prepared.runtime,
+            prepared.thread.id(),
+            &prepared.runner_generation,
+            &guard,
+        )
+        .await?;
+        self.check()
+    }
+
     pub(super) async fn resume_cancelled_task_root(
         &self,
         state: &Value,

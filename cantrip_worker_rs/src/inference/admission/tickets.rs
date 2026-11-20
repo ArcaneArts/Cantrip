@@ -198,7 +198,11 @@ impl Manager {
                             Ok(record) => {
                                 manager.edit(|state, effects| {
                                     let ticket = state.tickets.get_mut(&id).unwrap();
-                                    if ticket.phase != Phase::Waiting && !ticket.parked_waiting {
+                                    // Recovery can adopt the durable record and grant capacity before
+                                    // this task handles the enqueue reply.
+                                    if !matches!(ticket.phase, Phase::Waiting | Phase::Granted)
+                                        && !ticket.parked_waiting
+                                    {
                                         return Ok(());
                                     }
                                     if let Some(admitted) = ticket.input.admitted.take() {
@@ -209,7 +213,8 @@ impl Manager {
                                         }));
                                     }
                                     ticket.resolve_queued.finish(Ok(()));
-                                    if ticket.queue_revision == 0 {
+                                    if ticket.phase == Phase::Waiting && ticket.queue_revision == 0
+                                    {
                                         ticket.durable_queue_ready = !ticket.recovery_pending;
                                     }
                                     let provider = ticket.input.provider_id.clone();

@@ -22,6 +22,7 @@ pub(crate) use settings::{
 };
 pub(in crate::codex) mod shell;
 pub(in crate::codex) mod task;
+pub(crate) use task::recovery::COMMAND as TASK_GOAL_RECOVERY;
 pub(crate) mod task_route;
 
 use super::{
@@ -1185,16 +1186,20 @@ impl Turns {
         parent: &Value,
     ) -> Arc<task::cycle::GoalCycle> {
         Arc::new(task::cycle::GoalCycle {
-            parent: parent.clone(),
+            parent: Some(parent.clone()),
+            placement: json!({
+                "cycleId":parent["dispatch"]["cycleId"], "modelRouteId":parent["modelRouteId"],
+                "providerAccountId":parent["providerAccountId"], "orderEpoch":parent["queueOrderEpoch"].as_u64().unwrap_or(0),
+            }),
             project: command["policyProjectId"].clone(),
+            worktree: parent["worktreeId"].clone(),
+            enqueued: watch::channel(None).0,
             encryption: self.encryption.clone(),
             key: key.clone(),
             client: self.task_inputs.clone(),
             outcomes: self.task_outcomes.clone(),
             observation: prepared.runtime.history(),
-            activate: self
-                .preparation
-                .cycle_activation(prepared, &command["executionLaneId"]),
+            activate: self.preparation.cycle_activation(prepared),
             emit,
             reuse_published_response: command["resultMode"]["reusePublishedResponse"] == true,
             previous: AsyncMutex::new(commit.clone()),

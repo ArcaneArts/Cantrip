@@ -109,6 +109,7 @@ const { values } = parseArgs({
     taskGoalTransferSource: { type: "boolean" },
     taskGoalCycleWithdrawal: { type: "boolean" },
     taskGoalInputWithdrawal: { type: "boolean" },
+    taskGoalProviderHandoff: { type: "boolean" },
     taskGoalCheckpoint: { type: "boolean" },
     taskGoalRestart: { type: "boolean" },
     taskGoalStop: { type: "boolean" },
@@ -132,6 +133,7 @@ const taskGoals =
   values.taskGoalTransferSource ||
   values.taskGoalCycleWithdrawal ||
   values.taskGoalInputWithdrawal ||
+  values.taskGoalProviderHandoff ||
   values.taskPause ||
   values.taskGoalCheckpoint ||
   values.taskGoalRestart ||
@@ -228,16 +230,31 @@ async function requestBody(request) {
   for await (const chunk of request) chunks.push(chunk);
   return JSON.parse(Buffer.concat(chunks));
 }
-async function responses(request, response) {
+async function responses(request, response, endpoint) {
   const body = await requestBody(request);
-  assert.equal(body.model, "gpt-5");
+  assert.ok(
+    body.model === "gpt-5" ||
+      (values.taskGoalProviderHandoff && body.model === "gpt-5-mini"),
+    `Unexpected fixture model: ${body.model}`,
+  );
   const number = ++providerCalls;
+  const compaction =
+    endpoint === "/fixture-task-target/v1/responses" &&
+    body.tools?.length === 0 &&
+    body.input.some((item) =>
+      item.content?.some(({ text }) =>
+        text?.includes("CONTEXT CHECKPOINT COMPACTION"),
+      ),
+    );
   const id = "assistant-" + number;
   const plan =
     JSON.stringify(body.input).includes(privatePrompt) &&
     !body.input.some((item) => item.type === "function_call_output");
-  const fixture =
-    typeof taskResponse === "function" ? taskResponse(body) : taskResponse;
+  const fixture = compaction
+    ? "The transferred model context is empty."
+    : typeof taskResponse === "function"
+      ? taskResponse(body)
+      : taskResponse;
   const text = typeof fixture === "string" ? fixture : outputText;
   const item =
     fixture && typeof fixture === "object"
@@ -273,6 +290,8 @@ async function responses(request, response) {
     number,
     plan,
     body,
+    endpoint,
+    compaction,
     closed,
     finish: (before = []) => {
       for (const item of before) write("response.output_item.done", { item });
@@ -290,9 +309,13 @@ async function responses(request, response) {
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, "http://127.0.0.1");
-  if (url.pathname === "/fixture/v1/responses") {
+  if (
+    url.pathname === "/fixture/v1/responses" ||
+    (values.taskGoalProviderHandoff &&
+      url.pathname === "/fixture-task-target/v1/responses")
+  ) {
     try {
-      await responses(request, response);
+      await responses(request, response, url.pathname);
     } catch (error) {
       upstream.emit("failure", error);
       response.destroy();
@@ -437,7 +460,11 @@ const server = createServer(async (request, response) => {
     taskGoalDispatch
   ) {
     try {
-      taskGoalDispatch(await requestBody(request), send);
+      taskGoalDispatch(
+        await requestBody(request),
+        send,
+        request.headers["x-cantrip-task-goal-publication"] === "1",
+      );
     } catch (error) {
       upstream.emit("failure", error);
       response.writeHead(400).end("{}");
@@ -3978,7 +4005,9 @@ try {
               verifyTransferSource:
                 values.taskGoalTransferSource ||
                 values.taskGoalCycleWithdrawal ||
-                values.taskGoalInputWithdrawal,
+                values.taskGoalInputWithdrawal ||
+                values.taskGoalProviderHandoff,
+              verifyProviderHandoff: values.taskGoalProviderHandoff,
               withdrawSource: values.taskGoalInputWithdrawal
                 ? "input"
                 : values.taskGoalCycleWithdrawal
