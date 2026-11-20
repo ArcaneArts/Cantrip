@@ -1,9 +1,10 @@
 FROM node:24-bookworm AS build
 
-ARG TARGETARCH
-ARG CANTRIP_VERSION_PATCH
 ARG RUST_TOOLCHAIN=1.95.0
-ENV CANTRIP_VERSION_PATCH=${CANTRIP_VERSION_PATCH} \
+ENV CARGO_BUILD_JOBS=2 \
+    CARGO_INCREMENTAL=0 \
+    CARGO_PROFILE_RELEASE_DEBUG=0 \
+    CARGO_TARGET_DIR=/native-target \
     CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:$PATH
@@ -17,6 +18,7 @@ RUN apt-get update \
       cmake \
       curl \
       git \
+      libcap-dev \
       libkrb5-dev \
       libssl-dev \
       pkg-config \
@@ -26,19 +28,33 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && corepack enable
 
+ARG TARGETARCH
+ARG CANTRIP_VERSION_PATCH
+ARG CANTRIP_WORKER_RUNTIME=node
+ENV CANTRIP_VERSION_PATCH=${CANTRIP_VERSION_PATCH}
+
 COPY . .
 
 RUN test -n "$CANTRIP_VERSION_PATCH" \
     || (echo "CANTRIP_VERSION_PATCH is required for Docker builds." >&2; exit 1)
-RUN corepack pnpm install --frozen-lockfile
-RUN case "$TARGETARCH" in \
+RUN if [ "$CANTRIP_WORKER_RUNTIME" = node ]; then corepack pnpm install --frozen-lockfile; fi
+RUN --mount=type=cache,id=cantrip-worker-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cantrip-worker-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=cantrip-worker-target-${TARGETARCH},target=/native-target,sharing=locked \
+    case "$TARGETARCH" in \
       amd64) cantrip_target=linux-x64 ;; \
       arm64) cantrip_target=linux-arm64 ;; \
       *) echo "Unsupported worker architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac \
-    && corepack pnpm package:worker --target "$cantrip_target" \
-    && mkdir /out \
-    && cp -a "artifacts/cantrip-worker-$cantrip_target/." /out/
+    && case "$CANTRIP_WORKER_RUNTIME" in \
+      node) artifact=cantrip-worker ;; \
+      rust) artifact=cantrip-worker-rust ;; \
+      *) echo "Unsupported worker runtime: $CANTRIP_WORKER_RUNTIME" >&2; exit 1 ;; \
+    esac \
+    && node scripts/package-distributions.mjs worker \
+      --target "$cantrip_target" --worker-runtime "$CANTRIP_WORKER_RUNTIME" \
+    && mv "artifacts/$artifact-$cantrip_target" /out \
+    && rm -rf cantrip_codex/.build
 
 FROM debian:bookworm-slim AS runtime
 
@@ -47,6 +63,7 @@ RUN apt-get update \
       bash \
       ca-certificates \
       git \
+      libcap2 \
       openssh-client \
       tini \
     && rm -rf /var/lib/apt/lists/* \
