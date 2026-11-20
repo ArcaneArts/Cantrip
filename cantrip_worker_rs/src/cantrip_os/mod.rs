@@ -1,4 +1,5 @@
 //! Administrative commands admitted by Core and executed by the owning worker.
+mod backup;
 pub(crate) mod carrier;
 mod desktop;
 mod docker;
@@ -37,6 +38,7 @@ pub(crate) struct Controller {
     worker: JsString,
     operations: Operations,
     packages: packages::Manager,
+    backup: backup::Manager,
 }
 
 fn checked(schema: &str, value: Value) -> Result<Value> {
@@ -127,6 +129,7 @@ impl Controller {
             worker,
             operations: Operations::new(data),
             packages: packages::Manager::new(data),
+            backup: backup::Manager::new(data),
         }
     }
 
@@ -144,6 +147,8 @@ impl Controller {
                 | desktop::OPERATION
                 | packages::STATUS
                 | packages::OPERATION
+                | backup::CAPTURE
+                | backup::OBSERVE
                 | power::STATUS
                 | power::OPERATION
                 | run_definitions::COMMAND
@@ -204,6 +209,12 @@ impl Controller {
         if matches!(kind, packages::STATUS | packages::OPERATION) {
             return self
                 .packages
+                .execute(&self.operations, command, encryption, lifetime)
+                .await;
+        }
+        if matches!(kind, backup::CAPTURE | backup::OBSERVE) {
+            return self
+                .backup
                 .execute(&self.operations, command, encryption, lifetime)
                 .await;
         }

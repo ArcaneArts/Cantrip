@@ -38,6 +38,21 @@ pub(crate) fn digest(value: Value) -> String {
     sha256(value.stringify().as_bytes())
 }
 
+pub(super) fn scope_key(scope: &Value) -> String {
+    digest(Value::Array(
+        [
+            "serverId",
+            "ownerId",
+            "workerId",
+            "instanceId",
+            "guestInstanceId",
+        ]
+        .into_iter()
+        .map(|field| scope[field].clone())
+        .collect(),
+    ))
+}
+
 pub(super) fn sha256(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
@@ -101,6 +116,10 @@ impl Journal<'_> {
         &self.record["checkpoint"]
     }
 
+    pub fn record(&self) -> &Value {
+        &self.record
+    }
+
     pub fn outcome(&mut self, state: &str, receipt: Value, error: Value) {
         self.record["state"] = json!(state);
         self.record["receipt"] = receipt;
@@ -133,18 +152,7 @@ impl Operations {
                     .all(|byte| byte.is_ascii_hexdigit() || byte == b'-'),
             "Invalid OS operation ID."
         );
-        let key = digest(Value::Array(
-            [
-                "serverId",
-                "ownerId",
-                "workerId",
-                "instanceId",
-                "guestInstanceId",
-            ]
-            .into_iter()
-            .map(|field| scope[field].clone())
-            .collect(),
-        ));
+        let key = scope_key(scope);
         Ok(self.root.join(key).join(format!("{id}.json")))
     }
 
@@ -245,6 +253,48 @@ impl Operations {
         run: impl AsyncFnOnce(&mut Journal<'_>, bool) -> Result<()>,
     ) -> Result<Value> {
         self.run_record(admission, true, run).await
+    }
+
+    pub(super) async fn reconcile_existing(
+        &self,
+        scope: &Value,
+        id: &str,
+        command: &str,
+        run: impl AsyncFnOnce(&mut Journal<'_>) -> Result<()>,
+    ) -> Result<Value> {
+        let file = self.file(scope, id)?;
+        let (active, record) = {
+            let mut active = self.active.lock().unwrap();
+            let running = active.contains(&file);
+            let Some(record) = self.read(&file, id, running)? else {
+                return Ok(Value::Null);
+            };
+            ensure!(
+                record["command"] == command && &record["scope"] == scope,
+                "The saved OS operation does not match the observation."
+            );
+            if running || record["state"] == "ready" {
+                return Ok(record);
+            }
+            active.insert(file.clone());
+            (
+                Active {
+                    file,
+                    set: &self.active,
+                },
+                record,
+            )
+        };
+        let mut journal = Journal {
+            file: &active.file,
+            record,
+        };
+        journal.record["state"] = json!("unknown");
+        if let Err(error) = run(&mut journal).await {
+            journal.outcome("unknown", Value::Null, json!(error.to_string()));
+        }
+        journal.save()?;
+        Ok(journal.record)
     }
 
     async fn run_record(

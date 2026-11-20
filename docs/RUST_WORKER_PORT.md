@@ -7917,3 +7917,30 @@ Run `node scripts/worker-rust/cantrip-os-workspaces-smoke.mjs` with
 `--server`, `--worker`, and `--package-artifact` pointing to the native
 executables and the current Cantrip OS workspace Debian package. Build
 `@cantrip/crypto` for the fixture's client-side grant and receipt checks.
+
+## 213. Capture and reopen encrypted Cantrip OS workspace backups
+
+Reference commit f5e03562769adc756a1a5620ace5c2d57edfc2 (#3376).
+
+The Rust worker authenticates the private capture request, uses the existing
+guest recovery helper, and streams the verified archive into the original
+version-one encrypted file format. Publication requires the exporter exit
+status and the expected byte count and digest. Observation authenticates
+the complete on-disk archive, including its end frame, and recovers the
+saved operation without another guest capture. The shared crypto crate
+implements the existing backup frame and message authentication.
+
+The macOS ARM64 fixture ran production Rust Core in PGlite mode and the
+native worker against a disposable Docker guest with the current recovery,
+workspace, and executor packages. It killed the worker after archive
+publication, opened the multi-frame archive with the Node reader, and
+confirmed that the restarted worker rejected a missing end frame. The
+Rust worker then reopened the archive produced by the Node writer. The
+client decrypted the outcome and only one guest capture was dispatched.
+SSH execution and the remaining restore, rollback, and reset paths are open.
+
+Run `node scripts/worker-rust/cantrip-os-workspaces-smoke.mjs --backup-capture`
+with the native executables and the current guest packages. On an older
+test base image provide `--executor-package`, `--workspaces-package`, and
+`--recovery-package`. The interoperability fixture uses the existing
+Node development dependencies and the built `@cantrip/crypto` package.

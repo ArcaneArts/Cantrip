@@ -22,12 +22,14 @@ const { values } = parseArgs({
     repository: { type: "string" },
     "executor-package": { type: "string" },
     "workspaces-package": { type: "string" },
+    "recovery-package": { type: "string" },
     "package-artifact": { type: "string" },
     "run-plan": { type: "boolean", default: false },
     "run-runtime": { type: "boolean", default: false },
     "product-files": { type: "boolean", default: false },
     "guest-terminal": { type: "boolean", default: false },
     desktop: { type: "boolean", default: false },
+    "backup-capture": { type: "boolean", default: false },
     power: { type: "boolean", default: false },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
@@ -40,8 +42,8 @@ assert.ok(
   "--linked uses the source fixture",
 );
 assert.ok(
-  !values["executor-package"] || values.repository,
-  "--executor-package uses the source fixture",
+  !values["executor-package"] || values.repository || values["backup-capture"],
+  "--executor-package uses the source or backup fixture",
 );
 assert.ok(
   !(values["run-plan"] || values["run-runtime"] || values["product-files"]) ||
@@ -54,13 +56,17 @@ const workerId = "native-os-workspaces";
 const data = path.join(root, "worker");
 const packageCatalog = path.join(root, "catalogue");
 const trace = path.join(root, "guest-create.log");
+const backupTrace = path.join(root, "guest-backup.log");
+const backupPublished = path.join(root, "backup-published");
+const backupRelease = path.join(root, "backup-release");
 let container, server, worker, powerProxy, realDockerHost;
 const linked = values.linked
   ? { name, journals: [], volumes: [], operations: [] }
   : undefined;
 
 async function docker(...args) {
-  return (await execute("docker", args, { timeout: 20_000 })).stdout.trim();
+  const timeout = values["backup-capture"] ? 120_000 : 20_000;
+  return (await execute("docker", args, { timeout })).stdout.trim();
 }
 
 async function eventually(check, timeout = 25_000) {
@@ -87,6 +93,14 @@ async function stopWorker() {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function crashWorker() {
+  const running = worker;
+  assert.ok(running.child.kill("SIGKILL"));
+  await running.done;
+  assert.equal(running.child.signalCode, "SIGKILL");
+  worker = undefined;
 }
 
 try {
@@ -160,6 +174,9 @@ try {
     assert.equal(upgraded.instance_id, original.instance_id);
     original = upgraded;
   }
+  if (values["recovery-package"]) {
+    await installPackage(values["recovery-package"], "recovery");
+  }
 
   const environment = fixtureEnvironment(path.join(root, "server"));
   delete environment.CANTRIP_WORKER_TOKEN;
@@ -175,7 +192,10 @@ try {
     const response = await fetch(server.origin + url, {
       method,
       signal: AbortSignal.timeout(
-        values.power || values.desktop || values["package-artifact"]
+        values.power ||
+          values.desktop ||
+          values["package-artifact"] ||
+          values["backup-capture"]
           ? 180_000
           : 25_000,
       ),
@@ -228,6 +248,24 @@ if [ "$1" = exec ] && [ "$7" = /usr/bin/cantrip-workspaces ] && [ "$8" = create 
     exit 17
   fi
 fi
+if [ -n "$CANTRIP_TEST_BACKUP_TRACE" ] && [ "$1" = exec ] && [ "$7" = /usr/bin/cantrip-recovery ]; then
+  case "\${10}" in
+    --expect-workspace)
+      if [ "\${12}" = capture ]; then
+        printf '%s\\n' "\${13}" >> "$CANTRIP_TEST_BACKUP_TRACE"
+      fi
+      ;;
+    forget)
+      printf '%s\\n' "\${11}" > "$CANTRIP_TEST_BACKUP_PUBLISHED"
+      retry=0
+      while [ ! -f "$CANTRIP_TEST_BACKUP_RELEASE" ] && [ "$retry" -lt 800 ]; do
+        /bin/sleep 0.05
+        retry=$((retry + 1))
+      done
+      exit 17
+      ;;
+  esac
+fi
 exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
 `,
     { mode: 0o755 },
@@ -248,6 +286,13 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
           CANTRIP_WORKER_DATA_DIR: data,
           CANTRIP_WORKER_ID: workerId,
           CANTRIP_SERVER_URL: server.origin,
+          ...(values["backup-capture"]
+            ? {
+                CANTRIP_TEST_BACKUP_TRACE: backupTrace,
+                CANTRIP_TEST_BACKUP_PUBLISHED: backupPublished,
+                CANTRIP_TEST_BACKUP_RELEASE: backupRelease,
+              }
+            : {}),
           ...(values["package-artifact"]
             ? { CANTRIP_OS_PACKAGE_DIRECTORY: packageCatalog }
             : {}),
@@ -418,11 +463,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       origin: server.origin,
       stopWorker,
       crashWorker: async () => {
-        const running = worker;
-        assert.ok(running.child.kill("SIGKILL"));
-        await running.done;
-        assert.equal(running.child.signalCode, "SIGKILL");
-        worker = undefined;
+        await crashWorker();
         await startWorker();
       },
       restartWorker: async () => {
@@ -461,6 +502,30 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       },
     });
   }
+  if (values["backup-capture"]) {
+    const { verifyCantripOsCapture } =
+      await import("./cantrip-os-backup-cases.mjs");
+    await verifyCantripOsCapture({
+      call,
+      workerId,
+      data,
+      repositoryKey,
+      serverId: bootstrap.server.id,
+      root,
+      os,
+      actual,
+      workspaceUrl,
+      docker,
+      container,
+      backupTrace,
+      backupPublished,
+      backupRelease,
+      storageKey: key,
+      eventually,
+      crashWorker,
+      startWorker,
+    });
+  }
   if (values["package-artifact"]) {
     const { verifyCantripOsPackages } =
       await import("./cantrip-os-packages-cases.mjs");
@@ -495,6 +560,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       ...(values.desktop ? { guestDesktopLifecycle: true } : {}),
       ...(powerProxy ? { retainedPowerControls: true } : {}),
       ...(values["package-artifact"] ? { guestPackageManagement: true } : {}),
+      ...(values["backup-capture"] ? { encryptedGuestBackup: true } : {}),
     }),
   );
 } catch (error) {
@@ -516,6 +582,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
   throw error;
 } finally {
   try {
+    if (values["backup-capture"]) await writeFile(backupRelease, "");
     await stopWorker();
   } finally {
     try {
