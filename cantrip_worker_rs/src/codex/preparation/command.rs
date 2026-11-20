@@ -63,6 +63,14 @@ enum TaskAttachment {
     StopWithoutLocalRecord(Value),
 }
 
+pub(in crate::codex) enum HandoffStage {
+    Source,
+    Destination {
+        operation: String,
+        transfer: Option<Value>,
+    },
+}
+
 #[derive(Clone)]
 pub(crate) struct Ensurer(Arc<Inner>);
 
@@ -264,11 +272,21 @@ impl Ensurer {
     }
 
     pub(crate) async fn prepare(&self, incoming: &Value, intent: Intent) -> Result<Prepared> {
-        self.prepare_inner(incoming, intent, false, None).await
+        self.prepare_inner(incoming, intent, false, None, None)
+            .await
+    }
+
+    pub(in crate::codex) async fn prepare_handoff(
+        &self,
+        incoming: &Value,
+        stage: HandoffStage,
+    ) -> Result<Prepared> {
+        self.prepare_inner(incoming, Intent::Preserve, false, None, Some(stage))
+            .await
     }
 
     pub(in crate::codex) async fn prepare_held_stop(&self, incoming: &Value) -> Result<Prepared> {
-        self.prepare_inner(incoming, Intent::Preserve, true, None)
+        self.prepare_inner(incoming, Intent::Preserve, true, None, None)
             .await
     }
 
@@ -282,6 +300,7 @@ impl Ensurer {
             Intent::Preserve,
             false,
             Some(TaskAttachment::Saved(Box::new(saved))),
+            None,
         )
         .await
     }
@@ -295,7 +314,7 @@ impl Ensurer {
         let attachment = saved
             .map(|saved| TaskAttachment::Saved(Box::new(saved)))
             .unwrap_or_else(|| TaskAttachment::StopWithoutLocalRecord(checkpoint.clone()));
-        self.prepare_inner(incoming, Intent::Preserve, true, Some(attachment))
+        self.prepare_inner(incoming, Intent::Preserve, true, Some(attachment), None)
             .await
     }
 
@@ -353,6 +372,7 @@ impl Ensurer {
         intent: Intent,
         stopping: bool,
         restored_task: Option<TaskAttachment>,
+        stage: Option<HandoffStage>,
     ) -> Result<Prepared> {
         let (owner, server) = self.0.encryption.bound_identity()?;
         let logical_server = server
@@ -481,7 +501,8 @@ impl Ensurer {
         let prepared = Arc::new(Mutex::new(None));
         let this = self.clone();
         let retained_resource = resource.clone();
-        self.0.preparation.prepare(Input {
+        let staged = stage.is_some();
+        let input = Input {
             identity,
             target,
             unbound_reuse_key: None,
@@ -491,243 +512,422 @@ impl Ensurer {
             prepare: Box::new({
                 let bound = bound.clone();
                 let prepared = prepared.clone();
-                move |selection, identify| Box::pin(async move {
-                    resource.signal.check()?;
-                    if let Some(saved) = &held
-                        && (selection.intent != Intent::Preserve
-                            || selection.thread_id.as_ref() != saved.source["threadId"].as_js_string())
-                    {
-                        bail!("The saved suspension source belongs to a different native attachment.");
-                    }
-                    let model_provider = provider::model_provider(&provider);
-                    let source = held.as_ref().map_or(home::Source::Current(selection.thread_id.as_ref()), home::Source::Held);
-                    let profile = home::profile(
-                        &this.0.data, &scope, source, Some(&chat), &provider, execution, this.0.skills.clone(),
-                        environment.as_deref(),
-                    ).await?;
-                    this.assert_bound(&bound)?;
-                    let codex_home = profile.codex_home.clone();
-                    let attached = held.as_ref().and_then(|saved| {
-                        let expected = selection.thread_id.as_ref()?;
-                        let (thread, live) = this.selected_live_owner(&chat, &bound)?;
-                        if thread.id() != expected { return None; }
-                        let session = live.session.as_ref()?;
-                        (live.runtime.codex_home().as_os_str() == saved.home.as_os_str()
-                            && ["contextKind", "projectId", "placementId", "modelRouteId", "providerAccountId"]
-                                .iter().all(|field| session[*field] == saved.source[*field]))
-                            .then_some((thread, live))
-                    });
-                    let runtime = match &attached {
-                        Some((_, live)) => live.runtime.clone(),
-                        None => {
-                            let mut launch = provider::launch(
-                                profile, provider, this.0.access.clone(), &command["model"], &command["subagentDefaults"]["model"],
-                            )?;
-                            if let Some(environment) = environment.clone() {
-                                launch.profile.native_host = true;
-                                launch.prepare_home = Some(Arc::new(move |home| {
-                                    let environment = environment.clone();
-                                    cantrip_transport::lifecycle::owned(async move { environment.prepare_home(&home) })
-                                }));
-                            }
-                            this.0.codex.launch_in_scope(launch, Some((logical_server, bound.0.clone()))).await?
-                        }
-                    };
-                    resource.signal.check()?;
-                    if !stopping && held.is_none() {
-                        runtime.synchronize_models(&command["model"], &command["subagentDefaults"]["model"]).await?;
+                move |selection, identify| {
+                    Box::pin(async move {
                         resource.signal.check()?;
+                        if let Some(saved) = &held
+                            && (selection.intent != Intent::Preserve
+                                || selection.thread_id.as_ref()
+                                    != saved.source["threadId"].as_js_string())
+                        {
+                            bail!(
+                                "The saved suspension source belongs to a different native attachment."
+                            );
+                        }
+                        let model_provider = provider::model_provider(&provider);
+                        let source = if let Some(HandoffStage::Destination { operation, .. }) =
+                            &stage
+                        {
+                            home::Source::Staged {
+                                thread: selection.thread_id.as_ref().context("Handoff thread")?,
+                                operation,
+                            }
+                        } else {
+                            held.as_ref().map_or(
+                                home::Source::Current(selection.thread_id.as_ref()),
+                                home::Source::Held,
+                            )
+                        };
+                        let profile = home::profile(
+                            &this.0.data,
+                            &scope,
+                            source,
+                            Some(&chat),
+                            &provider,
+                            execution,
+                            this.0.skills.clone(),
+                            environment.as_deref(),
+                        )
+                        .await?;
                         this.assert_bound(&bound)?;
-                    }
-                    let session = &command["session"];
-                    let mut mcp = mcp;
-                    let admission = if structured {
-                        None
-                    } else {
-                        let broker = this.broker().await?;
-                        let legacy_root = if standalone || guest {
+                        let codex_home = profile.codex_home.clone();
+                        let attached = held.as_ref().and_then(|saved| {
+                            let expected = selection.thread_id.as_ref()?;
+                            let (thread, live) = this.selected_live_owner(&chat, &bound)?;
+                            if thread.id() != expected {
+                                return None;
+                            }
+                            let session = live.session.as_ref()?;
+                            (live.runtime.codex_home().as_os_str() == saved.home.as_os_str()
+                                && [
+                                    "contextKind",
+                                    "projectId",
+                                    "placementId",
+                                    "modelRouteId",
+                                    "providerAccountId",
+                                ]
+                                .iter()
+                                .all(|field| session[*field] == saved.source[*field]))
+                            .then_some((thread, live))
+                        });
+                        let runtime = match &attached {
+                            Some((_, live)) => live.runtime.clone(),
+                            None => {
+                                let mut launch = provider::launch(
+                                    profile,
+                                    provider,
+                                    this.0.access.clone(),
+                                    &command["model"],
+                                    &command["subagentDefaults"]["model"],
+                                )?;
+                                if let Some(environment) = environment.clone() {
+                                    launch.profile.native_host = true;
+                                    launch.prepare_home = Some(Arc::new(move |home| {
+                                        let environment = environment.clone();
+                                        cantrip_transport::lifecycle::owned(async move {
+                                            environment.prepare_home(&home)
+                                        })
+                                    }));
+                                }
+                                this.0
+                                    .codex
+                                    .launch_in_scope(
+                                        launch,
+                                        Some((logical_server, bound.0.clone())),
+                                    )
+                                    .await?
+                            }
+                        };
+                        resource.signal.check()?;
+                        if !stopping && held.is_none() {
+                            runtime
+                                .synchronize_models(
+                                    &command["model"],
+                                    &command["subagentDefaults"]["model"],
+                                )
+                                .await?;
+                            resource.signal.check()?;
+                            this.assert_bound(&bound)?;
+                        }
+                        let session = &command["session"];
+                        let mut mcp = mcp;
+                        let admission = if structured {
                             None
                         } else {
-                            Some(this.0.routing.protect_metadata(&json!({"path":cwd})).await?["path"].clone())
+                            let broker = this.broker().await?;
+                            let legacy_root = if standalone || guest {
+                                None
+                            } else {
+                                Some(
+                                    this.0
+                                        .routing
+                                        .protect_metadata(&json!({"path":cwd}))
+                                        .await?["path"]
+                                        .clone(),
+                                )
+                            };
+                            let admission = json!({
+                                "ownerId": bound.0, "workerId": this.0.worker, "chatId": chat,
+                                "contextKind": context_kind, "projectId": session["projectId"],
+                                "worktreeId": session["worktreeId"], "rootKind": session["rootKind"],
+                                "scratchRootId": session["scratchRootId"],
+                                "permissionProfileId": command["permissionProfileId"],
+                                "allowedOperations": ["context.get", "tool.help", "web.read", "web.search"]
+                                    .into_iter()
+                                    .chain(crate::web::session::TOOLS.into_iter().map(|(operation, _)| operation))
+                                    .collect::<Vec<_>>(),
+                            });
+                            let attachment = broker.prepare(admission.clone(), legacy_root).await?;
+                            if let Err(error) = resource.signal.check() {
+                                let binding = field(&attachment.connection, "bindingId")?;
+                                broker.revoke(&binding)?;
+                                return Err(error);
+                            }
+                            mcp["cantrip"] = if guest {
+                                runtime
+                                    .remember_secret(field(&attachment.connection, "credential")?);
+                                attachment.codex_http_configuration()
+                            } else {
+                                attachment.codex_configuration(&std::env::current_exe()?)?
+                            };
+                            Some(admission)
                         };
-                        let admission = json!({
-                            "ownerId": bound.0, "workerId": this.0.worker, "chatId": chat,
-                            "contextKind": context_kind, "projectId": session["projectId"],
-                            "worktreeId": session["worktreeId"], "rootKind": session["rootKind"],
-                            "scratchRootId": session["scratchRootId"],
-                            "permissionProfileId": command["permissionProfileId"],
-                            "allowedOperations": ["context.get", "tool.help", "web.read", "web.search"]
-                                .into_iter()
-                                .chain(crate::web::session::TOOLS.into_iter().map(|(operation, _)| operation))
-                                .collect::<Vec<_>>(),
-                        });
-                        let attachment = broker.prepare(admission.clone(), legacy_root).await?;
-                        if let Err(error) = resource.signal.check() {
-                            let binding = field(&attachment.connection, "bindingId")?;
-                            broker.revoke(&binding)?;
-                            return Err(error);
+                        let runner: JsString = payload_digest(&json!([
+                            json!(runtime.generation()),
+                            json!(chat),
+                            session[placement].clone()
+                        ]))
+                        .into();
+                        let first_message = command["taskGoalFirstInput"].as_js_string();
+                        if let (Some(message), Some(thread)) =
+                            (first_message, selection.thread_id.as_ref())
+                        {
+                            runtime.inference_router().reserve_task_first_input(
+                                thread.clone(),
+                                runner.clone(),
+                                message.clone(),
+                            );
                         }
-                        mcp["cantrip"] = if guest {
-                            runtime.remember_secret(field(&attachment.connection, "credential")?);
-                            attachment.codex_http_configuration()
+                        let mut configuration = profile::configuration(
+                            &command,
+                            &cwd,
+                            mcp,
+                            Some(runner.clone()),
+                            model_provider,
+                            standalone,
+                            this.0.permission_profiles,
+                            environment.as_deref(),
+                        )
+                        .await?;
+                        this.assert_bound(&bound)?;
+                        if let Some(saved) = &held {
+                            configuration.expected_suspension =
+                                Some(saved.evidence["suspension"].clone());
                         } else {
-                            attachment.codex_configuration(&std::env::current_exe()?)?
-                        };
-                        Some(admission)
-                    };
-                    let runner: JsString = payload_digest(&json!([
-                        json!(runtime.generation()), json!(chat), session[placement].clone()
-                    ])).into();
-                    let first_message = command["taskGoalFirstInput"].as_js_string();
-                    if let (Some(message), Some(thread)) = (first_message, selection.thread_id.as_ref()) {
-                        runtime.inference_router().reserve_task_first_input(thread.clone(), runner.clone(), message.clone());
-                    }
-                    let mut configuration = profile::configuration(
-                        &command, &cwd, mcp, Some(runner.clone()), model_provider, standalone,
-                        this.0.permission_profiles, environment.as_deref(),
-                    ).await?;
-                    this.assert_bound(&bound)?;
-                    if let Some(saved) = &held {
-                        configuration.expected_suspension = Some(saved.evidence["suspension"].clone());
-                    } else {
-                        configuration.expected_suspension = native_stop;
-                    }
-                    let delivery = this.0.codex.project_goals().filter(|_| !guest && !standalone && held.is_none() && !task_restoration);
-                    let task = command["taskOwned"] == true;
-                    let latch = task.then(|| this.task_latch(&bound, &chat)).transpose()?;
-                    let task_root = |thread: &JsString, latch: &Arc<Latch>| Root {
-                        runner: runner.clone(),
-                        binding: json!({
-                            "workerId":this.0.worker, "chatId":chat, "projectId":session["projectId"],
-                            "worktreeId":session["worktreeId"], "threadId":thread, "cycleId":command["taskCycleId"],
-                            "modelRouteId":command["model"]["routeId"], "providerAccountId":command["provider"]["accountId"],
-                        }),
-                        latch: latch.clone(),
-                    };
-                    let router = runtime.inference_router();
-                    resource.signal.check()?;
-                    if let Some(thread) = &selection.thread_id {
-                        router.bind_resource(thread, &resource);
-                    }
-                    if let Some(latch) = &latch {
-                        runtime.admission().set_chat_paused(&chat, latch.current().blocked)?;
-                        if let Some(thread) = &selection.thread_id {
-                            router.set_task_root(thread, Some(task_root(thread, latch)));
+                            configuration.expected_suspension = native_stop;
                         }
-                    }
-                    if task
-                        && let (Some(delivery), Some(thread)) = (delivery, selection.thread_id.as_ref())
-                    {
-                        delivery.select(&bound, thread, runtime.generation(), &chat, true);
-                    }
-                    let loaded = if stopping && let Some((thread, _)) = attached {
-                        // The authorized Stop uses native terminal history even
-                        // if a previous Resume found unreadable checkpoint bytes.
-                        thread.assert_current(&runtime)?;
-                        identify(thread.id().clone()).await?;
-                        thread
-                    } else {
-                        let loaded = native::load(&runtime, &selection, &configuration, &identify).await?;
-                        router.bind_resource(loaded.id(), &resource);
+                        let delivery = this.0.codex.project_goals().filter(|_| {
+                            !staged && !guest && !standalone && held.is_none() && !task_restoration
+                        });
+                        let task = command["taskOwned"] == true;
+                        let latch = task.then(|| this.task_latch(&bound, &chat)).transpose()?;
+                        let task_root = |thread: &JsString, latch: &Arc<Latch>| Root {
+                            runner: runner.clone(),
+                            binding: json!({
+                                "workerId":this.0.worker, "chatId":chat, "projectId":session["projectId"],
+                                "worktreeId":session["worktreeId"], "threadId":thread, "cycleId":command["taskCycleId"],
+                                "modelRouteId":command["model"]["routeId"], "providerAccountId":command["provider"]["accountId"],
+                            }),
+                            latch: latch.clone(),
+                        };
+                        let router = runtime.inference_router();
                         resource.signal.check()?;
-                        native::configure(&runtime, &loaded, selection.intent, &configuration).await?;
-                        loaded
-                    };
-                    if selection.intent == Intent::Configure || change_plan {
-                        profile::apply_plan_mode(&runtime, &loaded, &command["planMode"], &command["model"]).await?;
-                    }
-                    if let Some(message) = first_message {
-                        runtime.inference_router().reserve_task_first_input(loaded.id().clone(), runner.clone(), message.clone());
-                    }
-                    if first_message.is_some() || command["taskGoalPermissions"] == true {
-                        profile::apply_goal_permissions(&runtime, &loaded, &command, this.0.permission_profiles).await?;
-                    }
-                    loaded.assert_current(&runtime)?;
-                    this.assert_bound(&bound)?;
-                    let thread_id = loaded.id().clone();
-                    if !stopping {
-                        runtime.bind_model_attribution(
-                            &thread_id, &command["model"], &command["subagentDefaults"]["model"],
+                        if let Some(thread) = &selection.thread_id {
+                            router.bind_resource(thread, &resource);
+                        }
+                        if let Some(latch) = &latch {
+                            runtime
+                                .admission()
+                                .set_chat_paused(&chat, latch.current().blocked)?;
+                            if let Some(thread) = &selection.thread_id {
+                                router.set_task_root(thread, Some(task_root(thread, latch)));
+                            }
+                        }
+                        if task
+                            && let (Some(delivery), Some(thread)) =
+                                (delivery, selection.thread_id.as_ref())
+                        {
+                            delivery.select(&bound, thread, runtime.generation(), &chat, true);
+                        }
+                        let loaded = if stopping && let Some((thread, _)) = attached {
+                            // The authorized Stop uses native terminal history even
+                            // if a previous Resume found unreadable checkpoint bytes.
+                            thread.assert_current(&runtime)?;
+                            identify(thread.id().clone()).await?;
+                            thread
+                        } else {
+                            let loaded = if let Some(HandoffStage::Destination {
+                                transfer: Some(transfer),
+                                ..
+                            }) = &stage
+                            {
+                                native::load_import(
+                                    &runtime,
+                                    &selection,
+                                    &configuration,
+                                    &identify,
+                                    transfer,
+                                )
+                                .await?
+                            } else {
+                                native::load(&runtime, &selection, &configuration, &identify)
+                                    .await?
+                            };
+                            router.bind_resource(loaded.id(), &resource);
+                            resource.signal.check()?;
+                            native::configure(&runtime, &loaded, selection.intent, &configuration)
+                                .await?;
+                            loaded
+                        };
+                        if selection.intent == Intent::Configure || change_plan {
+                            profile::apply_plan_mode(
+                                &runtime,
+                                &loaded,
+                                &command["planMode"],
+                                &command["model"],
+                            )
+                            .await?;
+                        }
+                        if let Some(message) = first_message {
+                            runtime.inference_router().reserve_task_first_input(
+                                loaded.id().clone(),
+                                runner.clone(),
+                                message.clone(),
+                            );
+                        }
+                        if first_message.is_some() || command["taskGoalPermissions"] == true {
+                            profile::apply_goal_permissions(
+                                &runtime,
+                                &loaded,
+                                &command,
+                                this.0.permission_profiles,
+                            )
+                            .await?;
+                        }
+                        loaded.assert_current(&runtime)?;
+                        this.assert_bound(&bound)?;
+                        let thread_id = loaded.id().clone();
+                        if !stopping {
+                            runtime.bind_model_attribution(
+                            &thread_id,
+                            &command["model"],
+                            &command["subagentDefaults"]["model"],
                             json!({
                                 "workerId":this.0.worker, "providerId":command["provider"]["id"],
                                 "providerAccountId":command["provider"]["accountId"],
                             }),
                         );
-                    }
-                    let mut result = Prepared {
-                        runtime: runtime.clone(), thread: loaded.clone(), codex_home, runner_generation: runner.clone(),
-                        saved: held, environment, admission: admission.clone(), bound: bound.clone(), queue: None,
-                        permission: Arc::new(Mutex::new(command["permissionProfileId"].clone())),
-                    };
-                    {
-                        let mut owners = this.0.live_threads.lock().unwrap();
-                        resource.signal.check()?;
-                        if let Some(delivery) = delivery {
-                            delivery.select(&bound, &thread_id, runtime.generation(), &chat, task);
                         }
-                        let native_session = native_session(&command, &runtime, loaded.id());
-                        let goal_session = (!task && !guest).then(|| native_session.clone());
-                        let queue = if !task && !stopping && result.saved.is_none() && !task_restoration
-                            && let Some(factory) = this.0.queue_imports.get()
-                        {
-                            let previous = owners.get(&chat).and_then(|owner| owner.queue.as_ref());
-                            Some(factory.bind(&result, &command, previous)?)
-                        } else {
-                            None
+                        let mut result = Prepared {
+                            runtime: runtime.clone(),
+                            thread: loaded.clone(),
+                            codex_home,
+                            runner_generation: runner.clone(),
+                            saved: held,
+                            environment,
+                            admission: admission.clone(),
+                            bound: bound.clone(),
+                            queue: None,
+                            permission: Arc::new(Mutex::new(
+                                command["permissionProfileId"].clone(),
+                            )),
                         };
-                        result.queue = queue.as_ref().map(|binding| binding.import.clone());
-                        let settings = if !task && !stopping && result.saved.is_none() && !task_restoration
-                            && let Some(factory) = this.0.settings_publisher.get()
-                        {
-                            let previous = owners.get(&chat).and_then(|owner| owner.settings.as_ref());
-                            Some(factory.bind(&this.0.worker, &result, &native_session, &command, previous)?)
-                        } else {
-                            None
-                        };
-                        if let Some(settings) = &settings {
-                            result.permission = settings.source.permission_state();
+                        if !staged {
+                            let mut owners = this.0.live_threads.lock().unwrap();
+                            resource.signal.check()?;
+                            if let Some(delivery) = delivery {
+                                delivery.select(
+                                    &bound,
+                                    &thread_id,
+                                    runtime.generation(),
+                                    &chat,
+                                    task,
+                                );
+                            }
+                            let native_session = native_session(&command, &runtime, loaded.id());
+                            let goal_session = (!task && !guest).then(|| native_session.clone());
+                            let queue = if !task
+                                && !stopping
+                                && result.saved.is_none()
+                                && !task_restoration
+                                && let Some(factory) = this.0.queue_imports.get()
+                            {
+                                let previous =
+                                    owners.get(&chat).and_then(|owner| owner.queue.as_ref());
+                                Some(factory.bind(&result, &command, previous)?)
+                            } else {
+                                None
+                            };
+                            result.queue = queue.as_ref().map(|binding| binding.import.clone());
+                            let settings = if !task
+                                && !stopping
+                                && result.saved.is_none()
+                                && !task_restoration
+                                && let Some(factory) = this.0.settings_publisher.get()
+                            {
+                                let previous =
+                                    owners.get(&chat).and_then(|owner| owner.settings.as_ref());
+                                Some(factory.bind(
+                                    &this.0.worker,
+                                    &result,
+                                    &native_session,
+                                    &command,
+                                    previous,
+                                )?)
+                            } else {
+                                None
+                            };
+                            if let Some(settings) = &settings {
+                                result.permission = settings.source.permission_state();
+                            }
+                            if let (Some(autonomous), Some(session)) =
+                                (this.0.autonomous.get(), goal_session.as_ref())
+                                && context_kind == "project"
+                                && result.saved.is_none()
+                            {
+                                let broker = Arc::downgrade(&this.0);
+                                let authority = bound.clone();
+                                let admission = admission.clone();
+                                let thread = thread_id.clone();
+                                let activate = Arc::new(move |lane: &Value| {
+                                    broker
+                                        .upgrade()
+                                        .context("The managed MCP broker has closed.")?
+                                        .activate(
+                                            &authority,
+                                            Some(&thread),
+                                            admission.as_ref(),
+                                            lane,
+                                        )
+                                });
+                                runtime.inference_router().register_goal_producer(
+                                    thread_id.clone(),
+                                    runner.clone(),
+                                    Arc::new(autonomous.producer(Runner {
+                                        runtime: runtime.downgrade(),
+                                        thread: loaded.clone(),
+                                        session: session.clone(),
+                                        bound: bound.clone(),
+                                        cwd: cwd.clone(),
+                                        provider: command["provider"].clone(),
+                                        permission: result.permission.clone(),
+                                        activate,
+                                    })),
+                                );
+                            } else {
+                                runtime.inference_router().remove_goal_producer(&thread_id);
+                            }
+                            let task = latch.as_ref().map(|latch| task_root(&thread_id, latch));
+                            router.set_task_root(&thread_id, task.clone());
+                            let owner = ThreadOwner {
+                                runtime: runtime.downgrade(),
+                                thread: loaded.clone(),
+                                bound: bound.clone(),
+                                session: goal_session,
+                                task,
+                                queue,
+                                settings,
+                                model_route: command["model"]["routeId"].clone(),
+                                provider_id: command["provider"]["id"].clone(),
+                                provider_account: command["provider"]["accountId"].clone(),
+                            };
+                            owners.insert(chat.clone(), owner);
                         }
-                        if let (Some(autonomous), Some(session)) = (this.0.autonomous.get(), goal_session.as_ref())
-                            && context_kind == "project"
-                            && result.saved.is_none()
+                        if let Some(latch) = latch
+                            && !staged
+                            && !task_restoration
                         {
-                            let broker = Arc::downgrade(&this.0);
-                            let authority = bound.clone();
-                            let admission = admission.clone();
-                            let thread = thread_id.clone();
-                            let activate = Arc::new(move |lane: &Value| {
-                                broker.upgrade().context("The managed MCP broker has closed.")?
-                                    .activate(&authority, Some(&thread), admission.as_ref(), lane)
-                            });
-                            runtime.inference_router().register_goal_producer(
-                                thread_id.clone(), runner.clone(), Arc::new(autonomous.producer(Runner {
-                                    runtime: runtime.downgrade(), thread: loaded.clone(), session: session.clone(),
-                                    bound: bound.clone(), cwd: cwd.clone(), provider: command["provider"].clone(),
-                                    permission: result.permission.clone(), activate,
-                                })),
-                            );
-                        } else {
-                            runtime.inference_router().remove_goal_producer(&thread_id);
+                            this.sync_task_pause(&bound, &chat, &latch).await?;
                         }
-                        let task = latch.as_ref().map(|latch| task_root(&thread_id, latch));
-                        router.set_task_root(&thread_id, task.clone());
-                        let owner = ThreadOwner {
-                            runtime: runtime.downgrade(), thread: loaded.clone(), bound: bound.clone(),
-                            session: goal_session, task, queue, settings,
-                            model_route: command["model"]["routeId"].clone(),
-                            provider_id: command["provider"]["id"].clone(),
-                            provider_account: command["provider"]["accountId"].clone(),
-                        };
-                        owners.insert(chat.clone(), owner);
-                    }
-                    if let Some(latch) = latch && !task_restoration {
-                        this.sync_task_pause(&bound, &chat, &latch).await?;
-                    }
-                    *prepared.lock().unwrap() = Some(result);
-                    Ok(thread_id)
-                })
+                        *prepared.lock().unwrap() = Some(result);
+                        Ok(thread_id)
+                    })
+                }
             }),
-        }).await?;
+        };
+        if staged {
+            (input.prepare)(
+                super::Selection {
+                    thread_id: input.target.thread_id,
+                    intent,
+                    replacement_settings: None,
+                },
+                Arc::new(|_| Box::pin(async { Ok(()) })),
+            )
+            .await?;
+        } else {
+            self.0.preparation.prepare(input).await?;
+        }
         retained_resource.signal.check()?;
         self.assert_bound(&bound)?;
         let result = prepared

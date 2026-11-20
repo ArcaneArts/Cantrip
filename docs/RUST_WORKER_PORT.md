@@ -7498,3 +7498,32 @@ question and cold-resume approval regression fixtures passed.
 
 Live attribution for output outside canonical history, native picker
 inventory refresh, and managed runtime handoff remain open.
+
+## 197. Transfer a settled managed Chat between native providers
+
+Reference commit 0793ad520e4d4d989e54b7481848af9faa9f7e60 (#3360).
+
+The Rust worker now handles the existing runtime handoff command for a
+settled managed Chat. It holds the original native producer, records the
+actual last turn, and exports portable history through bundled Codex. It
+reuses the version-one plan, export receipt and namespace selection formats.
+The destination loads the same thread in its private home, resets its model
+context, and returns an encrypted snapshot of the confirmed native settings.
+The worker adopts that home after Core commits its binding. A retried
+committed operation reopens the same destination and recovers its runtime
+generation. Cancellation releases the source with its native hold revision
+and retires the staged destination.
+
+Local macOS ARM64 smoke tests used the production Rust Core with PGlite,
+the production Rust worker, bundled Codex and two loopback providers. A
+provider switch preserved the native thread and encrypted conversation
+history across a worker restart. The target provider received its selected
+model and a cleared model context. Another run dropped the commit response
+after Core persisted it and completed the same operation after restart.
+A third cancelled a prepared transfer and executed another turn on the
+original native runtime. The Plan Mode settings and protected question
+regression passed on the same worker build.
+
+Handoffs of live queued prompts and recovered Goals and Tasks still need
+worker withdrawal and acknowledgement. An open managed console still
+needs to retarget to the newly selected runtime.

@@ -59,6 +59,46 @@ pub async fn load(
     configuration: &Configuration,
     identify: &Identify,
 ) -> Result<LoadedThread> {
+    load_inner(runtime, selection, configuration, identify, false).await
+}
+
+pub(super) async fn load_import(
+    runtime: &Runtime,
+    selection: &Selection,
+    configuration: &Configuration,
+    identify: &Identify,
+    transfer: &Value,
+) -> Result<LoadedThread> {
+    let thread = selection
+        .thread_id
+        .as_ref()
+        .context("Missing handoff thread")?;
+    if transfer["threadId"].as_js_string() != Some(thread) || selection.intent != Intent::Preserve {
+        bail!("Native history import belongs to another managed conversation.");
+    }
+    match request(runtime, "thread/managedHistory/import", transfer.clone()).await {
+        Ok(response) if response["threadId"].as_js_string() == Some(thread) => {}
+        Ok(_) => bail!("Native history import returned another conversation."),
+        Err(error)
+            if error
+                .downcast_ref::<Failure>()
+                .and_then(|failure| failure.native_error.as_ref())
+                .is_some_and(|native| {
+                    native["code"].as_i64() == Some(-32600)
+                        && native["message"] == "migration destination is already loaded"
+                }) => {}
+        Err(error) => return Err(error),
+    }
+    load_inner(runtime, selection, configuration, identify, true).await
+}
+
+async fn load_inner(
+    runtime: &Runtime,
+    selection: &Selection,
+    configuration: &Configuration,
+    identify: &Identify,
+    adopt_imported_provider: bool,
+) -> Result<LoadedThread> {
     let overlay = overlay(configuration, selection.intent)?;
     let mut params = match (&selection.thread_id, selection.intent) {
         (None, _) => configuration.start.clone(),
@@ -78,6 +118,13 @@ pub async fn load(
     }
     if let Some(overlay) = overlay {
         params["managedConfig"] = overlay;
+    }
+    if adopt_imported_provider {
+        for key in ["model", "modelProvider", "effort"] {
+            if let Some(value) = configuration.start.get(key) {
+                params[key] = value.clone();
+            }
+        }
     }
     let gate = &params["managedConfig"]["executionGate"];
     let binding = gate["runnerGeneration"].as_js_string().cloned();

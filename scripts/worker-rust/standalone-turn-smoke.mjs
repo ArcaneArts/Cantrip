@@ -57,6 +57,9 @@ const { values } = parseArgs({
     "subagent-interactions": { type: "boolean" },
     "subagent-model": { type: "boolean" },
     "plan-question": { type: "boolean" },
+    "runtime-handoff": { type: "boolean" },
+    "runtime-handoff-recovery": { type: "boolean" },
+    "runtime-handoff-cancel": { type: "boolean" },
   },
 });
 assert.ok(
@@ -87,6 +90,10 @@ const restoredInteractions = values["restored-interactions"];
 const subagentInteractions =
   values["subagent-interactions"] || values["subagent-model"];
 const planQuestion = values["plan-question"];
+const runtimeHandoff =
+  values["runtime-handoff"] ||
+  values["runtime-handoff-recovery"] ||
+  values["runtime-handoff-cancel"];
 const interactionKey =
   values.interactions ||
   consoleInteractions ||
@@ -96,7 +103,7 @@ const interactionKey =
     ? key("interaction-content")
     : null;
 const consoleStateKey =
-  consoleInteractions || subagentInteractions || planQuestion
+  consoleInteractions || subagentInteractions || planQuestion || runtimeHandoff
     ? key("surface-private-state")
     : null;
 const consoleSocket = path.join(root, "managed-console-socket");
@@ -1419,6 +1426,158 @@ async function verifyPlanQuestion() {
   }
 }
 
+async function verifyRuntimeHandoff() {
+  const source = await createModel("Handoff source");
+  const target = await createModel("Handoff destination", undefined, [
+    { id: "handoff-destination-model" },
+  ]);
+  const targetProfile = await call("POST", "/api/settings/models", 201, {
+    name: "Handoff destination route",
+    routes: [
+      {
+        providerId: target.provider.id,
+        modelName: "handoff-destination-model",
+        enabled: true,
+      },
+    ],
+  });
+  await call("PATCH", "/api/settings", 200, {
+    defaultModelId: source.profile.id,
+    autoNameChats: false,
+  });
+  const { chatId, chatUrl } = await createPreparedProjectChat({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    labelKey,
+    title: "Native provider handoff",
+  });
+  const submit = async (provider, content, text, modelId) => {
+    const reply = provider.model.reply({ text });
+    const turn = await encryptedTurn(content, modelId);
+    await call("POST", `${chatUrl}/turns`, 202, turn);
+    await eventually(
+      () => reply.request,
+      (request) => assert.equal(request?.completed, true),
+      35_000,
+    );
+    await eventually(
+      async () => {
+        const { messages } = await call("GET", `${chatUrl}/messages`, 200);
+        return Promise.all(messages.map(openMessage));
+      },
+      (messages) =>
+        assert.ok(
+          messages.some((message) =>
+            message.content.some((item) => item.text === text),
+          ),
+        ),
+    );
+    return reply.request.input;
+  };
+  const firstPrompt = "Remember the source reply across the provider change.";
+  const firstReply = "This is the original conversation.";
+  await submit(source, firstPrompt, firstReply, source.profile.id);
+  const handoffUrl = `${chatUrl}/runtime-handoffs`;
+  const settingsUrl = `${chatUrl}/native-settings`;
+  const { binding } = await call("POST", `${settingsUrl}/refresh`, 200, {});
+  const operationId = randomUUID();
+  await eventually(
+    () =>
+      call("POST", handoffUrl, 202, {
+        operationId,
+        bindingId: binding.bindingId,
+        targetModelRouteId: targetProfile.routes[0].id,
+        targetProviderAccountId: null,
+      }),
+    (state) => assert.equal(state.operationId, operationId),
+  );
+  if (values["runtime-handoff-recovery"] || values["runtime-handoff-cancel"]) {
+    await eventually(
+      () => receiptProxy.withheld(),
+      (operation) => assert.equal(operation, operationId),
+      35_000,
+    );
+    const state = await call("GET", `${handoffUrl}/${operationId}`, 200);
+    if (values["runtime-handoff-cancel"]) {
+      assert.equal(state.phase, "prepared");
+      await call("POST", `${handoffUrl}/${operationId}/cancel`, 202, {});
+      await eventually(
+        () => call("GET", `${handoffUrl}/${operationId}`, 200),
+        (state) =>
+          assert.equal(state.phase, "cancelled", JSON.stringify(state)),
+      );
+      const current = await call("POST", `${settingsUrl}/refresh`, 200, {});
+      assert.equal(current.binding.threadId, binding.threadId);
+      assert.equal(
+        current.binding.runtimeGeneration,
+        binding.runtimeGeneration,
+      );
+      await submit(
+        source,
+        "Continue on the original provider after cancellation.",
+        "The original provider resumed the conversation.",
+        source.profile.id,
+      );
+      assert.ok(target.model.requests.every(({ method }) => method !== "POST"));
+      console.log(
+        "Native provider handoff cancellation restored the live source.",
+      );
+      return;
+    }
+    assert.equal(state.phase, "committed");
+    await stopWorker();
+    receiptProxy.open();
+    await startWorker();
+    await call("POST", `${handoffUrl}/${operationId}/retry`, 202, {});
+  }
+  const transferred = await eventually(
+    () => call("GET", `${handoffUrl}/${operationId}`, 200),
+    (state) => assert.equal(state.phase, "completed", JSON.stringify(state)),
+    35_000,
+  );
+  assert.equal(transferred.chatId, chatId);
+  assert.equal(transferred.binding.threadId, binding.threadId);
+  assert.notEqual(
+    transferred.binding.runtimeGeneration,
+    binding.runtimeGeneration,
+  );
+  assert.equal(transferred.binding.modelRouteId, targetProfile.routes[0].id);
+  await stopWorker();
+  await startWorker();
+  const summary = target.model.reply({
+    text: "The transferred model context is empty.",
+    onlyFor: (request) => request.input.model === source.model.model,
+  });
+  const after = await submit(
+    target,
+    "Continue the same conversation in the new provider.",
+    "The new route resumed the original thread.",
+    targetProfile.id,
+  );
+  assert.equal(after.model, "handoff-destination-model");
+  for (const request of [after, summary.request?.input].filter(Boolean)) {
+    assert.ok(!JSON.stringify(request.input).includes(firstPrompt));
+    assert.ok(!JSON.stringify(request.input).includes(firstReply));
+  }
+  const { messages } = await call("GET", `${chatUrl}/messages`, 200);
+  const retained = await Promise.all(messages.map(openMessage));
+  for (const text of [firstPrompt, firstReply]) {
+    assert.ok(
+      retained.some((message) =>
+        message.content.some((item) => item.text === text),
+      ),
+    );
+  }
+  assert.deepEqual(source.model.failures, []);
+  assert.deepEqual(target.model.failures, []);
+  console.log(
+    "Native provider handoff retained the conversation across worker restart.",
+  );
+}
+
 async function verifySettingsSnapshot() {
   const model = await createModel("Settings snapshot model");
   await call("PATCH", "/api/settings", 200, {
@@ -1821,6 +1980,14 @@ try {
     { cwd: root, env: environment },
   );
   if (values.deferred) receiptProxy = await deferredReceiptProxy(server.origin);
+  if (values["runtime-handoff-recovery"])
+    receiptProxy = await deferredReceiptProxy(server.origin, {
+      handoffAction: "commit",
+    });
+  if (values["runtime-handoff-cancel"])
+    receiptProxy = await deferredReceiptProxy(server.origin, {
+      handoffAction: "prepared",
+    });
   const enrollment = await call("POST", "/api/workers/enrollment-codes", 201, {
     label: "Rust standalone turn",
   });
@@ -1923,6 +2090,8 @@ try {
     });
   } else if (planQuestion) {
     await verifyPlanQuestion();
+  } else if (runtimeHandoff) {
+    await verifyRuntimeHandoff();
   } else if (values.settings) {
     await verifySettingsSnapshot();
   } else {
