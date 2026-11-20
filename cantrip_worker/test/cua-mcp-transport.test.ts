@@ -65,17 +65,19 @@ async function brokerFixture(execute: CuaMcpExecutor, enabled = true) {
 }
 async function stdioFixture(execute: CuaMcpExecutor) {
   const { broker, attachment } = await brokerFixture(execute);
+  const native = process.env.CANTRIP_TEST_RUST_CUA_MCP_BIN;
   const transport = new StdioClientTransport({
-    command: process.execPath,
+    command: native ? path.resolve(native) : process.execPath,
     args: [
-      "--import",
-      "tsx",
-      path.resolve("src/mcp/cua-stdio.ts"),
+      ...(native
+        ? ["cua-mcp"]
+        : ["--import", "tsx", path.resolve("src/mcp/cua-stdio.ts")]),
       "--connection",
       attachment.connectionPath,
     ],
     cwd: process.cwd(),
     stderr: "pipe",
+    ...(native ? { env: { PATH: "" } } : {}),
   });
   const client = new Client({ name: "cua-boundary-test", version: "1.0.0" });
   await client.connect(transport);
@@ -149,6 +151,9 @@ describe("managed CUA MCP transport", () => {
         },
       }),
     ).toMatchObject({ isError: true });
+    expect(
+      await client.callTool({ name: "js_reset", _meta: meta }),
+    ).toMatchObject({ isError: true });
     expect(execute).not.toHaveBeenCalled();
     expect(
       cuaMcpRequestSchema.safeParse({
@@ -157,6 +162,50 @@ describe("managed CUA MCP transport", () => {
         script: "😃".repeat(524_289),
       }).success,
     ).toBe(false);
+  }, 20_000);
+
+  it("cancels a pending stdio tool call without closing the broker attachment", async () => {
+    let entered!: () => void;
+    let interrupted!: () => void;
+    const began = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const cancelled = new Promise<void>((resolve) => {
+      interrupted = resolve;
+    });
+    const { client } = await stdioFixture(
+      async (_binding, request, _id, signal) => {
+        if (request.operation === "js_reset") return { content: [] };
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              interrupted();
+              reject(new Error("Fixture tool cancelled."));
+            },
+            { once: true },
+          );
+          entered();
+        });
+      },
+    );
+    const controller = new AbortController();
+    const work = client.callTool(
+      {
+        name: "js",
+        arguments: { script: "1" },
+        _meta: meta,
+      },
+      undefined,
+      { signal: controller.signal },
+    );
+    const rejected = expect(work).rejects.toThrow();
+    await began;
+    controller.abort();
+    await Promise.all([rejected, cancelled]);
+    expect(
+      await client.callTool({ name: "js_reset", arguments: {}, _meta: meta }),
+    ).toEqual({ content: [] });
   }, 20_000);
 
   it("requires binding credentials and an explicit worker-owned CUA grant", async () => {

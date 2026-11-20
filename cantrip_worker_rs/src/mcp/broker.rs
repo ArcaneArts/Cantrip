@@ -67,6 +67,7 @@ impl Broker {
                 ),
                 None,
                 Some(DEADLINE),
+                MAXIMUM_RESPONSE,
             )
             .await?;
         if ["protocolVersion", "bindingId", "expiresAt"]
@@ -99,10 +100,30 @@ impl Broker {
                 "/v1/execute",
                 Some(request),
                 operation_timeout(operation),
+                MAXIMUM_RESPONSE,
             )
             .await?;
         mcp_host::parse("cantripAgentOperationResultSchema", Some(&value))
             .map_err(|_| anyhow!("Cantrip MCP result validation failed."))
+    }
+
+    pub(super) async fn call_cua(&self, request: Value) -> Result<Value> {
+        self.assert_current()?;
+        let request = mcp_host::parse(
+            "cuaMcpBrokerRequestSchema",
+            Some(&json!({"bindingId":self.document["bindingId"],"request":request})),
+        )
+        .map_err(|_| {
+            anyhow!("CUA requires a bounded request and actual Codex thread/turn metadata.")
+        })?;
+        self.request(
+            Method::POST,
+            "/v1/computer-use",
+            Some(request),
+            None,
+            super::cua::MAXIMUM_RESPONSE,
+        )
+        .await
     }
 
     async fn request(
@@ -111,6 +132,7 @@ impl Broker {
         path: &str,
         body: Option<Value>,
         timeout: Option<Duration>,
+        maximum_response: usize,
     ) -> Result<Value> {
         let url = self.endpoint.join(path)?;
         let mut request = self
@@ -131,14 +153,14 @@ impl Broker {
             .get(header::CONTENT_LENGTH)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<usize>().ok())
-            .is_some_and(|len| len > MAXIMUM_RESPONSE)
+            .is_some_and(|len| len > maximum_response)
         {
             bail!("Cantrip MCP response is too large.");
         }
         let status = response.status();
         let mut raw = Vec::new();
         while let Some(data) = response.chunk().await.map_err(transport_error)? {
-            if data.len() > MAXIMUM_RESPONSE - raw.len() {
+            if data.len() > maximum_response - raw.len() {
                 bail!("Cantrip MCP response is too large.");
             }
             raw.extend_from_slice(&data);

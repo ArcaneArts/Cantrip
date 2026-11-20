@@ -1,5 +1,6 @@
 use super::{
     broker::Broker,
+    cua,
     rpc::{self, initialize, result, rpc_error},
 };
 use anyhow::{Result, bail};
@@ -23,9 +24,15 @@ pub(super) async fn serve(
     mut output: impl AsyncWrite + Unpin,
 ) -> Result<()> {
     let standalone = profile == "standalone-web";
+    let is_cua = profile == "cua";
     let profile = &rpc::catalog()["profiles"][profile];
     let (sender, mut frames) = mpsc::channel(16);
-    let mut reader = tokio::spawn(read_frames(BufReader::new(input), sender));
+    let maximum_line = if is_cua {
+        cua::MAXIMUM_REQUEST
+    } else {
+        MAXIMUM_LINE
+    };
+    let mut reader = tokio::spawn(read_frames(BufReader::new(input), sender, maximum_line));
     let mut calls = JoinSet::new();
     let mut pending = HashMap::<String, AbortHandle>::new();
     let outcome = async {
@@ -59,16 +66,22 @@ pub(super) async fn serve(
                             };
                             let name = name.to_owned();
                             let arguments = params.get("arguments").cloned();
+                            let metadata = is_cua.then(|| params["_meta"].clone());
                             let broker = broker.clone();
                             let id = id.clone();
                             let correlation = key.clone();
                             let handle = calls.spawn(async move {
-                                let payload = rpc::call(
-                                    async |operation, args| broker.call(operation, args).await.map_err(|error| error.to_string().into()),
-                                    |name| profile["tools"].as_array().unwrap().iter().any(|tool| tool["name"] == name),
-                                    standalone, &name, arguments.as_ref(),
-                                ).await;
-                                (correlation, result(&id, payload))
+                                let reply = if let Some(metadata) = metadata {
+                                    cua::bounded_result(&id, cua::call(&broker, &name, arguments.as_ref(), &metadata).await)
+                                } else {
+                                    let payload = rpc::call(
+                                        async |operation, args| broker.call(operation, args).await.map_err(|error| error.to_string().into()),
+                                        |name| profile["tools"].as_array().unwrap().iter().any(|tool| tool["name"] == name),
+                                        standalone, &name, arguments.as_ref(),
+                                    ).await;
+                                    result(&id, payload)
+                                };
+                                (correlation, reply)
                             });
                             pending.insert(key, handle);
                             continue;
@@ -102,6 +115,7 @@ pub(super) async fn serve(
 async fn read_frames(
     mut input: BufReader<impl AsyncRead + Unpin>,
     frames: mpsc::Sender<Value>,
+    maximum_line: usize,
 ) -> Result<()> {
     let mut line = Vec::new();
     loop {
@@ -111,7 +125,7 @@ async fn read_frames(
         }
         let newline = chunk.iter().position(|byte| *byte == b'\n');
         let len = newline.unwrap_or(chunk.len());
-        if len > MAXIMUM_LINE - line.len() {
+        if len > maximum_line - line.len() {
             bail!("Cantrip MCP request exceeds the line limit.");
         }
         line.extend_from_slice(&chunk[..len]);

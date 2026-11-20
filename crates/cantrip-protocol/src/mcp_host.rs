@@ -47,6 +47,19 @@ pub(super) fn refine(
     };
     let invalid = |text| issue(&[], message.unwrap_or(text));
     match tag {
+        "stdio-mcp-cua-script-size" => {
+            if value
+                .as_js_string()
+                .ok_or(ValidationError::Operation)?
+                .lossy()
+                .len()
+                > 2 * 1024 * 1024
+            {
+                result
+                    .issues
+                    .push(invalid("CUA scripts cannot exceed 2 MiB of UTF-8."));
+            }
+        }
         "stdio-mcp-capability-unique" => {
             let values = value.as_array().ok_or(ValidationError::Operation)?;
             let mut unique = HashSet::new();

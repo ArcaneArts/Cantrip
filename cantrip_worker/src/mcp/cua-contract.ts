@@ -25,6 +25,10 @@ export const cuaMcpScriptSchema = z
     (script) => Buffer.byteLength(script, "utf8") <= CUA_MAX_SCRIPT_BYTES,
     "CUA scripts cannot exceed 2 MiB of UTF-8.",
   );
+export const cuaMcpScriptArgumentsSchema = z.strictObject({
+  script: cuaMcpScriptSchema,
+});
+export const cuaMcpResetArgumentsSchema = z.strictObject({});
 const identity = {
   threadId: z.string().trim().min(1).max(256),
   turnId: z.string().trim().min(1).max(256),
