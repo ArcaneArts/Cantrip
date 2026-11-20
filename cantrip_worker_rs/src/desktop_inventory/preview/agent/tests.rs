@@ -56,6 +56,7 @@ async fn host_actions_use_the_live_attachment_and_authorize_each_native_operatio
             &mut javascript,
             &open.into(),
             request.clone(),
+            None,
             |action, _| {
                 assert_eq!(action.operation, Some("target.attach"));
                 assert_eq!(action.target["targetId"], "fake-window");
@@ -85,7 +86,13 @@ async fn host_actions_use_the_live_attachment_and_authorize_each_native_operatio
         ({{id:targets.targets[0].id, imageIndex:image.imageIndex, bytes:image.payload ?? null}})"
     );
     let result = host
-        .evaluate(&mut javascript, &work.into(), request.clone(), authorize)
+        .evaluate(
+            &mut javascript,
+            &work.into(),
+            request.clone(),
+            None,
+            authorize,
+        )
         .await?;
     assert_eq!(
         result.value,
@@ -118,10 +125,21 @@ async fn host_actions_use_the_live_attachment_and_authorize_each_native_operatio
     let (submitted, observed) = oneshot::channel();
     let submitted = Mutex::new(Some(submitted));
     let pending_source = "await cua.snapshot()".into();
+    let records = Mutex::new(Vec::new());
+    let audit = HostActivity {
+        chat: &authority["chatId"],
+        worker: &authority["workerId"],
+        thread: &"observed-thread".into(),
+        turn: &"observed-turn".into(),
+        item: &json!("snapshot-item"),
+        request: uuid::Uuid::new_v4(),
+        publish: &|activity| records.lock().unwrap().push(activity),
+    };
     let pending = host.evaluate(
         &mut javascript,
         &pending_source,
         pending_call,
+        Some(&audit),
         |action, signal| {
             assert_eq!(action.operation, Some("observation.snapshot"));
             let _ = submitted.lock().unwrap().take().unwrap().send(signal);
@@ -138,19 +156,32 @@ async fn host_actions_use_the_live_attachment_and_authorize_each_native_operatio
     })
     .await?;
     assert!(pending.is_err());
+    {
+        let records = records.lock().unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0]["operation"], "observation.snapshot");
+        assert_eq!(records[0]["outcome"], "cancelled");
+        assert_eq!(records[0]["correlation"]["itemId"], "snapshot-item");
+        assert!(records[0]["observation"].is_null());
+    }
     let state = host
         .evaluate(
             &mut javascript,
             &"await cua.getState()".into(),
             request.clone(),
+            None,
             |_, _| ready(Ok(())),
         )
         .await?;
     assert_eq!(state.value, json!({"session":Value::Null}));
 
-    host.evaluate(&mut javascript, &open.into(), request.clone(), |_, _| {
-        ready(Ok(()))
-    })
+    host.evaluate(
+        &mut javascript,
+        &open.into(),
+        request.clone(),
+        None,
+        |_, _| ready(Ok(())),
+    )
     .await?;
     host.reset(&mut javascript).await?;
     let state = host
@@ -158,15 +189,18 @@ async fn host_actions_use_the_live_attachment_and_authorize_each_native_operatio
             &mut javascript,
             &"await cua.getState()".into(),
             request.clone(),
+            None,
             |_, _| ready(Ok(())),
         )
         .await?;
     assert_eq!(state.value, json!({"session":Value::Null}));
     retire.abort(anyhow::anyhow!("Fixture retired the native turn."));
     assert!(
-        host.evaluate(&mut javascript, &open.into(), request, |_, _| ready(Ok(())))
-            .await
-            .is_err()
+        host.evaluate(&mut javascript, &open.into(), request, None, |_, _| ready(
+            Ok(())
+        ))
+        .await
+        .is_err()
     );
     stop.send_replace(true);
     inventory.close().await;
@@ -382,7 +416,7 @@ async fn guest_actions_use_the_assigned_carrier_for_distinct_turn_sessions() -> 
     let script =
         format!("{attach} await cua.writeClipboard('guest Rust fixture'); await cua.snapshot()");
     let image = first
-        .evaluate(&mut first_js, &script.into(), request.clone(), allow)
+        .evaluate(&mut first_js, &script.into(), request.clone(), None, allow)
         .await?;
     assert_eq!(image.images.len(), 1);
     assert!(image.images[0].pixels.starts_with(b"\x89PNG\r\n\x1a\n"));
@@ -392,7 +426,7 @@ async fn guest_actions_use_the_assigned_carrier_for_distinct_turn_sessions() -> 
         "{attach} ({{session:(await cua.getState()).session, clipboard:await cua.readClipboard()}})"
     );
     let state = second
-        .evaluate(&mut second_js, &script.into(), request.clone(), allow)
+        .evaluate(&mut second_js, &script.into(), request.clone(), None, allow)
         .await?;
     assert_eq!(state.value["clipboard"], "guest Rust fixture");
     assert_ne!(
@@ -407,6 +441,7 @@ async fn guest_actions_use_the_assigned_carrier_for_distinct_turn_sessions() -> 
             &mut second_js,
             &"await cua.getState()".into(),
             request,
+            None,
             allow,
         )
         .await?;

@@ -15,7 +15,7 @@ use std::{
 use tokio::task::JoinHandle;
 
 pub use crate::desktop_inventory::preview::{
-    DesktopTurn, HostAction, HostEvaluation, HostSnapshot, Previews as Desktop,
+    DesktopTurn, HostAction, HostActivity, HostEvaluation, HostSnapshot, Previews as Desktop,
 };
 pub use crate::desktop_inventory::process::NativeError;
 
@@ -27,6 +27,9 @@ impl HostError {
         match code {
             "cancelled" => Self("cancelled"),
             "permission-denied" => Self("permission-denied"),
+            "denied" => Self("denied"),
+            "expired" => Self("expired"),
+            "publication-failed" => Self("publication-failed"),
             "unsupported" => Self("unsupported"),
             "script-action" => Self("script-action"),
             "ownership-mismatch" => Self("ownership-mismatch"),
@@ -48,7 +51,13 @@ impl HostError {
     }
 
     pub(crate) fn outcome(self) -> Value {
-        json!({"status":"error","error":json!({"code":self.code(),"message":"Computer-use host action failed."})})
+        // The helper accepts the native error vocabulary. Keep the richer
+        // approval result on the worker for protected activity.
+        let code = match self.code() {
+            "denied" | "expired" | "publication-failed" => "permission-denied",
+            code => code,
+        };
+        json!({"status":"error","error":json!({"code":code,"message":"Computer-use host action failed."})})
     }
 
     pub(crate) fn code(&self) -> &'static str {
