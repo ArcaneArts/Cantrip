@@ -7311,3 +7311,30 @@ also passed. The Windows x64 GNU worker check passed.
 
 Console-owned and restored turns, subagent interactions, and pending
 Plan Mode question projection require further integration.
+
+## 190. Route linked-console replies for managed turns
+
+Reference commit dffd5cc3d2884556d1414448b90126e7552776f8 (#3353).
+
+Client and console turns share one native request owner. The console gateway
+publishes a request only after Core registers it and the worker publishes the
+protected request event. An attached console receives pending requests for its
+selected thread and their resolution notifications. The gateway preserves the
+managed reply acknowledgment and accepts the legacy raw reply envelope.
+
+The active turn claims a separate Core receipt before sending a reply on its
+owning app-server connection. The receipt binds the console session and native
+request and protects the response. A detached or unrelated console cannot
+claim a pending request. GUI and console replies share the same single-use
+native request, and the turn drains accepted replies before settlement.
+
+The local macOS ARM64 smoke used the production Rust server with PGlite, the
+production Rust worker, and bundled Codex. A controlled command approval
+was visible to the attached console alone. The gateway rejected a guessed
+request ID, a malformed reply, and a replay. Exactly one decline reached the
+native connection, the TypeScript codec opened the resolution persisted by
+Core, and the turn completed. The GUI approval and deferred-receipt restart
+smokes passed. The Windows x64 GNU worker compile check passed.
+
+Restored turns, subagent interactions, and pending Plan Mode question
+projection remain open.

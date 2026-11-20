@@ -201,8 +201,11 @@ async fn relay<'a>(
     open: Signal,
 ) -> Result<()> {
     let mut initialized = false;
+    let mut attached = false;
+    let mut interaction_changes = view.prepared.runtime.interaction_changes();
+    let mut visible = HashMap::new();
     let mut starting: Option<(String, Work<Value>)> = None;
-    let mut managed_requests = FuturesUnordered::new();
+    let mut managed_requests = FuturesUnordered::<Work<(String, Option<Value>)>>::new();
     let mut managed_ids = HashSet::new();
     let mut queue_revision = view.queue.state.revision.subscribe();
     let thread = &session["threadId"];
@@ -217,7 +220,26 @@ async fn relay<'a>(
             response = managed_requests.next(), if !managed_requests.is_empty() => {
                 let (id, response) = response.expect("pending managed console request")?;
                 managed_ids.remove(&id);
-                send(client, response).await?;
+                if let Some(response) = response { send(client, response).await?; }
+            }
+            changed = interaction_changes.changed(), if attached => {
+                changed?;
+                view.assert_current()?;
+                let thread = view.prepared.thread.id();
+                let frames = view.prepared.runtime.visible_interactions(thread);
+                let mut pending_visible = HashMap::new();
+                for frame in frames {
+                    let id = &frame["id"];
+                    let key = id.stringify();
+                    pending_visible.insert(key.clone(), id.clone());
+                    if !visible.contains_key(&key) { send(client, frame).await?; }
+                }
+                for (key, id) in &visible {
+                    if !pending_visible.contains_key(key) {
+                        send(client, json!({"method":"serverRequest/resolved","params":json!({"threadId":thread,"requestId":id})})).await?;
+                    }
+                }
+                visible = pending_visible;
             }
             changed = queue_revision.changed(), if initialized => {
                 changed?;
@@ -233,9 +255,35 @@ async fn relay<'a>(
                 let Some(frame) = frame(input)? else { return Ok(()); };
                 let Some(mut frame) = frame else { continue; };
                 let id = &frame["id"];
-                let key = id.stringify();
+                let raw_reply = frame.get("method").is_none() && frame.get("id").is_some();
+                let key = if raw_reply { format!("reply:{}", id.stringify()) } else { id.stringify() };
                 if managed_ids.contains(&key) || starting.as_ref().is_some_and(|(existing, _)| *existing == key) {
                     send(client, fault(id, -32001, "Duplicate in-flight native request ID.")).await?;
+                    continue;
+                }
+                if raw_reply || frame["method"] == "cantrip/managed/reply" {
+                    let parsed = parse_reply(&frame, raw_reply);
+                    if let Ok(payload) = parsed
+                        && attached && (raw_reply || !pending.contains_key(&key))
+                        && managed_ids.len() < 16 && visible.contains_key(&payload["id"].stringify())
+                    {
+                        managed_ids.insert(key.clone());
+                        let (view, session, open) = (view.clone(), session.clone(), open.clone());
+                        managed_requests.push(Box::pin(async move {
+                            let result = async {
+                                view.assert_current()?;
+                                view.turns.console_interaction(session, payload, open).await
+                            }.await;
+                            let response = match result {
+                                Ok(_) if raw_reply => None,
+                                Ok(result) => Some(json!({"id":frame["id"],"result":result})),
+                                Err(error) => Some(fault(&frame["id"], -32001, &error.to_string())),
+                            };
+                            Ok((key, response))
+                        }));
+                    } else {
+                        send(client, fault(id, -32001, "Native reply is stale, foreign, or invalid.")).await?;
+                    }
                     continue;
                 }
                 let settings = frame["method"] == super::super::settings::UPDATE;
@@ -246,7 +294,11 @@ async fn relay<'a>(
                     {
                         managed_ids.insert(key);
                         let request = if settings { super::settings::request } else { queue::request };
-                        managed_requests.push(request(view.clone(), session.clone(), frame, open.clone()));
+                        let work = request(view.clone(), session.clone(), frame, open.clone());
+                        managed_requests.push(Box::pin(async move {
+                            let (key, response) = work.await?;
+                            Ok((key, Some(response)))
+                        }));
                     } else {
                         let message = if settings {
                             "The native console cannot submit this settings request."
@@ -288,7 +340,7 @@ async fn relay<'a>(
                         // the runtime or another subscriber.
                         continue;
                     }
-                    if method == "thread/queue/changed" {
+                    if matches!(method, "thread/queue/changed" | "serverRequest/resolved") {
                         continue;
                     }
                     if !scope_matches(&frame, thread) || (method.starts_with("thread/") && frame["params"]["threadId"].is_null()) {
@@ -316,6 +368,12 @@ async fn relay<'a>(
                                 "version":1,"threadId":thread,"replyMethod":"cantrip/managed/reply",
                                 "queue":json!({"version":1}),
                             });
+                        } else if request.method == "thread/resume" {
+                            attached = true;
+                            interaction_changes.mark_changed();
+                        } else if request.method == "thread/unsubscribe" {
+                            attached = false;
+                            visible.clear();
                         } else if discovery(request.method) {
                             restrict_thread_list(&mut frame, request.method, thread);
                         }
@@ -324,6 +382,28 @@ async fn relay<'a>(
                 send(client, frame).await?;
             }
         }
+    }
+}
+
+fn parse_reply(frame: &Value, raw: bool) -> Result<Value> {
+    let source = if raw { frame } else { &frame["params"] };
+    let id = if raw {
+        &frame["id"]
+    } else {
+        &source["requestId"]
+    };
+    ensure!(
+        valid_id(&frame["id"]) && valid_id(id),
+        "Invalid native reply identity."
+    );
+    let result = source.get("result");
+    let error = source.get("error");
+    match (result, error) {
+        (Some(result), None) => Ok(json!({"id":id,"result":result})),
+        (None, Some(error)) if error["code"].is_number() && error["message"].is_string() => {
+            Ok(json!({"id":id,"error":error}))
+        }
+        _ => bail!("Invalid native reply envelope."),
     }
 }
 

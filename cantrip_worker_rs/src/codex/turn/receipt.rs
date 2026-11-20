@@ -692,22 +692,38 @@ impl<'a> Receipt<'a> {
         &self,
         scope: Scope,
         descriptor: &Value,
-        result: &Value,
+        frame: &Value,
+        terminal: Option<&Value>,
     ) -> Result<Receipt<'_>> {
         anyhow::ensure!(
             scope.identity()? == self.scope.identity()?,
             "The interaction owner changed."
         );
+        let session = terminal.unwrap_or(&self.session);
+        let mut command = json!({"reply":descriptor});
+        if terminal.is_some() {
+            let mut bound = self.session.clone();
+            bound["connectionId"] = session["connectionId"].clone();
+            anyhow::ensure!(
+                &bound == session,
+                "The console is attached to a different native session."
+            );
+            command["nativeReplyFrame"] = frame.clone();
+        }
         let (receipt, _, _) = self
             .client
             .admit_native(
                 scope,
-                self.session.clone(),
+                session.clone(),
                 "serverRequest/reply",
-                &json!({"result":result}),
-                &json!({"reply":descriptor}),
+                &json!({"result":frame["result"]}),
+                &command,
                 self.operation.activation.clone(),
-                "gui",
+                if terminal.is_some() {
+                    "terminal"
+                } else {
+                    "gui"
+                },
             )
             .await?;
         Ok(receipt)
@@ -1115,10 +1131,14 @@ impl Client {
             json!(operation)
         };
         let grant = scope.material(None)?;
+        let frame = command
+            .get("nativeReplyFrame")
+            .cloned()
+            .unwrap_or_else(|| json!({"id":request_id,"method":method,"params":params}));
         let (envelope, digest) = protect_native_command_request(
             &grant.key,
             &crypto_context(&grant, &session["chatId"], &operation),
-            &json!({"id":request_id,"method":method,"params":params}),
+            &frame,
         )?;
         let mut intent = json!({
             "scope":"thread", "settingKeys":Vec::<Value>::new(), "expectedTurnId":Value::Null,

@@ -1,12 +1,12 @@
 //! Native interaction ownership follows one live physical turn and its Core receipt.
 pub(in crate::codex) mod protocol;
 
-use super::{Emit, Runtime, Turns, id, receipt::Receipt};
+use super::{Emit, Runtime, Turns, control::Binding, id, receipt::Receipt};
 use crate::{
     chat_content::Scope,
     encryption::Service,
     http::checked,
-    metadata::{Guard, Signal},
+    metadata::{Abort, Guard, Signal},
     native_items::concat,
 };
 use anyhow::{Context, Result, anyhow, bail, ensure};
@@ -44,7 +44,15 @@ pub(super) struct Command {
 }
 
 enum Action {
-    Reply { response: Value, protected: bool },
+    Reply {
+        response: Value,
+        protected: bool,
+    },
+    Terminal {
+        session: Value,
+        frame: Value,
+        open: Signal,
+    },
     Cancel(JsString),
 }
 
@@ -130,6 +138,47 @@ impl Turns {
         };
         handle.execute(request, action).await
     }
+
+    pub(super) async fn console_interaction(
+        &self,
+        session: Value,
+        frame: Value,
+        open: Signal,
+    ) -> Result<Value> {
+        open.check()?;
+        let key = self.key(&session)?;
+        let active = self
+            .active
+            .lock()
+            .unwrap()
+            .active
+            .get(&key)
+            .cloned()
+            .context("The native interaction is no longer pending.")?;
+        let handle = active
+            .control
+            .get()
+            .and_then(|binding| binding.interactions.get())
+            .context("The native interaction is no longer pending.")?;
+        let request = concat(&[
+            format!(
+                "codex:{}:",
+                id(&session["runtimeGeneration"], "native runtime generation")?.lossy()
+            )
+            .into(),
+            protocol::native_id(&frame["id"]),
+        ]);
+        handle
+            .execute(
+                request,
+                Action::Terminal {
+                    session,
+                    frame,
+                    open,
+                },
+            )
+            .await
+    }
 }
 
 struct Pending {
@@ -159,27 +208,47 @@ pub(super) struct Turn<'a> {
     pub(super) encryption: &'a Arc<Service>,
     pub(super) emit: &'a Emit,
     pub(super) protected: bool,
-    pub(super) stop: Signal,
 }
 
 struct Owner<'a> {
     turn: Turn<'a>,
+    stop: Signal,
     pending: HashMap<JsString, Pending>,
     resolved: HashSet<JsString>,
 }
 
 impl Turn<'_> {
-    pub(super) async fn run(
+    pub(super) async fn observe<T>(
         self,
+        binding: &Binding,
         events: &mut mpsc::Receiver<Value>,
-        commands: Commands,
-    ) -> Result<()> {
+        collecting: impl Future<Output = Result<T>>,
+    ) -> Result<T> {
+        let (handle, commands) = Handle::channel();
+        binding
+            .interactions
+            .set(handle)
+            .map_err(|_| anyhow!("The native interaction owner already exists."))?;
+        let (stop, stopping) = Abort::new();
         let mut owner = Owner {
             turn: self,
+            stop: stopping,
             pending: HashMap::new(),
             resolved: HashSet::new(),
         };
-        owner.run(events, commands).await
+        let interactions = owner.run(events, commands);
+        tokio::pin!(interactions);
+        tokio::select! {
+            result = collecting => {
+                stop.abort(anyhow!("The native turn ended."));
+                interactions.await?;
+                result
+            }
+            failure = &mut interactions => {
+                failure?;
+                bail!("The native interaction owner ended before the turn ended.")
+            }
+        }
     }
 
     fn component(&self, revision: Option<u64>) -> Result<crate::encryption::BoundComponentKey> {
@@ -241,7 +310,6 @@ impl Turn<'_> {
     }
 
     fn current(&self) -> Result<()> {
-        self.stop.check()?;
         self.receipt.scope().identity()?;
         ensure!(
             self.runtime.is_live()
@@ -270,12 +338,13 @@ impl Owner<'_> {
                 .min();
             tokio::select! {
                 biased;
-                _ = self.turn.stop.cancelled() => return Ok(()),
+                _ = self.stop.cancelled() => return Ok(()),
                 frame = events.recv() => self.frame(frame.context("The native interaction channel closed.")?)?,
                 command = commands.recv() => {
                     let Command { key, action, complete } = command.context("The interaction command owner closed.")?;
                     let result = match action {
                         Action::Reply { response, protected } => self.reply(&key, &response, protected).await,
+                        Action::Terminal { session, frame, open } => self.terminal_reply(&key, &session, frame, &open).await,
                         Action::Cancel(reason) => self.cancel(&key, &reason, false),
                     };
                     let _ = complete.send(result);
@@ -377,7 +446,7 @@ impl Owner<'_> {
             pending.retry = Some(Instant::now() + Duration::from_millis(350));
             return Ok(());
         }
-        if self.turn.stop.check().is_err() {
+        if self.stop.check().is_err() {
             return Ok(());
         }
         if self.turn.publish_request(&pending.request).is_err() {
@@ -391,16 +460,27 @@ impl Owner<'_> {
         }
         pending.published = true;
         pending.retry = None;
+        if !self
+            .turn
+            .runtime
+            .publish_interaction(self.turn.thread, &pending.id)
+        {
+            self.cancel(&key, &"The native request already ended.".into(), false)?;
+        }
         Ok(())
     }
 
-    async fn reply(&mut self, key: &JsString, response: &Value, protected: bool) -> Result<Value> {
+    fn pending(&self, key: &JsString) -> Result<&Pending> {
+        self.stop.check()?;
         self.turn.current()?;
-        let pending = self
-            .pending
+        self.pending
             .get(key)
             .filter(|pending| pending.published && pending.expires > Instant::now())
-            .context("The agent interaction is no longer pending.")?;
+            .context("The agent interaction is no longer pending.")
+    }
+
+    async fn reply(&mut self, key: &JsString, response: &Value, protected: bool) -> Result<Value> {
+        let pending = self.pending(key)?;
         let plain = self
             .turn
             .open_reply(key, response, protected)
@@ -409,12 +489,68 @@ impl Owner<'_> {
             plain["kind"] == pending.kind(),
             "The response kind does not match the native request."
         );
-        let result = protocol::result(&plain)?;
+        let frame = json!({"id":pending.id,"result":protocol::result(&plain)?});
+        let resolution = if protected {
+            response.clone()
+        } else {
+            json!({"response":plain})
+        };
+        self.deliver_reply(key, frame, Some(resolution), None).await
+    }
+
+    async fn terminal_reply(
+        &mut self,
+        key: &JsString,
+        session: &Value,
+        frame: Value,
+        open: &Signal,
+    ) -> Result<Value> {
+        open.check()?;
+        let pending = self.pending(key)?;
+        ensure!(
+            frame["id"] == pending.id,
+            "The console response belongs to a different request."
+        );
+        let resolution = if let Some(response) =
+            protocol::response(pending.kind(), frame.get("result"))
+        {
+            if self.turn.protected {
+                let grant = self.turn.component(None)?;
+                let classification = json!({"kind":response["kind"]});
+                let opaque = encrypt_communication(
+                    Communication::InteractionResponse,
+                    &grant.component.key,
+                    &json!({"ownerId":grant.owner_id,"requestKey":key,"keyRevision":grant.component.key_revision}),
+                    &json!({"version":1,"classification":classification,"response":response}),
+                )?;
+                Some(json!({"classification":classification,"protectedResponse":opaque}))
+            } else {
+                Some(json!({"response":response}))
+            }
+        } else {
+            None
+        };
+        self.deliver_reply(key, frame, resolution, Some((session, open)))
+            .await
+    }
+
+    async fn deliver_reply(
+        &mut self,
+        key: &JsString,
+        frame: Value,
+        resolution: Option<Value>,
+        terminal: Option<(&Value, &Signal)>,
+    ) -> Result<Value> {
         let scope = Scope::new(self.turn.encryption.clone())?;
         let receipt = self
             .turn
             .receipt
-            .admit_interaction_reply(scope, &pending.descriptor(), &result)
+            .admit_interaction_reply(
+                scope,
+                &self.pending(key)?.descriptor(),
+                &frame,
+                terminal.map(|(session, _)| session),
+            )
             .await?;
         if let Err(error) = receipt.dispatch().await {
             let _ = receipt.uncertain().await;
@@ -425,14 +561,17 @@ impl Owner<'_> {
             )?;
             return Err(error);
         }
-        if let Err(error) = self.turn.current().and_then(|()| {
-            ensure!(
-                pending.expires > Instant::now(),
-                "The native interaction expired before dispatch."
-            );
-            Ok(())
-        }) {
+        if let Err(error) = self
+            .pending(key)
+            .and_then(|_| terminal.map_or(Ok(()), |(_, open)| open.check()))
+        {
             let _ = receipt.rejected(&json!({"code":-32000,"message":"The native reply no longer belongs to an active request."})).await;
+            // Core already claimed this request. Deny it so the turn cannot wait for an unusable reply.
+            self.cancel(
+                key,
+                &"The authorized reply ended before delivery.".into(),
+                false,
+            )?;
             return Err(error);
         }
         // Claim before sending, even if the native transport subsequently fails.
@@ -442,7 +581,7 @@ impl Owner<'_> {
         match self
             .turn
             .runtime
-            .reply_to_interaction(self.turn.thread, json!({"id":pending.id,"result":result}))
+            .reply_to_interaction(self.turn.thread, frame)
         {
             Ok(true) => {}
             Ok(false) => {
@@ -457,17 +596,19 @@ impl Owner<'_> {
                 return Err(error);
             }
         }
-        let mut resolution = if protected {
-            response.clone()
+        let mut event = json!({"type":"agent.interaction.cleared","requestKey":key});
+        if let Some(mut resolution) = resolution {
+            resolution["idempotencyKey"] = json!(concat(&["native-response:".into(), key.clone()]));
+            event["resolution"] = resolution;
+        }
+        let _ = (self.turn.emit)(event);
+        let acknowledged = if terminal.is_some() {
+            json!({"delivered":true,"operationGeneration":receipt.operation().generation})
         } else {
-            json!({"response":plain})
+            json!({"accepted":true})
         };
-        resolution["idempotencyKey"] = json!(concat(&["native-response:".into(), key.clone()]));
-        let _ = (self.turn.emit)(
-            json!({"type":"agent.interaction.cleared","requestKey":key,"resolution":resolution}),
-        );
-        receipt.applied(&json!({"accepted":true}), None).await?;
-        Ok(json!({"accepted":true}))
+        receipt.applied(&acknowledged, None).await?;
+        Ok(acknowledged)
     }
 
     fn cancel(&mut self, key: &JsString, reason: &JsString, expired: bool) -> Result<Value> {
