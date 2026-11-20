@@ -700,7 +700,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if kind == crate::codex::turn::handoff::COMMAND {
+                if matches!(kind, crate::codex::turn::handoff::COMMAND | crate::codex::turn::goal_recovery::COMMAND) {
                     let turns = turns.clone();
                     let codex = codex.clone();
                     let signal = command_signal.clone();
@@ -708,7 +708,12 @@ async fn cycle(
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
                     commands.spawn(async move {
-                        let result = turns.runtime_handoff(&request["command"], signal, codex).await;
+                        let command = &request["command"];
+                        let result = if command["type"] == crate::codex::turn::goal_recovery::COMMAND {
+                            turns.recover_goal(command, &codex, signal).await
+                        } else {
+                            turns.runtime_handoff(command, signal, codex).await
+                        };
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;

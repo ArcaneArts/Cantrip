@@ -1,0 +1,313 @@
+//! Resume an existing managed Goal through its native producer. The recovery
+//! reply observes a queued admission and does not own a physical turn.
+use super::{Key, RPC_TIMEOUT, Runtime, Scope, Turns, id};
+use crate::{
+    codex::{
+        managed::Worker,
+        preparation::{Intent, command::native_session, native::LoadedThread},
+        rpc_requests::Failure,
+    },
+    http::checked,
+    metadata::{Guard, Signal},
+};
+use anyhow::{Context, Result, bail, ensure};
+use cantrip_history::content::Encryption;
+use cantrip_wire::{Value, payload_digest, value::json};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, Weak},
+    time::Duration,
+};
+use tokio::sync::watch;
+
+pub(crate) const COMMAND: &str = "chat.goal.recover";
+
+#[derive(Clone, Default)]
+pub(super) struct Observations(Arc<Mutex<HashMap<String, Weak<Observation>>>>);
+pub(super) struct Observation(watch::Sender<Option<Value>>);
+
+impl Observations {
+    pub(super) fn observe(
+        &self,
+        key: &Key,
+        recovery: &Value,
+        runtime_generation: &str,
+    ) -> Arc<Observation> {
+        let key = payload_digest(&json!([
+            json!(key.0),
+            json!(key.1),
+            json!(key.2),
+            recovery["source"].clone(),
+            order_epoch(recovery),
+            json!(runtime_generation),
+        ]));
+        let mut observations = self.0.lock().unwrap();
+        observations.retain(|_, observation| observation.strong_count() != 0);
+        let entry = observations.entry(key).or_default();
+        entry.upgrade().unwrap_or_else(|| {
+            let observation = Arc::new(Observation(watch::channel(None).0));
+            *entry = Arc::downgrade(&observation);
+            observation
+        })
+    }
+}
+
+impl Observation {
+    pub(super) fn queued(&self, admission: Value) {
+        self.0.send_replace(Some(admission));
+    }
+
+    async fn admission(&self) -> Result<Value> {
+        let mut receiver = self.0.subscribe();
+        let observed = receiver.wait_for(Option::is_some).await?;
+        Ok(observed.clone().unwrap())
+    }
+}
+
+pub(super) fn order_epoch(recovery: &Value) -> Value {
+    recovery.get("orderEpoch").cloned().unwrap_or(json!(0))
+}
+
+struct Target {
+    runtime: Runtime,
+    thread: LoadedThread,
+    session: Value,
+}
+
+impl Turns {
+    pub(crate) async fn recover_goal(
+        &self,
+        command: &Value,
+        worker: &Worker,
+        signal: Signal,
+    ) -> Result<Value> {
+        let scope = Scope::new(self.encryption.clone())?;
+        let chat = id(&command["chatId"], "Goal recovery chat")?;
+        let source = &command["source"];
+        let target = &command["recovery"];
+        ensure!(
+            source["threadId"] == command["threadId"]
+                && command["session"]["chatId"] == command["chatId"]
+                && (target.is_null() || target["source"] == *source),
+            "Goal recovery belongs to another managed session."
+        );
+        let key = (scope.owner.clone(), scope.server.clone(), chat.clone());
+        let manager = worker.inference_manager(&scope.owner, &scope.server)?;
+        let bound = (scope.owner.clone(), json!(scope.server));
+        let live = self
+            .preparation
+            .selected_live_owner(&chat, &bound)
+            .and_then(|(thread, owner)| {
+                let session = native_session(command, &owner.runtime, thread.id());
+                (command["threadId"].as_js_string() == Some(thread.id())
+                    && owner.session.as_ref() == Some(&session))
+                .then_some(Target {
+                    runtime: owner.runtime,
+                    thread,
+                    session,
+                })
+            });
+        let prepared = if let Some(live) = live {
+            live
+        } else {
+            let preparation = if target.is_null() {
+                None
+            } else {
+                Some(manager.begin_goal_recovery_preparation(
+                    chat.clone(),
+                    id(&command["provider"]["id"], "Goal recovery provider")?,
+                    target.clone(),
+                ))
+            };
+            let observed = self.preparation.prepare(command, Intent::Preserve).await;
+            if let Some(preparation) = preparation {
+                match &observed {
+                    Ok(_) => preparation.succeeded(),
+                    Err(error)
+                        if error
+                            .downcast_ref::<Failure>()
+                            .is_some_and(|failure| failure.kind == "observation") =>
+                    {
+                        preparation.unconfirmed()
+                    }
+                    Err(_) => preparation.failed(),
+                }
+            }
+            let prepared = observed?;
+            let session = native_session(command, &prepared.runtime, prepared.thread.id());
+            Target {
+                runtime: prepared.runtime,
+                thread: prepared.thread,
+                session,
+            }
+        };
+        let session = &prepared.session;
+        let guard = Guard::metadata_timeout(Some(signal), None, Duration::from_secs(10));
+        let ineligible = |reason: &str, observed_epoch: Option<&Value>, recovery: &Value| {
+            let mut result = json!({
+                "source":source,"status":"ineligible","workerGeneration":self.receipts.worker_generation(),
+                "reason":reason,
+            });
+            if let Some(epoch) = observed_epoch {
+                let mut observation = session.clone();
+                let Value::Object(fields) = &mut observation else {
+                    unreachable!()
+                };
+                fields.shift_remove("connectionId");
+                observation["workerId"] = json!(self.encryption.worker_id());
+                observation["nativeEpoch"] = epoch.clone();
+                observation["orderEpoch"] = order_epoch(recovery);
+                result["observation"] = observation;
+            }
+            checked("nativeGoalRecoveryReceiptSchema", &result)
+        };
+        let mut queue = guard
+            .run(self.receipts.queue_snapshot(&scope, session))
+            .await?;
+        if queue["goalRecovery"]["source"] != *source {
+            return ineligible("source-changed", None, &queue["goalRecovery"]);
+        }
+        if queue["paused"] == true {
+            return ineligible("paused", None, &queue["goalRecovery"]);
+        }
+        let previous = &queue["goalRecovery"]["admission"];
+        if previous.is_object() && previous["workerGeneration"] != self.receipts.worker_generation()
+        {
+            guard.run(manager.confirm_native_ownership()).await?;
+            scope.identity()?;
+            let result = self.receipts.exchange(
+                "goal-recovery-fence",
+                "/api/internal/native-commands/goal-recovery-fence",
+                &checked("nativeGoalRecoveryFenceSchema", &json!({
+                    "serverId":scope.server,"workerId":self.encryption.worker_id(),
+                    "workerGeneration":self.receipts.worker_generation(),"source":source,"admission":previous,
+                }))?,
+                &guard,
+            ).await?;
+            checked("nativeGoalRecoveryFenceResultSchema", &result)?;
+            manager.wake_recovery(Some(chat));
+            queue = guard
+                .run(self.receipts.queue_snapshot(&scope, session))
+                .await?;
+            if queue["goalRecovery"]["source"] != *source {
+                return ineligible("source-changed", None, &queue["goalRecovery"]);
+            }
+            if queue["paused"] == true {
+                return ineligible("paused", None, &queue["goalRecovery"]);
+            }
+        }
+        let recovery = &queue["goalRecovery"];
+        let observation =
+            self.goal_recoveries
+                .observe(&key, recovery, prepared.runtime.generation());
+        let admitted = observation.0.borrow().clone();
+        if let Some(admission) = admitted
+            .as_ref()
+            .filter(|admission| *admission == &recovery["admission"])
+        {
+            prepared.thread.assert_current(&prepared.runtime)?;
+            scope.identity()?;
+            return recovery_reply(source, admission);
+        }
+        let epoch = native_epoch(&prepared, &guard).await?;
+        let goal = native(
+            &prepared.runtime,
+            "thread/goal/get",
+            json!({"threadId":prepared.thread.id()}),
+            &guard,
+        )
+        .await?;
+        let checked_goal = checked("chatGoalResponseSchema", &goal)?;
+        let goal_epoch = goal
+            .get("goalEpoch")
+            .filter(|value| {
+                value.is_null() || value.as_js_string().is_some_and(|epoch| !epoch.is_empty())
+            })
+            .context("Codex did not return a valid Goal epoch")?;
+        ensure!(
+            checked_goal["goal"].is_null()
+                || checked_goal["goal"]["threadId"].as_js_string() == Some(prepared.thread.id()),
+            "Codex returned a Goal for another thread."
+        );
+        ensure!(
+            native_epoch(&prepared, &guard).await? == epoch,
+            "The recovered Goal's native settings were replaced."
+        );
+        if goal_epoch != &source["goalEpoch"] {
+            return ineligible("epoch-changed", Some(&epoch), recovery);
+        }
+        if checked_goal["goal"]["status"] != "active" {
+            return ineligible("not-active", Some(&epoch), recovery);
+        }
+        let admitted = observation.0.borrow().clone();
+        let admission = if let Some(admission) = admitted {
+            admission
+        } else {
+            let runner = prepared
+                .runtime
+                .inference_router()
+                .goal_runner(prepared.thread.id())
+                .context("The recovered Goal has no current native producer.")?;
+            let result = native(
+                &prepared.runtime,
+                "thread/managedExecution/wake",
+                json!({
+                    "threadId":prepared.thread.id(),"runnerGeneration":runner,
+                }),
+                &guard,
+            )
+            .await?;
+            ensure!(
+                result["scheduled"].is_boolean(),
+                "Codex did not acknowledge the Goal recovery wake."
+            );
+            tokio::select! {
+                result = guard.run(observation.admission()) => result?,
+                _ = prepared.runtime.retired() => bail!("The recovered Goal runtime retired before admission."),
+            }
+        };
+        prepared.thread.assert_current(&prepared.runtime)?;
+        scope.identity()?;
+        recovery_reply(source, &admission)
+    }
+}
+
+fn recovery_reply(source: &Value, admission: &Value) -> Result<Value> {
+    checked(
+        "nativeGoalRecoveryReceiptSchema",
+        &json!({
+            "source":source,"status":"admitted","admission":admission,
+        }),
+    )
+}
+
+async fn native_epoch(prepared: &Target, guard: &Guard) -> Result<Value> {
+    let result = native(
+        &prepared.runtime,
+        "thread/settings/read",
+        json!({"threadId":prepared.thread.id()}),
+        guard,
+    )
+    .await?;
+    prepared.thread.assert_current(&prepared.runtime)?;
+    ensure!(
+        result["threadId"].as_js_string() == Some(prepared.thread.id()),
+        "Codex returned settings for a different Goal thread."
+    );
+    let version = checked(
+        "nativeSettingsVersionSchema",
+        &result["threadSettings"]["settingsVersion"],
+    )?;
+    Ok(version["epoch"].clone())
+}
+
+async fn native(runtime: &Runtime, method: &str, params: Value, guard: &Guard) -> Result<Value> {
+    guard
+        .run(async {
+            runtime
+                .request(method.into(), Some(params), Some(RPC_TIMEOUT), None)
+                .await?
+                .with_context(|| format!("Codex did not return a {method} result."))
+        })
+        .await
+}

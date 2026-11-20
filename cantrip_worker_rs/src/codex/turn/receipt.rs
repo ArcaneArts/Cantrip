@@ -133,6 +133,10 @@ pub(super) struct Receipt<'a> {
 }
 
 impl Client {
+    pub(super) fn worker_generation(&self) -> &str {
+        &self.generation
+    }
+
     pub fn new(configuration: Arc<Mutex<Config>>, generation: String) -> Result<Self> {
         let deferred = {
             let config = configuration.lock().unwrap();
@@ -974,6 +978,11 @@ impl Client {
                 "permissionProfileId":permission,"workerGeneration":self.generation}),
             "payloadDigest":digest,"protectedPayload":envelope,"expectedActivationGeneration":Value::Null,
         });
+        let recovery = &queue["goalRecovery"];
+        if recovery.is_object() {
+            input["intent"]["goalRecovery"] = recovery["source"].clone();
+            input["intent"]["goalRecoveryOrderEpoch"] = super::goal_recovery::order_epoch(recovery);
+        }
         if let Some(claim) = queue["claims"].as_array().and_then(|claims| {
             claims.iter().find(|claim| {
                 claim["awaitingGoal"] == true

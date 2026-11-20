@@ -52,7 +52,10 @@ export async function fixtureCodex(
 
 // Forward the actual worker control socket and HTTP requests. Before restart,
 // close only deferred receipt requests without forwarding them to Core.
-export async function deferredReceiptProxy(origin, { handoffAction } = {}) {
+export async function deferredReceiptProxy(
+  origin,
+  { handoffAction, blockRequest } = {},
+) {
   const sockets = new Set();
   let hold = true;
   let withheld;
@@ -61,6 +64,10 @@ export async function deferredReceiptProxy(origin, { handoffAction } = {}) {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const body = Buffer.concat(chunks);
+      if (blockRequest?.(req.url, body)) {
+        reply.destroy();
+        return;
+      }
       if (hold && req.url === "/api/internal/native-commands/receipt") {
         const value = JSON.parse(body);
         if (value.deferred) {

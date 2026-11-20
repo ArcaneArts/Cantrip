@@ -248,10 +248,15 @@ impl Transfer {
                 .await;
         }
         if let Ok(state) = &result
-            && withdrawal::is_gui(state)
             && state["queuedSource"]["withdrawn"] == true
         {
-            self.retire_gui_withdrawal(state).await?;
+            if withdrawal::is_gui(state) {
+                self.retire_gui_withdrawal(state).await?;
+            } else if state["queuedSource"]["goalRecovery"].is_object() {
+                journal::Journal::new(self.data(), self.scope.clone(), state.clone())?
+                    .retire_goal_withdrawal()
+                    .await?;
+            }
         }
         result
     }
@@ -261,12 +266,16 @@ impl Transfer {
             .context("Invalid native handoff operation")?
             .to_owned();
         let thread = id(&state["source"]["threadId"], "handoff thread")?;
+        let recovering_goal = state["queuedSource"]["goalRecovery"].is_object();
         if withdrawal::is_gui(&state) {
             state = self.withdraw_gui(state).await?;
             if state["phase"] == "cancelled" {
                 return Ok(state);
             }
-        } else if !state["queuedSource"].is_null() && state["queuedSource"]["withdrawn"] != true {
+        } else if !recovering_goal
+            && !state["queuedSource"].is_null()
+            && state["queuedSource"]["withdrawn"] != true
+        {
             bail!("The queued native handoff source still requires a confirmed withdrawal.");
         }
         let journal = journal::Journal::new(self.data(), self.scope.clone(), state.clone())?;
@@ -289,6 +298,14 @@ impl Transfer {
                 .source = Some(prepared.clone());
             let snapshot = self.snapshot(&state, &config, &prepared, false).await?;
             state = self.recover(state, "source", snapshot).await?;
+            let needs_goal_withdrawal =
+                recovering_goal && state["queuedSource"]["withdrawn"] != true;
+            if needs_goal_withdrawal || state["cancelRequested"] != true {
+                self.control(&prepared, "hold", &operation).await?;
+            }
+            if needs_goal_withdrawal {
+                state = self.withdraw_recovered_goal(state, &prepared).await?;
+            }
             if state["cancelRequested"] == true {
                 self.turns
                     .preparation
@@ -300,7 +317,6 @@ impl Transfer {
                 self.settle_local(true).await?;
                 return Ok(state);
             }
-            self.control(&prepared, "hold", &operation).await?;
             source = Some(prepared);
         }
         let capture = source
@@ -450,6 +466,37 @@ impl Transfer {
             "Core did not acknowledge the unused inference reservation."
         );
         self.acknowledge_withdrawal(&state).await?;
+        Ok(state)
+    }
+
+    async fn withdraw_recovered_goal(&self, state: Value, prepared: &Prepared) -> Result<Value> {
+        let binding = state
+            .get("binding")
+            .filter(|binding| !binding.is_null())
+            .unwrap_or(&state["source"]);
+        let goal = &state["queuedSource"]["goalRecovery"];
+        ensure!(
+            goal["threadId"].as_js_string() == Some(prepared.thread.id())
+                && binding["runtimeGeneration"] == prepared.runtime.generation(),
+            "The recovered Goal lost its prepared native producer."
+        );
+        let journal = journal::Journal::new(self.data(), self.scope.clone(), state.clone())?;
+        let receipt = journal
+            .save_goal_withdrawal(&json!({
+                "operationId":state["operationId"],"source":goal,
+                "bindingId":binding["bindingId"],"runtimeGeneration":prepared.runtime.generation(),
+                "runnerGeneration":prepared.runner_generation,
+                "workerGeneration":self.turns.receipts.worker_generation(),
+            }))
+            .await?;
+        let state = self
+            .action("goal-recovery-withdrawn", json!({"receipt":receipt}))
+            .await?;
+        ensure!(
+            state["queuedSource"]["withdrawn"] == true
+                && state["queuedSource"]["goalWithdrawal"] == receipt,
+            "Core did not acknowledge the native Goal producer hold."
+        );
         Ok(state)
     }
 

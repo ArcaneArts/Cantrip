@@ -28,6 +28,7 @@ pub(crate) struct Autonomous {
     receipts: receipt::Client,
     history: History,
     routing: Arc<Registry>,
+    recoveries: goal_recovery::Observations,
 }
 
 impl Turns {
@@ -38,6 +39,7 @@ impl Turns {
             receipts: self.receipts.clone(),
             history: self.history.clone(),
             routing,
+            recoveries: self.goal_recoveries.clone(),
         }
     }
 }
@@ -92,7 +94,7 @@ impl Autonomous {
         );
 
         let permission;
-        let (receipt, granted, owner, signal) = {
+        let (receipt, granted, owner, signal, recovery) = {
             self.released(&key, &admission_signal).await?;
             let _mutations = gate.lock().await;
             admission_signal.check()?;
@@ -108,8 +110,15 @@ impl Autonomous {
             if queue["paused"] == true {
                 bail!("Managed autonomy is paused.");
             }
-            if !queue["goalRecovery"].is_null() {
-                bail!("This managed Goal needs its saved recovery admission.");
+            let recovery = &queue["goalRecovery"];
+            if recovery.is_object()
+                && (recovery["source"]["threadId"].as_js_string() != Some(thread)
+                    || recovery["source"]["goalEpoch"] != attempt.request["goalEpoch"]
+                    || recovery
+                        .get("providerId")
+                        .is_some_and(|provider| provider != &runner.provider["id"]))
+            {
+                bail!("The native producer belongs to another Goal recovery.");
             }
             let (receipt, grant) = self
                 .receipts
@@ -156,6 +165,7 @@ impl Autonomous {
                 grant,
                 owner,
                 Signal::any(vec![signal, admission_signal]),
+                recovery.clone(),
             )
         };
         let execution = &granted["execution"];
@@ -185,6 +195,10 @@ impl Autonomous {
         let root = receipt.operation();
         let source = Source::claimed(root.generation.clone(), Some(signal.clone()));
         let adapter = runtime.admission();
+        let observation = recovery.is_object().then(|| {
+            self.recoveries
+                .observe(&owner.key, &recovery, runtime.generation())
+        });
         let outcome = async {
             let mut request = Acquire::new(adapter.lifetime_for_source(&source)?, runner.provider.clone());
             request.purpose = Some("turn".into());
@@ -197,8 +211,18 @@ impl Autonomous {
             request.recovery = Some(json!({
                 "commandId":root.operation,"commandGeneration":root.generation,
                 "threadId":thread,"turnId":turn,
-                "autonomousGoal":json!({"goalEpoch":attempt.request["goalEpoch"],"orderEpoch":0}),
+                "autonomousGoal":json!({"goalEpoch":attempt.request["goalEpoch"],"orderEpoch":goal_recovery::order_epoch(&recovery)}),
             }));
+            if let Some(observation) = observation.clone() {
+                let admission = json!({
+                    "operationId":root.operation,"operationGeneration":root.generation,
+                    "workerGeneration":self.receipts.worker_generation(),
+                });
+                request.on_queued = Some(Arc::new(move || {
+                    observation.queued(admission.clone());
+                    Box::pin(async { Ok(()) })
+                }));
+            }
             let execution = adapter.acquire(request).await?;
             let result = async {
                 execution.bind_thread(thread.clone())?;

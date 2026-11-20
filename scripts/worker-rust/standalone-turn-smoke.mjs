@@ -63,6 +63,7 @@ const { values } = parseArgs({
     "queued-handoff": { type: "boolean" },
     "queued-handoff-recovery": { type: "boolean" },
     "queued-handoff-cancel": { type: "boolean" },
+    "goal-handoff-recovery": { type: "boolean" },
   },
 });
 assert.ok(
@@ -102,6 +103,7 @@ const runtimeHandoff =
   values["runtime-handoff-recovery"] ||
   values["runtime-handoff-cancel"] ||
   queuedHandoff;
+const goalHandoff = values["goal-handoff-recovery"];
 const interactionKey =
   values.interactions ||
   consoleInteractions ||
@@ -111,7 +113,11 @@ const interactionKey =
     ? key("interaction-content")
     : null;
 const consoleStateKey =
-  consoleInteractions || subagentInteractions || planQuestion || runtimeHandoff
+  consoleInteractions ||
+  subagentInteractions ||
+  planQuestion ||
+  runtimeHandoff ||
+  goalHandoff
     ? key("surface-private-state")
     : null;
 const consoleSocket = path.join(root, "managed-console-socket");
@@ -119,6 +125,7 @@ const approvalPrompt = "Exercise a protected native interaction 🌲";
 const approvalMarker = path.join(root, "native-approval-replies.jsonl");
 let server;
 let receiptProxy;
+let goalHandoffFault;
 let child;
 let workerExit;
 let workerEnvironment;
@@ -1434,6 +1441,201 @@ async function verifyPlanQuestion() {
   }
 }
 
+async function verifyRecoveredGoalHandoff() {
+  const source = await createModel("Recovery Goal source", 1);
+  const target = await createModel("Recovery Goal destination", 1);
+  await call("PATCH", "/api/settings", 200, {
+    defaultModelId: source.profile.id,
+    autoNameChats: false,
+  });
+  const { chatId, chatUrl } = await createPreparedProjectChat({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    labelKey,
+    title: "Recovered Goal provider handoff",
+  });
+  const blocker = await createChat("Unrelated Goal capacity fixture", false);
+  const held = source.model.reply({
+    text: "Source capacity is held.",
+    hold: true,
+  });
+  let destinationHold;
+  let finish;
+  goalHandoffFault.sourceRoute = source.profile.routes[0].id;
+  try {
+    await call(
+      "POST",
+      `${blocker.chatUrl}/turns`,
+      202,
+      await encryptedTurn(
+        "Hold the provider for another Chat.",
+        source.profile.id,
+      ),
+    );
+    await eventually(
+      () => held.request,
+      (request) => assert.ok(request),
+    );
+    const objective = "Finish the existing recovered Goal in the new provider.";
+    await call("POST", `${chatUrl}/goal?encrypted=1`, 202, {
+      objective,
+      tokenBudget: 50_000,
+    });
+    await eventually(
+      () => call("GET", `/api/workers/${workerId}/inference`, 200),
+      (status) =>
+        assert.ok(
+          status.pools
+            .find((pool) => pool.providerId === source.provider.id)
+            ?.operations.some(
+              (operation) =>
+                operation.chatId === chatId && operation.state === "waiting",
+            ),
+        ),
+      35_000,
+    );
+    await stopWorker();
+    await startWorker();
+    const retained = await eventually(
+      () => goalHandoffFault.sourceAdmission?.intent.goalRecovery,
+      (value) => assert.ok(value?.goalEpoch),
+      35_000,
+    );
+    const settings = `${chatUrl}/native-settings`;
+    const { binding } = await call("POST", `${settings}/refresh`, 200, {});
+    assert.equal(binding.threadId, retained.threadId);
+    const operationId = randomUUID();
+    const url = `${chatUrl}/runtime-handoffs`;
+    const transfer = `${url}/${operationId}`;
+    await call("POST", url, 202, {
+      operationId,
+      bindingId: binding.bindingId,
+      targetModelRouteId: target.profile.routes[0].id,
+      targetProviderAccountId: null,
+    });
+    const oldReceipt = await eventually(
+      () => goalHandoffFault.fence,
+      (receipt) => assert.equal(receipt?.operationId, operationId),
+      35_000,
+    );
+    assert.deepEqual(oldReceipt.source, retained);
+    const interrupted = await call("GET", transfer, 200);
+    assert.equal(interrupted.phase, "preparing");
+    assert.equal(interrupted.queuedSource.withdrawn, false);
+    assert.equal(
+      interrupted.binding.runtimeGeneration,
+      oldReceipt.runtimeGeneration,
+    );
+    await stopWorker();
+    await startWorker();
+    const destinationBlocker = await createChat(
+      "Unrelated destination capacity",
+      false,
+    );
+    destinationHold = target.model.reply({
+      text: "Destination capacity is held.",
+      hold: true,
+    });
+    await call(
+      "POST",
+      `${destinationBlocker.chatUrl}/turns`,
+      202,
+      await encryptedTurn(
+        "Hold the new provider while the Goal is recovered.",
+        target.profile.id,
+      ),
+    );
+    await eventually(
+      () => destinationHold.request,
+      (request) => assert.ok(request),
+    );
+    goalHandoffFault.allowFence = true;
+    finish = target.model.reply({ hold: true });
+    const answer = target.model.reply({
+      text: "The retained native Goal finished on the destination.",
+    });
+    await call("POST", `${transfer}/retry`, 202, {});
+    const completed = await eventually(
+      () => call("GET", transfer, 200),
+      (value) => assert.equal(value.phase, "completed", JSON.stringify(value)),
+      35_000,
+    );
+    assert.deepEqual(completed.queuedSource.goalRecovery, retained);
+    const fence = completed.queuedSource.goalWithdrawal;
+    assert.notEqual(fence.runtimeGeneration, oldReceipt.runtimeGeneration);
+    assert.notEqual(fence.workerGeneration, oldReceipt.workerGeneration);
+    assert.equal(completed.binding.threadId, retained.threadId);
+    assert.equal(completed.binding.modelRouteId, target.profile.routes[0].id);
+    await eventually(
+      () => call("GET", `/api/workers/${workerId}/inference`, 200),
+      (status) =>
+        assert.ok(
+          status.pools
+            .find((pool) => pool.providerId === target.provider.id)
+            ?.operations.some(
+              (operation) =>
+                operation.chatId === chatId && operation.state === "waiting",
+            ),
+        ),
+    );
+    await eventually(
+      () => diagnostics,
+      (logs) =>
+        assert.match(
+          logs,
+          /event=worker\.command\.completed operation=chat\.goal\.recover /,
+        ),
+    );
+    assert.equal(finish.request, null);
+    destinationHold.release();
+    await eventually(
+      () => finish.request,
+      (request) => assert.ok(request),
+      35_000,
+    );
+    const tool = modelFunctions(finish.request.input.tools).find(
+      ({ name }) => name === "update_goal" || name.endsWith("__update_goal"),
+    );
+    assert.ok(tool, "The retained Goal exposes native completion.");
+    finish.calls = [{ ...tool, arguments: { status: "complete" } }];
+    finish.release();
+    await eventually(
+      () => answer.request,
+      (request) => assert.equal(request?.completed, true),
+      35_000,
+    );
+    await eventually(
+      () => call("GET", `${chatUrl}/goal?encrypted=1`, 200),
+      (state) =>
+        assert.equal(state.goal?.status, "complete", JSON.stringify(state)),
+    );
+    assert.ok(goalHandoffFault.destinationAdmission);
+    assert.deepEqual(
+      goalHandoffFault.destinationAdmission.intent.goalRecovery,
+      retained,
+    );
+    assert.equal(
+      goalHandoffFault.destinationAdmission.intent.goalRecoveryOrderEpoch,
+      1,
+    );
+    assert.equal(
+      source.model.requests.filter(({ method }) => method === "POST").length,
+      1,
+    );
+    assert.deepEqual(target.model.failures, []);
+    console.log(
+      "The recovered Goal moved its existing epoch and resumed on the destination.",
+    );
+  } finally {
+    held.release();
+    destinationHold?.release();
+    finish?.release();
+  }
+}
+
 async function verifyRuntimeHandoff() {
   const source = await createModel(
     "Handoff source",
@@ -2155,6 +2357,34 @@ try {
     receiptProxy = await deferredReceiptProxy(server.origin, {
       handoffAction: "withdrawn",
     });
+  if (goalHandoff) {
+    goalHandoffFault = {};
+    receiptProxy = await deferredReceiptProxy(server.origin, {
+      blockRequest(url, bytes) {
+        if (url === "/api/internal/native-commands/admit") {
+          const request = JSON.parse(bytes);
+          if (request.intent?.goalRecovery) {
+            if (request.session.modelRouteId === goalHandoffFault.sourceRoute) {
+              goalHandoffFault.sourceAdmission = request;
+              return true;
+            }
+            goalHandoffFault.destinationAdmission = request;
+          }
+        }
+        if (url === "/api/internal/native-runtime-handoffs") {
+          const request = JSON.parse(bytes);
+          if (
+            request.action === "goal-recovery-withdrawn" &&
+            !goalHandoffFault.allowFence
+          ) {
+            goalHandoffFault.fence = request.receipt;
+            return true;
+          }
+        }
+        return false;
+      },
+    });
+  }
   const enrollment = await call("POST", "/api/workers/enrollment-codes", 201, {
     label: "Rust standalone turn",
   });
@@ -2257,6 +2487,8 @@ try {
     });
   } else if (planQuestion) {
     await verifyPlanQuestion();
+  } else if (goalHandoff) {
+    await verifyRecoveredGoalHandoff();
   } else if (runtimeHandoff) {
     await verifyRuntimeHandoff();
   } else if (values.settings) {
