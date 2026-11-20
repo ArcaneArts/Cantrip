@@ -13,6 +13,7 @@ import * as taskOperations from "../../packages/protocol/dist/tasks.js";
 import * as automations from "../../packages/protocol/dist/automations.js";
 import * as computerUseAgent from "../../packages/protocol/dist/computer-use-agent.js";
 import * as customizationContent from "../../packages/protocol/dist/customization-content.js";
+import * as osSystem from "../../packages/protocol/dist/cantrip-os-system.js";
 import { repositoryRoutingHandleSchema } from "../../packages/protocol/dist/repository-operation.js";
 import { cuaCursorPreferenceRecordSchema } from "../../packages/protocol/dist/computer-use-preferences.js";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -1015,6 +1016,16 @@ export const contractRoots = [
   "cantripOsBackupResponseEnvelopeSchema",
   "cantripOsBackupRestoreCommandSchema",
   "cantripOsBackupRollbackCommandSchema",
+  "cantripOsSystemCryptoContextSchema",
+  "cantripOsSystemSnapshotSchema",
+  "cantripOsSystemManifestSchema",
+  "cantripOsSystemFrameSchema",
+  "cantripOsSystemFileHeaderSchema",
+  "cantripOsSystemEndSchema",
+  "cantripOsSystemArchiveReceiptSchema",
+  "cantripOsSystemCaptureAdmissionSchema",
+  "cantripOsSystemProtectedResultSchema",
+  "cantripOsSystemCaptureOutcomeSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1203,6 +1214,7 @@ export function sourceContractSchema(name) {
     computerUsePreview[name] ??
     computerUseAgent[name] ??
     customizationContent[name] ??
+    osSystem[name] ??
     attachmentContent[name] ??
     runConfigurationRuntime[name] ??
     runConfigurationOperations[name] ??
@@ -1441,6 +1453,12 @@ registerChecks(protocol.cantripOsSystemProtectedOperationResultSchema, [
   "cantrip-os-system-envelope",
 ]);
 registerChecks(protocol.cantripOsSystemOperationResultSchema, [
+  "cantrip-os-system-outcome",
+]);
+registerChecks(osSystem.cantripOsSystemProtectedResultSchema, [
+  "cantrip-os-system-frame-receipt",
+]);
+registerChecks(osSystem.cantripOsSystemCaptureOutcomeSchema, [
   "cantrip-os-system-outcome",
 ]);
 for (const schema of [

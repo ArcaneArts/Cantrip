@@ -12,6 +12,7 @@ mod private_state;
 mod repository;
 mod secrets;
 mod streams;
+mod system;
 mod tunnel;
 use crate::{checked, decrypt_payload, decryption_error, derive_field_key, encrypt_payload};
 use anyhow::{Result, bail};
@@ -38,6 +39,7 @@ pub use private_state::*;
 pub use repository::*;
 pub use secrets::*;
 pub use streams::*;
+pub use system::{SystemCipher, SystemFrame, seal_system_operation_result};
 pub use tunnel::*;
 use zeroize::Zeroizing;
 

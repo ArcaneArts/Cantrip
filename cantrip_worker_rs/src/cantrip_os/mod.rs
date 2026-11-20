@@ -1,4 +1,5 @@
 //! Administrative commands admitted by Core and executed by the owning worker.
+mod archive_io;
 mod backup;
 pub(crate) mod carrier;
 mod desktop;
@@ -154,6 +155,7 @@ impl Controller {
                     | power::STATUS
                     | power::OPERATION
                     | system::STATUS
+                    | system::CAPTURE
                     | run_definitions::COMMAND
             )
     }
@@ -223,6 +225,9 @@ impl Controller {
         }
         if kind == system::STATUS {
             return self.system.status(command, encryption, lifetime).await;
+        }
+        if kind == system::CAPTURE {
+            return self.system.capture(command, encryption, lifetime).await;
         }
         let transport_value = checked("cantripOsTransportSchema", command["transport"].clone())?;
         let transport = Transport::from_value(&transport_value)?;

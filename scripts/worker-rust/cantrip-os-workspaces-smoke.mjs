@@ -32,6 +32,8 @@ const { values } = parseArgs({
     "backup-capture": { type: "boolean", default: false },
     "backup-restore": { type: "boolean", default: false },
     "system-status": { type: "boolean", default: false },
+    "system-capture": { type: "boolean", default: false },
+    "system-capture-image": { type: "string", default: "alpine:3.23" },
     power: { type: "boolean", default: false },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
@@ -70,7 +72,10 @@ const linked = values.linked
   : undefined;
 
 async function docker(...args) {
-  const timeout = backup || values["system-status"] ? 120_000 : 20_000;
+  const timeout =
+    backup || values["system-status"] || values["system-capture"]
+      ? 120_000
+      : 20_000;
   return (await execute("docker", args, { timeout })).stdout.trim();
 }
 
@@ -202,6 +207,7 @@ try {
           values.desktop ||
           values["package-artifact"] ||
           values["system-status"] ||
+          values["system-capture"] ||
           backup
           ? 180_000
           : 25_000,
@@ -287,7 +293,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
     { mode: 0o755 },
   );
   const dockerPath = (await execute("which", ["docker"])).stdout.trim();
-  async function startWorker(code) {
+  async function startWorker(code, dockerEndpoint = powerProxy?.endpoint) {
     let diagnostics = "";
     const child = spawn(
       path.resolve(values.worker),
@@ -314,9 +320,9 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
           ...(values["package-artifact"]
             ? { CANTRIP_OS_PACKAGE_DIRECTORY: packageCatalog }
             : {}),
-          ...(powerProxy
+          ...(dockerEndpoint
             ? {
-                DOCKER_HOST: powerProxy.endpoint,
+                DOCKER_HOST: dockerEndpoint,
                 DOCKER_CONTEXT: "",
                 CANTRIP_TEST_REAL_DOCKER_HOST: realDockerHost,
               }
@@ -490,7 +496,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       },
     });
   }
-  if (values["system-status"] && !repositoryKey) {
+  if ((values["system-status"] || values["system-capture"]) && !repositoryKey) {
     const { grantCantripOsFixture } = await import("./cantrip-os-grant.mjs");
     repositoryKey = (await grantCantripOsFixture(call, workerId, data)).get(
       "repository-content",
@@ -584,6 +590,26 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       root,
     });
   }
+  if (values["system-capture"]) {
+    const { verifyCantripOsSystemCapture } =
+      await import("./cantrip-os-system-capture-cases.mjs");
+    await verifyCantripOsSystemCapture({
+      call,
+      os,
+      docker,
+      container,
+      name,
+      root,
+      data,
+      scopeKey: key,
+      repositoryKey,
+      image: values["system-capture-image"],
+      restartWorker: async (endpoint) => {
+        await stopWorker();
+        await startWorker(undefined, endpoint);
+      },
+    });
+  }
   console.log(
     JSON.stringify({
       suite: "native-cantrip-os-workspaces",
@@ -600,6 +626,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       ...(backup ? { encryptedGuestBackup: true } : {}),
       ...(values["backup-restore"] ? { guestBackupRecovery: true } : {}),
       ...(values["system-status"] ? { retainedSystemDiscovery: true } : {}),
+      ...(values["system-capture"] ? { retainedSystemCapture: true } : {}),
     }),
   );
 } catch (error) {

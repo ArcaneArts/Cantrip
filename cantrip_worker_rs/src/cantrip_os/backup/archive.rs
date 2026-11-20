@@ -1,5 +1,8 @@
 //! Read and write the legacy version-one encrypted JSONL archive.
-use crate::cantrip_os::checked;
+use crate::cantrip_os::{
+    archive_io::{hexadecimal, line, prepare, publish, write},
+    checked,
+};
 use crate::filesystem::Scope;
 use anyhow::{Context, Result, ensure};
 use cantrip_crypto::{
@@ -9,38 +12,12 @@ use cantrip_crypto::{
 };
 use cantrip_wire::{Value, parse_json_text, value::json};
 use sha2::{Digest, Sha256};
-use std::{fs::File, path::Path};
+use std::path::Path;
 use tempfile::NamedTempFile;
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 const FORMAT: &str = "CantripOS-private-backup";
 const MAX_LINE: usize = (BackupFrame::METADATA_BYTES + 16).div_ceil(3) * 4 + 4096;
-
-pub(super) fn prepare(destination: &Path) -> Result<NamedTempFile> {
-    let directory = destination.parent().context("Backup directory")?;
-    cantrip_host::files::private_directory(directory)?;
-    cantrip_host::files::secure_directory(directory)?;
-    Ok(NamedTempFile::new_in(directory)?)
-}
-
-pub(super) fn publish(pending: NamedTempFile, destination: &Path, root: &Path) -> Result<()> {
-    pending
-        .persist_noclobber(destination)
-        .map_err(|error| error.error)?;
-    #[cfg(unix)]
-    {
-        let directory = destination.parent().context("Backup directory")?;
-        for parent in directory.ancestors() {
-            File::open(parent)?.sync_all()?;
-            if parent == root {
-                break;
-            }
-        }
-    }
-    #[cfg(not(unix))]
-    let _ = root;
-    Ok(())
-}
 
 pub(super) async fn seal(
     archive: &mut (impl AsyncRead + Unpin),
@@ -106,12 +83,6 @@ pub(super) async fn seal(
     Ok(pending)
 }
 
-async fn write(writer: &mut BufWriter<tokio::fs::File>, value: &Value) -> Result<()> {
-    writer.write_all(value.stringify().as_bytes()).await?;
-    writer.write_all(b"\n").await?;
-    Ok(())
-}
-
 /// A reopened archive is usable only after every frame and the end record
 /// authenticate. Missing files are distinguished from corrupted files.
 pub(super) async fn verify(
@@ -155,7 +126,9 @@ async fn consume(
     let mut reader = BufReader::new(tokio::fs::File::open(source).await?);
     let header = checked(
         "cantripOsBackupFileHeaderSchema",
-        line(&mut reader).await?.ok_or_else(decryption_error)?,
+        line(&mut reader, MAX_LINE)
+            .await?
+            .ok_or_else(decryption_error)?,
     )?;
     ensure!(
         header["backupId"] == context["backupId"],
@@ -178,7 +151,9 @@ async fn consume(
     let mut size = 0;
     loop {
         scope.check()?;
-        let frame = line(&mut reader).await?.ok_or_else(decryption_error)?;
+        let frame = line(&mut reader, MAX_LINE)
+            .await?
+            .ok_or_else(decryption_error)?;
         if frame["kind"] == "end" {
             let end = parse(
                 "cantripOsBackupEndSchema",
@@ -190,7 +165,7 @@ async fn consume(
                     && size == expected
                     && end["archiveSha256"] == metadata["archiveSha256"]
                     && metadata["archiveSha256"] == hexadecimal(archive_hash)
-                    && line(&mut reader).await?.is_none(),
+                    && line(&mut reader, MAX_LINE).await?.is_none(),
                 decryption_error()
             );
             return Ok(metadata);
@@ -207,35 +182,9 @@ async fn consume(
     }
 }
 
-async fn line(reader: &mut BufReader<tokio::fs::File>) -> Result<Option<Value>> {
-    let mut bytes = Vec::new();
-    if reader
-        .take(MAX_LINE as u64 + 1)
-        .read_until(b'\n', &mut bytes)
-        .await?
-        == 0
-    {
-        return Ok(None);
-    }
-    ensure!(
-        bytes.len() <= MAX_LINE && bytes.pop() == Some(b'\n'),
-        decryption_error()
-    );
-    Ok(Some(
-        parse_json_text(std::str::from_utf8(&bytes)?).map_err(|_| decryption_error())?,
-    ))
-}
-
 fn parse(schema: &str, bytes: &[u8]) -> Result<Value> {
     let value = parse_json_text(std::str::from_utf8(bytes)?).map_err(|_| decryption_error())?;
     checked(schema, value)
-}
-
-fn hexadecimal(hash: Sha256) -> String {
-    hash.finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
 }
 
 #[cfg(test)]

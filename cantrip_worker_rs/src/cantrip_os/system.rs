@@ -1,5 +1,9 @@
-//! Read-only discovery for an owned Cantrip OS Docker system.
+//! Owned Cantrip OS system discovery and operations.
+mod archive;
+mod carrier;
+mod checkpoints;
 mod identity;
+mod jobs;
 
 use super::{
     checked,
@@ -7,7 +11,10 @@ use super::{
     operations::scope_key,
     text,
 };
-use crate::{encryption::Service, filesystem::Scope};
+use crate::{
+    encryption::{ComponentKey, Service},
+    filesystem::Scope,
+};
 use anyhow::{Context, Result, anyhow, ensure};
 use cantrip_wire::{Value, parse_json_text, value::json};
 use hyper::Method;
@@ -20,6 +27,7 @@ use std::{
 use uuid::Uuid;
 
 pub(super) const STATUS: &str = "cantrip-os.system.status";
+pub(super) const CAPTURE: &str = "cantrip-os.system.capture";
 const STATUS_SCHEMA: &str = "cantripOsSystemStatusResultSchema";
 const TARGET_SCHEMA: &str = "cantripOsSystemTargetSchema";
 const MAX_JOB: u64 = 48 * 1024 * 1024;
@@ -30,13 +38,28 @@ pub(super) struct Manager {
 
 fn account(scope: &Value, encryption: &Service) -> Result<()> {
     let (owner, server) = encryption.bound_identity()?;
+    check_account(scope, encryption, &owner, &server)
+}
+
+fn check_account(
+    scope: &Value,
+    encryption: &Service,
+    owner: &cantrip_wire::JsString,
+    server: &Value,
+) -> Result<()> {
     ensure!(
-        scope["ownerId"].as_js_string() == Some(&owner)
-            && scope["serverId"] == server
+        scope["ownerId"].as_js_string() == Some(owner)
+            && &scope["serverId"] == server
             && scope["workerId"].as_js_string() == Some(encryption.worker_id()),
         "The system operation belongs to another Worker, account or Server"
     );
     Ok(())
+}
+
+fn key(scope: &Value, encryption: &Service, revision: Option<u64>) -> Result<ComponentKey> {
+    let bound = encryption.bound_component("repository-content", revision)?;
+    check_account(scope, encryption, &bound.owner_id, &bound.server_id)?;
+    Ok(bound.component)
 }
 
 fn same_placement(first: &Value, second: &Value) -> bool {
@@ -126,20 +149,7 @@ fn replacement(data: &Path, scope: &Value, recovery: &Value, id: &Value) -> Resu
         .join(format!("{operation}.json"));
     let unavailable =
         || anyhow!("No completed original system operation authorizes replacement discovery");
-    let file = File::open(&path).map_err(|error| {
-        if error.kind() == io::ErrorKind::NotFound {
-            unavailable()
-        } else {
-            error.into()
-        }
-    })?;
-    let mut body = String::new();
-    file.take(MAX_JOB + 1).read_to_string(&mut body)?;
-    ensure!(
-        body.len() as u64 <= MAX_JOB,
-        "The system journal exceeds its size limit"
-    );
-    let record = parse_json_text(&body).map_err(|_| anyhow!("The system journal is invalid"))?;
+    let record = load_record(&path)?.ok_or_else(unavailable)?;
     let command = checked(
         "cantripOsSystemOperationCommandSchema",
         record["command"].clone(),
@@ -161,6 +171,22 @@ fn replacement(data: &Path, scope: &Value, recovery: &Value, id: &Value) -> Resu
         unavailable_msg = unavailable()
     );
     Ok(command)
+}
+
+fn load_record(path: &Path) -> Result<Option<Value>> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let mut body = String::new();
+    file.take(MAX_JOB + 1).read_to_string(&mut body)?;
+    ensure!(
+        body.len() as u64 <= MAX_JOB,
+        "The system journal exceeds its size limit"
+    );
+    let record = parse_json_text(&body).map_err(|_| anyhow!("The system journal is invalid"))?;
+    Ok(Some(record))
 }
 
 async fn target(

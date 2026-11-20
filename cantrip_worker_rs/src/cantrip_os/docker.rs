@@ -4,7 +4,7 @@ use anyhow::{Context, Result, anyhow, bail, ensure};
 use bytes::Bytes;
 use cantrip_wire::{Value, parse_json_text};
 use http_body_util::{BodyExt, Full, Limited};
-use hyper::{Method, Request, StatusCode, client::conn::http1};
+use hyper::{Method, Request, Response, StatusCode, body::Incoming, client::conn::http1};
 use hyper_util::rt::TokioIo;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use std::{env, ffi::OsStr, fmt::Display, time::Duration};
@@ -39,6 +39,28 @@ pub(super) fn segment(value: &str) -> impl Display + '_ {
 }
 
 pub(super) struct LocalDocker(String);
+
+pub(super) struct ImageExport {
+    body: Incoming,
+    _connection: JoinSet<Result<(), hyper::Error>>,
+}
+
+impl ImageExport {
+    pub async fn next(&mut self, scope: &Scope) -> Result<Option<Bytes>> {
+        loop {
+            let frame = tokio::select! {
+                biased;
+                _ = scope.stopped() => bail!("Worker stopped during Docker image export."),
+                frame = timeout(Duration::from_secs(300), self.body.frame()) => frame?,
+            };
+            let Some(frame) = frame else { return Ok(None) };
+            if let Ok(data) = frame?.into_data() {
+                return Ok(Some(data));
+            }
+        }
+    }
+}
+
 impl LocalDocker {
     pub async fn current(scope: &Scope) -> Result<Self> {
         let configured = env::var("DOCKER_HOST").ok().filter(|host| {
@@ -144,6 +166,41 @@ impl LocalDocker {
         .await
     }
 
+    pub async fn export_image(&self, id: &str, scope: &Scope) -> Result<ImageExport> {
+        scope.check()?;
+        let path = format!("/images/{}/get", segment(id));
+        let export = async {
+            let (response, connection) = self.open(Method::GET, &path, None).await?;
+            ensure!(
+                response.status().is_success(),
+                "Docker image export returned HTTP {}.",
+                response.status()
+            );
+            Ok(ImageExport {
+                body: response.into_body(),
+                _connection: connection,
+            })
+        };
+        tokio::select! {
+            biased;
+            _ = scope.stopped() => bail!("Worker stopped before Docker image export."),
+            result = timeout(Duration::from_secs(300), export) => result?,
+        }
+    }
+
+    async fn open(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<(Response<Incoming>, JoinSet<Result<(), hyper::Error>>)> {
+        #[cfg(unix)]
+        let socket = tokio::net::UnixStream::connect(&self.0).await?;
+        #[cfg(windows)]
+        let socket = tokio::net::windows::named_pipe::ClientOptions::new().open(&self.0)?;
+        response(socket, method, path, body).await
+    }
+
     async fn read_response(
         &self,
         method: Method,
@@ -154,11 +211,8 @@ impl LocalDocker {
     ) -> Result<Bytes> {
         scope.check()?;
         let exchange = async {
-            #[cfg(unix)]
-            let socket = tokio::net::UnixStream::connect(&self.0).await?;
-            #[cfg(windows)]
-            let socket = tokio::net::windows::named_pipe::ClientOptions::new().open(&self.0)?;
-            exchange(socket, method, path, body).await
+            let (response, _connection) = self.open(method, path, body).await?;
+            collect(response).await
         };
         let result = tokio::select! {
             biased;
@@ -178,12 +232,12 @@ impl LocalDocker {
     }
 }
 
-async fn exchange(
+async fn response(
     socket: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
     method: Method,
     path: &str,
     body: Option<&Value>,
-) -> Result<Bytes> {
+) -> Result<(Response<Incoming>, JoinSet<Result<(), hyper::Error>>)> {
     let (mut requests, connection) = http1::handshake(TokioIo::new(socket)).await?;
     let mut owned = JoinSet::new();
     owned.spawn(connection);
@@ -199,7 +253,10 @@ async fn exchange(
         Bytes::new()
     };
     let request = request.body(Full::new(payload))?;
-    let response = requests.send_request(request).await?;
+    Ok((requests.send_request(request).await?, owned))
+}
+
+async fn collect(response: Response<Incoming>) -> Result<Bytes> {
     let status = response.status();
     let bytes = Limited::new(response.into_body(), 4 * 1024 * 1024)
         .collect()
