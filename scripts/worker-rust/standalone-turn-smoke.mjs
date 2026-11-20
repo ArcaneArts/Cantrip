@@ -75,6 +75,7 @@ const { values } = parseArgs({
     "cua-autonomous": { type: "string" },
     "cua-child": { type: "string" },
     "cua-task": { type: "string" },
+    "cua-task-goal": { type: "string" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -119,7 +120,8 @@ const cuaConsole = values["cua-console"];
 const recoveredCua = values["cua-recovered"];
 const autonomousCua = values["cua-autonomous"];
 const childCua = values["cua-child"];
-const taskCua = values["cua-task"];
+const taskGoalCua = values["cua-task-goal"];
+const taskCua = values["cua-task"] || taskGoalCua;
 const cuaAgent =
   values["cua-agent"] || cuaConsole || recoveredCua || autonomousCua || taskCua;
 const previewKey =
@@ -3086,7 +3088,7 @@ try {
       autonomous: autonomousCua
         ? { labelKey, admission: () => goalAdmission }
         : null,
-      task: taskCua ? { labelKey, taskKey } : null,
+      task: taskCua ? { labelKey, taskKey, goal: Boolean(taskGoalCua) } : null,
       openMessage,
     });
   } else if (previewKey && !childCua) {

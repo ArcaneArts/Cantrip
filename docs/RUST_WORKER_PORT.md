@@ -9245,3 +9245,23 @@ computer-use tools. Managed Chat, child agent, and preview smokes also passed.
 
 Task Goal activation, autonomous cycles and recovered Task computer use still
 need integration and validation.
+
+## 264. Activate a Task Goal with computer use enabled
+
+Reference commit `bdd9988fec87ed3ff6d17fadfcf21030648e39b2` (#3427).
+
+Task Goal activation prepares the retained implementation thread with Core's
+computer-use setting. The existing first-input reservation holds the native
+producer until the canonical Task command runs. That command uses its own
+execution-lane authority to enable the prepared MCP attachment. Planning and
+finalization remain read-only.
+
+On macOS ARM64, `standalone-turn-smoke.mjs --cua-task-goal` ran the public
+Task plan and implementation endpoints against production Rust Core in
+PGlite mode, the production Rust worker, bundled Codex, and the deterministic
+Host desktop helper. Planning and finalization exposed no computer-use tools.
+The first implementation turn obtained protected approvals, captured and
+read back matching PNGs, published encrypted Task History, retired the
+preview, and completed the Goal. The direct Task smoke also passed locally.
+
+Saved Task reattachment still needs computer-use integration.

@@ -73,6 +73,7 @@ export async function verifyManagedComputerUse({
         keyRevision,
         ...task,
         brief: "Observe the fixture window.",
+        planGoalEnabled: task.goal ?? false,
       })
     : null;
   const { chatId, chatUrl } =
@@ -88,11 +89,25 @@ export async function verifyManagedComputerUse({
           title,
         })
       : await createChat(title, false));
+  const taskUrl = preparedTask ? `/api/tasks/${chatId}` : null;
+  const reviewed = task?.goal
+    ? await reviewTaskPlan({ call, eventually, model }, preparedTask)
+    : null;
+  const finalizer = reviewed
+    ? model.reply({
+        hold: true,
+        text: JSON.stringify({
+          finalPlanMarkdown: "# Inspect the fixture window",
+          goalPrompt: "Observe the fixture window and report the result.",
+        }),
+      })
+    : null;
   const beforePause = recovery ? model.reply({ hold: true }) : null;
   const tools = model.reply({ hold: true });
   const captured = model.reply({ hold: true });
   const afterReset = model.reply({ hold: true });
-  const completeGoal = autonomous ? model.reply({ hold: true }) : null;
+  const completeGoal =
+    autonomous || reviewed ? model.reply({ hold: true }) : null;
   const finished = model.reply({
     hold: true,
     text: "The fixture capture completed.",
@@ -127,8 +142,14 @@ export async function verifyManagedComputerUse({
       objective: prompt,
       tokenBudget: 50_000,
     });
+  } else if (reviewed) {
+    await call("POST", taskUrl + "/begin-implementation", 202, {
+      operationId: randomUUID(),
+      rowVersion: reviewed.rowVersion,
+    });
+    await readOnlyPlan(finalizer, eventually);
   } else if (preparedTask) {
-    await call("POST", `/api/tasks/${chatId}/start`, 202, {
+    await call("POST", taskUrl + "/start", 202, {
       operationId: randomUUID(),
       rowVersion: preparedTask.rowVersion,
     });
@@ -537,9 +558,11 @@ export async function verifyManagedComputerUse({
   }
   if (preparedTask) {
     await eventually(
-      () => call("GET", `/api/tasks/${chatId}`, 200),
+      () => call("GET", taskUrl, 200),
       ({ state }) => assert.equal(state, "complete"),
     );
+  }
+  if (preparedTask && !reviewed) {
     const plan = await createComputerUseTask({
       call,
       eventually,
@@ -551,48 +574,61 @@ export async function verifyManagedComputerUse({
       planGoalEnabled: true,
       projectId: preparedTask.projectId,
     });
-    const planner = model.reply({
-      hold: true,
-      text: JSON.stringify({
-        planMarkdown: "# Inspect the fixture",
-        questions: [],
-      }),
-    });
-    const taskUrl = `/api/tasks/${plan.chatId}`;
-    await call("POST", taskUrl + "/plan", 202, {
-      operationId: randomUUID(),
-      rowVersion: plan.rowVersion,
-    });
-    await eventually(
-      () => planner.entered,
-      (entered) => assert.equal(entered, true),
-    );
-    assert.ok(
-      modelFunctions(planner.request.input.tools).every(
-        ({ name, namespace }) =>
-          !name.includes("cantrip_cua") && !namespace?.includes("cantrip_cua"),
-      ),
-      "A read-only Task plan does not receive computer-use tools.",
-    );
-    planner.release();
-    await eventually(
-      () => call("GET", taskUrl, 200),
-      ({ state }) => assert.equal(state, "review"),
-    );
+    await reviewTaskPlan({ call, eventually, model }, plan);
   }
   assert.deepEqual(model.failures, []);
   console.log(
     JSON.stringify({
-      suite: preparedTask
-        ? "native-task-computer-use"
-        : managedConsole
-          ? "native-console-computer-use"
-          : recovery
-            ? "native-recovered-computer-use"
-            : autonomous
-              ? "native-autonomous-computer-use"
-              : "native-managed-computer-use",
+      suite: reviewed
+        ? "native-task-goal-computer-use"
+        : preparedTask
+          ? "native-task-computer-use"
+          : managedConsole
+            ? "native-console-computer-use"
+            : recovery
+              ? "native-recovered-computer-use"
+              : autonomous
+                ? "native-autonomous-computer-use"
+                : "native-managed-computer-use",
       passed: true,
     }),
   );
+}
+
+async function reviewTaskPlan(
+  { call, eventually, model },
+  { chatId, rowVersion },
+) {
+  const planner = model.reply({
+    hold: true,
+    text: JSON.stringify({
+      planMarkdown: "# Inspect the fixture",
+      questions: [],
+    }),
+  });
+  const taskUrl = `/api/tasks/${chatId}`;
+  await call("POST", taskUrl + "/plan", 202, {
+    operationId: randomUUID(),
+    rowVersion,
+  });
+  await readOnlyPlan(planner, eventually);
+  return eventually(
+    () => call("GET", taskUrl, 200),
+    ({ state }) => assert.equal(state, "review"),
+  );
+}
+
+async function readOnlyPlan(reply, eventually) {
+  await eventually(
+    () => reply.entered,
+    (entered) => assert.equal(entered, true),
+  );
+  assert.ok(
+    modelFunctions(reply.request.input.tools).every(
+      ({ name, namespace }) =>
+        !name.includes("cantrip_cua") && !namespace?.includes("cantrip_cua"),
+    ),
+    "A read-only Task round does not receive computer-use tools.",
+  );
+  reply.release();
 }
