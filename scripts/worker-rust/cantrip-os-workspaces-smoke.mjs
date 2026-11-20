@@ -31,6 +31,7 @@ const { values } = parseArgs({
     desktop: { type: "boolean", default: false },
     "backup-capture": { type: "boolean", default: false },
     "backup-restore": { type: "boolean", default: false },
+    "system-status": { type: "boolean", default: false },
     power: { type: "boolean", default: false },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
@@ -69,7 +70,7 @@ const linked = values.linked
   : undefined;
 
 async function docker(...args) {
-  const timeout = backup ? 120_000 : 20_000;
+  const timeout = backup || values["system-status"] ? 120_000 : 20_000;
   return (await execute("docker", args, { timeout })).stdout.trim();
 }
 
@@ -128,9 +129,10 @@ try {
           "-v",
           managedVolumes[2] + ":/var/lib/cantrip-os-executor",
         ]
-      : values.power
+      : values.power || values["system-status"]
         ? []
         : ["--rm"]),
+    ...(values["system-status"] ? ["--label", "io.cantrip.os=foundation"] : []),
     "--pull=never",
     "--network",
     "none",
@@ -196,7 +198,11 @@ try {
     const response = await fetch(server.origin + url, {
       method,
       signal: AbortSignal.timeout(
-        values.power || values.desktop || values["package-artifact"] || backup
+        values.power ||
+          values.desktop ||
+          values["package-artifact"] ||
+          values["system-status"] ||
+          backup
           ? 180_000
           : 25_000,
       ),
@@ -484,6 +490,12 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       },
     });
   }
+  if (values["system-status"] && !repositoryKey) {
+    const { grantCantripOsFixture } = await import("./cantrip-os-grant.mjs");
+    repositoryKey = (await grantCantripOsFixture(call, workerId, data)).get(
+      "repository-content",
+    );
+  }
   if (values.desktop) {
     await verifyCantripOsDesktop({
       call,
@@ -560,6 +572,18 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       },
     });
   }
+  if (values["system-status"]) {
+    const { verifyCantripOsSystemStatus } =
+      await import("./cantrip-os-system-status-cases.mjs");
+    await verifyCantripOsSystemStatus({
+      call,
+      os,
+      docker,
+      container,
+      name,
+      root,
+    });
+  }
   console.log(
     JSON.stringify({
       suite: "native-cantrip-os-workspaces",
@@ -575,6 +599,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       ...(values["package-artifact"] ? { guestPackageManagement: true } : {}),
       ...(backup ? { encryptedGuestBackup: true } : {}),
       ...(values["backup-restore"] ? { guestBackupRecovery: true } : {}),
+      ...(values["system-status"] ? { retainedSystemDiscovery: true } : {}),
     }),
   );
 } catch (error) {

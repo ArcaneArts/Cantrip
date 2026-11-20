@@ -7970,3 +7970,26 @@ unverified at runtime.
 
 Run the local workspace fixture with `--backup-restore`, the native
 executables, and the guest packages listed in the capture fixture.
+
+## 215. Discover owned Cantrip OS system images in Rust
+
+Reference commit 71c654eedab9b2c810b7a1e2d92defbdd9a3650d (#3378).
+
+The native worker discovers a running or stopped foundation container through
+its exact local Docker Engine identity. It reads the bounded guest identity
+archive without invoking the guest executor, follows symlinks inside the
+container, and preserves the target generation for the same physical system.
+An unreadable identity can retain a previously verified target. A readable
+identity for a different owner, Worker, or guest cannot. Public inventory
+omits images marked as private snapshots, replacements, or linked sources.
+An existing completed replacement journal can authorize discovery of its
+exact resulting container during explicit recovery.
+
+The macOS ARM64 fixture ran production Rust Core with PGlite and a native
+worker against a disposable Docker guest. It verified target generation
+continuity across a symlink, an unreadable identity, and a stopped container.
+It rejected a readable foreign owner and listed a public foundation image
+while excluding a private checkpoint image. Run the local workspace fixture
+with `--system-status`, the native executables, and built `@cantrip/crypto`.
+
+System checkpoint capture, replacement, and rollback remain open.
