@@ -3,18 +3,22 @@ import { randomUUID } from "node:crypto";
 import {
   encryptEndpointContentPayload,
   decryptEndpointContentPayload,
+  decryptInteractionRequestContent,
+  encryptInteractionResponseContent,
   protectComputerUseRequest,
   openComputerUseResult,
 } from "../../packages/crypto/dist/index.js";
 
 export async function verifyComputerUsePreview({
   call,
+  eventually,
   createChat,
   createModel,
   ownerId,
   workerId,
   keyRevision,
   componentKey,
+  interactionKey,
 }) {
   const { profile } = await createModel("Computer-use preview fixture");
   await call("PATCH", "/api/settings", 200, {
@@ -150,7 +154,200 @@ export async function verifyComputerUsePreview({
   assert.ok(defaultLease.generation > replacement.generation);
   const approval = await operate({ operation: "targets.list" }, defaultLease);
   assert.equal(approval.result.code, "approval-required");
+  await verifyApprovals({
+    call,
+    eventually,
+    base,
+    chatId,
+    workerId,
+    lease: defaultLease,
+    operate,
+    target,
+    material: { ownerId, keyRevision, componentKey: interactionKey },
+  });
   console.log(
     JSON.stringify({ suite: "native-computer-use-preview", passed: true }),
+  );
+}
+
+async function verifyApprovals({
+  call,
+  eventually,
+  base,
+  chatId,
+  workerId,
+  lease,
+  operate,
+  target,
+  material,
+}) {
+  const list = `/api/agent-requests?chatId=${chatId}&status=pending`;
+  const classification = { kind: "permissions" };
+  const inventory = { operation: "targets.list" };
+  const path = (request) => `/api/agent-requests/${request.id}`;
+
+  async function pending(kind, expectedTarget) {
+    const [request] = await eventually(
+      () => call("GET", list, 200),
+      (items) => assert.equal(items.length, 1),
+    );
+    assert.deepEqual(request.classification, classification);
+    assert.equal(request.provenance.owner, "computer-use");
+    assert.equal(request.provenance.chatId, chatId);
+    assert.equal(request.provenance.workerId, workerId);
+    for (const key of ["threadId", "turnId", "itemId", "executionLaneId"]) {
+      assert.equal(request.provenance[key], null);
+    }
+    assert.doesNotMatch(
+      JSON.stringify(request),
+      /fake-window|requestedPermissions/,
+    );
+    const opened = await decryptInteractionRequestContent({
+      ...material,
+      requestKey: request.requestKey,
+      encrypted: request.protectedPayload,
+      publicClassification: request.classification,
+    });
+    const permissions = {
+      computerUse: { version: 1, classes: [kind], target: expectedTarget },
+    };
+    assert.equal(opened.payload.source, "native-computer-use");
+    assert.deepEqual(opened.payload.requestedPermissions, permissions);
+    return { request, permissions };
+  }
+
+  async function response(
+    request,
+    permissions,
+    scope,
+    requestKey = request.requestKey,
+  ) {
+    return {
+      idempotencyKey: randomUUID(),
+      classification,
+      protectedResponse: await encryptInteractionResponseContent({
+        ...material,
+        requestKey,
+        content: {
+          version: 1,
+          classification,
+          response: {
+            kind: "permissions",
+            permissions,
+            scope,
+            strictAutoReview: false,
+          },
+        },
+      }),
+    };
+  }
+
+  const respond = (request, status, body) =>
+    call("POST", path(request) + "/respond", status, body);
+  const retry = (action, selected = lease) => operate(action, selected);
+  const first = await pending("inventory", null);
+  assert.equal((await retry(inventory)).result.code, "approval-required");
+  assert.equal((await pending("inventory", null)).request.id, first.request.id);
+  await respond(
+    first.request,
+    409,
+    await response(first.request, first.permissions, "turn", randomUUID()),
+  );
+  await respond(
+    first.request,
+    409,
+    await response(
+      first.request,
+      {
+        computerUse: {
+          ...first.permissions.computerUse,
+          classes: ["native-input"],
+        },
+      },
+      "session",
+    ),
+  );
+  const once = await response(first.request, first.permissions, "turn");
+  assert.equal((await respond(first.request, 200, once)).status, "resolved");
+  assert.equal((await respond(first.request, 200, once)).status, "resolved");
+  assert.equal((await retry(inventory)).result.status, "ok");
+  assert.equal((await retry(inventory)).result.code, "approval-required");
+  const next = await pending("inventory", null);
+  assert.notEqual(next.request.id, first.request.id);
+  await respond(
+    next.request,
+    200,
+    await response(next.request, next.permissions, "session"),
+  );
+  assert.equal((await retry(inventory)).result.status, "ok");
+  assert.equal((await retry(inventory)).result.status, "ok");
+
+  const attach = { operation: "session.open", ...target };
+  assert.equal((await retry(attach)).result.code, "approval-required");
+  const bound = await pending("inventory", target);
+  await respond(
+    bound.request,
+    409,
+    await response(
+      bound.request,
+      {
+        computerUse: {
+          ...bound.permissions.computerUse,
+          target: { ...target, targetGeneration: target.targetGeneration + 1 },
+        },
+      },
+      "session",
+    ),
+  );
+  await respond(
+    bound.request,
+    200,
+    await response(bound.request, bound.permissions, "session"),
+  );
+  const attached = await retry(attach);
+  const sessionId = attached.result.data?.session.binding.sessionId;
+  assert.ok(sessionId, JSON.stringify(attached.result));
+  const capture = { operation: "observation.snapshot", sessionId, ...target };
+  const initial = await retry(capture);
+  assert.equal(initial.result.code, "approval-required");
+  assert.equal(initial.payload, null);
+  const denied = await pending("capture", target);
+  await respond(
+    denied.request,
+    200,
+    await response(denied.request, {}, "session"),
+  );
+  assert.equal((await retry(capture)).result.code, "approval-required");
+  const accepted = await pending("capture", target);
+  assert.notEqual(accepted.request.id, denied.request.id);
+  await respond(
+    accepted.request,
+    200,
+    await response(accepted.request, accepted.permissions, "turn"),
+  );
+  const image = await retry(capture);
+  assert.equal(image.result.status, "ok");
+  assert.ok(image.payload?.length);
+  image.payload.fill(0);
+  assert.equal((await retry(capture)).result.code, "approval-required");
+  const revoked = await pending("capture", target);
+
+  await call("POST", base + "/preview/stop", 200, {
+    workerId,
+    leaseId: lease.leaseId,
+  });
+  await eventually(
+    () => call("GET", path(revoked.request), 200),
+    (saved) => assert.equal(saved.status, "interrupted"),
+  );
+  await respond(
+    revoked.request,
+    409,
+    await response(revoked.request, revoked.permissions, "session"),
+  );
+  const replacement = await call("POST", base + "/preview", 200, {});
+  assert.equal(
+    (await retry(inventory, replacement)).result.code,
+    "approval-required",
   );
 }

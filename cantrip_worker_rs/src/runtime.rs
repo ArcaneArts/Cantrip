@@ -1113,7 +1113,10 @@ async fn cycle(
                             let epoch = request["socketEpoch"].as_u64()
                                 .context("Computer-use preview has no connected socket.")?;
                             previews.execute(&request["command"], epoch, |event| {
-                                ensure!(outgoing.send(json!({"kind":"event","requestId":request["requestId"],"event":event}))?,
+                                let approval = event["type"] == "computer-use.approval.request";
+                                let frame = json!({"kind":"event","requestId":request["requestId"],"event":event});
+                                let queued = if approval { outgoing.send_for_epoch(epoch, frame) } else { outgoing.send(frame) };
+                                ensure!(queued?,
                                     "The protected computer-use response could not be delivered.");
                                 Ok(())
                             }).await

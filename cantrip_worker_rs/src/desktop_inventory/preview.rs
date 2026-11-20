@@ -1,4 +1,5 @@
 //! One authenticated native preview lifetime per Chat.
+mod approvals;
 mod native;
 mod protected;
 
@@ -23,10 +24,11 @@ const OPEN: &str = "computer-use.preview.open";
 const STOP: &str = "computer-use.preview.stop";
 const REVOKE: &str = "computer-use.preview.revoke";
 const OPERATION: &str = "computer-use.operation";
+const ANSWER: &str = "computer-use.approval.respond";
 pub(super) use native::{release, run};
 
 pub(crate) fn supports(method: &str) -> bool {
-    matches!(method, OPEN | STOP | REVOKE | OPERATION)
+    matches!(method, OPEN | STOP | REVOKE | OPERATION | ANSWER)
 }
 
 #[derive(Clone)]
@@ -36,6 +38,7 @@ struct Manager {
     leases: Mutex<HashMap<JsString, Arc<Lease>>>,
     encryption: Arc<Service>,
     outgoing: Arc<Outbound>,
+    approvals: approvals::Approvals,
     requests: mpsc::Sender<DesktopRequest>,
     retirements: mpsc::UnboundedSender<Arc<Lease>>,
 }
@@ -93,6 +96,7 @@ impl Previews {
         let manager = Arc::new(Manager {
             leases: Mutex::default(),
             encryption,
+            approvals: approvals::Approvals::new(outgoing.clone()),
             outgoing,
             requests,
             retirements,
@@ -118,6 +122,7 @@ impl Previews {
             Some(OPEN) => self.open(&command["authority"], &command["contentDomain"], epoch),
             Some(STOP) => self.stop(command, epoch),
             Some(REVOKE) => self.revoke(command, epoch),
+            Some(ANSWER) => self.answer(command, epoch),
             Some(OPERATION) => self.operation(command, epoch, emit).await,
             _ => bail!("Unknown computer-use preview command."),
         }
@@ -222,6 +227,7 @@ impl Previews {
         lease
             .abort
             .abort(anyhow::anyhow!("Computer-use preview authority expired."));
+        self.0.approvals.revoke(&lease.id);
         let _ = self.0.retirements.send(lease);
     }
 
@@ -247,7 +253,6 @@ impl Previews {
         let bound = &command["preview"];
         let request = &command["request"];
         let authority = &bound["authority"];
-        self.authorize(authority)?;
         ensure!(
             command["serverId"] == authority["serverId"]
                 && command["chatId"] == authority["chatId"]
@@ -258,13 +263,18 @@ impl Previews {
         let id = bound["leaseId"]
             .as_js_string()
             .context("Missing preview lease.")?;
+        self.resolve_binding(id, authority, epoch)
+    }
+
+    fn resolve_binding(&self, id: &JsString, authority: &Value, epoch: u64) -> Result<Arc<Lease>> {
+        self.authorize(authority)?;
         let mut leases = self.0.leases.lock().unwrap();
         let lease = leases
             .get(id)
             .cloned()
             .context("Computer-use preview authority expired.")?;
         ensure!(
-            lease.epoch == epoch && lease.authority["chatId"] == command["chatId"],
+            lease.epoch == epoch && lease.authority["chatId"] == authority["chatId"],
             "Computer-use preview authority expired."
         );
         if lease.authority != *authority {
@@ -275,6 +285,26 @@ impl Previews {
             bail!("Computer use belongs to another execution context.");
         }
         Ok(lease)
+    }
+
+    fn answer(&self, command: &Value, epoch: u64) -> Result<Value> {
+        let authority = &command["previewAuthority"];
+        ensure!(
+            command["agentAuthority"].is_null()
+                && command["executionLaneId"].is_null()
+                && !authority.is_null()
+                && command["ownerId"] == authority["ownerId"]
+                && command["chatId"] == authority["chatId"],
+            "Computer use belongs to another execution context."
+        );
+        let key = command["requestKey"]
+            .as_js_string()
+            .context("Missing computer-use approval key.")?;
+        let id = self.0.approvals.lease_for(key)?;
+        let lease = self.resolve_binding(&id, authority, epoch)?;
+        self.0
+            .approvals
+            .answer(&self.0.encryption, &lease, key, &command["response"])
     }
 
     async fn operation(
@@ -289,8 +319,14 @@ impl Previews {
         let response = async {
             let action = content.open()?;
             lease.signal.check()?;
-            let operation = action["operation"].as_str().unwrap();
-            native::authorize(&lease, operation)?;
+            native::require_host(&lease, &action)?;
+            self.0.approvals.authorize(
+                &self.0.encryption,
+                &lease,
+                &action,
+                &request["operationId"],
+                &emit,
+            )?;
             let (reply, result) = oneshot::channel();
             self.0
                 .requests

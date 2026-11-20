@@ -139,7 +139,8 @@ const interactionKey =
   consoleInteractions ||
   restoredInteractions ||
   subagentInteractions ||
-  planQuestion
+  planQuestion ||
+  values["cua-preview"]
     ? key("interaction-content")
     : null;
 const consoleStateKey =
@@ -3027,12 +3028,14 @@ try {
   } else if (previewKey) {
     await verifyComputerUsePreview({
       call,
+      eventually,
       createChat,
       createModel,
       ownerId,
       workerId,
       keyRevision,
       componentKey: previewKey,
+      interactionKey,
     });
   } else if (values["console-steer"]) {
     await verifyConsoleSteering({
