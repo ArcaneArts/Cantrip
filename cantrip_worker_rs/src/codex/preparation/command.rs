@@ -43,7 +43,8 @@ use std::{
 use tokio::sync::OnceCell;
 
 pub(crate) const COMMAND: &str = "chat.thread.ensure";
-pub(in crate::codex) type Activate = Arc<dyn Fn() -> Result<Option<Activation>> + Send + Sync>;
+pub(in crate::codex) type Activate =
+    Arc<dyn Fn(&Value) -> Result<Option<Activation>> + Send + Sync>;
 
 pub(crate) struct Prepared {
     pub runtime: Runtime,
@@ -1061,7 +1062,7 @@ impl Ensurer {
         )
     }
 
-    pub(in crate::codex) fn cycle_activation(&self, prepared: &Prepared, lane: &Value) -> Activate {
+    pub(in crate::codex) fn cycle_activation(&self, prepared: &Prepared) -> Activate {
         let ensurer = Arc::downgrade(&self.0);
         let identity = prepared.bound.clone();
         let thread = prepared
@@ -1069,12 +1070,11 @@ impl Ensurer {
             .is_none()
             .then(|| prepared.thread.id().clone());
         let admission = prepared.admission.clone();
-        let lane = lane.clone();
-        Arc::new(move || {
+        Arc::new(move |lane| {
             ensurer
                 .upgrade()
                 .context("The managed MCP broker has closed.")?
-                .activate(&identity, thread.as_ref(), admission.as_ref(), &lane)
+                .activate(&identity, thread.as_ref(), admission.as_ref(), lane)
         })
     }
 

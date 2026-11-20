@@ -273,11 +273,17 @@ export function goalCycles({
   let finalDelivery;
   let afterRestart = false;
   let retainedSource;
+  let target;
+  let publicationPrompt;
   return {
     retainSource(source) {
       retainedSource = source;
     },
-    authorize(body, reply) {
+    retarget(route, prompt) {
+      target = route;
+      publicationPrompt = prompt;
+    },
+    authorize(body, reply, wantsPublication) {
       assert.ok(
         parentCommitted,
         "The cycle must wait for its explicit parent.",
@@ -297,11 +303,21 @@ export function goalCycles({
       assert.equal(dispatch.workerId, receipt.workerId);
       assert.equal(dispatch.workerGeneration, generation());
       assert.equal(dispatch.chatId, receipt.chatId);
-      assert.equal(dispatch.providerId, receipt.providerId);
+      assert.equal(
+        dispatch.providerId,
+        target?.provider.id ?? receipt.providerId,
+      );
+      assert.equal(Boolean(wantsPublication), Boolean(publicationPrompt));
       assert.equal(dispatch.threadId, threadId);
       assert.equal(dispatch.cycle.cycleId, receipt.dispatch.cycleId);
-      assert.equal(dispatch.cycle.modelRouteId, receipt.modelRouteId);
-      assert.equal(dispatch.cycle.orderEpoch, orderEpoch);
+      assert.equal(
+        dispatch.cycle.modelRouteId,
+        target?.routeId ?? receipt.modelRouteId,
+      );
+      assert.equal(
+        dispatch.cycle.orderEpoch,
+        orderEpoch + Number(Boolean(target)),
+      );
       assert.equal(dispatch.cycle.providerAccountId, receipt.providerAccountId);
       if (retainedSource) {
         assert.equal(dispatch.sourceKey, retainedSource.sourceKey);
@@ -350,7 +366,9 @@ export function goalCycles({
         },
       });
       cycles.push(source.suspensionSource);
-      observed[index].dispatch.resolve(() => reply(source));
+      observed[index].dispatch.resolve(() =>
+        reply(publicationPrompt ? { ...source, publicationPrompt } : source),
+      );
     },
     deliver(body, reply) {
       const record = taskGoalOutcomeDeliverySchema.parse(body);
@@ -407,7 +425,9 @@ export function goalCycles({
     },
     async verify({
       firstTurnId,
+      recoveredAdmission,
       untilProvider,
+      sampling = (request) => request,
       available,
       openMessage,
       outcomeDirectory,
@@ -429,7 +449,7 @@ export function goalCycles({
           ]),
         );
         acknowledge();
-        return incoming;
+        return incoming.then(sampling);
       };
       const assertResult = async (record, answer) => {
         const source = record.goalCycleSource;
@@ -450,6 +470,12 @@ export function goalCycles({
       setAnswer(checkpoint ? checkpointTool : firstAnswer);
       const first = await advance(0);
       assert.notEqual(cycles[0].turnId, firstTurnId);
+      if (recoveredAdmission) {
+        assert.deepEqual(recoveredAdmission, {
+          operationId: cycles[0].operationId,
+          runtimeGeneration: cycles[0].runtimeGeneration,
+        });
+      }
       const paused = checkpoint
         ? await pauseGoal({
             ...checkpoint,
@@ -512,7 +538,7 @@ export function goalCycles({
       const second = await next;
       const final = untilProvider();
       second.finish();
-      (await final).finish();
+      (await final.then(sampling)).finish();
       const finalRecord = await available(observed[1].outcome.promise);
       await assertResult(finalRecord, finalAnswer);
       assert.notEqual(cycles[1].turnId, cycles[0].turnId);

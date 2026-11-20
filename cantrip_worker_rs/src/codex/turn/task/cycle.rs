@@ -19,10 +19,13 @@ use tokio::sync::Mutex as AsyncMutex;
 use super::super::{Emit, Key, output};
 
 pub(in crate::codex) struct GoalCycle {
-    pub parent: Value,
-    pub project: Value,
-    pub encryption: Arc<Service>,
     pub key: Key,
+    pub parent: Option<Value>,
+    pub placement: Value,
+    pub project: Value,
+    pub worktree: Value,
+    pub enqueued: tokio::sync::watch::Sender<Option<Value>>,
+    pub encryption: Arc<Service>,
     pub client: task_inputs::Client,
     pub outcomes: Arc<TaskDelivery>,
     pub observation: Arc<RuntimeHub>,
@@ -89,10 +92,7 @@ impl Drop for ObservedCheckpoint {
 
 impl GoalCycle {
     pub fn placement(&self) -> Value {
-        json!({
-            "cycleId":self.parent["dispatch"]["cycleId"], "modelRouteId":self.parent["modelRouteId"],
-            "providerAccountId":self.parent["providerAccountId"], "orderEpoch":self.parent["queueOrderEpoch"].as_u64().unwrap_or(0),
-        })
+        self.placement.clone()
     }
 
     pub async fn dispatch(
@@ -125,20 +125,41 @@ impl GoalCycle {
             mode: "goal",
             output: Mutex::default(),
         });
-        let activation = (self.activate)()?;
+        let activation = self
+            .parent
+            .as_ref()
+            .map(|parent| (self.activate)(&parent["executionLaneId"]))
+            .transpose()?;
         let (observation, mut events, capture) = output::subscribe(&self.observation, &thread)?;
-        let source = match self
+        let reply = match self
             .client
-            .authorize_goal_cycle(owner, server, &self.parent, input, signal)
+            .authorize_goal_cycle(
+                owner,
+                server,
+                self.parent.as_ref(),
+                &self.worktree,
+                input,
+                signal,
+            )
             .await
         {
-            Ok(source) => source,
+            Ok(reply) => reply,
             Err(error) => {
                 observation.close();
                 return Err(error);
             }
         };
 
+        let source = &reply["suspensionSource"];
+        let activation = match activation {
+            Some(activation) => activation,
+            None => (self.activate)(&source["parent"]["executionLaneId"])?,
+        };
+        let prompt = if self.parent.is_some() {
+            &self.checkpoints.prompt
+        } else {
+            &reply["publicationPrompt"]
+        };
         let mut seed = self.checkpoints.seed.clone();
         seed["providerId"] = provider["id"].clone();
         seed["providerKind"] = provider["kind"].clone();
@@ -146,7 +167,7 @@ impl GoalCycle {
         let checkpoint = self.checkpoints.observe(Arc::new(Checkpoint::goal_cycle(
             source.clone(),
             self.project.clone(),
-            &self.checkpoints.prompt,
+            prompt,
             seed,
             capture,
             messages.clone(),
@@ -156,6 +177,7 @@ impl GoalCycle {
         let (owner, server) = (owner.clone(), server.clone());
         let emit = messages.events(self.emit.clone());
         let reuse = self.reuse_published_response;
+        let source = source.clone();
         *previous = Promise::spawn(async move {
             let transport = observation.signal();
             let settled = output::collect(&mut events, &transport, &thread, &turn, &emit).await;

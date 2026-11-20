@@ -467,6 +467,7 @@ impl Transfer {
         let state = self
             .action("finish", json!({"outcome":"completed"}))
             .await?;
+        self.publish_task_goal(&state, &config, &selected).await?;
         if let Some(queue) = selected.queue {
             queue.reconcile_on_prepare();
         }

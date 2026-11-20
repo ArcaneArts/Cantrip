@@ -6,11 +6,12 @@ import {
   nativeRuntimeHandoffWorkerRequestSchema,
 } from "../../packages/protocol/dist/index.js";
 
-export async function cancelTaskGoalHandoff({
+export async function taskGoalHandoff({
   capture,
   scope,
   cycleId,
   provider,
+  target,
   cwd,
   attach,
   attachRecovery,
@@ -39,7 +40,7 @@ export async function cancelTaskGoalHandoff({
     binding: source,
     retiredRuntimeGenerations: [],
     retiredNativeEpochs: [],
-    targetModelRouteId: "other-route",
+    targetModelRouteId: target?.routeId ?? "other-route",
     targetProviderAccountId: null,
     prepared: null,
     errorCode: null,
@@ -56,7 +57,7 @@ export async function cancelTaskGoalHandoff({
   };
   let withdrawals = 0;
   let lostResponse = false;
-  if (!taskGoalInput) {
+  if (!taskGoalInput && !target) {
     attachRecovery((body) => {
       const request = nativeInferenceRecoverySchema.parse(body);
       if (state.phase !== "cancelled" || request.record.key !== record.key)
@@ -89,20 +90,21 @@ export async function cancelTaskGoalHandoff({
       const request =
         nativeRuntimeHandoffConfigurationRequestSchema.parse(body);
       assert.equal(request.operationId, operationId);
-      assert.equal(request.side, "source");
       assert.equal(state.queuedSource.withdrawn, true);
-      assert.equal(state.cancelRequested, true);
+      assert.equal(state.cancelRequested, !target);
+      const selected = request.side === "destination" ? target : undefined;
+      if (request.side === "destination") assert.ok(selected);
       send({
         state,
         side: request.side,
         configuration: {
           cwd,
           threadId: scope.threadId,
-          provider,
+          provider: selected?.provider ?? provider,
           model: {
-            id: "gpt-5",
-            name: "gpt-5",
-            routeId: scope.modelRouteId,
+            id: selected?.model ?? "gpt-5",
+            name: selected?.model ?? "gpt-5",
+            routeId: selected?.routeId ?? scope.modelRouteId,
             reasoningEffort: null,
           },
           subagentDefaults: null,
@@ -117,7 +119,7 @@ export async function cancelTaskGoalHandoff({
             computerUseEnabled: false,
             cycleId,
             goalEpoch: cycle.goalEpoch,
-            orderEpoch: cycle.orderEpoch,
+            orderEpoch: cycle.orderEpoch + Number(Boolean(selected)),
           },
         },
       });
@@ -141,8 +143,12 @@ export async function cancelTaskGoalHandoff({
           ...state,
           queuedSource: { ...state.queuedSource, withdrawn: true },
         };
-        lostResponse = true;
-        response.writeHead(503).end("{}");
+        if (target) {
+          send(state);
+        } else {
+          lostResponse = true;
+          response.writeHead(503).end("{}");
+        }
         break;
       case "recover":
         assert.equal(request.side, "source");
@@ -158,10 +164,37 @@ export async function cancelTaskGoalHandoff({
         };
         send(state);
         break;
+      case "prepared":
+        assert.ok(target);
+        assert.equal(request.prepared.threadId, scope.threadId);
+        assert.notEqual(
+          request.prepared.runtimeGeneration,
+          source.runtimeGeneration,
+        );
+        state = { ...state, phase: "prepared", prepared: request.prepared };
+        send(state);
+        break;
+      case "commit":
+        assert.ok(target);
+        assert.equal(state.phase, "prepared");
+        state = {
+          ...state,
+          phase: "committed",
+          binding: {
+            ...source,
+            bindingId: randomUUID(),
+            modelRouteId: target.routeId,
+            runtimeGeneration: state.prepared.runtimeGeneration,
+            nativeEpoch: state.prepared.snapshot.context.settingsVersion.epoch,
+          },
+          retiredRuntimeGenerations: [source.runtimeGeneration],
+        };
+        send(state);
+        break;
       case "finish":
-        assert.equal(request.outcome, "cancelled");
+        assert.equal(request.outcome, target ? "completed" : "cancelled");
         assert.equal(state.queuedSource.withdrawn, true);
-        state = { ...state, phase: "cancelled" };
+        state = { ...state, phase: request.outcome };
         send(state);
         break;
       default:
@@ -177,9 +210,14 @@ export async function cancelTaskGoalHandoff({
     const attempted = await invoke({ ...request, intent: "continue" });
     assert.equal(
       attempted.ok,
-      false,
+      Boolean(target),
       JSON.stringify(attempted) + "\n" + diagnostics(),
     );
+    if (target) {
+      assert.equal(attempted.result.phase, "completed");
+      assert.equal(withdrawals, 1);
+      return attempted.result;
+    }
     assert.equal(lostResponse, true, diagnostics());
     state = { ...state, cancelRequested: true };
     const cancelled = await invoke({ ...request, intent: "cancel" });

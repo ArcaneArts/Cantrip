@@ -4,7 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { goalCycles } from "./task-goal-cycle-cases.mjs";
-import { cancelTaskGoalHandoff } from "./task-goal-handoff-cases.mjs";
+import { taskGoalHandoff } from "./task-goal-handoff-cases.mjs";
 import {
   editAndResumeTaskGoal,
   verifyManagedGoalClear,
@@ -17,7 +17,9 @@ import {
   decryptTaskProtectedContent,
 } from "../../packages/crypto/dist/index.js";
 import {
+  nativeInferenceRecoverySchema,
   taskGoalHandoffCaptureSchema,
+  taskGoalCycleRecoveryReceiptSchema,
   taskGoalOutcomeDeliverySchema,
   taskGoalWorkerResultSchema,
   taskInferenceInputDispatchSchema,
@@ -27,6 +29,7 @@ import {
 export async function verifyTaskGoalActivation({
   verifyPause,
   verifyTransferSource,
+  verifyProviderHandoff,
   withdrawSource,
   attachHandoff,
   attachRecovery,
@@ -390,7 +393,7 @@ export async function verifyTaskGoalActivation({
       providerAccountId: receipt.providerAccountId,
     },
   };
-  const holdProvider = async () => {
+  const holdProvider = async (heldProvider = provider) => {
     const blockerId = randomUUID();
     const pending = untilProvider();
     const turn = invoke({
@@ -407,7 +410,7 @@ export async function verifyTaskGoalActivation({
       worktreeMode: "agent-managed",
       worktreePolicy: "direct",
       scratchRootId: null,
-      provider,
+      provider: heldProvider,
       prompt: "Occupy the Task Goal provider slot.",
     });
     const model = await available(
@@ -422,21 +425,30 @@ export async function verifyTaskGoalActivation({
       assert.equal((await turn).ok, true, diagnostics());
     };
   };
-  const providerOperations = async () => {
+  const providerOperations = async (selectedProvider = provider) => {
     const status = await invoke({ type: "inference.status" });
     assert.equal(status.ok, true, JSON.stringify(status));
     return (
-      status.result.pools.find(({ providerId }) => providerId === provider.id)
-        ?.operations ?? []
+      status.result.pools.find(
+        ({ providerId }) => providerId === selectedProvider.id,
+      )?.operations ?? []
     );
   };
-  const capture = async (input) => {
+  const capture = async (input, target) => {
     const deadline = Date.now() + 10_000;
-    const request = input ? { ...transferSource, input } : transferSource;
+    const request = input
+      ? { ...transferSource, input }
+      : target
+        ? {
+            ...transferSource,
+            scope: { ...transferSource.scope, modelRouteId: target.routeId },
+          }
+        : transferSource;
+    const sourceProvider = target?.provider ?? provider;
     let queued;
     let reply;
     while (Date.now() < deadline) {
-      queued = (await providerOperations()).find(
+      queued = (await providerOperations(sourceProvider)).find(
         (operation) =>
           operation.chatId === chatId && operation.state === "waiting",
       );
@@ -463,7 +475,7 @@ export async function verifyTaskGoalActivation({
     assert.equal(source.record.workerGeneration, generation());
     assert.equal(source.record.identity.operationId, queued.operationId);
     assert.equal(source.record.identity.chatId, chatId);
-    assert.equal(source.record.identity.providerId, provider.id);
+    assert.equal(source.record.identity.providerId, sourceProvider.id);
     const context = source.snapshot.context;
     assert.equal(context.threadId, threadId);
     assert.equal(
@@ -480,7 +492,7 @@ export async function verifyTaskGoalActivation({
       snapshot: source.snapshot,
     });
     assert.deepEqual(settings.settingsVersion, context.settingsVersion);
-    assert.equal(settings.model, "gpt-5");
+    assert.equal(settings.model, target?.model ?? "gpt-5");
     const wrong = await invoke({
       ...request,
       scope: { ...request.scope, modelRouteId: "wrong-route" },
@@ -488,12 +500,12 @@ export async function verifyTaskGoalActivation({
     assert.equal(wrong.ok, false);
     return source;
   };
-  const setCapacity = async (limit, revision) => {
+  const setCapacity = async (limit, revision, selectedProvider = provider) => {
     const configured = await invoke({
       type: "inference.configure",
       configurations: [
         {
-          providerId: provider.id,
+          providerId: selectedProvider.id,
           maxConcurrentInference: limit,
           inferenceConfigRevision: revision,
         },
@@ -501,7 +513,7 @@ export async function verifyTaskGoalActivation({
     });
     assert.equal(configured.ok, true, JSON.stringify(configured));
     const pool = configured.result.pools.find(
-      ({ providerId }) => providerId === provider.id,
+      ({ providerId }) => providerId === selectedProvider.id,
     );
     assert.equal(pool.maxConcurrentInference, limit);
   };
@@ -516,12 +528,13 @@ export async function verifyTaskGoalActivation({
     (frame) => frame.notification?.clientMessageId === clientMessageId,
   );
   const running = invoke(inputCommand, (event) => streaming.push(event));
-  const cancelWithdrawal = (source) =>
-    cancelTaskGoalHandoff({
+  const transferGoal = (source, target) =>
+    taskGoalHandoff({
       capture: source,
       scope: transferSource.scope,
       cycleId: dispatch.cycleId,
       provider,
+      target,
       cwd,
       attach: attachHandoff,
       attachRecovery,
@@ -536,7 +549,7 @@ export async function verifyTaskGoalActivation({
     assert.equal(inputSource.taskGoalInput.orderEpoch, receipt.queueOrderEpoch);
     assert.equal(modelCalls(), calls);
     if (withdrawSource === "input") {
-      await cancelWithdrawal(inputSource);
+      await transferGoal(inputSource);
       const deferred = await running;
       assert.equal(deferred.ok, false, JSON.stringify(deferred));
       assert.equal(deferred.error.code, "worker-inference-deferred");
@@ -810,7 +823,7 @@ export async function verifyTaskGoalActivation({
     assert.equal(cycle.orderEpoch, receipt.queueOrderEpoch);
     assert.equal(modelCalls(), calls + 1);
     if (withdrawSource === "cycle") {
-      await cancelWithdrawal(cycleSource);
+      await transferGoal(cycleSource);
       const resumed = await capture();
       assert.notEqual(resumed.record.key, cycleSource.record.key);
       assert.equal(
@@ -821,6 +834,166 @@ export async function verifyTaskGoalActivation({
       console.log(
         "Recovered the private cycle withdrawal acknowledgement and released its original Task root.",
       );
+    }
+    if (verifyProviderHandoff) {
+      const target = {
+        provider: {
+          ...provider,
+          id: "task-target-provider",
+          baseUrl: new URL("/fixture-task-target/v1", provider.baseUrl).href,
+        },
+        routeId: "task-target-route",
+        model: "gpt-5-mini",
+      };
+      await setCapacity(1, 1, target.provider);
+      await holdProvider(target.provider);
+      const before = modelCalls();
+      cycles.retarget(target, resumedMessage);
+      const handoff = await transferGoal(cycleSource, target);
+      const newSource = await capture(undefined, target);
+      const record = newSource.record;
+      const recovered = {
+        sourceKey: record.key,
+        operationId: record.identity.operationId,
+        runtimeGeneration: record.identity.runtimeGeneration,
+        workerGeneration: record.workerGeneration,
+        workerId,
+        providerId: target.provider.id,
+        threadId,
+        turnId: record.identity.recovery.turnId,
+        cycle: record.identity.recovery.taskGoalCycle,
+      };
+      assert.equal(recovered.cycle.goalEpoch, cycle.goalEpoch);
+      assert.equal(recovered.cycle.orderEpoch, cycle.orderEpoch + 1);
+      assert.equal(
+        handoff.binding.runtimeGeneration,
+        newSource.snapshot.context.runtimeGeneration,
+      );
+      assert.notEqual(record.key, cycleSource.record.key);
+      const recoverCommand = {
+        type: "task.goal.recover",
+        chatId,
+        threadId,
+        cwd,
+        projectId: command.policyProjectId,
+        worktreeId,
+        rootKind: command.rootKind,
+        computerUseEnabled: false,
+        model: {
+          id: target.model,
+          name: target.model,
+          routeId: target.routeId,
+          reasoningEffort: null,
+        },
+        provider: target.provider,
+        subagentDefaults: null,
+        mcpServers: [],
+        planMode: "default",
+        permissionProfileId: ":workspace",
+        recovery: recovered,
+      };
+      const response = await invoke(recoverCommand);
+      assert.equal(
+        response.ok,
+        true,
+        JSON.stringify(response) + "\n" + diagnostics(),
+      );
+      assert.deepEqual(
+        taskGoalCycleRecoveryReceiptSchema.parse(response.result),
+        {
+          status: "scheduled",
+          sourceKey: record.key,
+          workerGeneration: generation(),
+          admission: {
+            operationId: record.identity.operationId,
+            runtimeGeneration: record.identity.runtimeGeneration,
+          },
+        },
+      );
+      assert.equal(modelCalls(), before);
+      await release();
+      const disconnected = generation();
+      await stop();
+      const reconciled = Promise.withResolvers();
+      attachRecovery((body) => {
+        const request = nativeInferenceRecoverySchema.parse(body);
+        if (request.record.key !== record.key) return undefined;
+        assert.notEqual(request.workerGeneration, disconnected);
+        assert.equal(request.record.workerGeneration, disconnected);
+        assert.deepEqual(request.record.identity, record.identity);
+        assert.equal(request.record.order, record.order);
+        assert.ok(
+          request.record.state === "waiting" ||
+            (request.record.state === "released" &&
+              ["never-started", "runtime-exited"].includes(
+                request.record.outcome,
+              )),
+        );
+        reconciled.resolve();
+        return {
+          key: record.key,
+          chatId,
+          disposition: "requeued",
+          taskGoalCycleNotDispatched: true,
+          taskGoalRecovery: recovered,
+        };
+      });
+      cycles.retainSource(recovered);
+      await start();
+      assert.notEqual(generation(), disconnected);
+      await setCapacity(1, 1, target.provider);
+      await available(reconciled.promise);
+      const restored = await invoke(recoverCommand);
+      assert.equal(
+        restored.ok,
+        true,
+        JSON.stringify(restored) + "\n" + diagnostics(),
+      );
+      const receipt = taskGoalCycleRecoveryReceiptSchema.parse(restored.result);
+      assert.equal(receipt.status, "scheduled");
+      assert.equal(receipt.sourceKey, record.key);
+      assert.equal(receipt.workerGeneration, generation());
+      assert.notEqual(
+        receipt.admission.operationId,
+        record.identity.operationId,
+      );
+      assert.notEqual(
+        receipt.admission.runtimeGeneration,
+        record.identity.runtimeGeneration,
+      );
+      assert.equal(modelCalls(), before);
+      const verifyDestination = async (request) => {
+        const endpoint = new URL(target.provider.baseUrl + "/responses");
+        assert.equal(
+          request.endpoint,
+          endpoint.pathname,
+          `Unexpected provider request #${request.number} (${request.body.model})`,
+        );
+        if (request.compaction) {
+          assert.ok(!JSON.stringify(request.body.input).includes(promptText));
+          const pending = untilProvider();
+          request.finish();
+          return verifyDestination(await pending);
+        }
+        assert.equal(request.body.model, target.model);
+        return request;
+      };
+      await cycles.verify({
+        firstTurnId: native.turnId,
+        recoveredAdmission: receipt.admission,
+        untilProvider,
+        sampling: verifyDestination,
+        available,
+        openMessage,
+        outcomeDirectory: path.dirname(pending),
+        setAnswer,
+        start,
+        stop,
+      });
+      console.log(
+        "Recovered the transferred Task Goal after destination restart and published its original Goal through native cycles.",
+      );
+      return;
     }
     await release();
     console.log(

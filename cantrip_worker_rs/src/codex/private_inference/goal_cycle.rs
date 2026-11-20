@@ -39,12 +39,58 @@ impl Router {
             thread.clone(),
             TaskGoalRoot {
                 runner: runner.clone(),
-                message: parent.clone(),
+                message: Some(parent.clone()),
                 input: FirstInput::default(),
                 cycle: Some(cycle),
             },
         );
         Ok(())
+    }
+
+    pub(super) fn goal_enqueue(
+        &self,
+        owner: Arc<GoalCycle>,
+    ) -> crate::codex::admission::TaskQueued {
+        Arc::new(move |cycle, operation, generation| {
+            let owner = owner.clone();
+            Box::pin(async move {
+                owner.enqueued.send_replace(Some(json!({
+                    "cycle":cycle,"admission":json!({"operationId":operation,"runtimeGeneration":generation}),
+                })));
+                Ok(())
+            })
+        })
+    }
+
+    pub(in crate::codex) fn attach_task_goal_recovery(
+        &self,
+        thread: &JsString,
+        runner: &JsString,
+        candidate: Arc<GoalCycle>,
+    ) -> Result<Arc<GoalCycle>> {
+        self.assert_transport()?;
+        let mut roots = self.0.task_goals.lock().unwrap();
+        if let Some(root) = roots.get(thread).filter(|root| &root.runner == runner) {
+            if let Some(owner) = &root.cycle
+                && owner.placement == candidate.placement
+                && owner.key == candidate.key
+            {
+                return Ok(owner.clone());
+            }
+            if root.cycle.is_none() {
+                bail!("The Task Goal still has a canonical first input.");
+            }
+        }
+        roots.insert(
+            thread.clone(),
+            TaskGoalRoot {
+                runner: runner.clone(),
+                message: None,
+                input: FirstInput::default(),
+                cycle: Some(candidate.clone()),
+            },
+        );
+        Ok(candidate)
     }
 
     pub(super) fn goal_dispatch(
@@ -70,7 +116,7 @@ impl Router {
                 let mut input = json!({
                     "sourceKey": if recovery.is_null() { &source["key"] } else { &recovery["sourceKey"] },
                     "nativeRuntimeGeneration":generation, "providerId":provider["id"],
-                    "chatId":owner.parent["chatId"], "threadId":thread, "turnId":turn,
+                    "chatId":owner.key.2, "threadId":thread, "turnId":turn,
                     "operationId":operation, "cycle":cycle,
                 });
                 if recovery.is_null() {

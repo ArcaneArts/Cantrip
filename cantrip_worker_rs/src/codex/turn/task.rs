@@ -2,6 +2,7 @@
 pub(super) mod checkpoint;
 pub(in crate::codex) mod cycle;
 pub(super) mod first_input;
+pub(crate) mod recovery;
 pub(super) mod restore;
 mod structured;
 use super::{Emit, Key};

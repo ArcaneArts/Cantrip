@@ -91,7 +91,7 @@ struct Inner {
 
 struct TaskGoalRoot {
     runner: JsString,
-    message: JsString,
+    message: Option<JsString>,
     input: FirstInput,
     cycle: Option<Arc<GoalCycle>>,
 }
@@ -233,7 +233,7 @@ impl Router {
         let mut inputs = self.0.task_goals.lock().unwrap();
         if inputs
             .get(&thread)
-            .is_some_and(|input| input.runner == runner && input.message == message)
+            .is_some_and(|input| input.runner == runner && input.message.as_ref() == Some(&message))
         {
             return;
         }
@@ -241,7 +241,7 @@ impl Router {
             thread,
             TaskGoalRoot {
                 runner,
-                message,
+                message: Some(message),
                 input: FirstInput::default(),
                 cycle: None,
             },
@@ -261,7 +261,9 @@ impl Router {
             .unwrap()
             .get(thread)
             .filter(|input| {
-                &input.runner == runner && &input.message == message && input.cycle.is_none()
+                &input.runner == runner
+                    && input.message.as_ref() == Some(message)
+                    && input.cycle.is_none()
             })
             .map(|input| input.input.clone())
             .ok_or_else(|| anyhow!("The native Goal first input was superseded."))
@@ -589,6 +591,15 @@ impl Router {
                 let provider = (self.0.hooks.provider)()
                     .ok_or_else(|| anyhow!("Native inference has no configured provider."))?;
                 let cycle = self.task_goal_cycle(gate);
+                if task.is_some()
+                    && gate.phase == Phase::Begin
+                    && gate.root_thread() == &gate.key.thread_id
+                    && gate.goal_epoch.is_some()
+                    && cycle.is_none()
+                    && context.task_goal_cycle.is_none()
+                {
+                    bail!("The native Task Goal has no canonical dispatch owner.");
+                }
                 let dispatch = cycle.as_ref().map(|cycle| {
                     self.goal_dispatch(
                         cycle.clone(),
@@ -625,7 +636,10 @@ impl Router {
                                 .then_some(context.task_goal_cycle)
                                 .flatten()
                         }),
-                        on_task_goal_queued: context.on_task_goal_queued,
+                        on_task_goal_queued: cycle
+                            .as_ref()
+                            .map(|cycle| self.goal_enqueue(cycle.clone()))
+                            .or(context.on_task_goal_queued),
                         on_task_goal_dispatch: dispatch.or(context.on_task_goal_dispatch),
                         thread_id: gate.key.thread_id.clone(),
                         turn_id: gate.key.turn_id.clone(),
@@ -636,7 +650,7 @@ impl Router {
                         root_thread_id: gate.root_thread_id.clone(),
                         chat_id: cycle
                             .as_ref()
-                            .map(|cycle| cycle.parent["chatId"].clone())
+                            .map(|cycle| cantrip_wire::value::json!(cycle.key.2))
                             .or_else(|| task.as_ref().map(|root| root.binding["chatId"].clone()))
                             .or_else(|| {
                                 resource.map(|resource| cantrip_wire::value::json!(resource.chat))

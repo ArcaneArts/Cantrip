@@ -79,12 +79,13 @@ impl Client {
         &self,
         owner: &JsString,
         server: &JsString,
-        parent: &Value,
+        parent: Option<&Value>,
+        worktree: &Value,
         mut input: Value,
         signal: Signal,
     ) -> Result<Value> {
         let worker = self.config.lock().unwrap().worker_id.clone();
-        if parent["workerId"].as_js_string() != Some(&worker) {
+        if parent.is_some_and(|parent| parent["workerId"].as_js_string() != Some(&worker)) {
             bail!("The Task Goal parent belongs to another worker.");
         }
         input["workerId"] = json!(worker);
@@ -92,11 +93,23 @@ impl Client {
         input["serverId"] = json!(server);
         let input = checked("taskGoalCycleDispatchSchema", &input)?;
         let body = self
-            .post(owner, server, "task-goal-cycle-dispatch", &input, signal)
+            .post_with_goal_publication(
+                owner,
+                server,
+                "task-goal-cycle-dispatch",
+                &input,
+                signal,
+                parent.is_none(),
+            )
             .await?;
-        let receipt = checked("taskGoalCycleDispatchResultSchema", &body)?;
+        let receipt = checked("taskGoalCycleDispatchPublicationResultSchema", &body)?;
         let source = &receipt["suspensionSource"];
-        if source["parent"] != *parent
+        let actual_parent = &source["parent"];
+        if parent.is_some_and(|parent| parent != actual_parent)
+            || actual_parent["workerId"].as_js_string() != Some(&worker)
+            || actual_parent["chatId"] != input["chatId"]
+            || actual_parent["worktreeId"] != *worktree
+            || actual_parent["dispatch"]["cycleId"] != input["cycle"]["cycleId"]
             || source["runtimeGeneration"] != input["nativeRuntimeGeneration"]
             || [
                 "sourceKey",
@@ -111,7 +124,19 @@ impl Client {
         {
             bail!("Core acknowledged a different autonomous Task Goal execution.");
         }
-        Ok(source.clone())
+        if parent.is_none() {
+            let prompt = &receipt["publicationPrompt"];
+            if prompt["id"] != actual_parent["clientMessageId"]
+                || prompt["classification"]["mode"] != "goal"
+                || !matches!(
+                    prompt["classification"]["role"].as_str(),
+                    Some("user" | "system")
+                )
+            {
+                bail!("Core did not return the retained Task Goal prompt.");
+            }
+        }
+        Ok(receipt)
     }
 
     pub(in crate::codex) async fn reconcile_inference(
@@ -187,6 +212,19 @@ impl Client {
         input: &Value,
         signal: Signal,
     ) -> Result<Value> {
+        self.post_with_goal_publication(owner, server, operation, input, signal, false)
+            .await
+    }
+
+    async fn post_with_goal_publication(
+        &self,
+        owner: &JsString,
+        server: &JsString,
+        operation: &str,
+        input: &Value,
+        signal: Signal,
+        publication: bool,
+    ) -> Result<Value> {
         let assert_owner = || {
             let (current_owner, bound_server) = self.encryption.bound_identity()?;
             if current_owner != *owner || bound_server.as_js_string() != Some(server) {
@@ -206,15 +244,16 @@ impl Client {
         let guard = Guard::metadata(Some(signal), None);
         let body = guard
             .run(async {
-                let response = self
+                let mut request = self
                     .http
                     .post(url)
                     .bearer_auth(token)
                     .header("content-type", "application/json")
-                    .body(input.stringify())
-                    .send()
-                    .await?
-                    .error_for_status()?;
+                    .body(input.stringify());
+                if publication {
+                    request = request.header("x-cantrip-task-goal-publication", "1");
+                }
+                let response = request.send().await?.error_for_status()?;
                 let bytes = response.bytes().await?;
                 parse_json_text(&String::from_utf8_lossy(&bytes))
                     .map_err(|_| anyhow::anyhow!("Invalid native command acknowledgment."))

@@ -7672,3 +7672,36 @@ cancellation also passed against the production Rust server with PGlite.
 
 Standalone Task destination cycle recovery and full Task provider cutover
 validation remain open.
+
+## 203. Resume an existing Task Goal on its selected provider
+
+Reference commit de66f8ecf22a98a199f42fbdbc6d117dc35b18e5 (#3366).
+
+The destination handoff installs a Task Goal publisher for the transferred
+native thread under Core's selected route and provider-order epoch. It wakes
+the same active Goal after the handoff finishes. An existing first input
+still uses its canonical redelivery.
+
+The Rust worker handles `task.goal.recover`. It confirms keeper ownership
+and reopens or reuses the exact Task thread. It returns an actual durable
+enqueue receipt while the private native attempt waits for capacity. An
+ineligible response carries the observed Goal and settings epochs. A
+reopened Task Goal obtains the original parent receipt and encrypted prompt
+from Core at dispatch and publishes through the existing Task outcome and
+checkpoint paths.
+
+The local macOS ARM64 Task fixture ran the production worker and bundled
+Codex against two loopback providers with controlled Core receipts. It read
+the live keeper receipt while both providers were occupied, shut down the
+worker, and reconciled the exact destination record on restart. The cold
+receipt named the replacement admitted by Core on the original thread and
+Goal epoch. Both cycles used the selected model, kept their result commit
+barriers, and replayed the final encrypted outcome after another restart.
+The previous-model compaction request excluded the original prompt.
+The live Project Goal handoff regression passed against the production Rust
+server with PGlite.
+
+A worker exit between Core's completed handoff and creation of the first
+destination keeper record still needs a recovery path. The Task fixture
+exercises the real native transport with controlled Core responses. Full
+Task provider handoff against the production Rust Core remains unverified.
