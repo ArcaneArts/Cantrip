@@ -17,6 +17,7 @@ export function modelFunctions(tools, namespace) {
 export async function taskModelProvider({
   allowMcpDiscoveryProbe = false,
   observeStreams = false,
+  expectedApiKey,
   modelMetadata = {},
   additionalModels = [],
 } = {}) {
@@ -76,6 +77,8 @@ export async function taskModelProvider({
         record.completed = true;
         return;
       }
+      if (expectedApiKey !== undefined)
+        assert.equal(request.headers.authorization, "Bearer " + expectedApiKey);
       requests.push(record);
       if (
         request.method === "GET" &&
@@ -106,17 +109,19 @@ export async function taskModelProvider({
         `Unexpected model ${input.model}`,
       );
       assert.equal(input.stream, true);
-      let plan = replies.shift();
+      let plan = replies[0];
       // A possible extra Goal continuation belongs to that conversation. If it
       // never runs, it must not consume the next Task's scripted quota failure.
       while (plan?.onlyFor && !plan.onlyFor(record)) {
         plan.skipped = true;
-        plan = replies.shift();
+        replies.shift();
+        plan = replies[0];
       }
       assert.ok(
         plan,
         "the real runtime requested an unscripted model response",
       );
+      if (!plan.repeat) replies.shift();
       plan.request = record;
       plan.entered = true;
       if (plan.status) {
@@ -244,6 +249,12 @@ export async function taskModelProvider({
     baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
     reply(value) {
       const plan = { ...value, entered: false, request: null };
+      if (value.repeat) {
+        plan.discard = () => {
+          const index = replies.indexOf(plan);
+          if (index >= 0) replies.splice(index, 1);
+        };
+      }
       if (value.hold) {
         let release;
         plan.gate = new Promise((resolve) => {

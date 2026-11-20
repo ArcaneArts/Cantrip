@@ -70,6 +70,7 @@ const { values } = parseArgs({
     "scratch-files": { type: "boolean" },
     "permission-profiles": { type: "boolean" },
     "mcp-discovery": { type: "boolean" },
+    "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
     "project-automations": { type: "boolean" },
@@ -2901,6 +2902,10 @@ async function verifyStandaloneBehavior() {
 
 try {
   const data = path.join(root, "worker");
+  const providerTestTemp = values["provider-connection-test"]
+    ? path.join(root, "provider-test-temp")
+    : null;
+  if (providerTestTemp) await mkdir(providerTestTemp);
   const home = path.join(root, "home");
   await mkdir(home);
   if (values["mcp-discovery"]) {
@@ -3034,6 +3039,9 @@ try {
       ? { CANTRIP_MCP_FIXTURE_TOKEN: "mcp-fixture-private-value" }
       : {}),
     NO_COLOR: "1",
+    ...(providerTestTemp
+      ? { TMPDIR: providerTestTemp, TEMP: providerTestTemp }
+      : {}),
     ...(consoleStateKey ? { TERM: "xterm-256color" } : {}),
     CANTRIP_LOG_LEVEL: "debug",
     CANTRIP_SERVER_URL: receiptProxy?.origin ?? server.origin,
@@ -3128,6 +3136,22 @@ try {
       keyRevision,
       labelKey,
       componentKey: mcpKey,
+    });
+  } else if (providerTestTemp) {
+    const { verifyProviderConnection } =
+      await import("./provider-connection-smoke-cases.mjs");
+    await verifyProviderConnection({
+      call,
+      ownerId,
+      workerId,
+      keyRevision,
+      componentKey: providerKey,
+      temp: providerTestTemp,
+      async newProvider(options) {
+        const model = await taskModelProvider(options);
+        models.push(model);
+        return model;
+      },
     });
   } else if (workflowKey) {
     await verifyProjectAutomations({
