@@ -7552,3 +7552,34 @@ permission receipt restart test also passed.
 
 Withdrawal of queued autonomous Goals and Tasks, recovery of retired Goal
 sources, and retargeting an attached managed console remain open.
+
+## 199. Transfer and resume a recovered managed Goal
+
+Reference commit c88765c076c3a2d8d2a7b9e8ac292f6c276306c8 (#3362).
+
+A provider handoff holds the exact native producer of a retired Goal
+before returning a withdrawal receipt to Core. The worker records the
+immutable Goal source, Core binding, runtime, runner, and worker process
+in the version-one withdrawal journal. When Core rebinds after a worker
+restart, the worker renews the native hold and records the new producer
+before acknowledging the withdrawal. The portable export carries the
+existing thread and Goal epoch to the destination.
+
+The Rust worker handles Core's recovered-Goal notification through the
+existing native producer and keeper admission. It uses the canonical
+Goal source and provider-order epoch. It can acknowledge actual queued
+admission while the provider is at capacity. A new worker uses the
+keeper's ownership proof and Core's fence to reconcile an admission
+left by the old worker.
+
+Local macOS ARM64 validation used the Rust server with PGlite, the Rust
+worker with an empty executable PATH, bundled Codex, and two loopback
+providers. The smoke retired a genuinely queued Project Goal by restarting
+the worker, dropped the source withdrawal before Core received it, and
+restarted again. The new producer acknowledged the same source with a new
+binding. The destination acknowledged admission while its slot was busy
+and completed the original Goal on the same thread after the slot opened.
+The queued Chat prompt cancellation regression also passed.
+
+Live queued Goal and Task withdrawal, recovery of a first-cycle claim,
+and retargeting an attached managed console remain open.

@@ -1063,7 +1063,7 @@ impl Ensurer {
             .map(|(thread, live)| (thread.id().clone(), live))
     }
 
-    fn selected_live_owner(
+    pub(in crate::codex) fn selected_live_owner(
         &self,
         chat: &JsString,
         bound: &(JsString, Value),

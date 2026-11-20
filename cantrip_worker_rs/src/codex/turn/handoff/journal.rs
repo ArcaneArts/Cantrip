@@ -108,6 +108,63 @@ impl Journal {
         Ok(())
     }
 
+    fn goal_identity(&self) -> Value {
+        let mut identity = self.withdrawal_identity();
+        identity["source"] = self.state["queuedSource"]["goalRecovery"].clone();
+        identity
+    }
+
+    /// The actual native hold must succeed before the worker journals its ACK.
+    /// The same immutable reservation can acquire a new fence after Core rebinds.
+    pub async fn save_goal_withdrawal(&self, receipt: &Value) -> Result<Value> {
+        let receipt = checked("nativeGoalRecoveryWithdrawalSchema", receipt)?;
+        let identity = self.goal_identity();
+        ensure!(
+            receipt["operationId"] == identity["operationId"]
+                && receipt["source"] == identity["source"],
+            "The native Goal hold belongs to another reservation."
+        );
+        let root = self.root.clone();
+        queue(&self.root)
+            .run(move || {
+                let path = root.join("goal-withdrawal.json");
+                if let Some(prior) = read_goal_withdrawal(&path, &identity)? {
+                    if prior["bindingId"] == receipt["bindingId"]
+                        && prior["runtimeGeneration"] == receipt["runtimeGeneration"]
+                    {
+                        ensure!(
+                            prior == receipt,
+                            "The native Goal hold changed its producer."
+                        );
+                        return Ok(prior);
+                    }
+                    fs::remove_file(&path)?;
+                    flush_directory(&root)?;
+                }
+                let mut stored = identity;
+                stored["receipt"] = receipt.clone();
+                ensure_directory(&root)?;
+                publish(&path, &stored)?;
+                Ok(receipt)
+            })
+            .await
+    }
+
+    pub async fn retire_goal_withdrawal(&self) -> Result<()> {
+        let identity = self.goal_identity();
+        let root = self.root.clone();
+        queue(&self.root)
+            .run(move || {
+                let path = root.join("goal-withdrawal.json");
+                if read_goal_withdrawal(&path, &identity)?.is_some() {
+                    fs::remove_file(&path)?;
+                    flush_directory(&root)?;
+                }
+                Ok(())
+            })
+            .await
+    }
+
     /// Only a source that is still authorized to export may create a plan.
     /// Once created its native boundary and source home never change.
     pub async fn prepare<F>(self, capture: impl FnOnce() -> F + Send + 'static) -> Result<Plan>
@@ -155,6 +212,30 @@ impl Journal {
             })
             .await
     }
+}
+
+fn read_goal_withdrawal(path: &Path, identity: &Value) -> Result<Option<Value>> {
+    let mut stored = match fs::read(path) {
+        Ok(bytes) => parse_json(&bytes)?,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let Value::Object(fields) = &mut stored else {
+        bail!("Invalid Goal handoff withdrawal journal.");
+    };
+    let receipt = fields
+        .shift_remove("receipt")
+        .context("Missing Goal handoff withdrawal proof")?;
+    ensure!(
+        stored == *identity
+            && receipt["operationId"] == identity["operationId"]
+            && receipt["source"] == identity["source"],
+        "The Goal handoff withdrawal reservation changed."
+    );
+    Ok(Some(checked(
+        "nativeGoalRecoveryWithdrawalSchema",
+        &receipt,
+    )?))
 }
 
 impl Plan {

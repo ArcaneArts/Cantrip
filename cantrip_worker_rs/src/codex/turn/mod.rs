@@ -4,6 +4,7 @@ pub(crate) mod autonomous;
 pub(crate) mod console;
 mod control;
 mod deferred;
+pub(crate) mod goal_recovery;
 pub(crate) mod handoff;
 pub(crate) mod interactions;
 pub(crate) mod label;
@@ -97,6 +98,7 @@ pub(crate) struct Turns {
     task_outcomes: Arc<TaskDelivery>,
     suspensions: super::suspension_store::Store,
     handoffs: handoff::Coordinator,
+    goal_recoveries: goal_recovery::Observations,
 }
 
 struct TaskTurn {
@@ -250,6 +252,7 @@ impl Turns {
         ));
         Ok(Self {
             handoffs: handoff::Coordinator::new(data.clone(), worker),
+            goal_recoveries: goal_recovery::Observations::default(),
             suspensions: super::suspension_store::Store::new(&data, encryption.clone()),
             preparation,
             encryption,
