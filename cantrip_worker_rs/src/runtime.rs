@@ -495,6 +495,7 @@ async fn cycle(
             worker_link.clone(),
             managed_web.clone(),
             codegraph.clone(),
+            desktop_inventory.effect_updates(),
         ),
     ));
     let connection = Connection {
@@ -1099,16 +1100,20 @@ async fn cycle(
                     });
                     continue;
                 }
-                if kind == "surface.desktop.targets" {
+                if matches!(kind, "surface.desktop.targets" | "computer-use.effects.sync") {
                     let pending = request["socketEpoch"].as_u64()
-                        .ok_or_else(|| anyhow!("Remote Desktop inventory has no connected socket."))
-                        .and_then(|epoch| desktop_inventory.submit(command.clone(), epoch));
+                        .ok_or_else(|| anyhow!("The desktop helper command has no connected socket."))
+                        .and_then(|epoch| if kind == "computer-use.effects.sync" {
+                            desktop_inventory.submit_effects(&command["preferences"], epoch)
+                        } else {
+                            desktop_inventory.submit(command.clone(), epoch)
+                        });
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
                     let worker = worker.clone();
                     commands.spawn(async move {
                         let result = match pending {
-                            Ok(receipt) => receipt.await.unwrap_or_else(|_| Err(anyhow!("Remote Desktop inventory stopped."))),
+                            Ok(receipt) => receipt.await.unwrap_or_else(|_| Err(anyhow!("Desktop helper stopped."))),
                             Err(error) => Err(error),
                         };
                         finish(&request, &worker, &logs, &outgoing, began, &result);
@@ -1579,11 +1584,12 @@ async fn publish(
     logs: Arc<Logs>,
     mut stop: watch::Receiver<bool>,
     registered: watch::Sender<bool>,
-    (encryption, worker_link, managed_web, codegraph): (
+    (encryption, worker_link, managed_web, codegraph, effects): (
         Arc<Service>,
         Arc<crate::worker_link::Coordinator>,
         Arc<crate::managed_web::Runtimes>,
         Arc<crate::codegraph::Supervisor>,
+        crate::desktop_inventory::EffectUpdates,
     ),
 ) {
     let mut connected = false;
@@ -1622,7 +1628,10 @@ async fn publish(
             break;
         }
         match result {
-            Ok(_preferences) => {
+            Ok(preferences) => {
+                if let Some(preferences) = preferences {
+                    effects.publish(preferences);
+                }
                 if !connected {
                     logs.event("info","Worker heartbeat connected to server",json!({"event":if failure_started.is_some(){"worker.heartbeat.recovered"}else{"worker.heartbeat.connected"},"subsystem":"worker-connection","operation":"heartbeat","status":"connected","workerId":worker,"attempt":failures.max(1),"durationMs":failure_started.unwrap_or(began).elapsed().as_millis() as u64}));
                 }

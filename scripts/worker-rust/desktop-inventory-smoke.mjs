@@ -22,6 +22,7 @@ import {
   encodeRemoteSurfaceFrame,
   remoteDesktopServerMessageSchema,
 } from "../../packages/protocol/dist/index.js";
+import { cuaEffectWorkerStatusSchema } from "../../packages/protocol/dist/computer-use-effects.js";
 
 async function withTimeout(work, milliseconds, action) {
   let timer;
@@ -59,6 +60,9 @@ const token = "ctwk_" + "D".repeat(43);
 const key = randomBytes(32);
 const component = "surface-private-state";
 const time = new Date().toISOString();
+const off = { effect: "off", parameters: {} };
+const debug = { effect: "debug-gradient", parameters: { strength: 0.5 } };
+const heartbeatEffects = { revision: 4, configuration: off };
 let grant = false;
 let failure;
 const helper = path.join(root, "capture-helper");
@@ -126,7 +130,9 @@ const server = createServer(async (request, response) => {
     const value =
       request.url === "/api/internal/workers/encryption/bootstrap"
         ? await bootstrap(request)
-        : {};
+        : request.url === "/api/internal/workers/heartbeat"
+          ? { computerUseEffects: heartbeatEffects }
+          : {};
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify(value));
   } catch (error) {
@@ -217,6 +223,20 @@ try {
   });
   const readPids = async () =>
     (await readFile(pids, "utf8")).trim().split("\n").map(Number);
+  async function effects(revision, configuration) {
+    const response = await send({
+      type: "computer-use.effects.sync",
+      preferences: { revision, configuration },
+    });
+    assert.equal(response.ok, true, JSON.stringify(response));
+    return cuaEffectWorkerStatusSchema.parse(response.result);
+  }
+  assert.deepEqual(await effects(2, debug), {
+    ...heartbeatEffects,
+    state: "idle",
+    native: null,
+    error: null,
+  });
   assert.equal((await send(scan())).ok, false);
   await assert.rejects(readPids, { code: "ENOENT" });
   grant = true;
@@ -270,6 +290,20 @@ try {
     return decryptSurfacePrivateState({ ...credentials, context });
   }
   const inventory = await inspect(request, [1, 1, false]);
+  const running = await effects(4, off);
+  assert.equal(running.state, "running");
+  assert.deepEqual(running.native?.configuration, off);
+  assert.equal(running.native?.supported, false);
+  assert.equal(running.error, null);
+  const rejected = await effects(5, debug);
+  assert.equal(rejected.state, "failed");
+  assert.equal(rejected.native, null);
+  assert.ok(rejected.error);
+  assert.deepEqual(await inspect(scan(), [1, 1, false]), inventory);
+  const recovered = await effects(6, off);
+  assert.equal(recovered.state, "running");
+  assert.deepEqual(recovered.native?.configuration, off);
+  assert.deepEqual(await effects(5, debug), recovered);
   assert.deepEqual(inventory.monitors, [
     {
       kind: "monitor",
@@ -536,8 +570,16 @@ try {
   const reconnect = once(sockets, "connection");
   socket.close();
   [socket] = await withTimeout(reconnect, 20_000, "Worker reconnect");
+  assert.deepEqual(await effects(3, debug), {
+    revision: 6,
+    configuration: off,
+    state: "idle",
+    native: null,
+    error: null,
+  });
   assert.match((await send(request)).error.message, /replayed/);
   assert.deepEqual(await inspect(scan(), [1, 1, false]), inventory);
+  assert.deepEqual(await effects(3, debug), recovered);
   const [oldPid, newPid] = await readPids();
   assert.equal(oldPid, pid);
   assert.notEqual(newPid, pid);

@@ -1,7 +1,9 @@
 //! Authenticated Host desktop target discovery and protected fleet inventory.
 mod capture;
+mod effects;
 mod process;
 pub(crate) use capture::{Capture, Captures, Frame, InputAuthority, Scope};
+pub(crate) use effects::Updates as EffectUpdates;
 
 use crate::{connection::Outbound, encryption::Service, http::checked};
 use anyhow::{Context, Result, bail, ensure};
@@ -25,7 +27,8 @@ const REPLAY_LIMIT: usize = 1_000;
 const HELPER_INVENTORY_LIMIT: usize = 4_096;
 
 pub(crate) struct DesktopInventory {
-    queue: mpsc::Sender<Scan>,
+    queue: mpsc::Sender<Request>,
+    effects: EffectUpdates,
     captures: Captures,
     task: JoinHandle<()>,
 }
@@ -33,6 +36,16 @@ pub(crate) struct DesktopInventory {
 struct Helper {
     identity: uuid::Uuid,
     process: Process,
+    effects: effects::NativeState,
+}
+
+enum Request {
+    Scan(Scan),
+    Effects {
+        preferences: Value,
+        epoch: u64,
+        reply: oneshot::Sender<Result<Value>>,
+    },
 }
 
 struct Scan {
@@ -59,9 +72,19 @@ impl DesktopInventory {
             });
         let (queue, input) = mpsc::channel(4);
         let (captures, operations) = Captures::channel();
-        let task = tokio::spawn(run(binary, encryption, outgoing, input, operations, stop));
+        let (effects, preferences) = EffectUpdates::channel();
+        let task = tokio::spawn(run(
+            binary,
+            encryption,
+            outgoing,
+            input,
+            operations,
+            stop,
+            (effects.clone(), preferences),
+        ));
         Self {
             queue,
+            effects,
             captures,
             task,
         }
@@ -71,6 +94,27 @@ impl DesktopInventory {
         self.captures.clone()
     }
 
+    pub(crate) fn effect_updates(&self) -> EffectUpdates {
+        self.effects.clone()
+    }
+
+    pub(crate) fn submit_effects(
+        &self,
+        preferences: &Value,
+        epoch: u64,
+    ) -> Result<oneshot::Receiver<Result<Value>>> {
+        let preferences = checked("cuaEffectPreferencesSchema", preferences)?;
+        let (reply, result) = oneshot::channel();
+        self.queue
+            .try_send(Request::Effects {
+                preferences,
+                epoch,
+                reply,
+            })
+            .map_err(|_| anyhow::anyhow!("Desktop helper is busy."))?;
+        Ok(result)
+    }
+
     pub(crate) fn submit(
         &self,
         command: Value,
@@ -78,12 +122,12 @@ impl DesktopInventory {
     ) -> Result<oneshot::Receiver<Result<Value>>> {
         let (reply, result) = oneshot::channel();
         self.queue
-            .try_send(Scan {
+            .try_send(Request::Scan(Scan {
                 command,
                 epoch,
                 deadline: Instant::now() + DEADLINE,
                 reply,
-            })
+            }))
             .map_err(|_| anyhow::anyhow!("Remote Desktop inventory is busy."))?;
         Ok(result)
     }
@@ -98,17 +142,23 @@ async fn run(
     binary: PathBuf,
     encryption: Arc<Service>,
     outgoing: Arc<Outbound>,
-    mut input: mpsc::Receiver<Scan>,
+    mut input: mpsc::Receiver<Request>,
     mut captures: capture::Operations,
     mut stop: watch::Receiver<bool>,
+    (effects, mut preferences): (EffectUpdates, watch::Receiver<Value>),
 ) {
     let mut process = None;
     let mut replay = IndexSet::new();
     let mut epoch = outgoing.stream_epoch();
     while !*stop.borrow() {
+        let desired = preferences.borrow_and_update().clone();
+        if effects::needs_update(&process, &desired) {
+            effects::synchronize(&mut process, &desired).await;
+        }
         tokio::select! {
             _ = stopped(&mut stop) => break,
             _ = epoch.changed() => retire(&mut process).await,
+            _ = preferences.changed() => {},
             Some(release) = captures.releases.recv() => {
                 if timeout_at(Instant::now() + DEADLINE, release.close(&mut process)).await.is_err() {
                     retire(&mut process).await;
@@ -133,8 +183,32 @@ async fn run(
                     retire(&mut process).await;
                 }
             }
-            scan = input.recv() => {
-                let Some(scan) = scan else { break };
+            request = input.recv() => {
+                let Some(request) = request else { break };
+                let scan = match request {
+                    Request::Scan(scan) => scan,
+                    Request::Effects { preferences, epoch: current, reply } => {
+                        let status = if outgoing.stream_current(current) {
+                            effects.publish(preferences);
+                            tokio::select! {
+                                biased;
+                                _ = stopped(&mut stop) => {
+                                    let _ = reply.send(Err(anyhow::anyhow!("Desktop helper stopped.")));
+                                    break;
+                                }
+                                _ = connection_changed(&mut epoch, current) => {
+                                    retire(&mut process).await;
+                                    Err(anyhow::anyhow!("Desktop effects authority expired."))
+                                }
+                                status = effects.status(&mut process) => Ok(status),
+                            }
+                        } else {
+                            Err(anyhow::anyhow!("Desktop effects authority expired."))
+                        };
+                        let _ = reply.send(status);
+                        continue;
+                    }
+                };
                 let result = authorize(&encryption, &outgoing, &scan, &mut replay);
                 let outcome = match result {
                     Ok(owner) => {
@@ -228,6 +302,7 @@ async fn helper<'a>(current: &'a mut Option<Helper>, binary: &Path) -> Result<&'
         let mut child = Helper {
             identity: uuid::Uuid::new_v4(),
             process: Process::spawn(binary, &[])?,
+            effects: effects::NativeState::default(),
         };
         match child.process.initialize().await {
             Ok(()) => {

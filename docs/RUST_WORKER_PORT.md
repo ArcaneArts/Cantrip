@@ -8728,3 +8728,26 @@ with `scripts/worker-rust/standalone-turn-smoke.mjs --console-steer`.
 The public queued-steering and console approval regressions and 61 Node
 reference cases passed. The gateway fixture used WebSocket RPC on a
 real attached console session. Windows runtime was outside this check.
+
+## 244. Apply account effects to the native desktop helper
+
+Reference commit `db495f38dcc8d3965dfb1f134b95aaae973bfea7` (#3407).
+
+The Rust worker accepts the account effect preferences in authenticated
+heartbeat responses and handles `computer-use.effects.sync` on the command
+connection. Both paths retain the newest revision. The existing desktop
+helper applies that revision over its private pipe, including after helper
+replacement. Settings queries keep an idle helper stopped. A native
+rendering rejection leaves the current helper available for capture and
+input and reports the failure through the existing status schema.
+
+On macOS ARM64, the production Rust worker received the heartbeat and
+command updates through an authenticated fixture and ran the real native
+helper with its deterministic backend. The fixture checked idle status,
+stale revisions, a running native status, unsupported effect recovery,
+continued desktop capture and input, reapplication after reconnect, and
+helper shutdown. Repeat with
+`scripts/worker-rust/desktop-inventory-smoke.mjs`. The five Node effect
+controller cases and the persisted settings revision test passed. Live
+window rendering and the agent and preview computer-use paths still need
+coverage and implementation as applicable.
