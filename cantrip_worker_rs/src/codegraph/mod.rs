@@ -1,6 +1,10 @@
 //! Own the CodeGraph indexes selected through the worker's existing routing.
 mod project;
+mod release;
 mod runtime;
+mod storage;
+#[cfg(all(test, unix))]
+mod tests;
 
 use crate::{
     filesystem::{Scope, paths, source_path},
@@ -18,11 +22,14 @@ use runtime::{INDEX_DIRECTORY, Installation, Runtime};
 use std::{
     io,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 use tokio::{
-    sync::{Mutex as Queue, Semaphore},
+    sync::{Mutex as Queue, Notify, Semaphore, watch},
     task::JoinHandle,
 };
 
@@ -56,14 +63,16 @@ pub(crate) struct Supervisor {
     inner: Arc<Inner>,
     manager: Arc<Manager>,
     projects: Mutex<IndexMap<PathBuf, Entry>>,
-    transitions: Queue<()>,
-    probe: Queue<Option<JoinHandle<()>>>,
+    transitions: Queue<Vec<Value>>,
+    update_requested: AtomicBool,
+    update: Notify,
+    updater: Queue<Option<JoinHandle<()>>>,
 }
 
 pub(crate) fn supports(kind: &str) -> bool {
     matches!(
         kind,
-        "codegraph.status" | "codegraph.sync" | "codegraph.rebuild"
+        "codegraph.status" | "codegraph.sync" | "codegraph.rebuild" | "codegraph.update.check"
     )
 }
 
@@ -82,31 +91,109 @@ fn path(target: &Value, field: &str) -> Result<PathBuf> {
 impl Supervisor {
     pub(crate) fn new(
         data: &Path,
-        scope: Scope,
+        stop: watch::Receiver<bool>,
         manager: Arc<Manager>,
         logs: Arc<Logs>,
         publish: Arc<Emitter>,
-    ) -> Self {
+    ) -> Arc<Self> {
         let inner = Arc::new(Inner {
             runtime: Runtime::new(data),
-            scope,
+            scope: Scope::with_stop(stop.clone()),
             slots: Semaphore::new(2),
             logs,
             publish,
         });
-        let probe = tokio::spawn({
-            let inner = inner.clone();
-            async move {
-                let _ = inner.runtime.ready(&inner.scope).await;
-            }
-        });
-        Self {
+        let supervisor = Arc::new(Self {
             inner,
             manager,
             projects: Mutex::default(),
-            transitions: Queue::new(()),
-            probe: Queue::new(Some(probe)),
+            transitions: Queue::new(Vec::new()),
+            update_requested: AtomicBool::new(true),
+            update: Notify::new(),
+            updater: Queue::new(None),
+        });
+        if Runtime::supported() {
+            *supervisor.updater.try_lock().unwrap() = Some(tokio::spawn({
+                let supervisor = supervisor.clone();
+                async move {
+                    supervisor.run_updates(stop).await;
+                }
+            }));
         }
+        supervisor
+    }
+
+    async fn run_updates(&self, stop: watch::Receiver<bool>) {
+        match self.inner.runtime.reopen(&self.inner.scope).await {
+            Ok(true) => self.refresh().await,
+            Ok(false) => {}
+            Err(error) => self.inner.runtime.failed(&error),
+        }
+        let source = release::Source::github();
+        loop {
+            if self.inner.scope.check().is_err() {
+                return;
+            }
+            let result = match &source {
+                Ok(source) => {
+                    self.inner
+                        .runtime
+                        .update(source, &self.inner.scope, stop.clone())
+                        .await
+                }
+                Err(error) => Err(anyhow::anyhow!(
+                    "Could not initialize the CodeGraph release client: {error}"
+                )),
+            };
+            if self.inner.scope.check().is_err() {
+                return;
+            }
+            match result {
+                Ok((installed, cleanup_error)) => {
+                    if let Some(error) = cleanup_error {
+                        self.warn("prune", &error);
+                    }
+                    if installed {
+                        let status = self.inner.runtime.status();
+                        self.inner.logs.event("info", "CodeGraph managed runtime installed",
+                            json!({"event":"codegraph.runtime.installed","subsystem":"codegraph",
+                                "operation":"install-runtime","status":"completed",
+                                "version":status["installedVersion"],"previousVersion":status["previousVersion"]}));
+                        self.refresh().await;
+                    }
+                }
+                Err(error) => {
+                    self.inner.runtime.failed(&error);
+                    self.inner.logs.event(
+                        "warn",
+                        "CodeGraph managed runtime update failed",
+                        json!({"event":"codegraph.runtime.update-failed","subsystem":"codegraph",
+                            "operation":"update-runtime","reasonCode":"update-failed",
+                            "error":logging::error(&error)}),
+                    );
+                }
+            }
+            self.update_requested.store(false, Ordering::Release);
+            tokio::select! {
+                _ = self.inner.scope.stopped() => return,
+                _ = self.update.notified() => {},
+            }
+        }
+    }
+
+    fn request_update(&self) -> Result<Value> {
+        ensure!(Runtime::supported(), "CodeGraph is unavailable.");
+        self.inner.scope.check()?;
+        if !self.update_requested.swap(true, Ordering::AcqRel) {
+            self.update.notify_one();
+        }
+        checked(
+            "codeGraphActionAcknowledgementSchema",
+            &json!({
+                "action":"update-check","jobId":uuid::Uuid::new_v4().to_string(),
+                "acceptedAt":runtime::now(),"status":"queued",
+            }),
+        )
     }
 
     pub(crate) fn status(&self) -> Value {
@@ -179,10 +266,21 @@ impl Supervisor {
     }
 
     pub(crate) async fn configure(&self, targets: Vec<Value>) {
-        let _transition = self.transitions.lock().await;
-        if self.inner.scope.check().is_err()
-            || self.inner.runtime.ready(&self.inner.scope).await.is_err()
-        {
+        let mut desired = self.transitions.lock().await;
+        *desired = targets;
+        self.reconcile(&desired).await;
+    }
+
+    async fn refresh(&self) {
+        let desired = self.transitions.lock().await;
+        self.reconcile(&desired).await;
+        for entry in self.projects.lock().unwrap().values() {
+            entry.project.touched();
+        }
+    }
+
+    async fn reconcile(&self, targets: &[Value]) {
+        if self.inner.scope.check().is_err() || self.inner.runtime.active().is_none() {
             return;
         }
         let mut groups = IndexMap::<(JsString, bool), Vec<Value>>::new();
@@ -196,7 +294,7 @@ impl Supervisor {
             groups
                 .entry((source.clone(), target["rootKind"] == "folder-root"))
                 .or_default()
-                .push(target);
+                .push(target.clone());
         }
         let mut authorized = stream::iter(groups.into_values())
             .map(|targets| self.authorize(targets))
@@ -258,12 +356,13 @@ impl Supervisor {
 
     pub(crate) async fn execute(&self, command: &Value, routing: &Registry) -> Result<Value> {
         let kind = command["type"].as_str().unwrap();
+        if kind == "codegraph.update.check" {
+            return self.request_update();
+        }
         let result = async {
             let command = routing.resolve(command).await?;
-            let _transition = self.transitions.lock().await;
+            let mut desired = self.transitions.lock().await;
             self.inner.scope.check()?;
-            self.inner.runtime.ready(&self.inner.scope).await
-                .context("CodeGraph is unavailable.")?;
             if !command["sourcePath"].is_null() && !command["worktreePath"].is_null()
                 && !command["rootKind"].is_null()
             {
@@ -271,6 +370,12 @@ impl Supervisor {
                     "rootKind":command["rootKind"],"sourcePath":command["sourcePath"],
                     "worktreePath":command["worktreePath"]});
                 let (root, common, target) = self.authorize(vec![target]).await?.pop().unwrap();
+                desired.retain(|existing| !identity(existing, &target));
+                if desired.len() >= MAX_TARGETS {
+                    desired.remove(0);
+                }
+                desired.push(target.clone());
+                ensure!(self.inner.runtime.active().is_some(), "CodeGraph is unavailable.");
                 let retired = {
                     let mut projects = self.projects.lock().unwrap();
                     let mut retired: Vec<_> = projects.extract_if(.., |existing, entry| {
@@ -302,7 +407,8 @@ impl Supervisor {
     }
 
     pub(crate) async fn detach(&self, root: &Path) {
-        let _transition = self.transitions.lock().await;
+        let mut desired = self.transitions.lock().await;
+        forget(&mut desired, root);
         let prior = self.projects.lock().unwrap().shift_remove(root);
         if let Some(entry) = prior {
             entry.stop().await;
@@ -314,7 +420,7 @@ impl Supervisor {
         root: PathBuf,
         operation: BoxFuture<'_, Result<Value>>,
     ) -> Result<Value> {
-        let _transition = self.transitions.lock().await;
+        let mut desired = self.transitions.lock().await;
         let prior = self.projects.lock().unwrap().shift_remove(&root);
         let prior = match prior {
             Some(entry) => Some(entry.stop().await),
@@ -324,10 +430,14 @@ impl Supervisor {
             self.warn("retirement", &error);
         }
         let result = operation.await;
+        if result
+            .as_ref()
+            .is_ok_and(|value| value["status"] == "removed")
+        {
+            forget(&mut desired, &root);
+            return result;
+        }
         if let Some(project) = prior
-            && !result
-                .as_ref()
-                .is_ok_and(|value| value["status"] == "removed")
             && self.inner.scope.check().is_ok()
             && tokio::fs::metadata(&root)
                 .await
@@ -345,7 +455,11 @@ impl Supervisor {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
             Err(error) => return Err(error.into()),
         }
-        let installation = self.inner.runtime.ready(&self.inner.scope).await?;
+        let installation = self
+            .inner
+            .runtime
+            .active()
+            .context("CodeGraph is unavailable.")?;
         let result = installation
             .run(
                 &self.inner.scope,
@@ -369,13 +483,20 @@ impl Supervisor {
     }
 
     pub(crate) async fn close(&self) {
-        let _transition = self.transitions.lock().await;
-        let retired = std::mem::take(&mut *self.projects.lock().unwrap());
-        stop_all(retired.into_values()).await;
-        if let Some(probe) = self.probe.lock().await.take() {
-            let _ = probe.await;
+        {
+            let _transition = self.transitions.lock().await;
+            let retired = std::mem::take(&mut *self.projects.lock().unwrap());
+            stop_all(retired.into_values()).await;
+        }
+        if let Some(updater) = self.updater.lock().await.take() {
+            let _ = updater.await;
         }
     }
+}
+
+fn forget(desired: &mut Vec<Value>, root: &Path) {
+    let root = paths::text(root);
+    desired.retain(|target| target["worktreePath"].as_js_string() != Some(&root));
 }
 
 async fn stop_all(entries: impl IntoIterator<Item = Entry>) {

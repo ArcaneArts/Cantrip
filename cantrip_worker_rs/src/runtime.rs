@@ -398,13 +398,13 @@ async fn cycle(
                 .is_some_and(|notification| outgoing.notification(notification).unwrap_or(false))
         })
     };
-    let codegraph = Arc::new(crate::codegraph::Supervisor::new(
+    let codegraph = crate::codegraph::Supervisor::new(
         &data_directory,
-        crate::filesystem::Scope::with_stop(stop_rx.clone()),
+        stop_rx.clone(),
         worktrees.clone(),
         logs.clone(),
         publish_observation.clone(),
-    ));
+    );
     replicas.set_removal_lifecycle({
         let codegraph = codegraph.clone();
         Arc::new(move |root, remove| {

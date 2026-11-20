@@ -136,9 +136,15 @@ impl Scope {
         command: Command,
         maximum: usize,
         timeout: Duration,
+        input: Option<&[u8]>,
     ) -> Result<Captured> {
-        self.capture_child(command, maximum, CaptureInput::Empty, Some(timeout))
-            .await
+        self.capture_child(
+            command,
+            maximum,
+            input.map_or(CaptureInput::Empty, CaptureInput::Bytes),
+            Some(timeout),
+        )
+        .await
     }
     async fn capture_child(
         &self,
