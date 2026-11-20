@@ -308,6 +308,6 @@ async fn persist_no_start(
     } else {
         "worker-inference-deferred".into()
     };
-    tx.query("UPDATE native_commands SET status='rejected',rejection_code=$5,terminal_evidence=$1::jsonb,logical_completed_at=COALESCE(logical_completed_at,$2),execution_completed_at=COALESCE(execution_completed_at,$2),updated_at=$2 WHERE operation_id=$3 AND operation_generation=$4", &[&evidence,&now,&text(&root["operation_id"])?,&text(&root["operation_generation"])?,&rejection]).await?;
+    tx.query("UPDATE native_commands SET status='rejected',rejection_code=$5,terminal_evidence=$1::text::jsonb,logical_completed_at=COALESCE(logical_completed_at,$2),execution_completed_at=COALESCE(execution_completed_at,$2),updated_at=$2 WHERE operation_id=$3 AND operation_generation=$4", &[&evidence,&now,&text(&root["operation_id"])?,&text(&root["operation_generation"])?,&rejection]).await?;
     Ok(())
 }

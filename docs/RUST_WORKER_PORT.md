@@ -7583,3 +7583,28 @@ The queued Chat prompt cancellation regression also passed.
 
 Live queued Goal and Task withdrawal, recovery of a first-cycle claim,
 and retargeting an attached managed console remain open.
+
+## 200. Transfer a live queued Project Goal between providers
+
+Reference commit 76e7450525115cdfb2ad166e6432b96e9c633d0b (#3363).
+
+A live autonomous attempt exposes its exact inference reservation to the
+managed handoff coordinator. The keeper seals the unused reservation and
+returns its durable no-start record. The worker confirms the hold on the
+matching native root before journaling and sending the withdrawal to Core.
+The attempt waits for Core's acknowledgement before returning control to
+its Codex runner. Core persists the receipt using the same typed JSON
+binding as recovered Goal retirement.
+
+The local macOS ARM64 smoke used the Rust server with PGlite, the Rust
+worker with an empty executable PATH, bundled Codex and loopback providers.
+An unrelated Chat held each provider's only slot. The original Goal never
+reached the source provider. Core acknowledged the exact withdrawal, and
+the destination reserved the same thread and Goal epoch at the next
+provider-order epoch. Releasing the destination slot let the Goal complete
+through the native tool.
+The recovered Goal restart and queued protected prompt cancellation
+regressions passed on the same builds.
+
+Queued Task Goals, recovery of a first-cycle claim, and retargeting an
+attached managed console remain open.
