@@ -593,7 +593,23 @@ export async function verifyProjectExport({
     );
     assert.equal(replayedEdit.status, 200, JSON.stringify(replayedEdit));
     assert.equal(replayedEdit.body.message.id, edited.message.id);
-    assert.deepEqual(await call("GET", importedMessagesUrl), afterEdit);
+    const afterReplay = await call("GET", importedMessagesUrl);
+    assert.equal(afterReplay.status, 200);
+    assert.deepEqual(
+      afterReplay.body.messages.map(({ id, role }) => ({ id, role })),
+      afterEdit.body.messages.map(({ id, role }) => ({ id, role })),
+    );
+    const replayedHistory = await Promise.all(
+      afterReplay.body.messages.map(openMessage),
+    );
+    assert.equal(
+      replayedHistory.filter((message) =>
+        message.content.some(
+          (item) => item.type === "text" && item.text === editedAnswer,
+        ),
+      ).length,
+      1,
+    );
 
     const followupQuestion = "Continue after the edited prompt";
     const followupAnswer = "Answer after the edited prompt";
@@ -614,6 +630,75 @@ export async function verifyProjectExport({
     assert.ok(followupContext.includes(editedQuestion));
     assert.ok(followupContext.includes(editedAnswer));
     assert.ok(!followupContext.includes(nextQuestion));
+
+    const summary = "Preserve this summary of the edited conversation";
+    const compacted = upstream.reply({ text: summary, hold: true });
+    const compactUrl = `/api/chats/${job.chatId}/compact`;
+    const compact = await call("POST", compactUrl, {});
+    assert.deepEqual(compact, { status: 200, body: { accepted: true } });
+    try {
+      await eventually(
+        async () => compacted.request,
+        (request) => {
+          assert.ok(request, JSON.stringify(upstream.failures));
+          assert.ok(!request.completed);
+          assert.ok(JSON.stringify(request.input).includes(followupAnswer));
+        },
+        "native compaction begins after public acknowledgement",
+      );
+      const concurrent = await call("POST", compactUrl, {});
+      assert.equal(concurrent.status, 409, JSON.stringify(concurrent));
+    } finally {
+      compacted.release();
+    }
+    await verifyAnswer(followupAnswer);
+    assert.equal(compacted.request.completed, true);
+
+    await restartWorker();
+    const afterCompactionQuestion = "Continue after native compaction";
+    const afterCompactionAnswer = "Native compaction retained the thread";
+    const afterCompaction = upstream.reply({ text: afterCompactionAnswer });
+    const continued = await call(
+      "POST",
+      `/api/chats/${job.chatId}/turns`,
+      await encryptedTurn({
+        ownerId,
+        chatKey,
+        modelId: model.body.id,
+        question: afterCompactionQuestion,
+      }),
+    );
+    assert.equal(continued.status, 202, JSON.stringify(continued));
+    await verifyAnswer(afterCompactionAnswer);
+    const compactedContext = JSON.stringify(
+      afterCompaction.request.input.input,
+    );
+    assert.ok(compactedContext.includes(summary));
+    assert.ok(compactedContext.includes(afterCompactionQuestion));
+
+    const interrupted = upstream.reply({ hold: true });
+    assert.deepEqual(await call("POST", compactUrl, {}), compact);
+    try {
+      await eventually(
+        async () => interrupted.entered,
+        (entered) => assert.ok(entered),
+        "a native compaction is ready to interrupt",
+      );
+      const stop = await call("POST", `/api/chats/${job.chatId}/interrupt`, {});
+      assert.deepEqual(stop, { status: 200, body: { interrupted: true } });
+      await verifyAnswer(afterCompactionAnswer);
+    } finally {
+      interrupted.release();
+    }
+
+    const retryCompaction = upstream.reply({ text: "Summary after Stop" });
+    assert.deepEqual(await call("POST", compactUrl, {}), compact);
+    await eventually(
+      async () => retryCompaction.request,
+      (request) => assert.equal(request?.completed, true),
+      "a new compaction enters inference after Stop",
+    );
+    await verifyAnswer(afterCompactionAnswer);
     assert.deepEqual(upstream.failures, []);
   } finally {
     labelKey.fill(0);

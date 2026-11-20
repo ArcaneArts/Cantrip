@@ -1,6 +1,8 @@
 //! Server-owned Chat turns. The command channel supplies the execution lane;
 //! the native runtime supplies the turn identity and terminal settlement.
+mod acknowledged;
 pub(crate) mod autonomous;
+mod compact;
 pub(crate) mod console;
 mod control;
 mod deferred;
@@ -16,6 +18,7 @@ mod queued;
 pub(super) use protected::runtime_text;
 mod receipt;
 mod repository_draft;
+pub(crate) use compact::COMMAND as COMPACT;
 mod rollback;
 pub(crate) use rollback::COMMAND as ROLLBACK;
 pub(in crate::codex) mod settings;
@@ -1144,6 +1147,9 @@ impl Turns {
                     execution.settled().await?;
                     bound?;
                     let settled = result?;
+                    if settled.status == "interrupted" {
+                        self.preparation.renew_runner_on_next_prepare(&key.2, &prepared.bound, runtime, thread);
+                    }
                     if let Some(receipt) = &receipt {
                         receipt.observed(&turn, Some(settled.status)).await?;
                     }

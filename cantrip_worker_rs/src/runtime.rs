@@ -886,6 +886,29 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == crate::codex::turn::COMPACT {
+                    let turns = turns.clone();
+                    let observation = chat_observation.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let mut acknowledged = false;
+                        let result = turns.compact(&request["command"], &observation, |reply| {
+                            acknowledged = true;
+                            finish(&request, &worker, &logs, &outgoing, began, &Ok(reply));
+                        }).await;
+                        if !acknowledged {
+                            finish(&request, &worker, &logs, &outgoing, began, &result);
+                        } else if let Err(error) = result {
+                            logs.event("warn", "Chat compaction terminal result remains unconfirmed", json!({
+                                "event":"codex.compact.settlement-failed", "workerId":worker,
+                                "requestId":request["requestId"], "error":logging::error(&error),
+                            }));
+                        }
+                    });
+                    continue;
+                }
                 if kind == crate::codex::turn::ROLLBACK {
                     let turns = turns.clone();
                     let observation = chat_observation.clone();

@@ -8378,3 +8378,26 @@ focused native durable suspension and Node rollback reference tests also
 passed. Repeat the worker fixture with
 `scripts/worker-rust/workspace-smoke.mjs --project-export-only`. Guest and
 Windows execution were outside this local fixture.
+
+## 230. Compact native Chat context from the public API
+
+Reference commit `2d37a9adae5c98e73ebbc1294bac2ae9efc7d2a5` (#3393).
+
+The Rust worker accepts `chat.compact` and forwards the existing
+`thread/compact/start` RPC on the selected native thread. Managed compaction
+shares the queued shell lifecycle for Core admission, provider capacity,
+an early start acknowledgement, the observed native turn and terminal
+settlement. It validates the current thread and workspace before dispatch.
+An interrupted native turn closes the old inference gate. The worker
+prepares a fresh runner for the next execution on that attachment.
+
+The local macOS ARM64 fixture used Rust Core in PGlite mode, the Rust worker
+and bundled Codex 0.166.0 with a loopback Responses provider. It held inference
+open while the public endpoint acknowledged the start and rejected a concurrent
+compaction. The next Chat turn received the saved summary after worker restart.
+A second compaction was stopped, and a fresh compaction ran on the same runtime.
+The native queued-shell regression and six focused Node reference tests passed.
+Repeat the public API fixture with
+`scripts/worker-rust/workspace-smoke.mjs --project-export-only`.
+MCP-initiated compaction scheduled by an active agent remains a separate entry
+point to port. Guest and Windows execution were outside this local fixture.

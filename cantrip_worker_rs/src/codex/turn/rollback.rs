@@ -101,7 +101,7 @@ impl Turns {
             "The worker binding changed during rollback."
         );
         self.preparation
-            .rotate_reverted_runner(&key.2, &binding, &runtime, &thread);
+            .renew_runner_on_next_prepare(&key.2, &binding, &runtime, &thread);
         checked(
             "chatTurnRollbackAcceptedSchema",
             &json!({"rolledBack":true}),

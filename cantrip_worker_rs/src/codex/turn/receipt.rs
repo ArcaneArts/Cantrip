@@ -67,9 +67,16 @@ struct Lineage {
     logical: Value,
 }
 
+fn starts_execution(method: &str) -> bool {
+    matches!(
+        method,
+        "turn/start" | super::shell::METHOD | super::compact::METHOD
+    )
+}
+
 impl Operation {
     fn starts_execution(&self) -> bool {
-        self.restored.is_some() || matches!(self.method, "turn/start" | super::shell::METHOD)
+        self.restored.is_some() || starts_execution(self.method)
     }
 
     pub fn read(command: &Value) -> Result<Option<Self>> {
@@ -1256,7 +1263,7 @@ impl Client {
         if row["status"] != "accepted" {
             bail!("Core did not admit the native command.");
         }
-        let activation = if matches!(method, "turn/start" | super::shell::METHOD) {
+        let activation = if starts_execution(method) {
             id(&row["executionLaneId"], "native execution lane")?;
             Value::String(id(
                 &row["activationGeneration"],

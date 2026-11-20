@@ -428,7 +428,7 @@ impl Ensurer {
         let change_plan = incoming["type"] == PLAN_SET;
         let guest_allowed = matches!(
             incoming["type"].as_str(),
-            Some(COMMAND | PLAN_SET | crate::codex::turn::ROLLBACK)
+            Some(COMMAND | PLAN_SET | crate::codex::turn::ROLLBACK | crate::codex::turn::COMPACT)
         ) || (incoming["type"] == crate::codex::turn::RUN
             && session.get("osExecution").is_some());
         if !guest_allowed && session.get("osExecution").is_some() {
@@ -1157,9 +1157,9 @@ impl Ensurer {
         ))
     }
 
-    /// Revert closes the old managed gate while reloading the same thread ID.
-    /// The next admitted preparation installs a fresh gate with its own overlay.
-    pub(in crate::codex) fn rotate_reverted_runner(
+    /// Revert and interruption can close a managed gate without changing the
+    /// thread ID. The next preparation installs a fresh gate for that owner.
+    pub(in crate::codex) fn renew_runner_on_next_prepare(
         &self,
         chat: &JsString,
         bound: &(JsString, Value),
