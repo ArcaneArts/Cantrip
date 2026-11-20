@@ -83,6 +83,7 @@ struct ThreadOwner {
     provider_id: Value,
     provider_account: Value,
     task: Option<Root>,
+    task_settings: Option<Arc<snapshot::Source>>,
     queue: Option<Arc<import::Binding>>,
     settings: Option<Arc<snapshot::Publisher>>,
 }
@@ -269,6 +270,26 @@ impl Ensurer {
                     if write { "update" } else { "read" }
                 )
             })
+    }
+
+    pub(in crate::codex) fn task_goal_source(
+        &self,
+        scope: &Value,
+        cycle: &Value,
+    ) -> Result<(native::LoadedThread, Root, Arc<snapshot::Source>)> {
+        let chat = field(scope, "chatId")?;
+        let identity = self.identity()?;
+        let owners = self.0.live_threads.lock().unwrap();
+        let matched = owners
+            .get(&chat)
+            .filter(|owner| owner.bound == identity)
+            .and_then(|owner| Some((owner, owner.task.as_ref()?, owner.task_settings.as_ref()?)))
+            .filter(|(_, root, settings)| {
+                root.binding.get("cycleId") == Some(cycle) && settings.matches_exact_read(scope)
+            });
+        let (owner, root, settings) =
+            matched.context("The Task Goal has no current native source.")?;
+        Ok((owner.thread.clone(), root.clone(), settings.clone()))
     }
 
     pub(crate) async fn prepare(&self, incoming: &Value, intent: Intent) -> Result<Prepared> {
@@ -889,12 +910,27 @@ impl Ensurer {
                             }
                             let task = latch.as_ref().map(|latch| task_root(&thread_id, latch));
                             router.set_task_root(&thread_id, task.clone());
+                            let task_settings = if task.is_some()
+                                && !stopping
+                                && let Some(factory) = this.0.settings_publisher.get()
+                            {
+                                Some(factory.source(
+                                    &this.0.worker,
+                                    &result,
+                                    &native_session,
+                                    &command,
+                                    resource.signal.clone(),
+                                )?)
+                            } else {
+                                None
+                            };
                             let owner = ThreadOwner {
                                 runtime: runtime.downgrade(),
                                 thread: loaded.clone(),
                                 bound: bound.clone(),
                                 session: goal_session,
                                 task,
+                                task_settings,
                                 queue,
                                 settings,
                                 model_route: command["model"]["routeId"].clone(),

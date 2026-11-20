@@ -106,6 +106,7 @@ const { values } = parseArgs({
     taskRawStop: { type: "boolean" },
     structuredTasks: { type: "boolean" },
     taskGoal: { type: "boolean" },
+    taskGoalTransferSource: { type: "boolean" },
     taskGoalCheckpoint: { type: "boolean" },
     taskGoalRestart: { type: "boolean" },
     taskGoalStop: { type: "boolean" },
@@ -126,6 +127,7 @@ const directTask =
   values.directTask || values.taskCheckpoint || values.taskRestart || taskStop;
 const taskGoals =
   values.taskGoal ||
+  values.taskGoalTransferSource ||
   values.taskPause ||
   values.taskGoalCheckpoint ||
   values.taskGoalRestart ||
@@ -744,7 +746,8 @@ async function ensure(
         fields.type?.startsWith("chat.native-logical.") ||
         fields.type?.startsWith("cantrip-os.") ||
         fields.type?.startsWith("terminal.") ||
-        fields.type?.startsWith("task.")
+        fields.type?.startsWith("task.") ||
+        fields.type?.startsWith("inference.")
           ? fields
           : {
               type: "chat.thread.ensure",
@@ -3942,6 +3945,7 @@ try {
             return verifyTaskGoalActivation({
               ...input,
               verifyPause: values.taskPause,
+              verifyTransferSource: values.taskGoalTransferSource,
               verifyCheckpoint:
                 values.taskGoalCheckpoint ||
                 values.taskGoalRestart ||
