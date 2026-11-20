@@ -1,6 +1,7 @@
 //! One authenticated native preview lifetime per Chat.
 mod activity;
 mod agent;
+mod agent_approvals;
 mod approvals;
 mod guest;
 mod input;
@@ -48,6 +49,7 @@ struct Manager {
     encryption: Arc<Service>,
     outgoing: Arc<Outbound>,
     approvals: approvals::Approvals,
+    agent_approvals: agent_approvals::Approvals,
     guests: guest::Guests,
     requests: mpsc::Sender<DesktopRequest>,
     retirements: mpsc::UnboundedSender<Arc<native::Attachment>>,
@@ -114,6 +116,7 @@ impl Previews {
         let (stop, running) = Abort::new();
         let manager = Arc::new(Manager {
             leases: Mutex::default(),
+            agent_approvals: agent_approvals::Approvals::new(encryption.clone(), outgoing.clone()),
             encryption,
             approvals: approvals::Approvals::new(outgoing.clone()),
             guests: guest::Guests::new(data),
@@ -263,20 +266,25 @@ impl Previews {
         self.identity(command)?;
         self.expire(epoch);
         let scope = &command["scope"];
-        self.remove_matching(|lease| match scope["kind"].as_str() {
-            Some("chat") => lease.authority["chatId"] == scope["chatId"],
-            Some("project") => lease.authority["projectId"] == scope["projectId"],
+        let matches = |authority: &Value| match scope["kind"].as_str() {
+            Some("chat") => authority["chatId"] == scope["chatId"],
+            Some("project") => authority["projectId"] == scope["projectId"],
             Some("inherited-default") => {
-                lease.authority["contextKind"] == scope["contextKind"]
-                    && lease.authority["profile"]["usesDefault"] == true
+                authority["contextKind"] == scope["contextKind"]
+                    && authority["profile"]["usesDefault"] == true
             }
             _ => false,
-        });
+        };
+        self.remove_matching(|lease| matches(&lease.authority));
+        self.0.agent_approvals.revoke(matches);
         Ok(json!({"closed":true}))
     }
 
     pub(crate) fn cancel_chat(&self, chat: &Value) {
         self.remove_matching(|lease| lease.authority["chatId"] == *chat);
+        self.0
+            .agent_approvals
+            .revoke(|authority| authority["chatId"] == *chat);
     }
 
     pub(super) fn expire(&self, epoch: u64) {
@@ -365,10 +373,12 @@ impl Previews {
     }
 
     fn answer(&self, command: &Value, epoch: u64) -> Result<Value> {
+        if !command["agentAuthority"].is_null() {
+            return self.0.agent_approvals.answer(command, epoch);
+        }
         let authority = &command["previewAuthority"];
         ensure!(
-            command["agentAuthority"].is_null()
-                && command["executionLaneId"].is_null()
+            command["executionLaneId"].is_null()
                 && !authority.is_null()
                 && command["ownerId"] == authority["ownerId"]
                 && command["chatId"] == authority["chatId"],

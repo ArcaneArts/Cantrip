@@ -17,14 +17,14 @@ use tokio::{
     time::{Instant, sleep_until},
 };
 
-const LIFETIME: Duration = Duration::from_secs(300);
-const MAX_PENDING: usize = 32;
-const MAX_GRANTS: usize = 64;
-const MAX_COMPLETED: usize = 128;
-const NO_LONGER_ACTIVE: &str = "This computer-use approval is no longer active.";
-const INVALID_RESPONSE: &str =
+pub(super) const LIFETIME: Duration = Duration::from_secs(300);
+pub(super) const MAX_PENDING: usize = 32;
+pub(super) const MAX_GRANTS: usize = 64;
+pub(super) const MAX_COMPLETED: usize = 128;
+pub(super) const NO_LONGER_ACTIVE: &str = "This computer-use approval is no longer active.";
+pub(super) const INVALID_RESPONSE: &str =
     "The response does not match the requested computer-use permissions.";
-const CAPACITY: &str = "Computer-use approval capacity was reached.";
+pub(super) const CAPACITY: &str = "Computer-use approval capacity was reached.";
 
 pub(super) struct Approvals {
     state: Arc<Mutex<State>>,
@@ -74,24 +74,8 @@ impl Approvals {
         operation_id: &Value,
         emit: impl Fn(Value) -> Result<()>,
     ) -> Result<()> {
-        let class = match action["operation"].as_str() {
-            Some("capabilities.get" | "session.close") => return Ok(()),
-            Some("targets.list" | "session.open" | "session.state" | "target.attach") => {
-                "inventory"
-            }
-            Some("observation.snapshot") => "capture",
-            Some("target.detach" | "cursor.configure" | "cursor.move") => "cursor",
-            Some("controls.inspect") => "controls",
-            Some(
-                "input.press" | "input.click" | "input.perform" | "clipboard.read"
-                | "clipboard.write" | "desktop.resize",
-            ) => "native-input",
-            _ => {
-                return Err(reject(
-                    "unavailable",
-                    "This computer-use preview operation is unavailable.",
-                ));
-            }
+        let Some(class) = permission_class(action["operation"].as_str())? else {
+            return Ok(());
         };
         if lease.authority["profile"]["selectedId"] == ":yolo" {
             return Ok(());
@@ -127,12 +111,13 @@ impl Approvals {
                     return Err(reject("capacity", CAPACITY));
                 }
                 let key: JsString = uuid::Uuid::new_v4().to_string().into();
-                let request = protect(encryption, lease, &key, &permissions).map_err(|_| {
-                    reject(
-                        "encryption-unavailable",
-                        "Computer-use approval encryption is unavailable.",
-                    )
-                })?;
+                let request = protect(encryption, &lease.authority, None, &key, &permissions)
+                    .map_err(|_| {
+                        reject(
+                            "encryption-unavailable",
+                            "Computer-use approval encryption is unavailable.",
+                        )
+                    })?;
                 let deadline = now + LIFETIME;
                 let (cancel, cancelled) = oneshot::channel();
                 state.pending.insert(
@@ -203,7 +188,7 @@ impl Approvals {
         state.expire(Instant::now(), &self.outgoing);
         let request = state.pending.get(key).context(NO_LONGER_ACTIVE)?;
         ensure!(request.lease_id == lease.id, NO_LONGER_ACTIVE);
-        let answer = open(encryption, lease, key, response)
+        let answer = open(encryption, &lease.authority, key, response)
             .map_err(|_| anyhow::anyhow!(INVALID_RESPONSE))?;
         ensure!(
             answer["kind"] == "permissions"
@@ -287,14 +272,40 @@ impl Pending {
     }
 }
 
-fn protect(
+pub(super) fn permission_class(operation: Option<&str>) -> Result<Option<&'static str>> {
+    Ok(Some(match operation {
+        None
+        | Some(
+            "capabilities.get" | "session.close" | "agent.sources.list" | "agent.observation.get",
+        ) => return Ok(None),
+        Some("targets.list" | "session.open" | "session.state" | "target.attach") => "inventory",
+        Some("observation.snapshot") => "capture",
+        Some("target.detach" | "cursor.configure" | "cursor.move") => "cursor",
+        Some("controls.inspect") => "controls",
+        Some(
+            "input.press" | "input.click" | "input.perform" | "clipboard.read" | "clipboard.write"
+            | "desktop.resize",
+        ) => "native-input",
+        _ => {
+            return Err(reject(
+                "unavailable",
+                "This computer-use operation is unavailable.",
+            ));
+        }
+    }))
+}
+
+pub(super) fn protect(
     encryption: &Service,
-    lease: &Lease,
+    authority: &Value,
+    binding: Option<&Value>,
     key: &JsString,
     permissions: &Value,
 ) -> Result<Value> {
     let now = Utc::now();
-    let grant = component(encryption, lease, None)?;
+    let grant = component(encryption, authority, None)?;
+    let no_binding = Value::Null;
+    let binding = binding.unwrap_or(&no_binding);
     let classification = json!({"kind":"permissions"});
     let reason = if permissions["computerUse"]["classes"]
         .as_array()
@@ -320,9 +331,10 @@ fn protect(
     checked(
         "encryptedAgentInteractionRequestCreateSchema",
         &json!({
-            "requestKey":key,"projectId":lease.authority["projectId"],"provenance":json!({
-                "owner":"computer-use","chatId":lease.authority["chatId"],"workerId":lease.authority["workerId"],
-                "threadId":Value::Null,"turnId":Value::Null,"itemId":Value::Null,"executionLaneId":Value::Null,
+            "requestKey":key,"projectId":authority["projectId"],"provenance":json!({
+                "owner":"computer-use","chatId":authority["chatId"],"workerId":authority["workerId"],
+                "threadId":binding["threadId"],"turnId":binding["turnId"],"itemId":Value::Null,
+                "executionLaneId":authority["executionLaneId"],
             }),
             "classification":classification,"protectedPayload":protected,
             "expiresAt":(now + chrono::TimeDelta::from_std(LIFETIME)?).to_rfc3339_opts(SecondsFormat::Millis, true),
@@ -330,11 +342,16 @@ fn protect(
     )
 }
 
-fn open(encryption: &Service, lease: &Lease, key: &JsString, response: &Value) -> Result<Value> {
+pub(super) fn open(
+    encryption: &Service,
+    authority: &Value,
+    key: &JsString,
+    response: &Value,
+) -> Result<Value> {
     let revision = response["protectedResponse"]["keyRevision"]
         .as_u64()
         .context(INVALID_RESPONSE)?;
-    let grant = component(encryption, lease, Some(revision))?;
+    let grant = component(encryption, authority, Some(revision))?;
     let opened = decrypt_communication(
         Communication::InteractionResponse,
         &grant.component.key,
@@ -347,13 +364,13 @@ fn open(encryption: &Service, lease: &Lease, key: &JsString, response: &Value) -
 
 fn component(
     encryption: &Service,
-    lease: &Lease,
+    authority: &Value,
     revision: Option<u64>,
 ) -> Result<crate::encryption::BoundComponentKey> {
     let grant = encryption.bound_component("interaction-content", revision)?;
     ensure!(
-        lease.authority["ownerId"].as_js_string() == Some(&grant.owner_id)
-            && lease.authority["serverId"] == grant.server_id,
+        authority["ownerId"].as_js_string() == Some(&grant.owner_id)
+            && authority["serverId"] == grant.server_id,
         NO_LONGER_ACTIVE
     );
     Ok(grant)

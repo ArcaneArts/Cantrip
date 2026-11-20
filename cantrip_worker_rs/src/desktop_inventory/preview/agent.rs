@@ -2,7 +2,7 @@
 #[cfg(all(test, unix))]
 mod tests;
 
-use super::{DEADLINE, DesktopRequest, Previews, Request, guest, native};
+use super::{DEADLINE, DesktopRequest, Previews, Request, agent_approvals, guest, native};
 use crate::{
     computer_use::{HostError, Javascript},
     http::checked,
@@ -48,6 +48,7 @@ struct EvaluationFrames {
 pub struct DesktopTurn {
     desktop: Previews,
     authority: Value,
+    approval: Arc<agent_approvals::Turn>,
     execution: Option<Value>,
     bound: Value,
     epoch: u64,
@@ -137,6 +138,13 @@ impl Previews {
         });
         Ok(DesktopTurn {
             desktop: self.clone(),
+            approval: self.0.agent_approvals.bind(agent_approvals::Turn {
+                authority: authority.clone(),
+                binding: binding.clone(),
+                epoch,
+                signal: signal.clone(),
+                abort: abort.clone(),
+            }),
             authority,
             execution,
             bound: binding.clone(),
@@ -149,6 +157,23 @@ impl Previews {
 }
 
 impl DesktopTurn {
+    /// Publish on the owning command stream and wait for its protected reply.
+    /// The coordinator rechecks current Core authority after a policy wait.
+    pub async fn approve_action(
+        &self,
+        action: HostAction,
+        request_id: uuid::Uuid,
+        call: Signal,
+        publish: impl Fn(Value) -> Result<()> + Send + Sync,
+    ) -> Result<(), HostError> {
+        self.current(&call)?;
+        self.desktop
+            .0
+            .agent_approvals
+            .authorize(&self.approval, action, request_id, call, publish)
+            .await
+    }
+
     /// The coordinator refreshes Core authority and waits for any required
     /// approval. Only this callback can authorize a native action.
     pub async fn evaluate<F, A>(

@@ -9017,3 +9017,33 @@ The production worker build passed the desktop inventory and guest preview
 smoke tests, including carrier retirement after socket replacement.
 Managed Codex registration, durable approvals and activity, retained
 observations, and finalization remain open.
+
+## 255. Resume agent computer-use actions after protected approval
+
+Reference commit `9e01c5dda9b98f4733230a172c12c429a34ccf13` (#3418).
+
+The desktop turn can publish the existing encrypted permission request on
+its owning command stream and suspend the current host action. The Worker
+validates the answer against the active Core authority, command socket,
+native turn and exact requested class and target. A successful reply resumes
+that action and can grant the same permission for the rest of the native
+turn. An encrypted reply cannot authorize a different target or permission
+class. Duplicate delivery of the same answer is accepted while that turn
+owns the request.
+
+Expired or cancelled waits emit a terminal event after the original request
+on the same stream. Chat and policy revocation discard affected turn grants
+and abort any pending work. The agent and preview paths use the same
+permission classes and interaction encryption, with the preview's existing
+retry semantics preserved.
+
+The Rust fixture exercises the encrypted request and worker response route
+with a fixture command publisher. It verifies exact lane and target checks,
+grant reuse, duplicate delivery, cancellation, and refusal of late answers.
+The 58 Node approval and publication reference cases passed locally. Run
+`scripts/worker-rust/cargo.mjs test --lib protected_agent_approval`.
+The worker build, native Host test and public preview roundtrip against
+Rust Core in PGlite mode also passed on macOS ARM64.
+Managed Codex registration still needs to supply the command publisher and
+refresh Core authority around the approval wait. Activity and turn
+finalization remain open.
