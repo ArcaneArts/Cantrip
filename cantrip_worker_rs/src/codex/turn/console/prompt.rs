@@ -293,6 +293,7 @@ async fn execute(
             view.permission(),
             view.prepared.thread.version(),
         )),
+        queued_inference: OnceLock::new(),
         task: OnceLock::new(),
         task_input: None,
         logical_finished: AtomicBool::new(true),

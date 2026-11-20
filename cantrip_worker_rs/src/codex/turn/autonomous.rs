@@ -121,6 +121,7 @@ impl Autonomous {
                 root: Some(root),
                 project: runner.session["projectId"].as_js_string().cloned(),
                 control: OnceLock::new(),
+                queued_inference: OnceLock::new(),
                 task: OnceLock::new(),
                 task_input: None,
                 logical_finished: AtomicBool::new(true),

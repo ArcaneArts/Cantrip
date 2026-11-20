@@ -60,6 +60,9 @@ const { values } = parseArgs({
     "runtime-handoff": { type: "boolean" },
     "runtime-handoff-recovery": { type: "boolean" },
     "runtime-handoff-cancel": { type: "boolean" },
+    "queued-handoff": { type: "boolean" },
+    "queued-handoff-recovery": { type: "boolean" },
+    "queued-handoff-cancel": { type: "boolean" },
   },
 });
 assert.ok(
@@ -90,10 +93,15 @@ const restoredInteractions = values["restored-interactions"];
 const subagentInteractions =
   values["subagent-interactions"] || values["subagent-model"];
 const planQuestion = values["plan-question"];
+const queuedHandoff =
+  values["queued-handoff"] ||
+  values["queued-handoff-recovery"] ||
+  values["queued-handoff-cancel"];
 const runtimeHandoff =
   values["runtime-handoff"] ||
   values["runtime-handoff-recovery"] ||
-  values["runtime-handoff-cancel"];
+  values["runtime-handoff-cancel"] ||
+  queuedHandoff;
 const interactionKey =
   values.interactions ||
   consoleInteractions ||
@@ -1427,7 +1435,10 @@ async function verifyPlanQuestion() {
 }
 
 async function verifyRuntimeHandoff() {
-  const source = await createModel("Handoff source");
+  const source = await createModel(
+    "Handoff source",
+    queuedHandoff ? 1 : undefined,
+  );
   const target = await createModel("Handoff destination", undefined, [
     { id: "handoff-destination-model" },
   ]);
@@ -1445,15 +1456,17 @@ async function verifyRuntimeHandoff() {
     defaultModelId: source.profile.id,
     autoNameChats: false,
   });
-  const { chatId, chatUrl } = await createPreparedProjectChat({
-    call,
-    eventually,
-    ownerId,
-    workerId,
-    keyRevision,
-    labelKey,
-    title: "Native provider handoff",
-  });
+  const { chatId, chatUrl } = queuedHandoff
+    ? await createChat("Native queued provider handoff", false)
+    : await createPreparedProjectChat({
+        call,
+        eventually,
+        ownerId,
+        workerId,
+        keyRevision,
+        labelKey,
+        title: "Native provider handoff",
+      });
   const submit = async (provider, content, text, modelId) => {
     const reply = provider.model.reply({ text });
     const turn = await encryptedTurn(content, modelId);
@@ -1484,16 +1497,166 @@ async function verifyRuntimeHandoff() {
   const settingsUrl = `${chatUrl}/native-settings`;
   const { binding } = await call("POST", `${settingsUrl}/refresh`, 200, {});
   const operationId = randomUUID();
-  await eventually(
-    () =>
-      call("POST", handoffUrl, 202, {
-        operationId,
-        bindingId: binding.bindingId,
-        targetModelRouteId: targetProfile.routes[0].id,
-        targetProviderAccountId: null,
-      }),
-    (state) => assert.equal(state.operationId, operationId),
-  );
+  const beginHandoff = () =>
+    eventually(
+      () =>
+        call("POST", handoffUrl, 202, {
+          operationId,
+          bindingId: binding.bindingId,
+          targetModelRouteId: targetProfile.routes[0].id,
+          targetProviderAccountId: null,
+        }),
+      (state) => assert.equal(state.operationId, operationId),
+    );
+  if (queuedHandoff) {
+    const cancelling = values["queued-handoff-cancel"];
+    const restarting = values["queued-handoff-recovery"];
+    const blocker = await createChat("Unrelated source capacity", false);
+    const held = source.model.reply({
+      text: "Unrelated source answer",
+      hold: true,
+    });
+    const queueText = "Run this exact protected prompt once.";
+    const answer = "The transferred prompt executed once.";
+    try {
+      await call(
+        "POST",
+        `${blocker.chatUrl}/turns`,
+        202,
+        await encryptedTurn("Hold the old provider slot.", source.profile.id),
+      );
+      await eventually(
+        () => held.request,
+        (request) => assert.ok(request),
+      );
+      const queued = await encryptedTurn(queueText, source.profile.id);
+      await call("POST", `${chatUrl}/turns`, 202, queued);
+      await eventually(
+        () => call("GET", `/api/workers/${workerId}/inference`, 200),
+        (status) =>
+          assert.ok(
+            status.pools
+              .find(({ providerId }) => providerId === source.provider.id)
+              ?.operations.some(
+                (op) => op.chatId === chatId && op.state === "waiting",
+              ),
+          ),
+      );
+      if (!cancelling) {
+        target.model.reply({
+          text: "Proceed with the cleared model context.",
+          onlyFor: (request) => request.input.model === source.model.model,
+        });
+      }
+      const selected = cancelling ? source : target;
+      const other = cancelling ? target : source;
+      const selectedModel = cancelling
+        ? source.model.model
+        : "handoff-destination-model";
+      const reply = selected.model.reply({ text: answer });
+      const started = await beginHandoff();
+      assert.ok(started.queuedSource?.operationGeneration);
+      assert.equal(started.queuedSource.withdrawn, false);
+      if (restarting || cancelling) {
+        await eventually(
+          () => receiptProxy.withheld(),
+          (operation) => assert.equal(operation, operationId),
+        );
+        const saved = await call("GET", `${handoffUrl}/${operationId}`, 200);
+        assert.equal(saved.queuedSource.withdrawn, true);
+        assert.equal(saved.phase, "preparing");
+        if (cancelling) {
+          await call("POST", `${handoffUrl}/${operationId}/cancel`, 202, {});
+        } else {
+          await stopWorker();
+          receiptProxy.open();
+          await startWorker();
+          await call("POST", `${handoffUrl}/${operationId}/retry`, 202, {});
+        }
+      }
+      const transferred = await eventually(
+        () => call("GET", `${handoffUrl}/${operationId}`, 200),
+        (state) =>
+          assert.equal(
+            state.phase,
+            cancelling ? "cancelled" : "completed",
+            JSON.stringify(state),
+          ),
+        35_000,
+      );
+      assert.equal(
+        transferred.queuedSource.operationId,
+        started.queuedSource.operationId,
+      );
+      assert.equal(transferred.queuedSource.withdrawn, true);
+      assert.equal(transferred.binding.threadId, binding.threadId);
+      assert.equal(
+        transferred.binding.modelRouteId,
+        cancelling ? binding.modelRouteId : targetProfile.routes[0].id,
+      );
+      if (cancelling) {
+        assert.equal(held.request.completed, false);
+        assert.equal(reply.request, null);
+        assert.equal(
+          transferred.binding.runtimeGeneration,
+          binding.runtimeGeneration,
+        );
+        held.release();
+      } else {
+        assert.equal(
+          transferred.queuedSource.retargetedPrompt.id,
+          queued.queuedPrompt.id,
+        );
+      }
+      await eventually(
+        () => reply.request,
+        (request) => assert.equal(request?.completed, true),
+        35_000,
+      );
+      assert.ok(JSON.stringify(reply.request.input.input).includes(queueText));
+      assert.equal(reply.request.input.model, selectedModel);
+      assert.ok(
+        !other.model.requests.some(({ input }) =>
+          JSON.stringify(input).includes(queueText),
+        ),
+      );
+      const turns = selected.model.requests.filter(
+        ({ input }) =>
+          input?.model === selectedModel &&
+          JSON.stringify(input.input).includes(queueText),
+      );
+      assert.equal(turns.length, 1);
+      await eventually(
+        async () => {
+          const { messages } = await call("GET", `${chatUrl}/messages`, 200);
+          assert.equal(
+            messages.filter(({ id }) => id === queued.message.id).length,
+            1,
+          );
+          return Promise.all(messages.map(openMessage));
+        },
+        (messages) =>
+          assert.ok(
+            messages.some((message) =>
+              message.content.some((item) => item.text === answer),
+            ),
+          ),
+      );
+      if (!restarting && !cancelling)
+        assert.equal(held.request.completed, false);
+      assert.deepEqual(source.model.failures, []);
+      assert.deepEqual(target.model.failures, []);
+      console.log(
+        cancelling
+          ? "Cancellation resumed the original protected prompt exactly once."
+          : "A protected queued prompt moved to the destination and executed once.",
+      );
+    } finally {
+      held.release();
+    }
+    return;
+  }
+  await beginHandoff();
   if (values["runtime-handoff-recovery"] || values["runtime-handoff-cancel"]) {
     await eventually(
       () => receiptProxy.withheld(),
@@ -1987,6 +2150,10 @@ try {
   if (values["runtime-handoff-cancel"])
     receiptProxy = await deferredReceiptProxy(server.origin, {
       handoffAction: "prepared",
+    });
+  if (values["queued-handoff-recovery"] || values["queued-handoff-cancel"])
+    receiptProxy = await deferredReceiptProxy(server.origin, {
+      handoffAction: "withdrawn",
     });
   const enrollment = await call("POST", "/api/workers/enrollment-codes", 201, {
     label: "Rust standalone turn",
