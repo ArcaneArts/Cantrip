@@ -173,13 +173,17 @@ impl Guests {
         Ok(selected)
     }
 
-    pub(super) async fn dispatch(&self, request: Request, execution: &Value) -> Result<()> {
-        let group = self.group(&request.lease, execution)?;
+    pub(super) async fn dispatch(
+        &self,
+        lease: &Arc<Lease>,
+        request: Request,
+        execution: &Value,
+    ) -> Result<()> {
+        let group = self.group(lease, execution)?;
         let _permit = group
             .pending
             .try_acquire()
             .map_err(|_| native::reject("capacity", "Computer-use preview is busy."))?;
-        let lease = request.lease.clone();
         let mut state = tokio::select! {
             biased;
             _ = lease.signal.cancelled() => return Err(native::cancelled("not-sent")),
@@ -222,7 +226,7 @@ impl Guests {
                     carrier.close(&group.transport).await;
                 }
             } else if let Some(carrier) = state.carrier.as_mut() {
-                native::release(&lease, &mut carrier.helper).await;
+                native::release(&lease.attachment, &mut carrier.helper).await;
             }
         });
     }

@@ -8958,3 +8958,34 @@ Node reference lifecycle and transport cases passed locally.
 The registered production broker still needs the authorized desktop/guest
 host-action implementation, retained observation handling and managed
 Codex turn registration.
+
+## 253. Dispatch authorized JavaScript actions to the Host desktop
+
+Reference commit `64a53ed3b71dd752f9849f52492642e066d22cab` (#3416).
+
+An observed native turn can bind its evaluator to the Host desktop in the
+captured Core authority. The worker translates script actions into the
+existing native desktop requests and asks the execution owner to authorize
+each action and attached target. It rechecks the turn and command socket
+after the callback and keeps native dispatch on the preview service's owned
+helper. Attachments carry the actual native thread and turn. Reset,
+cancellation, and turn retirement release the exact attachment.
+
+The Host path supports target paging, attachment and cursor state, snapshots,
+controls, clipboard, resize and native input through the existing helper
+operations and platform capabilities. Inventory pages, input receipts, and
+snapshot dimensions and digests are checked before the worker accepts the
+result. Screenshots stay in a bounded worker buffer while the evaluator
+receives metadata and image indices.
+
+On macOS ARM64 the Rust test used real evaluator and desktop helper processes
+with the deterministic backend and a fixture policy callback. It exercised
+attachment denial, target paging, snapshot metadata and bytes, per-action
+policy calls, approval cancellation, reset and turn retirement. The 68 Node
+reference cases used the same helper. Repeat the Rust test by setting
+`CANTRIP_TEST_RUST_CUA_BIN` and running
+`scripts/worker-rust/cargo.mjs test --lib host_actions_use -- --ignored`.
+The desktop inventory smoke and the public preview smoke using Rust Core in
+PGlite mode passed with the new worker and the deterministic helper.
+Managed Codex registration, durable approval and activity routing,
+retained observations and the agent guest carrier remain open.

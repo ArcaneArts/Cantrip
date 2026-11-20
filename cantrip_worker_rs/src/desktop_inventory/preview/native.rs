@@ -1,11 +1,13 @@
 use super::{Lease, Request, input, retire};
 use crate::desktop_inventory::{DEADLINE, Helper, helper, process::NativeError};
 use crate::http::checked;
+use crate::metadata::Signal;
 use anyhow::{Result, ensure};
 use cantrip_crypto::Zeroizing;
 use cantrip_wire::{Value, value::json};
 use image::{ImageDecoder, codecs::png::PngDecoder};
-use std::{io::Cursor, path::Path};
+use sha2::{Digest, Sha256};
+use std::{io::Cursor, path::Path, sync::Mutex};
 use tokio::time::{Instant, timeout, timeout_at};
 
 #[derive(Debug)]
@@ -44,26 +46,65 @@ fn rejection(code: &str, message: &'static str, outcome: &'static str) -> anyhow
 }
 
 #[derive(Clone)]
-pub(super) struct Session {
+struct Session {
     helper: uuid::Uuid,
     data: Value,
 }
 
+/// Fixed worker ownership and the native session on the current helper.
+pub(in crate::desktop_inventory) struct Attachment {
+    scope: Value,
+    session: Mutex<Option<Session>>,
+}
+
+impl Attachment {
+    pub(super) fn new(authority: &Value, turn: Option<&Value>) -> Self {
+        let missing_turn = Value::Null;
+        let turn = turn.unwrap_or(&missing_turn);
+        Self {
+            scope: json!({
+                "workerId":authority["workerId"],"chatId":authority["chatId"],
+                "taskId":turn["taskId"],"threadId":turn["threadId"],"turnId":turn["turnId"],
+            }),
+            session: Mutex::default(),
+        }
+    }
+
+    fn new_binding(&self) -> Value {
+        let mut binding = self.scope.clone();
+        binding["sessionId"] = json!(uuid::Uuid::new_v4().to_string());
+        binding
+    }
+
+    pub(super) fn data(&self, session_id: Option<&Value>) -> Value {
+        self.session
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|session| {
+                session_id
+                    .is_none_or(|requested| session.data["binding"]["sessionId"] == *requested)
+            })
+            .map_or(Value::Null, |session| session.data.clone())
+    }
+}
+
 pub(super) fn activity_session(lease: &Lease, session_id: Option<&Value>) -> Value {
-    lease
-        .session
-        .lock()
-        .unwrap()
-        .as_ref()
-        .filter(|session| {
-            session_id.is_none_or(|requested| session.data["binding"]["sessionId"] == *requested)
-        })
-        .map_or(Value::Null, |session| session.data.clone())
+    lease.attachment.data(session_id)
 }
 
 pub(super) struct ResultData {
     pub(super) data: Value,
     pub(super) pixels: Zeroizing<Vec<u8>>,
+}
+
+pub(super) fn mutates_desktop(action: &Value) -> bool {
+    matches!(
+        action["operation"].as_str(),
+        Some(
+            "input.press" | "input.click" | "input.perform" | "clipboard.write" | "desktop.resize"
+        )
+    )
 }
 
 pub(in crate::desktop_inventory) async fn run(
@@ -82,13 +123,15 @@ pub(in crate::desktop_inventory) async fn run(
         )));
         return;
     }
-    let mutating_input = matches!(
-        request.action["operation"].as_str(),
-        Some(
-            "input.press" | "input.click" | "input.perform" | "clipboard.write" | "desktop.resize"
-        )
+    let mutating_input = mutates_desktop(&request.action);
+    let work = execute(
+        process,
+        binary,
+        &request.attachment,
+        &request.signal,
+        request.allow_cantrip_app,
+        request.action,
     );
-    let work = execute(process, binary, &request.lease, request.action);
     let completed = match request.deadline {
         Some(deadline) => timeout_at(deadline, work).await,
         None => Ok(work.await),
@@ -99,7 +142,7 @@ pub(in crate::desktop_inventory) async fn run(
         "rejected"
     };
     let result = match completed {
-        Ok(Ok(_)) if request.lease.signal.check().is_err() => Err(cancelled(uncertain)),
+        Ok(Ok(_)) if request.signal.check().is_err() => Err(cancelled(uncertain)),
         Ok(Ok(value)) => Ok(value),
         Ok(Err(error)) if error.is::<Rejected>() => Err(error),
         Ok(Err(error)) if error.is::<NativeError>() => {
@@ -137,8 +180,11 @@ pub(in crate::desktop_inventory) async fn run(
     let _ = request.reply.send(result);
 }
 
-pub(in crate::desktop_inventory) async fn release(lease: &Lease, process: &mut Option<Helper>) {
-    let Some(session) = lease.session.lock().unwrap().take() else {
+pub(in crate::desktop_inventory) async fn release(
+    attachment: &Attachment,
+    process: &mut Option<Helper>,
+) {
+    let Some(session) = attachment.session.lock().unwrap().take() else {
         return;
     };
     let Some(child) = process
@@ -164,10 +210,12 @@ pub(in crate::desktop_inventory) async fn release(lease: &Lease, process: &mut O
 async fn execute(
     process: &mut Option<Helper>,
     binary: Option<&Path>,
-    lease: &Lease,
+    attachment: &Attachment,
+    signal: &Signal,
+    allow_cantrip_app: bool,
     mut action: Value,
 ) -> Result<ResultData> {
-    if lease.signal.check().is_err() {
+    if signal.check().is_err() {
         return Err(cancelled("not-sent"));
     }
     let method = action["operation"].as_str().unwrap().to_owned();
@@ -175,11 +223,16 @@ async fn execute(
     if process.as_mut().is_some_and(|child| child.process.exited()) {
         retire(process).await;
     }
-    let mut session = lease.session.lock().unwrap().clone().filter(|session| {
-        process
-            .as_ref()
-            .is_some_and(|child| child.identity == session.helper)
-    });
+    let mut session = attachment
+        .session
+        .lock()
+        .unwrap()
+        .clone()
+        .filter(|session| {
+            process
+                .as_ref()
+                .is_some_and(|child| child.identity == session.helper)
+        });
     if !opening && !matches!(method.as_str(), "capabilities.get" | "targets.list") {
         let Some(current) = &session else {
             return Err(reject(
@@ -221,16 +274,13 @@ async fn execute(
             ));
         }
     }
-    if lease.signal.check().is_err() {
+    if signal.check().is_err() {
         return Err(cancelled("not-sent"));
     }
     let binding = if opening {
         action["operation"] = json!("target.attach");
         session.as_ref().map_or_else(
-            || json!({
-                "sessionId":uuid::Uuid::new_v4().to_string(),"workerId":lease.authority["workerId"],
-                "chatId":lease.authority["chatId"],"taskId":Value::Null,"threadId":Value::Null,"turnId":Value::Null,
-            }),
+            || attachment.new_binding(),
             |session| session.data["binding"].clone(),
         )
     } else {
@@ -245,7 +295,7 @@ async fn execute(
         action["binding"] = binding.clone();
     }
     if opening || matches!(method.as_str(), "targets.list" | "target.attach") {
-        action["allowCantripApp"] = json!(true);
+        action["allowCantripApp"] = json!(allow_cantrip_app);
     }
     let target = (
         action["targetId"].clone(),
@@ -269,10 +319,11 @@ async fn execute(
         action["globalInput"] = json!(false);
     }
     let input = input::Expected::new(&action, before, child.process.backend());
+    let after = action.get("after").and_then(Value::as_js_string).cloned();
     let (mut result, pixels) = child
         .process
         .cancellable(action, method == "observation.snapshot", async {
-            let _ = lease.signal.cancelled().await;
+            let _ = signal.cancelled().await;
         })
         .await?;
     let pixels = Zeroizing::new(pixels);
@@ -307,13 +358,36 @@ async fn execute(
             result["closed"] == true,
             "The native helper did not confirm the session close."
         );
-        *lease.session.lock().unwrap() = None;
-    } else if method != "targets.list" {
+        *attachment.session.lock().unwrap() = None;
+    } else if method == "targets.list" {
+        result = checked("cuaInventorySchema", &result)?;
+        if let Some(after) = &after {
+            ensure!(
+                result["targets"].as_array().unwrap().iter().all(|target| {
+                    target["id"]
+                        .as_js_string()
+                        .is_some_and(|id| id.units() > after.units())
+                }),
+                "The native inventory did not advance its cursor."
+            );
+        }
+    } else {
         if let Some(expected) = input {
             result = checked("cuaInputResultSchema", &result)?;
             expected.validate(&result["input"])?;
         } else if method == "clipboard.read" {
             result = checked("cuaClipboardResultSchema", &result)?;
+        } else if method == "controls.inspect" {
+            result = checked("cuaControlsResultSchema", &result)?;
+        } else if method == "observation.snapshot" {
+            result = checked("cuaSnapshotSchema", &result)?;
+            let digest = Sha256::digest(&*pixels);
+            let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+            ensure!(
+                result["image"]["byteCount"].as_u64() == Some(pixels.len() as u64)
+                    && result["image"]["sha256"] == digest,
+                "The native computer-use image did not match its metadata."
+            );
         }
         let session = checked("cuaSessionSchema", &result["session"])?;
         ensure!(
@@ -323,7 +397,7 @@ async fn execute(
                         && session["target"]["generation"] == target.1)),
             "The native helper returned another session or target."
         );
-        *lease.session.lock().unwrap() = Some(Session {
+        *attachment.session.lock().unwrap() = Some(Session {
             helper: child.identity,
             data: session,
         });
@@ -339,7 +413,7 @@ async fn execute(
     }
     // The retirement queue still needs a newly allocated binding to close it.
     // Its cached handle cannot authorize a revoked preview or expose the result.
-    if lease.signal.check().is_err() {
+    if signal.check().is_err() {
         return Err(cancelled("unknown"));
     }
     Ok(ResultData {

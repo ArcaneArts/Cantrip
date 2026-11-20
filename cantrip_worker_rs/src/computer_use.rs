@@ -14,6 +14,9 @@ use std::{
 };
 use tokio::task::JoinHandle;
 
+pub use crate::desktop_inventory::preview::{
+    HostAction, HostDesktop, HostEvaluation, HostSnapshot, Previews as Desktop,
+};
 pub use crate::desktop_inventory::process::NativeError;
 
 /// Keep policy diagnostics and protected action data out of the evaluator's errors.
@@ -45,7 +48,11 @@ impl HostError {
     }
 
     pub(crate) fn outcome(self) -> Value {
-        json!({"status":"error","error":json!({"code":self.0,"message":"Computer-use host action failed."})})
+        json!({"status":"error","error":json!({"code":self.code(),"message":"Computer-use host action failed."})})
+    }
+
+    pub(crate) fn code(&self) -> &'static str {
+        self.0
     }
 }
 
@@ -86,6 +93,14 @@ impl Javascript {
             process: Arc::new(Mutex::new(None)),
             retirement: None,
         })
+    }
+
+    pub(crate) fn binding(&self) -> &Value {
+        &self.binding
+    }
+
+    pub(crate) fn turn(&self) -> Signal {
+        self.turn.clone()
     }
 
     /// The execution owner supplies the time budget and authorizes every host

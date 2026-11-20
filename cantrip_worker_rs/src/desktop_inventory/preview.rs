@@ -1,5 +1,6 @@
 //! One authenticated native preview lifetime per Chat.
 mod activity;
+mod agent;
 mod approvals;
 mod guest;
 mod input;
@@ -32,6 +33,7 @@ const STOP: &str = "computer-use.preview.stop";
 const REVOKE: &str = "computer-use.preview.revoke";
 const OPERATION: &str = "computer-use.operation";
 const ANSWER: &str = "computer-use.approval.respond";
+pub use agent::{HostAction, HostDesktop, HostEvaluation, HostSnapshot};
 pub(super) use native::{release, run};
 
 pub(crate) fn supports(method: &str) -> bool {
@@ -39,7 +41,7 @@ pub(crate) fn supports(method: &str) -> bool {
 }
 
 #[derive(Clone)]
-pub(crate) struct Previews(Arc<Manager>);
+pub struct Previews(Arc<Manager>);
 
 struct Manager {
     leases: Mutex<HashMap<JsString, Arc<Lease>>>,
@@ -48,12 +50,12 @@ struct Manager {
     approvals: approvals::Approvals,
     guests: guest::Guests,
     requests: mpsc::Sender<DesktopRequest>,
-    retirements: mpsc::UnboundedSender<Arc<Lease>>,
+    retirements: mpsc::UnboundedSender<Arc<native::Attachment>>,
 }
 
 pub(super) struct Retirements {
     manager: Weak<Manager>,
-    pub(super) releases: mpsc::UnboundedReceiver<Arc<Lease>>,
+    pub(super) releases: mpsc::UnboundedReceiver<Arc<native::Attachment>>,
 }
 
 impl Retirements {
@@ -71,12 +73,15 @@ pub(super) struct Lease {
     epoch: u64,
     abort: Abort,
     signal: Signal,
-    session: Mutex<Option<native::Session>>,
+    attachment: Arc<native::Attachment>,
     guest: Mutex<Option<Arc<guest::Group>>>,
 }
 
 pub(super) struct Request {
-    lease: Arc<Lease>,
+    attachment: Arc<native::Attachment>,
+    epoch: u64,
+    signal: Signal,
+    allow_cantrip_app: bool,
     action: Value,
     deadline: Option<Instant>,
     reply: oneshot::Sender<Result<native::ResultData>>,
@@ -84,7 +89,7 @@ pub(super) struct Request {
 
 impl Request {
     pub(super) fn epoch(&self) -> u64 {
-        self.lease.epoch
+        self.epoch
     }
 
     pub(super) fn expired(self) {
@@ -193,7 +198,7 @@ impl Previews {
             epoch,
             abort,
             signal,
-            session: Mutex::default(),
+            attachment: Arc::new(native::Attachment::new(authority, None)),
             guest: Mutex::default(),
         });
         let result = lease.public()?;
@@ -282,7 +287,7 @@ impl Previews {
             .abort(anyhow::anyhow!("Computer-use preview authority expired."));
         self.0.approvals.revoke(&lease.id);
         if lease.authority["osPlacement"].is_null() {
-            let _ = self.0.retirements.send(lease);
+            let _ = self.0.retirements.send(lease.attachment.clone());
         } else {
             self.0.guests.release(lease);
         }
@@ -388,18 +393,21 @@ impl Previews {
             )?;
             let (reply, result) = oneshot::channel();
             let request = Request {
-                lease: lease.clone(),
+                attachment: lease.attachment.clone(),
+                epoch: lease.epoch,
+                signal: lease.signal.clone(),
+                allow_cantrip_app: true,
                 deadline: (action["operation"] != "input.perform")
                     .then(|| Instant::now() + DEADLINE),
                 action,
                 reply,
             };
             if let Some(execution) = placement {
-                self.0.guests.dispatch(request, &execution).await?;
+                self.0.guests.dispatch(&lease, request, &execution).await?;
             } else {
                 self.0
                     .requests
-                    .try_send(DesktopRequest::Preview(request))
+                    .try_send(DesktopRequest::ComputerUse(request))
                     .map_err(|_| native::reject("capacity", "Computer-use preview is busy."))?;
             }
             result.await.context("The native desktop helper stopped.")?

@@ -1183,6 +1183,9 @@ export const computerUseHttpContractRoots = [
   "cuaSessionSchema",
   "cuaInputResultSchema",
   "cuaClipboardResultSchema",
+  "cuaInventorySchema",
+  "cuaControlsResultSchema",
+  "cuaSnapshotSchema",
 ];
 
 // Keep independently added roots self-contained. Numeric graph references must
