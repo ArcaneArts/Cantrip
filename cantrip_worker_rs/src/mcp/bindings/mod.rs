@@ -5,6 +5,7 @@ mod http;
 mod server;
 mod store;
 
+pub(crate) use computer_use::Authority as ComputerUseAuthority;
 pub use computer_use::ComputerUseExecutor;
 pub use server::{Server, WorkerToken};
 
@@ -39,6 +40,32 @@ pub struct Attachment {
 }
 
 impl Attachment {
+    pub(crate) fn computer_use_configuration(
+        &self,
+        executable: &Path,
+        guest: bool,
+    ) -> Result<Value> {
+        let mut configuration = if guest {
+            let mut configuration = self.codex_http_configuration();
+            configuration["url"] = json!(format!(
+                "{}/v1/cua-mcp/{}",
+                self.connection["endpoint"].as_str().unwrap(),
+                self.connection["bindingId"].as_str().unwrap()
+            ));
+            configuration
+        } else {
+            let mut configuration = self.codex_configuration(executable)?;
+            let connection = configuration["args"].as_array().unwrap()[2].clone();
+            configuration["args"] =
+                json!(vec![json!("cua-mcp"), json!("--connection"), connection]);
+            configuration["env"] =
+                json!({"CANTRIP_MCP_CONNECTION_GENERATION":self.connection["bindingId"]});
+            configuration
+        };
+        configuration["enabled_tools"] = json!(["js", "js_reset"]);
+        Ok(configuration)
+    }
+
     /// The guest environment connects to the worker-owned app-server. Its MCP
     /// client makes this authenticated request on the worker's own loopback.
     pub fn codex_http_configuration(&self) -> Value {
@@ -148,6 +175,16 @@ pub struct Activation {
 }
 
 impl Activation {
+    pub(crate) fn computer_use_authority(&self, raw: &Value) -> Result<ComputerUseAuthority> {
+        let identity = (self.inner.identity)()?;
+        computer_use::Authority::new(
+            self.inner.server.clone(),
+            self.active.binding.clone(),
+            identity.1,
+            raw,
+        )
+    }
+
     pub(crate) fn track_context(&self, context: Arc<crate::codex::turn::context::ContextTurn>) {
         let _ = self.active.context.set(context);
     }

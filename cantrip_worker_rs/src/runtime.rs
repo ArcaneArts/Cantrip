@@ -433,6 +433,7 @@ async fn cycle(
         task_inputs.clone(),
         task_delivery.clone(),
         guest_files,
+        &desktop_inventory,
     )?;
     thread_preparation.configure_autonomous(turns.autonomous(routing.clone()))?;
     turns.configure_queue_imports()?;
@@ -852,13 +853,20 @@ async fn cycle(
                             Some(crate::codex::turn::PAUSE_SET) => (turns.set_pause(command).await, None),
                             _ => {
                                 let request_id = request["requestId"].clone();
+                                let epoch = request["socketEpoch"].as_u64();
                                 let stream = outgoing.clone();
                                 let observation = crate::worker_link::observation_scope(command);
                                 turns.run(command, Arc::new(move |event| {
+                                    if matches!(event["type"].as_str(), Some("computer-use.approval.request" | "computer-use.approval.terminal")) {
+                                        let epoch = epoch.context("Computer-use approval has no connected command socket.")?;
+                                        ensure!(stream.send_for_epoch(epoch, json!({"kind":"event","requestId":request_id,"event":event}))?,
+                                            "The computer-use approval could not be delivered.");
+                                        return Ok(());
+                                    }
                                     observations.publish_event(&observation, &event);
                                     stream.send(json!({"kind":"event","requestId":request_id,"event":event}))?;
                                     Ok(())
-                                })).await
+                                }), epoch).await
                             }
                         };
                         finish(&request, &worker, &logs, &outgoing, began, &result);

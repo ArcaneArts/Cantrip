@@ -28,6 +28,7 @@ const REPLAY_LIMIT: usize = 1_000;
 const HELPER_INVENTORY_LIMIT: usize = 4_096;
 
 pub(crate) struct DesktopInventory {
+    binary: PathBuf,
     queue: mpsc::Sender<Request>,
     effects: EffectUpdates,
     previews: preview::Previews,
@@ -86,7 +87,7 @@ impl DesktopInventory {
         );
         let preview_lifetime = previews.monitor(stop.clone());
         let task = tokio::spawn(run(
-            binary,
+            binary.clone(),
             encryption,
             outgoing,
             input,
@@ -95,6 +96,7 @@ impl DesktopInventory {
             (effects.clone(), preferences, retirements),
         ));
         Self {
+            binary,
             queue,
             effects,
             previews,
@@ -114,6 +116,10 @@ impl DesktopInventory {
 
     pub(crate) fn previews(&self) -> preview::Previews {
         self.previews.clone()
+    }
+
+    pub(crate) fn helper_binary(&self) -> PathBuf {
+        self.binary.clone()
     }
 
     pub(crate) fn submit_effects(

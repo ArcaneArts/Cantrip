@@ -436,9 +436,6 @@ impl Ensurer {
         if !session.is_object() {
             bail!("This native preparation requires the managed chat session from the server.");
         }
-        if session["computerUseEnabled"] == true {
-            bail!("Managed computer-use attachment is unavailable in the native worker.");
-        }
         let standalone = session["contextKind"] == "standalone";
         let (context_kind, execution, placement) = if standalone {
             ("standalone", "standalone-chat", "scratchRootId")
@@ -718,7 +715,10 @@ impl Ensurer {
                                     .chain(crate::web::session::TOOLS.into_iter().map(|(operation, _)| operation))
                                     .collect::<Vec<_>>(),
                             });
-                            let attachment = broker.prepare(admission.clone(), legacy_root).await?;
+                            let computer_use = session["computerUseEnabled"] == true;
+                            let attachment = broker
+                                .prepare_for_turn(admission.clone(), legacy_root, computer_use)
+                                .await?;
                             if let Err(error) = resource.signal.check() {
                                 let binding = field(&attachment.connection, "bindingId")?;
                                 broker.revoke(&binding)?;
@@ -731,6 +731,10 @@ impl Ensurer {
                             } else {
                                 attachment.codex_configuration(&std::env::current_exe()?)?
                             };
+                            if computer_use {
+                                mcp["cantrip_cua"] = attachment
+                                    .computer_use_configuration(&std::env::current_exe()?, guest)?;
+                            }
                             Some(admission)
                         };
                         let runner_base: JsString = payload_digest(&json!([

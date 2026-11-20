@@ -67,13 +67,14 @@ pub(super) fn subscribe(
     observation: &RuntimeHub,
     thread: &JsString,
 ) -> Result<(Subscription, Events, Capture)> {
-    subscribe_with_context(observation, thread, None)
+    subscribe_with_context(observation, thread, None, None)
 }
 
 pub(super) fn subscribe_with_context(
     observation: &RuntimeHub,
     thread: &JsString,
     context: Option<Arc<super::context::ContextTurn>>,
+    computer_use: Option<Arc<super::computer_use::Turn>>,
 ) -> Result<(Subscription, Events, Capture)> {
     let (observed, events) = mpsc::unbounded_channel();
     let capture = observed.clone();
@@ -82,6 +83,9 @@ pub(super) fn subscribe_with_context(
         Observer {
             capture: Arc::new(move |frame| {
                 if observes(&frame["method"]) {
+                    if let Some(computer_use) = &computer_use {
+                        computer_use.observe(&frame);
+                    }
                     if let Some(context) = &context {
                         context.observe(&frame);
                     }
