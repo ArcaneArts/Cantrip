@@ -722,7 +722,7 @@ impl Turns {
         if !command["taskResumption"].is_null() {
             let task = task.context("The restored Task has no canonical owner.")?;
             return self
-                .restore_task(&command, task, &active, &signal, emit)
+                .restore_task(&command, task, &active, &signal, emit, epoch)
                 .await;
         }
         let policy_context = policy::context(&self.encryption, &command)?;

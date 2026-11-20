@@ -455,8 +455,10 @@ export async function verifyManagedComputerUse({
       );
       if (recovery) {
         assert.equal(
-          messages.filter(({ content }) =>
-            content.some(({ text }) => text === prompt),
+          messages.filter(({ classification, content }) =>
+            reviewed
+              ? classification.role === "user" && classification.mode === "goal"
+              : content.some(({ text }) => text === prompt),
           ).length,
           1,
         );
@@ -579,17 +581,22 @@ export async function verifyManagedComputerUse({
   assert.deepEqual(model.failures, []);
   console.log(
     JSON.stringify({
-      suite: reviewed
-        ? "native-task-goal-computer-use"
-        : preparedTask
-          ? "native-task-computer-use"
+      suite: [
+        "native",
+        reviewed ? "task-goal" : preparedTask ? "task" : null,
+        recovery
+          ? "recovered"
           : managedConsole
-            ? "native-console-computer-use"
-            : recovery
-              ? "native-recovered-computer-use"
-              : autonomous
-                ? "native-autonomous-computer-use"
-                : "native-managed-computer-use",
+            ? "console"
+            : autonomous
+              ? "autonomous"
+              : preparedTask
+                ? null
+                : "managed",
+        "computer-use",
+      ]
+        .filter(Boolean)
+        .join("-"),
       passed: true,
     }),
   );

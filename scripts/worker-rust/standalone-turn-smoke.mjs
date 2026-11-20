@@ -76,6 +76,8 @@ const { values } = parseArgs({
     "cua-child": { type: "string" },
     "cua-task": { type: "string" },
     "cua-task-goal": { type: "string" },
+    "cua-task-recovered": { type: "string" },
+    "cua-task-goal-recovered": { type: "string" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -117,11 +119,13 @@ const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const cuaConsole = values["cua-console"];
-const recoveredCua = values["cua-recovered"];
+const recoveredTaskGoalCua = values["cua-task-goal-recovered"];
+const recoveredTaskCua = values["cua-task-recovered"] || recoveredTaskGoalCua;
+const recoveredCua = values["cua-recovered"] || recoveredTaskCua;
 const autonomousCua = values["cua-autonomous"];
 const childCua = values["cua-child"];
-const taskGoalCua = values["cua-task-goal"];
-const taskCua = values["cua-task"] || taskGoalCua;
+const taskGoalCua = values["cua-task-goal"] || recoveredTaskGoalCua;
+const taskCua = values["cua-task"] || taskGoalCua || recoveredTaskCua;
 const cuaAgent =
   values["cua-agent"] || cuaConsole || recoveredCua || autonomousCua || taskCua;
 const previewKey =
