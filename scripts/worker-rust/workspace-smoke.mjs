@@ -1187,6 +1187,7 @@ try {
         replayReusesThread: true,
         recoveredProtectedChatAndAttachment: true,
         continuedImportedAndRelocatedChat: true,
+        editedLatestNativeChatTurn: true,
       }),
     );
   else if (values["run-runtime-only"])

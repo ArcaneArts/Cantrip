@@ -8347,3 +8347,34 @@ Repeat with `scripts/worker-rust/workspace-smoke.mjs --project-export-only`.
 The Rust journal test reopened the legacy format and rejected changed digest
 and binding values. Seven focused Node reference tests passed. Cross-worker
 relocation and Windows runtime execution were outside the local fixture.
+
+## 229. Edit and resend the latest native chat turn
+
+Reference commit `582d99c6fa0f5b07cf98253efd63a55575c7bfbb` (#3392).
+
+The Rust worker handles Core's `chat.turn.rollback` command. It identifies the
+exact native user item by its Cantrip message ID and reverts the history
+before that turn. For a managed session it binds the accepted replacement
+turn's preparation and admits revert as a separate native mutation. Core
+remains responsible for replacing the protected canonical rows and dispatching
+the new turn.
+
+The bundled Codex releases the terminated session's checkpoint lock before
+reporting shutdown complete. Revert can reopen the same thread and read its
+actual suspension state while the app-server request still holds a reference
+to the old session. The terminated session cannot reacquire the lock. The
+worker selects a fresh managed runner for the reverted attachment, because
+native shutdown closes the previous inference gate. The next preparation
+binds the new gate to the same chat, placement and thread.
+
+The macOS ARM64 fixture used production Rust Core in PGlite mode, the Rust
+worker, patched bundled Codex 0.166.0 and a loopback Responses provider. The
+public API rejected an older message, then edited and resent the latest turn
+after worker restart. The provider received the retained conversation and
+replacement prompt. The protected history omitted the superseded prompt and
+answer. Replaying the edit returned the existing message. A subsequent turn
+retained the replacement and its answer on the same native runtime. The
+focused native durable suspension and Node rollback reference tests also
+passed. Repeat the worker fixture with
+`scripts/worker-rust/workspace-smoke.mjs --project-export-only`. Guest and
+Windows execution were outside this local fixture.

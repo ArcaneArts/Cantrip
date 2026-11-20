@@ -441,13 +441,21 @@ export async function verifyProjectExport({
     async function verifyAnswer(answer) {
       await eventually(
         async () => {
-          const messages = await call("GET", importedMessagesUrl);
+          const [messages, chats] = await Promise.all([
+            call("GET", importedMessagesUrl),
+            call("GET", endpoint + "/chats"),
+          ]);
           assert.equal(messages.status, 200);
-          return Promise.all(messages.body.messages.map(openMessage));
+          assert.equal(chats.status, 200);
+          return {
+            status: chats.body.find((chat) => chat.id === job.chatId)?.status,
+            history: await Promise.all(messages.body.messages.map(openMessage)),
+          };
         },
-        (messages) => {
+        ({ status, history }) => {
+          assert.equal(status, "idle");
           assert.ok(
-            messages.some((message) =>
+            history.some((message) =>
               message.content.some(
                 (item) => item.type === "text" && item.text === answer,
               ),
@@ -510,15 +518,16 @@ export async function verifyProjectExport({
     const nextQuestion = "Continue the relocated conversation";
     const nextAnswer = "Continuation from the relocated history";
     const relocatedReply = upstream.reply({ text: nextAnswer });
+    const original = await encryptedTurn({
+      ownerId,
+      chatKey,
+      modelId: model.body.id,
+      question: nextQuestion,
+    });
     const relocatedTurn = await call(
       "POST",
       `/api/chats/${job.chatId}/turns`,
-      await encryptedTurn({
-        ownerId,
-        chatKey,
-        modelId: model.body.id,
-        question: nextQuestion,
-      }),
+      original,
     );
     assert.equal(relocatedTurn.status, 202, JSON.stringify(relocatedTurn));
     await verifyAnswer(nextAnswer);
@@ -528,6 +537,84 @@ export async function verifyProjectExport({
       relocatedContext.includes("Continuation from the imported history"),
     );
     assert.ok(relocatedContext.includes(nextQuestion));
+
+    await restartWorker();
+    const editedQuestion = "Replace the last relocated prompt after restart";
+    const editedAnswer = "Answer to the edited relocated prompt";
+    const edited = await encryptedTurn({
+      ownerId,
+      chatKey,
+      modelId: model.body.id,
+      question: editedQuestion,
+    });
+    const editUrl = (id) => `/api/chats/${job.chatId}/turns/${id}/retry`;
+    const stale = await call("POST", editUrl(next.message.id), edited);
+    assert.equal(stale.status, 409, JSON.stringify(stale));
+    assert.match(stale.body.error, /latest user message/u);
+    const editedReply = upstream.reply({ text: editedAnswer });
+    const retry = await call("POST", editUrl(original.message.id), edited);
+    assert.equal(retry.status, 202, JSON.stringify(retry));
+    assert.equal(retry.body.message.id, edited.message.id);
+    try {
+      await verifyAnswer(editedAnswer);
+    } catch (cause) {
+      const logs = await call(
+        "GET",
+        `/api/workers/${workerId}/logs?limit=500&minimumLevel=warn`,
+      );
+      throw new Error(
+        `Edited turn did not commit. Provider entered=${Boolean(editedReply.request)}. Worker logs ${JSON.stringify(logs.body.records?.slice(-15))}`,
+        { cause },
+      );
+    }
+    const editedContext = JSON.stringify(editedReply.request.input.input);
+    assert.ok(editedContext.includes("Continuation from the imported history"));
+    assert.ok(editedContext.includes(editedQuestion));
+    assert.ok(!editedContext.includes(nextQuestion));
+    assert.ok(!editedContext.includes(nextAnswer));
+    const afterEdit = await call("GET", importedMessagesUrl);
+    assert.equal(afterEdit.status, 200);
+    assert.ok(
+      !afterEdit.body.messages.some(
+        (message) => message.id === original.message.id,
+      ),
+    );
+    const openedAfterEdit = await Promise.all(
+      afterEdit.body.messages.map(openMessage),
+    );
+    const textAfterEdit = JSON.stringify(openedAfterEdit);
+    assert.ok(!textAfterEdit.includes(nextQuestion));
+    assert.ok(!textAfterEdit.includes(nextAnswer));
+    assert.ok(textAfterEdit.includes(editedAnswer));
+    const replayedEdit = await call(
+      "POST",
+      editUrl(original.message.id),
+      edited,
+    );
+    assert.equal(replayedEdit.status, 200, JSON.stringify(replayedEdit));
+    assert.equal(replayedEdit.body.message.id, edited.message.id);
+    assert.deepEqual(await call("GET", importedMessagesUrl), afterEdit);
+
+    const followupQuestion = "Continue after the edited prompt";
+    const followupAnswer = "Answer after the edited prompt";
+    const followup = upstream.reply({ text: followupAnswer });
+    const followupTurn = await call(
+      "POST",
+      `/api/chats/${job.chatId}/turns`,
+      await encryptedTurn({
+        ownerId,
+        chatKey,
+        modelId: model.body.id,
+        question: followupQuestion,
+      }),
+    );
+    assert.equal(followupTurn.status, 202, JSON.stringify(followupTurn));
+    await verifyAnswer(followupAnswer);
+    const followupContext = JSON.stringify(followup.request.input.input);
+    assert.ok(followupContext.includes(editedQuestion));
+    assert.ok(followupContext.includes(editedAnswer));
+    assert.ok(!followupContext.includes(nextQuestion));
+    assert.deepEqual(upstream.failures, []);
   } finally {
     labelKey.fill(0);
     chatKey.fill(0);
