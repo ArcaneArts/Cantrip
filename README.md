@@ -695,6 +695,11 @@ Codex, the Cantrip CLI and CUA. The current release commands use the existing
 Node worker while the Rust port is in progress. See the
 [Rust worker port ledger](docs/RUST_WORKER_PORT.md) for packaging and validation.
 
+Use `pnpm package:desktop-runtime --worker-runtime rust` to stage the native
+worker for desktop, or `pnpm package:app --worker-runtime rust` to build the
+desktop app with that runtime. Add `--from-artifacts` to assemble from the
+matching standalone server and Rust worker artifacts.
+
 macOS packages set `CFBundleVersion` from the current Git commit count so
 Launch Services can distinguish successive builds. Set
 `CANTRIP_APP_BUILD_VERSION` to a positive one-to-three-component numeric build

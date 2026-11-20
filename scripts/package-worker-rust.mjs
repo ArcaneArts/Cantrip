@@ -66,7 +66,23 @@ exec ./bin/cantrip-worker "$@"
   );
 }
 
-export async function packageNativeWorker({ target, destination, inputs }) {
+export async function verifyNativeWorkerBin(bin, platform) {
+  const suffix = platform === "win32" ? ".exe" : "";
+  for (const name of ["cantrip-worker", "cantrip"]) {
+    await execute(path.join(bin, name + suffix), ["--version"], {
+      timeout: 30_000,
+    });
+  }
+  await verifyBuiltRuntime(bin);
+  await smokeCantripCua(path.join(bin, "cantrip-cua" + suffix));
+}
+
+export async function packageNativeWorker({
+  target,
+  destination,
+  inputs,
+  standalone = true,
+}) {
   const { platform } = target;
   const worker = inputs.worker ?? (await buildRustWorker());
   await mkdir(path.dirname(destination), { recursive: true });
@@ -82,11 +98,11 @@ export async function packageNativeWorker({ target, destination, inputs }) {
     );
     await cp(worker, executable, { dereference: true });
     if (platform !== "win32") await chmod(executable, 0o755);
-    const cli = await bundleCantripCli(root, bin, {
+    await bundleCantripCli(root, bin, {
       platform,
       source: await realpath(inputs.cli),
     });
-    const cua = await bundleCantripCua(await realpath(inputs.cua), bin, {
+    await bundleCantripCua(await realpath(inputs.cua), bin, {
       platform,
     });
     if (target.id === "win32-x64") {
@@ -101,19 +117,18 @@ export async function packageNativeWorker({ target, destination, inputs }) {
         bin,
       ]);
     }
-    await writeLaunchers(stage);
-    await cp(
-      path.join(root, "deploy", "worker.env.example"),
-      path.join(stage, ".env.example"),
-    );
-    await cp(
-      path.join(root, "deploy", "worker-rust.README.md"),
-      path.join(stage, "README.md"),
-    );
-    await execute(executable, ["--version"], { timeout: 30_000 });
-    await execute(cli, ["--version"], { timeout: 30_000 });
-    await verifyBuiltRuntime(bin);
-    await smokeCantripCua(cua);
+    if (standalone) {
+      await writeLaunchers(stage);
+      await cp(
+        path.join(root, "deploy", "worker.env.example"),
+        path.join(stage, ".env.example"),
+      );
+      await cp(
+        path.join(root, "deploy", "worker-rust.README.md"),
+        path.join(stage, "README.md"),
+      );
+    }
+    await verifyNativeWorkerBin(bin, platform);
     if (platform !== "win32") await chmod(stage, 0o755);
 
     await rm(destination, { force: true, recursive: true });

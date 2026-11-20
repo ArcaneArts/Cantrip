@@ -47,8 +47,8 @@ mod tunnel_ssh;
 
 pub(crate) use desktop_services::terminate_child;
 use desktop_services::{
-    node_service_command, server_command, server_environment, spawn_service, terminate_server,
-    wait_for_server, worker_environment,
+    server_command, server_environment, spawn_service, terminate_server, wait_for_server,
+    worker_command, worker_environment,
 };
 use project_share::ProjectShareMounts;
 use tunnel_forward::TunnelForwards;
@@ -792,6 +792,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     let worker_token = format!("desktop-{}-{token_seed}", std::process::id());
     let server_directory = resources.join("server");
     let worker_directory = resources.join("worker");
+    let worker = worker_command(&node, &worker_directory)?;
     let launch = server_command(&node, &server_directory)?;
     if let Some(command) = launch.preparation {
         let mut preparation = spawn_service(
@@ -879,7 +880,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     );
 
     let mut worker = match spawn_service(
-        node_service_command(&node, &worker_directory),
+        worker,
         &worker_environment(data.as_path(), &logs, &server_url, &worker_token),
         false,
         true,
@@ -1284,8 +1285,8 @@ mod tests {
     };
 
     use super::{
-        desktop_window_state_flags, exit_request_needs_confirmation, node_service_command,
-        run_shutdown_once, should_persist_window_state, LocalWorkerRuntime, ManagedRuntime,
+        desktop_window_state_flags, exit_request_needs_confirmation, run_shutdown_once,
+        should_persist_window_state, worker_command, LocalWorkerRuntime, ManagedRuntime,
     };
     use tauri_plugin_window_state::StateFlags;
 
@@ -1327,10 +1328,11 @@ mod tests {
     #[test]
     fn packaged_node_services_use_a_working_directory_relative_entrypoint() {
         let directory = Path::new(r"C:\Program Files\Cantrip\runtime\server");
-        let command = node_service_command(
+        let command = worker_command(
             Path::new(r"C:\Program Files\Cantrip\runtime\node.exe"),
             directory,
-        );
+        )
+        .unwrap();
 
         assert_eq!(command.get_current_dir(), Some(directory));
         assert_eq!(

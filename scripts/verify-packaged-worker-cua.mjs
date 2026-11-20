@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -22,6 +23,13 @@ export async function verifyPackagedWorkerCua(workerDirectory, options = {}) {
     ...smokeOptions,
     backend: "fake",
   });
+  const workerConfiguration = await readFile(
+    path.join(workerDirectory, "desktop-worker.json"),
+    "utf8",
+  ).then(JSON.parse, (error) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+  if (workerConfiguration?.runtime === "rust") return native;
   const modelImageEncoder = await smokeCuaModelImageEncoder(workerDirectory);
   return { ...native, modelImageEncoder };
 }

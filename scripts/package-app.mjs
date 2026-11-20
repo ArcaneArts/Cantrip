@@ -9,6 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 let requestedTarget;
 let fromArtifacts = false;
 let serverRuntime = "rust";
+let workerRuntime;
 let postgresBin;
 for (let index = 2; index < process.argv.length; index += 1) {
   const argument = process.argv[index];
@@ -22,11 +23,16 @@ for (let index = 2; index < process.argv.length; index += 1) {
     index += 1;
   } else if (argument.startsWith("--target=")) {
     requestedTarget = argument.slice("--target=".length);
-  } else if (["--server-runtime", "--postgres-bin"].includes(argument)) {
+  } else if (
+    ["--server-runtime", "--worker-runtime", "--postgres-bin"].includes(
+      argument,
+    )
+  ) {
     const value = process.argv[++index];
     if (!value || value.startsWith("--"))
       throw new Error(`${argument} requires a value`);
     if (argument === "--server-runtime") serverRuntime = value;
+    else if (argument === "--worker-runtime") workerRuntime = value;
     else postgresBin = value;
   } else if (argument.startsWith("--server-runtime=")) {
     serverRuntime = argument.slice("--server-runtime=".length);
@@ -58,6 +64,7 @@ const runtimeArguments = [
   target.id,
 ];
 runtimeArguments.push("--server-runtime", serverRuntime);
+if (workerRuntime) runtimeArguments.push("--worker-runtime", workerRuntime);
 if (postgresBin) runtimeArguments.push("--postgres-bin", postgresBin);
 if (fromArtifacts) runtimeArguments.push("--from-artifacts");
 run(process.execPath, runtimeArguments);
