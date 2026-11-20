@@ -976,7 +976,9 @@
     "nativeAccountDefaultsContextSchema": 14413,
     "nativeAccountDefaultsWriteSchema": 14416,
     "nativeAccountDefaultsSnapshotSchema": 14433,
-    "nativeAccountDefaultsResultSchema": 14437
+    "nativeAccountDefaultsResultSchema": 14437,
+    "nativePermissionUpdateCommandSchema": 5487,
+    "permissionTransitionSchema": 5489
   },
   "nodes": [
     {

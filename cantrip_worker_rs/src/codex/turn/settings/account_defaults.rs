@@ -91,7 +91,7 @@ impl Turns {
             "edits":edits,"expectedVersion":write["expectedVersion"],"reloadUserConfig":false,
         });
         let intent = json!({
-            "operationId":context["operationId"],"permissionProfileId":source.permission,
+            "operationId":context["operationId"],"permissionProfileId":source.permission(),
             "settingsBindingId":context["bindingId"],
         });
         let check_dispatch = || {

@@ -419,7 +419,7 @@ impl Client {
         Ok(reply)
     }
 
-    pub(super) async fn publish_settings(&self, event: &Value) -> Result<()> {
+    pub(super) async fn publish_settings(&self, event: &Value) -> Result<Value> {
         let reply = self
             .exchange(
                 "settings-evidence",
@@ -436,7 +436,7 @@ impl Client {
         {
             bail!("Core returned unrelated native settings evidence acknowledgment.");
         }
-        Ok(())
+        Ok(reply)
     }
 
     pub async fn event(&self, scope: &Scope, operation: &Operation, event: Value) -> Result<()> {
@@ -1045,6 +1045,9 @@ impl Client {
             );
         }
         if method == super::settings::UPDATE {
+            if let Some(transition) = command.get("permissionTransition") {
+                intent["permissionTransition"] = transition.clone();
+            }
             intent["settingKeys"] = json!(
                 params
                     .as_object()

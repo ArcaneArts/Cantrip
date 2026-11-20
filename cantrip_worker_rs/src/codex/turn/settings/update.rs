@@ -1,11 +1,12 @@
 //! Open an explicit client patch and dispatch it through the existing native
 //! command controller and settings evidence outbox.
-use super::{Scope, Turns, UPDATE, assert_ordinary_settings, id, snapshot::Source};
-use crate::{codex::managed::Runtime, http::checked, metadata::Signal};
+use super::{Scope, Turns, UPDATE, assert_ordinary_settings, id, permission, snapshot::Source};
+use crate::{http::checked, metadata::Signal};
 use anyhow::{Context, Result, anyhow, ensure};
 use cantrip_crypto::content::open_native_settings_patch;
 use cantrip_history::content::Encryption;
 use cantrip_wire::{Value, value::json};
+use std::sync::Arc;
 
 pub(crate) const COMMAND: &str = "chat.settings.update";
 
@@ -19,7 +20,6 @@ impl Turns {
         );
         let source = self.preparation.settings_source(binding, true)?;
         let scope = source.encryption_scope()?;
-        let runtime = source.runtime()?;
         let patch = (|| {
             let envelope = &command["protectedPatch"];
             let revision = envelope["keyRevision"].as_u64().context("Missing settings key revision.")?;
@@ -32,22 +32,24 @@ impl Turns {
             )
         })().map_err(|_| anyhow!("The encrypted settings patch could not be opened. No native update was requested."))?;
 
-        let result = self.apply_settings_update(&source, &runtime, scope, &command, patch, signal).await
+        let result = self.apply_settings_update(source, scope, &command, patch, None, signal).await
             .map_err(|_| anyhow!("Native settings update did not return a confirmed receipt. Read its recorded state before submitting another change."))?;
-        source.assert_current()?;
         Ok(result)
     }
 
-    async fn apply_settings_update(
+    pub(super) async fn apply_settings_update(
         &self,
-        source: &Source,
-        runtime: &Runtime,
+        source: Arc<Source>,
         scope: Scope,
         command: &Value,
         mut params: Value,
+        transition: Option<Value>,
         signal: Signal,
     ) -> Result<Value> {
-        assert_ordinary_settings(&params)?;
+        let runtime = source.runtime()?;
+        if transition.is_none() {
+            assert_ordinary_settings(&params)?;
+        }
         if !params["cwd"].is_null() {
             crate::codex::turn::autonomous::same_workspace(&source.cwd, &params["cwd"]).await?;
         }
@@ -69,8 +71,16 @@ impl Turns {
             "The native settings runtime epoch changed."
         );
         let activation = self.settings_activation(&scope, chat);
-        let intent = json!({"operationId":command["operationId"],
-            "permissionProfileId":source.permission,"settingsBindingId":binding["bindingId"]});
+        let mut intent = json!({"operationId":command["operationId"],
+            "permissionProfileId":source.permission(),"settingsBindingId":binding["bindingId"]});
+        let permission = transition.map(|transition| {
+            intent["permissionTransition"] = transition.clone();
+            permission::Change {
+                transition,
+                epoch: binding["nativeEpoch"].clone(),
+                source: source.clone(),
+            }
+        });
         let check = || {
             signal.check()?;
             source.assert_current()
@@ -81,8 +91,9 @@ impl Turns {
             .admit_command(scope, session, UPDATE, &params, &intent, activation)
             .await?;
         let (reply, status) = self
-            .dispatch_settings(runtime, &receipt, params, check)
+            .dispatch_settings(&runtime, &receipt, params, permission, check)
             .await?;
+        source.assert_current()?;
         checked(
             "nativeSettingsUpdateReceiptSchema",
             &json!({

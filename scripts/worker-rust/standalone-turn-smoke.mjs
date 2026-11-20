@@ -61,6 +61,7 @@ const operationsKey = key("model-operation-content");
 let server;
 let child;
 let workerExit;
+let workerEnvironment;
 const models = [];
 let diagnostics = "";
 const readyTimeout = 20_000;
@@ -76,6 +77,44 @@ async function eventually(read, verify, timeout = readyTimeout) {
       if (Date.now() >= end || child?.exitCode !== null) throw error;
     }
     await delay(100);
+  }
+}
+
+async function startWorker(enrollmentCode) {
+  diagnostics = "";
+  child = spawn(path.resolve(values.worker), ["--shutdown-on-stdin-close"], {
+    cwd: root,
+    env: {
+      ...workerEnvironment,
+      ...(enrollmentCode
+        ? { CANTRIP_WORKER_ENROLLMENT_CODE: enrollmentCode }
+        : {}),
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  workerExit = new Promise((resolve) => {
+    child.once("error", (error) => resolve(error));
+    child.once("close", (code, signal) => resolve({ code, signal }));
+  });
+  const capture = (chunk) => {
+    diagnostics = (diagnostics + chunk).slice(-24_000);
+  };
+  child.stdout.on("data", capture);
+  child.stderr.on("data", capture);
+  await eventually(
+    () => diagnostics,
+    (value) => assert.match(value, /event=worker\.connection\.connected/),
+  );
+}
+
+async function stopWorker() {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  child.stdin.end();
+  const timer = setTimeout(() => child.kill("SIGKILL"), 10_000);
+  try {
+    return await workerExit;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -1023,6 +1062,87 @@ async function verifySettingsSnapshot() {
     "Production Rust Core and worker encrypted, applied and reopened client settings with stable operation receipts.",
   );
   await verifyAccountDefaults({ chatId, chatUrl, bindingId, serverId, state });
+  await verifyPermissionTransition({ chatUrl, bindingId, model, open });
+}
+
+async function verifyPermissionTransition({ chatUrl, bindingId, model, open }) {
+  const url = `${chatUrl}/native-settings`;
+  const permission = `${chatUrl}/permission-profile`;
+  const request = {
+    id: ":read-only",
+    bindingId,
+    operationId: randomUUID(),
+    expectedRevision: "0",
+  };
+  const update = await call("PATCH", permission, 200, request);
+  assert.equal(update.operationId, request.operationId);
+  assert.ok(update.submissionId);
+  const applied = await eventually(
+    () => call("GET", url, 200),
+    (state) => {
+      assert.equal(state.desiredStatus, "applied");
+      assert.equal(state.permissionPolicy?.operationId, request.operationId);
+      assert.equal(state.permissionPolicy?.effectiveId, ":read-only");
+      assert.equal(state.permissionPolicy?.revision, "1");
+      assert.equal(
+        state.effective.context.settingsVersion.revision,
+        state.permissionPolicy.settingsVersion.revision,
+      );
+    },
+  );
+  assert.equal(
+    (await open(applied.effective)).activePermissionProfile.id,
+    ":read-only",
+  );
+
+  await call("PATCH", permission, 409, {
+    ...request,
+    id: ":workspace",
+    operationId: randomUUID(),
+  });
+  assert.equal(
+    (await call("GET", url, 200)).permissionPolicy.operationId,
+    request.operationId,
+  );
+
+  assert.deepEqual(await stopWorker(), { code: 0, signal: null });
+  await startWorker();
+  const response = model.model.reply({ text: "Permission recovery verified." });
+  await call(
+    "POST",
+    `${chatUrl}/turns`,
+    202,
+    await encryptedTurn("Read only after restart", model.profile.id),
+  );
+  await eventually(
+    () => response,
+    (reply) => assert.equal(reply.request?.completed, true),
+    35_000,
+  );
+  const recovered = await eventually(
+    () => call("GET", url, 200),
+    (state) => {
+      const policy = state.permissionPolicy;
+      assert.notEqual(
+        state.binding.runtimeGeneration,
+        applied.binding.runtimeGeneration,
+      );
+      assert.equal(policy.operationId, request.operationId);
+      assert.equal(policy.revision, applied.permissionPolicy.revision);
+      assert.equal(
+        policy.source.runtimeGeneration,
+        state.binding.runtimeGeneration,
+      );
+      assert.equal(policy.settingsVersion.epoch, state.binding.nativeEpoch);
+    },
+  );
+  assert.equal(
+    (await open(recovered.effective)).activePermissionProfile.id,
+    ":read-only",
+  );
+  console.log(
+    "Production Rust Core and worker confirmed the permission transition and recovered its native journal after restart.",
+  );
 }
 
 async function verifyAccountDefaults({
@@ -1222,35 +1342,18 @@ try {
   const enrollment = await call("POST", "/api/workers/enrollment-codes", 201, {
     label: "Rust standalone turn",
   });
-  child = spawn(path.resolve(values.worker), ["--shutdown-on-stdin-close"], {
-    cwd: root,
-    env: {
-      ...environment,
-      PATH: "",
-      NO_COLOR: "1",
-      CANTRIP_LOG_LEVEL: "debug",
-      CANTRIP_SERVER_URL: server.origin,
-      CANTRIP_WORKER_DATA_DIR: data,
-      CANTRIP_WORKER_ID: workerId,
-      CANTRIP_WORKER_ENROLLMENT_CODE: enrollment.code,
-      CANTRIP_CODEX_BIN: path.resolve(values.codex),
-      ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  workerExit = new Promise((resolve) => {
-    child.once("error", (error) => resolve(error));
-    child.once("close", (code, signal) => resolve({ code, signal }));
-  });
-  const capture = (chunk) => {
-    diagnostics = (diagnostics + chunk).slice(-24_000);
+  workerEnvironment = {
+    ...environment,
+    PATH: "",
+    NO_COLOR: "1",
+    CANTRIP_LOG_LEVEL: "debug",
+    CANTRIP_SERVER_URL: server.origin,
+    CANTRIP_WORKER_DATA_DIR: data,
+    CANTRIP_WORKER_ID: workerId,
+    CANTRIP_CODEX_BIN: path.resolve(values.codex),
+    ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
   };
-  child.stdout.on("data", capture);
-  child.stderr.on("data", capture);
-  await eventually(
-    () => diagnostics,
-    (value) => assert.match(value, /event=worker\.connection\.connected/),
-  );
+  await startWorker(enrollment.code);
   await setupEncryption();
   if (values.cli) {
     // This disposable profile permits a shell connection to the local broker.
@@ -1277,16 +1380,7 @@ try {
   throw error;
 } finally {
   try {
-    let workerResult;
-    if (child && child.exitCode === null && child.signalCode === null) {
-      child.stdin.end();
-      const timer = setTimeout(() => child.kill("SIGKILL"), 10_000);
-      try {
-        workerResult = await workerExit;
-      } finally {
-        clearTimeout(timer);
-      }
-    }
+    const workerResult = await stopWorker();
     await Promise.all([
       server?.close(),
       ...models.map((model) => model.close()),

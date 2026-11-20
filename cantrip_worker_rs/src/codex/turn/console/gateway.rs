@@ -405,7 +405,7 @@ async fn client_request<'a>(
     let receipt = view
         .turns
         .receipts
-        .admit_console(scope, session.clone(), method, frame, &view.permission)
+        .admit_console(scope, session.clone(), method, frame, &view.permission())
         .await?;
     if let Err(error) = async {
         view.assert_current()?;

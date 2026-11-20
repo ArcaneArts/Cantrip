@@ -139,7 +139,7 @@ async fn execute(view: &View, session: &Value, frame: &Value, signal: &Signal) -
         let admission = client.queue_admission(
             &scope,
             session,
-            &view.permission,
+            &view.permission(),
             &operation,
             &json!({"method":method,"params":params}),
             activation,
