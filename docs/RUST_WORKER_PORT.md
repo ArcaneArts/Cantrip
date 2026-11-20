@@ -9347,3 +9347,25 @@ pages. Only the trusted Project checkout exposed its local profile. The
 fixture also verified the built-in entries, Core's YOLO alias, and the absence
 of inference requests. The existing permission-transition tests and wire
 comparisons for the two permission response contracts passed locally.
+
+## 269. Discover MCP imports on the Rust worker
+
+Reference commit `0787ce8e2f50e321e33b2af9b7ecf2b54e041791` (#3432).
+
+The worker reads user and checkout Codex TOML and Claude JSON, including
+the selected checkout's entry in the Claude user file. It preserves source
+order, expands supported Claude environment references and excludes reserved
+managed names. Configuration validation errors use generic diagnostics to keep
+configuration keys private. The worker seals the candidates with the scoped
+MCP key and existing blind index format before returning them to Core.
+
+Local HTTP discovery reuses the existing host listener inventory, restricts
+the handshake to loopback, and requests cleanup for the sessions it opens.
+It accepts JSON and SSE with the existing timeout, response and concurrency
+limits.
+
+The macOS ARM64 `standalone-turn-smoke.mjs --mcp-discovery` fixture ran the
+production Rust worker and Rust Core in PGlite mode. It used an isolated
+listener list with real loopback endpoints to verify global and project
+discovery, encrypted round-trips, session cleanup, redirect rejection and
+saving a discovered project configuration.

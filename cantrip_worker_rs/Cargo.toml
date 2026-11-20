@@ -65,7 +65,7 @@ icu_casemap = "=2.1.1"
 icu_normalizer = "=2.1.1"
 codex-utils-pty = { package = "cantrip-pty", path = "../crates/cantrip-pty" }
 tempfile = "3"
-toml = "1.2"
+toml = { version = "1.2", features = ["preserve_order"] }
 notify = "=8.2.0"
 vt100 = "=0.16.2"
 http-body-util = "0.1"

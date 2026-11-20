@@ -3,6 +3,7 @@
 pub mod bindings;
 mod broker;
 mod cua;
+pub(crate) mod discovery;
 mod rpc;
 mod stdio;
 

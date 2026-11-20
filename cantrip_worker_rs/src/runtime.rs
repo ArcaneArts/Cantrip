@@ -1118,6 +1118,22 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == crate::mcp::discovery::COMMAND {
+                    let routing = routing.clone();
+                    let encryption = encryption.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = async {
+                            let command = routing.resolve(&request["command"]).await?;
+                            crate::mcp::discovery::discover(&encryption, command["projectRoot"].as_js_string(), &scope).await
+                        }.await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if kind == "browser.services.discover" {
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
