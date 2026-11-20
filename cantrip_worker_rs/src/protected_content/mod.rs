@@ -11,7 +11,9 @@ use anyhow::{Result, anyhow};
 use cantrip_crypto::{DecryptionError, Zeroizing, checked};
 use cantrip_wire::{Value, parse_json_text, value::json};
 pub use endpoint::*;
-pub(crate) use policy::{open_policy_body, open_policy_summary};
+pub(crate) use policy::{
+    EffectivePolicies, open_policy_body, open_policy_detail, open_policy_summary,
+};
 pub use private_state::*;
 pub use replay::SurfaceStreamReplayGuard;
 pub use repository::*;

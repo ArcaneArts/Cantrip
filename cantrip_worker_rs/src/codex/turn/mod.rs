@@ -13,6 +13,7 @@ pub(crate) mod interactions;
 pub(crate) mod label;
 mod output;
 mod params;
+mod policy;
 mod protected;
 pub(crate) mod queue_wake;
 mod queued;
@@ -710,6 +711,7 @@ impl Turns {
                 .restore_task(&command, task, &active, &signal, emit)
                 .await;
         }
+        let policy_context = policy::context(&self.encryption, &command)?;
         let (prompt, protection) = if protected_mode(&command) {
             let (prompt, protection) =
                 protected::Protected::open(self.encryption.clone(), &command, &key.0, &key.1)?;
@@ -933,6 +935,7 @@ impl Turns {
                 thread,
                 self.preparation.supports_permission_profiles(),
                 prepared.environment.as_deref(),
+                policy_context,
             )
             .await?;
             if let Some(schema) = task.as_ref().and_then(|task| task.turn.output_schema()) {

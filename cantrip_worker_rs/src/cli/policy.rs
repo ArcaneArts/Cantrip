@@ -3,9 +3,9 @@ use super::server::{Rejected, Relay};
 use crate::{
     encryption::Service,
     http::checked,
-    protected_content::{open_policy_body, open_policy_summary},
+    protected_content::{EffectivePolicies, open_policy_detail},
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 use cantrip_wire::{Value, value::json};
 use hyper::StatusCode;
 
@@ -21,43 +21,20 @@ pub(super) async fn execute(
             &format!("{id}:policy-list"),
         )
         .await?;
-    let wire = checked("policyCliWireListResultSchema", &listed["data"])?;
-    let records = wire["policies"]
-        .as_array()
-        .context("Effective policy list")?;
-    let views = records
-        .iter()
-        .map(|record| {
-            let summary =
-                open_policy_summary(encryption, &record["id"], &record["protectedSummary"])?;
-            Ok(json!({
-                "key":summary["key"], "name":summary["name"], "summary":summary["summary"],
-                "mandatory":record["mandatory"], "sources":record["sources"],
-            }))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let opened = checked("policyCliListResultSchema", &json!({"policies":views}))?;
+    let opened = EffectivePolicies::open(encryption, &listed["data"])?;
     if request["command"] == "policy.list" {
-        let count = records.len();
-        let plural = if count == 1 { "policy" } else { "policies" };
-        listed["summary"] = json!(format!("Found {count} effective {plural}."));
-        listed["data"] = opened;
+        listed["summary"] = json!(opened.summary());
+        listed["data"] = opened.into_view();
         return checked("cantripCliCommandResultSchema", &listed);
     }
 
     let key = checked("policyKeySchema", &request["arguments"]["key"])?;
     let key_text = key.as_str().context("Policy key")?;
-    let index = opened["policies"]
-        .as_array()
-        .context("Opened effective policy list")?
-        .iter()
-        .position(|view| view["key"] == key)
-        .ok_or_else(|| Rejected {
-            status: StatusCode::NOT_FOUND,
-            code: Some("not-found".into()),
-            message: format!("Policy {key_text} is not effective for the current project.").into(),
-        })?;
-    let policy_id = &records[index]["id"];
+    let policy_id = opened.identifier(&key).ok_or_else(|| Rejected {
+        status: StatusCode::NOT_FOUND,
+        code: Some("not-found".into()),
+        message: format!("Policy {key_text} is not effective for the current project.").into(),
+    })?;
     let mut result = server
         .execute(
             call(
@@ -68,29 +45,8 @@ pub(super) async fn execute(
             &format!("{id}:policy-read"),
         )
         .await?;
-    let fetched = checked("policyCliWireReadResultSchema", &result["data"])?;
-    let policy = &fetched["policy"];
-    ensure!(
-        &policy["id"] == policy_id,
-        "The policy read returned a different policy."
-    );
-    let content = &policy["content"];
-    let summary = open_policy_summary(encryption, policy_id, &content["protectedSummary"])?;
-    ensure!(
-        summary["key"] == key,
-        "The policy key changed while reading its content."
-    );
-    let body = open_policy_body(encryption, policy_id, &content["protectedBody"])?;
     result["summary"] = json!(format!("Read policy {key_text}."));
-    result["data"] = checked(
-        "policyCliReadResultSchema",
-        &json!({
-            "policy":json!({
-                "key":summary["key"], "name":summary["name"], "summary":summary["summary"],
-                "bodyMarkdown":body["bodyMarkdown"],
-            }),
-        }),
-    )?;
+    result["data"] = open_policy_detail(encryption, policy_id, &key, &result["data"])?;
     checked("cantripCliCommandResultSchema", &result)
 }
 

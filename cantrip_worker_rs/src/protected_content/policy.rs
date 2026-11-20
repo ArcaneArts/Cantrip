@@ -48,3 +48,82 @@ fn open_policy(
     });
     decrypt_secret(&grant.component.key, &binding, opaque, schema, Some(limit))
 }
+
+/// Keep Core's order and resolve the private policy key to its opaque ID
+/// before asking Core for the body.
+pub(crate) struct EffectivePolicies {
+    records: Vec<Value>,
+    view: Value,
+}
+
+impl EffectivePolicies {
+    pub(crate) fn open(encryption: &Service, opaque: &Value) -> Result<Self> {
+        let wire = crate::http::checked("effectivePolicyWireListSchema", opaque)?;
+        let records = wire["policies"]
+            .as_array()
+            .context("Effective policy list")?
+            .clone();
+        let view = records
+            .iter()
+            .map(|record| {
+                let summary =
+                    open_policy_summary(encryption, &record["id"], &record["protectedSummary"])?;
+                Ok(json!({
+                    "key":summary["key"], "name":summary["name"], "summary":summary["summary"],
+                    "mandatory":record["mandatory"], "sources":record["sources"],
+                }))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let view = crate::http::checked("policyCliListResultSchema", &json!({"policies":view}))?;
+        Ok(Self { records, view })
+    }
+
+    pub(crate) fn summaries(&self) -> &[Value] {
+        self.view["policies"].as_array().unwrap()
+    }
+
+    pub(crate) fn identifier(&self, key: &Value) -> Option<&Value> {
+        self.summaries()
+            .iter()
+            .position(|record| record["key"] == *key)
+            .map(|index| &self.records[index]["id"])
+    }
+
+    pub(crate) fn summary(&self) -> String {
+        let count = self.records.len();
+        let plural = if count == 1 { "policy" } else { "policies" };
+        format!("Found {count} effective {plural}.")
+    }
+
+    pub(crate) fn into_view(self) -> Value {
+        self.view
+    }
+}
+
+pub(crate) fn open_policy_detail(
+    encryption: &Service,
+    id: &Value,
+    key: &Value,
+    opaque: &Value,
+) -> Result<Value> {
+    let wire = crate::http::checked("policyCliWireReadResultSchema", opaque)?;
+    let policy = &wire["policy"];
+    anyhow::ensure!(
+        &policy["id"] == id,
+        "The policy read returned a different policy."
+    );
+    let content = &policy["content"];
+    let summary = open_policy_summary(encryption, id, &content["protectedSummary"])?;
+    anyhow::ensure!(
+        &summary["key"] == key,
+        "The policy key changed while reading its content."
+    );
+    let body = open_policy_body(encryption, id, &content["protectedBody"])?;
+    crate::http::checked(
+        "policyCliReadResultSchema",
+        &json!({"policy":json!({
+            "key":summary["key"], "name":summary["name"], "summary":summary["summary"],
+            "bodyMarkdown":body["bodyMarkdown"],
+        })}),
+    )
+}

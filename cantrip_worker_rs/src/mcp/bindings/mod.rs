@@ -115,6 +115,7 @@ struct Inner {
     worker: JsString,
     identity: Identity,
     server: Server,
+    encryption: Option<Arc<crate::encryption::Service>>,
     web: Arc<crate::web::Service>,
     entries: Mutex<Entries>,
     negotiated: AsyncMutex<Option<Negotiated>>,
@@ -173,7 +174,7 @@ impl Broker {
         identity: Identity,
         server: Server,
     ) -> Result<Self> {
-        Self::start_with_web(data, worker, identity, server, None, None).await
+        Self::start_with_web(data, worker, identity, server, None, None, None).await
     }
 
     pub(crate) async fn start_with_web(
@@ -181,6 +182,7 @@ impl Broker {
         worker: JsString,
         identity: Identity,
         server: Server,
+        encryption: Option<Arc<crate::encryption::Service>>,
         runtimes: Option<Arc<crate::managed_web::Runtimes>>,
         browsers: Option<Arc<crate::browser_surface::Manager>>,
     ) -> Result<Self> {
@@ -192,6 +194,7 @@ impl Broker {
             worker,
             identity,
             server,
+            encryption,
             web: Arc::new(
                 crate::web::Service::new(
                     runtimes.as_ref().map(|runtimes| runtimes.browser.clone()),
@@ -240,6 +243,7 @@ impl Broker {
         let sessions = self.inner.web.has_sessions()
             && !standalone
             && claims["permissionProfileId"] != ":read-only";
+        let policies = !standalone && self.inner.encryption.is_some() && capabilities.policy_list;
         let (operations, tools): (Vec<_>, Vec<JsString>) = [
             (
                 "context.get",
@@ -252,6 +256,12 @@ impl Broker {
                 !standalone
                     && capabilities.compact
                     && claims["permissionProfileId"] != ":read-only",
+            ),
+            ("policy.list", "policy_list", policies),
+            (
+                "policy.read",
+                "policy_read",
+                policies && capabilities.policy_read,
             ),
             ("tool.help", "tool_help", true),
             ("web.read", "web_read", true),
@@ -445,6 +455,8 @@ impl Inner {
                 version: 1,
                 context: true,
                 compact: false,
+                policy_list: false,
+                policy_read: false,
             });
         *cached = Some(Negotiated {
             identity: identity.clone(),

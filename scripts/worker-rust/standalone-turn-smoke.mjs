@@ -51,6 +51,7 @@ const { values } = parseArgs({
     cli: { type: "string" },
     bundled: { type: "boolean" },
     codegraph: { type: "boolean" },
+    policies: { type: "boolean" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -91,6 +92,7 @@ const chatKey = key("chat-content");
 const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
+const policyKey = values.policies ? key("policy-content") : null;
 const operationsKey = key("model-operation-content");
 const consoleInteractions = values["console-interactions"];
 const restoredInteractions = values["restored-interactions"];
@@ -117,6 +119,7 @@ const interactionKey =
     ? key("interaction-content")
     : null;
 const consoleStateKey =
+  values.policies ||
   values.codegraph ||
   consoleInteractions ||
   subagentInteractions ||
@@ -263,6 +266,7 @@ async function setupEncryption() {
     ["private-surface-metadata", labelKey],
     ["task-content", taskKey],
     ["provider-credential", providerKey],
+    ...(policyKey ? [["policy-content", policyKey]] : []),
     ["model-operation-content", operationsKey],
     ...(interactionKey ? [["interaction-content", interactionKey]] : []),
     ...(consoleStateKey ? [["surface-private-state", consoleStateKey]] : []),
@@ -2401,6 +2405,195 @@ async function verifyAccountDefaults({
   );
 }
 
+async function verifyPolicies() {
+  const define = async (key, audience, summary, bodyMarkdown) => {
+    const id = randomUUID();
+    const content = await crypto.encryptPolicyContent({
+      ownerId,
+      keyRevision,
+      componentKey: policyKey,
+      policyId: id,
+      summary: { version: 1, key, name: `Fixture ${key}`, summary },
+      body: { version: 1, bodyMarkdown },
+    });
+    const created = await call("POST", "/api/policies", 201, {
+      id,
+      enabled: true,
+      mandatory: false,
+      audience,
+      content,
+    });
+    assert.deepEqual(created.content, content);
+    return id;
+  };
+  const projectSummary = "The project policy summary is visible to the agent.";
+  const projectBody = "# Project command convention\n\nPrivate project body 🔐";
+  const standaloneBody =
+    "# Standalone Chat convention\n\nPrivate standalone body 🌲";
+  const projectPolicy = await define(
+    "project-fixture",
+    "ide",
+    projectSummary,
+    projectBody,
+  );
+  const unused = "Unassigned policy must stay outside the chat";
+  await define("unassigned-fixture", "ide", unused, "Unused private body");
+  await define(
+    "standalone-fixture",
+    "chat",
+    "Standalone summary",
+    standaloneBody,
+  );
+
+  const model = await createModel("Protected policy fixture");
+  await call("PATCH", "/api/settings", 200, {
+    defaultModelId: model.profile.id,
+    autoNameChats: false,
+  });
+  const project = await createPreparedProjectChat({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    labelKey,
+    title: "Project policies",
+    beforeChat: async ({ projectId }) => {
+      const policies = await call("GET", "/api/policies", 200);
+      await call("PATCH", `/api/projects/${projectId}/policies`, 200, {
+        policyIds: [projectPolicy],
+        collectionVersion: policies.collectionVersion,
+      });
+    },
+  });
+  function advertised(record, name) {
+    return modelFunctions([
+      ...record.input.tools,
+      ...record.input.input
+        .filter((item) => item.type === "tool_search_output")
+        .flatMap((item) => item.tools ?? []),
+    ]).find((tool) => tool.name === name || tool.name.endsWith("__" + name));
+  }
+  function executeTool(record, name, args) {
+    const tool = advertised(record.request, name);
+    assert.ok(tool, name + " was discovered by Codex");
+    record.calls = [{ ...tool, arguments: args }];
+    record.release();
+  }
+  function findOutput(record, text) {
+    const output = record.request.input.input.find(
+      (item) =>
+        item.type === "function_call_output" &&
+        JSON.stringify(item.output).includes(text),
+    );
+    assert.ok(output, `Expected tool output containing ${text}`);
+    return JSON.stringify(output.output);
+  }
+  const discovery = model.model.reply({ toolSearch: { query: "policy_list" } });
+  const list = model.model.reply({ hold: true });
+  const listOutput = model.model.reply({
+    toolSearch: { query: "policy_read" },
+  });
+  const read = model.model.reply({ hold: true });
+  const missing = model.model.reply({ hold: true });
+  const projectAnswer = "The assigned project policy was read";
+  const answer = model.model.reply({ text: projectAnswer });
+  try {
+    await call(
+      "POST",
+      project.chatUrl + "/turns",
+      202,
+      await encryptedTurn(
+        "Read the current project policies.",
+        model.profile.id,
+      ),
+    );
+    await eventually(
+      () => list.entered,
+      (entered) => assert.ok(entered),
+    );
+    const initial = JSON.stringify(discovery.request.input.input);
+    assert.match(initial, /Effective Cantrip policies apply to this project/u);
+    assert.ok(initial.includes(projectSummary));
+    assert.ok(!initial.includes("Private project body"));
+    assert.ok(!initial.includes(unused));
+    executeTool(list, "policy_list", {});
+    await eventually(
+      () => read.entered,
+      (entered) => assert.ok(entered),
+    );
+    const shown = findOutput(listOutput, "Found 1 effective policy.");
+    assert.ok(shown.includes(projectSummary));
+    assert.ok(!shown.includes("Private project body"));
+    executeTool(read, "policy_read", { key: "project-fixture" });
+    await eventually(
+      () => missing.entered,
+      (entered) => assert.ok(entered),
+    );
+    assert.ok(
+      findOutput(missing, "Read policy project-fixture.").includes(
+        "Private project body 🔐",
+      ),
+    );
+    executeTool(missing, "policy_read", { key: "unassigned-fixture" });
+    await eventually(
+      () => answer.request,
+      (record) => assert.equal(record?.completed, true),
+    );
+    findOutput(answer, "Policy unassigned-fixture is not effective");
+  } finally {
+    list.release();
+    read.release();
+    missing.release();
+  }
+  const saved = async (chatUrl, text) =>
+    await eventually(
+      async () => {
+        const raw = await call("GET", chatUrl + "/messages", 200);
+        assert.ok(!JSON.stringify(raw).includes(text));
+        return await Promise.all(raw.messages.map(openMessage));
+      },
+      (messages) =>
+        assert.ok(
+          messages.some((message) =>
+            message.content.some(
+              (item) => item.type === "text" && item.text === text,
+            ),
+          ),
+        ),
+    );
+  await saved(project.chatUrl, projectAnswer);
+
+  const standalone = await createChat("Standalone policies", false);
+  const standaloneAnswer = "The standalone Chat applied its policy";
+  const response = model.model.reply({ text: standaloneAnswer });
+  await call(
+    "POST",
+    standalone.chatUrl + "/turns",
+    202,
+    await encryptedTurn("Apply the standalone Chat policy.", model.profile.id),
+  );
+  await saved(standalone.chatUrl, standaloneAnswer);
+  const standaloneContext = JSON.stringify(response.request.input.input);
+  assert.match(
+    standaloneContext,
+    /The following enabled Cantrip Policies apply to this standalone Chat/u,
+  );
+  assert.ok(standaloneContext.includes("Private standalone body 🌲"));
+  assert.ok(!standaloneContext.includes(projectSummary));
+  assert.ok(!advertised(response.request, "policy_read"));
+  assert.deepEqual(model.model.failures, []);
+  console.log(
+    JSON.stringify({
+      suite: "native-effective-chat-policies",
+      passed: true,
+      projectSummariesAndMcpBodies: true,
+      standaloneFullBodies: true,
+      unassignedPolicyRejected: true,
+    }),
+  );
+}
+
 async function verifyStandaloneBehavior() {
   await verifyProviderCatalog({
     call,
@@ -2577,7 +2770,9 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (values.codegraph) {
+  if (values.policies) {
+    await verifyPolicies();
+  } else if (values.codegraph) {
     await verifyManagedCodeGraph(data);
   } else if (values.cli || values.bundled) {
     // This disposable profile permits a shell connection to the local broker.
@@ -2682,6 +2877,7 @@ try {
     labelKey.fill(0);
     taskKey.fill(0);
     providerKey.fill(0);
+    policyKey?.fill(0);
     interactionKey?.fill(0);
     consoleStateKey?.fill(0);
     master.fill(0);
