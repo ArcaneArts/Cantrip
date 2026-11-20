@@ -11,16 +11,16 @@ import {
   wrapComponentKeyForWorker,
 } from "../../packages/crypto/dist/index.js";
 
-export async function verifyGrantFlow(call, encryptionPath, workerId) {
-  // This fixture starts auth-none mode. Its built-in owner is auth::LOCAL_USER_ID;
-  // bootstrap cannot register the worker principal until a profile exists.
-  const ownerId = "00000000-0000-0000-0000-000000000001";
-  const identity = JSON.parse(await readFile(encryptionPath, "utf8"));
-  const master = generateAccountMasterKey(),
-    client = await generateHpkeKeyPair();
-  const publicKey = await publicKeyForPair(client),
-    clientId = "77777777-7777-4777-8777-777777777777";
+// The built-in owner in auth-none mode. The profile must exist before Core can
+// register an encryption principal for the worker.
+const ownerId = "00000000-0000-0000-0000-000000000001";
+
+export async function initializeGrantProfile(call) {
+  const master = generateAccountMasterKey();
   try {
+    const client = await generateHpkeKeyPair();
+    const publicKey = await publicKeyForPair(client);
+    const clientId = "77777777-7777-4777-8777-777777777777";
     const wrappedMasterKey = await wrapAccountMasterKeyForClient({
       ownerId,
       clientId,
@@ -49,6 +49,22 @@ export async function verifyGrantFlow(call, encryptionPath, workerId) {
     );
     assert.equal(initialized.status, 201, JSON.stringify(initialized.body));
     assert.equal(initialized.body.profile.ownerId, ownerId);
+    return master;
+  } catch (error) {
+    master.fill(0);
+    throw error;
+  }
+}
+
+export async function verifyGrantFlow(
+  call,
+  encryptionPath,
+  workerId,
+  { revoke = true, accountMasterKey } = {},
+) {
+  const identity = JSON.parse(await readFile(encryptionPath, "utf8"));
+  const master = accountMasterKey ?? (await initializeGrantProfile(call));
+  try {
     const pending = await call(
       "POST",
       `/api/workers/${workerId}/encryption/refresh`,
@@ -105,6 +121,7 @@ export async function verifyGrantFlow(call, encryptionPath, workerId) {
         { component: "task-content", keyRevision },
       ]);
     }
+    if (!revoke) return;
     const revoked = await call(
       "POST",
       `/api/encryption/principals/${worker.id}/revoke`,
@@ -128,6 +145,6 @@ export async function verifyGrantFlow(call, encryptionPath, workerId) {
     assert.equal(stored.principalId, identity.principalId);
     assert.equal(stored.privateKey, identity.privateKey);
   } finally {
-    master.fill(0);
+    if (!accountMasterKey) master.fill(0);
   }
 }
