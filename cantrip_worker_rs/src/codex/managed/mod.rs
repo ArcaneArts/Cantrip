@@ -75,6 +75,7 @@ struct Inner {
     external_auth: Option<Arc<dyn ExternalAuth>>,
     closing: Mutex<Option<Promise<()>>>,
     standalone_skills: super::skills::standalone::RuntimeSkills,
+    project_skill_roots: tokio::sync::RwLock<Vec<JsString>>,
 }
 
 impl Drop for Inner {
@@ -293,6 +294,7 @@ impl Runtime {
             external_auth,
             closing: Mutex::new(None),
             standalone_skills: Default::default(),
+            project_skill_roots: Default::default(),
         }));
         if let Err(error) = host
             .initialize(&runtime.0.session, &profile)
@@ -341,6 +343,10 @@ impl Runtime {
 
     pub(super) fn standalone_skills(&self) -> &super::skills::standalone::RuntimeSkills {
         &self.0.standalone_skills
+    }
+
+    pub(super) fn project_skill_roots(&self) -> &tokio::sync::RwLock<Vec<JsString>> {
+        &self.0.project_skill_roots
     }
 
     pub(in crate::codex) fn version_raw(&self) -> &Value {

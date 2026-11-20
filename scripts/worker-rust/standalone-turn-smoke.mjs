@@ -33,6 +33,7 @@ import { verifyEmbeddings } from "./model-embedding-smoke-cases.mjs";
 import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
 import { verifySubagentInteraction } from "./subagent-interaction-cases.mjs";
 import { verifySkillSettings } from "./skill-settings-smoke-cases.mjs";
+import { verifyCustomizationInventory } from "./customization-inventory-smoke-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   fixtureCodex,
@@ -56,6 +57,7 @@ const { values } = parseArgs({
     "host-skills": { type: "boolean" },
     "standalone-skills": { type: "boolean" },
     "skill-settings": { type: "boolean" },
+    "customization-inventory": { type: "boolean" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -97,9 +99,11 @@ const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const policyKey = values.policies ? key("policy-content") : null;
-const customizationKey = values["skill-settings"]
-  ? key("customization-content")
-  : null;
+const customizationKey =
+  values["skill-settings"] || values["customization-inventory"]
+    ? key("customization-content")
+    : null;
+const mcpKey = values["customization-inventory"] ? key("mcp-secret") : null;
 const operationsKey = key("model-operation-content");
 const consoleInteractions = values["console-interactions"];
 const restoredInteractions = values["restored-interactions"];
@@ -277,6 +281,7 @@ async function setupEncryption() {
     ["provider-credential", providerKey],
     ...(policyKey ? [["policy-content", policyKey]] : []),
     ...(customizationKey ? [["customization-content", customizationKey]] : []),
+    ...(mcpKey ? [["mcp-secret", mcpKey]] : []),
     ["model-operation-content", operationsKey],
     ...(interactionKey ? [["interaction-content", interactionKey]] : []),
     ...(consoleStateKey ? [["surface-private-state", consoleStateKey]] : []),
@@ -2957,7 +2962,22 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (customizationKey) {
+  if (mcpKey) {
+    await verifyCustomizationInventory({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      componentKey: customizationKey,
+      mcpKey,
+      data,
+      codexHome: codexFixtureHome,
+    });
+  } else if (customizationKey) {
     await verifySkillSettings({
       call,
       eventually,
@@ -3096,6 +3116,7 @@ try {
     providerKey.fill(0);
     policyKey?.fill(0);
     customizationKey?.fill(0);
+    mcpKey?.fill(0);
     interactionKey?.fill(0);
     consoleStateKey?.fill(0);
     master.fill(0);

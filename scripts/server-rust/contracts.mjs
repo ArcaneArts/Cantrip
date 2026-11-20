@@ -1037,6 +1037,13 @@ export const contractRoots = [
   "skillSettingsConfigureContentSchema",
   "codexSkillConfigUpdateSchema",
   "codexSkillConfigResultSchema",
+  "codexCustomizationInventorySchema",
+  "codexSkillRootsUpdateSchema",
+  "codexSkillRootsResultSchema",
+  "codexMcpResourceReadRequestSchema",
+  "codexMcpResourceReadSchema",
+  "codexMcpReloadRequestSchema",
+  "codexMcpReloadResultSchema",
 ];
 
 export const projectExportContractRoots = [

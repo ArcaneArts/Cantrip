@@ -1281,7 +1281,36 @@ impl Ensurer {
         bound: &(JsString, Value),
         chat: Option<&JsString>,
     ) -> Result<Runtime> {
+        self.inspection_runtime(model, provider, bound, chat, None)
+            .await
+    }
+
+    pub(in crate::codex) fn customization_compatibility(&self) -> &Value {
+        self.0.codex.compatibility()
+    }
+
+    pub(in crate::codex) async fn inspection_runtime(
+        &self,
+        model: &Value,
+        provider: Value,
+        bound: &(JsString, Value),
+        chat: Option<&JsString>,
+        thread: Option<&JsString>,
+    ) -> Result<Runtime> {
         self.assert_bound(bound)?;
+        if let (Some(chat), Some(thread)) = (chat, thread) {
+            let owners = self.0.live_threads.lock().unwrap();
+            if let Some(live) = owners.get(chat)
+                && live.bound == *bound
+                && live.thread.id() == thread
+                && live.provider_id == provider["id"]
+                && live.provider_account == provider["accountId"]
+                && let Some(runtime) = live.runtime.upgrade()
+                && live.thread.assert_current(&runtime).is_ok()
+            {
+                return Ok(runtime);
+            }
+        }
         let owner = &bound.0;
         let server = bound
             .1
@@ -1291,7 +1320,7 @@ impl Ensurer {
         let profile = home::profile(
             &self.0.data,
             &scope,
-            home::Source::Current(None),
+            home::Source::Current(thread),
             chat,
             &provider,
             "ide",
