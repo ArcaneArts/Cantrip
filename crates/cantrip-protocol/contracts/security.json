@@ -979,7 +979,17 @@
     "nativeAccountDefaultsResultSchema": 14437,
     "nativePermissionUpdateCommandSchema": 5487,
     "permissionTransitionSchema": 5489,
-    "nativePermissionTransitionResolutionSchema": 14446
+    "nativePermissionTransitionResolutionSchema": 14446,
+    "cantripOsBackupCaptureCommandSchema": 6549,
+    "cantripOsBackupObserveCommandSchema": 6584,
+    "cantripOsBackupCryptoContextSchema": 14449,
+    "cantripOsBackupFrameSchema": 14454,
+    "cantripOsBackupFileHeaderSchema": 14457,
+    "cantripOsBackupArchiveMetadataSchema": 11454,
+    "cantripOsBackupEndSchema": 14462,
+    "cantripOsBackupPhaseSchema": 11393,
+    "cantripOsBackupRequestEnvelopeSchema": 6557,
+    "cantripOsBackupResponseEnvelopeSchema": 11399
   },
   "nodes": [
     {
@@ -86663,6 +86673,106 @@
       "checks": []
     },
     { "type": "nullable", "innerType": 5760, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsBackupCryptoContextSchema",
+      "shape": { "ownerId": 14450, "serverId": 14451, "backupId": 14452 },
+      "catchall": 14453,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsBackupFrameSchema",
+      "shape": { "kind": 14455, "sequence": 14456, "envelope": 157 },
+      "catchall": 6560,
+      "checks": []
+    },
+    { "type": "enum", "values": ["metadata", "chunk", "end"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "cantripOsBackupFileHeaderSchema",
+      "shape": {
+        "format": 14458,
+        "version": 14459,
+        "backupId": 14460,
+        "keyRevision": 13,
+        "metadata": 14454
+      },
+      "catchall": 14461,
+      "checks": []
+    },
+    { "type": "literal", "values": ["CantripOS-private-backup"], "checks": [] },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cantripOsBackupEndSchema",
+      "shape": {
+        "archiveBytes": 11456,
+        "archiveSha256": 11457,
+        "chunks": 14463
+      },
+      "catchall": 14464,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
     { "type": "never", "checks": [] }
   ]
 }

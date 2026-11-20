@@ -1,6 +1,7 @@
 //! Existing protected content formats. Authorization, replay and resource
 //! lifetime policies remain in the owning worker adapters.
 mod attachments;
+mod backup;
 mod communication;
 mod endpoint;
 mod labels;
@@ -15,6 +16,7 @@ mod tunnel;
 use crate::{checked, decrypt_payload, decryption_error, derive_field_key, encrypt_payload};
 use anyhow::{Result, bail};
 pub use attachments::*;
+pub use backup::{BackupCipher, BackupFrame};
 use cantrip_wire::{Value, parse_json_text, value::json};
 pub use communication::*;
 pub use endpoint::*;

@@ -1003,6 +1003,16 @@ export const contractRoots = [
   "nativePermissionUpdateCommandSchema",
   "permissionTransitionSchema",
   "nativePermissionTransitionResolutionSchema",
+  "cantripOsBackupCaptureCommandSchema",
+  "cantripOsBackupObserveCommandSchema",
+  "cantripOsBackupCryptoContextSchema",
+  "cantripOsBackupFrameSchema",
+  "cantripOsBackupFileHeaderSchema",
+  "cantripOsBackupArchiveMetadataSchema",
+  "cantripOsBackupEndSchema",
+  "cantripOsBackupPhaseSchema",
+  "cantripOsBackupRequestEnvelopeSchema",
+  "cantripOsBackupResponseEnvelopeSchema",
 ];
 
 export const projectExportContractRoots = [
