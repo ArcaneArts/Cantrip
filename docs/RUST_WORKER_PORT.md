@@ -7891,3 +7891,29 @@ Run `node scripts/worker-rust/cantrip-os-workspaces-smoke.mjs --desktop` with
 `--server` and `--worker` pointing to the Rust executables. For a base image
 with an older workspace package, pass the current package with
 `--workspaces-package`.
+
+## 212. Manage Cantrip OS packages through the Rust worker
+
+Reference commit 5ddb4a9753d40cd8285dbdaf2fa831f717bdca50 (#3375).
+
+The worker probes the pinned Docker container or verified SSH guest with
+the existing Python rescue helper. It publishes a private, content-addressed
+copy of each verified public package. The worker streams the retained file
+to the guest and preserves the original admission across observation,
+explicit continuation, and abandonment. Upgrade and repair use the guest's
+existing installer claim. Terminal outcomes retain their original encrypted
+receipt in the worker journal.
+
+The macOS ARM64 fixture ran production Rust Core in PGlite mode and the
+native worker against a disposable Docker guest. It installed the current
+workspace package, repaired it after removing the guest helper and disabling
+the executor, and checked the actual dpkg configure count. It left a second
+admission staged, restarted the worker, and continued that same admission.
+Abandonment ran no installer. The TypeScript client opened the protected
+outcomes and the fixture checked the persisted admission and receipt digests.
+The Docker carrier was exercised locally. SSH execution remains unverified.
+
+Run `node scripts/worker-rust/cantrip-os-workspaces-smoke.mjs` with
+`--server`, `--worker`, and `--package-artifact` pointing to the native
+executables and the current Cantrip OS workspace Debian package. Build
+`@cantrip/crypto` for the fixture's client-side grant and receipt checks.

@@ -4,6 +4,8 @@
 use anyhow::{Result, anyhow};
 use std::{
     ffi::{OsStr, OsString},
+    fs::File,
+    process::Stdio,
     time::Duration,
 };
 use tokio::{
@@ -33,6 +35,11 @@ pub(crate) struct Captured {
     pub code: Option<i32>,
     pub overflow: Option<&'static str>,
     pub timed_out: bool,
+}
+enum CaptureInput<'a> {
+    Empty,
+    Bytes(&'a [u8]),
+    File(File),
 }
 impl Scope {
     /// Capture bytes and nonzero exits for Git's binary object/diff protocols.
@@ -65,8 +72,15 @@ impl Scope {
         environment: &[(OsString, OsString)],
         input: Option<&[u8]>,
     ) -> Result<Captured> {
-        self.capture_options(program, args, maximum, environment, input, None)
-            .await
+        self.capture_options(
+            program,
+            args,
+            maximum,
+            environment,
+            input.map_or(CaptureInput::Empty, CaptureInput::Bytes),
+            None,
+        )
+        .await
     }
     pub(crate) async fn capture_timeout(
         &self,
@@ -75,8 +89,32 @@ impl Scope {
         maximum: usize,
         timeout: Duration,
     ) -> Result<Captured> {
-        self.capture_options(program, args, maximum, &[], None, Some(timeout))
-            .await
+        self.capture_options(
+            program,
+            args,
+            maximum,
+            &[],
+            CaptureInput::Empty,
+            Some(timeout),
+        )
+        .await
+    }
+    pub(crate) async fn capture_file(
+        &self,
+        program: &OsStr,
+        args: &[OsString],
+        maximum: usize,
+        input: Option<File>,
+    ) -> Result<Captured> {
+        self.capture_options(
+            program,
+            args,
+            maximum,
+            &[],
+            input.map_or(CaptureInput::Empty, CaptureInput::File),
+            None,
+        )
+        .await
     }
     async fn capture_options(
         &self,
@@ -84,19 +122,20 @@ impl Scope {
         args: &[OsString],
         maximum: usize,
         environment: &[(OsString, OsString)],
-        input: Option<&[u8]>,
+        input: CaptureInput<'_>,
         timeout: Option<Duration>,
     ) -> Result<Captured> {
         self.check()?;
+        let (stdin, input) = match input {
+            CaptureInput::Empty => (Stdio::null(), None),
+            CaptureInput::Bytes(bytes) => (Stdio::piped(), Some(bytes)),
+            CaptureInput::File(file) => (Stdio::from(file), None),
+        };
         let mut command = Command::new(program);
         command
             .args(args)
             .envs(environment.iter().map(|(key, value)| (key, value)))
-            .stdin(if input.is_some() {
-                std::process::Stdio::piped()
-            } else {
-                std::process::Stdio::null()
-            })
+            .stdin(stdin)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
