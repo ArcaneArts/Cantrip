@@ -128,6 +128,20 @@ pub(super) fn request(frame: &Value, generation: &str) -> Result<(Value, Duratio
     Ok((request, Duration::from_millis(timeout)))
 }
 
+pub(super) fn plan_question(request: &Value) -> Option<Value> {
+    if request["payload"]["kind"] != "userInput"
+        || !request["turnId"].is_string()
+        || !request["itemId"].is_string()
+    {
+        return None;
+    }
+    let created = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    Some(json!({
+        "id":request["requestKey"], "threadId":request["threadId"], "turnId":request["turnId"],
+        "itemId":request["itemId"], "questions":request["payload"]["questions"], "createdAt":created,
+    }))
+}
+
 pub(super) fn result(response: &Value) -> Result<Value> {
     let result = match response["kind"].as_str() {
         Some("commandExecution") if response["decision"] == "acceptWithExecpolicyAmendment" => {

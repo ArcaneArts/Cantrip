@@ -3,7 +3,14 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -17,7 +24,10 @@ import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { taskContent } from "../server-rust/task-wire-fixtures.mjs";
-import { verifyConsoleInteraction } from "./console-interaction-cases.mjs";
+import {
+  createPreparedProjectChat,
+  verifyConsoleInteraction,
+} from "./console-interaction-cases.mjs";
 import { verifyDecisions } from "./model-decision-smoke-cases.mjs";
 import { verifyEmbeddings } from "./model-embedding-smoke-cases.mjs";
 import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
@@ -43,6 +53,7 @@ const { values } = parseArgs({
     interactions: { type: "boolean" },
     "console-interactions": { type: "boolean" },
     "restored-interactions": { type: "boolean" },
+    "plan-question": { type: "boolean" },
   },
 });
 assert.ok(
@@ -70,13 +81,16 @@ const providerKey = key("provider-credential");
 const operationsKey = key("model-operation-content");
 const consoleInteractions = values["console-interactions"];
 const restoredInteractions = values["restored-interactions"];
+const planQuestion = values["plan-question"];
 const interactionKey =
-  values.interactions || consoleInteractions || restoredInteractions
+  values.interactions ||
+  consoleInteractions ||
+  restoredInteractions ||
+  planQuestion
     ? key("interaction-content")
     : null;
-const consoleStateKey = consoleInteractions
-  ? key("surface-private-state")
-  : null;
+const consoleStateKey =
+  consoleInteractions || planQuestion ? key("surface-private-state") : null;
 const consoleSocket = path.join(root, "managed-console-socket");
 const approvalPrompt = "Exercise a protected native interaction 🌲";
 const approvalMarker = path.join(root, "native-approval-replies.jsonl");
@@ -234,12 +248,12 @@ async function setupEncryption() {
   }
 }
 
-async function encryptedTurn(prompt, modelId) {
+async function encryptedTurn(prompt, modelId, mode = "default") {
   const common = { ownerId, keyRevision, componentKey: chatKey };
   const messageId = randomUUID();
   const promptId = randomUUID();
   const idempotencyKey = randomUUID();
-  const classification = { mode: "default", attachmentIds: [] };
+  const classification = { mode, attachmentIds: [] };
   const messageClassification = { ...classification, role: "user" };
   const message = {
     id: messageId,
@@ -1131,6 +1145,209 @@ async function verifyInteraction() {
   );
 }
 
+async function verifyPlanQuestion() {
+  const { model, profile } = await createModel("Native Plan Mode model");
+  await call("PATCH", "/api/settings", 200, {
+    defaultModelId: profile.id,
+    autoNameChats: false,
+  });
+  const { chatId, chatUrl } = await createPreparedProjectChat({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    labelKey,
+    title: "Native Plan Mode question",
+  });
+  const explanation = "Private plan explanation.";
+  const steps = [{ step: "Private test step", status: "inProgress" }];
+  const question = "Which private option should this plan use?";
+  const selected = "First private option";
+  const plan = model.reply({ hold: true });
+  const prepared = model.reply({ text: "The checklist is prepared." });
+  const input = model.reply({ hold: true });
+  const final = model.reply({
+    text: "The plan used the selected option.",
+    hold: true,
+  });
+  const openedPlan = async (mode = "plan") => {
+    const wire = await call("GET", `${chatUrl}/plan`, 200);
+    assert.equal(wire.mode, mode);
+    assert.ok(wire.state);
+    assert.ok(!JSON.stringify(wire).includes(question));
+    assert.ok(!JSON.stringify(wire).includes(explanation));
+    const state = await crypto.decryptChatPlanProtectedContent({
+      ownerId,
+      chatId,
+      keyRevision,
+      componentKey: chatKey,
+      encrypted: wire.state.protectedContent,
+      publicClassification: wire.state.classification,
+    });
+    assert.equal(wire.hasQuestion, Boolean(state.question));
+    return state;
+  };
+  const nativeTool = async (reply, name) => {
+    await eventually(
+      () => reply.entered,
+      (entered) => assert.ok(entered),
+    );
+    const tool = modelFunctions(reply.request.input.tools).find(
+      (entry) => entry.name === name,
+    );
+    assert.ok(tool, `The bundled runtime advertises ${name}`);
+    return tool;
+  };
+  try {
+    await call(
+      "POST",
+      `${chatUrl}/turns`,
+      202,
+      await encryptedTurn("Prepare a checklist for the next turn.", profile.id),
+    );
+    plan.calls = [
+      {
+        ...(await nativeTool(plan, "update_plan")),
+        arguments: {
+          explanation,
+          plan: [{ step: steps[0].step, status: "in_progress" }],
+        },
+      },
+    ];
+    plan.release();
+    await eventually(
+      () => prepared.request,
+      (request) => assert.equal(request?.completed, true),
+    );
+    const updateResult = prepared.request.input.input.find(
+      (item) => item.type === "function_call_output",
+    );
+    assert.match(JSON.stringify(updateResult?.output ?? null), /Plan updated/);
+    await eventually(
+      () => openedPlan("default"),
+      (state) => {
+        assert.equal(state.explanation, explanation);
+        assert.deepEqual(state.steps, steps);
+        assert.equal(state.question, null);
+      },
+    );
+    await call(
+      "POST",
+      `${chatUrl}/turns`,
+      202,
+      await encryptedTurn(
+        "Ask for a decision before completing the plan.",
+        profile.id,
+        "plan",
+      ),
+    );
+    input.calls = [
+      {
+        ...(await nativeTool(input, "request_user_input")),
+        arguments: {
+          isBlocking: true,
+          questions: [
+            {
+              id: "choice",
+              header: "Choice",
+              question,
+              options: [
+                { label: selected, description: "Use this option." },
+                { label: "Alternative", description: "Use another option." },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    input.release();
+
+    const [pending] = await eventually(
+      () =>
+        call("GET", `/api/agent-requests?chatId=${chatId}&status=pending`, 200),
+      (requests) => {
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0].classification?.kind, "userInput");
+      },
+    );
+    const state = await eventually(openedPlan, (state) => {
+      assert.equal(state.explanation, explanation);
+      assert.deepEqual(state.steps, steps);
+      assert.equal(state.question?.id, pending.requestKey);
+      assert.equal(state.question.questions[0].question, question);
+    });
+    for (const identity of ["threadId", "turnId", "itemId"]) {
+      assert.equal(state.question[identity], pending.provenance[identity]);
+    }
+    assert.equal(final.entered, false);
+    const context = {
+      ownerId,
+      keyRevision,
+      componentKey: interactionKey,
+      requestKey: pending.requestKey,
+    };
+    const request = await crypto.decryptInteractionRequestContent({
+      ...context,
+      encrypted: pending.protectedPayload,
+      publicClassification: pending.classification,
+    });
+    assert.deepEqual(state.question.questions, request.payload.questions);
+    const response = {
+      kind: "userInput",
+      answers: { choice: { answers: [selected] } },
+    };
+    const payload = {
+      idempotencyKey: randomUUID(),
+      classification: pending.classification,
+      protectedResponse: await crypto.encryptInteractionResponseContent({
+        ...context,
+        content: {
+          version: 1,
+          classification: pending.classification,
+          response,
+        },
+      }),
+    };
+    const resolved = await call(
+      "POST",
+      `/api/agent-requests/${pending.id}/respond`,
+      200,
+      payload,
+    );
+    assert.equal(resolved.status, "resolved");
+    await eventually(openedPlan, (state) => {
+      assert.equal(state.explanation, explanation);
+      assert.deepEqual(state.steps, steps);
+      assert.equal(state.question, null);
+    });
+    await eventually(
+      () => final,
+      (reply) => {
+        assert.ok(reply.entered);
+        assert.ok(
+          reply.request.input.input.some(
+            (item) =>
+              item.type === "function_call_output" &&
+              JSON.stringify(item.output).includes(selected),
+          ),
+        );
+      },
+    );
+    final.release();
+    await eventually(
+      () => final.request,
+      (request) => assert.equal(request?.completed, true),
+    );
+    assert.deepEqual(model.failures, []);
+    console.log(
+      "Native Plan Mode published and cleared one encrypted question while retaining plan steps.",
+    );
+  } finally {
+    for (const reply of [plan, input, final]) reply.release();
+  }
+}
+
 async function verifySettingsSnapshot() {
   const model = await createModel("Settings snapshot model");
   await call("PATCH", "/api/settings", 200, {
@@ -1514,6 +1731,15 @@ try {
   const data = path.join(root, "worker");
   const home = path.join(root, "home");
   await mkdir(home);
+  if (planQuestion) {
+    const codexHome = path.join(data, "codex-home");
+    await mkdir(codexHome, { recursive: true, mode: 0o700 });
+    await writeFile(
+      path.join(codexHome, "config.toml"),
+      "[tools.update_plan]\nenabled = true\n",
+      { mode: 0o600 },
+    );
+  }
   const environment = fixtureEnvironment(path.join(root, "server"));
   environment.HOME = home;
   environment.CANTRIP_BOOTSTRAP_MODE = "standalone";
@@ -1531,7 +1757,7 @@ try {
     ...environment,
     PATH: "",
     NO_COLOR: "1",
-    ...(consoleInteractions ? { TERM: "xterm-256color" } : {}),
+    ...(consoleStateKey ? { TERM: "xterm-256color" } : {}),
     CANTRIP_LOG_LEVEL: "debug",
     CANTRIP_SERVER_URL: receiptProxy?.origin ?? server.origin,
     CANTRIP_WORKER_DATA_DIR: data,
@@ -1608,6 +1834,8 @@ try {
     });
   } else if (values.interactions || restoredInteractions) {
     await verifyInteraction();
+  } else if (planQuestion) {
+    await verifyPlanQuestion();
   } else if (values.settings) {
     await verifySettingsSnapshot();
   } else {

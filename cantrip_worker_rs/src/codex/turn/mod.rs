@@ -1034,7 +1034,6 @@ impl Turns {
                     active.control.get().unwrap().published(result.is_ok());
                     result
                 };
-                let interaction_emit = emit.clone();
                 let emit = match &task {
                     Some(task) => task.turn.events(emit),
                     None => emit,
@@ -1054,7 +1053,7 @@ impl Turns {
                         interactions::Turn {
                             runtime, receipt, thread, turn: &turn,
                             thread_version: binding.thread_version,
-                            encryption: &self.encryption, emit: &interaction_emit,
+                            encryption: &self.encryption, emit: &emit,
                             protected: protection.is_some(),
                         }.observe(binding, &mut subscribed.events, collecting).await
                     } else { collecting.await };
