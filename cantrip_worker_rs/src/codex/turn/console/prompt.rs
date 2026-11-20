@@ -370,22 +370,8 @@ async fn execute(
                     provenance: Some(json!({"kind":"command","operationId":root.operation,"operationGeneration":root.generation})),
                 }, transport.clone(),
             ));
-            let publisher = protection.clone();
-            let client = turns.receipts.clone();
-            let operation = root.clone();
-            let (delivery_abort, delivery_signal) = Abort::new();
-            let delivery_abort = Arc::new(delivery_abort);
-            let (emit, published) = protection.publish_with(canonical, move |event| {
-                let (client, operation, publisher) = (client.clone(), operation.clone(), publisher.clone());
-                let delivery_abort = delivery_abort.clone();
-                async move {
-                    let result = client.event(publisher.scope(), &operation, event).await;
-                    if result.is_err() {
-                        delivery_abort.abort(anyhow!("Core could not apply a protected console event."));
-                    }
-                    result
-                }
-            });
+            let (emit, published, delivery_signal) =
+                protection.publish_receipt(canonical, turns.receipts.clone(), root.clone());
             let cua = if let Some(observer) = &observe_cua {
                 let epoch = turns.computer_use.previews.current_epoch();
                 let lifetime = computer_use::Turn::new(

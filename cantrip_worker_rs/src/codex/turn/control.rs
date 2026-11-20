@@ -174,6 +174,7 @@ impl Turns {
     pub(crate) async fn resume_suspension(
         &self,
         command: &Value,
+        epoch: Option<u64>,
         acknowledge: impl FnOnce(Result<Value>) + Send,
     ) -> Result<Value> {
         let command = self.preparation.resolve_routing(command).await?;
@@ -193,7 +194,7 @@ impl Turns {
         }
         if active.is_none_or(|active| matches!(*active.phase.lock().unwrap(), Phase::Finished)) {
             return self
-                .restore_suspension(&command, key, signature, acknowledge)
+                .restore_suspension(&command, key, signature, epoch, acknowledge)
                 .await;
         }
         let binding = json!({

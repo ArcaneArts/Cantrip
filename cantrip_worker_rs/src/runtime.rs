@@ -788,7 +788,7 @@ async fn cycle(
                     let worker = worker.clone();
                     commands.spawn(async move {
                         let mut acknowledged = false;
-                        let result = turns.resume_suspension(&request["command"], |reply| {
+                        let result = turns.resume_suspension(&request["command"], request["socketEpoch"].as_u64(), |reply| {
                             acknowledged = true;
                             finish(&request, &worker, &logs, &outgoing, began, &reply);
                         }).await;

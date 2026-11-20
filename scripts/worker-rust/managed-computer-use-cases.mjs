@@ -9,6 +9,7 @@ import {
 } from "../../packages/crypto/dist/index.js";
 import { modelFunctions } from "../server-rust/task-model-provider.mjs";
 import { previewOperations } from "./computer-use-preview-cases.mjs";
+import { recoverHeldTurn } from "./deferred-receipt-smoke-cases.mjs";
 import {
   createPreparedProjectChat,
   openConsoleView,
@@ -26,6 +27,7 @@ export async function verifyManagedComputerUse({
   interactionKey,
   previewKey,
   console: managedConsole,
+  recovery,
   openMessage,
 }) {
   const { model, profile, provider } = await createModel(
@@ -67,6 +69,7 @@ export async function verifyManagedComputerUse({
         title,
       })
     : await createChat(title, false);
+  const beforePause = recovery ? model.reply({ hold: true }) : null;
   const tools = model.reply({ hold: true });
   const captured = model.reply({ hold: true });
   const afterReset = model.reply({ hold: true });
@@ -75,7 +78,7 @@ export async function verifyManagedComputerUse({
     text: "The fixture capture completed.",
   });
   const prompt = "Observe the fixture window.";
-  let consoleTurn;
+  let expectedTurn;
   if (managedConsole) {
     const url = await eventually(
       () => readFile(managedConsole.socketFile, "utf8"),
@@ -95,7 +98,7 @@ export async function verifyManagedComputerUse({
         input: [{ type: "text", text: prompt, text_elements: [] }],
       });
       assert.ok(started.result?.turn?.id, JSON.stringify(started));
-      consoleTurn = { threadId, turnId: started.result.turn.id };
+      expectedTurn = { threadId, turnId: started.result.turn.id };
     } finally {
       view.close();
     }
@@ -106,6 +109,16 @@ export async function verifyManagedComputerUse({
       202,
       await encryptedTurn(prompt, profile.id),
     );
+  }
+  if (recovery) {
+    expectedTurn = await recoverHeldTurn({
+      ...recovery,
+      call,
+      eventually,
+      chatUrl,
+      beforePause,
+      afterResume: tools,
+    });
   }
   await eventually(
     () => tools.entered,
@@ -197,9 +210,9 @@ export async function verifyManagedComputerUse({
     assert.equal(record.provenance.workerId, workerId);
     for (const id of ["threadId", "turnId", "executionLaneId"])
       assert.ok(record.provenance[id]);
-    if (consoleTurn) {
-      assert.equal(record.provenance.threadId, consoleTurn.threadId);
-      assert.equal(record.provenance.turnId, consoleTurn.turnId);
+    if (expectedTurn) {
+      assert.equal(record.provenance.threadId, expectedTurn.threadId);
+      assert.equal(record.provenance.turnId, expectedTurn.turnId);
     }
     if (provenance) assert.deepEqual(record.provenance, provenance);
     provenance = record.provenance;
@@ -356,6 +369,14 @@ export async function verifyManagedComputerUse({
           ),
         ),
       );
+      if (recovery) {
+        assert.equal(
+          messages.filter(({ content }) =>
+            content.some(({ text }) => text === prompt),
+          ).length,
+          1,
+        );
+      }
       const activities = messages
         .flatMap(({ content }) => content)
         .filter(
@@ -436,7 +457,11 @@ export async function verifyManagedComputerUse({
       );
     },
   );
-  assert.deepEqual((await operate(list)).result.data.sources, []);
+  // The final message can reach History before Codex completes the turn.
+  await eventually(
+    () => operate(list),
+    ({ result }) => assert.deepEqual(result.data.sources, []),
+  );
   assert.equal(
     (await operate({ ...get, sourceId: replacement.sourceId })).result.code,
     "execution-unavailable",
@@ -446,7 +471,9 @@ export async function verifyManagedComputerUse({
     JSON.stringify({
       suite: managedConsole
         ? "native-console-computer-use"
-        : "native-managed-computer-use",
+        : recovery
+          ? "native-recovered-computer-use"
+          : "native-managed-computer-use",
       passed: true,
     }),
   );
