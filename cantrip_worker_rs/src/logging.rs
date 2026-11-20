@@ -7,12 +7,14 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
+
+const SUBSCRIPTION_CAPACITY: usize = 512;
 
 pub struct Logs {
     pub emitter: Arc<Emitter>,
     runtime: Arc<Runtime>,
-    listeners: Arc<Mutex<Vec<mpsc::UnboundedSender<Value>>>>,
+    listeners: Arc<Mutex<broadcast::Sender<Value>>>,
 }
 pub fn archive_options(data: &Path, environment: &Environment, cwd: &Path) -> Options {
     let get = |key: &str| {
@@ -55,7 +57,7 @@ impl Logs {
         runtime
             .initialize(archive_options(data, environment, cwd), colors)
             .await;
-        let listeners = Arc::new(Mutex::new(Vec::<mpsc::UnboundedSender<Value>>::new()));
+        let listeners = Arc::new(Mutex::new(broadcast::channel(SUBSCRIPTION_CAPACITY).0));
         let output = runtime.clone();
         let subscribers = listeners.clone();
         let emitter = Emitter::with_console_context(
@@ -64,9 +66,9 @@ impl Logs {
             Arc::new(move |record, fields| {
                 // Serialize capture and channel admission so subscriptions see cursor
                 // order even when several worker tasks emit concurrently.
-                let mut senders = subscribers.lock().unwrap();
+                let sender = subscribers.lock().unwrap();
                 let stored = output.capture_record(record, fields);
-                senders.retain(|sender| sender.send(stored.clone()).is_ok());
+                let _ = sender.send(stored);
             }),
         );
         Self {
@@ -95,17 +97,13 @@ impl Logs {
             .initialize(archive_options(data, environment, cwd), colors)
             .await;
     }
-    pub fn subscribe(&self) -> mpsc::UnboundedReceiver<Value> {
-        let (tx, rx) = mpsc::unbounded_channel();
-        let mut listeners = self.listeners.lock().unwrap();
-        listeners.retain(|sender| !sender.is_closed());
-        listeners.push(tx);
-        rx
+    pub fn subscribe(&self) -> broadcast::Receiver<Value> {
+        self.listeners.lock().unwrap().subscribe()
     }
     pub async fn close(&self) {
         let _ = self.emitter.flush_repeated(None);
         self.runtime.close().await;
-        self.listeners.lock().unwrap().clear();
+        *self.listeners.lock().unwrap() = broadcast::channel(SUBSCRIPTION_CAPACITY).0;
     }
 }
 pub fn error(error: &anyhow::Error) -> Value {

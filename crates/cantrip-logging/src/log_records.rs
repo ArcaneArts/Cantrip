@@ -202,7 +202,7 @@ fn positive(value: Option<&Value>, fallback: usize) -> Result<usize> {
     }
     bail!("Log buffer limits must be positive safe integers.")
 }
-fn weight(value: &Value) -> Option<u8> {
+pub fn level_weight(value: &Value) -> Option<u8> {
     match value.as_str() {
         Some("trace") => Some(10),
         Some("debug") => Some(20),
@@ -321,9 +321,9 @@ impl Buffer {
         let minimum = options
             .get("minimumLevel")
             .filter(|v| !v.is_null())
-            .map_or(Some(10), weight);
+            .map_or(Some(10), level_weight);
         let matches = |v: &Value| {
-            weight(&v["level"])
+            level_weight(&v["level"])
                 .zip(minimum)
                 .is_some_and(|(a, b)| a >= b)
         };
@@ -332,7 +332,7 @@ impl Buffer {
         let truncated = if let Some(before) = before {
             for (record, _) in self.entries.iter().rev() {
                 if record["cursor"].as_f64().unwrap() >= before
-                    || weight(&record["level"])
+                    || level_weight(&record["level"])
                         .zip(minimum)
                         .is_some_and(|(a, b)| a < b)
                 {

@@ -483,7 +483,11 @@ async fn cycle(
     let mut commands_open = true;
     let mut heartbeat_result = None;
     let mut connection_result = None;
+    let mut log_streams = crate::log_stream::Streams::default();
+    let mut log_records = logs.subscribe();
+    let mut log_gap = false;
     let outcome = loop {
+        let log_deadline = log_streams.deadline();
         tokio::select! {
             result=&mut heartbeat_task,if heartbeat_result.is_none()=>{
                 heartbeat_result=Some(result);break Outcome{restart:false,trigger:"heartbeat-stopped"};
@@ -497,12 +501,30 @@ async fn cycle(
             },
             trigger=signals.receive()=>break Outcome{restart:false,trigger},
             _=restart_requested.recv()=>break Outcome{restart:true,trigger:"restart-request"},
+            record=log_records.recv()=>{
+                match record {
+                    Ok(record) => log_streams.observe(&record, std::mem::take(&mut log_gap)),
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => log_gap = true,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => log_records = logs.subscribe(),
+                }
+            },
+            _=async {
+                match log_deadline {
+                    Some(at) => tokio::time::sleep_until(at).await,
+                    None => std::future::pending::<()>().await,
+                }
+            }=>log_streams.flush(logs,&outgoing),
             request=received.recv(),if commands_open=>{
                 let Some(request)=request else {commands_open=false;continue;};
                 let command=&request["command"];
                 let kind=command["type"].as_str().unwrap_or("unknown");
                 let began=std::time::Instant::now();
                 logs.event("debug","Worker command dispatched",json!({"event":"worker.command.dispatched","operation":kind,"requestId":request["requestId"],"workerId":worker}));
+                if crate::log_stream::Streams::supports(kind) {
+                    let result=log_streams.execute(kind,command,logs);
+                    finish(&request,&worker,logs,&outgoing,began,&result);
+                    continue;
+                }
                 if matches!(kind, crate::chat_content::MESSAGE | crate::chat_content::MESSAGES | crate::chat_content::REPROTECT | crate::chat_content::TURN | crate::chat_content::QUEUE_PREPARE) {
                     let encryption = encryption.clone();
                     let logs = logs.clone();

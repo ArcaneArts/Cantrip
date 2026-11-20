@@ -8077,3 +8077,22 @@ fixture with an empty runtime PATH for stdin closure and SIGTERM. Both runs
 verified same-process restart, credential rotation, and log archive drain.
 The local Cantrip OS workspace fixture also passed across an orderly worker
 restart and final shutdown.
+
+## 219. Stream live worker diagnostics from Rust
+
+Reference commit fa546c436007b02e4854b25f18764e080a8d2964 (#3382).
+
+The native worker handles the existing start, renew, and stop commands
+for leased diagnostics streams. It replays records from the shared log
+buffer, sends ordered filtered batches, and advances the cursor across
+filtered records. The worker bounds the pending batch by bytes and record
+count, reports a truncated stream if records fall out, and retries delivery
+while disconnected or backpressured. Leases belong to the current worker
+runtime.
+
+The local macOS ARM64 production Core and native worker fixture passed
+with an empty worker PATH. Core's real WebSocket replayed a buffered log
+record, delivered a new command record, and advanced a warning-only
+stream past a filtered debug record. Closing both sockets sent two stop
+commands. The same fixture also verified in-process worker restart and
+clean shutdown. Run the control fixture with `--log-stream`.
