@@ -130,6 +130,12 @@ async fn cycle(
     let folders = Arc::new(crate::filesystem::folders::Manager::new(
         &config.data_directory,
     ));
+    let project_exports = Arc::new(crate::project_exports::Manager::new(
+        &config.codex_installation.binary,
+        &config.data_directory,
+        cwd,
+        environment,
+    ));
     let repository_operations = Arc::new(crate::repository_operations::RepositoryOperations::new(
         &config.data_directory,
         &worker,
@@ -1015,6 +1021,20 @@ async fn cycle(
                     });
                     continue;
                 }
+                if crate::project_exports::supports(kind) {
+                    let project_exports = project_exports.clone();
+                    let routing = routing.clone();
+                    let encryption = encryption.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = project_exports.execute(&request["command"], &routing, &encryption, &scope).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if crate::github::conversion::supports(kind) {
                     let folder_conversion = folder_conversion.clone();
                     let routing = routing.clone();
@@ -1244,6 +1264,7 @@ async fn cycle(
         }
     }
     explorer_operations.close().await;
+    project_exports.close().await;
     shares.shutdown().await;
     run_definitions.close().await;
     let runs_closed = runs.close().await;

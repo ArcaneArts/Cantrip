@@ -39,6 +39,7 @@ import { verifyTerminalServices } from "./terminal-services-smoke.mjs";
 import { verifyHostTerminal } from "./host-terminal-relay-smoke.mjs";
 import { verifyGit } from "./git-smoke-cases.mjs";
 import { verifyGitDrafts } from "./git-draft-smoke.mjs";
+import { verifyProjectExport } from "./project-export-smoke.mjs";
 import { verifyNativeWorktrees } from "./worktree-smoke-cases.mjs";
 import { githubCatalogFixture } from "./github-catalog-fixture.mjs";
 import { verifyGithubCatalog } from "./github-catalog-smoke-cases.mjs";
@@ -79,6 +80,7 @@ const { values } = parseArgs({
     "replica-lifecycle-only": { type: "boolean", default: false },
     "folder-conversion-only": { type: "boolean", default: false },
     "git-draft-only": { type: "boolean", default: false },
+    "project-export-only": { type: "boolean", default: false },
     "terminal-relay-only": { type: "boolean", default: false },
     "terminal-direct-broker": { type: "string" },
     "worker-link-local": { type: "boolean", default: false },
@@ -101,8 +103,12 @@ const workerDirectory = path.join(root, "worker"),
   attached = path.join(root, "attached"),
   checkout = path.join(attached, "private-checkout"),
   bin = path.join(root, "bin");
+const exportHome = path.join(root, "export-user-home");
+const exportCodex = path.join(exportHome, "external-codex");
 await mkdir(checkout, { recursive: true });
 await mkdir(bin);
+if (values["project-export-only"])
+  await mkdir(exportCodex, { recursive: true });
 const git = execFileSync("/usr/bin/which", ["git"], {
   encoding: "utf8",
 }).trim();
@@ -123,6 +129,7 @@ if (
   !values["github-operations-only"] &&
   !values["folder-conversion-only"] &&
   !values["git-draft-only"] &&
+  !values["project-export-only"] &&
   !values["terminal-relay-only"] &&
   !values["run-definitions-only"] &&
   !values["binary-writes-only"] &&
@@ -247,6 +254,9 @@ function startWorker(code) {
     ...(codegraph ? { HOME: path.join(root, "codegraph-home") } : {}),
     ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
     ...(values.codex ? { CANTRIP_CODEX_BIN: path.resolve(values.codex) } : {}),
+    ...(values["project-export-only"]
+      ? { HOME: exportHome, CODEX_HOME: exportCodex }
+      : {}),
     ...(values["terminal-relay-only"] || values["run-runtime-only"]
       ? { SHELL: "/bin/sh" }
       : {}),
@@ -731,6 +741,22 @@ try {
       "actual native checkout validation and durable import",
     );
     assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
+    if (values["project-export-only"]) {
+      await verifyProjectExport({
+        call,
+        origin: () => server.origin,
+        projectId,
+        workerId,
+        workerDirectory,
+        userHome: exportHome,
+        codexHome: exportCodex,
+        master,
+        ownerId: repository.ownerId,
+        restartWorker,
+        checkout,
+      });
+      break exercise;
+    }
     if (values["git-draft-only"]) {
       await verifyGitDrafts({
         call,
@@ -1141,6 +1167,15 @@ try {
         passed: true,
         structuredFallbackAndUsage: true,
         preservedGitStatusAndHead: true,
+      }),
+    );
+  else if (values["project-export-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-project-export-worker-server",
+        passed: true,
+        durableExternalCodexSession: true,
+        replayReusesThread: true,
       }),
     );
   else if (values["run-runtime-only"])
