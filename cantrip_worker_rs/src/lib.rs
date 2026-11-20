@@ -11,6 +11,7 @@ mod cli;
 mod codegraph;
 pub use codegraph::launch_mcp as launch_codegraph_mcp;
 pub mod codex;
+pub mod computer_use;
 pub mod config;
 pub mod connection;
 pub mod credentials;

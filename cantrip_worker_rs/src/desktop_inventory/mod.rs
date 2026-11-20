@@ -2,7 +2,7 @@
 mod capture;
 mod effects;
 pub(crate) mod preview;
-mod process;
+pub(crate) mod process;
 pub(crate) use capture::{Capture, Captures, Frame, InputAuthority, Scope};
 pub(crate) use effects::Updates as EffectUpdates;
 

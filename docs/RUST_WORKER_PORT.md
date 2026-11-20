@@ -8933,3 +8933,28 @@ rejection, a 600,000-byte image, cancellation, and authority changes. Ordinary
 MCP attachment expiry and placement tests and 14 Node reference cases passed.
 Run the Rust tests with `scripts/worker-rust/cargo.mjs test --lib mcp::bindings::`.
 The native evaluator and managed Codex registration remain open.
+
+## 252. Run worker evaluations through the native computer-use helper
+
+Reference commit `712e1d68c2c6768f792810a42c2542bbdb4f72ef` (#3415).
+
+The worker runs QuickJS in a dedicated helper for the authorized turn. It
+uses the existing private helper framing to correlate evaluation responses
+and ordered host calls. Host callbacks remain in the worker, where the
+turn owner supplies authorization and dispatch. The helper may complete
+with an error while a callback is waiting. Cancellation retires an
+interrupted pipe, and the worker never replays an interrupted action.
+Successful evaluations can reuse the same JavaScript state. Reset and turn
+retirement clear that state and close the owned helper.
+
+The focused evaluator test runs the real `cantrip-cua` process on macOS ARM64
+with its deterministic backend and a fixture host callback. It exercises
+ordered callbacks, state and reset, policy error codes, request cancellation,
+the native script deadline and idle process retirement. Set
+`CANTRIP_TEST_RUST_CUA_BIN` to the helper and run
+`scripts/worker-rust/cargo.mjs test --lib worker_evaluator -- --ignored`.
+The production worker build, deterministic desktop-inventory smoke and 58
+Node reference lifecycle and transport cases passed locally.
+The registered production broker still needs the authorized desktop/guest
+host-action implementation, retained observation handling and managed
+Codex turn registration.
