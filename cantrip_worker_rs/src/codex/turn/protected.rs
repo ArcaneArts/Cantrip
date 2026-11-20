@@ -167,19 +167,9 @@ impl Protected {
         downstream: Emit,
         identity: identity::Managed,
     ) -> (Emit, Work<()>) {
-        self.publish_canonical_with(identity, move |event| std::future::ready(downstream(event)))
-    }
-
-    pub(super) fn publish_canonical_with<F, P>(
-        self: &Arc<Self>,
-        identity: identity::Managed,
-        downstream: F,
-    ) -> (Emit, Work<()>)
-    where
-        F: Fn(Value) -> P + Send + Sync + 'static,
-        P: Future<Output = Result<()>> + Send,
-    {
-        self.publish_with(Some(identity), downstream)
+        self.publish_with(Some(identity), move |event| {
+            std::future::ready(downstream(event))
+        })
     }
 
     pub(super) fn publish_receipt(

@@ -114,7 +114,7 @@ export async function deferredReceiptProxy(
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const body = Buffer.concat(chunks);
-      if (blockRequest?.(req.url, body)) {
+      if (await blockRequest?.(req.url, body)) {
         reply.destroy();
         return;
       }

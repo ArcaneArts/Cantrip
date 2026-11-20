@@ -72,6 +72,7 @@ const { values } = parseArgs({
     "cua-agent": { type: "string" },
     "cua-console": { type: "string" },
     "cua-recovered": { type: "string" },
+    "cua-autonomous": { type: "string" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -114,7 +115,9 @@ const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const cuaConsole = values["cua-console"];
 const recoveredCua = values["cua-recovered"];
-const cuaAgent = values["cua-agent"] || cuaConsole || recoveredCua;
+const autonomousCua = values["cua-autonomous"];
+const cuaAgent =
+  values["cua-agent"] || cuaConsole || recoveredCua || autonomousCua;
 const previewKey =
   values["cua-preview"] || cuaAgent ? key("client-control-content") : null;
 const policyKey = values.policies ? key("policy-content") : null;
@@ -159,6 +162,7 @@ const consoleStateKey =
   values["queued-steer"] ||
   values["console-steer"] ||
   cuaConsole ||
+  autonomousCua ||
   values["host-skills"] ||
   values.policies ||
   values.codegraph ||
@@ -175,6 +179,7 @@ const approvalMarker = path.join(root, "native-approval-replies.jsonl");
 let server;
 let receiptProxy;
 let goalHandoffFault;
+let goalAdmission;
 let child;
 let workerExit;
 let workerEnvironment;
@@ -2908,6 +2913,40 @@ try {
     receiptProxy = await deferredReceiptProxy(server.origin, {
       handoffAction: "withdrawn",
     });
+  if (autonomousCua) {
+    const goalRequested = Promise.withResolvers();
+    const consoleResumed = Promise.withResolvers();
+    let consoleOperation;
+    receiptProxy = await deferredReceiptProxy(server.origin, {
+      async blockRequest(url, bytes) {
+        if (url === "/api/internal/native-commands/admit") {
+          const command = JSON.parse(bytes);
+          if (command.intent?.autonomousAttempt && !goalAdmission) {
+            goalAdmission = command;
+            // Rejoin this thread while its first autonomous producer is waiting.
+            goalRequested.resolve();
+            await consoleResumed.promise;
+          } else if (
+            !consoleOperation &&
+            command.origin === "terminal" &&
+            command.method === "thread/resume"
+          ) {
+            consoleOperation = command.operationId;
+            await goalRequested.promise;
+          }
+        } else if (url === "/api/internal/native-commands/receipt") {
+          const receipt = JSON.parse(bytes);
+          if (
+            receipt.operationId === consoleOperation &&
+            receipt.status === "applied"
+          )
+            consoleResumed.resolve();
+        }
+        return false;
+      },
+    });
+    receiptProxy.open();
+  }
   if (goalHandoff) {
     goalHandoffFault = {};
     receiptProxy = await deferredReceiptProxy(server.origin, {
@@ -3037,6 +3076,9 @@ try {
       console: cuaConsole ? { socketFile: consoleSocket, labelKey } : null,
       recovery: recoveredCua
         ? { marker: approvalMarker, stopWorker, startWorker }
+        : null,
+      autonomous: autonomousCua
+        ? { labelKey, admission: () => goalAdmission }
         : null,
       openMessage,
     });
