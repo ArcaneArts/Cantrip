@@ -14,6 +14,7 @@ mod replacement;
 mod run_definitions;
 pub(crate) mod session;
 mod sources;
+mod system;
 pub(crate) mod terminal;
 
 use crate::{encryption::Service, filesystem::Scope, routing::Registry};
@@ -39,6 +40,7 @@ pub(crate) struct Controller {
     operations: Operations,
     packages: packages::Manager,
     backup: backup::Manager,
+    system: system::Manager,
 }
 
 fn checked(schema: &str, value: Value) -> Result<Value> {
@@ -130,6 +132,7 @@ impl Controller {
             operations: Operations::new(data),
             packages: packages::Manager::new(data),
             backup: backup::Manager::new(data),
+            system: system::Manager::new(data),
         }
     }
 
@@ -150,6 +153,7 @@ impl Controller {
                     | packages::OPERATION
                     | power::STATUS
                     | power::OPERATION
+                    | system::STATUS
                     | run_definitions::COMMAND
             )
     }
@@ -216,6 +220,9 @@ impl Controller {
                 .backup
                 .execute(&self.operations, command, encryption, lifetime)
                 .await;
+        }
+        if kind == system::STATUS {
+            return self.system.status(command, encryption, lifetime).await;
         }
         let transport_value = checked("cantripOsTransportSchema", command["transport"].clone())?;
         let transport = Transport::from_value(&transport_value)?;

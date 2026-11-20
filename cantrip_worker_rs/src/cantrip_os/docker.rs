@@ -119,6 +119,39 @@ impl LocalDocker {
         limit: Duration,
         scope: &Scope,
     ) -> Result<Value> {
+        let bytes = self.read_response(method, path, body, limit, scope).await?;
+        if bytes.is_empty() {
+            return Ok(Value::Null);
+        }
+        std::str::from_utf8(&bytes)
+            .ok()
+            .and_then(|body| parse_json_text(body).ok())
+            .ok_or_else(|| DeliveryUnknown("Docker returned an invalid receipt.".to_owned()).into())
+    }
+
+    pub async fn read_archive(&self, container: &str, path: &str, scope: &Scope) -> Result<Bytes> {
+        self.read_response(
+            Method::GET,
+            &format!(
+                "/containers/{}/archive?path={}",
+                segment(container),
+                segment(path)
+            ),
+            None,
+            Duration::from_secs(60),
+            scope,
+        )
+        .await
+    }
+
+    async fn read_response(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+        limit: Duration,
+        scope: &Scope,
+    ) -> Result<Bytes> {
         scope.check()?;
         let exchange = async {
             #[cfg(unix)]
@@ -150,7 +183,7 @@ async fn exchange(
     method: Method,
     path: &str,
     body: Option<&Value>,
-) -> Result<Value> {
+) -> Result<Bytes> {
     let (mut requests, connection) = http1::handshake(TokioIo::new(socket)).await?;
     let mut owned = JoinSet::new();
     owned.spawn(connection);
@@ -173,13 +206,13 @@ async fn exchange(
         .await
         .map_err(|_| anyhow!("Docker response could not be read."))?
         .to_bytes();
-    let receipt = if bytes.is_empty() {
-        Value::Null
-    } else {
-        parse_json_text(std::str::from_utf8(&bytes)?)
-            .map_err(|_| anyhow!("Docker returned an invalid receipt."))?
-    };
     if status.is_client_error() || status.is_server_error() {
+        let receipt = if bytes.is_empty() {
+            Value::Null
+        } else {
+            parse_json_text(std::str::from_utf8(&bytes)?)
+                .map_err(|_| anyhow!("Docker returned an invalid receipt."))?
+        };
         return Err(DockerApiError {
             status,
             message: receipt["message"]
@@ -189,5 +222,5 @@ async fn exchange(
         }
         .into());
     }
-    Ok(receipt)
+    Ok(bytes)
 }
