@@ -13,6 +13,9 @@ import { CustomizationContentReplayGuard } from "../../cantrip_worker/src/custom
 import { updateNativePermissions } from "../../cantrip_worker/src/native-permission-update.ts";
 import {
   settingsWorker as worker,
+  settingsChat,
+  settingsProject,
+  settingsTree,
   componentKey,
 } from "./native-settings-http-fixture.mjs";
 import { literal, json } from "./project-target-state.mjs";
@@ -362,7 +365,18 @@ export function customizationHttpWorker(result, current) {
     },
     async onCommand(command, _emit, { encryption }) {
       if (["chat.plan.get", "chat.plan.set"].includes(command.type)) {
-        result.commands.push(current().fixture.normalize(command));
+        const { session, subagentDefaults, mcpServers, ...legacyCommand } =
+          command;
+        if (session) {
+          assert.equal(command.type, "chat.plan.set");
+          assert.equal(session.contextKind, "project");
+          assert.equal(session.chatId, settingsChat);
+          assert.equal(session.projectId, settingsProject);
+          assert.equal(session.worktreeId, settingsTree);
+          assert.ok(Array.isArray(mcpServers));
+          assert.ok(subagentDefaults !== undefined);
+        }
+        result.commands.push(current().fixture.normalize(legacyCommand));
         assert.equal(typeof command.cwd, "string");
         assert.equal(typeof command.model.id, "string");
         assert.equal(typeof command.provider.id, "string");

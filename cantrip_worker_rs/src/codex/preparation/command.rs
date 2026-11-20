@@ -1,7 +1,9 @@
 //! Worker command preparation joins authenticated scope, the durable association,
 //! and the native thread. It also installs the idle MCP attachment.
+mod plan;
 mod profile;
 pub(in crate::codex) mod task_pause;
+pub(crate) use plan::{PLAN_GET, PLAN_SET};
 pub(in crate::codex) use profile::collaboration_mode;
 
 use super::{
@@ -69,6 +71,9 @@ struct ThreadOwner {
     thread: native::LoadedThread,
     bound: (JsString, Value),
     session: Option<Value>,
+    model_route: Value,
+    provider_id: Value,
+    provider_account: Value,
     task: Option<Root>,
     queue: Option<Arc<import::Binding>>,
     settings: Option<Arc<snapshot::Publisher>>,
@@ -371,7 +376,8 @@ impl Ensurer {
         let cwd = field(&command, "cwd")?;
         let chat = field(session, "chatId")?;
         let project = session["projectId"].as_js_string().cloned();
-        let guest_allowed = incoming["type"] == COMMAND
+        let change_plan = incoming["type"] == PLAN_SET;
+        let guest_allowed = matches!(incoming["type"].as_str(), Some(COMMAND | PLAN_SET))
             || (incoming["type"] == crate::codex::turn::RUN
                 && session.get("osExecution").is_some());
         if !guest_allowed && session.get("osExecution").is_some() {
@@ -421,7 +427,8 @@ impl Ensurer {
             None => {
                 let held = match session.get("heldSuspension") {
                     Some(expected) => {
-                        if intent != Intent::Preserve || command["taskOwned"] == true {
+                        if intent != Intent::Preserve || change_plan || command["taskOwned"] == true
+                        {
                             bail!("This suspended thread must use its original execution.");
                         }
                         Some(self.open_held(&command, expected, placement).await?)
@@ -486,7 +493,7 @@ impl Ensurer {
                     let model_provider = provider::model_provider(&provider);
                     let source = held.as_ref().map_or(home::Source::Current(selection.thread_id.as_ref()), home::Source::Held);
                     let profile = home::profile(
-                        &this.0.data, &scope, source, &chat, &provider, execution, this.0.skills.clone(),
+                        &this.0.data, &scope, source, Some(&chat), &provider, execution, this.0.skills.clone(),
                         environment.as_deref(),
                     ).await?;
                     this.assert_bound(&bound)?;
@@ -560,7 +567,7 @@ impl Ensurer {
                         runtime.inference_router().reserve_task_first_input(thread.clone(), runner.clone(), message.clone());
                     }
                     let mut configuration = profile::configuration(
-                        &command, &cwd, mcp, runner.clone(), model_provider, standalone,
+                        &command, &cwd, mcp, Some(runner.clone()), model_provider, standalone,
                         this.0.permission_profiles, environment.as_deref(),
                     ).await?;
                     this.assert_bound(&bound)?;
@@ -610,8 +617,8 @@ impl Ensurer {
                         native::configure(&runtime, &loaded, selection.intent, &configuration).await?;
                         loaded
                     };
-                    if selection.intent == Intent::Configure {
-                        profile::apply_plan_mode(&runtime, &loaded, &command).await?;
+                    if selection.intent == Intent::Configure || change_plan {
+                        profile::apply_plan_mode(&runtime, &loaded, &command["planMode"], &command["model"]).await?;
                     }
                     if let Some(message) = first_message {
                         runtime.inference_router().reserve_task_first_input(loaded.id().clone(), runner.clone(), message.clone());
@@ -682,6 +689,9 @@ impl Ensurer {
                         let owner = ThreadOwner {
                             runtime: runtime.downgrade(), thread: loaded.clone(), bound: bound.clone(),
                             session: goal_session, task, queue, settings,
+                            model_route: command["model"]["routeId"].clone(),
+                            provider_id: command["provider"]["id"].clone(),
+                            provider_account: command["provider"]["accountId"].clone(),
                         };
                         owners.insert(chat.clone(), owner);
                     }
@@ -885,7 +895,7 @@ impl Ensurer {
             command,
             &cwd,
             json!({}),
-            runtime.generation().into(),
+            Some(runtime.generation().into()),
             model_provider,
             false,
             self.0.permission_profiles,
@@ -927,7 +937,7 @@ impl Ensurer {
             &self.0.data,
             &scope,
             home::Source::Current(None),
-            &field(job, "chatId")?,
+            Some(&field(job, "chatId")?),
             &provider,
             "ide",
             self.0.skills.clone(),

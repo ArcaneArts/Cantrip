@@ -89,10 +89,18 @@ async fn change(service: &AuthService, owner: &str, chat: &str, input: &Value) -
         };
         let same_route = runtime["routeId"] == context["modelRouteId"]
             && runtime["provider"].get("accountId").unwrap_or(&Value::Null) == &context["providerAccountId"];
-        let reply = service.workers.commands.request(&worker, json!({
+        let mut command = json!({
             "type":"chat.plan.set","cwd":context["cwd"],"threadId":if same_route {context["threadId"].clone()}else{Value::Null},"mode":input["mode"],
             "model":runtime["model"],"provider":runtime["provider"],"permissionProfileId":managed_console::permission_profile(&context)["effectiveId"]
-        }), None, None).await?.context("Codex did not return a Plan Mode thread.")?;
+        });
+        if managed_console::turn_session_context(&context).is_some() {
+            let scoped = service.managed_console.configuration(owner, &context, &runtime).await?;
+            for key in ["session", "subagentDefaults", "mcpServers"] {
+                command[key] = scoped[key].clone();
+            }
+        }
+        let reply = service.workers.commands.request(&worker, command, None, None).await?
+            .context("Codex did not return a Plan Mode thread.")?;
         let mode = crate::settings::parse_response("chatPlanUpdateSchema", Some(&json!({"mode":reply["mode"]})))?;
         let thread = reply["threadId"].as_str().filter(|id| !id.is_empty()).context("Codex did not return a Plan Mode thread.")?;
         repository.update_runtime(chats::RuntimeUpdate {

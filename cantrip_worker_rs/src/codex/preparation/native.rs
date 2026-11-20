@@ -24,6 +24,14 @@ pub struct LoadedThread {
 }
 
 impl LoadedThread {
+    pub(super) fn observe(runtime: &Runtime, id: &JsString) -> Self {
+        Self {
+            id: id.clone(),
+            version: runtime.thread_version(id),
+            generation: runtime.generation().to_owned(),
+        }
+    }
+
     pub fn id(&self) -> &JsString {
         &self.id
     }
@@ -96,11 +104,7 @@ pub async fn load(
             if let Some(suspension) = &configuration.expected_suspension {
                 params["expectedSuspension"] = suspension.clone();
             }
-            let thread = LoadedThread {
-                id: expected.clone(),
-                generation: runtime.generation().to_owned(),
-                version: runtime.thread_version(expected),
-            };
+            let thread = LoadedThread::observe(runtime, expected);
             identify(expected.clone()).await?;
             bind_resources(expected);
             let loaded = resumed(runtime, params, &thread).await?;

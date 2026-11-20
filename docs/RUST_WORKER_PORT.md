@@ -7385,3 +7385,26 @@ Windows x64 GNU worker compile check passed.
 
 Explicit Plan Mode reads and writes (`chat.plan.get` and `chat.plan.set`)
 and subagent interactions remain open.
+
+## 193. Read and change Plan Mode through the Rust worker
+
+Reference commit b6292e25c9aa5d54b8f9fbd651daf200b5999078 (#3356).
+
+Plan Mode reads the actual settings of the selected native thread. An
+unloaded thread returns the caller's stored fallback. Writes use the
+existing collaboration presets and wait for the matching native settings
+application. Core supplies the managed session and MCP configuration when
+available. That path preserves the thread's other native settings and can
+recover the selected placement before applying the mode. Older command
+payloads use the same native settings operations with their existing
+account, provider, and thread identifiers.
+
+Local macOS ARM64 testing used the production Rust server with PGlite,
+the production worker, and bundled Codex. Project API writes switched modes
+on the same thread, native settings reads confirmed both values, and an
+active turn rejected a change. The existing encrypted Plan Mode question
+flow passed. A fresh standalone Chat accepted default mode and rejected
+the unsupported Plan Mode setting. The direct command fixture exercised
+unloaded reads and the original Plan Mode payload across worker restart.
+The older TypeScript schema accepted the extended command by retaining
+its existing fields. The Windows x64 GNU worker compile check passed.

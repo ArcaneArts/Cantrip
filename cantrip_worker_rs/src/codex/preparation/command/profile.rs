@@ -47,7 +47,7 @@ pub(super) async fn configuration(
     command: &Value,
     cwd: &JsString,
     mcp: Value,
-    generation: JsString,
+    generation: Option<JsString>,
     provider: &str,
     standalone: bool,
     permission_profiles: bool,
@@ -119,29 +119,27 @@ pub(super) async fn configuration(
         // Existing threads retain native ownership of model/security and
         // recovering a partial preparation refreshes the same managed overlay.
         configure_existing: json!({}),
-        managed_overlay: Some(json!({
-            "mcpServers": mcp,
-            "developerInstructions": instructions,
-            "multiAgentEnabled": subagents,
-            "subagentModel": defaults["name"],
-            "subagentReasoningEffort": defaults["reasoningEffort"],
-            "canonicalHistory": !standalone,
-            "executionGate": if command["taskOwned"] == true {
-                json!({"runnerGeneration": generation, "inferenceOnly": true})
-            } else {
-                json!({"runnerGeneration": generation})
-            },
-        })),
+        managed_overlay: generation.map(|generation| {
+            json!({
+                "mcpServers": mcp,
+                "developerInstructions": instructions,
+                "multiAgentEnabled": subagents,
+                "subagentModel": defaults["name"],
+                "subagentReasoningEffort": defaults["reasoningEffort"],
+                "canonicalHistory": !standalone,
+                "executionGate": if command["taskOwned"] == true {
+                    json!({"runnerGeneration": generation, "inferenceOnly": true})
+                } else {
+                    json!({"runnerGeneration": generation})
+                },
+            })
+        }),
         expected_suspension: None,
     })
 }
 
-pub(super) async fn apply_plan_mode(
-    runtime: &Runtime,
-    thread: &LoadedThread,
-    command: &Value,
-) -> Result<()> {
-    let mode = &command["planMode"];
+pub(super) async fn read_plan_mode(runtime: &Runtime, thread: &LoadedThread) -> Result<Value> {
+    thread.assert_current(runtime)?;
     let status = call(
         runtime,
         "thread/settings/read",
@@ -152,10 +150,23 @@ pub(super) async fn apply_plan_mode(
     if status["threadId"].as_js_string() != Some(thread.id()) {
         bail!("Native settings read returned another thread.");
     }
-    if status["threadSettings"]["collaborationMode"]["mode"] == *mode {
+    let mode = &status["threadSettings"]["collaborationMode"]["mode"];
+    if !matches!(mode.as_str(), Some("plan" | "default")) {
+        bail!("Codex returned an unsupported collaboration mode.");
+    }
+    Ok(mode.clone())
+}
+
+pub(super) async fn apply_plan_mode(
+    runtime: &Runtime,
+    thread: &LoadedThread,
+    mode: &Value,
+    model: &Value,
+) -> Result<()> {
+    if read_plan_mode(runtime, thread).await? == *mode {
         return Ok(());
     }
-    let collaboration = collaboration_mode(runtime, mode, &command["model"]).await?;
+    let collaboration = collaboration_mode(runtime, mode, model).await?;
     let expected = collaboration["settings"].clone();
     apply_settings(
         runtime,

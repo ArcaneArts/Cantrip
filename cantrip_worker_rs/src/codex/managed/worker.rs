@@ -300,6 +300,20 @@ impl Worker {
         self.launch_in_scope(launch, None)
     }
 
+    pub(in crate::codex) fn live_runtime(&self, profile: &JsString) -> Result<Option<Runtime>> {
+        let key = Key {
+            scope: self.scope()?,
+            profile: profile.clone(),
+        };
+        let slot = self.0.state.lock().unwrap().runtimes.get(&key).cloned();
+        let Some(slot) = slot.filter(|slot| !slot.retiring.load(Ordering::Acquire)) else {
+            return Ok(None);
+        };
+        let runtime = slot.ready.work().now_or_never().and_then(Result::ok);
+        self.publish(&key)?;
+        Ok(runtime.filter(Runtime::is_live))
+    }
+
     pub(in crate::codex) fn launch_in_scope(
         &self,
         mut launch: Launch,
