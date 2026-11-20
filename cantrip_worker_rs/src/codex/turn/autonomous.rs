@@ -30,6 +30,7 @@ pub(crate) struct Autonomous {
     history: History,
     routing: Arc<Registry>,
     recoveries: goal_recovery::Observations,
+    computer_use: computer_use::Desktop,
 }
 
 impl Turns {
@@ -41,6 +42,7 @@ impl Turns {
             history: self.history.clone(),
             routing,
             recoveries: self.goal_recoveries.clone(),
+            computer_use: self.computer_use.clone(),
         }
     }
 }
@@ -85,7 +87,13 @@ impl Autonomous {
             .inference_router()
             .goal_mutations(thread)
             .context("The Goal runner has retired.")?;
-        let (subscription, mut events, _) = output::subscribe(&runtime.history(), thread)?;
+        let observe_cua = output::ComputerUseObserver::default();
+        let (subscription, mut events, _) = output::subscribe_with_context(
+            &runtime.history(),
+            thread,
+            None,
+            Some(observe_cua.clone()),
+        )?;
         let transport = subscription.signal();
         let admission_signal = Signal::any(
             [transport.clone()]
@@ -178,8 +186,7 @@ impl Autonomous {
         };
         let execution = &granted["execution"];
         let admission = async {
-            if !granted["computerUseAuthority"].is_null()
-                || execution["chatId"] != json!(chat)
+            if execution["chatId"] != json!(chat)
                 || execution["threadId"] != json!(thread)
                 || execution["executionLaneId"] != receipt.operation().lane
                 || execution["modelRouteId"] != receipt.session()["modelRouteId"]
@@ -239,7 +246,7 @@ impl Autonomous {
                 execution.bind_thread(thread.clone())?;
                 execution.bind_turn(turn.clone())?;
                 execution.seal_input_dispatch().await?;
-                let _mcp = (runner.activate)(&root.lane)?;
+                let mcp = (runner.activate)(&root.lane)?;
                 let scope = Scope::new(self.encryption.clone())?;
                 if scope.owner != owner.key.0 || scope.server != owner.key.1 {
                     bail!("The worker binding changed before Goal dispatch.");
@@ -252,19 +259,34 @@ impl Autonomous {
                     transport.clone(),
                 );
                 let protection = protected::Protected::for_native_output(scope, json!(chat));
-                let publisher = protection.clone();
-                let client = self.receipts.clone();
-                let operation = root.clone();
-                let (emit, published) = protection.publish_canonical_with(identity, move |event| {
-                    let (client, operation, publisher) = (client.clone(), operation.clone(), publisher.clone());
-                    async move { client.event(publisher.scope(), &operation, event).await }
-                });
+                let (emit, published, delivery_signal) =
+                    protection.publish_receipt(Some(identity), self.receipts.clone(), root.clone());
+                let authority = &granted["computerUseAuthority"];
+                let cua = if authority.is_null() {
+                    None
+                } else {
+                    let activation = mcp.as_ref().context("The autonomous computer-use MCP attachment is unavailable.")?;
+                    let epoch = self.computer_use.previews.current_epoch();
+                    let lifetime = computer_use::Turn::new(
+                        self.computer_use.clone(), epoch, thread.clone(), emit.clone(),
+                        Some(protection), Signal::any(vec![signal.clone(), delivery_signal]),
+                    );
+                    lifetime.0.register(activation, authority)?;
+                    let _ = observe_cua.set(Arc::downgrade(&lifetime.0));
+                    Some(lifetime)
+                };
+                let mut native_interactions = runtime.interaction_requests(thread, true)?;
+                native_interactions.bind_turn(turn)?;
+                let binding = owner.active.control.get().unwrap();
 
                 receipt.dispatch().await?;
                 signal.check()?;
                 runner.thread.assert_current(&runtime)?;
                 owner.active.dispatch(&signal, thread.clone())?;
                 execution.dispatched()?;
+                if let Some(cua) = &cua {
+                    cua.0.dispatched();
+                }
                 let allowed = match attempt.allow(&root.generation).await {
                     Ok(allowed) => Ok(allowed),
                     Err(error) if !attempt.forwarded() => {
@@ -279,20 +301,35 @@ impl Autonomous {
                         Ok(ref result) => receipt.admitted_goal(result).await,
                         Err(_) => receipt.uncertain().await,
                     };
-                    owner.active.control.get().unwrap().published(result.is_ok());
+                    binding.published(result.is_ok());
                     result
                 };
                 let terminal = async {
-                    let result = tokio::select! {
-                        biased;
-                        result = output::collect(&mut events, &transport, thread, turn, &emit) => result.map(Some),
-                        declined = attempt.declined() => declined.map(|()| None),
+                    let collecting = async {
+                        tokio::select! {
+                            biased;
+                            result = output::collect(&mut events, &transport, thread, turn, &emit) => result.map(Some),
+                            declined = attempt.declined() => declined.map(|()| None),
+                        }
                     };
+                    let result = interactions::Turn {
+                        runtime: &runtime, receipt: &receipt, thread, turn,
+                        thread_version: binding.thread_version, encryption: &self.encryption,
+                        emit: &emit, protected: true,
+                    }.observe(binding, &mut native_interactions.events, collecting).await;
+                    drop(native_interactions);
                     drop(emit);
                     owner.active.set(Phase::Terminal);
                     result
                 };
                 let (terminal, accepted) = tokio::join!(terminal, acceptance);
+                let cua_finished = if let Some(cua) = &cua {
+                    cua.0.finish().await
+                } else {
+                    Ok(())
+                };
+                drop(mcp);
+                drop(cua);
                 if transport.check().is_err() {
                     runtime.retired().await?;
                 }
@@ -302,6 +339,7 @@ impl Autonomous {
                 execution.settled().await?;
                 let terminal = terminal?;
                 accepted?;
+                cua_finished?;
                 published.await?;
                 let Some(terminal) = terminal else {
                     return receipt.goal_declined(&attempt.key).await;

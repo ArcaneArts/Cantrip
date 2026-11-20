@@ -9172,3 +9172,32 @@ reset and completion expired retained observations. The saved command
 approval and managed console computer-use smokes also passed locally.
 Managed guest turn validation, autonomous and Task execution, and child-agent
 computer use remain open.
+
+## 261. Run computer use on autonomous Project Goal turns
+
+Reference commit `824e444c9c20c22809ae0a900fb174493eb33390` (#3424).
+
+The worker binds Core's computer-use grant and native interaction handler to
+the autonomous attempt before releasing its producer. The observed native turn
+owns the MCP session. Approval requests and encrypted activity go through the
+existing durable command receipt. The worker revokes the session and clears
+retained previews when the turn ends, then drains publication before final
+settlement.
+
+When a console rejoins a live managed thread, the bundled Codex app-server
+finishes sending its resume response and replay before waking the Goal in a
+separate task. The native event loop can deliver the admitted turn's events
+while a wake is waiting for authority. A Goal wake that has queued behind
+the Goal state lock checks the native turn slot before requesting its own
+admission. A running turn can finish its Goal accounting without waiting on
+a second producer.
+
+The macOS ARM64 `standalone-turn-smoke.mjs --cua-autonomous` fixture held
+Goal admission until the real managed terminal rejoined. The patched Codex
+executable, production Rust worker, and Rust Core in PGlite mode completed
+the original native turn. The fixture verified protected allow and decline
+decisions, encrypted activity and assistant history, matching model and
+preview PNGs, observation expiry on reset and completion, and the completed
+Goal state. The queued Goal provider handoff and managed console computer-use
+smokes passed using the same executable. The local test executable used the
+pinned Rust compiler and the installed LLVM 23 LTO library for linking.

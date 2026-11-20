@@ -28,6 +28,7 @@ export async function verifyManagedComputerUse({
   previewKey,
   console: managedConsole,
   recovery,
+  autonomous,
   openMessage,
 }) {
   const { model, profile, provider } = await createModel(
@@ -58,14 +59,15 @@ export async function verifyManagedComputerUse({
     autoNameChats: false,
   });
   const title = "Managed native computer use";
-  const { chatId, chatUrl } = managedConsole
+  const project = managedConsole ?? autonomous;
+  const { chatId, chatUrl } = project
     ? await createPreparedProjectChat({
         call,
         eventually,
         ownerId,
         workerId,
         keyRevision,
-        labelKey: managedConsole.labelKey,
+        labelKey: project.labelKey,
         title,
       })
     : await createChat(title, false);
@@ -73,6 +75,7 @@ export async function verifyManagedComputerUse({
   const tools = model.reply({ hold: true });
   const captured = model.reply({ hold: true });
   const afterReset = model.reply({ hold: true });
+  const completeGoal = autonomous ? model.reply({ hold: true }) : null;
   const finished = model.reply({
     hold: true,
     text: "The fixture capture completed.",
@@ -102,6 +105,11 @@ export async function verifyManagedComputerUse({
     } finally {
       view.close();
     }
+  } else if (autonomous) {
+    await call("POST", `${chatUrl}/goal?encrypted=1`, 202, {
+      objective: prompt,
+      tokenBudget: 50_000,
+    });
   } else {
     await call(
       "POST",
@@ -124,6 +132,16 @@ export async function verifyManagedComputerUse({
     () => tools.entered,
     (entered) => assert.equal(entered, true),
   );
+  if (autonomous) {
+    const admission = autonomous.admission();
+    assert.ok(admission?.intent.autonomousAttempt.goalEpoch);
+    assert.equal(admission.origin, "autonomous");
+    assert.equal(admission.session.chatId, chatId);
+    expectedTurn = {
+      threadId: admission.session.threadId,
+      turnId: admission.intent.autonomousAttempt.turnId,
+    };
+  }
   const available = modelFunctions(tools.request.input.tools);
   const tool = (name) =>
     available.find(
@@ -149,10 +167,14 @@ export async function verifyManagedComputerUse({
   const material = { ownerId, keyRevision, componentKey: interactionKey };
   const pendingRecords = () =>
     call("GET", `/api/agent-requests?chatId=${chatId}&status=pending`, 200);
-  async function pending() {
-    const [record] = await eventually(pendingRecords, (items) =>
-      assert.equal(items.length, 1),
-    );
+  async function pending(toolReply) {
+    const [record] = await eventually(pendingRecords, (items) => {
+      assert.ok(
+        !toolReply?.entered,
+        `The tool returned before requesting approval: ${JSON.stringify(toolReply?.request?.input?.input?.filter((item) => item.type === "function_call_output"))}`,
+      );
+      assert.equal(items.length, 1);
+    });
     const request = await decryptInteractionRequestContent({
       ...material,
       requestKey: record.requestKey,
@@ -184,8 +206,8 @@ export async function verifyManagedComputerUse({
     assert.equal(resolved.status, "resolved");
   }
 
-  async function confirmTool() {
-    const [confirmation, elicitation] = await pending();
+  async function confirmTool(toolReply) {
+    const [confirmation, elicitation] = await pending(toolReply);
     assert.equal(elicitation.kind, "mcpElicitation");
     assert.equal(elicitation.serverName, "cantrip_cua");
     await respond(confirmation, {
@@ -195,7 +217,7 @@ export async function verifyManagedComputerUse({
       metadata: null,
     });
   }
-  await confirmTool();
+  await confirmTool(captured);
 
   let provenance;
   for (const [permission, target] of [
@@ -334,12 +356,13 @@ export async function verifyManagedComputerUse({
     },
   ];
   afterReset.release();
+  const afterCapture = completeGoal ?? finished;
   await eventually(pendingRecords, (records) =>
-    assert.ok(finished.entered || records.length === 1),
+    assert.ok(afterCapture.entered || records.length === 1),
   );
-  if (!finished.entered) await confirmTool();
+  if (!afterCapture.entered) await confirmTool();
   await eventually(
-    () => finished.entered,
+    () => afterCapture.entered,
     (entered) => assert.equal(entered, true),
   );
   const afterResetSources = (await operate(list)).result.data.sources;
@@ -347,6 +370,18 @@ export async function verifyManagedComputerUse({
   const [replacement] = afterResetSources;
   assert.notEqual(replacement.sourceId, source.sourceId);
   assert.notEqual(replacement.binding.sessionId, source.binding.sessionId);
+  if (completeGoal) {
+    const update = modelFunctions(completeGoal.request.input.tools).find(
+      ({ name }) => name === "update_goal" || name.endsWith("__update_goal"),
+    );
+    assert.ok(update, "The autonomous turn exposes native Goal completion.");
+    completeGoal.calls = [{ ...update, arguments: { status: "complete" } }];
+    completeGoal.release();
+    await eventually(
+      () => finished.entered,
+      (entered) => assert.equal(entered, true),
+    );
+  }
   finished.release();
   await eventually(
     () => finished.request,
@@ -466,6 +501,12 @@ export async function verifyManagedComputerUse({
     (await operate({ ...get, sourceId: replacement.sourceId })).result.code,
     "execution-unavailable",
   );
+  if (autonomous) {
+    await eventually(
+      () => call("GET", `${chatUrl}/goal?encrypted=1`, 200),
+      ({ goal }) => assert.equal(goal?.status, "complete"),
+    );
+  }
   assert.deepEqual(model.failures, []);
   console.log(
     JSON.stringify({
@@ -473,7 +514,9 @@ export async function verifyManagedComputerUse({
         ? "native-console-computer-use"
         : recovery
           ? "native-recovered-computer-use"
-          : "native-managed-computer-use",
+          : autonomous
+            ? "native-autonomous-computer-use"
+            : "native-managed-computer-use",
       passed: true,
     }),
   );
