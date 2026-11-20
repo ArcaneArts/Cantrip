@@ -8422,3 +8422,29 @@ the turn committed, a single compaction ran and the next turn received its
 summary. Repeat with `scripts/worker-rust/workspace-smoke.mjs --project-export-only`.
 The focused protocol and Node reference tests passed. Guest and Windows
 execution were outside the fixture.
+
+## 232. Apply encrypted policies to native Chat turns
+
+Reference commit `0113d2ccf6718461324cbe7b06a5fd091cb3b3c6` (#3395).
+
+The Rust worker opens the encrypted policies that Core selected for the turn.
+Project Chats send the effective summaries to Codex. Standalone Chats send
+the full bodies for the enabled Chat audience. The worker uses the existing
+row-bound decryption and enforces the 32 KiB UTF-8 budget before inference.
+The policy text stays inside the worker and its native model requests.
+
+The managed Project Chat MCP tools `policy_list` and `policy_read` use
+the same decryption and schema validation as the CLI. Core resolves the live
+project's effective list. The worker resolves a requested key against that
+list, sends the opaque policy ID for the detail request, and verifies the
+returned row and key before opening the body.
+
+The macOS ARM64 fixture used Rust Core in PGlite mode, the Rust worker and
+bundled Codex 0.166.0 against a loopback Responses provider. It verified that
+a Project Chat received only its assigned policy summary, read its body
+through the native MCP tool and rejected an unassigned policy. A Standalone
+Chat received its audience's full policy body. The Host CLI regression
+matched Node decryption and rejected a body encrypted for a different row.
+Three focused Node policy tests passed. Repeat the Chat fixture with
+`scripts/worker-rust/standalone-turn-smoke.mjs --policies`. Guest and Windows
+execution were outside the fixture.

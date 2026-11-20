@@ -1,3 +1,4 @@
+mod policy;
 mod streamable;
 
 use super::{Active, Entry, Inner, MAXIMUM_OPERATIONS, now, server::Rejected, store};
@@ -308,6 +309,7 @@ impl Inner {
                     "continuationScheduled":true, "mutated":true, "data":window,
                 }))).map_err(super::response_error)
             }
+            "policy.list" | "policy.read" => self.policy(authorization, &call, operation).await,
             _ => Err(anyhow!("Unsupported Cantrip MCP operation.")),
         }
     }

@@ -673,6 +673,9 @@ impl Ensurer {
                             };
                             let mut operations =
                                 vec!["context.get", "tool.help", "web.read", "web.search"];
+                            if !standalone {
+                                operations.extend(["policy.list", "policy.read"]);
+                            }
                             if !standalone && command["taskOwned"] != true {
                                 operations.push("context.compact");
                             }
@@ -1359,6 +1362,7 @@ impl Ensurer {
                         ))
                     }),
                     server,
+                    Some(self.0.encryption.clone()),
                     Some(self.0.web.clone()),
                     Some(self.0.browser_surfaces.clone()),
                 )

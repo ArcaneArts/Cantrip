@@ -35,11 +35,6 @@ pub(super) fn validate(command: &Value) -> Result<()> {
                 .as_array()
                 .is_some_and(|value| !value.is_empty())
         })
-        || ["policies", "standalonePolicies"].iter().any(|field| {
-            command[*field]["policies"]
-                .as_array()
-                .is_some_and(|value| !value.is_empty())
-        })
     {
         bail!("This turn requires native features outside the text execution path.");
     }
@@ -81,6 +76,7 @@ pub(super) async fn native_input(
     thread: &JsString,
     permission_profiles: bool,
     environment: Option<&Environment>,
+    policy: Option<JsString>,
 ) -> Result<Value> {
     let cwd = command["cwd"]
         .as_str()
@@ -159,6 +155,9 @@ pub(super) async fn native_input(
         });
     let mut context = json!({});
     context[context_key] = json!({"kind": "application", "value": instructions});
+    if let Some(policy) = policy {
+        context["cantrip.policies"] = json!({"kind": "application", "value": policy});
+    }
     if let Some(environment) = environment {
         context["cantrip.os-placement"] = json!({
             "kind":"application", "value":environment.instructions,
