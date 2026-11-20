@@ -118,6 +118,39 @@ impl Protected {
         &self.scope
     }
 
+    pub(super) fn computer_use_activity(&self, activity: &Value) -> Result<Value> {
+        let activity = checked("agentActivitySchema", activity)?;
+        let binding = &activity["binding"];
+        let actor = &activity["agentScope"];
+        if activity["type"] != "computerUse"
+            || activity["source"] != "agent-mcp"
+            || binding["chatId"] != self.chat
+        {
+            bail!("The computer-use activity belongs to a different conversation.");
+        }
+        let turn = &binding["turnId"];
+        let key = concat(&[
+            "activity:".into(),
+            text(&actor["rootTurnId"])?.clone(),
+            ":".into(),
+            text(&actor["agentThreadId"])?.clone(),
+            ":".into(),
+            text(turn)?.clone(),
+            ":".into(),
+            text(&activity["id"])?.clone(),
+        ]);
+        let message = self.scope.protect(&json!({
+            "id": event_id(text(&self.chat)?, &key),
+            "role": "assistant",
+            "content": vec![json!({"type":"activity","activity":activity})],
+            "idempotencyKey": idempotency_key(key),
+        }))?;
+        Ok(json!({
+            "type":"agent.protected-message","message":message,
+            "telemetry":json!({"kind":"activity","activityType":"computerUse","turnId":turn}),
+        }))
+    }
+
     pub(super) fn attach(self: &Arc<Self>, downstream: Emit) -> Emit {
         let protection = self.clone();
         Arc::new(move |event| {
@@ -213,14 +246,7 @@ impl Protected {
                         text(&message["id"])?.clone(),
                     ]);
                     let id = event_id(text(&self.chat)?, &key);
-                    let idempotency = if key.len() <= 200 {
-                        key
-                    } else {
-                        let digest = Sha256::digest(key.lossy().as_bytes());
-                        let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-                        format!("agent-output:sha256:{hex}").into()
-                    };
-                    (json!(id), json!(idempotency), Value::Null)
+                    (json!(id), json!(idempotency_key(key)), Value::Null)
                 };
                 let mut content =
                     json!({"type": "text", "text": message["text"], "phase": message["phase"]});
@@ -318,6 +344,15 @@ fn event_id(chat: &JsString, key: &JsString) -> String {
     bytes[6] = (bytes[6] & 0x0f) | 0x50;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     uuid::Uuid::from_bytes(bytes).to_string()
+}
+
+fn idempotency_key(key: JsString) -> JsString {
+    if key.len() <= 200 {
+        return key;
+    }
+    let digest = Sha256::digest(key.lossy().as_bytes());
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("agent-output:sha256:{hex}").into()
 }
 
 pub(super) fn user_prompt_text(content: &Value) -> Result<JsString> {

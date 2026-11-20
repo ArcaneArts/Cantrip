@@ -1,4 +1,5 @@
 //! Authorized JavaScript host actions on the turn's assigned desktop.
+mod activity;
 #[cfg(all(test, unix))]
 mod tests;
 
@@ -8,6 +9,7 @@ use crate::{
     http::checked,
     metadata::{Abort, Signal},
 };
+pub use activity::HostActivity;
 use anyhow::{Result, ensure};
 use cantrip_crypto::Zeroizing;
 use cantrip_wire::{JsString, Value, value::json};
@@ -181,6 +183,7 @@ impl DesktopTurn {
         javascript: &mut Javascript,
         source: &JsString,
         request: Signal,
+        activity: Option<&HostActivity<'_>>,
         authorize: A,
     ) -> Result<HostEvaluation>
     where
@@ -204,7 +207,13 @@ impl DesktopTurn {
                 0,
                 Signal::any(vec![request, self.signal.clone()]),
                 |action, signal| {
-                    self.action(&owned.attachment, action, signal, &frames, &authorize)
+                    self.action(
+                        &owned.attachment,
+                        action,
+                        signal,
+                        (&frames, activity),
+                        &authorize,
+                    )
                 },
             )
             .await;
@@ -247,6 +256,10 @@ impl DesktopTurn {
         );
         let _attachment = self.evaluation_attachment();
         javascript.reset().await
+    }
+
+    pub(crate) fn activity_session(&self) -> Value {
+        self.attachment.lock().unwrap().native.data(None)
     }
 
     fn evaluation_attachment(&self) -> EvaluationAttachment<'_> {
@@ -293,66 +306,89 @@ impl DesktopTurn {
         attachment: &Attachment,
         action: Value,
         signal: Signal,
-        frames: &Mutex<EvaluationFrames>,
+        evaluation: (&Mutex<EvaluationFrames>, Option<&HostActivity<'_>>),
         authorize: &impl Fn(HostAction, Signal) -> F,
     ) -> Result<Value, HostError> {
         self.current(&signal)?;
         let session = attachment.native.data(None);
         let (policy, command) = command(&action, &session)?;
-        authorize(policy, signal.clone()).await?;
-        self.current(&signal)?;
-        match action["operation"].as_str() {
-            Some("wait") => {
-                let ms = action["ms"].as_u64().expect("validated wait duration");
-                tokio::select! {
-                    biased;
-                    _ = signal.cancelled() => return Err(HostError::new("cancelled")),
-                    _ = tokio::time::sleep(Duration::from_millis(ms)) => {},
+        let (frames, activity) = evaluation;
+        let mut record = activity.map(|activity| {
+            activity.action(
+                policy.operation.unwrap_or("js.wait"),
+                &command,
+                &session,
+                &policy.target,
+                signal.clone(),
+            )
+        });
+        let result = async {
+            authorize(policy, signal.clone()).await?;
+            self.current(&signal)?;
+            match action["operation"].as_str() {
+                Some("wait") => {
+                    let ms = action["ms"].as_u64().expect("validated wait duration");
+                    tokio::select! {
+                        biased;
+                        _ = signal.cancelled() => return Err(HostError::new("cancelled")),
+                        _ = tokio::time::sleep(Duration::from_millis(ms)) => {},
+                    }
+                    self.current(&signal)?;
+                    return Ok(json!({"waitedMs":ms}));
                 }
-                self.current(&signal)?;
-                return Ok(json!({"waitedMs":ms}));
+                Some("state") if session.is_null() => return Ok(json!({"session":session})),
+                _ => {}
             }
-            Some("state") if session.is_null() => return Ok(json!({"session":session})),
-            _ => {}
-        }
-        if command.is_null() {
-            return Err(HostError::new(if session.is_null() {
-                "session-not-found"
-            } else {
-                "target-not-found"
-            }));
-        }
-        let snapshot = command["operation"] == "observation.snapshot";
-        if snapshot && frames.lock().unwrap().images.len() >= MAX_IMAGES {
-            return Err(HostError::new("capacity"));
-        }
-        let response = self.dispatch(attachment, command, &signal).await?;
-        self.current(&signal)?;
-        let mut data = response.data;
-        if action["operation"] == "cursor" {
-            return Ok(data["session"]["cursor"].clone());
-        }
-        let mut frames = frames.lock().unwrap();
-        if let Some(input) = data.get("input") {
-            frames.input_receipts.push(input.clone());
-        }
-        if snapshot {
-            let total = frames
-                .images
-                .iter()
-                .map(|image| image.pixels.len())
-                .sum::<usize>();
-            if total + response.pixels.len() > MAX_IMAGE_BYTES {
+            if command.is_null() {
+                return Err(HostError::new(if session.is_null() {
+                    "session-not-found"
+                } else {
+                    "target-not-found"
+                }));
+            }
+            let snapshot = command["operation"] == "observation.snapshot";
+            if snapshot && frames.lock().unwrap().images.len() >= MAX_IMAGES {
                 return Err(HostError::new("capacity"));
             }
-            let index = frames.images.len();
-            frames.images.push(HostSnapshot {
-                metadata: data.clone(),
-                pixels: response.pixels,
-            });
-            data["imageIndex"] = json!(index);
+            if let Some(record) = &mut record {
+                record.submitted();
+            }
+            let response = self.dispatch(attachment, command, &signal).await?;
+            let mut data = response.data;
+            if let Some(record) = &mut record {
+                record.result(&data);
+            }
+            self.current(&signal)?;
+            if action["operation"] == "cursor" {
+                return Ok(data["session"]["cursor"].clone());
+            }
+            let mut frames = frames.lock().unwrap();
+            if let Some(input) = data.get("input") {
+                frames.input_receipts.push(input.clone());
+            }
+            if snapshot {
+                let total = frames
+                    .images
+                    .iter()
+                    .map(|image| image.pixels.len())
+                    .sum::<usize>();
+                if total + response.pixels.len() > MAX_IMAGE_BYTES {
+                    return Err(HostError::new("capacity"));
+                }
+                let index = frames.images.len();
+                frames.images.push(HostSnapshot {
+                    metadata: data.clone(),
+                    pixels: response.pixels,
+                });
+                data["imageIndex"] = json!(index);
+            }
+            Ok(data)
         }
-        Ok(data)
+        .await;
+        if let Some(record) = &mut record {
+            record.complete(result.as_ref().err().map(HostError::code));
+        }
+        result
     }
 
     async fn dispatch(

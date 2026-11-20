@@ -78,7 +78,7 @@ export async function verifyManagedComputerUse({
       ...js,
       arguments: {
         script:
-          "const t = (await cua.targets()).targets.find(t => t.id === 'fake-window'); await cua.attach({targetId:t.id,targetGeneration:t.generation}); await cua.snapshot()",
+          "const t = (await cua.targets()).targets.find(t => t.id === 'fake-window'); await cua.attach({targetId:t.id,targetGeneration:t.generation}); const image = await cua.snapshot(); let decline; try { await cua.readClipboard(); } catch (error) { decline = error.code; } ({imageIndex: image.imageIndex, decline, marker: 'fixture-private-script'})",
       },
     },
   ];
@@ -137,6 +137,7 @@ export async function verifyManagedComputerUse({
     ["inventory", null],
     ["inventory", { targetId: "fake-window", targetGeneration: 1 }],
     ["capture", { targetId: "fake-window", targetGeneration: 1 }],
+    ["native-input", { targetId: "fake-window", targetGeneration: 1 }],
   ]) {
     const [record, request] = await pending();
     assert.equal(record.provenance.owner, "computer-use");
@@ -153,7 +154,7 @@ export async function verifyManagedComputerUse({
     await respond(record, {
       kind: "permissions",
       scope: "turn",
-      permissions,
+      permissions: permission === "native-input" ? {} : permissions,
       strictAutoReview: false,
     });
   }
@@ -176,7 +177,9 @@ export async function verifyManagedComputerUse({
     (part) => part.type === "input_text" && part.text.startsWith('{"value":'),
   );
   assert.ok(report);
-  const { native, model: rendition } = JSON.parse(report.text).images[0];
+  const result = JSON.parse(report.text);
+  assert.equal(result.value.decline, "permission-denied");
+  const { native, model: rendition } = result.images[0];
   const bytes = Buffer.from(image.image_url.split(",")[1], "base64");
   assert.equal(native.image.mediaType, "image/png");
   assert.equal(rendition.byteCount, bytes.length);
@@ -200,6 +203,10 @@ export async function verifyManagedComputerUse({
   await eventually(
     async () => {
       const history = await call("GET", chatUrl + "/messages", 200);
+      assert.doesNotMatch(
+        JSON.stringify(history),
+        /fixture-private-script|fake-window|computer-use\//,
+      );
       return Promise.all(history.messages.map(openMessage));
     },
     (messages) => {
@@ -209,6 +216,73 @@ export async function verifyManagedComputerUse({
             (item) => item.text === "The fixture capture completed.",
           ),
         ),
+      );
+      const activities = messages
+        .flatMap(({ content }) => content)
+        .filter(
+          ({ type, activity }) =>
+            type === "activity" && activity.type === "computerUse",
+        )
+        .map(({ activity }) => activity);
+      assert.deepEqual(
+        activities.map(({ operation, outcome }) => [operation, outcome]),
+        [
+          ["targets.list", "completed"],
+          ["target.attach", "completed"],
+          ["observation.snapshot", "completed"],
+          ["clipboard.read", "declined"],
+          ["js.evaluate", "completed"],
+          ["js.reset", "completed"],
+        ],
+      );
+      const captured = activities.find(
+        ({ operation }) => operation === "observation.snapshot",
+      );
+      assert.equal(captured.observation.image.sha256, native.image.sha256);
+      assert.deepEqual(captured.target, {
+        targetId: "fake-window",
+        targetGeneration: 1,
+      });
+      assert.equal(
+        captured.binding.sessionId,
+        native.session.binding.sessionId,
+      );
+      const terminal = activities.find(
+        ({ operation }) => operation === "js.evaluate",
+      );
+      assert.equal(terminal.operationId, terminal.requestId);
+      const reset = activities.find(
+        ({ operation }) => operation === "js.reset",
+      );
+      assert.notEqual(reset.requestId, terminal.requestId);
+      for (const activity of activities) {
+        if (activity !== reset)
+          assert.equal(activity.requestId, terminal.requestId);
+        const { sessionId, ...binding } = activity.binding;
+        assert.deepEqual(binding, {
+          chatId,
+          taskId: null,
+          workerId,
+          threadId: provenance.threadId,
+          turnId: provenance.turnId,
+        });
+        assert.equal(
+          sessionId,
+          activity.operation === "targets.list"
+            ? null
+            : captured.binding.sessionId,
+        );
+        assert.equal(activity.agentScope.agentThreadId, provenance.threadId);
+        assert.equal(activity.agentScope.rootTurnId, provenance.turnId);
+        assert.equal(activity.agentScope.isRoot, true);
+        assert.equal(activity.raw.request, null);
+        assert.equal(activity.raw.response, null);
+        assert.equal(activity.correlation.diagnosticId, activity.operationId);
+        assert.ok(activity.correlation.itemId);
+      }
+      assert.doesNotMatch(
+        JSON.stringify(activities),
+        /fixture-private-script|iVBORw0KGgo/,
       );
     },
   );

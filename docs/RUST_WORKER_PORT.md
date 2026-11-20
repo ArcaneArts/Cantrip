@@ -9075,3 +9075,29 @@ and the Rust oversized capture test also passed locally.
 Managed guest execution still needs an integrated turn fixture. Protected
 agent activity and retained observations, turn finalization and recovery,
 and the remaining execution sources still need coverage and implementation.
+
+## 257. Record protected agent computer-use activity in Rust
+
+Reference commit `89fc4e140ed65babef42b66b757ee815f394c80d` (#3420).
+
+Ordinary managed Chat turns publish a protected computer-use activity for
+each validated host action and for JavaScript evaluation and reset. The
+records carry the observed root thread and turn, the tool item and operation
+identities, the target, and any native input receipt or capture metadata.
+Scripts, clipboard contents, native inventory, and image bytes stay outside
+the activity payload. The worker preserves the distinction between a
+declined action, a failed operation, and a cancelled action with uncertain
+delivery. The activity travels on the owning command socket. Turn settlement
+waits for admitted calls to publish their terminal records.
+
+The local macOS ARM64 managed computer-use smoke verified the encrypted
+Chat history from production Rust Core. A single bundled Codex turn produced
+inventory, attachment, capture, declined clipboard authorization, JavaScript
+completion, and reset records in order. The fixture checked actor and
+request identities, the capture checksum, and the encrypted payload boundary.
+The native Host helper regression exercised cancellation during approval.
+The protected approval test, Host preview smoke, and 22 Node agent reference
+cases also passed.
+
+Retained agent observations for the preview, recovery, managed guest turn
+validation, and support in the remaining execution sources are open.

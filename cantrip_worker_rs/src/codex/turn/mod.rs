@@ -993,7 +993,7 @@ impl Turns {
                 None
             } else {
                 Some(computer_use::Turn::new(self.computer_use.clone(), epoch.context("Computer use requires an active worker socket.")?,
-                    thread.clone(), emit.clone(), signal.clone()))
+                    thread.clone(), emit.clone(), protection.clone(), signal.clone()))
             };
             let (subscription, mut events, capture) =
                 output::subscribe_with_context(&runtime.history(), thread, context.clone(), cua.as_ref().map(|lifetime| lifetime.0.clone()))?;
@@ -1240,6 +1240,9 @@ impl Turns {
                     execution.settled().await?;
                     bound?;
                     let settled = result?;
+                    if let Some(cua) = &cua {
+                        cua.0.finish().await?;
+                    }
                     if settled.status == "interrupted" {
                         self.preparation.renew_runner_on_next_prepare(&key.2, &prepared.bound, runtime, thread);
                     }
@@ -1260,6 +1263,9 @@ impl Turns {
                 })
             }
             .await;
+            if result.is_err() && let Some(cua) = &cua {
+                let _ = cua.0.finish().await;
+            }
             subscription.close();
             result
         }

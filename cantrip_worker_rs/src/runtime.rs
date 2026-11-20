@@ -857,10 +857,15 @@ async fn cycle(
                                 let stream = outgoing.clone();
                                 let observation = crate::worker_link::observation_scope(command);
                                 turns.run(command, Arc::new(move |event| {
-                                    if matches!(event["type"].as_str(), Some("computer-use.approval.request" | "computer-use.approval.terminal")) {
-                                        let epoch = epoch.context("Computer-use approval has no connected command socket.")?;
+                                    let approval = matches!(event["type"].as_str(), Some("computer-use.approval.request" | "computer-use.approval.terminal"));
+                                    let activity = event["type"] == "agent.protected-message" && event["telemetry"]["activityType"] == "computerUse";
+                                    if approval || activity {
+                                        let epoch = epoch.context("Computer use has no connected command socket.")?;
                                         ensure!(stream.send_for_epoch(epoch, json!({"kind":"event","requestId":request_id,"event":event}))?,
-                                            "The computer-use approval could not be delivered.");
+                                            "The computer-use event could not be delivered.");
+                                        if activity {
+                                            observations.publish_event(&observation, &event);
+                                        }
                                         return Ok(());
                                     }
                                     observations.publish_event(&observation, &event);

@@ -1,9 +1,9 @@
 //! Computer-use MCP authority belongs to a turn observed on this app-server.
 mod model;
 
-use super::{Emit, Signal};
+use super::{Emit, Signal, protected::Protected};
 use crate::{
-    computer_use::{DesktopTurn, HostError, Javascript},
+    computer_use::{DesktopTurn, HostActivity, HostError, Javascript, NativeError},
     desktop_inventory::preview::Previews,
     mcp::bindings::{Activation, ComputerUseAuthority, ComputerUseExecutor},
     metadata::Abort,
@@ -15,7 +15,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex, OnceLock},
 };
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 
 #[derive(Clone)]
 pub(super) struct Desktop {
@@ -34,13 +34,22 @@ pub(super) struct Turn {
     desktop: Desktop,
     epoch: u64,
     emit: Emit,
+    protection: Option<Arc<Protected>>,
+    publication_failed: Mutex<bool>,
     thread: JsString,
     phase: Mutex<Phase>,
     authority: OnceLock<ComputerUseAuthority>,
     cancel: Abort,
     signal: Signal,
     session: AsyncMutex<Option<Session>>,
-    pending: Mutex<Option<Pending>>,
+    calls: Mutex<Calls>,
+    drained: Notify,
+}
+
+#[derive(Default)]
+struct Calls {
+    pending: Option<Pending>,
+    active: usize,
 }
 
 struct Pending {
@@ -50,16 +59,24 @@ struct Pending {
 }
 
 struct Call<'a> {
-    pending: &'a Mutex<Option<Pending>>,
+    turn: &'a Turn,
     id: uuid::Uuid,
     signal: Signal,
 }
 
 impl Drop for Call<'_> {
     fn drop(&mut self) {
-        let mut pending = self.pending.lock().unwrap();
-        if pending.as_ref().is_some_and(|call| call.id == self.id) {
-            pending.take();
+        let mut calls = self.turn.calls.lock().unwrap();
+        if calls
+            .pending
+            .as_ref()
+            .is_some_and(|call| call.id == self.id)
+        {
+            calls.pending.take();
+        }
+        calls.active -= 1;
+        if calls.active == 0 {
+            self.turn.drained.notify_one();
         }
     }
 }
@@ -83,6 +100,7 @@ impl Turn {
         epoch: u64,
         thread: JsString,
         emit: Emit,
+        protection: Option<Arc<Protected>>,
         parent: Signal,
     ) -> Lifetime {
         let (cancel, signal) = Abort::new();
@@ -91,12 +109,15 @@ impl Turn {
             epoch,
             thread,
             emit,
+            protection,
+            publication_failed: Mutex::default(),
             phase: Mutex::new(Phase::Preparing),
             authority: OnceLock::new(),
             cancel,
             signal: Signal::any(vec![parent, signal]),
             session: AsyncMutex::default(),
-            pending: Mutex::default(),
+            calls: Mutex::default(),
+            drained: Notify::new(),
         }))
     }
 
@@ -148,9 +169,22 @@ impl Turn {
             .abort(anyhow::anyhow!("The native computer-use turn ended."));
     }
 
+    pub(super) async fn finish(&self) -> Result<()> {
+        self.retire();
+        while self.calls.lock().unwrap().active != 0 {
+            self.drained.notified().await;
+        }
+        ensure!(
+            !*self.publication_failed.lock().unwrap(),
+            "The worker could not publish protected computer-use activity."
+        );
+        Ok(())
+    }
+
     fn invoke(&self, id: uuid::Uuid, reset: bool) -> Result<Call<'_>> {
-        let mut pending = self.pending.lock().unwrap();
-        if let Some(current) = pending.as_ref() {
+        let mut calls = self.calls.lock().unwrap();
+        self.signal.check()?;
+        if let Some(current) = calls.pending.as_ref() {
             ensure!(
                 reset && !current.reset,
                 "The native turn already has a computer-use call in progress."
@@ -160,12 +194,24 @@ impl Turn {
             ));
         }
         let (cancel, signal) = Abort::new();
-        *pending = Some(Pending { id, reset, cancel });
+        calls.pending = Some(Pending { id, reset, cancel });
+        calls.active += 1;
         Ok(Call {
-            pending: &self.pending,
+            turn: self,
             id,
             signal,
         })
+    }
+
+    fn activity(&self, activity: Value) {
+        if let Some(protection) = &self.protection
+            && protection
+                .computer_use_activity(&activity)
+                .and_then(|event| (self.emit)(event))
+                .is_err()
+        {
+            *self.publication_failed.lock().unwrap() = true;
+        }
     }
 
     async fn refresh(
@@ -240,43 +286,86 @@ impl ComputerUseExecutor for Turn {
             let reset = request["operation"] == "js_reset";
             let call = self.invoke(request_id, reset)?;
             let active = Signal::any(vec![self.signal.clone(), signal, call.signal.clone()]);
-            let mut session = tokio::select! {
+            let publish = |activity| self.activity(activity);
+            let activity = HostActivity {
+                chat: &authority.captured["chatId"],
+                worker: &authority.captured["workerId"],
+                thread,
+                turn,
+                item: &request["itemId"],
+                request: request_id,
+                publish: &publish,
+            };
+            let activity = self.protection.as_ref().map(|_| &activity);
+            // Publish the terminal record before releasing the session to a reset.
+            let mut session;
+            let mut terminal = activity.map(|a| a.terminal(reset, active.clone()));
+            session = tokio::select! {
                 biased;
                 reason = active.cancelled() => return Err(reason.into()),
                 session = self.session.lock() => session,
             };
-            if reset {
-                if let Some(session) = session.as_mut() {
-                    session.desktop.reset(&mut session.javascript).await?;
+            if let (Some(record), Some(current)) = (&mut terminal, session.as_ref()) {
+                record.session(current.desktop.activity_session());
+            }
+            let result = async {
+                if reset {
+                    if let Some(session) = session.as_mut() {
+                        session.desktop.reset(&mut session.javascript).await?;
+                    }
+                    return Ok(model::reset());
                 }
-                return Ok(model::reset());
-            }
-            let source = request["script"]
-                .as_js_string()
-                .context("Missing computer-use script.")?;
-            if session.is_none() {
-                *session = Some(self.session(authority, turn)?);
-            }
-            let Session {
-                desktop,
-                javascript,
-            } = session.as_mut().unwrap();
-            let desktop: &DesktopTurn = desktop;
-            let result = desktop
-                .evaluate(
+                let source = request["script"]
+                    .as_js_string()
+                    .context("Missing computer-use script.")?;
+                if session.is_none() {
+                    *session = Some(self.session(authority, turn)?);
+                }
+                let Session {
+                    desktop,
                     javascript,
-                    source,
-                    active.clone(),
-                    |action, call| async move {
-                        self.refresh(authority, &call).await?;
-                        desktop
-                            .approve_action(action, request_id, call.clone(), self.emit.as_ref())
-                            .await?;
-                        self.refresh(authority, &call).await
-                    },
-                )
-                .await?;
-            model::result(result, active).await
+                } = session.as_mut().unwrap();
+                let desktop: &DesktopTurn = desktop;
+                let result = desktop
+                    .evaluate(
+                        javascript,
+                        source,
+                        active.clone(),
+                        activity,
+                        |action, call| async move {
+                            self.refresh(authority, &call).await?;
+                            desktop
+                                .approve_action(
+                                    action,
+                                    request_id,
+                                    call.clone(),
+                                    self.emit.as_ref(),
+                                )
+                                .await?;
+                            self.refresh(authority, &call).await
+                        },
+                    )
+                    .await?;
+                model::result(result, active).await
+            }
+            .await;
+            if let Some(record) = &mut terminal {
+                if let Some(current) = session.as_ref() {
+                    record.session(current.desktop.activity_session());
+                }
+                record.complete(result.as_ref().err().map(activity_error));
+            }
+            result
         })
+    }
+}
+
+fn activity_error(error: &anyhow::Error) -> &str {
+    if let Some(native) = error.downcast_ref::<NativeError>() {
+        native.code()
+    } else if error.is::<crate::metadata::Cancelled>() {
+        "cancelled"
+    } else {
+        "operation-failed"
     }
 }

@@ -34,7 +34,7 @@ const STOP: &str = "computer-use.preview.stop";
 const REVOKE: &str = "computer-use.preview.revoke";
 const OPERATION: &str = "computer-use.operation";
 const ANSWER: &str = "computer-use.approval.respond";
-pub use agent::{DesktopTurn, HostAction, HostEvaluation, HostSnapshot};
+pub use agent::{DesktopTurn, HostAction, HostActivity, HostEvaluation, HostSnapshot};
 pub(super) use native::{release, run};
 
 pub(crate) fn supports(method: &str) -> bool {

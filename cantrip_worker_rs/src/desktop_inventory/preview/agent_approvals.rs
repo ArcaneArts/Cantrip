@@ -221,7 +221,7 @@ impl Approvals {
             .map_err(|_| HostError::new("ownership-mismatch"))?;
         // The publisher enqueues on the owning command stream synchronously.
         // A cancellation event follows this enqueue, including on caller drop.
-        (publication.publish)(event).map_err(|_| HostError::new("permission-denied"))?;
+        (publication.publish)(event).map_err(|_| HostError::new("publication-failed"))?;
         publication.published = true;
         let allowed = tokio::select! {
             biased;
@@ -229,12 +229,12 @@ impl Approvals {
             _ = call.cancelled() => return Err(HostError::new("cancelled")),
             _ = sleep_until(deadline) => {
                 publication.terminal = "expired";
-                return Err(HostError::new("permission-denied"));
+                return Err(HostError::new("expired"));
             },
             answer = response => answer.map_err(|_| HostError::new("cancelled"))?,
         };
         if !allowed {
-            return Err(HostError::new("permission-denied"));
+            return Err(HostError::new("denied"));
         }
         self.current(turn)
             .map_err(|_| HostError::new("ownership-mismatch"))?;

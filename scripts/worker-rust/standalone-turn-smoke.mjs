@@ -3250,6 +3250,11 @@ try {
     interactionKey?.fill(0);
     consoleStateKey?.fill(0);
     master.fill(0);
-    await rm(root, { recursive: true, force: true });
+    await rm(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   }
 }
