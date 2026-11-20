@@ -4,6 +4,7 @@ pub(crate) mod autonomous;
 pub(crate) mod console;
 mod control;
 mod deferred;
+pub(crate) mod interactions;
 pub(crate) mod label;
 mod output;
 mod params;
@@ -909,6 +910,9 @@ impl Turns {
                             transport.clone(),
                         )
                     });
+                let mut native_interactions = if receipt.is_some() && task.is_none() {
+                    Some(runtime.interaction_requests(thread)?)
+                } else { None };
                 let send = || async {
                     if goal {
                         active.dispatch(&signal, thread.clone())?;
@@ -959,6 +963,7 @@ impl Turns {
                                     };
                                     // Core may assign a new physical attempt as soon as
                                     // the deferred receipt releases the canonical lane.
+                                    drop(native_interactions.take());
                                     drop(mcp.take());
                                     active.logical_finished.store(true, Ordering::Relaxed);
                                     drop(owner.take());
@@ -1029,6 +1034,7 @@ impl Turns {
                     active.control.get().unwrap().published(result.is_ok());
                     result
                 };
+                let interaction_emit = emit.clone();
                 let emit = match &task {
                     Some(task) => task.turn.events(emit),
                     None => emit,
@@ -1042,8 +1048,33 @@ impl Turns {
                     (None, _) => (emit, None),
                 };
                 let observe = async {
-                    let result =
-                        output::collect(&mut events, &transport, thread, &turn, &emit).await;
+                    let collecting = output::collect(&mut events, &transport, thread, &turn, &emit);
+                    let result = if let (Some(receipt), Some(subscribed)) = (&receipt, native_interactions.as_mut()) {
+                        let (handle, commands) = interactions::Handle::channel();
+                        let binding = active.control.get().unwrap();
+                        binding.interactions.set(handle).map_err(|_| anyhow!("The native interaction owner already exists."))?;
+                        let (stop, stopping) = Abort::new();
+                        let interactions = interactions::Turn {
+                            runtime, receipt, thread, turn: &turn,
+                            thread_version: binding.thread_version,
+                            encryption: &self.encryption, emit: &interaction_emit,
+                            protected: protection.is_some(), stop: stopping,
+                        };
+                        let interactions = interactions.run(&mut subscribed.events, commands);
+                        tokio::pin!(interactions);
+                        tokio::select! {
+                            result = collecting => {
+                                stop.abort(anyhow!("The native turn ended."));
+                                interactions.await?;
+                                result
+                            }
+                            failure = &mut interactions => {
+                                failure?;
+                                unreachable!("The interaction service runs for the turn lifetime.")
+                            }
+                        }
+                    } else { collecting.await };
+                    drop(native_interactions.take());
                     active.set(Phase::Terminal);
                     result
                 };

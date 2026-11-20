@@ -687,6 +687,17 @@ async fn cycle(
                     });
                     continue;
                 }
+                if crate::codex::turn::interactions::handles(command) {
+                    let turns = turns.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = turns.interaction(&request["command"]).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::STOP_SUSPENSION | crate::codex::turn::TASK_PAUSE) {
                     let observations = worker_link.clone();
                     let turns = turns.clone();

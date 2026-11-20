@@ -22,7 +22,7 @@ import { verifyEmbeddings } from "./model-embedding-smoke-cases.mjs";
 import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
-  deferredCodex,
+  fixtureCodex,
   deferredReceiptProxy,
   verifyDeferredReceipt,
 } from "./deferred-receipt-smoke-cases.mjs";
@@ -39,6 +39,7 @@ const { values } = parseArgs({
     cli: { type: "string" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
+    interactions: { type: "boolean" },
   },
 });
 assert.ok(
@@ -64,6 +65,9 @@ const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const operationsKey = key("model-operation-content");
+const interactionKey = values.interactions ? key("interaction-content") : null;
+const approvalPrompt = "Exercise a protected native interaction 🌲";
+const approvalMarker = path.join(root, "native-approval-replies.jsonl");
 let server;
 let receiptProxy;
 let child;
@@ -199,6 +203,7 @@ async function setupEncryption() {
     ["task-content", taskKey],
     ["provider-credential", providerKey],
     ["model-operation-content", operationsKey],
+    ...(interactionKey ? [["interaction-content", interactionKey]] : []),
   ]) {
     await call("POST", `/api/encryption/principals/${worker.id}/grants`, 201, {
       component,
@@ -954,6 +959,108 @@ async function verifyProviderCapacity() {
   }
 }
 
+async function verifyInteraction() {
+  const model = await createModel("Native interaction model");
+  await call("PATCH", "/api/settings", 200, {
+    defaultModelId: model.profile.id,
+    autoNameChats: false,
+  });
+  const { chatId, chatUrl } = await createChat("Native approval", false);
+  const answer = model.model.reply({
+    text: "Protected interaction complete.",
+    hold: true,
+  });
+  await call(
+    "POST",
+    `${chatUrl}/turns`,
+    202,
+    await encryptedTurn(approvalPrompt, model.profile.id),
+  );
+  await eventually(
+    () => answer,
+    (plan) => assert.equal(plan.entered, true),
+  );
+  const listing = `/api/agent-requests?chatId=${chatId}&status=pending`;
+  const [request] = await eventually(
+    () => call("GET", listing, 200),
+    (requests) => {
+      assert.equal(requests.length, 1);
+      assert.equal(requests[0].classification?.kind, "commandExecution");
+    },
+  );
+  const common = {
+    ownerId,
+    keyRevision,
+    componentKey: interactionKey,
+    requestKey: request.requestKey,
+  };
+  assert.equal(request.provenance.chatId, chatId);
+  assert.ok(request.provenance.turnId);
+  assert.ok(!JSON.stringify(request).includes("private fixture approval"));
+  const opened = await crypto.decryptInteractionRequestContent({
+    ...common,
+    encrypted: request.protectedPayload,
+    publicClassification: request.classification,
+  });
+  assert.equal(opened.payload.command, "echo private fixture approval");
+  const classification = { kind: "commandExecution" };
+  const response = { kind: "commandExecution", decision: "decline" };
+  async function encryptReply(requestKey) {
+    return {
+      idempotencyKey: randomUUID(),
+      classification,
+      protectedResponse: await crypto.encryptInteractionResponseContent({
+        ...common,
+        requestKey,
+        content: { version: 1, classification, response },
+      }),
+    };
+  }
+  const url = `/api/agent-requests/${request.id}`;
+  await call(
+    "POST",
+    `${url}/respond`,
+    409,
+    await encryptReply("unrelated-request-key"),
+  );
+  await assert.rejects(readFile(approvalMarker), { code: "ENOENT" });
+  assert.equal((await call("GET", url, 200)).status, "pending");
+  const payload = await encryptReply(request.requestKey);
+  const saved = await call("POST", `${url}/respond`, 200, payload);
+  assert.equal(saved.status, "resolved");
+  await call("POST", `${url}/respond`, 409, {
+    ...payload,
+    idempotencyKey: randomUUID(),
+  });
+  await eventually(
+    () => readFile(approvalMarker, "utf8"),
+    (text) => {
+      assert.deepEqual(text.trim().split("\n").map(JSON.parse), [
+        { id: "cantrip-fixture-approval", result: { decision: "decline" } },
+      ]);
+    },
+  );
+  answer.release();
+  await eventually(
+    () => answer,
+    (plan) => assert.equal(plan.request?.completed, true),
+  );
+  await eventually(
+    () => call("GET", `${chatUrl}/messages`, 200),
+    ({ messages }) =>
+      assert.ok(
+        messages.some(
+          (message) =>
+            (message.classification?.role ?? message.role) === "assistant",
+        ),
+      ),
+  );
+  assert.deepEqual(model.model.failures, []);
+  console.log(
+    "Protected approval authenticated against its native request and reached Codex once.",
+  );
+}
+
 async function verifySettingsSnapshot() {
   const model = await createModel("Settings snapshot model");
   await call("PATCH", "/api/settings", 200, {
@@ -1359,8 +1466,14 @@ try {
     CANTRIP_WORKER_DATA_DIR: data,
     CANTRIP_WORKER_ID: workerId,
     CANTRIP_CODEX_BIN: values.deferred
-      ? await deferredCodex(root, values.codex)
-      : path.resolve(values.codex),
+      ? await fixtureCodex(root, values.codex)
+      : values.interactions
+        ? await fixtureCodex(root, values.codex, {
+            scenario: "approval",
+            marker: approvalMarker,
+            input: approvalPrompt,
+          })
+        : path.resolve(values.codex),
     ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
   };
   await startWorker(enrollment.code);
@@ -1407,6 +1520,8 @@ try {
     console.log(
       "Deferred prompt receipt survived a worker restart and replayed once.",
     );
+  } else if (values.interactions) {
+    await verifyInteraction();
   } else if (values.settings) {
     await verifySettingsSnapshot();
   } else {
@@ -1430,6 +1545,7 @@ try {
     labelKey.fill(0);
     taskKey.fill(0);
     providerKey.fill(0);
+    interactionKey?.fill(0);
     master.fill(0);
     await rm(root, { recursive: true, force: true });
   }
