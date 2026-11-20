@@ -463,6 +463,13 @@ async fn cycle(
         worktrees.clone(),
         publish_observation,
     ));
+    let automation = crate::automations::Scheduler::new(
+        configuration.clone(),
+        client.clone(),
+        outgoing.clone(),
+        logs.clone(),
+    );
+    let automation_task = tokio::spawn(automation.clone().run(stop_rx.clone()));
     let (registered, mut registration) = watch::channel(false);
     let task_outcomes = tokio::spawn(task_delivery.clone().run());
     let goal_delivery = tokio::spawn(project_goals.clone().run(stop_rx.clone()));
@@ -506,6 +513,7 @@ async fn cycle(
             let turns = turns.clone();
             let settings_reconnect = thread_preparation.settings_reconnect();
             Arc::new(move || {
+                automation.wake();
                 observations.reemit();
                 task_delivery.wake();
                 project_goals.wake();
@@ -584,6 +592,22 @@ async fn cycle(
                         let result = tokio::task::spawn_blocking(move || {
                             crate::chat_content::execute(encryption, &command)
                         }).await.unwrap_or_else(|error| Err(error.into()));
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
+                if kind == crate::automations::PROTECT {
+                    let encryption = encryption.clone();
+                    let routing = routing.clone();
+                    let github = github.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = crate::automations::protect(
+                            encryption, &routing, &github, &scope, &request["command"],
+                        ).await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;
@@ -1350,6 +1374,7 @@ async fn cycle(
     };
     let began = std::time::Instant::now();
     stop.send_replace(true);
+    let automation_closed = automation_task.await;
     managed_web.stop();
     command_shutdown.abort(anyhow::anyhow!("Worker shutting down."));
     browser_surfaces.close().await;
@@ -1420,6 +1445,7 @@ async fn cycle(
     runs_closed?;
     cli_closed?;
     github_closed?;
+    automation_closed?;
     task_outcomes_closed?;
     worker_link_closed?;
     direct_closed?;

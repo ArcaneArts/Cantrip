@@ -10,6 +10,7 @@ pub(super) fn refine(
         "automation-timezone"
             | "automation-cron"
             | "automation-update"
+            | "automation-condition-script"
             | "automation-protected-dispatch"
     ) {
         return Ok(false);
@@ -24,6 +25,18 @@ pub(super) fn refine(
                 json!({"code":"custom"}),
                 path,
                 message.unwrap_or("Choose a valid IANA time zone.").into(),
+                false,
+            );
+        }
+    } else if tag == "automation-condition-script" {
+        if value
+            .as_js_string()
+            .is_none_or(|script| script.trim().is_empty())
+        {
+            result.issue(
+                json!({"code":"custom"}),
+                path,
+                message.unwrap_or("Condition script is required.").into(),
                 false,
             );
         }

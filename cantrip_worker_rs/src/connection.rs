@@ -139,6 +139,11 @@ impl Default for Outbound {
     }
 }
 impl Outbound {
+    pub(crate) fn command_ready(&self) -> bool {
+        let queue = self.queue.lock().unwrap();
+        queue.ready && !queue.closed
+    }
+
     /// Observations are retried by their producer while disconnected or
     /// congested. They must not be treated as accepted offline responses.
     pub fn notification(&self, notification: Value) -> Result<bool> {

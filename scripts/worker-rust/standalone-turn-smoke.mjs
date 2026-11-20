@@ -35,6 +35,7 @@ import { verifySubagentInteraction } from "./subagent-interaction-cases.mjs";
 import { verifySkillSettings } from "./skill-settings-smoke-cases.mjs";
 import { verifyCustomizationInventory } from "./customization-inventory-smoke-cases.mjs";
 import { startMcpOauthFixture } from "./mcp-oauth-fixture.mjs";
+import { verifyProjectAutomations } from "./project-automation-smoke-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   fixtureCodex,
@@ -59,6 +60,7 @@ const { values } = parseArgs({
     "standalone-skills": { type: "boolean" },
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
+    "project-automations": { type: "boolean" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -105,6 +107,9 @@ const customizationKey =
     ? key("customization-content")
     : null;
 const mcpKey = values["customization-inventory"] ? key("mcp-secret") : null;
+const workflowKey = values["project-automations"]
+  ? key("workflow-content")
+  : null;
 const operationsKey = key("model-operation-content");
 const consoleInteractions = values["console-interactions"];
 const restoredInteractions = values["restored-interactions"];
@@ -132,6 +137,7 @@ const interactionKey =
     : null;
 const consoleStateKey =
   customizationKey ||
+  workflowKey ||
   values["host-skills"] ||
   values.policies ||
   values.codegraph ||
@@ -283,6 +289,7 @@ async function setupEncryption() {
     ...(policyKey ? [["policy-content", policyKey]] : []),
     ...(customizationKey ? [["customization-content", customizationKey]] : []),
     ...(mcpKey ? [["mcp-secret", mcpKey]] : []),
+    ...(workflowKey ? [["workflow-content", workflowKey]] : []),
     ["model-operation-content", operationsKey],
     ...(interactionKey ? [["interaction-content", interactionKey]] : []),
     ...(consoleStateKey ? [["surface-private-state", consoleStateKey]] : []),
@@ -2963,7 +2970,34 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (mcpKey) {
+  if (workflowKey) {
+    await verifyProjectAutomations({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      workflowKey,
+      chatKey,
+      data,
+      async restartWorker() {
+        assert.deepEqual(
+          await stopWorker(),
+          { code: 0, signal: null },
+          diagnostics.slice(-4_000),
+        );
+        await startWorker();
+        await eventually(
+          () => diagnostics,
+          (value) =>
+            assert.match(value, /event=automation\.schedule-sync\.completed/),
+        );
+      },
+    });
+  } else if (mcpKey) {
     const oauth = await startMcpOauthFixture();
     try {
       await verifyCustomizationInventory({
@@ -3124,6 +3158,7 @@ try {
     policyKey?.fill(0);
     customizationKey?.fill(0);
     mcpKey?.fill(0);
+    workflowKey?.fill(0);
     interactionKey?.fill(0);
     consoleStateKey?.fill(0);
     master.fill(0);

@@ -1027,7 +1027,11 @@
     "codexExternalImportPreviewSchema": 14670,
     "codexExternalImportApplySchema": 14695,
     "codexExternalImportStatusRequestSchema": 14698,
-    "codexExternalImportStatusSchema": 14700
+    "codexExternalImportStatusSchema": 14700,
+    "projectAutomationContentOpaqueSchema": 3424,
+    "projectAutomationProtectedNameSchema": 14709,
+    "projectAutomationProtectedPromptSchema": 14713,
+    "projectAutomationProtectedConditionSchema": 14717
   },
   "nodes": [
     {
@@ -87980,6 +87984,93 @@
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
-    }
+    },
+    {
+      "type": "object",
+      "shape": { "version": 14710, "name": 14711 },
+      "catchall": 14712,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "version": 14714, "prompt": 14715 },
+      "catchall": 14716,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "version": 14718, "condition": 14719 },
+      "catchall": 14728,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "nullable", "innerType": 14720, "checks": [] },
+    {
+      "type": "union",
+      "options": [14721, 14724],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "type": 14722, "script": 14723 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["script"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "automation-condition-script",
+          "messageAfterPath": true,
+          "message": "Condition script is required."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 14725, "minimum": 14726 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["open-issues"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 14727,
+      "defaultValue": 1,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 1000000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] }
   ]
 }

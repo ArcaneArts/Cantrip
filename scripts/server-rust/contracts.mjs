@@ -11,6 +11,7 @@ import * as runConfigurationRuntime from "../../packages/protocol/dist/run-confi
 import * as taskScheduling from "../../packages/protocol/dist/task-scheduling.js";
 import * as taskOperations from "../../packages/protocol/dist/tasks.js";
 import * as automations from "../../packages/protocol/dist/automations.js";
+import * as automationContent from "../../packages/protocol/dist/project-automation-content.js";
 import * as computerUseAgent from "../../packages/protocol/dist/computer-use-agent.js";
 import * as customizationContent from "../../packages/protocol/dist/customization-content.js";
 import * as osSystem from "../../packages/protocol/dist/cantrip-os-system.js";
@@ -1052,6 +1053,10 @@ export const contractRoots = [
   "codexExternalImportApplySchema",
   "codexExternalImportStatusRequestSchema",
   "codexExternalImportStatusSchema",
+  "projectAutomationContentOpaqueSchema",
+  "projectAutomationProtectedNameSchema",
+  "projectAutomationProtectedPromptSchema",
+  "projectAutomationProtectedConditionSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1270,6 +1275,7 @@ export function sourceContractSchema(name) {
     taskScheduling[name] ??
     taskOperations[name] ??
     automations[name] ??
+    automationContent[name] ??
     (name === "customizationOperationIdSchema"
       ? protocol.endpointContentContextSchema.shape.operationId
       : undefined) ??
@@ -1875,6 +1881,10 @@ registerChecks(automations.encryptedProjectAutomationUpdateSchema, [
 registerChecks(protocol.projectAutomationProtectedDispatchResultSchema, [
   "automation-protected-dispatch",
 ]);
+registerChecks(
+  automations.projectAutomationConditionSchema.options[0].shape.script,
+  ["automation-condition-script"],
+);
 registerChecks(protocol.nativeCommandEventSchema.shape.event._zod.def.in, [
   "native-command-event",
 ]);

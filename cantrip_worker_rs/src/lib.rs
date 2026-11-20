@@ -1,6 +1,7 @@
 //! Native worker implementation. Modules are integrated progressively while the
 //! existing production worker remains the default until the complete cutover.
 pub mod attachments;
+mod automations;
 pub mod browser_probe;
 mod browser_services;
 mod browser_surface;
