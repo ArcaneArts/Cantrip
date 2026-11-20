@@ -32,6 +32,7 @@ import { verifyDecisions } from "./model-decision-smoke-cases.mjs";
 import { verifyEmbeddings } from "./model-embedding-smoke-cases.mjs";
 import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
 import { verifySubagentInteraction } from "./subagent-interaction-cases.mjs";
+import { verifySkillSettings } from "./skill-settings-smoke-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   fixtureCodex,
@@ -54,6 +55,7 @@ const { values } = parseArgs({
     policies: { type: "boolean" },
     "host-skills": { type: "boolean" },
     "standalone-skills": { type: "boolean" },
+    "skill-settings": { type: "boolean" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -95,6 +97,9 @@ const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const policyKey = values.policies ? key("policy-content") : null;
+const customizationKey = values["skill-settings"]
+  ? key("customization-content")
+  : null;
 const operationsKey = key("model-operation-content");
 const consoleInteractions = values["console-interactions"];
 const restoredInteractions = values["restored-interactions"];
@@ -121,6 +126,7 @@ const interactionKey =
     ? key("interaction-content")
     : null;
 const consoleStateKey =
+  customizationKey ||
   values["host-skills"] ||
   values.policies ||
   values.codegraph ||
@@ -270,6 +276,7 @@ async function setupEncryption() {
     ["task-content", taskKey],
     ["provider-credential", providerKey],
     ...(policyKey ? [["policy-content", policyKey]] : []),
+    ...(customizationKey ? [["customization-content", customizationKey]] : []),
     ["model-operation-content", operationsKey],
     ...(interactionKey ? [["interaction-content", interactionKey]] : []),
     ...(consoleStateKey ? [["surface-private-state", consoleStateKey]] : []),
@@ -2855,6 +2862,7 @@ try {
   const environment = fixtureEnvironment(path.join(root, "server"));
   environment.HOME = home;
   if (standaloneSkills) environment.CODEX_HOME = codexFixtureHome;
+  if (customizationKey) environment.CODEX_HOME = codexFixtureHome;
   if (values["host-skills"]) {
     const codexHome = path.join(home, ".codex-fixture");
     const skill = path.join(codexHome, "skills", fixtureSkill);
@@ -2949,7 +2957,20 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (standaloneSkills) {
+  if (customizationKey) {
+    await verifySkillSettings({
+      call,
+      eventually,
+      createModel,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      componentKey: customizationKey,
+      data,
+      codexHome: codexFixtureHome,
+    });
+  } else if (standaloneSkills) {
     await verifyStandaloneSkills(standaloneSkills);
   } else if (values["host-skills"]) {
     await verifyHostSkills();
@@ -3054,13 +3075,19 @@ try {
       server?.close(),
       ...models.map((model) => model.close()),
     ]);
-    if (workerResult) assert.deepEqual(workerResult, { code: 0, signal: null });
+    if (workerResult)
+      assert.deepEqual(
+        workerResult,
+        { code: 0, signal: null },
+        diagnostics.slice(-4_000),
+      );
   } finally {
     chatKey.fill(0);
     labelKey.fill(0);
     taskKey.fill(0);
     providerKey.fill(0);
     policyKey?.fill(0);
+    customizationKey?.fill(0);
     interactionKey?.fill(0);
     consoleStateKey?.fill(0);
     master.fill(0);

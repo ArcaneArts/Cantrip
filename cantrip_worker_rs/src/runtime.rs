@@ -404,6 +404,12 @@ async fn cycle(
         browser_surfaces.clone(),
         codegraph.clone(),
     );
+    let skill_settings = crate::codex::skills::settings::Settings::new(
+        thread_preparation.clone(),
+        encryption.clone(),
+        data_directory.clone(),
+        skill_root.clone(),
+    );
     let chat_relocation = Arc::new(crate::codex::relocation::Manager::new(&data_directory));
     let history = crate::history::managed::runtime::open(
         configuration.clone(),
@@ -871,6 +877,17 @@ async fn cycle(
                     let worker = worker.clone();
                     commands.spawn(async move {
                         let result = preparation.read_settings(&request["command"]["scope"], signal).await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
+                if crate::codex::skills::settings::supports(kind) {
+                    let skill_settings = skill_settings.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = skill_settings.execute(&request["command"]).await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });
                     continue;
@@ -1377,6 +1394,7 @@ async fn cycle(
     let encryption_closed = encryption.close().await;
     drop(turns);
     drop(goals);
+    drop(skill_settings);
     let github_closed = github.drain().await;
     let terminals_closed = terminals.close().await;
     let (heartbeat_done, connection_done) = tokio::join!(

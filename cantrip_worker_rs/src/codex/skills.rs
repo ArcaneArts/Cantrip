@@ -9,6 +9,8 @@ use std::{
     time::Duration,
 };
 
+mod library;
+pub(crate) mod settings;
 pub(super) mod standalone;
 
 pub(super) fn mentions(text: &JsString) -> Vec<JsString> {
@@ -32,32 +34,9 @@ pub(super) async fn host_inputs(
     if requested.is_empty() {
         return Ok(Vec::new());
     }
-    let response = runtime
-        .request(
-            "skills/list".into(),
-            Some(json!({"cwds": [cwd], "forceReload": false})),
-            Some(timeout),
-            None,
-        )
-        .await?
-        .unwrap_or(Value::Null);
-    let expected = paths::resolve(&paths::native(cwd))?;
-    let group = response["data"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|row| {
-            row["cwd"]
-                .as_js_string()
-                .and_then(|cwd| paths::resolve(&paths::native(cwd)).ok())
-                .is_some_and(|cwd| paths::equal(&cwd, &expected))
-        });
+    let (skills, _) = list(runtime, cwd, false, timeout).await?;
     let mut available = HashMap::new();
-    for skill in group
-        .and_then(|row| row["skills"].as_array())
-        .into_iter()
-        .flatten()
-    {
+    for skill in &skills {
         if skill["enabled"] != false
             && let Some(name) = skill["name"].as_js_string().map(JsString::trim)
             && !name.is_empty()
@@ -74,4 +53,39 @@ pub(super) async fn host_inputs(
             Some(json!({"type": "skill", "name": name, "path": path}))
         })
         .collect())
+}
+
+async fn list(
+    runtime: &Runtime,
+    cwd: &JsString,
+    force_reload: bool,
+    timeout: Duration,
+) -> Result<(Vec<Value>, Vec<Value>)> {
+    let response = runtime
+        .request(
+            "skills/list".into(),
+            Some(json!({"cwds": [cwd], "forceReload": force_reload})),
+            Some(timeout),
+            None,
+        )
+        .await?
+        .unwrap_or(Value::Null);
+    let expected = paths::resolve(&paths::native(cwd))?;
+    let group = response["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|row| {
+            row["cwd"]
+                .as_js_string()
+                .and_then(|cwd| paths::resolve(&paths::native(cwd)).ok())
+                .is_some_and(|cwd| paths::equal(&cwd, &expected))
+        });
+    let entries = |key| {
+        group
+            .and_then(|row| row[key].as_array())
+            .cloned()
+            .unwrap_or_default()
+    };
+    Ok((entries("skills"), entries("errors")))
 }
