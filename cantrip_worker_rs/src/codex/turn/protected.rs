@@ -260,6 +260,11 @@ impl Protected {
                     "state": json!({"classification": classification, "protectedContent": sealed}),
                 }))
             }
+            Some(
+                "agent.interaction.requested.protected"
+                | "agent.interaction.cleared"
+                | "agent.interaction.expired",
+            ) => Ok(event.clone()),
             _ => bail!("The protected turn cannot publish this event."),
         }
     }

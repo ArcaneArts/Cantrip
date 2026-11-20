@@ -17,6 +17,7 @@ import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { taskContent } from "../server-rust/task-wire-fixtures.mjs";
+import { verifyConsoleInteraction } from "./console-interaction-cases.mjs";
 import { verifyDecisions } from "./model-decision-smoke-cases.mjs";
 import { verifyEmbeddings } from "./model-embedding-smoke-cases.mjs";
 import { verifyProviderCatalog } from "./provider-catalog-smoke-cases.mjs";
@@ -40,6 +41,7 @@ const { values } = parseArgs({
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
+    "console-interactions": { type: "boolean" },
   },
 });
 assert.ok(
@@ -65,7 +67,15 @@ const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const operationsKey = key("model-operation-content");
-const interactionKey = values.interactions ? key("interaction-content") : null;
+const consoleInteractions = values["console-interactions"];
+const interactionKey =
+  values.interactions || consoleInteractions
+    ? key("interaction-content")
+    : null;
+const consoleStateKey = consoleInteractions
+  ? key("surface-private-state")
+  : null;
+const consoleSocket = path.join(root, "managed-console-socket");
 const approvalPrompt = "Exercise a protected native interaction 🌲";
 const approvalMarker = path.join(root, "native-approval-replies.jsonl");
 let server;
@@ -204,6 +214,7 @@ async function setupEncryption() {
     ["provider-credential", providerKey],
     ["model-operation-content", operationsKey],
     ...(interactionKey ? [["interaction-content", interactionKey]] : []),
+    ...(consoleStateKey ? [["surface-private-state", consoleStateKey]] : []),
   ]) {
     await call("POST", `/api/encryption/principals/${worker.id}/grants`, 201, {
       component,
@@ -1461,17 +1472,19 @@ try {
     ...environment,
     PATH: "",
     NO_COLOR: "1",
+    ...(consoleInteractions ? { TERM: "xterm-256color" } : {}),
     CANTRIP_LOG_LEVEL: "debug",
     CANTRIP_SERVER_URL: receiptProxy?.origin ?? server.origin,
     CANTRIP_WORKER_DATA_DIR: data,
     CANTRIP_WORKER_ID: workerId,
     CANTRIP_CODEX_BIN: values.deferred
       ? await fixtureCodex(root, values.codex)
-      : values.interactions
+      : values.interactions || consoleInteractions
         ? await fixtureCodex(root, values.codex, {
             scenario: "approval",
             marker: approvalMarker,
             input: approvalPrompt,
+            ...(consoleInteractions ? { socketFile: consoleSocket } : {}),
           })
         : path.resolve(values.codex),
     ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
@@ -1520,6 +1533,20 @@ try {
     console.log(
       "Deferred prompt receipt survived a worker restart and replayed once.",
     );
+  } else if (consoleInteractions) {
+    await verifyConsoleInteraction({
+      call,
+      eventually,
+      createModel,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      interactionKey,
+      prompt: approvalPrompt,
+      marker: approvalMarker,
+      socketFile: consoleSocket,
+    });
   } else if (values.interactions) {
     await verifyInteraction();
   } else if (values.settings) {
@@ -1546,6 +1573,7 @@ try {
     taskKey.fill(0);
     providerKey.fill(0);
     interactionKey?.fill(0);
+    consoleStateKey?.fill(0);
     master.fill(0);
     await rm(root, { recursive: true, force: true });
   }

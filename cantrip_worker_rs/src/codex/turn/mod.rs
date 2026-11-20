@@ -1050,29 +1050,13 @@ impl Turns {
                 let observe = async {
                     let collecting = output::collect(&mut events, &transport, thread, &turn, &emit);
                     let result = if let (Some(receipt), Some(subscribed)) = (&receipt, native_interactions.as_mut()) {
-                        let (handle, commands) = interactions::Handle::channel();
                         let binding = active.control.get().unwrap();
-                        binding.interactions.set(handle).map_err(|_| anyhow!("The native interaction owner already exists."))?;
-                        let (stop, stopping) = Abort::new();
-                        let interactions = interactions::Turn {
+                        interactions::Turn {
                             runtime, receipt, thread, turn: &turn,
                             thread_version: binding.thread_version,
                             encryption: &self.encryption, emit: &interaction_emit,
-                            protected: protection.is_some(), stop: stopping,
-                        };
-                        let interactions = interactions.run(&mut subscribed.events, commands);
-                        tokio::pin!(interactions);
-                        tokio::select! {
-                            result = collecting => {
-                                stop.abort(anyhow!("The native turn ended."));
-                                interactions.await?;
-                                result
-                            }
-                            failure = &mut interactions => {
-                                failure?;
-                                unreachable!("The interaction service runs for the turn lifetime.")
-                            }
-                        }
+                            protected: protection.is_some(),
+                        }.observe(binding, &mut subscribed.events, collecting).await
                     } else { collecting.await };
                     drop(native_interactions.take());
                     active.set(Phase::Terminal);

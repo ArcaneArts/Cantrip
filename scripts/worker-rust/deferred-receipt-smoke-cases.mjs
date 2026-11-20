@@ -18,6 +18,7 @@ export async function fixtureCodex(
     scenario = "deferred",
     marker = path.join(root, "deferred-codex-once"),
     input = prompt,
+    socketFile,
   } = {},
 ) {
   const executable = path.join(root, `codex-${scenario}-fixture`);
@@ -32,7 +33,16 @@ export async function fixtureCodex(
   const quote = (text) => `'${text.replaceAll("'", "'\\''")}'`;
   await writeFile(
     executable,
-    `#!/bin/sh\nexec ${args.map(quote).join(" ")} "$@"\n`,
+    [
+      "#!/bin/sh",
+      ...(socketFile
+        ? [
+            `if [ "$1" = --remote ]; then umask 077; printf '%s\\n' "$2" > ${quote(socketFile)}; exec ${quote(path.resolve(codex))} "$@"; fi`,
+          ]
+        : []),
+      `exec ${args.map(quote).join(" ")} "$@"`,
+      "",
+    ].join("\n"),
     {
       mode: 0o700,
     },

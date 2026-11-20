@@ -157,6 +157,43 @@ pub(super) fn result(response: &Value) -> Result<Value> {
     Ok(result)
 }
 
+// Preserve the native response on the wire and normalize only the public resolution.
+pub(super) fn response(kind: &str, result: Option<&Value>) -> Option<Value> {
+    let mut response = result.filter(|result| result.is_object())?.clone();
+    response["kind"] = json!(kind);
+    match kind {
+        "commandExecution" => {
+            let decision = response["decision"].clone();
+            for (name, native, public) in [
+                (
+                    "acceptWithExecpolicyAmendment",
+                    "execpolicy_amendment",
+                    "execpolicyAmendment",
+                ),
+                (
+                    "applyNetworkPolicyAmendment",
+                    "network_policy_amendment",
+                    "networkPolicyAmendment",
+                ),
+            ] {
+                if let Some(amendment) = decision[name].get(native) {
+                    response["decision"] = json!(name);
+                    response[public] = amendment.clone();
+                    break;
+                }
+            }
+        }
+        "mcpElicitation" => response["metadata"] = response["_meta"].clone(),
+        _ => {}
+    }
+    checked(
+        "agentInteractionResolutionCreateSchema",
+        &json!({"idempotencyKey":"native", "response":response}),
+    )
+    .ok()
+    .map(|parsed| parsed["response"].clone())
+}
+
 pub(in crate::codex) fn deny(id: &Value, kind: &str, reason: &JsString) -> Value {
     let result = match kind {
         "commandExecution" | "fileChange" => json!({"decision":"cancel"}),

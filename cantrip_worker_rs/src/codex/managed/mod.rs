@@ -373,6 +373,18 @@ impl Runtime {
             .subscribe(&self.0.session, thread)
     }
 
+    pub(in crate::codex) fn interaction_changes(&self) -> tokio::sync::watch::Receiver<()> {
+        self.0.interaction_requests.changes()
+    }
+
+    pub(in crate::codex) fn visible_interactions(&self, thread: &JsString) -> Vec<Value> {
+        self.0.interaction_requests.visible(thread)
+    }
+
+    pub(in crate::codex) fn publish_interaction(&self, thread: &JsString, id: &Value) -> bool {
+        self.0.interaction_requests.publish(thread, id)
+    }
+
     pub(in crate::codex) fn reply_to_interaction(
         &self,
         thread: &JsString,

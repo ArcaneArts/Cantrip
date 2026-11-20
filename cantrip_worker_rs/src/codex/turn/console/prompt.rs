@@ -2,8 +2,8 @@
 //! the native acceptance; the worker retains the operation until settlement.
 use super::{View, gateway::fault};
 use crate::codex::turn::{
-    Active, Owner, Phase, RPC_TIMEOUT, autonomous::same_workspace, control, id, output, protected,
-    queued, receipt::Receipt,
+    Active, Owner, Phase, RPC_TIMEOUT, autonomous::same_workspace, control, id, interactions,
+    output, protected, queued, receipt::Receipt,
 };
 use crate::{
     chat_content::{Scope, queue},
@@ -369,6 +369,7 @@ async fn execute(
             receipt.dispatch().await?;
             open.check()?;
             view.assert_current()?;
+            let mut native_interactions = runtime.interaction_requests(thread)?;
             active.dispatch(&signal, thread.clone())?;
             granted.dispatched()?;
             *sent = true;
@@ -380,6 +381,7 @@ async fn execute(
                     granted.settled().await?;
                     let mut fault = error.downcast_ref::<Failure>().unwrap().native_error.clone().unwrap();
                     if queued::deferred(&fault) {
+                        drop(native_interactions);
                         drop(_mcp);
                         drop(_owner);
                         let acknowledged = receipt.defer_queue_input(&fault, None).await?;
@@ -428,7 +430,13 @@ async fn execute(
                 async move { client.event(publisher.scope(), &operation, event).await }
             });
             let terminal = async {
-                let outcome = output::collect(&mut events, &transport, thread, &turn, &emit).await;
+                let binding = active.control.get().unwrap();
+                let collecting = output::collect(&mut events, &transport, thread, &turn, &emit);
+                let outcome = interactions::Turn {
+                    runtime, receipt, thread, turn: &turn, thread_version: binding.thread_version,
+                    encryption: &turns.encryption, emit: &emit, protected: true,
+                }.observe(binding, &mut native_interactions.events, collecting).await;
+                drop(native_interactions);
                 active.set(Phase::Terminal);
                 drop(emit);
                 outcome
