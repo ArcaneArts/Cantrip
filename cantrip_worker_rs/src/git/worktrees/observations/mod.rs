@@ -152,7 +152,11 @@ impl Observations {
             .fetch_max(if changed { 2 } else { 1 }, Ordering::AcqRel);
         self.inner.wake.notify_one();
     }
-    pub async fn execute_routed(&self, command: &Value, registry: &Registry) -> Result<Value> {
+    pub async fn execute_routed(
+        &self,
+        command: &Value,
+        registry: &Registry,
+    ) -> Result<(Value, Vec<Value>)> {
         let kind = "worktree.observation.configure";
         let result=async {
             let command=registry.resolve(command).await?;
@@ -160,16 +164,15 @@ impl Observations {
             let codegraph=command.get("codegraphTargets").and_then(Value::as_array).cloned().unwrap_or_else(|| command["targets"].as_array().unwrap().iter().map(|target| {
                 json!({"projectId":target["projectId"],"worktreeId":target["worktreeId"],"rootKind":"git-worktree","sourcePath":target["sourcePath"],"worktreePath":target["worktreePath"]})
             }).collect());
-            let (_,codegraph_paths)=reconcile(&codegraph).await;
+            let (codegraph,codegraph_paths)=reconcile(&codegraph).await;
             paths.extend(codegraph_paths);
             let paths:IndexMap<_,_>=paths.into_iter().map(|path| {
                 let key=JsString::new([path["projectId"].as_js_string().unwrap().units(),&[0],path["worktreeId"].as_js_string().unwrap().units()].concat());
                 (key,path)
             }).collect();
             self.configure(&targets);
-            // Native CodeGraph supervision is tracked separately. As with a
-            // failed source coordinator, Git observation remains accepted.
-            registry.protect_result(kind,&json!({"accepted":true,"paths":paths.into_values().collect::<Vec<_>>()})).await
+            let receipt = registry.protect_result(kind,&json!({"accepted":true,"paths":paths.into_values().collect::<Vec<_>>()})).await?;
+            Ok((receipt, codegraph))
         }.await;
         result.map_err(|error| crate::routing::protect_error(kind, error))
     }

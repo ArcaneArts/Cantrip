@@ -8096,3 +8096,34 @@ record, delivered a new command record, and advanced a warning-only
 stream past a filtered debug record. Closing both sockets sent two stop
 commands. The same fixture also verified in-process worker restart and
 clean shutdown. Run the control fixture with `--log-stream`.
+
+## 220. Supervise installed CodeGraph indexes in the Rust worker
+
+Reference commit 1eb40df5515ac49a0073fd6b846ed2bc753da84a (#3383).
+
+The worker opens the existing managed CodeGraph distribution and runs its
+actual CLI version and telemetry commands. An authorized Git worktree or
+folder gets one index actor and filesystem watcher. The worker bounds
+concurrent CLI operations, debounces file events, and periodically checks
+indexes after watcher failures. It keeps the derived index in
+`.codegraph-cantrip` and registers the Git exclude once per Git common
+directory. The existing status, sync, and rebuild commands use the same
+actors. Core receives heartbeat capabilities and project status observations.
+
+Replica removal stops and joins the index actor before retiring the derived
+index. The normal checkout deletion and ownership checks still decide the
+result. A refused deletion resumes indexing when the checkout still exists.
+
+The macOS ARM64 workspace fixture ran production Rust Core in PGlite mode,
+the Rust worker, and CodeGraph 1.6.0. After reconnect, Core configured the
+real worktree index. Its live socket delivered a file-change sync and
+successful sync and rebuild jobs. Run `scripts/worker-rust/workspace-smoke.mjs`
+with `--codegraph-distribution <unpacked-vendor-distribution>` and the linked
+server and worker executables. The fixture excludes system Node from the
+worker PATH. CodeGraph 1.6.0 uses the runtime supplied in its own distribution.
+
+Adding `--replica-lifecycle-only` exercised real index retirement, a deletion
+refused for an ignored user file, index recovery, and deletion after retrying
+the same job. The ignored file survived the refusal with its contents intact.
+
+Native installation, update checks, and managed MCP injection remain open.

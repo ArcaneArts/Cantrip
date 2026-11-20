@@ -387,6 +387,31 @@ async fn cycle(
     thread_preparation.configure_autonomous(turns.autonomous(routing.clone()))?;
     turns.configure_queue_imports()?;
     turns.configure_settings_publisher(logs.clone())?;
+    let publish_observation = {
+        let outgoing = outgoing.clone();
+        let routing = routing.clone();
+        Arc::new(move |notification| {
+            routing
+                .protect_notification(&notification)
+                .ok()
+                .flatten()
+                .is_some_and(|notification| outgoing.notification(notification).unwrap_or(false))
+        })
+    };
+    let codegraph = Arc::new(crate::codegraph::Supervisor::new(
+        &data_directory,
+        crate::filesystem::Scope::with_stop(stop_rx.clone()),
+        worktrees.clone(),
+        logs.clone(),
+        publish_observation.clone(),
+    ));
+    replicas.set_removal_lifecycle({
+        let codegraph = codegraph.clone();
+        Arc::new(move |root, remove| {
+            let codegraph = codegraph.clone();
+            Box::pin(async move { codegraph.with_retired_index(root, remove).await })
+        })
+    });
     let model_catalog = crate::codex::catalog::Catalog::new(
         codex.clone(),
         provider_access.clone(),
@@ -405,19 +430,7 @@ async fn cycle(
     )?);
     let worktree_observations = Arc::new(crate::git::worktrees::observations::Observations::new(
         worktrees.clone(),
-        {
-            let outgoing = outgoing.clone();
-            let routing = routing.clone();
-            Arc::new(move |notification| {
-                routing
-                    .protect_notification(&notification)
-                    .ok()
-                    .flatten()
-                    .is_some_and(|notification| {
-                        outgoing.notification(notification).unwrap_or(false)
-                    })
-            })
-        },
+        publish_observation,
     ));
     let (registered, mut registration) = watch::channel(false);
     let task_outcomes = tokio::spawn(task_delivery.clone().run());
@@ -439,7 +452,12 @@ async fn cycle(
         logs.clone(),
         stop_rx.clone(),
         registered,
-        (encryption.clone(), worker_link.clone(), managed_web.clone()),
+        (
+            encryption.clone(),
+            worker_link.clone(),
+            managed_web.clone(),
+            codegraph.clone(),
+        ),
     ));
     let connection = Connection {
         configuration: configuration.clone(),
@@ -1100,17 +1118,33 @@ async fn cycle(
                 }
                 if kind=="worktree.observation.configure" {
                     let observations=worktree_observations.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    let codegraph = codegraph.clone();
                     commands.spawn(async move {
-                        let result=observations.execute_routed(&request["command"],&routing).await;
-                        if result.is_ok() && !request["command"]["targets"].as_array().is_none_or(Vec::is_empty) {
-                            logs.repeated("native-codegraph-observations-pending".into(),"warn","Native CodeGraph observation integration remains unavailable",json!({"event":"codegraph.project.configure-failed","subsystem":"codegraph","operation":"configure-worktrees","reasonCode":"native-integration-pending","status":"degraded"}));
+                        match observations.execute_routed(&request["command"], &routing).await {
+                            Ok((receipt, targets)) => {
+                                finish(&request,&worker,&logs,&outgoing,began,&Ok(receipt));
+                                codegraph.configure(targets).await;
+                            }
+                            Err(error) => finish(&request,&worker,&logs,&outgoing,began,&Err(error)),
                         }
+                    });
+                    continue;
+                }
+                if crate::codegraph::supports(kind) {
+                    let codegraph = codegraph.clone();
+                    let routing = routing.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = codegraph.execute(&request["command"], &routing).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;
                 }
                 if matches!(kind,"worktree.list"|"worktree.reconcile"|"worktree.create"|"worktree.remove"|"worktree.lock"|"worktree.unlock"|"worktree.prune"|"worktree.status") {
                     let worktrees = worktrees.clone();
+                    let codegraph = codegraph.clone();
                     let runs = runs.clone();
                     let routing = routing.clone();
                     let logs = logs.clone();
@@ -1124,9 +1158,15 @@ async fn cycle(
                                 Box::pin(async move { runs.stop_path(&path).await });
                             work
                         };
-                        let result = worktrees
+                        let result = match worktrees
                             .execute_routed(&request["command"], &routing, &scope, Some(&before_remove))
-                            .await;
+                            .await {
+                            Ok((receipt, removed)) => {
+                                if let Some(path) = removed { codegraph.detach(&path).await; }
+                                Ok(receipt)
+                            }
+                            Err(error) => Err(error),
+                        };
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;
@@ -1158,6 +1198,7 @@ async fn cycle(
     browser_surfaces.close().await;
     desktop_inventory.close().await;
     worktree_observations.close().await;
+    codegraph.close().await;
     timers.abort_all();
     while timers.join_next().await.is_some() {}
     let observations = auth_observations.stop();
@@ -1344,10 +1385,11 @@ async fn publish(
     logs: Arc<Logs>,
     mut stop: watch::Receiver<bool>,
     registered: watch::Sender<bool>,
-    (encryption, worker_link, managed_web): (
+    (encryption, worker_link, managed_web, codegraph): (
         Arc<Service>,
         Arc<crate::worker_link::Coordinator>,
         Arc<crate::managed_web::Runtimes>,
+        Arc<crate::codegraph::Supervisor>,
     ),
 ) {
     let mut connected = false;
@@ -1371,6 +1413,7 @@ async fn publish(
         }
         heartbeat["encryption"] = encryption.status();
         heartbeat["webRuntimes"] = managed_web.capabilities();
+        heartbeat["codegraph"] = codegraph.status();
         let (url, token, worker) = {
             let config = config.lock().unwrap();
             (

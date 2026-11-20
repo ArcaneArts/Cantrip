@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
-import { readFile, writeFile, lstat } from "node:fs/promises";
+import { readFile, writeFile, lstat, rm } from "node:fs/promises";
 import path from "node:path";
 const execute = promisify(execFile);
 export async function verifyReplicaLifecycleJobs({
@@ -12,6 +12,7 @@ export async function verifyReplicaLifecycleJobs({
   completed,
   eventually,
   seedSiblings,
+  codegraph,
 }) {
   let jobs = 0;
   const env = { ...process.env, ...fixture.environment };
@@ -98,9 +99,66 @@ export async function verifyReplicaLifecycleJobs({
   await settle(removedLink.id);
   await assert.rejects(lstat(link.path), { code: "ENOENT" });
   await assert.rejects(lstat(link.project.target), { code: "ENOENT" });
-  const removedManaged = await operation(managed, "remove", {
-    deleteLocalFiles: true,
-  });
+  let removedManaged;
+  if (codegraph) {
+    const project = `/api/projects/${managed.project.id}`;
+    const inventory = await call("GET", project + "/worktrees");
+    assert.equal(inventory.status, 200);
+    const worktree = inventory.body.find(
+      (entry) => entry.workerId === workerId && entry.isPrimary,
+    );
+    assert.ok(worktree);
+    const route = `${project}/worktrees/${worktree.id}/codegraph`;
+    const waitForIndex = () =>
+      eventually(
+        () => call("GET", route),
+        (result) => {
+          assert.equal(result.status, 200, JSON.stringify(result));
+          assert.equal(result.body.state, "ready", JSON.stringify(result.body));
+        },
+        "real CodeGraph index before managed replica removal",
+      );
+    await waitForIndex();
+    const rules = path.join(fixture.root, "codegraph-ignored-rules");
+    const ignored = path.join(managed.path, "private-ignored.txt");
+    await writeFile(rules, "/private-ignored.txt\n");
+    await git(
+      "-C",
+      managed.path,
+      "config",
+      "--local",
+      "core.excludesFile",
+      rules,
+    );
+    await writeFile(ignored, "Keep this ignored file\n");
+    const refused = await operation(managed, "remove", {
+      deleteLocalFiles: true,
+    });
+    const blocked = await settle(refused.id, "blocked");
+    assert.equal(blocked.error.code, "worktree-dirty");
+    assert.equal(await readFile(ignored, "utf8"), "Keep this ignored file\n");
+    const logs = await call("GET", `/api/workers/${workerId}/logs?limit=200`);
+    assert.equal(logs.status, 200);
+    assert.ok(
+      logs.body.records.some(
+        (record) => record.context?.event === "codegraph.project.retired",
+      ),
+    );
+    await waitForIndex();
+    await rm(ignored);
+    const retried = await call(
+      "POST",
+      `/api/project-replica-jobs/${refused.id}/retry`,
+      { stateRevision: blocked.stateRevision },
+    );
+    assert.equal(retried.status, 200, JSON.stringify(retried));
+    assert.equal(retried.body.state, "queued");
+    removedManaged = refused;
+  } else {
+    removedManaged = await operation(managed, "remove", {
+      deleteLocalFiles: true,
+    });
+  }
   await settle(removedManaged.id);
   await assert.rejects(lstat(managed.path), { code: "ENOENT" });
   const sources = await call(
@@ -176,5 +234,8 @@ export async function verifyReplicaLifecycleJobs({
     actualManagedAndLinkDeletion: true,
     reattachedCheckoutIsUserOwned: true,
     userOwnedDeletionDenied: true,
+    ...(codegraph
+      ? { codeGraphRetirementAndBlockedRemovalRecovery: true }
+      : {}),
   };
 }

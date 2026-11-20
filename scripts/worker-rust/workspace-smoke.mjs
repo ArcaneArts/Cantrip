@@ -61,6 +61,7 @@ const { values } = parseArgs({
     server: { type: "string" },
     cli: { type: "string" },
     "observations-only": { type: "boolean", default: false },
+    "codegraph-distribution": { type: "string" },
     "recovery-only": { type: "boolean", default: false },
     "github-catalog-only": { type: "boolean", default: false },
     "github-issues-only": { type: "boolean", default: false },
@@ -117,6 +118,7 @@ if (
   !values["binary-writes-only"] &&
   !values["file-imports-only"] &&
   !values["run-runtime-only"] &&
+  !values["codegraph-distribution"] &&
   !(values["replica-provision-only"] || values["replica-lifecycle-only"])
 )
   await symlink(
@@ -165,6 +167,9 @@ execFileSync(git, [
 ]);
 const sentinel = path.join(checkout, "untouched.txt");
 await writeFile(sentinel, "private dirty content\n");
+const codegraph = values["codegraph-distribution"]
+  ? await import("./codegraph-smoke-cases.mjs")
+  : undefined;
 const workerId = "native-workspace-worker",
   workspaceId = "88888888-8888-4888-8888-000000000007",
   projectId = "99999999-9999-4999-8999-000000000007";
@@ -226,6 +231,7 @@ function startWorker(code) {
   const workerEnvironment = {
     ...fixtureEnvironment(path.join(root, "unused")),
     PATH: bin,
+    ...(codegraph ? { HOME: path.join(root, "codegraph-home") } : {}),
     ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
     ...(values["terminal-relay-only"] || values["run-runtime-only"]
       ? { SHELL: "/bin/sh" }
@@ -540,6 +546,13 @@ async function repositoryClient() {
   };
 }
 try {
+  if (codegraph)
+    await codegraph.stageCodeGraph({
+      distribution: values["codegraph-distribution"],
+      root,
+      bin: githubFixture?.bin ?? bin,
+      workerDirectory,
+    });
   await start();
   const port = Number(new URL(server.origin).port);
   const enrollment = await call("POST", "/api/workers/enrollment-codes", {
@@ -562,7 +575,11 @@ try {
     replicaCoverage = await verifyReplicaProvision({
       seedSiblings: seedReplicaSiblings,
       lifecycle: values["replica-lifecycle-only"]
-        ? verifyReplicaLifecycleJobs
+        ? (input) =>
+            verifyReplicaLifecycleJobs({
+              ...input,
+              codegraph: Boolean(codegraph),
+            })
         : undefined,
       call,
       fixture: githubFixture,
@@ -871,6 +888,7 @@ try {
     }
     if (
       !values["observations-only"] &&
+      !codegraph &&
       !values["recovery-only"] &&
       !values["github-issues-only"] &&
       !values["pull-request-only"] &&
@@ -1021,6 +1039,20 @@ try {
         restartWorker,
         registerMetadata: repository.registerMetadata,
       });
+    } else if (codegraph) {
+      try {
+        await codegraph.verifyCodeGraph({
+          call,
+          eventually,
+          origin: server.origin,
+          projectId,
+          workerId,
+          checkout,
+          restartWorker,
+        });
+      } catch (error) {
+        throw new Error(`${error.message}\n${diagnostics}`, { cause: error });
+      }
     } else if (values["observations-only"]) {
       const { verifyNativeObservations } =
         await import("./observation-smoke-cases.mjs");
@@ -1151,6 +1183,13 @@ try {
         realWorkerAndServer: true,
         nodeAbsentFromWorkerPath: true,
         ...recoveryCoverage,
+      }),
+    );
+  else if (codegraph)
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-codegraph-worker-server",
+        passed: true,
       }),
     );
   else if (values["observations-only"])
