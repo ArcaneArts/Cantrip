@@ -8265,3 +8265,27 @@ HEAD and status. Run
 `scripts/worker-rust/workspace-smoke.mjs --git-draft-only` with linked Core and
 worker executables and the bundled Codex binary to repeat it. The existing
 Node prompt and failure-evidence tests also passed.
+
+## 226. Export project chats to the local Codex app in Rust
+
+Reference commit `3f6a86411e87f7919f2687724b510971b4836b16` (#3389).
+
+The worker now inspects the local Codex destination and handles the existing
+begin, chunk and complete commands. It resolves the selected worktree's
+protected path and validates upload order, byte count and transcript digest.
+It opens chat messages and the display label with worker-held keys. The worker
+imports the staged transcript with bundled Codex, preserves the chat title
+and verifies the visible turns and thread discovery before recording success.
+The v1 export receipt reopens across worker restarts and rejects operation IDs
+reused with different transcripts or destinations.
+
+The local macOS ARM64 fixture used production Rust Core in PGlite mode, the
+Rust worker and bundled Codex 0.166.0 with an owned external home. It verified
+an encrypted upload spanning multiple chunks, the saved native transcript,
+unchanged Core messages, cleanup of temporary files, retry after restart and
+rejection of a changed transcript under the same operation ID. It enables the
+shared `externalCodexHistory` flag through the fixture worker's heartbeat.
+The production flag covers both export and external-history import and can
+be advertised once the native import path is available. Run
+`scripts/worker-rust/workspace-smoke.mjs --project-export-only` with linked
+Core and worker executables and the bundled Codex binary.
