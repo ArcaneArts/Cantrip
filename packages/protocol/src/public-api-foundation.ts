@@ -298,6 +298,7 @@ export {
   codexExternalImportFailureSchema,
   codexExternalImportTypeResultSchema,
   codexExternalImportStatusSchema,
+  codexExternalImportStatusRequestSchema,
   mentionedSkillNames,
 } from "./customization.js";
 

@@ -5,6 +5,7 @@ import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import { mcpServerConfigurationSchema } from "../../packages/protocol/dist/index.js";
 import { createPreparedProjectChat } from "./console-interaction-cases.mjs";
+import { verifyExternalImport } from "./external-import-smoke-cases.mjs";
 import { oauthServer } from "./mcp-oauth-fixture.mjs";
 
 const resourceUri = "fixture://private-note";
@@ -204,7 +205,14 @@ export async function verifyCustomizationInventory({
     sequence: 0,
   });
 
-  async function request(chat, operation, method, suffix = "", content) {
+  async function request(
+    chat,
+    operation,
+    method,
+    suffix = "",
+    content,
+    httpStatus = 200,
+  ) {
     const operationId = randomUUID();
     const { scope } = chat;
     const route = chat.chatUrl + "/customizations" + suffix;
@@ -213,9 +221,9 @@ export async function verifyCustomizationInventory({
         ? await call(
             method,
             `${route}?operationId=${operationId}&refresh=true`,
-            200,
+            httpStatus,
           )
-        : await call(method, route, 200, {
+        : await call(method, route, httpStatus, {
             operationId,
             operation,
             scope,
@@ -260,6 +268,11 @@ export async function verifyCustomizationInventory({
           ? result.value.status
           : "completed";
       }
+      if (
+        operation === "customization.external.apply" ||
+        operation === "customization.external.status"
+      )
+        lifecycle = result.value.status;
     }
     assert.equal(wire.lifecycle, lifecycle);
     return result;
@@ -423,9 +436,20 @@ export async function verifyCustomizationInventory({
     error: { message: "Codex could not start MCP authorization." },
   });
   assert.equal((await oauthStatus(a, absent)).status, "failed");
+  assert.equal(cleared.capabilities.externalImports.detect.available, true);
+  assert.equal(cleared.capabilities.externalImports.apply.available, true);
+  await verifyExternalImport({
+    request,
+    success,
+    eventually,
+    a,
+    b,
+    codexHome,
+    runtimeHome,
+  });
   console.log(
     JSON.stringify({
-      suite: "native-customization-inventory-and-mcp-oauth",
+      suite: "native-customizations",
       passed: true,
     }),
   );

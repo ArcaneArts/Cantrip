@@ -54,6 +54,7 @@ import {
   codexMcpReloadResultSchema,
   codexExternalImportApplySchema,
   codexExternalImportStatusSchema,
+  codexExternalImportStatusRequestSchema,
 } from "@cantrip/protocol";
 import { getWorkers } from "./worker-wire";
 import { repositoryOperationCacheNamespace } from "./repository-operations";
@@ -462,10 +463,10 @@ export async function getChatExternalImportStatus(
     operation: "customization.external.status",
     path: `/api/chats/${encodeURIComponent(chatId)}/customizations/external-import/status`,
     method: "POST",
-    request: codexExternalImportStatusSchema.pick({ importId: true }).parse({
+    request: codexExternalImportStatusRequestSchema.parse({
       importId,
     }),
-    requestSchema: codexExternalImportStatusSchema.pick({ importId: true }),
+    requestSchema: codexExternalImportStatusRequestSchema,
     responseSchema: codexExternalImportStatusSchema,
   });
 }

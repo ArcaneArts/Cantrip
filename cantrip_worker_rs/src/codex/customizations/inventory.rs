@@ -1,4 +1,4 @@
-use super::{TIMEOUT, Target, entries, integer, mcp, nonempty, optional, skills};
+use super::{TIMEOUT, Target, entries, external, integer, mcp, nonempty, optional, skills};
 use crate::codex::discovery::feature_usable;
 use anyhow::Result;
 use cantrip_wire::{Value, value::json};
@@ -126,9 +126,9 @@ fn capabilities(report: &Value) -> Value {
         "Plugin operations are unavailable in Cantrip.",
         "unsupported",
     );
-    let external = capability(
-        false,
-        "External configuration imports are pending in the Rust worker.",
+    let external_apply = capability(
+        available(report, external::DETECT) && available(report, external::IMPORT),
+        "The installed Codex runtime is missing one or more methods required for validated external configuration imports.",
         "experimental",
     );
     json!({
@@ -148,6 +148,6 @@ fn capabilities(report: &Value) -> Value {
             "reload":method("config/mcpServer/reload","stable"),"oauth":method(super::oauth::LOGIN,"stable"),
         }),
         "plugins":json!({"list":plugins,"read":plugins,"install":plugins,"uninstall":plugins}),
-        "externalImports":json!({"detect":external,"apply":external}),
+        "externalImports":json!({"detect":method(external::DETECT,"experimental"),"apply":external_apply}),
     })
 }

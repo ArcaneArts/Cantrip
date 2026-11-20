@@ -1022,7 +1022,12 @@
     "codexMcpReloadResultSchema": 14656,
     "codexMcpOauthStartSchema": 14658,
     "codexMcpOauthStartResultSchema": 14660,
-    "codexMcpOauthStatusSchema": 14664
+    "codexMcpOauthStatusSchema": 14664,
+    "codexExternalImportItemTypeSchema": 14669,
+    "codexExternalImportPreviewSchema": 14670,
+    "codexExternalImportApplySchema": 14695,
+    "codexExternalImportStatusRequestSchema": 14698,
+    "codexExternalImportStatusSchema": 14700
   },
   "nodes": [
     {
@@ -87783,6 +87788,195 @@
       "checks": []
     },
     { "type": "nullable", "innerType": 14668, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "codexExternalImportItemTypeSchema",
+      "values": [
+        "AGENTS_MD",
+        "CONFIG",
+        "SKILLS",
+        "PLUGINS",
+        "MCP_SERVER_CONFIG",
+        "SUBAGENTS",
+        "HOOKS",
+        "COMMANDS",
+        "MEMORY",
+        "SESSIONS"
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "codexExternalImportPreviewSchema",
+      "shape": { "sourceScope": 14671, "items": 14672 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["project"], "checks": [] },
+    { "type": "array", "element": 14673, "checks": [] },
+    {
+      "type": "object",
+      "name": "codexExternalImportPreviewItemSchema",
+      "shape": {
+        "id": 14674,
+        "itemType": 14669,
+        "description": 14675,
+        "cwd": 14676,
+        "details": 14678
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14677, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 14679, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "pluginNames": 14680,
+        "skillNames": 14682,
+        "sessionCount": 14684,
+        "mcpServerNames": 14685,
+        "hookNames": 14687,
+        "subagentNames": 14689,
+        "commandNames": 14691,
+        "memoryFiles": 14693
+      },
+      "checks": []
+    },
+    { "type": "array", "element": 14681, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "array", "element": 14683, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "array", "element": 14686, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "array", "element": 14688, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "array", "element": 14690, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "array", "element": 14692, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "array", "element": 14694, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "codexExternalImportApplySchema",
+      "shape": { "itemIds": 14696 },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "external-import-selection",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 14697,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "codexExternalImportStatusRequestSchema",
+      "shape": { "importId": 14699 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "codexExternalImportStatusSchema",
+      "shape": { "importId": 14699, "status": 14701, "results": 14702 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["pending", "completed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14703,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "codexExternalImportTypeResultSchema",
+      "shape": { "itemType": 14669, "successCount": 14704, "failures": 14705 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 14706,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "codexExternalImportFailureSchema",
+      "shape": { "failureStage": 14707, "message": 14708 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
     {
       "type": "string",
       "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]

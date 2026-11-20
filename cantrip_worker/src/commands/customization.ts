@@ -18,6 +18,7 @@ import {
   codexMcpReloadResultSchema,
   codexExternalImportApplySchema,
   codexExternalImportStatusSchema,
+  codexExternalImportStatusRequestSchema,
 } from "@cantrip/protocol";
 import { managedRuntimeTarget } from "../codex/managed-runtime-namespaces.js";
 import type { WorkerCommand } from "@cantrip/protocol";
@@ -375,7 +376,7 @@ export async function handleCustomizationCommand(
         operationId: command.operationId,
         operation: command.type,
         opaque: command.protectedRequest,
-        schema: codexExternalImportStatusSchema.pick({ importId: true }),
+        schema: codexExternalImportStatusRequestSchema,
         service: workerEncryption,
       });
       return protectWorkerCustomizationResponse({

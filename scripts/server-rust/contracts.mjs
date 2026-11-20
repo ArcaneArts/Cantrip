@@ -1047,6 +1047,11 @@ export const contractRoots = [
   "codexMcpOauthStartSchema",
   "codexMcpOauthStartResultSchema",
   "codexMcpOauthStatusSchema",
+  "codexExternalImportItemTypeSchema",
+  "codexExternalImportPreviewSchema",
+  "codexExternalImportApplySchema",
+  "codexExternalImportStatusRequestSchema",
+  "codexExternalImportStatusSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1278,6 +1283,7 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.codexExternalImportApplySchema, "external-import-selection"],
   [protocol.projectTaskWorkloadOpaqueItemSchema, "task-workload-chat-binding"],
   [protocol.cantripVersionSchema, "worker-operation-version"],
   [

@@ -10,6 +10,7 @@ mod worker;
 
 use super::{
     admission::{Adapter, OnRevoked},
+    customizations::external::{self, Imports},
     customizations::oauth::{self, Attempts},
     private_inference::{Hooks, Router, Routing},
     process_transport::{RetirementError, retirement_failed},
@@ -78,6 +79,7 @@ struct Inner {
     standalone_skills: super::skills::standalone::RuntimeSkills,
     project_skill_roots: tokio::sync::RwLock<Vec<JsString>>,
     mcp_oauth: Attempts,
+    external_imports: Imports,
 }
 
 impl Drop for Inner {
@@ -262,6 +264,7 @@ impl Runtime {
         let queue_observers = QueueObservers::default();
         let interaction_requests = interaction_requests::Requests::default();
         let mcp_oauth = Attempts::default();
+        let external_imports = Imports::default();
         let retirement = Promise::spawn(pump(
             router.clone(),
             events,
@@ -275,6 +278,7 @@ impl Runtime {
                 queue_observers: queue_observers.clone(),
                 interaction_requests: interaction_requests.clone(),
                 mcp_oauth: mcp_oauth.clone(),
+                external_imports: external_imports.clone(),
             },
         ));
         let runtime = Self(Arc::new_cyclic(|inner| Inner {
@@ -300,6 +304,7 @@ impl Runtime {
             standalone_skills: Default::default(),
             project_skill_roots: Default::default(),
             mcp_oauth,
+            external_imports,
         }));
         if let Err(error) = host
             .initialize(&runtime.0.session, &profile)
@@ -356,6 +361,10 @@ impl Runtime {
 
     pub(super) fn mcp_oauth(&self) -> &Attempts {
         &self.0.mcp_oauth
+    }
+
+    pub(super) fn external_imports(&self) -> &Imports {
+        &self.0.external_imports
     }
 
     pub(in crate::codex) fn version_raw(&self) -> &Value {
@@ -524,6 +533,7 @@ struct NativeCallbacks {
     queue_observers: QueueObservers,
     interaction_requests: interaction_requests::Requests,
     mcp_oauth: Attempts,
+    external_imports: Imports,
 }
 
 async fn pump(
@@ -541,6 +551,7 @@ async fn pump(
         queue_observers,
         interaction_requests,
         mcp_oauth,
+        external_imports,
     } = native;
     let mut callbacks = JoinSet::new();
     let started = Instant::now();
@@ -579,6 +590,13 @@ async fn pump(
                     && message.get("id").is_none()
                 {
                     mcp_oauth.complete(&message["params"]);
+                    continue;
+                }
+                if let EventKind::Message(message) = &event_data.kind
+                    && message.get("id").is_none()
+                    && let Some(completed) = external::notification_phase(&message["method"])
+                {
+                    external_imports.observe(&message["params"], completed);
                     continue;
                 }
                 if let EventKind::Message(message) = &event_data.kind

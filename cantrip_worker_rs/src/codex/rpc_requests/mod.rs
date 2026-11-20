@@ -145,6 +145,11 @@ impl Requests {
             Some(super::customizations::oauth::LOGIN) => {
                 state.private.insert(id, "privateMcpOauth");
             }
+            Some(
+                super::customizations::external::DETECT | super::customizations::external::IMPORT,
+            ) => {
+                state.private.insert(id, "privateExternalConfig");
+            }
             _ => {}
         }
         if let Some(settlement) = &settlement {
@@ -211,6 +216,9 @@ impl Requests {
             return json!({"method":message["method"],"params":json!({
                 "success":message["params"]["success"]
             })});
+        }
+        if super::customizations::external::notification_phase(&message["method"]).is_some() {
+            return json!({"method":message["method"]});
         }
         if !coercion::truthy(message.get("method"))
             && message.get("id").is_some()
