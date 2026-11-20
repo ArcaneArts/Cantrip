@@ -29,11 +29,9 @@ if (!args.some((argument) => argument.startsWith("ws://"))) {
       native.once("open", () => worker.resume());
       worker.on("message", (raw) => {
         const frame = JSON.parse(String(raw));
-        if (
-          scenario === "approval" &&
-          frame.id === approvalId &&
-          !frame.method
-        ) {
+        const approval =
+          scenario === "approval" || scenario === "resume-approval";
+        if (approval && frame.id === approvalId && !frame.method) {
           writeFileSync(marker, `${JSON.stringify(frame)}\n`, {
             flag: "a",
             mode: 0o600,
@@ -41,6 +39,24 @@ if (!args.some((argument) => argument.startsWith("ws://"))) {
           return;
         }
         if (
+          scenario === "resume-approval" &&
+          frame.method === "turn/suspension"
+        ) {
+          const { operation, threadId } = frame.params;
+          native.send(raw, { binary: false });
+          if (operation.type === "pause") {
+            writeFileSync(
+              marker + ".pause",
+              JSON.stringify({ threadId, turnId: operation.turnId }),
+              { mode: 0o600 },
+            );
+          } else if (operation.type === "resume") {
+            targets.set(frame.id, threadId);
+          }
+          return;
+        }
+        if (
+          scenario !== "resume-approval" &&
           frame.method === "turn/start" &&
           frame.params?.input?.some((item) => item.text === prompt)
         ) {
@@ -77,7 +93,12 @@ if (!args.some((argument) => argument.startsWith("ws://"))) {
         if (!targets.size) return;
         const frame = JSON.parse(String(raw));
         const threadId = targets.get(frame.id);
-        if (!threadId || !frame.result?.turn?.id) return;
+        if (!threadId) return;
+        const turnId =
+          scenario === "resume-approval"
+            ? frame.result?.suspension?.turnId
+            : frame.result?.turn?.id;
+        if (!turnId) return;
         targets.delete(frame.id);
         worker.send(
           JSON.stringify({
@@ -85,7 +106,7 @@ if (!args.some((argument) => argument.startsWith("ws://"))) {
             method: "item/commandExecution/requestApproval",
             params: {
               threadId,
-              turnId: frame.result.turn.id,
+              turnId,
               itemId: "fixture-item",
               startedAtMs: Date.now(),
               command: "echo private fixture approval",

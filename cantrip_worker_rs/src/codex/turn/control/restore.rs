@@ -183,6 +183,8 @@ impl Turns {
                     async move { receipts.event(publisher.scope(), &operation, event).await }
                 });
 
+                // Codex can ask for approval as soon as Resume releases the saved turn.
+                let mut native_interactions = runtime.interaction_requests(&thread)?;
                 {
                     let _control = binding.pause_control.lock().await;
                     let action = Action::Resume(command);
@@ -239,7 +241,13 @@ impl Turns {
                     acknowledge(result);
                 }
 
-                let terminal = output::collect_restored(&mut events, &transport, &thread, &turn, &emit, saved).await;
+                let collecting = output::collect_restored(&mut events, &transport, &thread, &turn, &emit, saved);
+                let terminal = interactions::Turn {
+                    runtime, receipt: &receipt, thread: &thread, turn: &turn,
+                    thread_version: binding.thread_version, encryption: &self.encryption,
+                    emit: &emit, protected: true,
+                }.observe(binding, &mut native_interactions.events, collecting).await;
+                drop(native_interactions);
                 active.set(Phase::Terminal);
                 drop(emit);
                 if transport.check().is_err() {
