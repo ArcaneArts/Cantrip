@@ -7846,3 +7846,26 @@ worker with `pnpm --filter @cantrip/worker... build`, then run
 `node --import tsx scripts/worker-rust/profile-upgrade-smoke.mjs` with `--server`
 and `--worker` pointing to the Rust executables. Use `--cli` and `--codex` to
 select local helper binaries when they are outside the worker's normal layout.
+
+## 210. Control retained Cantrip OS guest power from the Rust worker
+
+Reference commit 71419fabe82784feef23ab30f18b226d1063f088 (#3373).
+
+Power status and start, stop, and restart use the local Docker Engine socket.
+The worker journals the accepted operation and the matching Docker identity
+before dispatch. It sends each mutation to the immutable container ID. An
+observation reads the recorded admission and the current container state.
+Restart completion requires a changed start time. The worker preserves the
+version-one operation and carrier journals used by the Node implementation.
+
+The macOS ARM64 smoke started real Rust Core in PGlite mode and a native worker
+against an existing Docker guest. It stopped and started the same container
+and retained a workspace file. The fixture discarded the Engine's restart
+acknowledgment after the mutation, then restarted the worker. Observation
+settled the original admission without a second Docker POST. The Node host
+reader reopened the Rust carrier journal. The fixture also checked the
+JavaScript admission fingerprint.
+
+Run `node scripts/worker-rust/cantrip-os-workspaces-smoke.mjs --power` with
+`--server` and `--worker` pointing to the Rust executables and the existing
+Cantrip OS guest image available locally.

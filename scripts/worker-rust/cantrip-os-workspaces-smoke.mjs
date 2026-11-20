@@ -8,6 +8,10 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs, promisify } from "node:util";
 import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
+import {
+  proxyPowerCarrier,
+  verifyCantripOsPower,
+} from "./cantrip-os-power-cases.mjs";
 
 const execute = promisify(execFile);
 const { values } = parseArgs({
@@ -20,6 +24,7 @@ const { values } = parseArgs({
     "run-runtime": { type: "boolean", default: false },
     "product-files": { type: "boolean", default: false },
     "guest-terminal": { type: "boolean", default: false },
+    power: { type: "boolean", default: false },
     linked: { type: "boolean", default: false },
     image: { type: "string", default: "cantrip-os:dev" },
   },
@@ -39,12 +44,12 @@ assert.ok(
     values["executor-package"],
   "Guest file and Run cases use the upgraded executor",
 );
-const root = await mkdtemp(path.join(tmpdir(), "cantrip-rust-os-workspaces-"));
+const root = await mkdtemp(path.join(tmpdir(), "cantrip-os-"));
 const name = `cantrip-rust-os-${randomUUID()}`;
 const workerId = "native-os-workspaces";
 const data = path.join(root, "worker");
 const trace = path.join(root, "guest-create.log");
-let container, server, worker;
+let container, server, worker, powerProxy, realDockerHost;
 const linked = values.linked
   ? { name, journals: [], volumes: [], operations: [] }
   : undefined;
@@ -100,7 +105,9 @@ try {
           "-v",
           managedVolumes[2] + ":/var/lib/cantrip-os-executor",
         ]
-      : ["--rm"]),
+      : values.power
+        ? []
+        : ["--rm"]),
     "--pull=never",
     "--network",
     "none",
@@ -110,6 +117,17 @@ try {
     values.image,
   );
   assert.match(container, /^[a-f0-9]{64}$/u);
+  if (values.power) {
+    realDockerHost =
+      (!process.env.DOCKER_CONTEXT && process.env.DOCKER_HOST) ||
+      (await docker(
+        "context",
+        "inspect",
+        "--format",
+        "{{.Endpoints.docker.Host}}",
+      ));
+    powerProxy = await proxyPowerCarrier(root, realDockerHost, name, container);
+  }
   const guest = async (...args) =>
     JSON.parse(await docker("exec", "--user", "0", container, ...args));
   let original = await eventually(async () => {
@@ -149,7 +167,7 @@ try {
   const call = async (method, url, body, expected = 200) => {
     const response = await fetch(server.origin + url, {
       method,
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(values.power ? 180_000 : 25_000),
       headers: {
         origin: "http://127.0.0.1:5173",
         ...(body === undefined ? {} : { "content-type": "application/json" }),
@@ -189,6 +207,9 @@ try {
   await writeFile(
     path.join(bin, "docker"),
     `#!/bin/sh
+if [ -n "$CANTRIP_TEST_REAL_DOCKER_HOST" ]; then
+  export DOCKER_HOST="$CANTRIP_TEST_REAL_DOCKER_HOST"
+fi
 if [ "$1" = exec ] && [ "$7" = /usr/bin/cantrip-workspaces ] && [ "$8" = create ]; then
   printf '%s\\n' "$9" >> "$CANTRIP_TEST_CREATE_TRACE"
   if [ "$9" = uncertain ]; then
@@ -216,6 +237,13 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
           CANTRIP_WORKER_DATA_DIR: data,
           CANTRIP_WORKER_ID: workerId,
           CANTRIP_SERVER_URL: server.origin,
+          ...(powerProxy
+            ? {
+                DOCKER_HOST: powerProxy.endpoint,
+                DOCKER_CONTEXT: "",
+                CANTRIP_TEST_REAL_DOCKER_HOST: realDockerHost,
+              }
+            : {}),
           ...(code ? { CANTRIP_WORKER_ENROLLMENT_CODE: code } : {}),
         },
         stdio: ["pipe", "pipe", "pipe"],
@@ -388,6 +416,23 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       },
     });
   }
+  if (powerProxy) {
+    await verifyCantripOsPower({
+      call,
+      os,
+      actual,
+      docker,
+      name,
+      container,
+      proxy: powerProxy,
+      journalDir: path.dirname(file),
+      eventually,
+      restartWorker: async () => {
+        await stopWorker();
+        await startWorker();
+      },
+    });
+  }
   console.log(
     JSON.stringify({
       suite: "native-cantrip-os-workspaces",
@@ -398,6 +443,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       observedAfterRestart: true,
       uncertainNeverReplayed: true,
       nodeCompatibleJournal: true,
+      ...(powerProxy ? { retainedPowerControls: true } : {}),
     }),
   );
 } catch (error) {
@@ -455,10 +501,14 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
             }
           }
         } else if (container) {
-          await docker("rm", "-f", container);
+          await docker("rm", "-f", "-v", container);
         }
       } finally {
-        await rm(root, { recursive: true, force: true });
+        try {
+          await powerProxy?.close();
+        } finally {
+          await rm(root, { recursive: true, force: true });
+        }
       }
     }
   }

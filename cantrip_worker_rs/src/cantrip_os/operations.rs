@@ -37,7 +37,7 @@ pub(super) fn sha256(bytes: &[u8]) -> String {
         .collect()
 }
 
-fn now() -> String {
+pub(super) fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
@@ -84,6 +84,11 @@ impl Journal<'_> {
         self.save()
     }
 
+    pub fn set_checkpoint(&mut self, checkpoint: Value) -> Result<()> {
+        self.record["checkpoint"] = checkpoint;
+        self.save()
+    }
+
     pub fn prepare_process(&mut self, process_id: &str, argv: &[&str]) -> Result<()> {
         let Value::Array(processes) = &mut self.record["processes"] else {
             anyhow::bail!("Invalid OS process journal.");
@@ -101,7 +106,7 @@ impl Operations {
         }
     }
 
-    fn file(&self, scope: &Value, id: &str) -> Result<PathBuf> {
+    pub(super) fn file(&self, scope: &Value, id: &str) -> Result<PathBuf> {
         // Retain the Node controller's path and admission fingerprint encoding.
         ensure!(
             id.len() == 36
@@ -149,10 +154,17 @@ impl Operations {
     }
 
     pub fn inspect(&self, scope: &Value, id: &str) -> Result<Value> {
+        match self.inspect_record(scope, id)? {
+            Some(record) => result(&record),
+            None => Ok(Value::Null),
+        }
+    }
+
+    pub(super) fn inspect_record(&self, scope: &Value, id: &str) -> Result<Option<Value>> {
         let file = self.file(scope, id)?;
         let active = self.active.lock().unwrap();
         let Some(record) = self.read(&file, id, active.contains(&file))? else {
-            return Ok(Value::Null);
+            return Ok(None);
         };
         let fields = scope.as_object().context("OS operation scope")?;
         let saved = record["scope"]
@@ -164,7 +176,7 @@ impl Operations {
                 .all(|(name, value)| saved.get(name) == Some(value)),
             "The recorded OS operation scope changed."
         );
-        result(&record)
+        Ok(Some(record))
     }
 
     pub async fn execute(
@@ -177,7 +189,7 @@ impl Operations {
     ) -> Result<Value> {
         result(
             &self
-                .execute_record(scope, id, command, admission, run)
+                .execute_record(scope, id, command, admission, None, run)
                 .await?,
         )
     }
@@ -188,14 +200,18 @@ impl Operations {
         id: &str,
         command: &str,
         admission: Value,
+        checkpoint: Option<Value>,
         run: impl AsyncFnOnce(&mut Journal<'_>) -> Result<Value>,
     ) -> Result<Value> {
         let file = self.file(scope, id)?;
         let fingerprint = digest(Value::Array(vec![json!(command), admission]));
         let time = now();
-        let record = json!({"version":1,"operationId":id,"command":command,"admissionFingerprint":fingerprint,
+        let mut record = json!({"version":1,"operationId":id,"command":command,"admissionFingerprint":fingerprint,
             "scope":scope,"state":"running","startedAt":time,"updatedAt":time,"receipt":Value::Null,
             "error":Value::Null,"native":Value::Null,"processes":Vec::<Value>::new()});
+        if let Some(checkpoint) = checkpoint {
+            record["checkpoint"] = checkpoint;
+        }
         let active = {
             let mut active = self.active.lock().unwrap();
             if let Err(error) = save(&file, &record, true) {
@@ -246,6 +262,16 @@ impl Operations {
     }
 
     pub fn complete_observed(&self, prior: &Value, receipt: Value) -> Result<Value> {
+        self.record_observation(prior, "ready", receipt, Value::Null)
+    }
+
+    pub(super) fn record_observation(
+        &self,
+        prior: &Value,
+        state: &str,
+        receipt: Value,
+        error: Value,
+    ) -> Result<Value> {
         let id = super::text(prior, "operationId")?;
         let file = self.file(&prior["scope"], id)?;
         let active = self.active.lock().unwrap();
@@ -259,7 +285,8 @@ impl Operations {
                 "scope",
                 "admissionFingerprint",
                 "native",
-                "processes"
+                "processes",
+                "checkpoint",
             ]
             .into_iter()
             .all(|field| current[field] == prior[field]),
@@ -272,9 +299,9 @@ impl Operations {
             current["state"] == "unknown",
             "Only an unknown OS operation can be recovered."
         );
-        current["state"] = json!("ready");
+        current["state"] = json!(state);
         current["receipt"] = receipt;
-        current["error"] = Value::Null;
+        current["error"] = error;
         let mut journal = Journal {
             file: &file,
             record: current,
