@@ -1,10 +1,11 @@
 //! Protected conversation input and the wire forms for observed output.
-use super::{Emit, protected_mode};
+use super::{Emit, Signal, protected_mode, receipt};
 use crate::{
     chat_content::Scope,
     encryption::Service,
     history::live::identity,
     http::checked,
+    metadata::Abort,
     native_items::{array, concat, join, text},
 };
 use anyhow::{Context, Result, anyhow, bail};
@@ -179,6 +180,33 @@ impl Protected {
         P: Future<Output = Result<()>> + Send,
     {
         self.publish_with(Some(identity), downstream)
+    }
+
+    pub(super) fn publish_receipt(
+        self: &Arc<Self>,
+        identity: Option<identity::Managed>,
+        client: receipt::Client,
+        operation: receipt::Operation,
+    ) -> (Emit, Work<()>, Signal) {
+        let publisher = self.clone();
+        let (abort, signal) = Abort::new();
+        let abort = Arc::new(abort);
+        let (emit, published) = self.publish_with(identity, move |event| {
+            let (client, operation, publisher, abort) = (
+                client.clone(),
+                operation.clone(),
+                publisher.clone(),
+                abort.clone(),
+            );
+            async move {
+                let result = client.event(publisher.scope(), &operation, event).await;
+                if result.is_err() {
+                    abort.abort(anyhow!("Core could not apply a protected native event."));
+                }
+                result
+            }
+        });
+        (emit, published, signal)
     }
 
     pub(super) fn publish_with<F, P>(

@@ -9150,3 +9150,25 @@ computer-use and console steering smokes also passed locally.
 
 Managed Cantrip OS computer-use validation, recovered turns, autonomous
 turns, child agents, and Task execution remain open.
+
+## 260. Restore computer use on a saved Chat turn
+
+Reference commit `fa522efb73cbb0d80cf316cc3a73752484e9d4ab` (#3423).
+
+The replacement worker accepts Core's fresh computer-use grant after it
+verifies the saved checkpoint and execution owner. It binds the reserved MCP
+tool to the confirmed native thread and turn on the Resume command's socket.
+The resumed turn starts with a fresh computer-use session and publishes
+protected approvals and activity through its durable receipt. Completion
+retires the session and its retained observations, then drains publication
+before settling the execution.
+
+The local macOS ARM64 `standalone-turn-smoke.mjs --cua-recovered` fixture
+paused a managed Host Chat, restarted the production Rust worker and resumed
+through Rust Core in PGlite mode with bundled Codex. The fixture verified that
+protected permissions and activity kept the original native thread and turn,
+the prompt appeared once, the preview returned the model's screenshot, and
+reset and completion expired retained observations. The saved command
+approval and managed console computer-use smokes also passed locally.
+Managed guest turn validation, autonomous and Task execution, and child-agent
+computer use remain open.

@@ -75,6 +75,7 @@ impl Turns {
         command: &Value,
         key: Key,
         signature: String,
+        epoch: Option<u64>,
         acknowledge: impl FnOnce(Result<Value>) + Send,
     ) -> Result<Value> {
         let (reservation, complete) = match Reservation::acquire(&self.active, key, signature)? {
@@ -82,7 +83,7 @@ impl Turns {
             ReservationResult::Own(reservation, complete) => (reservation, complete),
         };
         let result = self
-            .restore_owned(command, &reservation, |reply| {
+            .restore_owned(command, &reservation, epoch, |reply| {
                 complete.finish(shared(&reply));
                 acknowledge(reply);
             })
@@ -95,6 +96,7 @@ impl Turns {
         &self,
         command: &Value,
         reservation: &Reservation,
+        epoch: Option<u64>,
         acknowledge: impl FnOnce(Result<Value>) + Send,
     ) -> Result<Value> {
         let key = &reservation.key;
@@ -114,7 +116,11 @@ impl Turns {
             prepared.thread.version(),
             command,
         );
-        let (subscription, mut events, capture) = output::subscribe(&runtime.history(), &thread)?;
+        let computer_use = &grant["computerUseAuthority"];
+        let observe_cua: Option<output::ComputerUseObserver> =
+            (!computer_use.is_null()).then(Arc::default);
+        let (subscription, mut events, capture) =
+            output::subscribe_with_context(&runtime.history(), &thread, None, observe_cua.clone())?;
         let transport = subscription.signal();
         binding.restore_capture(capture, output::restored_seed(saved));
         let active = Arc::new(Active {
@@ -153,7 +159,7 @@ impl Turns {
                 execution.bind_thread(thread.clone())?;
                 execution.bind_turn(turn.clone())?;
                 execution.seal_input_dispatch().await?;
-                let _mcp = self.preparation.activate(&prepared, &root.lane)?;
+                let mcp = self.preparation.activate(&prepared, &root.lane)?;
                 selected.confirm_held(checkpoint).await?;
                 prepared.thread.assert_current(runtime)?;
                 receipt.applied(&json!({"restored":checkpoint}), Some(&turn)).await?;
@@ -178,13 +184,21 @@ impl Turns {
                     )
                 });
                 let protection = protected::Protected::for_native_output(log_scope, command["chatId"].clone());
-                let publisher = protection.clone();
-                let receipts = self.receipts.clone();
-                let operation = root.clone();
-                let (emit, published) = protection.publish_with(identity, move |event| {
-                    let (receipts, operation, publisher) = (receipts.clone(), operation.clone(), publisher.clone());
-                    async move { receipts.event(publisher.scope(), &operation, event).await }
-                });
+                let (emit, published, delivery_signal) =
+                    protection.publish_receipt(identity, self.receipts.clone(), root.clone());
+                let cua = if let Some(observer) = &observe_cua {
+                    let lifetime = computer_use::Turn::new(
+                        self.computer_use.clone(), epoch.context("Computer use requires the Resume command socket.")?,
+                        thread.clone(), emit.clone(), Some(protection),
+                        Signal::any(vec![signal.clone(), transport.clone(), delivery_signal]),
+                    );
+                    let activation = mcp.as_ref().context("The restored computer-use MCP attachment is unavailable.")?;
+                    lifetime.0.register(activation, computer_use)?;
+                    let _ = observer.set(Arc::downgrade(&lifetime.0));
+                    Some(lifetime)
+                } else {
+                    None
+                };
 
                 // Codex can ask for approval as soon as Resume releases the saved turn.
                 let mut native_interactions = runtime.interaction_requests(
@@ -211,6 +225,12 @@ impl Turns {
                         active.set(Phase::Running {
                             runtime: runtime.clone(), thread: thread.clone(), turn: turn.clone(),
                         });
+                        if let Some(cua) = &cua {
+                            // confirm_held authenticated this saved native turn.
+                            // Resume releases it without another turn/start.
+                            cua.0.dispatched();
+                            cua.0.started(&turn);
+                        }
                         Ok::<_, anyhow::Error>(runtime.request(
                             "turn/suspension".into(),
                             Some(json!({"threadId":thread,"operation":json!({"type":"resume","suspension":checkpoint})})),
@@ -255,11 +275,19 @@ impl Turns {
                 drop(native_interactions);
                 active.set(Phase::Terminal);
                 drop(emit);
+                let cua_finished = if let Some(cua) = &cua {
+                    cua.0.finish().await
+                } else {
+                    Ok(())
+                };
+                drop(mcp);
+                drop(cua);
                 if transport.check().is_err() {
                     runtime.retired().await?;
                 }
                 execution.settled().await?;
                 let terminal = terminal?;
+                cua_finished?;
                 published.await?;
                 let result = match terminal.status {
                     "completed" => terminal.result?,

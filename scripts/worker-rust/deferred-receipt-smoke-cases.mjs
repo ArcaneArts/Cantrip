@@ -6,6 +6,7 @@ import { createServer, request } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { nativeCommandSettlementSchema } from "../../packages/protocol/dist/index.js";
+import { modelFunctions } from "../server-rust/task-model-provider.mjs";
 
 const prompt = "Retain this exact deferred input 🌲";
 const digest = (value) =>
@@ -51,6 +52,52 @@ export async function fixtureCodex(
     },
   );
   return executable;
+}
+
+export async function recoverHeldTurn({
+  call,
+  eventually,
+  chatUrl,
+  beforePause,
+  afterResume,
+  marker,
+  stopWorker,
+  startWorker,
+}) {
+  await eventually(
+    () => beforePause.entered,
+    (entered) => assert.ok(entered),
+  );
+  const tool = modelFunctions(beforePause.request.input.tools).find(
+    ({ name }) => name === "exec_command" || name.endsWith("__exec_command"),
+  );
+  assert.ok(tool, "The bundled runtime advertises its shell tool");
+  beforePause.text = "Holding this turn for restart.";
+  beforePause.calls = [
+    {
+      ...tool,
+      arguments: { cmd: "printf pause-boundary", yield_time_ms: 1000 },
+    },
+  ];
+  const pause = call("PATCH", `${chatUrl}/pause`, 200, { paused: true });
+  const heldTurn = await Promise.race([
+    eventually(
+      () => readFile(marker + ".pause", "utf8").then(JSON.parse),
+      (turn) => assert.ok(turn.threadId && turn.turnId),
+    ),
+    pause.then(() => {
+      throw new Error("Pause returned without reaching Codex.");
+    }),
+  ]).finally(() => beforePause.release());
+  assert.equal((await pause).paused, true);
+  assert.equal(afterResume.entered, false);
+  assert.deepEqual(await stopWorker(), { code: 0, signal: null });
+  await startWorker();
+  const resumed = await call("PATCH", `${chatUrl}/pause`, 200, {
+    paused: false,
+  });
+  assert.equal(resumed.paused, false);
+  return heldTurn;
 }
 
 // Forward the actual worker control socket and HTTP requests. Before restart,

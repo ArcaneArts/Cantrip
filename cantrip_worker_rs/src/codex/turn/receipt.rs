@@ -1374,7 +1374,6 @@ impl Client {
             || actor["runtimeGeneration"] != session["runtimeGeneration"]
             || actor["operationId"] != row["operationId"]
             || actor["operationGeneration"] != row["operationGeneration"]
-            || !response["computerUseAuthority"].is_null()
             || execution["workerId"] != body["workerId"]
             || execution["contextKind"] != session["contextKind"]
             || execution["projectId"] != session["projectId"]

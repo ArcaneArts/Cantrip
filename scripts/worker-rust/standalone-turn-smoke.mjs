@@ -43,6 +43,7 @@ import { verifyManagedComputerUse } from "./managed-computer-use-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   fixtureCodex,
+  recoverHeldTurn,
   deferredReceiptProxy,
   verifyDeferredReceipt,
 } from "./deferred-receipt-smoke-cases.mjs";
@@ -70,6 +71,7 @@ const { values } = parseArgs({
     "cua-preview": { type: "string" },
     "cua-agent": { type: "string" },
     "cua-console": { type: "string" },
+    "cua-recovered": { type: "string" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -111,7 +113,8 @@ const labelKey = key("private-surface-metadata");
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const cuaConsole = values["cua-console"];
-const cuaAgent = values["cua-agent"] || cuaConsole;
+const recoveredCua = values["cua-recovered"];
+const cuaAgent = values["cua-agent"] || cuaConsole || recoveredCua;
 const previewKey =
   values["cua-preview"] || cuaAgent ? key("client-control-content") : null;
 const policyKey = values.policies ? key("policy-content") : null;
@@ -1210,41 +1213,16 @@ async function verifyInteraction() {
   );
   let heldTurn;
   if (beforePause) {
-    await eventually(
-      () => beforePause.entered,
-      (entered) => assert.ok(entered),
-    );
-    const tool = modelFunctions(beforePause.request.input.tools).find(
-      ({ name }) => name === "exec_command" || name.endsWith("__exec_command"),
-    );
-    assert.ok(tool, "The bundled runtime advertises its shell tool");
-    beforePause.text = "Holding this turn for restart.";
-    beforePause.calls = [
-      {
-        ...tool,
-        arguments: { cmd: "printf pause-boundary", yield_time_ms: 1000 },
-      },
-    ];
-    const pause = call("PATCH", `${chatUrl}/pause`, 200, { paused: true });
-    // Always release the provider, including if Core rejects Pause.
-    heldTurn = await Promise.race([
-      eventually(
-        () => readFile(approvalMarker + ".pause", "utf8").then(JSON.parse),
-        (turn) => assert.ok(turn.threadId && turn.turnId),
-      ),
-      pause.then(() => {
-        throw new Error("Pause returned without reaching Codex.");
-      }),
-    ]).finally(() => beforePause.release());
-    const paused = await pause;
-    assert.equal(paused.paused, true);
-    assert.equal(answer.entered, false);
-    assert.deepEqual(await stopWorker(), { code: 0, signal: null });
-    await startWorker();
-    const resumed = await call("PATCH", `${chatUrl}/pause`, 200, {
-      paused: false,
+    heldTurn = await recoverHeldTurn({
+      call,
+      eventually,
+      chatUrl,
+      beforePause,
+      afterResume: answer,
+      marker: approvalMarker,
+      stopWorker,
+      startWorker,
     });
-    assert.equal(resumed.paused, false);
   }
   await eventually(
     () => answer,
@@ -2981,9 +2959,16 @@ try {
   if (!values.bundled) {
     workerEnvironment.CANTRIP_CODEX_BIN = values.deferred
       ? await fixtureCodex(root, values.codex)
-      : values.interactions || consoleInteractions || restoredInteractions
+      : values.interactions ||
+          consoleInteractions ||
+          restoredInteractions ||
+          recoveredCua
         ? await fixtureCodex(root, values.codex, {
-            scenario: restoredInteractions ? "resume-approval" : "approval",
+            scenario: recoveredCua
+              ? "resume-cua"
+              : restoredInteractions
+                ? "resume-approval"
+                : "approval",
             marker: approvalMarker,
             input: approvalPrompt,
             ...(consoleInteractions ? { socketFile: consoleSocket } : {}),
@@ -3050,6 +3035,9 @@ try {
       interactionKey,
       previewKey,
       console: cuaConsole ? { socketFile: consoleSocket, labelKey } : null,
+      recovery: recoveredCua
+        ? { marker: approvalMarker, stopWorker, startWorker }
+        : null,
       openMessage,
     });
   } else if (previewKey) {

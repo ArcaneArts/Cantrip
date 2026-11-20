@@ -8,6 +8,7 @@ const { WebSocket, WebSocketServer } = createRequire(
   new URL("../../cantrip_worker/package.json", import.meta.url),
 )("ws");
 const [binary, marker, prompt, scenario, ...args] = process.argv.slice(2);
+const restoring = scenario === "resume-approval" || scenario === "resume-cua";
 if (!args.some((argument) => argument.startsWith("ws://"))) {
   const child = spawn(binary, args, { stdio: "inherit" });
   child.once("close", (code) => process.exit(code ?? 1));
@@ -38,10 +39,7 @@ if (!args.some((argument) => argument.startsWith("ws://"))) {
           });
           return;
         }
-        if (
-          scenario === "resume-approval" &&
-          frame.method === "turn/suspension"
-        ) {
+        if (restoring && frame.method === "turn/suspension") {
           const { operation, threadId } = frame.params;
           native.send(raw, { binary: false });
           if (operation.type === "pause") {
@@ -50,13 +48,13 @@ if (!args.some((argument) => argument.startsWith("ws://"))) {
               JSON.stringify({ threadId, turnId: operation.turnId }),
               { mode: 0o600 },
             );
-          } else if (operation.type === "resume") {
+          } else if (operation.type === "resume" && approval) {
             targets.set(frame.id, threadId);
           }
           return;
         }
         if (
-          scenario !== "resume-approval" &&
+          !restoring &&
           frame.method === "turn/start" &&
           frame.params?.input?.some((item) => item.text === prompt)
         ) {
