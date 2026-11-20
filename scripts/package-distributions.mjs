@@ -16,6 +16,7 @@ import {
   writeServiceLaunchers,
 } from "./package-runtime.mjs";
 import { packageNativeServer } from "./package-server-rust.mjs";
+import { packageNativeWorker } from "./package-worker-rust.mjs";
 import { configureDesktopServer } from "./desktop-server-runtime.mjs";
 import { verifyPackagedWorkerMcp } from "./verify-packaged-worker-mcp.mjs";
 import { verifyPackagedWorkerCua } from "./verify-packaged-worker-cua.mjs";
@@ -40,6 +41,8 @@ let requestedTarget;
 let fromArtifacts = false;
 let skipProtocolBuild = false;
 let serverRuntime = "rust";
+let workerRuntime = "node";
+let prebuiltWorkerDir;
 let postgresBin;
 for (let index = 3; index < process.argv.length; index += 1) {
   const argument = process.argv[index];
@@ -62,6 +65,15 @@ for (let index = 3; index < process.argv.length; index += 1) {
     serverRuntime = argument.slice("--server-runtime=".length);
   } else if (argument.startsWith("--postgres-bin=")) {
     postgresBin = argument.slice("--postgres-bin=".length);
+  } else if (
+    argument === "--worker-runtime" ||
+    argument === "--prebuilt-worker-dir"
+  ) {
+    const value = process.argv[++index];
+    if (!value || value.startsWith("--"))
+      throw new Error(`${argument} requires a value`);
+    if (argument === "--worker-runtime") workerRuntime = value;
+    else prebuiltWorkerDir = path.resolve(value);
   } else if (argument === "--from-artifacts") {
     fromArtifacts = true;
   } else if (argument === "--skip-protocol-build") {
@@ -77,6 +89,18 @@ if (serverRuntime !== "rust")
 const packageTarget = normalizeTarget(requestedTarget);
 
 const platform = packageTarget.id;
+if (!["node", "rust"].includes(workerRuntime))
+  throw new Error("--worker-runtime requires node or rust.");
+if (workerRuntime === "rust" && !["worker", "services"].includes(selection))
+  throw new Error(
+    "The Rust worker package is available for standalone worker and services packaging.",
+  );
+if (workerRuntime === "rust" && platform !== hostTarget())
+  throw new Error(
+    "Build the Rust worker package on a machine matching --target.",
+  );
+if (prebuiltWorkerDir && workerRuntime !== "rust")
+  throw new Error("--prebuilt-worker-dir requires --worker-runtime rust.");
 const codexBuild = path.join(root, "cantrip_codex", ".build", platform);
 const artifacts = path.join(root, "artifacts");
 const runtime = path.join(
@@ -176,7 +200,10 @@ function buildServiceWorkspaces() {
 
 function buildSelectedServices(selection) {
   buildServiceWorkspaces();
-  if (selection === "worker" || selection === "services") {
+  if (
+    workerRuntime === "node" &&
+    (selection === "worker" || selection === "services")
+  ) {
     runPnpm(["--filter", "@cantrip/worker", "build"]);
   }
 }
@@ -186,19 +213,22 @@ function buildCodex() {
 }
 
 function buildCli() {
-  buildCantripCli(root, {
+  return buildCantripCli(root, {
     release: true,
     run: (command, arguments_) => run(command, arguments_),
   });
 }
 
 async function packageStandalone(selection) {
-  if (selection === "worker" || selection === "services") {
+  const includesWorker = selection === "worker" || selection === "services";
+  if (includesWorker && workerRuntime === "node") {
     buildCodex();
     buildCli();
     cuaBinary = buildCantripCua(root, { release: true });
   }
-  buildSelectedServices(selection);
+  if (selection !== "worker" || workerRuntime === "node") {
+    buildSelectedServices(selection);
+  }
   if (selection === "server" || selection === "services") {
     const output = path.join(artifacts, `cantrip-server-${platform}`);
     await rm(output, { force: true, recursive: true });
@@ -208,7 +238,30 @@ async function packageStandalone(selection) {
       postgresBin,
     });
   }
-  if (selection === "worker" || selection === "services") {
+  if (includesWorker && workerRuntime === "rust") {
+    const suffix = packageTarget.platform === "win32" ? ".exe" : "";
+    let inputs;
+    if (prebuiltWorkerDir) {
+      inputs = {
+        codex: path.join(prebuiltWorkerDir, "codex"),
+        worker: path.join(prebuiltWorkerDir, `cantrip-worker${suffix}`),
+        cli: path.join(prebuiltWorkerDir, `cantrip${suffix}`),
+        cua: path.join(prebuiltWorkerDir, `cantrip-cua${suffix}`),
+      };
+    } else {
+      buildCodex();
+      inputs = {
+        codex: path.join(codexBuild, "bundle"),
+        cli: buildCli(),
+        cua: buildCantripCua(root, { release: true }),
+      };
+    }
+    await packageNativeWorker({
+      target: packageTarget,
+      destination: path.join(artifacts, `cantrip-worker-rust-${platform}`),
+      inputs,
+    });
+  } else if (includesWorker) {
     await packageWorker(path.join(artifacts, `cantrip-worker-${platform}`));
   }
 }

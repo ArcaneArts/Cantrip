@@ -49,6 +49,7 @@ const { values } = parseArgs({
     worker: { type: "string" },
     codex: { type: "string" },
     cli: { type: "string" },
+    bundled: { type: "boolean" },
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
@@ -68,8 +69,8 @@ const { values } = parseArgs({
   },
 });
 assert.ok(
-  values.server && values.worker && values.codex,
-  "Pass --server, --worker, and --codex",
+  values.server && values.worker && (values.codex || values.bundled),
+  "Pass --server and --worker with either --codex or --bundled",
 );
 const root = await realpath(
   await mkdtemp(path.join(tmpdir(), "cantrip-native-standalone-turn-")),
@@ -2444,7 +2445,9 @@ try {
     CANTRIP_SERVER_URL: receiptProxy?.origin ?? server.origin,
     CANTRIP_WORKER_DATA_DIR: data,
     CANTRIP_WORKER_ID: workerId,
-    CANTRIP_CODEX_BIN: values.deferred
+  };
+  if (!values.bundled) {
+    workerEnvironment.CANTRIP_CODEX_BIN = values.deferred
       ? await fixtureCodex(root, values.codex)
       : values.interactions || consoleInteractions || restoredInteractions
         ? await fixtureCodex(root, values.codex, {
@@ -2453,12 +2456,13 @@ try {
             input: approvalPrompt,
             ...(consoleInteractions ? { socketFile: consoleSocket } : {}),
           })
-        : path.resolve(values.codex),
-    ...(values.cli ? { CANTRIP_CLI_BIN: path.resolve(values.cli) } : {}),
-  };
+        : path.resolve(values.codex);
+    if (values.cli)
+      workerEnvironment.CANTRIP_CLI_BIN = path.resolve(values.cli);
+  }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (values.cli) {
+  if (values.cli || values.bundled) {
     // This disposable profile permits a shell connection to the local broker.
     await call("PATCH", "/api/settings", 200, {
       defaultChatPermissionProfileId: ":yolo",
