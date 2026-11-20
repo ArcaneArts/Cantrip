@@ -50,6 +50,18 @@ impl RepositoryOperations {
         registry: &Registry,
         scope: &Scope,
     ) -> Result<Value> {
+        self.execute_with_drafts(command, service, registry, scope, None)
+            .await
+    }
+
+    pub(crate) async fn execute_with_drafts(
+        &self,
+        command: &Value,
+        service: &Service,
+        registry: &Registry,
+        scope: &Scope,
+        drafts: Option<(&crate::codex::turn::Turns, crate::metadata::Signal)>,
+    ) -> Result<Value> {
         scope.check()?;
         // The existing public command wrapper resolves routing metadata before
         // dispatch, even though attachment's private root is inside ciphertext.
@@ -74,12 +86,23 @@ impl RepositoryOperations {
             bail!("Repository operation routing purpose is invalid.");
         }
         let mut attachment = None;
+        let mut agent_execution = Value::Null;
         let result = async {
             if command["agent"] != json!(kind == "git.agent.generate") {
                 bail!("Repository agent routing metadata is invalid.");
             }
             scope.check()?;
             match kind {
+                "git.agent.generate" => {
+                    let (drafts, signal) = drafts
+                        .ok_or_else(|| anyhow::anyhow!("Repository model execution is unavailable."))?;
+                    let github = self.github()?;
+                    let (result, execution) = drafts.repository_draft(
+                        &command, &request["arguments"], &github, scope, signal,
+                    ).await?;
+                    agent_execution = execution;
+                    Ok(result)
+                }
                 kind if crate::github::Client::supports(kind) => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| anyhow::anyhow!("Repository worker profile is not configured."))?;
                     // Source reads the scoped journal for every GitHub request.
@@ -399,7 +422,7 @@ impl RepositoryOperations {
             &outcome,
             "repositoryOperationOutcomeContentSchema",
         )?;
-        let mut response = json!({"operationId":command["operationId"],"protectedResponse":protected,"agentExecution":Value::Null});
+        let mut response = json!({"operationId":command["operationId"],"protectedResponse":protected,"agentExecution":agent_execution});
         if let Some(attachment) = attachment {
             response["workspaceRootAttachment"] = attachment;
         }

@@ -15,6 +15,7 @@ pub(crate) mod queue_wake;
 mod queued;
 pub(super) use protected::runtime_text;
 mod receipt;
+mod repository_draft;
 pub(in crate::codex) mod settings;
 pub(crate) use settings::{
     ACCOUNT_DEFAULTS, COMMAND as SETTINGS_UPDATE, PERMISSION_UPDATE,

@@ -140,6 +140,22 @@ pub(super) fn refine(
     result: &mut Parsed,
     path: &[Value],
 ) -> Result<bool, ValidationError> {
+    if tag == "git-agent-draft-input" {
+        let value = result.value.as_ref().ok_or(ValidationError::Operation)?;
+        let message = match value["task"].as_str() {
+            Some("draft-pr-description" | "review-commit-range")
+                if value["baseRevision"].is_null() || value["headRevision"].is_null() =>
+            {
+                "This task requires both base and head revisions."
+            }
+            Some("summarize-failed-checks") if value["pullRequestNumber"].is_null() => {
+                "This task requires a pull request number."
+            }
+            _ => return Ok(true),
+        };
+        result.issue(json!({"code":"custom"}), path, message.into(), false);
+        return Ok(true);
+    }
     if !matches!(
         tag,
         "repository-metadata-fields" | "repository-metadata-count"

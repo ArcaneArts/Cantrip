@@ -1026,6 +1026,9 @@ export const contractRoots = [
   "cantripOsSystemCaptureAdmissionSchema",
   "cantripOsSystemProtectedResultSchema",
   "cantripOsSystemCaptureOutcomeSchema",
+  "gitAgentDraftCreateSchema",
+  "gitAgentDraftModelOutputSchema",
+  "gitAgentDraftResultSchema",
 ];
 
 export const projectExportContractRoots = [
@@ -1539,6 +1542,7 @@ registerChecks(protocol.encryptedProjectWorkspaceUpdateSchema, [
 registerChecks(protocol.repositoryOperationWireRequestSchema, [
   "repository-agent-model",
 ]);
+registerChecks(protocol.gitAgentDraftCreateSchema, ["git-agent-draft-input"]);
 registerChecks(protocol.repositoryMetadataValuesSchema, [
   "repository-metadata-fields",
   "repository-metadata-count",
