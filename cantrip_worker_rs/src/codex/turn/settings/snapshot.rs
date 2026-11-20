@@ -134,6 +134,10 @@ impl Source {
         session
     }
 
+    pub(in crate::codex) fn matches_exact_read(&self, requested: &Value) -> bool {
+        self.scope == *requested
+    }
+
     pub fn matches_read(&self, requested: &Value) -> bool {
         self.scope.as_object().unwrap().iter().all(|(key, value)| {
             key.as_str() == Some("modelRouteId")
@@ -212,14 +216,14 @@ impl Source {
 }
 
 impl Factory {
-    pub(in crate::codex) fn bind(
+    pub(in crate::codex) fn source(
         &self,
         worker: &JsString,
         prepared: &crate::codex::preparation::command::Prepared,
         session: &Value,
         command: &Value,
-        previous: Option<&Arc<Publisher>>,
-    ) -> Result<Arc<Publisher>> {
+        signal: Signal,
+    ) -> Result<Arc<Source>> {
         let scope = checked(
             "nativeSettingsReadScopeSchema",
             &json!({
@@ -230,26 +234,12 @@ impl Factory {
             }),
         )?;
         let cwd = id(&command["cwd"], "managed settings cwd")?;
-        let permission = &command["permissionProfileId"];
         let model = &command["model"];
         let attribution = checked("nativeModelAttributionSchema", &json!({
             "status":"resolved","workerId":worker,"providerId":command["provider"]["id"],
             "providerAccountId":scope["providerAccountId"],"modelId":model["id"],"routeId":model["routeId"],
         })).unwrap_or_else(|_| json!({"status":"unavailable"}));
-        if let Some(previous) = previous
-            && previous.source.scope == scope
-            && previous.source.bound == prepared.bound
-            && previous.source.native == prepared.thread
-            && previous.source.cwd == cwd
-            && previous.source.permission() == *permission
-            && previous.source.model_name == model["name"]
-            && previous.source.attribution == attribution
-        {
-            return Ok(previous.clone());
-        }
-        let (stop, signal) = Abort::new();
-        let (refresh, wakes) = watch::channel(());
-        let source = Arc::new(Source {
+        Ok(Arc::new(Source {
             scope,
             bound: prepared.bound.clone(),
             native: prepared.thread.clone(),
@@ -257,14 +247,37 @@ impl Factory {
             generation: prepared.runtime.generation().into(),
             cwd,
             permission: prepared.permission.clone(),
-            refresh,
+            refresh: watch::channel(()).0,
             binding: Mutex::new(None),
             model_name: model["name"].clone(),
             attribution,
             signal,
             encryption: self.encryption.clone(),
-        });
+        }))
+    }
 
+    pub(in crate::codex) fn bind(
+        &self,
+        worker: &JsString,
+        prepared: &crate::codex::preparation::command::Prepared,
+        session: &Value,
+        command: &Value,
+        previous: Option<&Arc<Publisher>>,
+    ) -> Result<Arc<Publisher>> {
+        let (stop, signal) = Abort::new();
+        let source = self.source(worker, prepared, session, command, signal)?;
+        if let Some(previous) = previous
+            && previous.source.scope == source.scope
+            && previous.source.bound == source.bound
+            && previous.source.native == source.native
+            && previous.source.cwd == source.cwd
+            && previous.source.permission() == command["permissionProfileId"]
+            && previous.source.model_name == source.model_name
+            && previous.source.attribution == source.attribution
+        {
+            return Ok(previous.clone());
+        }
+        let wakes = source.refresh.subscribe();
         let (send, updates) = watch::channel(None::<Value>);
         let subscription = prepared.runtime.history().observe(
             prepared.thread.id().clone(),

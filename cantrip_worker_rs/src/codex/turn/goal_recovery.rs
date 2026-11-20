@@ -209,34 +209,12 @@ impl Turns {
             scope.identity()?;
             return recovery_reply(source, admission);
         }
-        let epoch = native_epoch(&prepared, &guard).await?;
-        let goal = native(
-            &prepared.runtime,
-            "thread/goal/get",
-            json!({"threadId":prepared.thread.id()}),
-            &guard,
-        )
-        .await?;
-        let checked_goal = checked("chatGoalResponseSchema", &goal)?;
-        let goal_epoch = goal
-            .get("goalEpoch")
-            .filter(|value| {
-                value.is_null() || value.as_js_string().is_some_and(|epoch| !epoch.is_empty())
-            })
-            .context("Codex did not return a valid Goal epoch")?;
-        ensure!(
-            checked_goal["goal"].is_null()
-                || checked_goal["goal"]["threadId"].as_js_string() == Some(prepared.thread.id()),
-            "Codex returned a Goal for another thread."
-        );
-        ensure!(
-            native_epoch(&prepared, &guard).await? == epoch,
-            "The recovered Goal's native settings were replaced."
-        );
-        if goal_epoch != &source["goalEpoch"] {
+        let (goal, goal_epoch, epoch) =
+            read_native_goal(&prepared.runtime, &prepared.thread, &guard).await?;
+        if goal_epoch != source["goalEpoch"] {
             return ineligible("epoch-changed", Some(&epoch), recovery);
         }
-        if checked_goal["goal"]["status"] != "active" {
+        if goal["status"] != "active" {
             return ineligible("not-active", Some(&epoch), recovery);
         }
         let admitted = observation.0.borrow().clone();
@@ -281,17 +259,48 @@ fn recovery_reply(source: &Value, admission: &Value) -> Result<Value> {
     )
 }
 
-async fn native_epoch(prepared: &Target, guard: &Guard) -> Result<Value> {
-    let result = native(
-        &prepared.runtime,
-        "thread/settings/read",
-        json!({"threadId":prepared.thread.id()}),
+pub(super) async fn read_native_goal(
+    runtime: &Runtime,
+    thread: &LoadedThread,
+    guard: &Guard,
+) -> Result<(Value, Value, Value)> {
+    let epoch = native_epoch(runtime, thread, guard).await?;
+    let reply = native(
+        runtime,
+        "thread/goal/get",
+        json!({"threadId":thread.id()}),
         guard,
     )
     .await?;
-    prepared.thread.assert_current(&prepared.runtime)?;
+    let goal = checked("chatGoalResponseSchema", &reply)?["goal"].clone();
+    let goal_epoch = reply
+        .get("goalEpoch")
+        .filter(|value| {
+            value.is_null() || value.as_js_string().is_some_and(|epoch| !epoch.is_empty())
+        })
+        .context("Codex did not return a valid Goal epoch")?;
     ensure!(
-        result["threadId"].as_js_string() == Some(prepared.thread.id()),
+        goal.is_null() || goal["threadId"].as_js_string() == Some(thread.id()),
+        "Codex returned a Goal for another thread."
+    );
+    ensure!(
+        native_epoch(runtime, thread, guard).await? == epoch,
+        "The Goal's native settings were replaced."
+    );
+    Ok((goal, goal_epoch.clone(), epoch))
+}
+
+async fn native_epoch(runtime: &Runtime, thread: &LoadedThread, guard: &Guard) -> Result<Value> {
+    let result = native(
+        runtime,
+        "thread/settings/read",
+        json!({"threadId":thread.id()}),
+        guard,
+    )
+    .await?;
+    thread.assert_current(runtime)?;
+    ensure!(
+        result["threadId"].as_js_string() == Some(thread.id()),
         "Codex returned settings for a different Goal thread."
     );
     let version = checked(
@@ -301,7 +310,12 @@ async fn native_epoch(prepared: &Target, guard: &Guard) -> Result<Value> {
     Ok(version["epoch"].clone())
 }
 
-async fn native(runtime: &Runtime, method: &str, params: Value, guard: &Guard) -> Result<Value> {
+pub(super) async fn native(
+    runtime: &Runtime,
+    method: &str,
+    params: Value,
+    guard: &Guard,
+) -> Result<Value> {
     guard
         .run(async {
             runtime

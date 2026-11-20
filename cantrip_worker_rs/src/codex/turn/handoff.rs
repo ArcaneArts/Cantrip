@@ -1,6 +1,8 @@
 //! Core reserves and commits a provider transfer. The worker moves the native
 //! history and keeps staged runtimes private until it observes the commit.
 mod journal;
+mod task;
+pub(crate) use task::TASK_SOURCE;
 pub(super) mod withdrawal;
 
 use super::{

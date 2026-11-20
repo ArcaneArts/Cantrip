@@ -10,11 +10,13 @@ import {
 } from "./task-goal-control-cases.mjs";
 import { observeTaskGoal } from "./task-goal-observation-cases.mjs";
 import {
+  decryptNativeSettingsSnapshot,
   decryptTaskGoalObjective,
   decryptTaskMessageProtectedContent,
   decryptTaskProtectedContent,
 } from "../../packages/crypto/dist/index.js";
 import {
+  taskGoalHandoffCaptureSchema,
   taskGoalOutcomeDeliverySchema,
   taskGoalWorkerResultSchema,
   taskInferenceInputDispatchSchema,
@@ -23,6 +25,7 @@ import {
 
 export async function verifyTaskGoalActivation({
   verifyPause,
+  verifyTransferSource,
   verifyCheckpoint,
   verifyRestart,
   verifyStop,
@@ -106,7 +109,7 @@ export async function verifyTaskGoalActivation({
     modelCalls,
     diagnostics,
   });
-  const calls = modelCalls();
+  let calls = modelCalls();
   await observer.beforeActivation();
   const reply = await invoke(activation);
   assert.equal(reply.ok, true, JSON.stringify(reply));
@@ -368,6 +371,140 @@ export async function verifyTaskGoalActivation({
     },
   });
 
+  const transferSource = {
+    type: "task.goal.source",
+    cycleId: dispatch.cycleId,
+    scope: {
+      workerId,
+      chatId,
+      threadId,
+      contextKind: "project",
+      projectId: command.policyProjectId,
+      placementId: worktreeId,
+      modelRouteId: receipt.modelRouteId,
+      providerAccountId: receipt.providerAccountId,
+    },
+  };
+  const holdProvider = async () => {
+    const blockerId = randomUUID();
+    const pending = untilProvider();
+    const turn = invoke({
+      type: "chat.turn",
+      executionProfile: "ide",
+      chatId: blockerId,
+      contextKind: "project",
+      clientMessageId: randomUUID(),
+      executionLaneId: randomUUID(),
+      worktreeId: randomUUID(),
+      policyProjectId: randomUUID(),
+      rootKind: "folder-root",
+      isPrimary: true,
+      worktreeMode: "agent-managed",
+      worktreePolicy: "direct",
+      scratchRootId: null,
+      provider,
+      prompt: "Occupy the Task Goal provider slot.",
+    });
+    const model = await available(
+      Promise.race([
+        pending,
+        turn.then((reply) => assert.fail(JSON.stringify(reply))),
+      ]),
+    );
+    calls++;
+    return async () => {
+      model.finish();
+      assert.equal((await turn).ok, true, diagnostics());
+    };
+  };
+  const providerOperations = async () => {
+    const status = await invoke({ type: "inference.status" });
+    assert.equal(status.ok, true, JSON.stringify(status));
+    return (
+      status.result.pools.find(({ providerId }) => providerId === provider.id)
+        ?.operations ?? []
+    );
+  };
+  const capture = async (input) => {
+    const deadline = Date.now() + 10_000;
+    const request = input ? { ...transferSource, input } : transferSource;
+    let queued;
+    let reply;
+    while (Date.now() < deadline) {
+      queued = (await providerOperations()).find(
+        (operation) =>
+          operation.chatId === chatId && operation.state === "waiting",
+      );
+      if (queued) {
+        reply = await invoke(request);
+        // The pool can observe a wait before the adapter sees its durable queue receipt.
+        if (
+          reply.ok ||
+          !/no unique (unused first Goal input|queued private Goal source)/u.test(
+            reply.error?.message,
+          )
+        )
+          break;
+      }
+      await delay(50);
+    }
+    assert.ok(
+      queued,
+      "The Goal source should wait on actual provider capacity.",
+    );
+    assert.equal(reply?.ok, true, JSON.stringify(reply) + "\n" + diagnostics());
+    const source = taskGoalHandoffCaptureSchema.parse(reply.result);
+    assert.equal(source.record.state, "waiting");
+    assert.equal(source.record.workerGeneration, generation());
+    assert.equal(source.record.identity.operationId, queued.operationId);
+    assert.equal(source.record.identity.chatId, chatId);
+    assert.equal(source.record.identity.providerId, provider.id);
+    const context = source.snapshot.context;
+    assert.equal(context.threadId, threadId);
+    assert.equal(
+      source.record.identity.runtimeGeneration,
+      queued.runtimeGeneration,
+    );
+    assert.equal(source.record.identity.recovery.threadId, threadId);
+    const settings = await decryptNativeSettingsSnapshot({
+      ownerId,
+      serverId,
+      componentKey: chatKey,
+      keyRevision: 1,
+      context,
+      snapshot: source.snapshot,
+    });
+    assert.deepEqual(settings.settingsVersion, context.settingsVersion);
+    assert.equal(settings.model, "gpt-5");
+    const wrong = await invoke({
+      ...request,
+      scope: { ...request.scope, modelRouteId: "wrong-route" },
+    });
+    assert.equal(wrong.ok, false);
+    return source;
+  };
+  const setCapacity = async (limit, revision) => {
+    const configured = await invoke({
+      type: "inference.configure",
+      configurations: [
+        {
+          providerId: provider.id,
+          maxConcurrentInference: limit,
+          inferenceConfigRevision: revision,
+        },
+      ],
+    });
+    assert.equal(configured.ok, true, JSON.stringify(configured));
+    const pool = configured.result.pools.find(
+      ({ providerId }) => providerId === provider.id,
+    );
+    assert.equal(pool.maxConcurrentInference, limit);
+  };
+  let release;
+  if (verifyTransferSource) {
+    await setCapacity(1, 1);
+    release = await holdProvider();
+  }
   const streaming = [];
   const providerRequest = untilProvider();
   const notification = waitForFrame(
@@ -377,6 +514,14 @@ export async function verifyTaskGoalActivation({
   const earlyReply = running.then((reply) => {
     throw new Error(JSON.stringify(reply) + "\n" + diagnostics());
   });
+  let inputSource;
+  if (verifyTransferSource) {
+    inputSource = await capture(receipt);
+    assert.deepEqual(inputSource.record.identity.recovery.taskInput, receipt);
+    assert.equal(inputSource.taskGoalInput.orderEpoch, receipt.queueOrderEpoch);
+    assert.equal(modelCalls(), calls);
+    await release();
+  }
   const { native, acknowledge } = await available(
     Promise.race([
       admissions.promise,
@@ -451,6 +596,13 @@ export async function verifyTaskGoalActivation({
     ),
   );
   await observer.running();
+  if (verifyTransferSource) {
+    // Reserve the second blocker while the first input still owns its model
+    // response, then lower the cap before Codex can request its next cycle.
+    await setCapacity(2, 2);
+    release = await holdProvider();
+    await setCapacity(1, 3);
+  }
   model.finish();
 
   await available(Promise.race([attempted.promise, earlyReply]));
@@ -614,6 +766,22 @@ export async function verifyTaskGoalActivation({
       },
     };
   };
+  if (verifyTransferSource) {
+    const cycleSource = await capture();
+    const cycle = cycleSource.record.identity.recovery.taskGoalCycle;
+    assert.equal(cycle.cycleId, dispatch.cycleId);
+    assert.equal(cycle.goalEpoch, inputSource.taskGoalInput.goalEpoch);
+    assert.equal(
+      cycle.runnerGeneration,
+      inputSource.taskGoalInput.runnerGeneration,
+    );
+    assert.equal(cycle.orderEpoch, receipt.queueOrderEpoch);
+    assert.equal(modelCalls(), calls + 1);
+    await release();
+    console.log(
+      "Captured the unused Task Goal input and its private native cycle through the worker command.",
+    );
+  }
   await cycles.verify({
     firstTurnId: native.turnId,
     untilProvider,

@@ -7608,3 +7608,27 @@ regressions passed on the same builds.
 
 Queued Task Goals, recovery of a first-cycle claim, and retargeting an
 attached managed console remain open.
+
+## 201. Capture the exact Task Goal source for a provider handoff
+
+Reference commit d4ca91be5d7e8c9d268dc89e41145c8e62990864 (#3364).
+
+The Rust worker handles Core's existing `task.goal.source` command for a
+waiting first Goal input and a queued private native Goal cycle. It captures
+the keeper record and reads protected settings and Goal state on the selected
+thread. A private cycle also requires Codex's acknowledgement of the exact
+thread, turn, runner and gate attempt. The worker then checks that the keeper
+still owns the same reservation. It reports the keeper generation separately
+from the native settings generation. First-input captures carry the actual
+queue revision and provider-order epoch.
+
+The local macOS ARM64 fixture used the production Rust worker, bundled
+Codex, a loopback provider, and controlled Core acknowledgements. It held
+actual capacity across both Task source reads, opened each protected settings
+snapshot with the TypeScript codec, and rejected a replaced route. Releasing
+capacity let the original input and private cycles finish. The recovered
+Project Goal handoff regression passed against the production Rust server
+with PGlite on the same worker build.
+
+Task Goal withdrawal and destination recovery still need to consume this
+capture through the runtime handoff.
