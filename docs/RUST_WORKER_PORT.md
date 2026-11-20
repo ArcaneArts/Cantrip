@@ -7869,3 +7869,25 @@ JavaScript admission fingerprint.
 Run `node scripts/worker-rust/cantrip-os-workspaces-smoke.mjs --power` with
 `--server` and `--worker` pointing to the Rust executables and the existing
 Cantrip OS guest image available locally.
+
+## 211. Start and stop workspace desktops through the Rust worker
+
+Reference commit f269064555770e4aa3f055ca41201ee2c91125c0 (#3374).
+
+The worker observes, starts, restarts, and stops the desktop through the
+captured guest workspace executor. It verifies the account and desktop
+generation and retains the existing operation journal and guest admission
+digest. Observation can read the exact guest receipt when the worker's
+journal is missing or when its last write predates a receipt.
+
+The macOS ARM64 fixture used production Rust Core with PGlite, the native
+worker, and a disposable Docker guest with the current Cantrip OS workspace
+package installed. It checked the guest's real desktop generations after
+start, restart, and stop, verified that repeated submissions preserved those
+generations, and recovered both an unsettled worker journal and a guest-only
+receipt after restarting the worker.
+
+Run `node scripts/worker-rust/cantrip-os-workspaces-smoke.mjs --desktop` with
+`--server` and `--worker` pointing to the Rust executables. For a base image
+with an older workspace package, pass the current package with
+`--workspaces-package`.
