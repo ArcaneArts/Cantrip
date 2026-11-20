@@ -1189,6 +1189,7 @@ try {
         continuedImportedAndRelocatedChat: true,
         editedLatestNativeChatTurn: true,
         compactedNativeChatAfterEdit: true,
+        agentScheduledNativeCompaction: true,
       }),
     );
   else if (values["run-runtime-only"])

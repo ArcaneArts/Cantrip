@@ -14,7 +14,7 @@ use server::Capabilities;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, atomic::AtomicUsize},
+    sync::{Arc, Mutex, OnceLock, atomic::AtomicUsize},
     time::Duration,
 };
 use tokio::{
@@ -80,6 +80,7 @@ impl Attachment {
 
 struct Active {
     binding: Value,
+    context: OnceLock<Arc<crate::codex::turn::context::ContextTurn>>,
     stale: Mutex<Option<JsString>>,
     stopped: watch::Sender<bool>,
 }
@@ -132,6 +133,10 @@ pub struct Activation {
 }
 
 impl Activation {
+    pub(crate) fn track_context(&self, context: Arc<crate::codex::turn::context::ContextTurn>) {
+        let _ = self.active.context.set(context);
+    }
+
     pub fn release(self) -> bool {
         self.deactivate()
     }
@@ -240,6 +245,13 @@ impl Broker {
                 "context.get",
                 "context_get",
                 !standalone && capabilities.context,
+            ),
+            (
+                "context.compact",
+                "context_compact",
+                !standalone
+                    && capabilities.compact
+                    && claims["permissionProfileId"] != ":read-only",
             ),
             ("tool.help", "tool_help", true),
             ("web.read", "web_read", true),
@@ -360,6 +372,7 @@ impl Broker {
             mcp_host::parse("cantripMcpBindingSchema", Some(&binding)).map_err(response_error)?;
         let active = Arc::new(Active {
             binding,
+            context: OnceLock::new(),
             stale: Mutex::new(None),
             stopped: watch::channel(false).0,
         });
@@ -431,6 +444,7 @@ impl Inner {
             .unwrap_or(Capabilities {
                 version: 1,
                 context: true,
+                compact: false,
             });
         *cached = Some(Negotiated {
             identity: identity.clone(),

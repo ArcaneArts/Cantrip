@@ -286,6 +286,7 @@ async fn execute(
     view.assert_current()?;
     let (abort, signal) = Abort::new();
     let active = Arc::new(Active {
+        context: OnceLock::new(),
         root: Some(root.clone()),
         project: session["projectId"].as_js_string().cloned(),
         control: OnceLock::from(control::Binding::new(

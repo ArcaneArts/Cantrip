@@ -8401,3 +8401,24 @@ Repeat the public API fixture with
 `scripts/worker-rust/workspace-smoke.mjs --project-export-only`.
 MCP-initiated compaction scheduled by an active agent remains a separate entry
 point to port. Guest and Windows execution were outside this local fixture.
+
+## 231. Schedule compaction from the active Chat MCP tool
+
+Reference commit `916a5c282341539a450e3c51e8b3e4cf1d4f96ae` (#3394).
+
+The native broker exposes `context_compact` for a writable Project Chat when
+Core advertises the operation. Core authorizes each call against its active
+execution lane and placement. The worker binds the request to the exact
+native turn and coalesces repeat calls. When the turn finishes successfully,
+Core's logical completion command releases the follow-up through the
+same native compaction admission path as the public API. Context telemetry in
+`context_get` comes from that thread and turn's actual Codex notifications.
+
+On macOS ARM64, Rust Core in PGlite mode, the Rust worker and bundled Codex
+0.166.0 exercised the actual MCP tool with a loopback Responses provider.
+The agent read observed token usage and requested compaction twice in the
+same turn. No compaction started while the final response was held. After
+the turn committed, a single compaction ran and the next turn received its
+summary. Repeat with `scripts/worker-rust/workspace-smoke.mjs --project-export-only`.
+The focused protocol and Node reference tests passed. Guest and Windows
+execution were outside the fixture.

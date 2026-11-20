@@ -127,6 +127,7 @@ impl Autonomous {
             let root = receipt.operation().clone();
             let (abort, signal) = Abort::new();
             let active = Arc::new(Active {
+                context: OnceLock::new(),
                 root: Some(root),
                 project: runner.session["projectId"].as_js_string().cloned(),
                 control: OnceLock::new(),

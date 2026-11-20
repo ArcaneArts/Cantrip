@@ -21,6 +21,7 @@ pub struct Server {
 pub(super) struct Capabilities {
     pub version: u64,
     pub context: bool,
+    pub compact: bool,
 }
 
 #[derive(Debug)]
@@ -67,6 +68,7 @@ impl Server {
             return Ok(Capabilities {
                 version: 1,
                 context: true,
+                compact: false,
             });
         }
         let response = body(response, MAXIMUM_CAPABILITIES).await?;
@@ -86,6 +88,7 @@ impl Server {
         Ok(Capabilities {
             version,
             context: operations.iter().any(|op| op == "context.get"),
+            compact: operations.iter().any(|op| op == "context.compact"),
         })
     }
 
@@ -102,6 +105,31 @@ impl Server {
             .await?;
         crate::http::checked("cantripMcpContextGetResultSchema", &result)
             .map_err(|_| anyhow!("Cantrip MCP operation validation failed on the worker."))
+    }
+
+    pub(super) async fn authorize_compaction(
+        &self,
+        binding: &Value,
+        version: u64,
+        legacy_root: Option<&Value>,
+        request: Value,
+    ) -> Result<()> {
+        let result = self
+            .invoke(
+                binding.clone(),
+                version,
+                legacy_root,
+                request,
+                &uuid::Uuid::new_v4().to_string(),
+            )
+            .await?;
+        let result = mcp_host::parse("cantripAgentOperationResultSchema", Some(&result))
+            .map_err(response_error)?;
+        ensure!(
+            result["mutated"] == true && result["worktreeId"] == binding["worktreeId"],
+            "Cantrip did not authorize compaction for the current worktree."
+        );
+        Ok(())
     }
 
     pub(super) async fn inspect_browser(

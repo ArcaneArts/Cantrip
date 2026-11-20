@@ -728,8 +728,24 @@ async fn cycle(
                     continue;
                 }
                 if matches!(kind, crate::codex::turn::COMPLETE | crate::codex::turn::CANCEL) {
-                    let result = turns.logical(command);
-                    finish(&request, &worker, logs, &outgoing, began, &result);
+                    let (reply, followup) = match turns.logical(command) {
+                        Ok(followup) => (Ok(json!({})), followup),
+                        Err(error) => (Err(error), None),
+                    };
+                    finish(&request, &worker, logs, &outgoing, began, &reply);
+                    if let Some(completion) = followup {
+                        let turns = turns.clone();
+                        let logs = logs.clone();
+                        let worker = worker.clone();
+                        commands.spawn(async move {
+                            if let Err(error) = completion.compact(&turns).await {
+                                logs.event("warn", "Scheduled chat compaction could not settle", json!({
+                                    "event":"codex.compact.scheduled-failed","workerId":worker,
+                                    "error":logging::error(&error),
+                                }));
+                            }
+                        });
+                    }
                     continue;
                 }
                 if kind == crate::codex::turn::RESUME {

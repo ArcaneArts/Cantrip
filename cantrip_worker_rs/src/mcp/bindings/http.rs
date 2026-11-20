@@ -244,7 +244,8 @@ impl Inner {
                 mcp_host::parse("cantripMcpContextGetInputSchema", call.get("arguments")).map_err(
                     |_| anyhow!("Cantrip MCP operation validation failed on the worker."),
                 )?;
-                self.server
+                let mut result = self
+                    .server
                     .context(
                         authorization.active.binding.clone(),
                         authorization.version,
@@ -252,7 +253,60 @@ impl Inner {
                         call,
                         &uuid::Uuid::new_v4().to_string(),
                     )
-                    .await
+                    .await?;
+                if let Some(window) = authorization
+                    .active
+                    .context
+                    .get()
+                    .and_then(|context| context.inspect())
+                {
+                    let summary = match (
+                        window["usedTokens"].as_u64(),
+                        window["contextWindowTokens"].as_u64(),
+                        window["usedPercent"].as_f64(),
+                    ) {
+                        (Some(used), Some(capacity), Some(percent)) => {
+                            format!(" Context is using {used} of {capacity} tokens ({percent}%).")
+                        }
+                        _ => " Codex has not reported context occupancy for this turn yet."
+                            .to_owned(),
+                    };
+                    let existing = result["summary"].as_js_string().unwrap();
+                    result["summary"] = Value::String(JsString::new(
+                        existing
+                            .units()
+                            .iter()
+                            .copied()
+                            .take(2_000 - summary.encode_utf16().count())
+                            .chain(summary.encode_utf16())
+                            .collect(),
+                    ));
+                    result["data"]["contextWindow"] = window;
+                }
+                Ok(result)
+            }
+            "context.compact" => {
+                mcp_host::parse("mcpStdioInput/context_compact", call.get("arguments"))
+                    .map_err(super::response_error)?;
+                let active = &authorization.active;
+                let context = active.context.get().ok_or_else(|| anyhow!("The Codex context compaction request does not match the active Cantrip turn."))?;
+                self.server
+                    .authorize_compaction(
+                        &active.binding,
+                        authorization.version,
+                        authorization.legacy_root.as_ref(),
+                        call,
+                    )
+                    .await?;
+                let window = context.schedule(|| {
+                    !*active.stopped.borrow()
+                        && (self.identity)().as_ref().ok() == Some(&authorization.identity)
+                }).ok_or_else(|| anyhow!("The Codex context compaction request does not match the active Cantrip turn."))?;
+                mcp_host::parse("mcpStdioOutput/context_compact", Some(&json!({
+                    "summary":"Native Codex context compaction is scheduled for the safe idle boundary after this turn. Finish this turn now.",
+                    "target":Value::Null, "worktreeId":active.binding["worktreeId"],
+                    "continuationScheduled":true, "mutated":true, "data":window,
+                }))).map_err(super::response_error)
             }
             _ => Err(anyhow!("Unsupported Cantrip MCP operation.")),
         }
