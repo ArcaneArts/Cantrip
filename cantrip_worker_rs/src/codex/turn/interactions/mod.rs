@@ -185,6 +185,7 @@ struct Pending {
     id: Value,
     method: Value,
     request: Value,
+    question: Option<Value>,
     expires: Instant,
     retry: Option<Instant>,
     published: bool,
@@ -196,6 +197,18 @@ impl Pending {
     }
     fn kind(&self) -> &str {
         self.request["payload"]["kind"].as_str().unwrap()
+    }
+
+    fn publish_terminal(&self, emit: &Emit, event: Value) -> Result<()> {
+        let plan = if self.question.is_some() {
+            emit(
+                json!({"type":"agent.plan.question-resolved","questionId":self.request["requestKey"]}),
+            )
+        } else {
+            Ok(())
+        };
+        let interaction = emit(event);
+        plan.and(interaction)
     }
 }
 
@@ -392,6 +405,7 @@ impl Owner<'_> {
                 Pending {
                     id: native_id.clone(),
                     method: frame["method"].clone(),
+                    question: protocol::plan_question(&request),
                     request,
                     expires: now + timeout,
                     retry: Some(now),
@@ -449,7 +463,14 @@ impl Owner<'_> {
         if self.stop.check().is_err() {
             return Ok(());
         }
-        if self.turn.publish_request(&pending.request).is_err() {
+        let published = self.turn.publish_request(&pending.request).and_then(|()| {
+            pending.published = true;
+            if let Some(question) = &pending.question {
+                (self.turn.emit)(json!({"type":"agent.plan.question","question":question}))?;
+            }
+            Ok(())
+        });
+        if published.is_err() {
             return self
                 .cancel(
                     &key,
@@ -458,7 +479,6 @@ impl Owner<'_> {
                 )
                 .map(|_| ());
         }
-        pending.published = true;
         pending.retry = None;
         if !self
             .turn
@@ -592,7 +612,9 @@ impl Owner<'_> {
                 bail!("The native request already ended.");
             }
             Err(error) => {
-                receipt.uncertain().await?;
+                let settled = receipt.uncertain().await;
+                let _ = self.clear(&pending, false);
+                settled?;
                 return Err(error);
             }
         }
@@ -601,7 +623,7 @@ impl Owner<'_> {
             resolution["idempotencyKey"] = json!(concat(&["native-response:".into(), key.clone()]));
             event["resolution"] = resolution;
         }
-        let _ = (self.turn.emit)(event);
+        let _ = pending.publish_terminal(self.turn.emit, event);
         let acknowledged = if terminal.is_some() {
             json!({"delivered":true,"operationGeneration":receipt.operation().generation})
         } else {
@@ -630,7 +652,8 @@ impl Owner<'_> {
 
     fn clear(&self, pending: &Pending, expired: bool) -> Result<()> {
         if pending.published {
-            (self.turn.emit)(
+            pending.publish_terminal(
+                self.turn.emit,
                 json!({"type":if expired {"agent.interaction.expired"} else {"agent.interaction.cleared"}, "requestKey":pending.request["requestKey"]}),
             )?;
         }

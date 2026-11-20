@@ -7,24 +7,15 @@ import * as crypto from "../../packages/crypto/dist/index.js";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 
-export async function verifyConsoleInteraction({
+export async function createPreparedProjectChat({
   call,
   eventually,
-  createModel,
   ownerId,
   workerId,
   keyRevision,
   labelKey,
-  interactionKey,
-  prompt,
-  marker,
-  socketFile,
+  title,
 }) {
-  const model = await createModel("Managed console approval model");
-  await call("PATCH", "/api/settings", 200, {
-    defaultModelId: model.profile.id,
-    autoNameChats: false,
-  });
   const workspaceId = randomUUID();
   const { nameProtection } =
     discoveryWireFixtures(projectLabel)
@@ -49,11 +40,7 @@ export async function verifyConsoleInteraction({
     id: projectId,
     workerId,
     workspaceId,
-    nameProtection: await label(
-      "project",
-      projectId,
-      "Console interaction fixture",
-    ),
+    nameProtection: await label("project", projectId, "Interaction fixture"),
   });
   await eventually(
     () => call("GET", `${projectUrl}/folder-setup`, 200),
@@ -62,7 +49,7 @@ export async function verifyConsoleInteraction({
   const chatId = randomUUID();
   await call("POST", `${projectUrl}/chats`, 201, {
     id: chatId,
-    titleProtection: await label("chat", chatId, "Console approvals"),
+    titleProtection: await label("chat", chatId, title),
     autoTitle: false,
   });
   await eventually(
@@ -71,6 +58,36 @@ export async function verifyConsoleInteraction({
       assert.equal(preparation?.phase, "ready", JSON.stringify(preparation)),
     35_000,
   );
+  return { chatId, chatUrl: `/api/chats/${chatId}` };
+}
+
+export async function verifyConsoleInteraction({
+  call,
+  eventually,
+  createModel,
+  ownerId,
+  workerId,
+  keyRevision,
+  labelKey,
+  interactionKey,
+  prompt,
+  marker,
+  socketFile,
+}) {
+  const model = await createModel("Managed console approval model");
+  await call("PATCH", "/api/settings", 200, {
+    defaultModelId: model.profile.id,
+    autoNameChats: false,
+  });
+  const { chatId } = await createPreparedProjectChat({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    labelKey,
+    title: "Console approvals",
+  });
   const url = await eventually(
     () => readFile(socketFile, "utf8"),
     (value) => assert.ok(value.startsWith("ws://127.0.0.1:")),

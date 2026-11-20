@@ -240,25 +240,8 @@ impl Protected {
                     json!({"type": "agent.protected-message", "message": protected, "telemetry": telemetry}),
                 )
             }
-            Some("agent.plan.updated") => {
-                let mut plan = self.plan.lock().unwrap();
-                let grant = self.scope.material(None)?;
-                let classification = json!({"hasQuestion": !plan["question"].is_null()});
-                let content = json!({
-                    "version": 1, "classification": classification,
-                    "explanation": event["explanation"], "steps": event["steps"], "question": plan["question"],
-                });
-                let sealed = encrypt_communication(
-                    Communication::Plan,
-                    &grant.key,
-                    &json!({"ownerId": grant.owner_id, "chatId": self.chat, "keyRevision": grant.key_revision}),
-                    &content,
-                )?;
-                *plan = content;
-                Ok(json!({
-                    "type": "agent.plan.protected", "turnId": event["turnId"],
-                    "state": json!({"classification": classification, "protectedContent": sealed}),
-                }))
+            Some("agent.plan.updated" | "agent.plan.question" | "agent.plan.question-resolved") => {
+                self.plan_event(event)
             }
             Some(
                 "agent.interaction.requested.protected"
@@ -267,6 +250,45 @@ impl Protected {
             ) => Ok(event.clone()),
             _ => bail!("The protected turn cannot publish this event."),
         }
+    }
+
+    fn plan_event(&self, event: &Value) -> Result<Value> {
+        let mut plan = self.plan.lock().unwrap();
+        let mut next = plan.clone();
+        let turn = match event["type"].as_str() {
+            Some("agent.plan.updated") => {
+                next["explanation"] = event["explanation"].clone();
+                next["steps"] = event["steps"].clone();
+                &event["turnId"]
+            }
+            Some("agent.plan.question") => {
+                next["question"] = event["question"].clone();
+                &event["question"]["turnId"]
+            }
+            _ => {
+                if next["question"]["id"] == event["questionId"] {
+                    next["question"] = Value::Null;
+                }
+                &Value::Null
+            }
+        };
+        let grant = self.scope.material(None)?;
+        let classification = json!({"hasQuestion": !next["question"].is_null()});
+        let content = json!({
+            "version": 1, "classification": classification,
+            "explanation": next["explanation"], "steps": next["steps"], "question": next["question"],
+        });
+        let sealed = encrypt_communication(
+            Communication::Plan,
+            &grant.key,
+            &json!({"ownerId": grant.owner_id, "chatId": self.chat, "keyRevision": grant.key_revision}),
+            &content,
+        )?;
+        *plan = content;
+        Ok(json!({
+            "type": "agent.plan.protected", "turnId": turn,
+            "state": json!({"classification": classification, "protectedContent": sealed}),
+        }))
     }
 
     pub(super) fn result(&self, mut result: Value) -> Result<Value> {

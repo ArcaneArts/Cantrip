@@ -7362,3 +7362,26 @@ linked-console approval regressions, cold Resume and cold Stop transport
 fixtures, and Windows x64 GNU worker compile check passed.
 
 Subagent interactions and pending Plan Mode question projection remain open.
+
+## 192. Publish and clear protected Plan Mode questions
+
+Reference commit b7f48d1c38ce1fcc4e1db3862c133ceaa3a1571c (#3355).
+
+Native user input with a turn and item identity now updates the encrypted
+Chat plan after the ordinary interaction request is registered. The plan
+uses the same request key, thread, and turn. Its answer, expiry, native
+resolution, or cleanup clears the matching question. Existing explanation
+and steps stay in the worker's encrypted plan state. The app-facing event
+format and Core plan storage are reused.
+
+The macOS ARM64 smoke used the production Rust server with PGlite, the
+production Rust worker, bundled Codex, and a loopback provider. A default
+project turn saved a checklist through Codex. The next turn used Plan Mode
+and waited for a real native user-input request. The existing TypeScript
+codec opened the API's encrypted question, the worker authenticated the
+reply and delivered the answer to Codex, and the question cleared with
+the checklist intact. GUI, linked-console, and restored approval smokes passed. The
+Windows x64 GNU worker compile check passed.
+
+Explicit Plan Mode reads and writes (`chat.plan.get` and `chat.plan.set`)
+and subagent interactions remain open.
