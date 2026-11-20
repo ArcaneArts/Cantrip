@@ -125,16 +125,35 @@ impl Scope {
         input: CaptureInput<'_>,
         timeout: Option<Duration>,
     ) -> Result<Captured> {
+        let mut command = Command::new(program);
+        command
+            .args(args)
+            .envs(environment.iter().map(|(key, value)| (key, value)));
+        self.capture_child(command, maximum, input, timeout).await
+    }
+    pub(crate) async fn capture_configured(
+        &self,
+        command: Command,
+        maximum: usize,
+        timeout: Duration,
+    ) -> Result<Captured> {
+        self.capture_child(command, maximum, CaptureInput::Empty, Some(timeout))
+            .await
+    }
+    async fn capture_child(
+        &self,
+        mut command: Command,
+        maximum: usize,
+        input: CaptureInput<'_>,
+        timeout: Option<Duration>,
+    ) -> Result<Captured> {
         self.check()?;
         let (stdin, input) = match input {
             CaptureInput::Empty => (Stdio::null(), None),
             CaptureInput::Bytes(bytes) => (Stdio::piped(), Some(bytes)),
             CaptureInput::File(file) => (Stdio::from(file), None),
         };
-        let mut command = Command::new(program);
         command
-            .args(args)
-            .envs(environment.iter().map(|(key, value)| (key, value)))
             .stdin(stdin)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

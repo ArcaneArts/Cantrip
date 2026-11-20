@@ -7,6 +7,7 @@ mod browser_surface;
 mod cantrip_os;
 pub(crate) mod chat_content;
 mod cli;
+mod codegraph;
 pub mod codex;
 pub mod config;
 pub mod connection;

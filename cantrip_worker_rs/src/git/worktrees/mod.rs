@@ -37,12 +37,14 @@ impl Manager {
         registry: &Registry,
         scope: &Scope,
         before_remove: Option<&BeforeRemove>,
-    ) -> Result<Value> {
+    ) -> Result<(Value, Option<PathBuf>)> {
         let kind = command["type"].as_str().unwrap();
         let result = async {
             let command = registry.resolve(command).await?;
             let result = self.execute(&command, scope, before_remove).await?;
-            registry.protect_result(kind, &result).await
+            let removed = result["removedPath"].as_js_string().map(paths::native);
+            let receipt = registry.protect_result(kind, &result).await?;
+            Ok((receipt, removed))
         }
         .await;
         result.map_err(|error| crate::routing::protect_error(kind, error))
