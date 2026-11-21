@@ -3,6 +3,7 @@ pub(crate) mod interactive;
 pub(crate) mod output;
 mod presentation;
 mod private_state;
+mod recovery;
 mod replay;
 mod service;
 use crate::{encryption::Service, filesystem::Scope, logging::Logs, routing::Registry};
@@ -12,6 +13,7 @@ use codex_utils_pty::{ProcessHandle, TerminalSize};
 use indexmap::IndexMap;
 use presentation::Display;
 pub(crate) use private_state::open_host as host_private_state;
+use recovery::Recovery;
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -100,10 +102,14 @@ struct ServiceIo {
     resize: mpsc::Sender<Resize>,
 }
 
-struct Resize {
-    size: TerminalSize,
-    complete: oneshot::Sender<Result<()>>,
+enum Resize {
+    Set {
+        size: TerminalSize,
+        complete: oneshot::Sender<Result<()>>,
+    },
+    Redraw(watch::Sender<Option<Recovery>>),
 }
+
 impl Resize {
     fn request(
         sender: &mpsc::Sender<Self>,
@@ -111,9 +117,31 @@ impl Resize {
     ) -> Result<oneshot::Receiver<Result<()>>> {
         let (complete, done) = oneshot::channel();
         sender
-            .try_send(Self { size, complete })
+            .try_send(Self::Set { size, complete })
             .map_err(|_| anyhow!("Terminal resize could not be queued."))?;
         Ok(done)
+    }
+
+    async fn apply(
+        self,
+        display: &Mutex<Display>,
+        terminal: &mut impl recovery::Resizable,
+        resized: impl FnOnce(TerminalSize),
+    ) {
+        match self {
+            Self::Set { size, complete } => {
+                let result = terminal.resize_terminal(size).await;
+                if result.is_ok() {
+                    resized(size);
+                }
+                let _ = complete.send(result);
+            }
+            Self::Redraw(done) => {
+                let size = display.lock().unwrap().replay.size();
+                let result = recovery::redraw(size, terminal).await;
+                done.send_replace(Some(result));
+            }
+        }
     }
 }
 

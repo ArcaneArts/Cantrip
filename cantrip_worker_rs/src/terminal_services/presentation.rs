@@ -1,4 +1,4 @@
-use super::replay::Replay;
+use super::{Recovery, Resize, replay::Replay};
 use crate::{
     connection::Outbound, encryption::Service, protected_content::protect_surface_content,
 };
@@ -6,7 +6,7 @@ use anyhow::{Result, anyhow};
 use cantrip_wire::{JsString, Value, value::json};
 use codex_utils_pty::TerminalSize;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 pub(super) struct Attachment {
     pub(super) complete: oneshot::Sender<Result<Value>>,
@@ -120,9 +120,19 @@ fn output_chunks(data: &JsString, max: usize) -> impl Iterator<Item = &[u16]> + 
     })
 }
 
+pub(super) enum Attaching {
+    Complete(Option<Value>),
+    Redrawing {
+        view: Box<Attachment>,
+        result: watch::Receiver<Option<Recovery>>,
+    },
+}
+
 pub(super) struct Display {
     pub(super) replay: Replay,
     views: HashMap<JsString, Attachment>,
+    resize: Option<mpsc::WeakSender<Resize>>,
+    recovery: Option<watch::Receiver<Option<Recovery>>>,
     pub(super) exited: Option<Value>,
 }
 
@@ -131,18 +141,40 @@ impl Display {
         Self {
             replay: Replay::new(size, process_generation),
             views: HashMap::new(),
+            resize: None,
+            recovery: None,
             exited: None,
         }
     }
 
     pub(super) fn reset(&mut self, size: TerminalSize, process_generation: u64) {
         self.replay = Replay::new(size, process_generation);
+        self.resize = None;
+        self.recovery = None;
         self.exited = None;
     }
 
-    pub(super) fn attach(&mut self, id: &JsString, mut view: Attachment) -> Result<Option<Value>> {
+    pub(super) fn bind_resize(&mut self, resize: &mpsc::Sender<Resize>) {
+        self.resize = Some(resize.downgrade());
+    }
+
+    fn request_recovery(&mut self) -> &watch::Receiver<Option<Recovery>> {
+        self.recovery.get_or_insert_with(|| {
+            let (done, result) = watch::channel(None);
+            if let Some(resize) = self.resize.as_ref().and_then(mpsc::WeakSender::upgrade) {
+                if let Err(mpsc::error::TrySendError::Full(_)) =
+                    resize.try_send(Resize::Redraw(done.clone()))
+                {
+                    done.send_replace(Some(Recovery::ResizeFailed));
+                }
+            }
+            result
+        })
+    }
+
+    pub(super) fn attach(&mut self, id: &JsString, mut view: Attachment) -> Result<Attaching> {
         if let Some(exited) = &self.exited {
-            return Ok(Some(exited.clone()));
+            return Ok(Attaching::Complete(Some(exited.clone())));
         }
         anyhow::ensure!(
             !self.views.contains_key(id),
@@ -150,12 +182,35 @@ impl Display {
         );
         if !view.discard {
             let with_metadata = matches!(view.transport, Transport::WorkerLink(_));
-            let (snapshot, metadata) = self.replay.attachment(with_metadata);
-            view.output(&snapshot, metadata)?;
+            let mut snapshot = self.replay.attachment(with_metadata);
+            if snapshot.needs_redraw {
+                let result = self.request_recovery();
+                let recovery = *result.borrow();
+                let recovery = match recovery {
+                    Some(recovery) => recovery,
+                    None if result.has_changed().is_err() => {
+                        (*result.borrow()).unwrap_or(Recovery::NoLiveProcess)
+                    }
+                    None => {
+                        return Ok(Attaching::Redrawing {
+                            view: Box::new(view),
+                            result: result.clone(),
+                        });
+                    }
+                };
+                if let Some(metadata) = &mut snapshot.metadata {
+                    recovery.describe(metadata);
+                }
+            } else if let Some(metadata) = &mut snapshot.metadata {
+                if metadata["format"] == "legacy-raw" {
+                    metadata["recovery"] = json!("not-needed");
+                }
+            }
+            view.output(&snapshot.data, snapshot.metadata)?;
         }
         view.emit(json!({"type":"terminal.ready"}))?;
         self.views.insert(id.clone(), view);
-        Ok(None)
+        Ok(Attaching::Complete(None))
     }
 
     pub(super) fn detach(&mut self, id: &JsString) -> Option<Value> {

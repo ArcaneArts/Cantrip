@@ -10644,3 +10644,31 @@ Automatic redraw when an oversized viewport also has a truncated raw buffer
 and additional escape-sequence parity remain open.
 
 [xterm.js 6.0 snapshot serializer](https://github.com/xtermjs/xterm.js/blob/6.0.0/addons/addon-serialize/src/SerializeAddon.ts)
+
+## 322. Request a terminal redraw when bounded raw replay is truncated
+
+Reference commit fb818408b0284b33eecb7854010ec500713668bf (#3485).
+
+When canonical hydration falls back to truncated raw output, the owned PTY
+temporarily changes columns and restores the current size after 25 ms. The
+process generation shares one recovery result across viewers. The PTY actor
+serializes the pulse with normal resizes and finishes it even if the requesting
+viewer disconnects. The attachment takes its output boundary after recovery
+and sends the existing requested or failed recovery status before ready.
+The worker reports when the process is gone or either resize fails.
+
+WorkerLink terminal output now waits for room in its existing bounded queue
+while the viewer returns credit. It keeps the attachment's output order,
+including readiness and exit, without expanding the per-channel limits.
+
+A real macOS ARM64 shell emitted a dense viewport that forced canonical
+hydration to fall back to the two-million-character raw window. The previous
+worker closed the encrypted channel with credit-exceeded. The updated worker
+delivered all chunks, and the shell observed 399 then 400 columns. A second
+attachment received the cached recovery result without another pulse.
+The local smoke also passed the Host relay, direct broker, CLI, and service
+recovery paths with Node absent from the worker PATH. Five focused Rust tests
+passed, including both resize failure cases. Guest and Windows redraw
+runtime behavior were outside this fixture.
+
+Additional escape-sequence parity remains open.

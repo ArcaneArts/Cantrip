@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { constants } from "node:os";
 import path from "node:path";
@@ -259,6 +259,76 @@ async function verifyAlternateReplay(view, reattach, eventually, checkout) {
   }
 }
 
+async function verifyFallbackRedraw(view, reattach, eventually, checkout) {
+  const cols = 400;
+  const rows = 320;
+  const suffix = randomUUID();
+  const script = [
+    "/bin/stty -echo",
+    "trap '/bin/stty size >> native-redraw-sizes' WINCH",
+    '/usr/bin/awk \'BEGIN { printf "\\033[H\\033[2J\\033[3J"; for (y = 0; y < 320; y++) { if (y) printf "\\n"; for (x = 0; x < 400; x++) printf "\\033[38;2;%d;64;32mX", x % 2 ? 123 : 224; } }\'',
+    "printf '\\033[0m\\033[H%s%s' redraw-ready- '" + suffix + "'",
+    'while :; do line=; IFS= read -r line || :; [ "$line" = release ] && break; done',
+    "trap - WINCH",
+    "/bin/stty echo",
+    "printf '\\033[H\\033[2J\\033[3J%s%s\\n' redraw-done- '" + suffix + "'",
+  ].join("\n");
+  await writeFile(path.join(checkout, "native-redraw-fixture.sh"), script);
+  view.relay.send({ type: "resize", cols, rows });
+  await eventually(
+    async () => {
+      await view.input("/bin/stty size > native-redraw-start-size\r");
+      return readFile(
+        path.join(checkout, "native-redraw-start-size"),
+        "utf8",
+      ).catch(() => "");
+    },
+    (value) => assert.equal(value.trim(), rows + " " + cols),
+    "actual PTY size before oversized terminal output",
+  );
+  const dimensions = async () =>
+    (
+      await readFile(path.join(checkout, "native-redraw-sizes"), "utf8").catch(
+        () => "",
+      )
+    )
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+  await view.input(". ./native-redraw-fixture.sh\r");
+  await view.read(new RegExp("redraw-ready-" + suffix));
+  const expected = [rows + " " + (cols - 1), rows + " " + cols];
+  const verifyRecovery = async () => {
+    const attached = await reattach();
+    try {
+      assert.equal(attached.hydration.format, "legacy-raw");
+      assert.equal(attached.hydration.truncated, true);
+      assert.equal(attached.hydration.recovery, "redraw-requested");
+      assert.equal(attached.hydration.recoveryReason, undefined);
+      assert.equal(attached.hydration.cols, cols);
+      assert.equal(attached.hydration.rows, rows);
+      assert.equal(attached.hydration.processGeneration, 1);
+      assert.equal(attached.hydration.snapshotCharacters, 2_000_000);
+      assert.ok(attached.hydration.snapshotChunks > 128);
+    } finally {
+      await attached.close();
+    }
+  };
+  try {
+    await verifyRecovery();
+    await eventually(
+      dimensions,
+      (value) => assert.deepEqual(value, expected),
+      "redraw pulses the real terminal and restores its original size",
+    );
+    await verifyRecovery();
+    assert.deepEqual(await dimensions(), expected);
+  } finally {
+    await view.input("release\r");
+    await view.read(new RegExp("redraw-done-" + suffix));
+  }
+}
+
 export async function verifyHostTerminal({
   call,
   eventually,
@@ -499,6 +569,12 @@ export async function verifyHostTerminal({
     await verifyNormalReflow(linkExit, attachWorkerLink, eventually, checkout);
     await verifyInputModes(linkExit, attachWorkerLink);
     await verifyAlternateReplay(
+      linkExit,
+      attachWorkerLink,
+      eventually,
+      checkout,
+    );
+    await verifyFallbackRedraw(
       linkExit,
       attachWorkerLink,
       eventually,

@@ -201,8 +201,10 @@ impl Channel {
             self.credit -= bytes.len();
             self.pending_bytes -= bytes.len();
             self.pending.pop_front();
-            if let Resource::Tunnel(tunnel) = &self.resource {
-                tunnel.writable();
+            match &self.resource {
+                Resource::Terminal(terminal) => terminal.writable.notify_one(),
+                Resource::Tunnel(tunnel) => tunnel.writable(),
+                _ => {}
             }
             self.send += 1;
             self.activity = Instant::now();
@@ -210,16 +212,23 @@ impl Channel {
         Output::Queued
     }
 
+    fn can_enqueue(&self, bytes: usize, max_frames: usize) -> bool {
+        bytes <= wire::MAX_PAYLOAD_BYTES
+            && self.pending.len() < max_frames
+            && self.pending_bytes + bytes <= MAX_OBSERVATION_BYTES
+    }
+
     fn enqueue(&mut self, bytes: Vec<u8>, max_frames: usize) -> bool {
-        if bytes.len() > wire::MAX_PAYLOAD_BYTES
-            || self.pending.len() >= max_frames
-            || self.pending_bytes + bytes.len() > MAX_OBSERVATION_BYTES
-        {
+        if !self.can_enqueue(bytes.len(), max_frames) {
             return false;
         }
+        self.push(bytes);
+        true
+    }
+
+    fn push(&mut self, bytes: Vec<u8>) {
         self.pending_bytes += bytes.len();
         self.pending.push_back(bytes);
-        true
     }
 
     fn queue_tunnel(&mut self, bytes: &[u8]) -> bool {
@@ -610,14 +619,26 @@ impl Channels {
         }
     }
 
-    pub fn terminal_output(&mut self, id: &JsString, token: Uuid, bytes: Vec<u8>, last: bool) {
-        if let Some(channel) = self.terminal_mut(id, token) {
-            if channel.enqueue(bytes, 128) {
-                channel.close_after_drain = last;
-            } else {
-                self.terminal_error(id, token, "credit-exceeded", "congested");
-            }
+    pub fn terminal_output(
+        &mut self,
+        id: &JsString,
+        token: Uuid,
+        bytes: &[u8],
+        last: bool,
+    ) -> Output {
+        let Some(channel) = self.terminal_mut(id, token) else {
+            return Output::Closed;
+        };
+        if bytes.len() > wire::MAX_PAYLOAD_BYTES {
+            self.terminal_error(id, token, "io-error", "protocol-error");
+            return Output::Closed;
         }
+        if !channel.can_enqueue(bytes.len(), 128) {
+            return Output::Pending;
+        }
+        channel.push(bytes.to_vec());
+        channel.close_after_drain = last;
+        Output::Queued
     }
 
     pub fn terminal_credit(&mut self, id: &JsString, token: Uuid, bytes: usize) {

@@ -1,5 +1,5 @@
 //! Attach data-plane views to the same owned PTY and replay used by control views.
-use super::{Attachment, Display, Key, Shells, Transport, authority, binding, not_running, size};
+use super::{Attachment, Display, Key, Shells, Transport, authority, binding, size};
 use crate::{encryption::Service, protected_content::SurfaceStreamReplayGuard};
 use anyhow::Result;
 use cantrip_crypto::checked;
@@ -90,25 +90,13 @@ impl Shells {
         events: mpsc::Sender<Value>,
         complete: oneshot::Sender<Result<Value>>,
     ) -> Result<LinkedTerminal> {
-        let _transition = self.transition().await;
+        let transition = self.transition().await;
         let key = &target.key;
         anyhow::ensure!(
             authority(&encryption)? == key.authority,
             "Terminal owner changed."
         );
-        let display =
-            if let Some(service) = self.services.view(&key.terminal, &key.authority).await? {
-                anyhow::ensure!(service.cwd.is_some(), "Terminal service is stopping.");
-                service.state.lock().unwrap().display.clone()
-            } else {
-                let inner = self.inner.lock().await;
-                inner
-                    .entries
-                    .get(key)
-                    .ok_or_else(|| not_running(key))?
-                    .state
-                    .clone()
-            };
+        let display = self.existing_display(key).await?;
         let mut output = target.binding.clone();
         output["direction"] = json!("output");
         let view = Attachment {
@@ -120,7 +108,9 @@ impl Shells {
             discard: false,
             sequence: 0,
         };
-        let exited = display.lock().unwrap().attach(&target.id, view)?;
+        let exited = self
+            .present(key, &display, &target.id, view, transition)
+            .await?;
         Ok(match exited {
             Some(result) => LinkedTerminal::Exited(result),
             None => LinkedTerminal::Attached(LinkView {

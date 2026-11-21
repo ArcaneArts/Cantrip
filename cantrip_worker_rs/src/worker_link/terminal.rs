@@ -1,7 +1,7 @@
 //! Per-channel terminal tasks serialize input and detach with the channel.
 mod direct;
 
-use super::{Coordinator, id};
+use super::{Coordinator, carrier::Output, id};
 use crate::{
     encryption::Service,
     http::checked,
@@ -12,7 +12,7 @@ use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 pub(super) use direct::DirectTerminal;
 use std::sync::{Arc, Mutex, Weak};
 use tokio::{
-    sync::{mpsc, oneshot, watch},
+    sync::{Notify, mpsc, oneshot, watch},
     task::JoinSet,
 };
 use uuid::Uuid;
@@ -27,6 +27,7 @@ pub(super) struct Adapter {
 pub(super) struct Terminal {
     pub token: Uuid,
     pub input: mpsc::Sender<Vec<u8>>,
+    pub(super) writable: Arc<Notify>,
     stop: watch::Sender<bool>,
 }
 
@@ -40,6 +41,7 @@ struct Channel {
     gateway: Weak<Coordinator>,
     id: JsString,
     token: Uuid,
+    writable: Arc<Notify>,
 }
 
 impl Adapter {
@@ -64,10 +66,12 @@ impl Adapter {
         let (input, inbound) = mpsc::channel(128);
         let (stop, stopped) = watch::channel(false);
         let token = Uuid::new_v4();
+        let writable = Arc::new(Notify::new());
         let channel = Channel {
             gateway: Arc::downgrade(gateway),
             id: id.clone(),
             token,
+            writable: writable.clone(),
         };
         let adapter = self.clone();
         let terminal = terminal.clone();
@@ -78,7 +82,12 @@ impl Adapter {
                 .serve(channel, target, terminal, inbound, stopped)
                 .await
         });
-        Ok(Terminal { token, input, stop })
+        Ok(Terminal {
+            token,
+            input,
+            writable,
+            stop,
+        })
     }
 
     async fn serve(
@@ -106,7 +115,9 @@ impl Adapter {
             Ok(LinkedTerminal::Attached(view)) => view,
             Ok(LinkedTerminal::Exited(result)) => {
                 channel.ready();
-                channel.ended(result);
+                channel
+                    .output(exit_message(result), true, &mut stopped)
+                    .await;
                 return;
             }
             Err(_) => {
@@ -122,10 +133,16 @@ impl Adapter {
                 biased;
                 _ = stopped.changed() => break,
                 next = output.recv() => match next {
-                    Some(event) => channel.output(event),
+                    Some(event) => {
+                        if !channel.output(event, false, &mut stopped).await {
+                            break;
+                        }
+                    }
                     None => {
                         match finish.await {
-                            Ok(Ok(value)) if value["status"] == "exited" => channel.ended(value),
+                            Ok(Ok(value)) if value["status"] == "exited" => {
+                                channel.output(exit_message(value), true, &mut stopped).await;
+                            }
                             _ => channel.fail("io-error", "endpoint-disconnected"),
                         }
                         break;
@@ -175,32 +192,24 @@ impl Channel {
         }
     }
 
-    fn output(&self, event: Value) {
-        if let Some(gateway) = self.gateway.upgrade() {
-            if let Ok(event) = checked("terminalServerMessageSchema", &event) {
-                gateway.terminal_output(
-                    &self.id,
-                    self.token,
-                    event.stringify().into_bytes(),
-                    false,
-                );
-            } else {
-                gateway.terminal_error(&self.id, self.token, "io-error", "protocol-error");
-            }
-        }
-    }
-
-    fn ended(&self, result: Value) {
-        if let Some(gateway) = self.gateway.upgrade() {
-            if let Ok(message) = checked("terminalServerMessageSchema", &exit_message(result)) {
-                gateway.terminal_output(
-                    &self.id,
-                    self.token,
-                    message.stringify().into_bytes(),
-                    true,
-                );
-            } else {
-                gateway.terminal_error(&self.id, self.token, "io-error", "protocol-error");
+    async fn output(&self, event: Value, last: bool, stopped: &mut watch::Receiver<bool>) -> bool {
+        let Ok(event) = checked("terminalServerMessageSchema", &event) else {
+            self.fail("io-error", "protocol-error");
+            return false;
+        };
+        let bytes = event.stringify().into_bytes();
+        loop {
+            let offered = self.gateway.upgrade().map_or(Output::Closed, |gateway| {
+                gateway.terminal_output(&self.id, self.token, &bytes, last)
+            });
+            match offered {
+                Output::Queued => return true,
+                Output::Closed => return false,
+                Output::Pending => tokio::select! {
+                    biased;
+                    _ = stopped.changed() => return false,
+                    _ = self.writable.notified() => {},
+                },
             }
         }
     }

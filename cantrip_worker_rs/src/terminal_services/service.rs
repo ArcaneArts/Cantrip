@@ -70,17 +70,19 @@ pub(super) async fn run(
             }
             Ok(mut process) => {
                 let (resize, mut sizes) = mpsc::channel::<Resize>(64);
-                {
+                let display = {
                     let mut state = state.lock().unwrap();
                     if state.size != size {
                         let _ = process.session.resize(state.size);
                     }
+                    state.display.lock().unwrap().bind_resize(&resize);
                     state.phase = "running";
                     state.io = Some(ServiceIo {
                         writer: process.session.writer_sender(),
                         resize,
                     });
-                }
+                    state.display.clone()
+                };
                 logs.event("info","Terminal process started",json!({"event":"terminal.process.started","subsystem":"terminal","operation":"spawn","status":"running","terminalId":id,"launchType":"command","service":true,"durationMs":started.elapsed().as_millis() as u64,"processGeneration":generation}));
                 let mut utf8 = Utf8::default();
                 let mut exit = None;
@@ -103,9 +105,11 @@ pub(super) async fn run(
                             exit=Some(result.unwrap_or(-1));
                         },
                         Some(request)=sizes.recv(),if stopping.is_none() && exit.is_none()=>{
-                            let result=process.session.resize(request.size);
-                            if result.is_ok(){ state.lock().unwrap().resize(request.size); }
-                            let _=request.complete.send(result);
+                            request.apply(
+                                &display,
+                                &mut process.session,
+                                |size| state.lock().unwrap().resize(size),
+                            ).await;
                         },
                         bytes=process.stdout_rx.recv(),if out_open=>match bytes {Some(bytes)=>append(&state,&utf8.push(&bytes)),None=>out_open=false},
                     }
