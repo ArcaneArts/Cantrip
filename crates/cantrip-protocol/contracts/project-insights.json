@@ -6,7 +6,8 @@
     "protectedScriptCommandListSchema": 45,
     "projectTaskWorkloadOpaqueSchema": 60,
     "repositoryOperationOpaqueSchema": 49,
-    "scriptCommandOperationIdSchema": 247
+    "scriptCommandOperationIdSchema": 247,
+    "scriptCommandListSchema": 248
   },
   "nodes": [
     {
@@ -1685,6 +1686,91 @@
           "flags": "",
           "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
         }
+      ]
+    },
+    {
+      "type": "array",
+      "name": "scriptCommandListSchema",
+      "element": 249,
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "scriptCommandSchema",
+      "shape": {
+        "id": 250,
+        "kind": 251,
+        "name": 252,
+        "command": 253,
+        "description": 254,
+        "source": 256
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 512, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "scriptCommandKindSchema",
+      "values": ["package", "dart", "just", "cargo", "gradle", "make"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "script-command-text",
+          "messageAfterPath": true,
+          "message": "Script command text cannot contain control characters."
+        },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "script-command-text",
+          "messageAfterPath": true,
+          "message": "Script command text cannot contain control characters."
+        },
+        { "check": "max_length", "maximum": 4096, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 255, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "script-command-text",
+          "messageAfterPath": true,
+          "message": "Script command text cannot contain control characters."
+        },
+        { "check": "max_length", "maximum": 4096, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "script-command-text",
+          "messageAfterPath": true,
+          "message": "Script command text cannot contain control characters."
+        },
+        { "check": "max_length", "maximum": 512, "when": "length" }
       ]
     }
   ]

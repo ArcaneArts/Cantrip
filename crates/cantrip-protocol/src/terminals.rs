@@ -5,7 +5,14 @@ pub(super) fn refine(
     path: &[Value],
     message: Option<&str>,
 ) -> Result<bool, ValidationError> {
-    if !["terminal-placement", "terminal-title", "terminal-wire"].contains(&tag) {
+    if ![
+        "terminal-placement",
+        "terminal-title",
+        "terminal-wire",
+        "script-command-text",
+    ]
+    .contains(&tag)
+    {
         return Ok(false);
     }
     let value = result
@@ -19,6 +26,14 @@ pub(super) fn refine(
         result.issue(json!({"code":"custom"}), &path, message.into(), false);
     };
     match tag {
+        "script-command-text" => {
+            if value
+                .as_js_string()
+                .is_some_and(|text| text.units().iter().any(|unit| matches!(unit, 0..=31 | 127)))
+            {
+                issue(&[], message.ok_or(ValidationError::Operation)?);
+            }
+        }
         "terminal-placement" => {
             if coercion::truthy(value.get("worktreeId")) && coercion::truthy(value.get("target")) {
                 issue(

@@ -1299,6 +1299,22 @@ async fn cycle(
                     });
                     continue;
                 }
+                if matches!(kind, crate::script_commands::PROJECT | crate::script_commands::TERMINAL) {
+                    let routing = routing.clone();
+                    let encryption = encryption.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = async {
+                            let command = routing.resolve(&request["command"]).await?;
+                            crate::script_commands::execute(&command, &encryption, scope).await
+                        }.await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if crate::project_stats::supports(kind) {
                     let routing = routing.clone();
                     let logs = logs.clone();

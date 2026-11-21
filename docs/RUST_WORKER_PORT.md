@@ -9835,3 +9835,24 @@ folder integration fixture now checks the public statistics response.
 The route audit also identified project and terminal script discovery,
 retained project-file deletion, Host desktop probing, and Cantrip OS
 tunnel preparation as remaining dispatch work.
+
+## 290. Discover encrypted project and terminal script commands in Rust
+
+Reference commit `43dd2e4ed250dd901ebb34baca13a903a3ebac0d` (#3453).
+
+The worker resolves the selected project worktree and opens the existing
+encrypted terminal state to discover scripts in its selected directory.
+It reads bounded local package, Dart, Just, Cargo, Gradle, and Make
+manifests. It preserves the existing runner selection, order, and
+descriptions. Manifest reads stay within the selected directory, and
+discovery only reads files. The generated protocol validates the command
+list before the worker seals the existing operation-bound response.
+
+On macOS ARM64, the production Rust worker and Rust Core in PGlite mode
+returned 22 project commands across all six manifest types and one command
+from a terminal's protected relative directory. Both decrypted lists
+matched the archived Node scanner, and opening the responses with a
+different operation ID failed. Two focused Rust tests covered manifest
+discovery, the Windows Gradle wrapper, and internal and external links.
+Regenerating the Rust contract preserved the previous project insights
+schema nodes.

@@ -59,7 +59,7 @@ pub(super) fn prepare_console(input: &Value, service: &Service) -> Result<Value>
     )
 }
 
-pub(super) fn open_host(input: &Value, service: &Service) -> Result<Configuration> {
+pub(crate) fn open_host(input: &Value, service: &Service) -> Result<Configuration> {
     let state = open_state(input, service)?;
     let Some(root) = input["worktreePath"].as_js_string() else {
         bail!(
