@@ -1,4 +1,4 @@
-//! Host desktop capture and input on the authenticated surface transports.
+//! Host and assigned Linux desktop capture on the authenticated surface transports.
 mod input;
 
 use super::{Callback, Endpoint, FrameSource, Route, Shared, Work, accepted, id};
@@ -36,6 +36,7 @@ struct Session<'a> {
     owner: JsString,
     server: Value,
     project: Value,
+    guest: Option<GuestSource>,
     desktop: Target,
     attachments: HashMap<JsString, Attachment>,
     fps: u32,
@@ -77,6 +78,52 @@ struct Target {
     value: Value,
 }
 
+#[derive(Clone)]
+struct GuestSource {
+    source: Value,
+    execution: Value,
+    generation: String,
+}
+
+impl GuestSource {
+    fn from_attachment(
+        command: &Value,
+        owner: &JsString,
+        worker: &JsString,
+    ) -> Result<Option<Self>> {
+        let source = &command["configuration"]["osSource"];
+        let execution = &command["osExecution"];
+        if source.is_null() {
+            ensure!(execution.is_null(), "Invalid Host desktop source.");
+            return Ok(None);
+        }
+        let scope = &execution["scope"];
+        ensure!(
+            scope["ownerId"].as_js_string() == Some(owner)
+                && scope["workerId"].as_js_string() == Some(worker)
+                && scope["projectId"] == command["projectId"]
+                && [
+                    "bindingId",
+                    "worktreeId",
+                    "bindingGeneration",
+                    "attachmentGeneration",
+                    "runtimeGeneration"
+                ]
+                .iter()
+                .all(|field| scope[*field] == source[*field]),
+            "Linux desktop execution belongs to another owner, project or Worker."
+        );
+        let generation = source["desktopGeneration"]
+            .as_str()
+            .context("This Linux desktop has no captured generation. Open a new view.")?;
+        Ok(Some(Self {
+            source: source.clone(),
+            execution: execution.clone(),
+            generation: generation.to_owned(),
+        }))
+    }
+}
+
 struct Image {
     jpeg: Vec<u8>,
     width: u32,
@@ -106,9 +153,18 @@ pub(super) async fn run(
             return Ok(());
         }
     };
+    let mut capture = if active.guest.is_some() {
+        match active.open_capture(epoch).await {
+            Ok(capture) => Some(Arc::new(capture)),
+            Err(error) => {
+                let _ = done.send(Err(error));
+                return Ok(());
+            }
+        }
+    } else {
+        None
+    };
     let _ = done.send(Ok(attached()));
-
-    let mut capture: Option<Arc<Capture>> = None;
     let mut work: Option<WorkFrame> = None;
     let mut due = Instant::now();
     let mut started = due;
@@ -124,7 +180,8 @@ pub(super) async fn run(
                 match command {
                     None => break,
                     Some(Work::Command { value, epoch, done }) => {
-                        let result = active.command(&value, epoch);
+                        let attaching = value["type"] == "surface.attach";
+                        let mut result = active.command(&value, epoch);
                         if result.as_ref().is_ok_and(|effect| *effect != Effect::Keep) {
                             drop(work.take());
                             if let Some(capture) = capture.take() {
@@ -133,8 +190,20 @@ pub(super) async fn run(
                             losses = 0;
                             due = Instant::now();
                         }
+                        if result.is_ok() && attaching && active.guest.is_some()
+                            && !active.suspended && capture.is_none()
+                        {
+                            drop(work.take());
+                            match active.open_capture(epoch).await {
+                                Ok(opened) => capture = Some(Arc::new(opened)),
+                                Err(error) => {
+                                    active.attachments.remove(id(&value, "attachmentId"));
+                                    result = Err(error);
+                                }
+                            }
+                        }
                         let end = result.as_ref().is_ok_and(|effect| *effect == Effect::Close);
-                        let response = result.map(|_| if value["type"] == "surface.attach" { attached() } else { accepted() });
+                        let response = result.map(|_| if attaching { attached() } else { accepted() });
                         let _ = done.send(response);
                         if end { break; }
                     }
@@ -252,7 +321,14 @@ impl<'a> Session<'a> {
             .encryption
             .bound_component("surface-private-state", None)?;
         let target = private_target(shared, surface, &owner.owner_id, &owner.server_id, incoming)?;
+        let guest =
+            GuestSource::from_attachment(incoming, &owner.owner_id, shared.encryption.worker_id())?;
+        ensure!(
+            guest.is_none() || target.value["kind"] == "monitor",
+            "Linux workspace viewing requires its assigned display."
+        );
         let settings = &incoming["desktopStream"];
+        let default_fps = if guest.is_some() { 15 } else { 30 };
         let mut active = Self {
             shared,
             endpoint,
@@ -260,9 +336,10 @@ impl<'a> Session<'a> {
             owner: owner.owner_id,
             server: owner.server_id,
             project: incoming["projectId"].clone(),
+            guest,
             desktop: target,
             attachments: HashMap::new(),
-            fps: settings["targetFps"].as_u64().unwrap_or(30) as u32,
+            fps: settings["targetFps"].as_u64().unwrap_or(default_fps) as u32,
             tuner: Tuner::new(settings["quality"].as_str()),
             suspended: false,
             status: "launching",
@@ -350,10 +427,24 @@ impl<'a> Session<'a> {
         }
         match kind {
             "surface.attach" | "surface.configure" => {
+                let source = &command["configuration"]["osSource"];
+                ensure!(
+                    self.guest
+                        .as_ref()
+                        .map_or(source.is_null(), |guest| guest.source == *source),
+                    "A Linux desktop viewer cannot be retargeted."
+                );
                 if kind == "surface.attach" {
                     ensure!(
                         command["projectId"] == self.project,
                         "Desktop attachment belongs to another project."
+                    );
+                    let execution = &command["osExecution"];
+                    ensure!(
+                        self.guest
+                            .as_ref()
+                            .map_or(execution.is_null(), |guest| guest.execution == *execution),
+                        "Desktop attachment belongs to another execution context."
                     );
                 }
                 let next = private_target(
@@ -363,6 +454,10 @@ impl<'a> Session<'a> {
                     &self.server,
                     command,
                 )?;
+                ensure!(
+                    self.guest.is_none() || next.value["kind"] == "monitor",
+                    "Linux workspace viewing requires its assigned display."
+                );
                 ensure!(
                     next.revision >= self.desktop.revision
                         && (next.revision != self.desktop.revision || self.desktop == next),
@@ -415,13 +510,7 @@ impl<'a> Session<'a> {
         self.publish(None);
     }
 
-    fn sample(&self, epoch: u64, capture: Option<Arc<Capture>>) -> WorkFrame {
-        let client = self
-            .shared
-            .capture
-            .as_ref()
-            .expect("desktop capture service")
-            .clone();
+    fn open_capture(&self, epoch: u64) -> cantrip_history::projection::Work<Capture> {
         let scope = Scope::new(
             epoch,
             self.owner.clone(),
@@ -429,6 +518,27 @@ impl<'a> Session<'a> {
             self.surface.clone(),
         );
         let target = self.desktop.value.clone();
+        if let Some(guest) = self.guest.clone() {
+            let previews = self.shared.guest_capture.clone();
+            Box::pin(async move {
+                previews
+                    .context("The Linux desktop capture service is unavailable.")?
+                    .open_guest_capture(scope, &guest.execution, guest.generation, target)
+                    .await
+            })
+        } else {
+            let client = self.shared.capture.clone();
+            Box::pin(async move {
+                client
+                    .context("The Host desktop capture service is unavailable.")?
+                    .open(scope, target)
+                    .await
+            })
+        }
+    }
+
+    fn sample(&self, epoch: u64, capture: Option<Arc<Capture>>) -> WorkFrame {
+        let opening = capture.is_none().then(|| self.open_capture(epoch));
         let width = self
             .attachments
             .values()
@@ -443,9 +553,9 @@ impl<'a> Session<'a> {
         let width = (f64::from(width) * self.tuner.scale).round().max(480.0) as u32;
         let quality = self.tuner.quality;
         Box::pin(async move {
-            let capture = match capture {
-                Some(capture) => capture,
-                None => Arc::new(client.open(scope, target).await?),
+            let capture = match opening {
+                Some(opening) => Arc::new(opening.await?),
+                None => capture.expect("retained desktop capture"),
             };
             let frame = capture.frame().await?;
             let permit = ENCODERS.acquire().await?;
@@ -555,7 +665,11 @@ impl<'a> Session<'a> {
             self.input_state(
                 Some(attachment),
                 None,
-                Some("Select a window for independent input. Display sharing is view-only."),
+                Some(if self.guest.is_some() {
+                    "The assigned Linux display is available for viewing."
+                } else {
+                    "Select a window for independent input. Display sharing is view-only."
+                }),
             );
             return;
         }
@@ -815,11 +929,8 @@ fn private_target(
     command: &Value,
 ) -> Result<Target> {
     ensure!(
-        command["configuration"]["kind"] == "desktop"
-            && command["configuration"]["osSource"].is_null()
-            && command["osExecution"].is_null()
-            && command["serverId"] == *server,
-        "Invalid Host desktop source or authority."
+        command["configuration"]["kind"] == "desktop" && command["serverId"] == *server,
+        "Invalid desktop source or authority."
     );
     let resource = command["stateResource"]
         .as_str()

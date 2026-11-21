@@ -17,7 +17,7 @@ use uuid::Uuid;
 pub(crate) struct Scope {
     pub(super) epoch: u64,
     owner: JsString,
-    server: Value,
+    pub(super) server: Value,
     surface: JsString,
 }
 
@@ -31,7 +31,7 @@ impl Scope {
         }
     }
 
-    fn authorize(&self, encryption: &Service, outgoing: &Outbound) -> Result<()> {
+    pub(super) fn authorize(&self, encryption: &Service, outgoing: &Outbound) -> Result<()> {
         let bound = encryption.bound_component("surface-private-state", None)?;
         ensure!(
             bound.owner_id == self.owner
@@ -345,7 +345,7 @@ impl Operation {
     pub(super) async fn execute(
         self,
         current: &mut Option<Helper>,
-        binary: &Path,
+        binary: Option<&Path>,
         encryption: &Service,
         outgoing: &Outbound,
     ) -> Result<()> {
@@ -438,12 +438,17 @@ impl std::error::Error for Unavailable {}
 
 async fn open(
     current: &mut Option<Helper>,
-    binary: &Path,
+    binary: Option<&Path>,
     encryption: &Service,
     scope: Scope,
     requested: Value,
 ) -> Result<Key> {
-    let helper = helper(current, binary).await?;
+    let helper = match binary {
+        Some(binary) => helper(current, binary).await?,
+        None => current.as_mut().ok_or(Unavailable(
+            "The captured Linux desktop connection retired.",
+        ))?,
+    };
     let (targets, _) = read_targets(&mut helper.process).await?;
     let selected = select(&targets, &requested)?;
     let target_id = target_id(selected)?;

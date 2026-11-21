@@ -70,6 +70,7 @@ struct Shared {
     logs: Arc<Logs>,
     profiles: profile::Profiles,
     capture: Option<crate::desktop_inventory::Captures>,
+    guest_capture: Option<crate::desktop_inventory::preview::Previews>,
 }
 
 type Callback = oneshot::Sender<Result<Value>>;
@@ -130,13 +131,19 @@ impl Manager {
                 logs,
                 profiles: profile::Profiles::new(data_directory, environment),
                 capture: None,
+                guest_capture: None,
             }),
             stop: watch::channel(false).0,
         }
     }
 
-    pub(crate) fn with_capture(mut self, capture: crate::desktop_inventory::Captures) -> Self {
-        Arc::get_mut(&mut self.shared).unwrap().capture = Some(capture);
+    pub(crate) fn with_capture(
+        mut self,
+        desktop: &crate::desktop_inventory::DesktopInventory,
+    ) -> Self {
+        let shared = Arc::get_mut(&mut self.shared).unwrap();
+        shared.capture = Some(desktop.captures());
+        shared.guest_capture = Some(desktop.previews());
         self
     }
 

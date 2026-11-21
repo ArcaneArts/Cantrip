@@ -257,7 +257,7 @@ async fn cycle(
             outgoing.clone(),
             logs.clone(),
         )
-        .with_capture(desktop_inventory.captures()),
+        .with_capture(&desktop_inventory),
     );
     let shares = Arc::new(crate::project_shares::Manager::new(
         encryption.clone(),

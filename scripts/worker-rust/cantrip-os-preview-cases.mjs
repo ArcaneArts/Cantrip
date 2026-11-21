@@ -8,6 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
   decryptEndpointContentPayload,
+  decryptRemoteSurfaceStreamPayload,
   encryptEndpointContentPayload,
   encryptRepositoryOperationPayload,
   encryptSurfacePrivateState,
@@ -16,6 +17,7 @@ import {
 } from "../../packages/crypto/dist/index.js";
 import { cantripOsDesktopPlacement } from "../../packages/protocol/dist/index.js";
 import { createPreparedProject } from "./console-interaction-cases.mjs";
+import { RemoteSurfaceWorkerLink } from "./remote-surface-worker-link-client.mjs";
 
 const run = promisify(execFile);
 async function docker(...args) {
@@ -161,6 +163,7 @@ export async function startManagedGuestDesktop(image) {
         worktreeId: binding.worktreeId,
         attachmentGeneration: instance.attachmentGeneration,
         runtimeGeneration: instance.runtimeGeneration,
+        instanceId: instance.id,
         workspaceId: workspace.id,
         guestWorkspaceId,
       };
@@ -179,6 +182,7 @@ export async function verifyManagedGuestDesktopPreparation({
   labelKey,
   repositoryKey,
   surfaceKey,
+  origin,
 }) {
   const { projectId, projectUrl, label } = await createPreparedProject({
     call,
@@ -253,6 +257,104 @@ export async function verifyManagedGuestDesktopPreparation({
     undefined,
   );
 
+  if (origin) {
+    const connect = async (surfaceId) => {
+      let frame;
+      const link = await RemoteSurfaceWorkerLink.connect({
+        origin,
+        call,
+        workerId,
+        surfaceId,
+        viewport: { width: 640, height: 480, devicePixelRatio: 1 },
+        route: "relay",
+        resourceKind: "remote-desktop",
+        onFrame(value) {
+          if (value.header.channel === "frame") frame = value;
+        },
+      });
+      return {
+        close: () => link.close(),
+        async read() {
+          frame = undefined;
+          const { header, payload } = await eventually(
+            () => frame,
+            (value) => assert.ok(value, "The attached display streams frames"),
+          );
+          assert.equal(header.surfaceId, surfaceId);
+          assert.equal(header.attachmentId, link.attachment);
+          const jpeg = await decryptRemoteSurfaceStreamPayload({
+            ownerId,
+            componentKey: surfaceKey,
+            keyRevision,
+            context: {
+              serverId: server.id,
+              surfaceKind: "desktop",
+              surfaceId,
+              attachmentId: link.attachment,
+              channel: "frame",
+              direction: "worker-to-client",
+              sequence: header.sequence,
+            },
+            protectedPayload: payload,
+          });
+          assert.deepEqual([...jpeg.subarray(0, 3)], [255, 216, 255]);
+        },
+      };
+    };
+    const viewers = [];
+    try {
+      const one = await connect(id);
+      viewers.push(one);
+      const two = await connect(id);
+      viewers.push(two);
+      await Promise.all([one.read(), two.read()]);
+      assert.equal(
+        (await desktop.connections())[placement.guestWorkspaceId]?.running,
+        true,
+      );
+      await one.close();
+      viewers.shift();
+      await two.read();
+    } finally {
+      await Promise.all(viewers.map((viewer) => viewer.close()));
+    }
+    await eventually(
+      () => desktop.connections(),
+      (connections) =>
+        assert.equal(connections[placement.guestWorkspaceId], undefined),
+    );
+    const workspace = `/api/cantrip-os/${placement.instanceId}/workspaces/${placement.workspaceId}`;
+    const { target } = await call("GET", workspace + "/desktop", 200);
+    const stopped = await call("POST", workspace + "/desktop-operations", 200, {
+      operationId: randomUUID(),
+      action: "stop",
+      runtimeGeneration: placement.runtimeGeneration,
+      attachmentGeneration: placement.attachmentGeneration,
+      targetGeneration: target.generation,
+    });
+    assert.equal(stopped.state, "ready");
+    await assert.rejects(
+      () => connect(id),
+      /captured Linux desktop is unavailable/,
+    );
+    assert.equal((await desktop.desktopTarget()).status, "stopped");
+    const replacement = await create(
+      randomUUID(),
+      placement.runtimeGeneration,
+      201,
+    );
+    assert.notEqual(
+      replacement.osSource.desktopGeneration,
+      observed.desktop_generation,
+    );
+    const current = await connect(replacement.id);
+    try {
+      await current.read();
+    } finally {
+      await current.close();
+    }
+  }
+
   await desktop.disableRemote();
   const unavailableId = randomUUID();
   const failure = await create(unavailableId, placement.runtimeGeneration, 502);
@@ -262,7 +364,12 @@ export async function verifyManagedGuestDesktopPreparation({
   );
   await call("GET", `/api/remote-desktops/${unavailableId}`, 404);
   console.log(
-    JSON.stringify({ suite: "native-guest-desktop-preparation", passed: true }),
+    JSON.stringify({
+      suite: origin
+        ? "native-guest-desktop-view"
+        : "native-guest-desktop-preparation",
+      passed: true,
+    }),
   );
 }
 

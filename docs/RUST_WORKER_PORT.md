@@ -9432,3 +9432,25 @@ tests and seven Node/Rust generation verdict comparisons passed.
 
 Guest viewer attachment, streaming, and input still need a Rust implementation.
 The integrated fixture used the Docker transport.
+
+## 273. Stream the assigned Cantrip OS desktop through the Rust worker
+
+Reference commit `86e4ecd14121dd87ec9faea19b83913ffe449f8f` (#3436).
+
+Remote Desktop attachments verify the saved project, worker, OS source, and
+generation against Core's captured execution. The saved monitor target is
+opened through the native guest carrier. The viewer shares the carrier with
+other authorized participants and owns its native capture binding. It reuses
+the Rust desktop session's JPEG encoder, encrypted frames, and attachment
+transport. Guest reconnects require the saved desktop generation. Closing
+the last capture releases the carrier when no other participant owns it.
+
+The public smoke used production Rust Core in PGlite mode, the production
+Rust worker, and an existing Linux X11 Docker image on macOS ARM64. Two
+relay viewers decrypted JPEG frames, detaching one kept the other active,
+and detaching the last retired the carrier. Stopping the guest display
+rejected the old view without starting a new desktop. Explicitly creating
+a replacement captured a fresh generation and streamed successfully.
+Repeat with `standalone-turn-smoke.mjs --os-desktop-view --guest-image`.
+
+Guest viewer control, keyboard, pointer, and clipboard input remain open.
