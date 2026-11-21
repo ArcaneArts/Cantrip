@@ -25,11 +25,19 @@ enum ServerRuntime {
 }
 
 pub fn worker_command(directory: &Path) -> Command {
-    let mut command = Command::new(directory.join("bin").join(if cfg!(windows) {
+    native_worker_command(&directory.join("bin").join(worker_binary_name()), directory)
+}
+
+pub(crate) fn worker_binary_name() -> &'static str {
+    if cfg!(windows) {
         "cantrip-worker.exe"
     } else {
         "cantrip-worker"
-    }));
+    }
+}
+
+pub(crate) fn native_worker_command(executable: &Path, directory: &Path) -> Command {
+    let mut command = Command::new(executable);
     command
         .current_dir(directory)
         .arg("--shutdown-on-stdin-close")

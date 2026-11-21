@@ -14,7 +14,11 @@ use tauri::{App, AppHandle, Manager, State};
 use url::{Host, Url};
 use uuid::Uuid;
 
-use crate::{process_environment::configure_desktop_child, terminate_child, worker_command};
+use crate::{
+    desktop_services::{native_worker_command, worker_binary_name, worker_command},
+    process_environment::configure_desktop_child,
+    terminate_child,
+};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,8 +62,26 @@ pub struct DesktopWorkerCandidate {
 }
 
 enum WorkerLaunch {
-    Development { repository: PathBuf, tsx: PathBuf },
-    Packaged { directory: PathBuf },
+    Development {
+        binary: PathBuf,
+        repository: PathBuf,
+    },
+    Packaged {
+        directory: PathBuf,
+    },
+}
+
+impl WorkerLaunch {
+    fn command(&self) -> Command {
+        let mut command = match self {
+            Self::Development { binary, repository } => native_worker_command(binary, repository),
+            Self::Packaged { directory } => worker_command(directory),
+        };
+        // Linking supplies an explicit enrollment or retained credentials.
+        // A local .env must not restore development bootstrap settings.
+        command.arg("--no-env-file");
+        command
+    }
 }
 
 pub struct DesktopWorkers {
@@ -484,16 +506,7 @@ impl DesktopWorkers {
         enrollment_code: Option<&str>,
         replacement: Option<&StoredWorkerCredentialIdentity>,
     ) -> Result<Child, String> {
-        let mut command = match &self.launch {
-            WorkerLaunch::Development { repository, tsx } => {
-                let mut command = Command::new(tsx);
-                command
-                    .arg(repository.join("cantrip_worker/src/index.ts"))
-                    .current_dir(repository);
-                command
-            }
-            WorkerLaunch::Packaged { directory } => worker_command(directory),
-        };
+        let mut command = self.launch.command();
         configure_desktop_child(&mut command);
         command
             .env("CANTRIP_SERVER_URL", &profile.server_url)
@@ -777,11 +790,9 @@ pub fn build(app: &App, active_local_server_url: &str) -> Result<DesktopWorkers,
             .ok_or_else(|| "Could not resolve the Cantrip repository root.".to_string())?
             .to_path_buf();
         WorkerLaunch::Development {
-            tsx: repository.join(if cfg!(windows) {
-                "node_modules/.bin/tsx.cmd"
-            } else {
-                "node_modules/.bin/tsx"
-            }),
+            binary: std::env::var_os("CANTRIP_DEV_WORKER_BIN")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(worker_binary_name())),
             repository,
         }
     } else {
@@ -1092,12 +1103,45 @@ mod tests {
             data_directory: root.join("profiles"),
             launch: WorkerLaunch::Development {
                 repository: root.to_path_buf(),
-                tsx: root.join("tsx"),
+                binary: root.join(crate::desktop_services::worker_binary_name()),
             },
             logs_directory: root.join("logs"),
             profiles: Mutex::new(Vec::new()),
             retained_profile_directories: HashMap::new(),
             profiles_path: root.join("desktop-workers.json"),
+        }
+    }
+
+    #[test]
+    fn linked_worker_launches_use_the_native_executable_and_own_stdin() {
+        let repository = Path::new("development workspace");
+        let binary_name = crate::desktop_services::worker_binary_name();
+        let development_binary = repository.join("cargo output").join(binary_name);
+        let packaged_directory = Path::new("packaged worker");
+        let packaged_binary = packaged_directory.join("bin").join(binary_name);
+        for (launch, binary, working_directory) in [
+            (
+                WorkerLaunch::Development {
+                    binary: development_binary.clone(),
+                    repository: repository.to_path_buf(),
+                },
+                development_binary,
+                repository,
+            ),
+            (
+                WorkerLaunch::Packaged {
+                    directory: packaged_directory.to_path_buf(),
+                },
+                packaged_binary,
+                packaged_directory,
+            ),
+        ] {
+            let command = launch.command();
+            assert_eq!(command.get_program(), binary.as_os_str());
+            assert_eq!(command.get_current_dir(), Some(working_directory));
+            assert!(command
+                .get_args()
+                .eq(["--shutdown-on-stdin-close", "--no-env-file"]));
         }
     }
 

@@ -20,7 +20,9 @@ import {
   parseDevtopProfileArguments,
 } from "./devtop-tauri-config.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
+import { cantripCliBinaryPath } from "./cantrip-cli/build.mjs";
 import { developmentWorkerEnvironment } from "./cantrip-cua/development-launch.mjs";
+import { buildRustWorker } from "./worker-rust/cargo.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -59,6 +61,7 @@ const stateFile = path.join(
 let activeChild = null;
 let shuttingDown = false;
 let state;
+const workerBuild = new AbortController();
 
 function hardStopActiveChild() {
   if (activeChild?.pid) {
@@ -71,6 +74,7 @@ function handleSignal(signal) {
     return;
   }
   shuttingDown = true;
+  workerBuild.abort();
   hardStopActiveChild();
   void clearOwnedDevtopState(stateFile, state).finally(() => {
     process.exit(signal === "SIGINT" ? 130 : 143);
@@ -146,6 +150,10 @@ try {
   if (exitCode !== 0 || shuttingDown) {
     process.exitCode = exitCode;
   } else {
+    process.env.CANTRIP_DEV_WORKER_BIN ??= await buildRustWorker({
+      signal: workerBuild.signal,
+    });
+    process.env.CANTRIP_CLI_BIN ??= cantripCliBinaryPath(repositoryRoot);
     exitCode = await runStage(process.execPath, [
       path.join(repositoryRoot, "scripts", "prepare-dev-logs.mjs"),
       stateDirectory,
