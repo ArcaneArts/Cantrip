@@ -11,6 +11,78 @@ import { verifyLegacyDirectTerminal } from "./terminal-direct-smoke.mjs";
 import { attachTerminal } from "./terminal-relay-client.mjs";
 import { attachWorkerLinkTerminal } from "./worker-link-terminal-client.mjs";
 
+async function verifyNormalReflow(view, reattach, eventually, checkout) {
+  const { Terminal } = createRequire(
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
+  )("@xterm/headless");
+  const token = randomUUID();
+  const line = "abc".repeat(47) + "界" + "e\u0301".repeat(12);
+  const cleared = "\x1b[H\x1b[2J";
+  const ready = "reflow-ready-" + token;
+  await view.input(
+    `/bin/stty -echo; printf '\\033[H\\033[2J\\033[31m%s\\033[m\\n%s%s\\n' '${line}' reflow-ready- '${token}'; for step in narrow wide; do IFS= read -r line; /bin/stty size > "native-reflow-$step"; done; IFS= read -r line; /bin/stty echo\r`,
+  );
+  const raw = await view.read(new RegExp(ready + "\\r?\\n"));
+  const start = raw.lastIndexOf(cleared);
+  assert.notEqual(start, -1);
+  const reference = new Terminal({
+    cols: 113,
+    rows: 43,
+    allowProposedApi: true,
+  });
+  const write = (term, output) =>
+    new Promise((resolve) => term.write(output, resolve));
+  const viewport = (term) => {
+    const buffer = term.buffer.active;
+    return Array.from({ length: term.rows }, (_, row) => {
+      const line = buffer.getLine(buffer.baseY + row);
+      return [line.translateToString(true), line.isWrapped];
+    });
+  };
+  try {
+    await write(reference, raw.slice(start));
+    for (const [phase, cols] of [
+      ["narrow", 24],
+      ["wide", 113],
+    ]) {
+      view.relay.send({ type: "resize", cols, rows: 43 });
+      await view.input("\r");
+      await eventually(
+        () =>
+          readFile(path.join(checkout, "native-reflow-" + phase), "utf8").catch(
+            () => "",
+          ),
+        (value) => assert.equal(value.trim(), "43 " + cols),
+        "actual PTY dimensions during reflow",
+      );
+      reference.resize(cols, 43);
+      const attached = await reattach();
+      const replay = new Terminal({ cols, rows: 43, allowProposedApi: true });
+      try {
+        await write(replay, attached.replay);
+        assert.ok(viewport(reference).some(([text]) => text.includes("界")));
+        assert.deepEqual(viewport(replay), viewport(reference));
+        assert.equal(
+          replay.buffer.active.cursorY,
+          reference.buffer.active.cursorY,
+        );
+        assert.equal(
+          replay.buffer.active.cursorX,
+          reference.buffer.active.cursorX,
+        );
+        const first = replay.buffer.active.getLine(replay.buffer.active.baseY);
+        assert.equal(first.getCell(0).getFgColor(), 1);
+      } finally {
+        replay.dispose();
+        await attached.close();
+      }
+    }
+    await view.input("\r");
+  } finally {
+    reference.dispose();
+  }
+}
+
 async function verifyAlternateReplay(view, reattach, eventually, checkout) {
   const { Terminal } = createRequire(
     new URL("../../tests/reference-node-worker/package.json", import.meta.url),
@@ -297,6 +369,7 @@ export async function verifyHostTerminal({
     assert.equal(linkExit.hydration.rows, 43);
     assert.equal(linkExit.hydration.cols, 113);
     assert.equal(linkExit.hydration.snapshotCharacters, linkExit.replay.length);
+    await verifyNormalReflow(linkExit, attachWorkerLink, eventually, checkout);
     await verifyAlternateReplay(
       linkExit,
       attachWorkerLink,

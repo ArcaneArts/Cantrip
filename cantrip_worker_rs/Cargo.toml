@@ -67,7 +67,7 @@ codex-utils-pty = { package = "cantrip-pty", path = "../crates/cantrip-pty" }
 tempfile = "3"
 toml = { version = "1.2", features = ["preserve_order"] }
 notify = "=8.2.0"
-vt100 = "=0.16.2"
+vt100 = { version = "=0.16.2", path = "third-party/vt100" }
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "client", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
