@@ -54,6 +54,28 @@ pub(crate) const BROWSER_TOOLS: [(&str, &str); 2] = [
     ("browser.services", "browser_services"),
     ("browser.open", "browser_navigate"),
 ];
+pub(crate) const RUN_READ_TOOLS: [(&str, &str); 5] = [
+    ("run-configuration.list", "run_configuration_list"),
+    ("run-configuration.get", "run_configuration_get"),
+    ("run-configuration.detect", "run_configuration_detect"),
+    ("run-configuration.status", "run_configuration_status"),
+    (
+        "run-configuration.read-output",
+        "run_configuration_read_output",
+    ),
+];
+pub(crate) const RUN_WRITE_TOOLS: [(&str, &str); 7] = [
+    ("run-configuration.create", "run_configuration_create"),
+    ("run-configuration.update", "run_configuration_update"),
+    ("run-configuration.delete", "run_configuration_delete"),
+    ("run-configuration.start", "run_configuration_start"),
+    ("run-configuration.restart", "run_configuration_restart"),
+    ("run-configuration.stop", "run_configuration_stop"),
+    (
+        "run-configuration.secret-set",
+        "run_configuration_secret_set",
+    ),
+];
 pub(crate) const ALERT_TOOLS: [(&str, &str); 2] = [
     ("alert.raise", "alert_raise"),
     ("alert.resolve", "alert_resolve"),
@@ -437,6 +459,19 @@ impl Broker {
                     || (project_encryption
                         && target_inspect
                         && claims["permissionProfileId"] != ":read-only"));
+            (operation, tool, supported)
+        }))
+        .chain(RUN_READ_TOOLS.into_iter().map(|(operation, tool)| {
+            (
+                operation,
+                tool,
+                project_encryption && capabilities.supports(operation),
+            )
+        }))
+        .chain(RUN_WRITE_TOOLS.into_iter().map(|(operation, tool)| {
+            let supported = project_encryption
+                && capabilities.supports(operation)
+                && claims["permissionProfileId"] != ":read-only";
             (operation, tool, supported)
         }))
         .chain(ALERT_TOOLS.into_iter().map(|(operation, tool)| {

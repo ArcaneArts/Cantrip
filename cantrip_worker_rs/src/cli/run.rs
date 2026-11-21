@@ -1,11 +1,7 @@
 //! The CLI can see its authorized Run inputs and output. Core receives envelopes.
 use super::server::Relay;
-use crate::{
-    encryption::Service, http::checked, protected_content::open_endpoint_content,
-    run_runtime::protection,
-};
+use crate::{encryption::Service, http::checked, run_runtime::protection};
 use anyhow::{Context, Result, anyhow};
-use cantrip_crypto::content::encrypt_secret;
 use cantrip_wire::{Value, value::json};
 
 pub(super) async fn logs(
@@ -19,17 +15,7 @@ pub(super) async fn logs(
         "protectedRunConfigurationRuntimeOutputResultSchema",
         &result["data"],
     )?;
-    let server_id = encryption.server_identity()?;
-    let content = open_endpoint_content(
-        encryption,
-        &protection::output(&server_id, &wire, &wire["operationId"]),
-        &wire["protectedOutput"],
-        protection::OUTPUT_SCHEMA,
-    )?;
-    result["data"] = json!({
-        "operationId":wire["operationId"],"projectId":wire["projectId"],"configurationId":wire["configurationId"],
-        "worktreeId":wire["worktreeId"],"generation":wire["generation"],"data":content["data"],"truncated":content["truncated"],
-    });
+    result["data"] = protection::open_output(encryption, &encryption.server_identity()?, &wire)?;
     checked("cantripCliCommandResultSchema", &result)
 }
 
@@ -67,18 +53,8 @@ pub(super) async fn set_secret(
     let grant = encryption
         .bound_component("run-content", None)
         .map_err(|_| anyhow!("Run encryption is unavailable."))?;
-    let protected = encrypt_secret(
-        &grant.component.key,
-        &protection::secret(
-            &grant.owner_id,
-            project,
-            &json!(reference),
-            grant.component.key_revision,
-        ),
-        &secret,
-        protection::SECRET_SCHEMA,
-        Some(protection::SECRET_LIMIT),
-    )?;
+    let protected =
+        protection::protect_secret_value(&grant, project, &json!(reference), &secret["value"])?;
     let args = checked(
         "runConfigurationSecretSetRequestSchema",
         &json!({

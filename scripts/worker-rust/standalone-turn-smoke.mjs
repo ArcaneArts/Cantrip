@@ -78,6 +78,7 @@ const { values } = parseArgs({
     "mcp-explorer": { type: "boolean" },
     "mcp-terminal": { type: "boolean" },
     "mcp-browser": { type: "string" },
+    "mcp-run": { type: "boolean" },
     "mcp-client-controls": { type: "boolean" },
     "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
@@ -143,6 +144,7 @@ const chatKey = key("chat-content");
 const labelKey = key("private-surface-metadata");
 const alertKey = values["mcp-alerts"] ? key("alert-content") : null;
 const taskKey = key("task-content");
+const runKey = values["mcp-run"] ? key("run-content") : null;
 const providerKey = key("provider-credential");
 const cuaConsole = values["cua-console"];
 const guestCua = values["cua-guest"];
@@ -227,6 +229,7 @@ const interactionKey =
   values["mcp-explorer"] ||
   values["mcp-terminal"] ||
   values["mcp-browser"] ||
+  values["mcp-run"] ||
   values["cua-preview"] ||
   cuaAgent
     ? key("interaction-content")
@@ -253,6 +256,7 @@ const consoleStateKey =
   values["mcp-explorer"] ||
   values["mcp-terminal"] ||
   values["mcp-browser"] ||
+  values["mcp-run"] ||
   values["mcp-client-controls"] ||
   values.policies ||
   values.codegraph ||
@@ -405,6 +409,7 @@ async function setupEncryption() {
     ["chat-content", chatKey],
     ["private-surface-metadata", labelKey],
     ["task-content", taskKey],
+    ...(runKey ? [["run-content", runKey]] : []),
     ...(alertKey ? [["alert-content", alertKey]] : []),
     ...(repositoryKey ? [["repository-content", repositoryKey]] : []),
     ["provider-credential", providerKey],
@@ -3555,6 +3560,20 @@ try {
       keyRevision,
       labelKey,
     });
+  } else if (values["mcp-run"]) {
+    const { verifyManagedMcpRun } = await import("./mcp-run-cases.mjs");
+    await verifyManagedMcpRun({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      interactionKey,
+      data,
+    });
   } else if (browserFixture) {
     await browserFixture.verifyManagedMcpBrowser({
       call,
@@ -3748,6 +3767,7 @@ try {
     labelKey.fill(0);
     alertKey?.fill(0);
     taskKey.fill(0);
+    runKey?.fill(0);
     repositoryKey?.fill(0);
     providerKey.fill(0);
     previewKey?.fill(0);
