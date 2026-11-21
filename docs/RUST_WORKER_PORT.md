@@ -9409,3 +9409,26 @@ with a failed follow-up quota read, and the reauthentication-required reply
 when refresh credentials are absent. The fixture made zero live provider
 calls. Fourteen focused Node tests and 2,901 Node/Rust quota and reset contract
 comparisons passed.
+
+## 272. Prepare the assigned Cantrip OS desktop through the Rust worker
+
+Reference commit `2cf8799eb801647adc52c7c29a01898607b15602` (#3435).
+
+The worker admits `surface.desktop.os-prepare` on its authenticated command
+connection and checks the server, owner, project, and worker against the
+captured execution. It opens the assigned guest display and returns its
+generation after observing a monitor through the native helper. Preparation
+shares the workspace carrier with active previews. When no other owner is
+using it, preparation releases that exact carrier before replying.
+
+On macOS ARM64, the public managed desktop create route ran through Rust Core
+in PGlite mode, the production Rust worker, and a real Linux X11 guest from
+the existing local image. The saved row matched the observed desktop
+generation and all placement generations. The fixture rejected a stale
+runtime selection and a disabled guest service. The native inventory and
+preview smoke also verified that preparation preserved two existing preview
+sessions and rejected a different server identity. Four desktop placement
+tests and seven Node/Rust generation verdict comparisons passed.
+
+Guest viewer attachment, streaming, and input still need a Rust implementation.
+The integrated fixture used the Docker transport.
