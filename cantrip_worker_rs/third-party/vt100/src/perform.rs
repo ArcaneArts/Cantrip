@@ -167,6 +167,7 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                     );
                 }
             },
+            Some(b'!') if c == 'p' => self.screen.soft_reset(),
             Some(b'?') => match c {
                 'J' => self
                     .screen

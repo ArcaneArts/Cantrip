@@ -59,7 +59,7 @@ pub(super) async fn spawn(
     let (stop, mut stopping) = watch::channel(false);
     let (finished, done) = watch::channel(false);
     let (resize, mut sizes) = mpsc::channel::<Resize>(64);
-    let state = Arc::new(Mutex::new(Display::new(size)));
+    let state = Arc::new(Mutex::new(Display::new(size, 1)));
     let entry = Entry {
         location,
         stop,

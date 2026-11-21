@@ -24,7 +24,7 @@ pub(super) fn spawn(
     let (finished, done) = watch::channel(false);
     let (resize, sizes) = mpsc::channel(64);
     let (writer, input) = mpsc::channel(64);
-    let state = Arc::new(Mutex::new(Display::new(size)));
+    let state = Arc::new(Mutex::new(Display::new(size, 1)));
     let entry = Entry {
         location,
         stop,

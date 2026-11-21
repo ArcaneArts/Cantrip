@@ -62,7 +62,9 @@ export async function verifyLegacyDirectTerminal({
     });
     if (marker) {
       assert.ok(view.replay.includes(marker));
-      assert.equal(view.hydration.format, "legacy-raw");
+      assert.equal(view.hydration.format, "canonical-xterm");
+      assert.equal(view.hydration.processGeneration, 1);
+      assert.ok(view.hydration.outputBoundary > 0);
     }
     const competing = new TerminalRelayProbe(
       fixture,

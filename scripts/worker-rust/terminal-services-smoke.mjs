@@ -165,7 +165,11 @@ export async function verifyTerminalServices({
         id,
       });
       try {
+        assert.equal(link.hydration.format, "canonical-xterm");
+        assert.equal(link.hydration.processGeneration, 2);
+        assert.ok(link.hydration.outputBoundary > 0);
         assert.ok(link.replay.includes("private-service-" + secondPid));
+        assert.ok(!link.replay.includes("private-service-" + firstPid));
         await link.input("probe\r");
         await link.read(new RegExp("private-service-input-" + secondPid));
       } finally {

@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { constants } from "node:os";
 import path from "node:path";
+import { TerminalHydrationController } from "../../cantrip_app/src/components/terminal/terminal-hydration.ts";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import { verifyLegacyDirectTerminal } from "./terminal-direct-smoke.mjs";
 import { attachTerminal } from "./terminal-relay-client.mjs";
@@ -22,7 +23,7 @@ async function verifyNormalReflow(view, reattach, eventually, checkout) {
   const cleared = "\x1b[H\x1b[2J";
   const ready = "reflow-ready-" + token;
   await view.input(
-    `/bin/stty -echo; printf '\\033[H\\033[2J\\033[3J\\033[31m%s\\033[m\\n' '${line}'; printf '%s\\n' ${filler}; printf '%s%s\\n' reflow-ready- '${token}'; for step in narrow wide; do IFS= read -r line; /bin/stty size > "native-reflow-$step"; done; IFS= read -r line; /bin/stty echo\r`,
+    `/bin/stty -echo; printf '\\033[H\\033[2J\\033[3J'; i=0; while [ "$i" -lt 120 ]; do printf '%088d\\n' "$i"; i=$((i + 1)); done; printf '\\033[31m%s\\033[m\\n' '${line}'; printf '%s\\n' ${filler}; printf '%s%s\\n' reflow-ready- '${token}'; for step in narrow wide; do IFS= read -r line; /bin/stty size > "native-reflow-$step"; done; IFS= read -r line; /bin/stty echo\r`,
   );
   const raw = await view.read(new RegExp(ready + "\\r?\\n"));
   const start = raw.lastIndexOf(cleared);
@@ -75,7 +76,26 @@ async function verifyNormalReflow(view, reattach, eventually, checkout) {
       const attached = await reattach();
       const replay = new Terminal({ cols, rows: 43, allowProposedApi: true });
       try {
-        await write(replay, attached.replay);
+        assert.equal(attached.hydration.format, "canonical-xterm");
+        assert.ok(attached.hydration.snapshotChunks > 1);
+        assert.ok(
+          attached.hydration.outputBoundary > view.hydration.outputBoundary,
+        );
+        assert.equal(
+          attached.hydration.processGeneration,
+          view.hydration.processGeneration,
+        );
+        assert.equal(
+          attached.hydration.scrollbackRows,
+          reference.buffer.normal.baseY,
+        );
+        const controller = new TerminalHydrationController();
+        controller.begin(attached.hydration, replay);
+        for (const part of attached.snapshotParts) {
+          await write(replay, part);
+          controller.consumedOutput();
+        }
+        assert.deepEqual(controller.assertReady(), attached.hydration);
         assert.ok(scrollback(reference).some(([text]) => text.includes("界")));
         assert.deepEqual(scrollback(replay), scrollback(reference));
         assert.equal(
@@ -106,14 +126,14 @@ async function verifyInputModes(view, reattach) {
   await view.input(
     "/bin/stty -echo; printf '\\033[H\\033[2J\\033[3J%s%s' modes-ready- '" +
       token +
-      "'; printf '\\033[2;8r\\033[?6h\\033[3;4Habcde\\033[3;5H\\033[4h\\033[?45;1004;66h\\033[?7l'; IFS= read -r line; printf 'X\\033[4;6HZ\\033[8;1H%s%s' modes-live- '" +
+      "'; printf '\\033[2;8r\\033[?6h\\033[3;4Habcde\\033[3;5H\\033[4h\\033[?45;1004;66h\\033[?7l\\033[?2026h'; IFS= read -r line; printf '\\033[?2026lX\\033[4;6HZ\\033[8;1H%s%s' modes-live- '" +
       token +
       "'; IFS= read -r line; printf '\\033[4l\\033[?6;45;1004;66l\\033[?7h\\033[r%s%s\\n' modes-reset- '" +
       token +
       "'; /bin/stty echo\r",
   );
   const raw = await view.read(
-    new RegExp("modes-ready-" + token + "[\\s\\S]*\\x1b\\[\\?7l"),
+    new RegExp("modes-ready-" + token + "[\\s\\S]*\\x1b\\[\\?2026h"),
   );
   const start = raw.lastIndexOf(cleared);
   assert.notEqual(start, -1);
@@ -145,8 +165,24 @@ async function verifyInputModes(view, reattach) {
     assert.equal(live.modes.originMode, true);
     // Retained viewers may still have modes from an earlier attachment.
     await write(replay, "\x1b[3;5r\x1b[?6h\x1b[4h\x1b[?7l\x1b[?1003;1006h");
-    await write(replay, attached.replay);
-    assert.deepEqual(replay.modes, live.modes);
+    const controller = new TerminalHydrationController();
+    controller.begin(attached.hydration, replay);
+    for (const part of attached.snapshotParts) {
+      await write(replay, part);
+      controller.consumedOutput();
+    }
+    assert.deepEqual(controller.assertReady(), attached.hydration);
+    assert.equal(attached.hydration.activeBuffer, "normal");
+    assert.deepEqual(attached.hydration.cursor, {
+      x: live.buffer.active.cursorX,
+      y: live.buffer.active.cursorY,
+    });
+    assert.equal(live.modes.synchronizedOutputMode, true);
+    assert.deepEqual(attached.hydration.modes, live.modes);
+    assert.deepEqual(replay.modes, {
+      ...live.modes,
+      synchronizedOutputMode: false,
+    });
     assert.deepEqual(viewport(replay), viewport(live));
 
     await attached.input("\r");
@@ -197,7 +233,12 @@ async function verifyAlternateReplay(view, reattach, eventually, checkout) {
   try {
     assert.equal(attached.hydration.snapshotCharacters, attached.replay.length);
     await write(attached.replay);
+    assert.equal(attached.hydration.activeBuffer, "alternate");
     assert.equal(term.buffer.active.type, "alternate");
+    assert.deepEqual(attached.hydration.cursor, {
+      x: term.buffer.active.cursorX,
+      y: term.buffer.active.cursorY,
+    });
     assert.equal(
       term.buffer.active.getLine(0).translateToString(true),
       alternate,
@@ -449,7 +490,9 @@ export async function verifyHostTerminal({
     );
     const linkExit = await attachWorkerLink();
     assert.ok(linkExit.replay.includes(marker));
-    assert.equal(linkExit.hydration.format, "legacy-raw");
+    assert.equal(linkExit.hydration.format, "canonical-xterm");
+    assert.equal(linkExit.hydration.processGeneration, 1);
+    assert.ok(linkExit.hydration.outputBoundary > 0);
     assert.equal(linkExit.hydration.rows, 43);
     assert.equal(linkExit.hydration.cols, 113);
     assert.equal(linkExit.hydration.snapshotCharacters, linkExit.replay.length);
