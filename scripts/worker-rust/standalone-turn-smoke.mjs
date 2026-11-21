@@ -73,6 +73,7 @@ const { values } = parseArgs({
     "mcp-discovery": { type: "boolean" },
     "mcp-tasks": { type: "boolean" },
     "mcp-chats": { type: "boolean" },
+    "mcp-alerts": { type: "boolean" },
     "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
@@ -135,6 +136,7 @@ const key = (component) =>
   });
 const chatKey = key("chat-content");
 const labelKey = key("private-surface-metadata");
+const alertKey = values["mcp-alerts"] ? key("alert-content") : null;
 const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const cuaConsole = values["cua-console"];
@@ -237,6 +239,7 @@ const consoleStateKey =
   values["permission-profiles"] ||
   values["mcp-tasks"] ||
   values["mcp-chats"] ||
+  values["mcp-alerts"] ||
   values.policies ||
   values.codegraph ||
   consoleInteractions ||
@@ -388,6 +391,7 @@ async function setupEncryption() {
     ["chat-content", chatKey],
     ["private-surface-metadata", labelKey],
     ["task-content", taskKey],
+    ...(alertKey ? [["alert-content", alertKey]] : []),
     ...(repositoryKey ? [["repository-content", repositoryKey]] : []),
     ["provider-credential", providerKey],
     ...(previewKey ? [["client-control-content", previewKey]] : []),
@@ -3501,6 +3505,20 @@ try {
       openMessage,
       serverDiagnostics: () => server.diagnostics(),
     });
+  } else if (values["mcp-alerts"]) {
+    const { verifyManagedMcpAlerts } = await import("./mcp-alert-cases.mjs");
+    await verifyManagedMcpAlerts({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      alertKey,
+      serverDiagnostics: () => server.diagnostics(),
+    });
   } else if (values.codegraph) {
     await verifyManagedCodeGraph(data);
   } else if (values.cli || values.bundled) {
@@ -3628,6 +3646,7 @@ try {
   } finally {
     chatKey.fill(0);
     labelKey.fill(0);
+    alertKey?.fill(0);
     taskKey.fill(0);
     repositoryKey?.fill(0);
     providerKey.fill(0);

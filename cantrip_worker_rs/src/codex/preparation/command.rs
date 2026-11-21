@@ -719,6 +719,11 @@ impl Ensurer {
                             if !standalone {
                                 operations.extend(["policy.list", "policy.read"]);
                                 operations.extend(
+                                    crate::mcp::bindings::ALERT_TOOLS
+                                        .into_iter()
+                                        .map(|(operation, _)| operation),
+                                );
+                                operations.extend(
                                     crate::mcp::bindings::TASK_TOOLS
                                         .into_iter()
                                         .map(|(operation, _)| operation)
