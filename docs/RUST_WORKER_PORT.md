@@ -10537,3 +10537,30 @@ worker restart. The worker PATH contained no Node executable. Runtime
 validation in this cycle used macOS ARM64.
 
 [Archived Node PTY Unix exit handling](https://github.com/microsoft/node-pty/blob/v1.2.0-beta.15/src/unix/pty.cc#L224-L231)
+
+## 318. Reflow completed terminal lines after resizing
+
+Reference commit `2cf0bc8c24e5beeb3f2988ca51bc7dce6b070839` (#3481).
+
+The worker uses a patched copy of its pinned `vt100` 0.16.2 parser from
+`eb66ffaf7d771c13303ef73b29f6f2a56fdacecf` under the upstream MIT license.
+The parser rewraps completed normal-screen lines and retained history at
+the new width. It preserves cell styles, explicit line breaks, and wide
+characters at wrap boundaries. Like the archived xterm.js configuration,
+it leaves the active cursor line for the application to redraw and
+resizes the alternate screen without reflow. The worker keeps the
+existing encrypted hydration format and history limits.
+
+Two focused parser tests passed for width changes in scrollback, height
+recovery, and wrapping at a one-row viewport. The local macOS ARM64
+production Rust Core and worker smoke compared an actual shell PTY with
+xterm.js through encrypted WorkerLink. It verified a narrower then wider
+reattach with exact visible text, wrap flags, cursor, color, a wide glyph,
+and combining marks. The previous worker failed the same viewport
+comparison. Alternate-screen replay, exit signals, Host relay, and service
+restart and recovery also passed in that run. The hydration encoder still
+writes explicit line breaks between serialized scrollback rows. Broader
+xterm escape-sequence and scrollback hydration parity remains open.
+
+[Pinned Rust terminal parser](https://github.com/doy/vt100-rust/tree/eb66ffaf7d771c13303ef73b29f6f2a56fdacecf)
+[xterm.js 6.0 resize behavior](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/buffer/Buffer.ts)
