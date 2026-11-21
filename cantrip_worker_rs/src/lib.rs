@@ -43,6 +43,7 @@ pub(crate) mod outcomes;
 pub mod platform;
 mod project_exports;
 mod project_shares;
+mod project_stats;
 pub mod protected_content;
 pub mod protected_secrets;
 pub mod provider_access;

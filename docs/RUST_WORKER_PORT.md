@@ -9812,3 +9812,26 @@ observed the subsequent Node write after re-upgrade. It also verified
 actual migration failure and interrupted-export recovery. Twelve release
 workflow tests passed. The WebView and signed installer update paths were
 checked for script syntax in this cycle.
+
+## 289. Return project statistics from the native worker
+
+Reference commit `030693cbb81be82baf379c33597a22e745d910e2` (#3452).
+
+The project statistics route sends `project.repository-stats` or
+`project.folder-stats` to the worker that owns the selected source. Both
+commands now resolve the existing routing handles and return the current
+statistics schema. Git counts all reachable commits and reads the tracked
+index paths. Folder scans keep the reference's directory, entry, file, byte,
+and time bounds. They skip Git metadata and do not follow symbolic links
+outside the selected folder. The runtime owns both Git children and joins
+the scan on shutdown.
+
+The production Rust worker and Rust Core in PGlite mode returned exact file,
+byte, and line counts for a managed project with an opaque source path on
+macOS ARM64. Three focused worker tests exercised a real Git checkout,
+text and binary folder entries, and symbolic-link handling. The managed
+folder integration fixture now checks the public statistics response.
+
+The route audit also identified project and terminal script discovery,
+retained project-file deletion, Host desktop probing, and Cantrip OS
+tunnel preparation as remaining dispatch work.
