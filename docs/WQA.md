@@ -145,7 +145,7 @@ env -u CANTRIP_WORKER_TOKEN -u CANTRIP_WORKER_CREDENTIAL \
   CANTRIP_WORKER_DATA_DIR="$WQA_ROOT/account-worker" \
   CANTRIP_WORKER_NAME="WQA Account Worker" \
   CANTRIP_WORKER_ENROLLMENT_CODE="$WQA_ENROLLMENT_CODE" \
-  pnpm --filter @cantrip/worker dev
+  pnpm worker:dev
 ```
 
 Set `WQA_ENROLLMENT_CODE` privately from the UI, never in committed artifacts.

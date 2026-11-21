@@ -19,7 +19,7 @@ fn main() -> Result<()> {
     #[cfg(target_os = "linux")]
     codex_utils_pty::init_spawn_helper(std::env::args_os());
     let mut stdin = false;
-    let mut env_file = PathBuf::from(".env");
+    let mut env_file = Some(PathBuf::from(".env"));
     for argument in std::env::args().skip(1) {
         match argument.as_str() {
             "--version" => {
@@ -27,15 +27,16 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             "--shutdown-on-stdin-close" => stdin = true,
+            "--no-env-file" => env_file = None,
             "--help" => {
                 println!(
-                    "cantrip-worker [--shutdown-on-stdin-close] [--env-file-if-exists=<path>] [--version]\ncantrip-worker mcp --connection <path>\ncantrip-worker cua-mcp --connection <path>\ncantrip-worker chromium-probe <executable>\nNative worker conversion in progress; see docs/RUST_WORKER_PORT.md for implemented capabilities."
+                    "cantrip-worker [--shutdown-on-stdin-close] [--env-file-if-exists=<path> | --no-env-file] [--version]\ncantrip-worker mcp --connection <path>\ncantrip-worker cua-mcp --connection <path>\ncantrip-worker chromium-probe <executable>"
                 );
                 return Ok(());
             }
             _ => {
                 if let Some(path) = argument.strip_prefix("--env-file-if-exists=") {
-                    env_file = path.into();
+                    env_file = Some(path.into());
                 } else {
                     bail!("Unknown worker argument. Use --help for supported options.");
                 }
@@ -43,8 +44,10 @@ fn main() -> Result<()> {
         }
     }
     // SAFETY: this synchronous entry has not created runtime/archive threads.
-    unsafe {
-        cantrip_config::env_file::load_if_exists(&env_file)?;
+    if let Some(env_file) = env_file {
+        unsafe {
+            cantrip_config::env_file::load_if_exists(&env_file)?;
+        }
     }
     let _ = cantrip_wire::environment::timezone();
     let _ = cantrip_wire::environment::locale();
