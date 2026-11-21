@@ -1285,6 +1285,26 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == crate::replicas::retained::COMMAND {
+                    let replicas = replicas.clone();
+                    let routing = routing.clone();
+                    let runs = runs.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = async {
+                            let command = routing.resolve(&request["command"]).await?;
+                            let target = command["path"].as_js_string().context("Managed repository path")?;
+                            replicas.remove_retained(target, &scope, |path| async move {
+                                runs.stop_canonical_path(&path).await
+                            }).await
+                        }.await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if matches!(kind,"project.replica.provision"|"project.replica.link.repair"|"project.replica.synchronize"|"project.replica.remove") {
                     let replicas=replicas.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {

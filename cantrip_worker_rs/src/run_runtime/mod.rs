@@ -681,6 +681,10 @@ impl Manager {
         let canonical = paths::canonical(path)
             .await
             .unwrap_or_else(|_| path.to_owned());
+        self.stop_canonical_path(&canonical).await
+    }
+
+    pub(crate) async fn stop_canonical_path(&self, canonical: &Path) -> Result<()> {
         for (_, slot) in self.snapshot() {
             let (placement, active) = {
                 let state = slot.shared.lock().unwrap();
@@ -713,13 +717,13 @@ impl Manager {
             }
             self.retire_slot(&slot, |state| {
                 let requested_matches = state.placement == placement
-                    && requested.iter().any(|path| paths::within(&canonical, path));
+                    && requested.iter().any(|path| paths::within(canonical, path));
                 let actual = [state.target.as_deref(), state.source.as_deref()];
                 requested_matches
                     || actual
                         .into_iter()
                         .flatten()
-                        .any(|candidate| paths::within(&canonical, candidate))
+                        .any(|candidate| paths::within(canonical, candidate))
             })
             .await?;
         }

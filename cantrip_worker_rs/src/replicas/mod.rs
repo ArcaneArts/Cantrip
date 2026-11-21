@@ -6,6 +6,7 @@ pub mod placement;
 mod provision;
 mod remove;
 mod repair;
+pub(crate) mod retained;
 mod synchronize;
 mod validation;
 use crate::filesystem::{Scope, paths, storage};
