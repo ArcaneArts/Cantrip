@@ -58,11 +58,6 @@ struct Arguments {
     /// Prepare an existing stopped profile for the native runtime, retaining its original.
     #[arg(long, requires="migrate_only", group="legacy_profile_operation", conflicts_with_all=["restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database","activate_profile","recover_profile_activation","materialize_profile","publish_profile"])]
     upgrade_profile: bool,
-    /// Node executable for the bounded legacy PGlite conversion tool only.
-    #[arg(long, requires = "upgrade_profile")]
-    legacy_node: Option<PathBuf>,
-    #[arg(long, requires = "upgrade_profile")]
-    legacy_profile_converter: Option<PathBuf>,
     /// PostgreSQL 18 tools built for the legacy PGlite storage ABI.
     #[arg(long, requires = "legacy_profile_operation")]
     legacy_postgres_bin_dir: Option<PathBuf>,
@@ -151,13 +146,6 @@ fn main() -> Result<()> {
         return tokio::runtime::Runtime::new()?
             .block_on(cantrip_server::profile::upgrade::run_native_legacy_export());
     }
-    if std::env::args_os().nth(1).as_deref()
-        == Some(std::ffi::OsStr::new("--internal-profile-converter-owner"))
-    {
-        let code = tokio::runtime::Runtime::new()?
-            .block_on(cantrip_server::profile::upgrade::run_converter_owner())?;
-        std::process::exit(code);
-    }
     // The pipe-owned private database process has its own argument parser.
     #[cfg(unix)]
     if std::env::args_os().nth(1).as_deref()
@@ -211,7 +199,13 @@ fn main() -> Result<()> {
             .is_err_and(|error| error.is::<cantrip_server::database::NativePgliteOpenFailure>())
     {
         eprintln!("{}", json!({"event":"profile.upgrade.native-open.failed"}));
-        std::process::exit(78);
+        std::process::exit(cantrip_server::profile::upgrade::LEGACY_POSTGRES_REQUIRED_EXIT);
+    }
+    if let Some(required) = result.as_ref().err().and_then(|error| {
+        error.downcast_ref::<cantrip_server::profile::upgrade::LegacyPostgresRequired>()
+    }) {
+        eprintln!("{required}");
+        std::process::exit(cantrip_server::profile::upgrade::LEGACY_POSTGRES_REQUIRED_EXIT);
     }
     result
 }
@@ -414,8 +408,6 @@ async fn run(
                 environment: &environment,
                 cwd: &cwd,
                 executable: &executable,
-                legacy_node: arguments.legacy_node.as_deref(),
-                legacy_converter: arguments.legacy_profile_converter.as_deref(),
                 legacy_postgres: arguments.legacy_postgres_bin_dir.as_deref(),
             })?;
         println!(

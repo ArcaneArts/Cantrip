@@ -119,8 +119,7 @@ function prepare(binaries) {
     "pglite",
     "--data-dir",
     profile,
-    "--legacy-postgres-bin-dir",
-    path.resolve(binaries),
+    ...(binaries ? ["--legacy-postgres-bin-dir", path.resolve(binaries)] : []),
   ]);
 }
 
@@ -279,6 +278,13 @@ try {
     ["archives", "archives/empty", file].sort(),
   );
   await rename(inside, path.join(root, "legacy export"));
+  assert.deepEqual(await files(profile), original);
+
+  await assert.rejects(prepare(), (error) => {
+    assert.equal(error.code, 78);
+    assert.match(error.stderr, /Supply --legacy-postgres-bin-dir/u);
+    return true;
+  });
   assert.deepEqual(await files(profile), original);
 
   await assert.rejects(prepare(values["stock-postgres"]), (error) => {

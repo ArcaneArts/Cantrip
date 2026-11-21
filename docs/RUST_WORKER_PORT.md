@@ -9627,3 +9627,29 @@ from an owned `.env` fixture. The native worker package assembled from
 the local build and launched with an empty PATH. Twenty-six development
 tests and fifteen release configuration and MCP packaging tests passed.
 Windows and the desktop renderer were outside this cycle's runtime checks.
+
+## 281. Remove the server's Node profile conversion commands
+
+Reference commit `4cf07adbc6c1628ea23197712e58b39ac9856985` (#3444).
+
+The Rust server prepares, exports, restores, and activates legacy profiles
+through the native PostgreSQL compatibility runtime. The CLI reports an
+unavailable compatibility runtime after a real native PGlite open failure.
+Development can use a configured `CANTRIP_LEGACY_POSTGRES_BIN_DIR` or
+build the tools in a temporary directory after that failure. The build
+honors the owning stdin pipe and releases its staging on completion.
+
+On macOS ARM64, the native round trip passed against an actual legacy
+PGlite database with an empty executable search path. It verified missing
+and incompatible tool failures, byte preservation of the original 1,807
+files, 137 tables, and rollback that retained a later native write. The
+real development launcher built its own compatibility tools, upgraded a
+stopped profile, served its HTTP bootstrap, and released temporary
+assets. A controlled subprocess test verified build cancellation and
+staging cleanup. Both Rust profile tests passed, and the staged server's
+migration launcher used only the native CLI with the system search path.
+
+The historical desktop fixture now uses the native conversion commands.
+The local historical Node archive exited at startup due to a missing
+generated protocol module, so the full historical HTTP fixture was not
+run. Windows runtime verification remains separate.
