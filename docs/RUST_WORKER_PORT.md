@@ -10060,3 +10060,36 @@ delivered an encrypted window frame through the existing Core `1.1.3059`
 fixture in PGlite mode with Node absent from the worker PATH.
 
 Native Wayland and Windows Host capture and input remain in scope.
+
+## 299. Capture Windows Host desktops and direct input to selected windows
+
+Reference commit `e2b457c54647196f042897073e5cbb62ab9da779` (#3462).
+
+The Windows worker uses the native capture helper in interactive sessions.
+The helper enumerates displays and application windows with legacy numeric
+public IDs. Window capture renders the selected window's client area without
+sampling the surrounding screen. Window destruction and process identity
+retire stale targets. Viewer pointer, key, and Unicode text are directed to
+the selected window through the shared participant ownership and release
+path. Display sharing is view-only. Applications that ignore posted Windows
+messages may require foreground input.
+
+The helper's Windows packaging build links the C runtime statically.
+The first cross-built runtime probe failed in the Windows 11 guest with
+`0xc0000135`. The helper built through the packaging entry point has no
+dynamic Visual C++ runtime imports. Windows x64 worker and Windows ARM64
+helper checks passed, as did the macOS and headless Linux helper handshakes.
+
+The statically linked helper passed the real framed capture and input fixture
+in a local Windows 11 x64 VM with an empty helper PATH. It captured the
+selected pixels under an overlapping window, delivered pointer, key and
+Unicode text events only to the selected window, released held input on
+close, and rejected capture after that window was destroyed. Foreground
+focus and the OS pointer stayed in place.
+
+The shipped Linux x64 `node-screenshots` addon contains XCap 0.4.1 and
+its GNOME Shell, Screenshot portal, and wlroots monitor capture paths.
+Native Wayland monitor capture, legacy Host display input and clipboard
+behavior, and foreground-dependent Windows applications remain in scope.
+[Archived addon manifest](https://github.com/nashaofu/node-screenshots/blob/v0.2.8/Cargo.toml),
+[XCap Wayland capture source](https://docs.rs/crate/xcap/0.4.1/source/src/linux/wayland_capture.rs).
