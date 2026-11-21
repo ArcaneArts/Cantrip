@@ -1,5 +1,5 @@
 use super::{Display, Entry, Location, Resize};
-use crate::{codex::turn::console, logging::Logs};
+use crate::{codex::turn::console, logging::Logs, terminal_services::ProcessExit};
 use anyhow::{Context, Result};
 use cantrip_wire::{JsString, Value, value::json};
 use codex_utils_pty::{ChildFds, TerminalSize, spawn_pty_process_strict};
@@ -139,13 +139,16 @@ pub(super) async fn spawn(
         if let Some(gateway) = gateway {
             gateway.close().await;
         }
-        let code = exit.or_else(|| child.session.exit_code()).unwrap_or(-1);
-        let result = json!({"status":"exited","exitCode":code,"signal":Value::Null});
+        let status = ProcessExit::observed(&child.session, exit).unwrap_or(ProcessExit {
+            code: -1,
+            signal: None,
+        });
+        let result = status.result();
         state.lock().unwrap().finish(result.clone());
         exited(&result);
         finished.send_replace(true);
         logs.event("info","Terminal process exited",json!({"event":"terminal.process.exited",
-            "subsystem":"terminal","launchType":kind,"terminalId":terminal,"exitCode":code,"status":"exited"}));
+            "subsystem":"terminal","launchType":kind,"terminalId":terminal,"exitCode":status.code,"signal":status.signal,"status":"exited"}));
     };
     Ok((entry, actor))
 }
