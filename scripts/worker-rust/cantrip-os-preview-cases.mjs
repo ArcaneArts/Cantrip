@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import {
   decryptEndpointContentPayload,
   decryptRemoteSurfaceStreamPayload,
+  decryptSurfacePrivateState,
   encryptEndpointContentPayload,
   encryptRepositoryOperationPayload,
   encryptRemoteSurfaceStreamPayload,
@@ -367,6 +368,37 @@ export async function verifyManagedGuestDesktopPreparation({
       const two = await connect(secondSurface.id);
       viewers.push(two);
       await Promise.all([one.read(), two.read()]);
+      for (const [viewer, surfaceId] of [
+        [one, id],
+        [two, secondSurface.id],
+      ]) {
+        const inventory = await viewer.message("desktop-targets", (message) => {
+          assert.deepEqual(
+            [message?.monitorCount, message?.windowCount],
+            [1, 0],
+          );
+        });
+        const opened = await decryptSurfacePrivateState({
+          ownerId,
+          componentKey: surfaceKey,
+          keyRevision,
+          context: {
+            serverId: server.id,
+            resource: "remote-desktop-inventory",
+            resourceId: surfaceId,
+            operationId: inventory.operationId,
+            recordKind: "remote-desktop-inventory",
+          },
+          opaque: inventory.stateProtection,
+        });
+        assert.deepEqual(opened.requested, {
+          kind: "monitor",
+          id: null,
+          name: null,
+        });
+        assert.equal(opened.active.id, opened.monitors[0].id);
+        assert.deepEqual(opened.windows, []);
+      }
       assert.equal(
         (await desktop.connections())[placement.guestWorkspaceId]?.running,
         true,

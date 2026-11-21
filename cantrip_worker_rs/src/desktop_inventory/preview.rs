@@ -182,7 +182,7 @@ impl Previews {
         execution: &Value,
         generation: String,
         target: Value,
-    ) -> Result<super::Capture> {
+    ) -> Result<super::OpenCapture> {
         self.0
             .guests
             .capture(

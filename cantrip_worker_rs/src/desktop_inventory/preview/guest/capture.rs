@@ -4,7 +4,7 @@ use crate::{
     connection::Outbound,
     desktop_inventory::{
         DEADLINE,
-        capture::{Capture, Captures, Operation, Operations, Release, Scope, TakeControl},
+        capture::{Captures, OpenCapture, Operation, Operations, Release, Scope, TakeControl},
     },
     encryption::Service,
     metadata::{Abort, Signal},
@@ -32,7 +32,7 @@ impl Guests {
         connection: CaptureConnection,
         execution: &Value,
         target: Value,
-    ) -> Result<Capture> {
+    ) -> Result<OpenCapture> {
         let (client, operations) = Captures::channel();
         let (take, take_requests) = mpsc::channel(1);
         let (ready, result) = oneshot::channel();

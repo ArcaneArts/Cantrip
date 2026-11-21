@@ -588,8 +588,7 @@ try {
     };
   }
   const inventoryIds = new Set();
-  async function refreshTargets(requested, active) {
-    await input({ type: "refresh-targets" });
+  async function checkTargets(requested, active) {
     await untilFrame(async (channel, bytes) => {
       if (channel !== "control") return false;
       const message = remoteDesktopServerMessageSchema.parse(JSON.parse(bytes));
@@ -614,10 +613,16 @@ try {
       return true;
     });
   }
-  await refreshTargets(selected, {
+  async function refreshTargets(requested, active) {
+    await input({ type: "refresh-targets" });
+    await checkTargets(requested, active);
+  }
+  const activeWindow = {
     ...selected,
     title: inventory.windows[0].title,
-  });
+  };
+  await checkTargets(selected, activeWindow);
+  await refreshTargets(selected, activeWindow);
   async function iconReply() {
     let reply;
     await untilFrame((channel, bytes) => {
@@ -658,6 +663,7 @@ try {
     type: "viewport",
     viewport: { width: 800, height: 600, devicePixelRatio: 1 },
   });
+  await checkTargets(selected, activeWindow);
   await untilFrame((channel, bytes) => {
     if (channel !== "control") return false;
     const message = remoteDesktopServerMessageSchema.parse(JSON.parse(bytes));
@@ -727,6 +733,7 @@ try {
         "error"
     );
   });
+  await checkTargets(missing, null);
   await refreshTargets(missing, null);
 
   if (values["target-launch"]) {
@@ -785,7 +792,7 @@ try {
     true,
   );
   await dimensions(640, 360);
-  await refreshTargets(monitor, {
+  await checkTargets(monitor, {
     ...monitor,
     name: inventory.monitors[0].name,
   });
@@ -929,7 +936,6 @@ try {
       await until(
         (value) => value.type === "desktop-state" && value.status === "ready",
       );
-      await control({ type: "refresh-targets" });
       const targets = await until((value) => value.type === "desktop-targets");
       assert.deepEqual([targets.monitorCount, targets.windowCount], [1, 0]);
       const opened = await decryptSurfacePrivateState(

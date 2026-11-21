@@ -103,7 +103,7 @@ impl Captures {
         self
     }
 
-    pub(crate) async fn open(&self, scope: Scope, target: Value) -> Result<Capture> {
+    pub(crate) async fn open(&self, scope: Scope, target: Value) -> Result<OpenCapture> {
         let (reply, result) = oneshot::channel();
         self.requests
             .send(Operation::Open {
@@ -140,6 +140,11 @@ pub(super) struct Key {
 pub(crate) struct Capture {
     key: Option<Key>,
     client: Captures,
+}
+
+pub(crate) struct OpenCapture {
+    pub(crate) capture: Capture,
+    pub(crate) inventory: Option<Inventory>,
 }
 
 pub(crate) type InputAuthority = Arc<dyn Fn() -> bool + Send + Sync>;
@@ -498,7 +503,7 @@ pub(super) enum Operation {
         scope: Scope,
         target: Value,
         client: Captures,
-        reply: oneshot::Sender<Result<Capture>>,
+        reply: oneshot::Sender<Result<OpenCapture>>,
     },
     Interaction {
         key: Key,
@@ -586,9 +591,12 @@ impl Operation {
                     .await
                     .context("Desktop capture opening timed out.")
                     .and_then(|result| result)
-                    .map(|key| Capture {
-                        key: Some(key),
-                        client,
+                    .map(|(key, inventory)| OpenCapture {
+                        capture: Capture {
+                            key: Some(key),
+                            client,
+                        },
+                        inventory,
                     });
                 let broken = result.as_ref().is_err_and(retire);
                 let _ = reply.send(result);
@@ -681,14 +689,14 @@ async fn open(
     encryption: &Service,
     scope: Scope,
     requested: Value,
-) -> Result<Key> {
+) -> Result<(Key, Option<Inventory>)> {
     let helper = match binary {
         Some(binary) => helper(current, binary).await?,
         None => current.as_mut().ok_or(Unavailable(
             "The captured Linux desktop connection retired.",
         ))?,
     };
-    let (targets, _) = read_targets(&mut helper.process).await?;
+    let (targets, truncated) = read_targets(&mut helper.process).await?;
     let selected = select(&targets, &requested)?;
     let target_id = target_id(selected)?;
     let target_generation = selected["generation"]
@@ -715,14 +723,24 @@ async fn open(
         same_target(selected, target),
         "The desktop capture opened another target."
     );
-    Ok(Key {
-        scope,
-        generation: helper.identity,
-        binding,
-        handle,
-        target: target.clone(),
-        host_monitor_input: helper.process.host_monitor_input(),
-    })
+    // The capture result belongs to the selected target even if an unrelated
+    // inventory entry could not be represented on the viewer wire.
+    let inventory = if binary.is_some() {
+        Inventory::from_targets(&targets, truncated).ok()
+    } else {
+        Inventory::from_target(target).ok()
+    };
+    Ok((
+        Key {
+            scope,
+            generation: helper.identity,
+            binding,
+            handle,
+            target: target.clone(),
+            host_monitor_input: helper.process.host_monitor_input(),
+        },
+        inventory,
+    ))
 }
 
 fn select<'a>(targets: &'a [Value], requested: &Value) -> Result<&'a Value> {
