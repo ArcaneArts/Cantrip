@@ -3,11 +3,63 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import { verifyLegacyDirectTerminal } from "./terminal-direct-smoke.mjs";
 import { attachTerminal } from "./terminal-relay-client.mjs";
 import { attachWorkerLinkTerminal } from "./worker-link-terminal-client.mjs";
+
+async function verifyAlternateReplay(view, reattach, eventually, checkout) {
+  const { Terminal } = createRequire(
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
+  )("@xterm/headless");
+  const token = randomUUID();
+  const normal = "normal-" + token;
+  const alternate = "alternate-" + token;
+  const restored = "restored-" + token;
+  // The prompt cannot redraw either screen until both reads complete.
+  await view.input(
+    `/bin/stty -echo; printf '\\033[H\\033[2J%s%s\\033[3;5H\\033[?1049h\\033[H%s%s' normal- '${token}' alternate- '${token}'; IFS= read -r line; /bin/stty size > native-alternate-size; IFS= read -r line; printf '\\033[?1049l%s%s\\n' restored- '${token}'; /bin/stty echo\r`,
+  );
+  await view.read(new RegExp(alternate));
+  view.relay.send({ type: "resize", cols: 114, rows: 43 });
+  await view.input("\r");
+  await eventually(
+    () =>
+      readFile(path.join(checkout, "native-alternate-size"), "utf8").catch(
+        () => "",
+      ),
+    (value) => assert.equal(value.trim(), "43 114"),
+    "actual PTY resize while the alternate screen is active",
+  );
+
+  const attached = await reattach();
+  const term = new Terminal({ cols: 114, rows: 43, allowProposedApi: true });
+  const write = (data) => new Promise((resolve) => term.write(data, resolve));
+  try {
+    assert.equal(attached.hydration.snapshotCharacters, attached.replay.length);
+    await write(attached.replay);
+    assert.equal(term.buffer.active.type, "alternate");
+    assert.equal(
+      term.buffer.active.getLine(0).translateToString(true),
+      alternate,
+    );
+    await attached.input("\r");
+    const output = await attached.read(new RegExp(restored));
+    await write(output.slice(attached.replay.length));
+    assert.equal(term.buffer.active.type, "normal");
+    const line = (offset) =>
+      term.buffer.active
+        .getLine(term.buffer.active.baseY + offset)
+        .translateToString(true);
+    assert.equal(line(0), normal);
+    assert.equal(line(2), "    " + restored);
+  } finally {
+    term.dispose();
+    await attached.close();
+  }
+}
 
 export async function verifyHostTerminal({
   call,
@@ -146,9 +198,13 @@ export async function verifyHostTerminal({
       (value) => assert.equal(value.trim(), "42 111"),
       "WorkerLink resize reaches the PTY",
     );
-    assert.equal(
-      await readFile(path.join(checkout, "native-link-pid"), "utf8"),
-      pid,
+    await eventually(
+      () =>
+        readFile(path.join(checkout, "native-link-pid"), "utf8").catch(
+          () => "",
+        ),
+      (value) => assert.equal(value, pid),
+      "WorkerLink uses the same shell",
     );
     await link.revoke();
     await link.close();
@@ -240,6 +296,12 @@ export async function verifyHostTerminal({
     assert.equal(linkExit.hydration.rows, 43);
     assert.equal(linkExit.hydration.cols, 113);
     assert.equal(linkExit.hydration.snapshotCharacters, linkExit.replay.length);
+    await verifyAlternateReplay(
+      linkExit,
+      attachWorkerLink,
+      eventually,
+      checkout,
+    );
     await linkExit.input("exit 7\r");
     assert.deepEqual(await linkExit.relay.next(({ type }) => type === "exit"), {
       type: "exit",

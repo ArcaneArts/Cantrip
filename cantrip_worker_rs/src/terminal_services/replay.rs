@@ -67,44 +67,71 @@ impl Replay {
         if !self.resized && !self.truncated {
             return JsString::new(self.raw.clone());
         }
-        let mut bytes = Vec::new();
+        let (rows, cols) = screen.size();
+        let mut history = vt100::Parser::default();
+        *history.screen_mut() = screen.clone();
+        let mut viewport = screen.state_formatted();
         if screen.alternate_screen() {
-            bytes.extend_from_slice(b"\x1b[?1049h");
-        } else {
-            let mut history = screen.clone();
-            history.set_scrollback(SCROLLBACK_ROWS);
-            let (_, cols) = screen.size();
-            let mut lines = Vec::new();
-            let mut length = 0;
-            for offset in 1..=history.scrollback() {
-                history.set_scrollback(offset);
-                let Some(row) = history.rows_formatted(0, cols).next() else {
-                    break;
-                };
-                length += row.len() + 6;
-                // Leave at least half the budget for the current grid and modes.
-                if length > CHAR_LIMIT / 2 {
-                    break;
-                }
-                lines.push(row);
+            // Inspect the inactive screen without disturbing live parser state
+            // or restoring a saved cursor over the normal screen's position.
+            history.process(b"\x1b[?47l");
+            let mut normal = history.screen().contents_formatted();
+            history.process(b"\x1b8");
+            normal.extend(history.screen().attributes_formatted());
+            let enter_alternate = b"\x1b[?1049h";
+            if normal.len() + enter_alternate.len() + viewport.len() > CHAR_LIMIT {
+                // Keep the active display usable if both viewports exceed the
+                // snapshot limit, even after dropping scrollback.
+                normal.clear();
             }
-            for row in lines.into_iter().rev() {
-                bytes.extend_from_slice(b"\x1b[0m");
-                bytes.extend(row);
-                bytes.extend_from_slice(b"\r\n");
-            }
-        }
-        let viewport = screen.state_formatted();
-        if bytes.len() + viewport.len() > CHAR_LIMIT {
-            bytes.clear();
-            if screen.alternate_screen() {
-                bytes.extend_from_slice(b"\x1b[?1049h");
+            let include_history = !normal.is_empty();
+            normal.extend(enter_alternate);
+            normal.extend(viewport);
+            viewport = normal;
+            if !include_history {
+                return self.bounded_snapshot(viewport);
             }
         }
         if viewport.len() > CHAR_LIMIT {
             return JsString::new(self.raw.clone());
         }
+        let padding = usize::from(rows.saturating_sub(1)) * 2;
+        let remaining = (CHAR_LIMIT - viewport.len()).saturating_sub(padding);
+        let history = history.screen_mut();
+        history.set_scrollback(SCROLLBACK_ROWS);
+        let mut lines = Vec::new();
+        let mut length = 0;
+        for offset in 1..=history.scrollback() {
+            history.set_scrollback(offset);
+            let Some(row) = history.rows_formatted(0, cols).next() else {
+                break;
+            };
+            length += row.len() + 6;
+            if length > remaining {
+                break;
+            }
+            lines.push(row);
+        }
+        let mut bytes = Vec::new();
+        if !lines.is_empty() {
+            for row in lines.into_iter().rev() {
+                bytes.extend(b"\x1b[0m");
+                bytes.extend(row);
+                bytes.extend(b"\r\n");
+            }
+            // Move the last history row above the viewport before clearing it.
+            for _ in 1..rows {
+                bytes.extend(b"\r\n");
+            }
+        }
         bytes.extend(viewport);
+        self.bounded_snapshot(bytes)
+    }
+
+    fn bounded_snapshot(&self, bytes: Vec<u8>) -> JsString {
+        if bytes.len() > CHAR_LIMIT {
+            return JsString::new(self.raw.clone());
+        }
         JsString::from(String::from_utf8_lossy(&bytes).as_ref())
     }
 }
@@ -133,5 +160,32 @@ mod tests {
             replay.tail(40).0.as_str(),
             Some("first\r\n\x1b[31mproof\x1b[0m\x1b[?2004h")
         );
+    }
+
+    #[test]
+    fn truncated_alternate_replay_preserves_the_normal_screen_and_scrollback() {
+        let size = TerminalSize { rows: 4, cols: 12 };
+        let mut replay = Replay::new(size);
+        replay.write(
+            "past-1\r\npast-2\r\nnormal-1\r\nnormal-2\r\nnormal-3\r\nnormal-4\x1b[2;5H\x1b[?1049h\x1b[Halternate\x1b[?2004h",
+        );
+        replay.truncated = true;
+        let mut client = vt100::Parser::new(size.rows, size.cols, SCROLLBACK_ROWS);
+        let snapshot = replay.attachment();
+        client.process(snapshot.as_str().unwrap().as_bytes());
+        assert!(client.screen().alternate_screen());
+        assert_eq!(client.screen().contents(), "alternate");
+        assert!(client.screen().bracketed_paste());
+
+        client.process(b"\x1b[?1049l");
+        assert!(!client.screen().alternate_screen());
+        assert_eq!(client.screen().cursor_position(), (1, 4));
+        assert_eq!(
+            client.screen().contents(),
+            "normal-1\nnormal-2\nnormal-3\nnormal-4"
+        );
+        client.screen_mut().set_scrollback(SCROLLBACK_ROWS);
+        assert_eq!(client.screen().scrollback(), 2);
+        assert!(client.screen().contents().starts_with("past-1\npast-2\n"));
     }
 }

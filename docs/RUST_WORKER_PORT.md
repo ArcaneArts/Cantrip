@@ -10494,3 +10494,24 @@ worker delivered the invalidation, and the same fixture completed a
 console-steered turn with the expected durable messages. The separate
 native provider handoff smoke retained the conversation across worker
 restart. The live invalidation case exercises settings on macOS.
+
+## 316. Restore both terminal screens when reattaching after a resize
+
+Reference commit `f4bcfe651cbb1dca5359ab82861837a7b59fd93c` (#3479).
+
+The terminal worker redraws the inactive normal screen and its saved
+cursor before switching into the alternate screen in a replay. It places
+bounded normal scrollback above the viewport before clearing and redrawing
+it. If both viewports exceed the snapshot budget, the active viewport takes
+priority. A complete original-size stream still uses raw replay. The
+snapshot uses the existing terminal hydration format and frame limits.
+
+Two focused Rust tests passed, including a truncated alternate-screen
+replay with a normal cursor and scrollback. The local macOS ARM64 smoke
+used the production Rust worker and Core, a real shell PTY and xterm. The
+previous binary reproduced the missing normal screen after a WorkerLink
+reattach during alternate-screen use. The updated worker passed the same
+case at the new size. Actual PTY output exited the alternate screen and
+continued at the original cursor position. The same run also exercised the
+Host relay and terminal service restart and recovery. Full xterm reflow
+and exact signal exit metadata remain open.
