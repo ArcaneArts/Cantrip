@@ -44,9 +44,9 @@ active only after the DNS records requested by App Platform have propagated.
 
 ## Build matrix
 
-Run service packaging on the target operating system; the packaging script
-rejects cross-target requests. The Worker additionally contains native PTY,
-screen-capture, and image modules.
+Build the Worker on a host matching its target operating system and
+architecture. The Worker includes native PTY, screen-capture, and image
+components.
 
 | Command                        | Output                                                            | Host requirement                                                    |
 | ------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -75,13 +75,13 @@ Desktop client from those exact service trees. Final archives and native
 installers are collected under `artifacts/bundles/<os>-<arch>/`; it does not
 create a GitHub release.
 
-The only GitHub Actions release trigger is a push to `release`; pull requests,
-ordinary `main` pushes, and manual dispatches do not run native packaging. The
-workflow uses Blacksmith's Apple Silicon macOS 15 and Windows Server 2025 x64
-runners for the service and desktop lanes. Server, Worker, Android, and iOS
-jobs start in parallel. Desktop jobs then download the exact native service
-archives, embed them alongside the runner's Node.js runtime, and build a signed
-and notarized macOS DMG or a Windows NSIS installer. Android builds a signed
+The native release workflow runs on pushes to `release`. The workflow uses
+Blacksmith's Apple Silicon macOS 15 and Windows Server 2025 x64 runners for the
+service and desktop lanes. Server, Worker, Android, and iOS jobs start in
+parallel. Desktop jobs extract the native service archives into `artifacts/`
+and stage them with `pnpm package:app --target <target> --from-artifacts`.
+The resulting signed macOS DMG and Windows NSIS installer launch the Rust
+services directly. Node.js runs the build tooling. Android builds a signed
 App Bundle and APK while iOS archives and uploads to TestFlight. A final job
 waits for every lane, creates a GitHub release tagged
 `v<major>.<minor>.<commit-count>`, and uploads the DMG, NSIS executable, Android
