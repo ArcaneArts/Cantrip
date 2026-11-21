@@ -116,6 +116,7 @@ async fn serve_socket(
             socket,
             fault,
             _lifetime,
+            ..
         } = guest;
         return tokio::select! {
             biased;

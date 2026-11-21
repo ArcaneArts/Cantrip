@@ -2,7 +2,7 @@
 // The fixture guest has no host network access.
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -384,6 +384,178 @@ export async function verifyCantripOsVnc(options) {
   }
 }
 
+export async function verifyCantripOsReverse(options) {
+  const { docker, container, actual, eventually } = options;
+  const guest = (...args) =>
+    docker(
+      "exec",
+      "--user",
+      String(actual.uid),
+      container,
+      "python3",
+      "-c",
+      ...args,
+    );
+  const port = Number(
+    await guest(
+      "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()",
+    ),
+  );
+  assert.ok(Number.isInteger(port) && port > 0);
+  const sockets = new Set();
+  let accepted = 0;
+  let halfClosedInput;
+  let hostClosesFirst = false;
+  const host = createServer({ allowHalfOpen: true }, (socket) => {
+    accepted++;
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+    socket.on("error", () => {});
+    const chunks = [];
+    let size = 0;
+    const halfClose = hostClosesFirst;
+    if (halfClose) socket.end("Host sent EOF first\n");
+    socket.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > 2 * 1024 * 1024) socket.destroy();
+      else chunks.push(chunk);
+    });
+    socket.once("end", () => {
+      const input = Buffer.concat(chunks);
+      const digest = createHash("sha256").update(input).digest();
+      if (halfClose) halfClosedInput = digest.toString("hex");
+      else
+        socket.end(
+          Buffer.concat([
+            Buffer.from("Worker host fixture\n"),
+            Buffer.from(input).reverse(),
+            digest,
+          ]),
+        );
+    });
+  });
+  host.listen(0, "127.0.0.1");
+  await once(host, "listening");
+  const destination = {
+    kind: "worker-tcp",
+    host: "127.0.0.1",
+    port: host.address().port,
+  };
+  let active, proof, idle;
+  const heartbeat = {
+    kind: "data",
+    direction: "client-to-worker",
+    payloadFormat: "raw",
+  };
+  try {
+    active = await attachTunnel(options, "reverse", destination, port);
+    const marker = actual.home + "/cantrip-reverse-fixture-" + randomUUID();
+    proof = guest(
+      `
+import hashlib, pathlib, socket, sys, threading
+port, ready = int(sys.argv[1]), pathlib.Path(sys.argv[2]); outcomes = []
+def client(index):
+    payload = bytes(range(256))*4096 + bytes([index])
+    try:
+        with socket.create_connection(('127.0.0.1', port), timeout=15) as c:
+            ready.with_suffix('.'+str(index)).touch()
+            c.sendall(payload); c.shutdown(socket.SHUT_WR)
+            response = b''.join(iter(lambda: c.recv(65536), b''))
+            assert response == b'Worker host fixture\\n' + payload[::-1] + hashlib.sha256(payload).digest()
+        outcomes.append(True)
+    except BaseException as e:
+        outcomes.append(repr(e))
+threads = [threading.Thread(target=client, args=(i,)) for i in range(2)]
+for t in threads: t.start()
+for t in threads: t.join(17)
+assert outcomes == [True, True], outcomes
+print('two clients')
+`,
+      String(port),
+      marker,
+    );
+    void proof.catch(() => {});
+    await eventually(() =>
+      guest(
+        "import pathlib,sys; p=pathlib.Path(sys.argv[1]); assert p.with_suffix('.0').exists() and p.with_suffix('.1').exists()",
+        marker,
+      ),
+    );
+    assert.equal(
+      accepted,
+      0,
+      "Prepared listener has not connected to the Host",
+    );
+    await active.activate();
+    active.connection.wire(heartbeat, Uint8Array.of(0));
+    assert.equal((await active.connection.nextControl("credit")).bytes, 1);
+    assert.equal(await proof, "two clients");
+    assert.equal(accepted, 2);
+    await eventually(() => assert.equal(sockets.size, 0));
+
+    hostClosesFirst = true;
+    const digest = await guest(
+      `
+import hashlib, socket, sys
+with socket.create_connection(('127.0.0.1', int(sys.argv[1])), timeout=15) as c:
+    assert b''.join(iter(lambda: c.recv(65536), b'')) == b'Host sent EOF first\\n'
+    payload = bytes(range(256))*4096 + b'guest tail'
+    c.sendall(payload); c.shutdown(socket.SHUT_WR)
+    print(hashlib.sha256(payload).hexdigest())
+`,
+      String(port),
+    );
+    await eventually(() => assert.equal(halfClosedInput, digest));
+    await eventually(() => assert.equal(sockets.size, 0));
+    hostClosesFirst = false;
+
+    const idleClient = () =>
+      guest(
+        `
+import socket, sys
+with socket.create_connection(('127.0.0.1', int(sys.argv[1])), timeout=15) as c:
+    assert c.recv(1) == b''
+print('closed')
+`,
+        String(port),
+      );
+    const retired = async () => {
+      assert.equal(await idle, "closed");
+      await eventually(() => assert.equal(sockets.size, 0));
+      await eventually(() =>
+        guest(
+          "import socket,sys; s=socket.socket(); s.settimeout(3); assert s.connect_ex(('127.0.0.1',int(sys.argv[1]))) != 0",
+          String(port),
+        ),
+      );
+      active.connection.socket.terminate();
+    };
+    idle = idleClient();
+    void idle.catch(() => {});
+    await eventually(() => assert.equal(sockets.size, 1));
+    active.connection.wire(heartbeat, Uint8Array.of(1));
+    assert.equal(
+      (await active.connection.nextControl("close")).code,
+      "protocol-error",
+    );
+    await retired();
+    await active.revoke();
+
+    active = await attachTunnel(options, "reverse", destination, port);
+    await active.activate();
+    idle = idleClient();
+    void idle.catch(() => {});
+    await eventually(() => assert.equal(sockets.size, 1));
+    await active.revoke();
+    await active.connection.nextControl("close");
+    await retired();
+  } finally {
+    active?.connection.socket.terminate();
+    for (const socket of sockets) socket.destroy();
+    host.close();
+  }
+}
+
 async function relaySsh(socket, { connection, route, configuration }) {
   const stream = connection.stream(route, undefined, 256 * 1024);
   const closed = new Promise((resolve) =>
@@ -436,6 +608,7 @@ async function attachTunnel(
   { origin, call, os, binding, workerId, componentKey },
   service,
   destination,
+  listenPort,
 ) {
   const clientInstanceId = randomUUID();
   const session = await call(
@@ -462,6 +635,7 @@ async function attachTunnel(
     keyRevision: 1,
     key: randomBytes(32).toString("base64url"),
   };
+  const listen = listenPort !== undefined;
   const protectedRecord = {
     operationId: tunnelId,
     revision: 1,
@@ -483,8 +657,12 @@ async function attachTunnel(
         JSON.stringify({
           name: `Guest ${service} fixture`,
           description: null,
-          source: { kind: "desktop-loopback" },
-          destination: { ...destination, workerId, source },
+          source: listen
+            ? { kind: "worker-os-listener", workerId, port: listenPort, source }
+            : { kind: "desktop-loopback" },
+          destination: listen
+            ? { ...destination, workerId }
+            : { ...destination, workerId, source },
           dataProtection: configuration,
         }),
       ),
@@ -497,13 +675,17 @@ async function attachTunnel(
       id: tunnelId,
       projectId: binding.projectId,
       protocolHint: "tcp",
-      source: { kind: "desktop-loopback" },
-      destination: {
-        kind: "worker-adapter",
-        adapter: "cantrip-os",
-        resourceId: tunnelId,
-        workerId,
-      },
+      source: listen
+        ? { kind: "worker-listener", workerId }
+        : { kind: "desktop-loopback" },
+      destination: listen
+        ? { kind: "worker-tcp", workerId }
+        : {
+            kind: "worker-adapter",
+            adapter: "cantrip-os",
+            resourceId: tunnelId,
+            workerId,
+          },
       osSource: source,
       protectedRecord,
     },
@@ -513,7 +695,10 @@ async function attachTunnel(
   const { attachmentId } = await call(
     "POST",
     "/api/tunnels/" + tunnelId + "/attachments",
-    { clientId: clientInstanceId },
+    {
+      clientId: clientInstanceId,
+      ...(listen ? { kind: "worker-listener", expectedRevision: 1 } : {}),
+    },
     201,
   );
   const { grant, route, ssh } = await call(
@@ -522,19 +707,34 @@ async function attachTunnel(
     {},
     201,
   );
-  assert.ok(grant.binding.operations.includes("stream:guest-connect"));
+  assert.ok(
+    grant.binding.operations.includes(
+      listen ? "stream:guest-listen" : "stream:guest-connect",
+    ),
+  );
   const url = new URL(base + "/connect", origin);
   url.protocol = "ws:";
   url.searchParams.set("clientInstanceId", clientInstanceId);
   url.searchParams.set("routeGeneration", String(relay.routeGeneration));
   const connection = new Connection(url, relay);
-  try {
-    await connection.open(grant, 1024 * 1024);
-  } catch (error) {
-    connection.socket.terminate();
-    throw error;
-  }
+  const activate = async () => {
+    try {
+      await connection.open(grant, 1024 * 1024);
+    } catch (error) {
+      connection.socket.terminate();
+      throw error;
+    }
+  };
+  if (!listen) await activate();
   const revoke = () =>
     call("DELETE", "/api/tunnel-attachments/" + attachmentId, undefined, 204);
-  return { connection, configuration, route, protectedRecord, ssh, revoke };
+  return {
+    connection,
+    configuration,
+    route,
+    protectedRecord,
+    ssh,
+    revoke,
+    activate,
+  };
 }

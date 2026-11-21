@@ -2,6 +2,7 @@
 mod direct;
 pub(super) mod guest;
 mod legacy;
+pub(super) mod reverse;
 mod tcp;
 
 pub(super) use super::carrier::Output;
@@ -40,7 +41,12 @@ pub(super) struct Tunnel {
     destination: Value,
     link: Link,
     limit: Arc<Semaphore>,
-    streams: Streams,
+    mode: Mode,
+}
+
+enum Mode {
+    Forward(Streams),
+    Listener { _control: reverse::Control },
 }
 
 struct Streams {
@@ -96,11 +102,17 @@ impl Tunnel {
         let operations = grant["operations"].as_array().unwrap();
         if !operations.contains(&json!("stream:read"))
             || !operations.contains(&json!("stream:write"))
-            || operations.contains(&json!("stream:guest-listen"))
         {
             return Err("resource-unavailable");
         }
-        let guest = if guest::guest_grant(grant) {
+        let channel = id(&header["channel"], "channelId").clone();
+        let token = Uuid::new_v4();
+        let connect = guest::guest_grant(grant);
+        let listen = operations.contains(&json!("stream:guest-listen"));
+        if listen && connect {
+            return Err("resource-unavailable");
+        }
+        let guest = if connect {
             Some(
                 slot.opened()
                     .filter(|preparation| preparation.current(gateway))
@@ -108,6 +120,21 @@ impl Tunnel {
             )
         } else {
             None
+        };
+        let mode = if listen {
+            let (guest, stream, target) = slot.listen(gateway).ok_or("resource-unavailable")?;
+            Mode::Listener {
+                _control: reverse::Control::activate(
+                    gateway,
+                    channel.clone(),
+                    token,
+                    guest,
+                    stream,
+                    target,
+                ),
+            }
+        } else {
+            Mode::Forward(Streams::default())
         };
         Ok(Box::new(Self {
             attachment: attachment.clone(),
@@ -119,13 +146,10 @@ impl Tunnel {
                 logs: gateway.logs.clone(),
                 frame_limit,
                 guest,
-                carrier: Carrier::WorkerLink {
-                    channel: id(&header["channel"], "channelId").clone(),
-                    token: Uuid::new_v4(),
-                },
+                carrier: Carrier::WorkerLink { channel, token },
             },
             limit: gateway.tunnel_streams.clone(),
-            streams: Streams::default(),
+            mode,
         }))
     }
 
@@ -137,10 +161,21 @@ impl Tunnel {
     }
 
     pub fn writable(&self) {
-        self.streams.capacity.send_replace(());
+        if let Mode::Forward(streams) = &self.mode {
+            streams.capacity.send_replace(());
+        }
+    }
+
+    pub fn listening(&self) -> bool {
+        matches!(&self.mode, Mode::Listener { .. })
     }
 
     pub fn receive(&mut self, bytes: &[u8]) -> Result<Inbound, &'static str> {
+        let Mode::Forward(streams) = &mut self.mode else {
+            return (bytes == [0])
+                .then_some(Inbound::Consumed)
+                .ok_or("protocol-error");
+        };
         let frame = wire::decode(bytes.into()).map_err(|_| "protocol-error")?;
         let header = frame.header();
         let protected = &header["target"];
@@ -155,7 +190,7 @@ impl Tunnel {
         {
             return Err("protocol-error");
         }
-        self.streams.receive(frame, &self.link, &self.limit)
+        streams.receive(frame, &self.link, &self.limit)
     }
 }
 
@@ -395,14 +430,18 @@ impl Destination {
     }
 
     fn addresses(&self) -> Vec<SocketAddr> {
-        let v4 = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
-        let v6 = SocketAddr::from((Ipv6Addr::LOCALHOST, self.port));
-        match self.host.as_str() {
-            "127.0.0.1" => vec![v4],
-            "::1" => vec![v6],
-            "localhost" => vec![v6, v4],
-            _ => unreachable!("validated TCP destination host"),
-        }
+        loopback_addresses(&self.host, self.port)
+    }
+}
+
+fn loopback_addresses(host: &str, port: u16) -> Vec<SocketAddr> {
+    let v4 = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let v6 = SocketAddr::from((Ipv6Addr::LOCALHOST, port));
+    match host {
+        "127.0.0.1" => vec![v4],
+        "::1" => vec![v6],
+        "localhost" => vec![v6, v4],
+        _ => unreachable!("validated TCP destination host"),
     }
 }
 

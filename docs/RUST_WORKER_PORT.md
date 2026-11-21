@@ -10019,3 +10019,23 @@ both holds and their release after attachment revocation. A fresh VNC stream
 then opened on the same workspace. TCP and SSH passed in the same run.
 A focused Rust test also covered agent cancellation, exclusive ownership,
 and retained control until a new guest generation is observed.
+
+## 297. Forward Cantrip OS guest reverse listeners
+
+Reference commit `e7959135e2e9ada6ebe184307f309e0555e29654` (#3460).
+
+Core's captured reverse-tunnel grant prepares a guest loopback listener
+and receives the actual bind result. The worker verifies the same guest
+service at WorkerLink activation before accepting and dialing the Host.
+The client control channel accepts the existing raw heartbeat. The guest
+carrier multiplexes TCP using its existing frame format and byte credits.
+Only the loopback target from the protected tunnel record is dialed.
+Channel retirement closes Host sockets and the captured guest listener.
+
+On macOS ARM64, the native Core in PGlite mode and worker passed
+`--guest-reverse --guest-tunnel --guest-ssh --guest-vnc` with a disposable
+Docker guest. The reverse fixture confirmed no Host accept before activation,
+two concurrent bidirectional exchanges over 1 MiB each, and a complete
+guest request after the Host sent EOF first. Invalid control data and Core
+revocation closed actual guest and Host sockets and released the guest port.
+The Host relay, direct, and legacy TCP smoke passed separately.
