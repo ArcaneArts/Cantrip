@@ -51,11 +51,10 @@ covers the current Docker build, enrollment, and volume reuse.
 
 ### Open managed MCP operations
 
-The managed Cantrip MCP attachment still needs the archived Chat, Alert,
-client control, target, worktree, Explorer, terminal, browser, and Run
-tool families. These tools appear in the catalog and have Core routes,
-but the Rust worker must finish admitting them and handling their
-endpoint-side contracts.
+The remaining managed Cantrip MCP work covers Alert, client control,
+target, worktree, Explorer, terminal, browser, and Run tools. Their
+catalog entries and Core routes are in place. The worker still needs
+negotiated admission and endpoint handling for these families.
 
 ### Open platform checks
 
@@ -11212,3 +11211,28 @@ with an empty PATH, and native Codex passed `--mcp-tasks`. The run
 verified encrypted creation, deduplicated IDs, timeout, self-wait
 rejection, actual delegated execution, and completed status and title
 after worker restart. The policy MCP smoke and offline build passed.
+
+## 348. Restore managed MCP Chat tools
+
+Reference commit `03c6e6cd5776991b9b04784124a07e057d04658b` (#3511).
+
+Project Agent Chat attachments advertise list, read, wait, and send using
+the negotiated Core capability and the active permission profile. Read
+opens protected titles and messages locally, gives recent messages
+priority within the existing UTF-16 budget, and deduplicates delivery
+receipts once the corresponding attributed prompt appears. Wait uses the
+existing Core cursor. Send uses the receiving Chat's model configuration
+and the legacy deterministic delivery IDs. It encrypts the queue item and
+both attributed transcript entries before Core commits the delivery.
+
+The baseline worker omitted `chat_list` from actual Codex tool search.
+The local macOS ARM64 Rust worker and Core in PGlite mode passed the native
+Codex fixture with an empty worker PATH. The fixture verified paged Chat
+discovery, protected transcript reads, wait timeout and cursor changes,
+retry of an encrypted send to a paused receiver, and attributed inference
+against the receiver's prepared provider after resume. An earlier
+fixture used the legacy `PATCH /model` endpoint after receiver preparation
+and observed inference on the prior native route. The passing fixture
+selected the receiver's provider before native preparation. The current
+app's provider changes use the native handoff path.
+The Task and policy MCP smokes and offline worker build passed.

@@ -1,7 +1,7 @@
 //! Protected conversation input and the wire forms for observed output.
 use super::{Emit, Signal, protected_mode, receipt};
 use crate::{
-    chat_content::Scope,
+    chat_content::{Scope, runtime_text},
     encryption::Service,
     history::live::identity,
     http::checked,
@@ -394,30 +394,6 @@ pub(super) fn user_prompt_text(content: &Value) -> Result<JsString> {
         "Review the attached files and respond to the user.".into()
     } else {
         prompt_text
-    })
-}
-
-pub(in crate::codex) fn runtime_text(item: &Value) -> Result<JsString> {
-    let value = text(&item["text"])?;
-    let source = &item["chatCommunication"];
-    Ok(match source["direction"].as_str() {
-        Some("received") => concat(&[
-            "Message from Cantrip agent ".into(),
-            source["sourceTitle"].stringify().into(),
-            " (chat ".into(),
-            text(&source["sourceChatId"])?.clone(),
-            "). This is another agent, not the human user.\n\n".into(),
-            value.clone(),
-        ]),
-        Some("sent") => concat(&[
-            "Message sent by this agent to ".into(),
-            source["targetTitle"].stringify().into(),
-            " (chat ".into(),
-            text(&source["targetChatId"])?.clone(),
-            "):\n\n".into(),
-            value.clone(),
-        ]),
-        _ => value.clone(),
     })
 }
 

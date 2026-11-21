@@ -19,7 +19,7 @@ mod protected;
 pub(crate) mod provider_test;
 pub(crate) mod queue_wake;
 mod queued;
-pub(super) use protected::runtime_text;
+pub(super) use crate::chat_content::runtime_text;
 mod receipt;
 mod repository_draft;
 pub(crate) use compact::COMMAND as COMPACT;

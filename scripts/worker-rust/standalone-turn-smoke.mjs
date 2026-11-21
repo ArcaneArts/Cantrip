@@ -72,6 +72,7 @@ const { values } = parseArgs({
     "permission-profiles": { type: "boolean" },
     "mcp-discovery": { type: "boolean" },
     "mcp-tasks": { type: "boolean" },
+    "mcp-chats": { type: "boolean" },
     "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
@@ -235,6 +236,7 @@ const consoleStateKey =
   values["scratch-files"] ||
   values["permission-profiles"] ||
   values["mcp-tasks"] ||
+  values["mcp-chats"] ||
   values.policies ||
   values.codegraph ||
   consoleInteractions ||
@@ -3483,6 +3485,20 @@ try {
       taskKey,
       startWorker,
       stopWorker,
+      serverDiagnostics: () => server.diagnostics(),
+    });
+  } else if (values["mcp-chats"]) {
+    const { verifyManagedMcpChats } = await import("./mcp-chat-cases.mjs");
+    await verifyManagedMcpChats({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      openMessage,
       serverDiagnostics: () => server.diagnostics(),
     });
   } else if (values.codegraph) {
