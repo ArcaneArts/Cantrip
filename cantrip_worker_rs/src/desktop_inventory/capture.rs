@@ -1,6 +1,7 @@
 //! Target generation and capture binding are owned by the helper process.
 use super::{
-    DEADLINE, Helper, NativeError, helper, public_target_id, read_targets, retire, target_id,
+    DEADLINE, Helper, Inventory, NativeError, helper, nonempty, public_target_id, read_targets,
+    retire, target_id, targets,
 };
 use crate::{connection::Outbound, encryption::Service};
 use anyhow::{Context, Result, anyhow, bail, ensure};
@@ -115,6 +116,15 @@ impl Captures {
             .context("Desktop capture service stopped.")?;
         result.await.context("Desktop capture service stopped.")?
     }
+
+    pub(crate) async fn inventory(&self, scope: Scope) -> Result<Inventory> {
+        let (reply, result) = oneshot::channel();
+        self.requests
+            .send(Operation::Inventory { scope, reply })
+            .await
+            .context("Desktop capture service stopped.")?;
+        result.await.context("Desktop capture service stopped.")?
+    }
 }
 
 #[derive(Clone)]
@@ -142,6 +152,22 @@ pub(crate) struct Frame {
 }
 
 impl Capture {
+    pub(crate) fn inventory(&self) -> Result<Inventory> {
+        Inventory::from_target(&self.key.as_ref().unwrap().target)
+    }
+
+    pub(crate) fn selected_target(&self) -> Result<Value> {
+        let native = &self.key.as_ref().unwrap().target;
+        let id = public_target_id(target_id(native)?);
+        let title = nonempty(&native["title"]);
+        if native["kind"] == "window" {
+            return Ok(json!({
+                "kind":"window","id":id,"application":nonempty(&native["application"]).unwrap_or("Application"),
+                "title":title
+            }));
+        }
+        Ok(json!({"kind":"monitor","id":id,"name":title}))
+    }
     pub(crate) fn supports_host_input(&self) -> bool {
         let key = self.key.as_ref().unwrap();
         key.target["kind"] == "window" || key.host_monitor_input
@@ -464,6 +490,10 @@ impl Release {
 }
 
 pub(super) enum Operation {
+    Inventory {
+        scope: Scope,
+        reply: oneshot::Sender<Result<Inventory>>,
+    },
     Open {
         scope: Scope,
         target: Value,
@@ -486,13 +516,16 @@ pub(super) enum Operation {
 impl Operation {
     pub(super) fn scope(&self) -> &Scope {
         match self {
-            Self::Open { scope, .. } => scope,
+            Self::Inventory { scope, .. } | Self::Open { scope, .. } => scope,
             Self::Frame { key, .. } | Self::Interaction { key, .. } => &key.scope,
         }
     }
 
     pub(super) fn expired(self) {
         match self {
+            Self::Inventory { reply, .. } => {
+                let _ = reply.send(Err(anyhow!("The desktop inventory authority expired.")));
+            }
             Self::Open { reply, .. } => {
                 let _ = reply.send(Err(anyhow!("The desktop capture authority expired.")));
             }
@@ -521,6 +554,22 @@ impl Operation {
         let retire =
             |error: &anyhow::Error| !error.is::<NativeError>() && !error.is::<Unavailable>();
         let broken = match self {
+            Self::Inventory { scope, reply } => {
+                if reply.is_closed() {
+                    return Ok(());
+                }
+                let binary = binary.context("Host desktop inventory is unavailable.")?;
+                let result = timeout(DEADLINE, targets(current, binary))
+                    .await
+                    .context("Desktop inventory timed out.")
+                    .and_then(|result| result);
+                let broken = result.as_ref().is_err_and(retire);
+                let _ = reply.send(result.and_then(|inventory| {
+                    scope.authorize(encryption, outgoing)?;
+                    Ok(inventory)
+                }));
+                broken
+            }
             Self::Open {
                 scope,
                 target,

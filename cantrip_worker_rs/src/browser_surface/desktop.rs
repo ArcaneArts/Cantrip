@@ -3,7 +3,9 @@ mod input;
 
 use super::{Callback, Endpoint, FrameSource, Route, Shared, Work, accepted, id};
 use crate::{
-    desktop_inventory::{Capture, ControlState, GuestControl, PortalCaptureConsent, Scope},
+    desktop_inventory::{
+        Capture, ControlState, GuestControl, Inventory, PortalCaptureConsent, Scope, seal_inventory,
+    },
     http::checked,
     protected_content::{open_private_state, open_remote_surface, protect_remote_surface},
 };
@@ -20,7 +22,7 @@ use std::{
     future::{Future, pending},
     io::Cursor,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, Weak},
     time::Duration,
 };
 use tokio::{
@@ -51,6 +53,8 @@ struct Session<'a> {
     logical: (f64, f64),
     updates: mpsc::Sender<Update>,
     inputs: JoinSet<()>,
+    inventories: JoinSet<InventoryRefresh>,
+    last_inventory: Inventory,
 }
 
 struct Attachment {
@@ -61,6 +65,15 @@ struct Attachment {
     source: Option<FrameSource>,
     input: Option<Viewer>,
     closing: Option<watch::Receiver<bool>>,
+    inventory_request: Option<u64>,
+}
+
+struct InventoryRefresh {
+    attachment: JsString,
+    route: Weak<Route>,
+    source: FrameSource,
+    sequence: u64,
+    result: Result<Inventory>,
 }
 
 impl Attachment {
@@ -235,6 +248,9 @@ pub(super) async fn run(
             },
             Some(change) = changes.recv() => active.input_update(change),
             _ = active.inputs.join_next(), if !active.inputs.is_empty() => {}
+            Some(Ok(refresh)) = active.inventories.join_next(), if !active.inventories.is_empty() => {
+                active.finish_inventory(refresh, capture.as_deref());
+            }
             result = async {
                 match &mut work {
                     Some(work) => work.await,
@@ -318,6 +334,7 @@ pub(super) async fn run(
     drop(work);
     active.attachments.clear();
     active.inputs.shutdown().await;
+    active.inventories.shutdown().await;
     if let Some(capture) = capture {
         release(capture).await;
     }
@@ -374,6 +391,8 @@ impl<'a> Session<'a> {
             logical: (1.0, 1.0),
             updates,
             inputs: JoinSet::new(),
+            inventories: JoinSet::new(),
+            last_inventory: Inventory::default(),
         };
         active.attach(incoming, epoch)?;
         Ok(active)
@@ -432,6 +451,7 @@ impl<'a> Session<'a> {
                 source: None,
                 input: None,
                 closing: None,
+                inventory_request: None,
             });
         self.publish(Some(&attachment));
         Ok(())
@@ -636,6 +656,7 @@ impl<'a> Session<'a> {
             Some("pointer") => checked("remoteDesktopViewerPointerSchema", &message)?,
             Some("key") => checked("remoteDesktopViewerKeySchema", &message)?,
             Some("clipboard") => checked("remoteDesktopViewerClipboardSchema", &message)?,
+            Some("refresh-targets") => Value::Null,
             _ => bail!("Desktop control is unavailable."),
         };
         ensure!(
@@ -672,6 +693,9 @@ impl<'a> Session<'a> {
                 }
             }
             Some("stream-feedback") => self.tuner.feedback(&data, self.fps),
+            Some("refresh-targets") => {
+                self.refresh_inventory(attachment, source, sequence, capture.map(Arc::as_ref))?;
+            }
             Some("input-cancel") => {
                 if member
                     .input
@@ -686,6 +710,118 @@ impl<'a> Session<'a> {
             }
             _ => self.viewer_input(attachment, data, clear.len(), source)?,
         }
+        Ok(())
+    }
+
+    fn refresh_inventory(
+        &mut self,
+        attachment: &JsString,
+        source: &FrameSource,
+        sequence: u64,
+        capture: Option<&Capture>,
+    ) -> Result<()> {
+        if self.guest.is_some() {
+            let result = capture
+                .context("The assigned Linux desktop is unavailable.")
+                .and_then(Capture::inventory);
+            return self.publish_inventory(attachment, result, capture);
+        }
+
+        let member = self.attachments.get_mut(attachment).unwrap();
+        if member.inventory_request.is_some() {
+            return Ok(());
+        }
+        ensure!(
+            self.inventories.len() < 4,
+            "Desktop target inventory is busy."
+        );
+        let client = self
+            .shared
+            .capture
+            .clone()
+            .context("Host desktop capture is unavailable.")?;
+        let scope = Scope::new(
+            member.route.epoch,
+            self.owner.clone(),
+            self.server.clone(),
+            self.surface.clone(),
+        );
+        let route = Arc::downgrade(&member.route);
+        let attachment = attachment.clone();
+        let source = source.clone();
+        member.inventory_request = Some(sequence);
+        self.inventories.spawn(async move {
+            let result = client.inventory(scope).await;
+            InventoryRefresh {
+                attachment,
+                route,
+                source,
+                sequence,
+                result,
+            }
+        });
+        Ok(())
+    }
+
+    fn finish_inventory(&mut self, refresh: InventoryRefresh, capture: Option<&Capture>) {
+        let Some(member) = self.attachments.get_mut(&refresh.attachment) else {
+            return;
+        };
+        if !Weak::ptr_eq(&refresh.route, &Arc::downgrade(&member.route))
+            || member.inventory_request != Some(refresh.sequence)
+        {
+            return;
+        }
+        member.inventory_request = None;
+        if member
+            .route
+            .receives(&refresh.source, &self.shared.outgoing)
+        {
+            let _ = self.publish_inventory(&refresh.attachment, refresh.result, capture);
+        }
+    }
+
+    fn publish_inventory(
+        &mut self,
+        attachment: &JsString,
+        result: Result<Inventory>,
+        capture: Option<&Capture>,
+    ) -> Result<()> {
+        let identity = self
+            .shared
+            .encryption
+            .bound_component("surface-private-state", None)?;
+        ensure!(
+            identity.owner_id == self.owner && identity.server_id == self.server,
+            "Desktop session authority changed."
+        );
+        let message = match result {
+            Ok(inventory) => {
+                self.last_inventory = inventory;
+                None
+            }
+            Err(error) => {
+                let message = format!("Could not refresh desktop targets: {error}");
+                Some(message.chars().take(512).collect::<String>())
+            }
+        };
+        let mut content = self.last_inventory.content();
+        content["requested"] = self.desktop.value.clone();
+        content["active"] = capture
+            .map(Capture::selected_target)
+            .transpose()?
+            .unwrap_or(Value::Null);
+        content["message"] = json!(message);
+        let operation: JsString = uuid::Uuid::new_v4().to_string().into();
+        let protected = seal_inventory(&identity, self.surface, &operation, &content)?;
+        self.send_message(
+            Some(attachment),
+            &json!({
+                "type":"desktop-targets","operationId":operation,"stateProtection":protected,
+                "monitorCount":self.last_inventory.monitors.len(),
+                "windowCount":self.last_inventory.windows.len()
+            }),
+        );
         Ok(())
     }
 

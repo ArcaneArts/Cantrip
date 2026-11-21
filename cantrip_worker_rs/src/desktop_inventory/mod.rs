@@ -11,7 +11,7 @@ pub(crate) use effects::Updates as EffectUpdates;
 
 use crate::{
     connection::Outbound,
-    encryption::Service,
+    encryption::{BoundComponentKey, Service},
     http::checked,
     metadata::{Abort, Signal},
 };
@@ -490,9 +490,9 @@ async fn retire(process: &mut Option<Helper>) {
 }
 
 #[derive(Default)]
-struct Inventory {
-    monitors: Vec<Value>,
-    windows: Vec<Value>,
+pub(crate) struct Inventory {
+    pub(crate) monitors: Vec<Value>,
+    pub(crate) windows: Vec<Value>,
     truncated: bool,
 }
 
@@ -584,6 +584,20 @@ fn public_target_id(id: &JsString) -> &str {
 }
 
 impl Inventory {
+    pub(super) fn from_target(target: &Value) -> Result<Self> {
+        let mut inventory = Self::default();
+        inventory.add(target_id(target)?, target)?;
+        Ok(inventory)
+    }
+
+    pub(crate) fn content(&self) -> Value {
+        json!({
+            "version":1,"classification":json!({"recordKind":"remote-desktop-inventory"}),
+            "monitors":self.monitors,"windows":self.windows,
+            "requested":Value::Null,"active":Value::Null,"launchingApplication":Value::Null,"message":Value::Null
+        })
+    }
+
     fn add(&mut self, id: &JsString, target: &Value) -> Result<()> {
         let id = public_target_id(id);
         let bounds = &target["bounds"];
@@ -658,18 +672,11 @@ fn protect(
     let monitor_count = inventory.monitors.len();
     let window_count = inventory.windows.len();
     let operation = &scan.command["operationId"];
-    let content = json!({
-        "version":1,"classification":json!({"recordKind":"remote-desktop-inventory"}),
-        "monitors":inventory.monitors,"windows":inventory.windows,
-        "requested":Value::Null,"active":Value::Null,"launchingApplication":Value::Null,"message":Value::Null
-    });
-    let opaque = cantrip_crypto::content::encrypt_surface_private_state(
-        &identity.component.key,
-        &json!({"ownerId":owner,"keyRevision":identity.component.key_revision,"context":json!({
-            "serverId":identity.server_id,"resource":"remote-desktop-inventory",
-            "resourceId":scan.command["resourceId"],"operationId":operation,"recordKind":"remote-desktop-inventory"
-        })}),
-        &content,
+    let opaque = seal_inventory(
+        &identity,
+        scan.command["resourceId"].as_js_string().unwrap(),
+        operation.as_js_string().unwrap(),
+        &inventory.content(),
     )?;
     checked(
         "remoteDesktopProtectedInventorySchema",
@@ -678,5 +685,21 @@ fn protect(
             "monitorCount":monitor_count,"windowCount":window_count,
             "truncated":inventory.truncated || count != monitor_count + window_count
         }),
+    )
+}
+
+pub(crate) fn seal_inventory(
+    identity: &BoundComponentKey,
+    resource: &JsString,
+    operation: &JsString,
+    content: &Value,
+) -> Result<Value> {
+    cantrip_crypto::content::encrypt_surface_private_state(
+        &identity.component.key,
+        &json!({"ownerId":identity.owner_id,"keyRevision":identity.component.key_revision,"context":json!({
+            "serverId":identity.server_id,"resource":"remote-desktop-inventory",
+            "resourceId":resource,"operationId":operation,"recordKind":"remote-desktop-inventory"
+        })}),
+        content,
     )
 }

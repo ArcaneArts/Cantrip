@@ -487,6 +487,52 @@ try {
     });
     socket.send(encodeRemoteSurfaceFrame(header, payload));
   }
+  function inventoryCredentials(resourceId, message) {
+    return {
+      componentKey: key,
+      ownerId,
+      keyRevision: 1,
+      opaque: message.stateProtection,
+      context: {
+        serverId,
+        resourceId,
+        resource: "remote-desktop-inventory",
+        recordKind: "remote-desktop-inventory",
+        operationId: message.operationId,
+      },
+    };
+  }
+  const inventoryIds = new Set();
+  async function refreshTargets(requested, active) {
+    await input({ type: "refresh-targets" });
+    await untilFrame(async (channel, bytes) => {
+      if (channel !== "control") return false;
+      const message = remoteDesktopServerMessageSchema.parse(JSON.parse(bytes));
+      if (message.type !== "desktop-targets") return false;
+      assert.equal(inventoryIds.has(message.operationId), false);
+      inventoryIds.add(message.operationId);
+      assert.deepEqual([message.monitorCount, message.windowCount], [1, 1]);
+      assert.doesNotMatch(
+        bytes.toString("utf8"),
+        /CUA fixture|fake-monitor|fake-window/,
+      );
+      await assert.rejects(
+        decryptSurfacePrivateState(inventoryCredentials(workerId, message)),
+      );
+      const opened = await decryptSurfacePrivateState(
+        inventoryCredentials(surfaceId, message),
+      );
+      assert.deepEqual(opened.monitors, inventory.monitors);
+      assert.deepEqual(opened.windows, inventory.windows);
+      assert.deepEqual(opened.requested, requested);
+      assert.deepEqual(opened.active, active);
+      return true;
+    });
+  }
+  await refreshTargets(selected, {
+    ...selected,
+    title: inventory.windows[0].title,
+  });
   let inputEpoch;
   await input({
     type: "viewport",
@@ -557,6 +603,7 @@ try {
         "error"
     );
   });
+  await refreshTargets(missing, null);
 
   assert.equal(
     (
@@ -569,6 +616,10 @@ try {
     true,
   );
   await dimensions(640, 360);
+  await refreshTargets(monitor, {
+    ...monitor,
+    name: inventory.monitors[0].name,
+  });
   assert.equal(
     (
       await send({
@@ -709,6 +760,21 @@ try {
       await until(
         (value) => value.type === "desktop-state" && value.status === "ready",
       );
+      await control({ type: "refresh-targets" });
+      const targets = await until((value) => value.type === "desktop-targets");
+      assert.deepEqual([targets.monitorCount, targets.windowCount], [1, 0]);
+      const opened = await decryptSurfacePrivateState(
+        inventoryCredentials(surfaceId, targets),
+      );
+      assert.deepEqual(opened.requested, {
+        kind: "monitor",
+        id: null,
+        name: null,
+      });
+      assert.equal(opened.active.kind, "monitor");
+      assert.equal(opened.active.id, opened.monitors[0].id);
+      assert.notEqual(opened.active.id, "fake-monitor");
+      assert.deepEqual(opened.windows, []);
       return {
         async take() {
           await control({ type: "desktop-control", operation: "take" });
