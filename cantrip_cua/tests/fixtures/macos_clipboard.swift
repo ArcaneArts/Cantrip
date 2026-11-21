@@ -4,14 +4,29 @@ import Foundation
 final class SelectionEditor: NSTextView {
     var hideDirectSelection = false
     var attributedSelectionOnly = false
+    var rangeAndValueOnly = false
+    var moveSelectionOnValueRead = false
     var secure = false
 
     override func accessibilitySelectedText() -> String? {
-        hideDirectSelection ? nil : super.accessibilitySelectedText()
+        hideDirectSelection || rangeAndValueOnly ? nil : super.accessibilitySelectedText()
     }
 
     override func accessibilityString(for range: NSRange) -> String? {
-        attributedSelectionOnly ? nil : super.accessibilityString(for: range)
+        attributedSelectionOnly || rangeAndValueOnly ? nil : super.accessibilityString(for: range)
+    }
+
+    override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
+        rangeAndValueOnly ? nil : super.accessibilityAttributedString(for: range)
+    }
+
+    override func accessibilityValue() -> String? {
+        let value = super.accessibilityValue()
+        if moveSelectionOnValueRead {
+            moveSelectionOnValueRead = false
+            setSelectedRange(NSRange(location: 0, length: 3))
+        }
+        return value
     }
 
     override func accessibilitySubrole() -> NSAccessibility.Subrole? {
@@ -88,6 +103,10 @@ struct ClipboardFixture {
                         editor.hideDirectSelection = true
                     case "attributed":
                         editor.attributedSelectionOnly = true
+                    case "range-and-value":
+                        editor.rangeAndValueOnly = true
+                    case "selection-moves":
+                        editor.moveSelectionOnValueRead = true
                     case "secure":
                         editor.secure = true
                         editor.hideDirectSelection = false
