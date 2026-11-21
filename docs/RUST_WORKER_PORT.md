@@ -10093,3 +10093,28 @@ Native Wayland monitor capture, legacy Host display input and clipboard
 behavior, and foreground-dependent Windows applications remain in scope.
 [Archived addon manifest](https://github.com/nashaofu/node-screenshots/blob/v0.2.8/Cargo.toml),
 [XCap Wayland capture source](https://docs.rs/crate/xcap/0.4.1/source/src/linux/wayland_capture.rs).
+
+## 300. Capture compositor outputs on Linux Wayland
+
+Reference commit `4a67af7606959af5b212212f1c1c39ce7c570307` (#3463).
+
+The native helper inventories Wayland outputs and captures the selected
+output through the standard image-copy capture protocol or wlroots
+screencopy. Native capture uses bounded, anonymous shared-memory buffers.
+A removed output retires its capture, and a layout change during a frame
+prevents publication of the old geometry. Full-display sharing is view-only.
+
+When the session also has XWayland, its windows keep the existing X11
+window capture and directed input. A unique geometry match between RandR
+and a Wayland output preserves the legacy numeric public display ID.
+
+Local Linux ARM64 fixtures passed on Sway 1.10.1 and Sway 1.12, covering
+both capture protocols. They verified exact pixels from two independent
+outputs and rejected a frame after its output was removed. The extended
+check verified a rotated, scaled output, a real XWayland window frame and
+scoped pointer input, and matching numeric RandR IDs. The existing X11
+window fixture and the headless helper check also passed.
+
+Wayland sessions that rely on desktop portals for monitor capture still
+need their native fallback. Host clipboard and full-display input remain
+in scope.

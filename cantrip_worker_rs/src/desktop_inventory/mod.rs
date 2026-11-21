@@ -574,6 +574,8 @@ fn public_target_id(id: &JsString) -> &str {
         .or_else(|| id.strip_prefix("macos-display-"))
         .or_else(|| id.strip_prefix("x11-window-"))
         .or_else(|| id.strip_prefix("x11-display-"))
+        .or_else(|| id.strip_prefix("wayland-display-primary-"))
+        .or_else(|| id.strip_prefix("wayland-display-secondary-"))
         .or_else(|| id.strip_prefix("windows-window-"))
         .or_else(|| id.strip_prefix("windows-display-primary-"))
         .or_else(|| id.strip_prefix("windows-display-secondary-"))

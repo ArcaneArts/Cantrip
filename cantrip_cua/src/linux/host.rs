@@ -41,9 +41,7 @@ pub(super) struct Host {
 impl Host {
     pub(super) fn connect() -> Result<Self> {
         let display = std::env::var("DISPLAY").map_err(|_| unavailable())?;
-        if !local_display(&display)
-            || std::env::var("XDG_SESSION_TYPE").is_ok_and(|session| session == "wayland")
-        {
+        if !local_display(&display) {
             return Err(unavailable());
         }
         let (connection, screen) = x11rb::connect(Some(&display)).map_err(failure)?;
@@ -72,7 +70,7 @@ impl Host {
         self.connection.setup().roots[self.screen].root
     }
 
-    fn monitors(&self, cancel: &Cancellation) -> Result<Vec<Target>> {
+    pub(super) fn monitors(&self, cancel: &Cancellation) -> Result<Vec<Target>> {
         cancel.check()?;
         let root = self.root();
         let displays = self
@@ -220,6 +218,23 @@ impl Host {
         };
         Ok((window.target, participant))
     }
+
+    pub(super) fn window_targets(&mut self, cancel: &Cancellation) -> Result<Vec<Target>> {
+        let mut targets = Vec::new();
+        let mut windows =
+            window::list(&self.connection, self.root(), &self.atoms, INVENTORY_LIMIT)?;
+        self.truncated = windows.len() > INVENTORY_LIMIT;
+        windows.truncate(INVENTORY_LIMIT);
+        let present: HashSet<_> = windows.iter().copied().collect();
+        lock(&self.windows).retain(|window, _| present.contains(window));
+        for id in windows {
+            cancel.check()?;
+            if let Ok(window) = self.window(id, cancel) {
+                targets.push(window.target);
+            }
+        }
+        Ok(targets)
+    }
 }
 
 impl CaptureBackend for Host {
@@ -237,18 +252,7 @@ impl CaptureBackend for Host {
 
     fn targets(&mut self, cancel: &Cancellation) -> Result<Vec<Target>> {
         let mut targets = self.monitors(cancel)?;
-        let mut windows =
-            window::list(&self.connection, self.root(), &self.atoms, INVENTORY_LIMIT)?;
-        self.truncated = windows.len() > INVENTORY_LIMIT;
-        windows.truncate(INVENTORY_LIMIT);
-        let present: HashSet<_> = windows.iter().copied().collect();
-        lock(&self.windows).retain(|window, _| present.contains(window));
-        for id in windows {
-            cancel.check()?;
-            if let Ok(window) = self.window(id, cancel) {
-                targets.push(window.target);
-            }
-        }
+        targets.extend(self.window_targets(cancel)?);
         Ok(targets)
     }
 
