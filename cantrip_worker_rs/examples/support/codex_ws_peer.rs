@@ -64,6 +64,10 @@ pub async fn run() -> Result<()> {
     let mut portable = false;
     let mut quota_waiting_for_refresh = None;
     let mut refresh_probed = false;
+    let mut quota_steps = catalog
+        .as_ref()
+        .and_then(|value| value["quotaSteps"].as_array())
+        .map(|steps| steps.iter());
     let mut held = Vec::new();
     let mut received = Vec::new();
     while let Some(message) = socket.next().await {
@@ -99,6 +103,23 @@ pub async fn run() -> Result<()> {
         let id = frame["id"].clone();
         let params = &frame["params"];
         let method = frame["method"].as_str().unwrap();
+        if matches!(
+            method,
+            "account/rateLimits/read" | "account/rateLimitResetCredit/consume"
+        ) && let Some(steps) = &mut quota_steps
+        {
+            assert!(portable, "quota operations require the fixture account");
+            let step = steps.next().expect("unexpected quota request");
+            assert_eq!(step["method"], method);
+            assert_eq!(step.get("params"), frame.get("params"));
+            let reply = if let Some(error) = step.get("error") {
+                json!({"id":id,"error":json!({"code":-32000,"message":error})})
+            } else {
+                json!({"id":id,"result":step["result"]})
+            };
+            socket.send(Message::Text(reply.stringify().into())).await?;
+            continue;
+        }
         let result = match method {
             "initialize" => {
                 json!({"userAgent":"native-fixture/0.166.0","platformFamily":"unix","platformOs":"macos","observedCapabilities":params["capabilities"]})

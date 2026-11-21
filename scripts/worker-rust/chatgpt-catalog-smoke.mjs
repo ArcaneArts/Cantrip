@@ -32,6 +32,7 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   providerAuthStatusObservationSchema,
+  providerRateLimitResetConsumeResultSchema,
 } from "../../packages/protocol/dist/index.js";
 import { providerCredentialProtectedContentSchema } from "../../packages/protocol/dist/protected-secrets.js";
 import {
@@ -78,7 +79,8 @@ const secret = "catalog-synthetic-portable-token";
 const stamp = new Date().toISOString();
 const portable = "portable-account",
   local = "local-account",
-  foreign = "wrong-record";
+  foreign = "wrong-record",
+  reset = "reset-account";
 const home = (id) => "fixture-home-" + id;
 const data = path.join(root, "profile");
 const homeHash = (id) => createHash("sha256").update(home(id)).digest("hex");
@@ -137,19 +139,64 @@ const pages = {
   secondPage: { data: [second] },
   quota,
 };
+const login = {
+  type: "chatgptAuthTokens",
+  accessToken: secret,
+  chatgptAccountId: "upstream-account",
+  chatgptPlanType: "fixture",
+};
+const selectedReset = { idempotencyKey: randomUUID(), creditId: "banked-1" };
+const blockedReset = { idempotencyKey: randomUUID() };
+const implicitReset = { idempotencyKey: randomUUID(), creditId: null };
+const expiredReset = { idempotencyKey: randomUUID() };
+const quotaRead = (result) => ({ method: "account/rateLimits/read", result });
+const consume = (params, response) => ({
+  method: "account/rateLimitResetCredit/consume",
+  params,
+  ...response,
+});
+const resetQuota = {
+  ...quota,
+  rateLimits: {
+    ...quota.rateLimits,
+    credits: { hasCredits: true, unlimited: false, balance: " 100 " },
+  },
+  rateLimitResetCredits: { availableCount: 1, credits: null },
+};
+const remainingQuota = {
+  ...resetQuota,
+  rateLimits: {
+    ...resetQuota.rateLimits,
+    primary: { ...resetQuota.rateLimits.primary, usedPercent: 0 },
+  },
+  rateLimitResetCredits: { availableCount: 0, credits: null },
+};
 const codexFixture = {
   catalog: {
-    [homeHash(portable)]: {
-      ...pages,
-      probeRefresh: true,
-      login: {
-        type: "chatgptAuthTokens",
-        accessToken: secret,
-        chatgptAccountId: "upstream-account",
-        chatgptPlanType: "fixture",
-      },
-    },
+    [homeHash(portable)]: { ...pages, probeRefresh: true, login },
     [homeHash(local)]: { ...pages, login: null, quotaError: true },
+    [homeHash(reset)]: {
+      login,
+      quotaSteps: [
+        quotaRead(resetQuota),
+        quotaRead(resetQuota),
+        consume(selectedReset, { result: { outcome: "reset" } }),
+        quotaRead(remainingQuota),
+        quotaRead({
+          ...resetQuota,
+          rateLimits: {
+            ...resetQuota.rateLimits,
+            credits: { ...resetQuota.rateLimits.credits, balance: "100.01" },
+          },
+        }),
+        quotaRead(remainingQuota),
+        consume(implicitReset, { result: { outcome: "noCredit" } }),
+        { method: "account/rateLimits/read", error: "Quota unavailable" },
+        quotaRead(remainingQuota),
+        consume(expiredReset, { error: "HTTP 401: token_expired" }),
+        quotaRead(remainingQuota),
+      ],
+    },
   },
 };
 const scope = { serverId, ownerId, workerId };
@@ -333,8 +380,8 @@ const aad = {
   componentKey,
 };
 const subjectKey = deriveLookupKey({ ...aad, field: "subject" });
-const credential = {
-  accountId: portable,
+const accountCredential = async (accountId) => ({
+  accountId,
   providerId,
   providerKind: "chatgpt",
   credentialRevision: 4,
@@ -345,7 +392,7 @@ const credential = {
     ),
     protectedCredential: await encryptProtectedSecret({
       ...aad,
-      rowId: portable,
+      rowId: accountId,
       field: "protected_credential",
       content: {
         version: 1,
@@ -362,7 +409,9 @@ const credential = {
       contentSchema: providerCredentialProtectedContentSchema,
     }),
   },
-};
+});
+const credential = await accountCredential(portable);
+const resetCredential = await accountCredential(reset);
 subjectKey.fill(0);
 const counts = new Map();
 let httpFailure;
@@ -435,7 +484,7 @@ async function respond(request, response) {
       send(404, { code: "migration-needed" });
     else if (account === portable && portableSignedOut)
       send(409, { code: "reauth-required" });
-    else send(200, credential);
+    else send(200, account === reset ? resetCredential : credential);
   } else send(404, {});
 }
 const server = createServer((request, response) => {
@@ -550,9 +599,9 @@ try {
       pending.delete(requestId);
     }
   }
-  function catalog(accountId, credentialHomeKey = home(accountId)) {
+  function chatGpt(type, accountId, credentialHomeKey, input = {}) {
     return command({
-      type: "model.chatgpt.catalog",
+      type,
       provider: {
         id: providerId,
         kind: "chatgpt",
@@ -561,7 +610,11 @@ try {
         accountId,
         credentialHomeKey,
       },
+      ...input,
     });
+  }
+  function catalog(accountId, credentialHomeKey = home(accountId)) {
+    return chatGpt("model.chatgpt.catalog", accountId, credentialHomeKey);
   }
   function credentials(type, providerAccountId, providerKind, extra = {}) {
     return command({
@@ -669,12 +722,7 @@ try {
       models: [inventoryItem, second],
       observedAt: result.observedAt,
       weeklyUsage: { resetsAt: 2_000_000_000, usedPercent: 42 },
-      quotaSnapshot: quotaSnapshotFromRateLimits(quota, {
-        codexVersion: result.quotaSnapshot.codexVersion,
-        workerVersion: result.quotaSnapshot.workerVersion,
-        snapshotId: result.quotaSnapshot.snapshotId,
-        now: () => Date.parse(result.quotaSnapshot.observedAt),
-      }),
+      quotaSnapshot: expectedQuota(quota, result.quotaSnapshot),
     });
     assert.deepEqual(result, expected);
   }
@@ -694,6 +742,56 @@ try {
     [local]: 1,
     [foreign]: 1,
   });
+  const readResetQuota = () =>
+    chatGpt("provider.quota.read", reset, home(reset));
+  const consumeReset = (params) =>
+    chatGpt("provider.rate-limit-reset.consume", reset, home(reset), params);
+  function expectedQuota(raw, actual) {
+    return quotaSnapshotFromRateLimits(raw, {
+      codexVersion: actual.codexVersion,
+      workerVersion: actual.workerVersion,
+      snapshotId: actual.snapshotId,
+      now: () => Date.parse(actual.observedAt),
+    });
+  }
+  const initialQuota = await readResetQuota();
+  assert.equal(initialQuota.ok, true, JSON.stringify(initialQuota.error));
+  assert.deepEqual(
+    initialQuota.result,
+    expectedQuota(resetQuota, initialQuota.result),
+  );
+  const redeemed = await consumeReset(selectedReset);
+  assert.equal(redeemed.ok, true, JSON.stringify(redeemed.error));
+  const receipt = providerRateLimitResetConsumeResultSchema.parse(
+    redeemed.result,
+  );
+  assert.equal(receipt.outcome, "reset");
+  assert.deepEqual(
+    receipt.quotaSnapshot,
+    expectedQuota(remainingQuota, receipt.quotaSnapshot),
+  );
+  const blocked = await consumeReset(blockedReset);
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.error.message, /more than 100 credits/);
+  const noCredit = await consumeReset(implicitReset);
+  assert.equal(noCredit.ok, true, JSON.stringify(noCredit.error));
+  assert.deepEqual(noCredit.result, {
+    outcome: "noCredit",
+    quotaSnapshot: null,
+  });
+  const expiredRedemption = await consumeReset(expiredReset);
+  assert.equal(expiredRedemption.ok, false);
+  assert.equal(
+    expiredRedemption.error.message,
+    "ChatGPT authentication expired. Sign in again to reconnect this provider account.",
+  );
+  assert.equal(counts.get(reset), 2);
+  const lastQuota = await readResetQuota();
+  assert.equal(lastQuota.ok, true, JSON.stringify(lastQuota.error));
+  assert.deepEqual(
+    lastQuota.result,
+    expectedQuota(remainingQuota, lastQuota.result),
+  );
   const homes = await readdir(path.join(data, "codex-accounts"));
   for (const id of [portable, local])
     assert.ok(homes.includes(path.basename(codexAccountHome(data, home(id)))));
@@ -1036,6 +1134,9 @@ try {
       exactAccount: true,
       coalescedCredentialGet: true,
       nodeQuotaOracle: true,
+      chatGptQuotaRead: true,
+      bankedResetRedemption: true,
+      bankedResetRequiresReauthentication: true,
       nodeCredentialOracle: true,
       identityCheckedPurge: true,
       scopedRuntimeAndLeaseRetirement: true,

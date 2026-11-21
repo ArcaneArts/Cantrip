@@ -1,4 +1,4 @@
-//! Existing account-backed ChatGPT discovery over the owned native runtime.
+//! Account-backed ChatGPT discovery and quota over the owned native runtime.
 pub(in crate::codex) mod auth;
 pub(crate) mod provider;
 mod quota;
@@ -28,7 +28,17 @@ use std::{
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(120);
 
-pub const COMMAND: &str = "model.chatgpt.catalog";
+const INVENTORY: &str = "model.chatgpt.catalog";
+const READ_QUOTA: &str = "provider.quota.read";
+const CONSUME_RESET: &str = "provider.rate-limit-reset.consume";
+
+pub fn supports(command: &Value) -> bool {
+    command["provider"]["kind"] == "chatgpt"
+        && matches!(
+            command["type"].as_str(),
+            Some(INVENTORY | READ_QUOTA | CONSUME_RESET)
+        )
+}
 
 pub(in crate::codex) const PROVIDER_CONFIG: &[&str] = &[
     "web_search=\"disabled\"",
@@ -72,6 +82,10 @@ impl Catalog {
     pub fn execute(&self, command: Value) -> Work<Value> {
         let this = self.clone();
         owned(async move {
+            let (owner, server) = this.encryption.bound_identity()?;
+            let server = server.as_js_string().cloned().ok_or_else(|| {
+                anyhow!("Worker encryption has not verified the logical server identity.")
+            })?;
             let provider = open_runtime_provider(&this.encryption, &command["provider"])?;
             let account = Account {
                 provider: field(&provider, "id")?,
@@ -96,20 +110,30 @@ impl Catalog {
             }
             let runtime = this
                 .codex
-                .launch(Launch {
-                    profile,
-                    private_inference: Hooks {
-                        overlay: Arc::new(|_| Context::default()),
-                        provider: Arc::new(move || Some(provider.clone())),
-                        before_inference: None,
+                .launch_in_scope(
+                    Launch {
+                        profile,
+                        private_inference: Hooks {
+                            overlay: Arc::new(|_| Context::default()),
+                            provider: Arc::new(move || Some(provider.clone())),
+                            before_inference: None,
+                        },
+                        on_revoked: None,
+                        prepare_home: None,
+                        external_auth: Some(Arc::new(auth::Auth::new(account, this.access))),
+                        observe: Arc::new(|_| Ok(())),
                     },
-                    on_revoked: None,
-                    prepare_home: None,
-                    external_auth: Some(Arc::new(auth::Auth::new(account, this.access))),
-                    observe: Arc::new(|_| Ok(())),
-                })
+                    Some((server, owner)),
+                )
                 .await?;
-            inventory(&runtime, &this.codex_version).await
+            match command["type"].as_str() {
+                Some(INVENTORY) => inventory(&runtime, &this.codex_version).await,
+                Some(READ_QUOTA) => read_quota_snapshot(&runtime, &this.codex_version).await,
+                Some(CONSUME_RESET) => {
+                    quota::consume_reset(&runtime, &this.codex_version, &command).await
+                }
+                _ => bail!("Unsupported ChatGPT account command."),
+            }
         })
     }
 }
@@ -170,17 +194,9 @@ pub async fn inventory(runtime: &Runtime, codex_version: &Value) -> Result<Value
         }
     }
 
-    let quota = match quota_read(runtime).await {
-        Ok(value) if !value.is_null() => quota_snapshot(
-            &value,
-            &crate::version::value()["version"],
-            codex_version,
-            &uuid::Uuid::new_v4().to_string(),
-            &quota::now(),
-        )
-        .unwrap_or(Value::Null),
-        _ => Value::Null,
-    };
+    let quota = read_quota_snapshot(runtime, codex_version)
+        .await
+        .unwrap_or(Value::Null);
     let weekly = quota["windows"]
         .as_array()
         .and_then(|rows| rows.iter().find(|row| row["isWeeklyProjection"] == true))
@@ -194,21 +210,37 @@ pub async fn inventory(runtime: &Runtime, codex_version: &Value) -> Result<Value
     )
 }
 
-async fn quota_read(runtime: &Runtime) -> Result<Value> {
-    let first = call(runtime, "account/rateLimits/read", None).await;
+async fn read_quota_snapshot(runtime: &Runtime, codex_version: &Value) -> Result<Value> {
+    let value = call_with_auth_recovery(runtime, "account/rateLimits/read", None).await?;
+    if value.is_null() {
+        bail!("Codex did not return a quota snapshot.");
+    }
+    quota_snapshot(
+        &value,
+        &crate::version::value()["version"],
+        codex_version,
+        &uuid::Uuid::new_v4().to_string(),
+        &quota::now(),
+    )
+}
+
+async fn call_with_auth_recovery(
+    runtime: &Runtime,
+    method: &str,
+    params: Option<Value>,
+) -> Result<Value> {
+    let first = call(runtime, method, params.clone()).await;
     if !first.as_ref().is_err_and(auth::expired) {
         return first;
     }
     runtime.reauthenticate_external().await?;
-    call(runtime, "account/rateLimits/read", None)
-        .await
-        .map_err(|error| {
-            if auth::expired(&error) {
-                auth::reauth_required()
-            } else {
-                error
-            }
-        })
+    call(runtime, method, params).await.map_err(|error| {
+        if auth::expired(&error) {
+            auth::reauth_required()
+        } else {
+            error
+        }
+    })
 }
 
 async fn call(runtime: &Runtime, method: &str, params: Option<Value>) -> Result<Value> {

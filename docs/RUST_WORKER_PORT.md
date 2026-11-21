@@ -9388,3 +9388,24 @@ Responses fixture. It verified encrypted credential use, streamed success,
 repeated HTTP 401 replies, an empty reply failure, recovery, and cleanup.
 The existing worker and public response contracts matched 354 Node and Rust
 comparisons.
+
+## 271. Read ChatGPT quota and redeem banked resets in the Rust worker
+
+Reference commit `266c432c311e05b9b20e8ebe4322dc4bcb77c343` (#3434).
+
+The ChatGPT account runtime serves `provider.quota.read` and
+`provider.rate-limit-reset.consume`. Both reuse its scoped account home,
+credential handling, and validated quota projection. Reset redemption reads
+the live balance to apply the existing paid-credit rule, then sends the
+idempotency key and optional reset credit ID to Codex. A native expired-token
+reply can trigger a refresh and one retry with the same request. Once Codex
+returns a valid outcome, the follow-up quota read is best effort.
+
+The production Rust worker passed the macOS ARM64 ChatGPT catalog smoke with a
+loopback Codex RPC peer, an encrypted portable credential, and the bundled
+native runtime owner. The fixture checked the exact native requests, quota
+projection before and after redemption, the 100-credit boundary, an outcome
+with a failed follow-up quota read, and the reauthentication-required reply
+when refresh credentials are absent. The fixture made zero live provider
+calls. Fourteen focused Node tests and 2,901 Node/Rust quota and reset contract
+comparisons passed.
