@@ -1,9 +1,55 @@
 # Rust worker replacement
 
-The goal is a complete native replacement of the Node worker, including first-party
-helpers, desktop/standalone packaging and the supported legacy profile-upgrade
-path. Production still selects the existing Node worker while the native
-implementation is built. No native worker cutover has occurred.
+## Current runtime
+
+Cantrip's packaged desktop application, standalone distributions, hosted Compose,
+and development launchers select the native Rust server and worker. The desktop
+supervisor owns both processes. The server retains authorization, durable state,
+routing, and scheduling. The worker owns endpoint secrets, repositories, files,
+terminals, browsers, execution, and local journals.
+
+The worker shares the protocol, transport, configuration, logging, scheduling,
+host, and wire crates with the server. Worker-side cryptography, history, browser,
+and PTY code live in focused Rust crates. The worker's Cargo dependency tree is
+independent of the server application and its database infrastructure. The package
+includes the pinned native Codex runtime, Cantrip CLI and CUA helper, and provides
+Cantrip and CUA MCP through native worker subcommands.
+
+- Develop both services with `pnpm dev` or `pnpm devtop`. Build and check the
+  worker with `pnpm worker:rust:build` and `pnpm worker:rust:check`.
+- Build a standalone artifact with `pnpm package:worker --target <target>`.
+  Keep the package layout and the existing worker data directory. See the
+  [standalone worker guide](../deploy/worker.README.md) for launch and enrollment.
+- Assemble desktop with `pnpm package:app`. The supervisor prepares existing
+  profiles with the native server and compatibility PostgreSQL tools. See the
+  [server guide](../deploy/server.README.md#existing-desktop-profiles) for
+  supported database modes, stopped-profile upgrades, and rollback.
+- Hosted Compose builds the worker with `deploy/docker/worker.Dockerfile`.
+  It retains the worker profile, enrollment configuration, and persistent volume.
+  Winterhold's systemd deployment uses the standalone native server layout.
+
+Node remains in source builds, client and protocol tooling, and the compatibility
+references under `tests/reference-node-worker` and `tests/reference-node-server`.
+Users can still select external runtimes, project tools, and MCP servers that use
+Node. The browser's in-page JavaScript and the native CUA scripting interface
+remain product capabilities. The runtime still uses OS libraries and tools such as
+Git and SSH where applicable, and Cantrip OS keeps its separate guest helpers.
+
+The [packaging cutover](#278-ship-the-rust-worker-in-cantrip-packages), the
+[Node worker archive](#286-archive-the-node-worker-as-a-compatibility-reference),
+and the [desktop and upgrade checks](#288-verify-the-native-desktop-runtime-and-legacy-profile-round-trip)
+record the transition. See also the
+[local Linux ARM64 image check](#295-verify-the-node-free-linux-arm64-worker-image).
+
+## Implementation record
+
+The baseline inventory and numbered milestones record the state at their
+respective points in the port. Later milestones supersede earlier progress and
+platform statements.
+
+The port started with the Node worker selected in production. Its scope covers
+first-party helpers, desktop and standalone packaging, and the supported legacy
+profile-upgrade path.
 
 Baseline: `a9de3df512c63f272ff6db1d33a46328cd2a253b` (shared foundations delivered
 in PRs #3156–#3163). Each subsystem below starts from that source commit; record
@@ -9940,3 +9986,14 @@ round-tripped a file, and attachment revocation retired the live guest
 SSH command. The TCP regression passed in the same run.
 
 Guest VNC forwarding and reverse listeners remain in scope.
+
+## 295. Verify the Node-free Linux ARM64 worker image
+
+The canonical hosted worker Dockerfile built locally for Linux ARM64 from
+`030693cbb81be82baf379c33597a22e745d910e2` (#3452), version `1.1.3439`.
+In a read-only container running as UID 10001, the packaged Rust worker
+enrolled with a local Linux ARM64 Core fixture (`1.1.3059`, PGlite), served
+its version, and reopened its persistent volume without an enrollment code.
+Both stops returned zero after SIGTERM. The launcher ran the native worker,
+all four packaged executables resolved their native libraries, and the image
+had no Node executable, Node package, or bundled `node_modules`.
