@@ -763,6 +763,14 @@ impl Ensurer {
                                         .map(|(operation, _)| operation),
                                 );
                             }
+                            if !standalone && !guest {
+                                operations.extend(
+                                    crate::mcp::bindings::RUN_READ_TOOLS
+                                        .into_iter()
+                                        .chain(crate::mcp::bindings::RUN_WRITE_TOOLS)
+                                        .map(|(operation, _)| operation),
+                                );
+                            }
                             let admission = json!({
                                 "ownerId": bound.0, "workerId": this.0.worker, "chatId": chat,
                                 "contextKind": context_kind, "projectId": session["projectId"],

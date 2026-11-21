@@ -5,6 +5,7 @@ mod client;
 mod computer_use;
 mod explorer;
 mod policy;
+mod run;
 mod streamable;
 mod surface;
 mod targets;
@@ -338,6 +339,10 @@ impl Inner {
             }
             "browser.services" | "browser.open" => {
                 self.browser(authorization, &call, operation).await
+            }
+            operation if operation.starts_with("run-configuration.") => {
+                self.run_configuration(authorization, &call, operation)
+                    .await
             }
             "client.notify"
             | "client.focus-project"

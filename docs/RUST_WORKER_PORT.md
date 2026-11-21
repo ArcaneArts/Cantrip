@@ -51,9 +51,9 @@ covers the current Docker build, enrollment, and volume reuse.
 
 ### Open managed MCP operations
 
-The remaining managed Cantrip MCP work covers worktree and Run tools.
-Their catalog entries and Core routes are in place. The worker still
-needs negotiated admission and endpoint handling for these families.
+The remaining managed Cantrip MCP work covers worktree tools. Their catalog
+entries and Core routes are in place. The worker still needs negotiated
+admission and endpoint handling for them.
 
 Bundled Codex still needs to handle MCP results that contain an unpaired UTF-16
 surrogate. The [Explorer fixture](#352-restore-managed-mcp-explorer-tools)
@@ -11356,3 +11356,23 @@ listener tools in the worker PATH. It exercised discovery on a fixture-owned
 HTTP listener, approved navigation to a normalized URL, encrypted persistence
 at the next revision, and rejection of cross-project and read-only navigation.
 The managed Terminal regression smoke and offline worker build also passed.
+
+## 355. Restore managed MCP Run tools
+
+Reference commit `02720aedabe1d21a72dc16cdadb325291ba18561` (#3518).
+
+The twelve Run tools use the existing Core routes for definitions, detection,
+lifecycle, status, output, and secret storage. Read-only bindings retain the
+five read operations. The worker opens output only after matching its project,
+worktree, configuration, and operation identity, and seals secret values with
+the same codec as the native CLI. Cantrip OS bindings retain the existing
+exclusion of host Run tools.
+
+The baseline worker omitted `run_configuration_list` in native Codex. On
+macOS ARM64, native Codex with production Rust Core in PGlite mode and an empty
+worker PATH exercised detection, revision-checked definition changes, protected
+secret storage, an approved shell start, restart and stop, bounded redacted
+output, deletion, and read-only admission. Restart replaced the process, and
+stop returned the runtime to idle and released its process. The host Run and
+CLI comparison with the Node reference and the offline worker build also
+passed.
