@@ -1226,12 +1226,12 @@ impl Screen {
 
     // CSI C
     pub(crate) fn cuf(&mut self, offset: u16) {
-        self.grid_mut().col_inc_clamp(offset);
+        self.grid_mut().move_cursor(0, i32::from(offset));
     }
 
     // CSI D
     pub(crate) fn cub(&mut self, offset: u16) {
-        self.grid_mut().col_dec(offset);
+        self.grid_mut().move_cursor(0, -i32::from(offset));
     }
 
     // CSI E
@@ -1248,7 +1248,8 @@ impl Screen {
 
     // CSI G
     pub(crate) fn cha(&mut self, col: u16) {
-        self.grid_mut().col_set(col - 1);
+        let row = self.grid().pos().row;
+        self.grid_mut().set_pos(crate::grid::Pos { row, col: col - 1 });
     }
 
     // CSI H
@@ -1347,6 +1348,11 @@ impl Screen {
     // CSI d
     pub(crate) fn vpa(&mut self, row: u16) {
         self.grid_mut().row_set(row - 1);
+    }
+
+    // CSI e moves relative to the viewport even outside the scroll margins.
+    pub(crate) fn vpr(&mut self, offset: u16) {
+        self.grid_mut().move_cursor(i32::from(offset), 0);
     }
 
     pub(crate) fn set_insert_mode(&mut self, enable: bool) {

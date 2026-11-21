@@ -573,6 +573,73 @@ async function verifyBackgroundErase(view, reattach) {
   }
 }
 
+async function verifyCursorAddressing(view, reattach) {
+  const { Terminal } = createRequire(
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
+  )("@xterm/headless");
+  const token = randomUUID();
+  const positioning = [
+    "\\033c\\033[4;8r",
+    "\\033[2;2H\\033[30BA\\033[10;3H\\033[30AB",
+    "\\033[2;2H\\033[60eC",
+    "\\033[2;2H\\033[2aD\\033[8`E\\033[3;7fF",
+    "\\033[?6h\\033[2;2f\\033[3aG\\033[H",
+  ].join("");
+  await view.input(
+    `/bin/stty -echo; printf '${positioning}%s%s\\033[2;4f' cursor-ready- '${token}'; ` +
+      `IFS= read -r line; printf '\\033[H%s%s\\033[2;4f\\033[eZ' cursor-live- '${token}'; ` +
+      `IFS= read -r line; printf '\\033c%s%s\\n' cursor-reset- '${token}'; /bin/stty echo\r`,
+  );
+  const raw = await view.read(
+    new RegExp("cursor-ready-" + token + "\\x1b\\[2;4f"),
+  );
+  const start = raw.lastIndexOf("\x1bc");
+  assert.notEqual(start, -1);
+
+  const options = { cols: 113, rows: 43, allowProposedApi: true };
+  const live = new Terminal(options);
+  const replay = new Terminal(options);
+  const write = (term, output) =>
+    new Promise((resolve) => term.write(output, resolve));
+  const viewport = (term) =>
+    Array.from({ length: options.rows }, (_, row) =>
+      term.buffer.active
+        .getLine(term.buffer.active.baseY + row)
+        .translateToString(true),
+    );
+  let attached;
+  let pendingReads = 2;
+  try {
+    await write(live, raw.slice(start));
+    assert.equal(viewport(live)[1], "   D   E");
+    assert.equal(viewport(live)[2], "      F");
+    assert.equal(viewport(live)[7], " A  G");
+    assert.equal(viewport(live)[42], " C");
+    attached = await reattach();
+    assert.equal(attached.hydration.format, "canonical-xterm");
+    assert.deepEqual(attached.hydration.cursor, { x: 3, y: 4 });
+    await write(replay, attached.replay);
+    assert.deepEqual(viewport(replay), viewport(live));
+
+    await attached.input("\r");
+    pendingReads--;
+    const output = await attached.read(
+      new RegExp("cursor-live-" + token + "\\x1b\\[2;4f\\x1b\\[eZ"),
+    );
+    const continuation = output.slice(attached.replay.length);
+    await write(live, continuation);
+    await write(replay, continuation);
+    assert.equal(viewport(live)[7], " A ZG");
+    assert.deepEqual(viewport(replay), viewport(live));
+  } finally {
+    for (let i = 0; i < pendingReads; i++) await view.input("\r");
+    await view.read(new RegExp("cursor-reset-" + token));
+    live.dispose();
+    replay.dispose();
+    await attached?.close();
+  }
+}
+
 async function verifyAlternateReplay(view, reattach, eventually, checkout) {
   const { Terminal } = createRequire(
     new URL("../../tests/reference-node-worker/package.json", import.meta.url),
@@ -943,6 +1010,7 @@ export async function verifyHostTerminal({
     await verifySavedCursors(linkExit, attachWorkerLink);
     await verifyTabStops(linkExit, attachWorkerLink);
     await verifyBackgroundErase(linkExit, attachWorkerLink);
+    await verifyCursorAddressing(linkExit, attachWorkerLink);
     await verifyAlternateReplay(
       linkExit,
       attachWorkerLink,

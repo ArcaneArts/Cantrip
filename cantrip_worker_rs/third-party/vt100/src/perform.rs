@@ -113,12 +113,12 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                 '@' => self.screen.ich(canonicalize_params_1(params, 1)),
                 'A' => self.screen.cuu(canonicalize_params_1(params, 1)),
                 'B' => self.screen.cud(canonicalize_params_1(params, 1)),
-                'C' => self.screen.cuf(canonicalize_params_1(params, 1)),
+                'C' | 'a' => self.screen.cuf(canonicalize_params_1(params, 1)),
                 'D' => self.screen.cub(canonicalize_params_1(params, 1)),
                 'E' => self.screen.cnl(canonicalize_params_1(params, 1)),
                 'F' => self.screen.cpl(canonicalize_params_1(params, 1)),
-                'G' => self.screen.cha(canonicalize_params_1(params, 1)),
-                'H' => self.screen.cup(canonicalize_params_2(params, 1, 1)),
+                'G' | '`' => self.screen.cha(canonicalize_params_1(params, 1)),
+                'H' | 'f' => self.screen.cup(canonicalize_params_2(params, 1, 1)),
                 'I' => self.screen.tab(canonicalize_params_1(params, 1), false),
                 'J' => self
                     .screen
@@ -134,6 +134,7 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                 'X' => self.screen.ech(canonicalize_params_1(params, 1)),
                 'Z' => self.screen.tab(canonicalize_params_1(params, 1), true),
                 'd' => self.screen.vpa(canonicalize_params_1(params, 1)),
+                'e' => self.screen.vpr(canonicalize_params_1(params, 1)),
                 'g' => self
                     .screen
                     .clear_tab_stops(canonicalize_params_1(params, 0)),
