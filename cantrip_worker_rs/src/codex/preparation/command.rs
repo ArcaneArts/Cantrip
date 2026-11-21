@@ -90,6 +90,7 @@ struct ThreadOwner {
     model_route: Value,
     provider_id: Value,
     provider_account: Value,
+    environment_id: Option<String>,
     task: Option<Root>,
     task_settings: Option<Arc<snapshot::Source>>,
     queue: Option<Arc<import::Binding>>,
@@ -1042,6 +1043,10 @@ impl Ensurer {
                                 model_route: command["model"]["routeId"].clone(),
                                 provider_id: command["provider"]["id"].clone(),
                                 provider_account: command["provider"]["accountId"].clone(),
+                                environment_id: result
+                                    .environment
+                                    .as_ref()
+                                    .map(|guest| guest.id.clone()),
                             };
                             owners.insert(chat.clone(), owner);
                         }
@@ -1356,6 +1361,7 @@ impl Ensurer {
     ) -> Result<Runtime> {
         self.inspection_runtime(model, provider, bound, None, None)
             .await
+            .map(|(runtime, _)| runtime)
     }
 
     pub(in crate::codex) fn customization_compatibility(&self) -> &Value {
@@ -1367,10 +1373,33 @@ impl Ensurer {
         model: &Value,
         provider: Value,
         bound: &(JsString, Value),
-        chat: Option<&JsString>,
+        workspace: Option<(&Value, &JsString)>,
         thread: Option<&JsString>,
-    ) -> Result<Runtime> {
+    ) -> Result<(Runtime, bool)> {
         self.assert_bound(bound)?;
+        let chat = workspace.and_then(|(scope, _)| scope["chatId"].as_js_string());
+        let owner = &bound.0;
+        let server = bound
+            .1
+            .as_js_string()
+            .context("Unverified worker server identity")?;
+        let scope = json!({"serverId":server,"ownerId":owner,"workerId":self.0.worker});
+        let environment = if let (Some((customization, cwd)), Some(chat)) = (workspace, chat) {
+            Environment::reopen(
+                &self.0.data,
+                &scope,
+                chat,
+                cwd,
+                None,
+                Some(&customization["projectId"]),
+            )
+            .await?
+            .map(Arc::new)
+        } else {
+            None
+        };
+        self.assert_bound(bound)?;
+        let guest = environment.is_some();
         if let (Some(chat), Some(thread)) = (chat, thread) {
             let owners = self.0.live_threads.lock().unwrap();
             if let Some(live) = owners.get(chat)
@@ -1378,18 +1407,14 @@ impl Ensurer {
                 && live.thread.id() == thread
                 && live.provider_id == provider["id"]
                 && live.provider_account == provider["accountId"]
+                && live.environment_id.as_deref()
+                    == environment.as_ref().map(|guest| guest.id.as_str())
                 && let Some(runtime) = live.runtime.upgrade()
                 && live.thread.assert_current(&runtime).is_ok()
             {
-                return Ok(runtime);
+                return Ok((runtime, guest));
             }
         }
-        let owner = &bound.0;
-        let server = bound
-            .1
-            .as_js_string()
-            .context("Unverified worker server identity")?;
-        let scope = json!({"serverId":server,"ownerId":owner,"workerId":self.0.worker});
         let profile = home::profile(
             &self.0.data,
             &scope,
@@ -1398,27 +1423,28 @@ impl Ensurer {
             &provider,
             "ide",
             self.0.skills.clone(),
-            None,
+            environment.as_deref(),
         )
         .await?;
         self.assert_bound(bound)?;
+        let mut launch = provider::launch(
+            profile,
+            provider,
+            self.0.access.clone(),
+            model,
+            &Value::Null,
+        )?;
+        if let Some(environment) = &environment {
+            environment.configure_launch(&mut launch);
+        }
         let runtime = self
             .0
             .codex
-            .launch_in_scope(
-                provider::launch(
-                    profile,
-                    provider,
-                    self.0.access.clone(),
-                    model,
-                    &Value::Null,
-                )?,
-                Some((server.clone(), owner.clone())),
-            )
+            .launch_in_scope(launch, Some((server.clone(), owner.clone())))
             .await?;
         runtime.synchronize_models(model, &Value::Null).await?;
         self.assert_bound(bound)?;
-        Ok(runtime)
+        Ok((runtime, guest))
     }
 
     pub(in crate::codex) async fn repository_draft_mcp(&self, command: &Value) -> Result<Value> {

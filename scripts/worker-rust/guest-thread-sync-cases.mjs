@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { decryptPrivateDisplayLabel } from "../../packages/crypto/dist/index.js";
+import { randomUUID } from "node:crypto";
+import {
+  decryptEndpointContentPayload,
+  decryptPrivateDisplayLabel,
+  encryptEndpointContentPayload,
+} from "../../packages/crypto/dist/index.js";
 import { createPreparedProjectChat } from "./console-interaction-cases.mjs";
 
 export async function verifyGuestThreadSync({
@@ -13,6 +18,7 @@ export async function verifyGuestThreadSync({
   keyRevision,
   labelKey,
   repositoryKey,
+  customizationKey,
   guest,
   startWorker,
   stopWorker,
@@ -26,25 +32,26 @@ export async function verifyGuestThreadSync({
     autoNameChats: true,
     randomAgentNames: false,
   });
-  const { chatId, chatUrl, projectUrl } = await createPreparedProjectChat({
-    call,
-    eventually,
-    ownerId,
-    workerId,
-    keyRevision,
-    labelKey,
-    title: "Retained guest Chat",
-    autoTitle: true,
-    beforeChat: ({ projectId }) =>
-      guest.placeProject({
-        call,
-        ownerId,
-        workerId,
-        keyRevision,
-        projectId,
-        repositoryKey,
-      }),
-  });
+  const { chatId, chatUrl, projectUrl, placement } =
+    await createPreparedProjectChat({
+      call,
+      eventually,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      title: "Retained guest Chat",
+      autoTitle: true,
+      beforeChat: ({ projectId }) =>
+        guest.placeProject({
+          call,
+          ownerId,
+          workerId,
+          keyRevision,
+          projectId,
+          repositoryKey,
+        }),
+    });
   const sync = () => call("POST", chatUrl + "/sync", 200, {});
   const observe = (threadId, status) => ({
     threadId,
@@ -127,8 +134,108 @@ export async function verifyGuestThreadSync({
   ).length;
   assert.equal(requests, 1);
 
+  const skillName = "cantrip-guest-inventory-fixture";
+  const skillPath = await guest.writeProjectSkill(
+    placement,
+    skillName,
+    `---\nname: ${skillName}\ndescription: Read the guest-only fixture.\n---\n\nGuest content.\n`,
+  );
+  const scope = await call("GET", chatUrl + "/customizations/target", 200);
+  const { id: serverId } = (await call("GET", "/api/bootstrap", 200)).server;
+  async function customization(
+    route,
+    operation,
+    { method = "GET", content, status = "succeeded" } = {},
+  ) {
+    const operationId = randomUUID();
+    const context = (direction) => ({
+      domain: "customization-content",
+      serverId,
+      workerId,
+      scopeId: JSON.stringify([
+        workerId,
+        scope.projectId,
+        chatId,
+        scope.providerId,
+      ]),
+      operationId,
+      operation,
+      direction,
+      sequence: 0,
+    });
+    const wire =
+      method === "GET"
+        ? await call(
+            method,
+            `${chatUrl}${route}?operationId=${operationId}&refresh=true`,
+            200,
+          )
+        : await call(method, `${chatUrl}${route}`, 200, {
+            operationId,
+            operation,
+            scope,
+            protectedRequest: await encryptEndpointContentPayload({
+              ownerId,
+              componentKey: customizationKey,
+              keyRevision,
+              context: context("request"),
+              plaintext: new TextEncoder().encode(JSON.stringify(content)),
+            }),
+          });
+    assert.deepEqual(wire.scope, scope);
+    assert.equal(wire.operation, operation);
+    assert.equal(wire.operationId, operationId);
+    assert.ok(!JSON.stringify(wire).includes(skillName));
+    const clear = await decryptEndpointContentPayload({
+      ownerId,
+      componentKey: customizationKey,
+      keyRevision,
+      opaque: wire.protectedResponse,
+      context: context("response"),
+    });
+    const result = JSON.parse(new TextDecoder().decode(clear));
+    assert.equal(result.status, status, JSON.stringify(result));
+    return result.value ?? result.error;
+  }
+
   assert.deepEqual(await stopWorker(), { code: 0, signal: null });
   await startWorker();
+  await eventually(
+    () => customization("/skills", "skills.list"),
+    (value) =>
+      assert.ok(
+        value.some(({ name }) => name === skillName),
+        JSON.stringify(value),
+      ),
+  );
+  const inventory = await customization(
+    "/customizations",
+    "customization.inventory.read",
+  );
+  assert.equal(
+    inventory.skills.items.find(({ name }) => name === skillName)?.path,
+    skillPath,
+  );
+  const rootsError = await customization(
+    "/customizations/skill-roots",
+    "customization.skill-roots.set",
+    { method: "PUT", content: { roots: [".agents/skills"] }, status: "failed" },
+  );
+  assert.match(rootsError.message, /require guest filesystem support/);
+  const configured = await customization(
+    "/customizations/skill",
+    "customization.skill.configure",
+    { method: "PATCH", content: { path: skillPath, enabled: false } },
+  );
+  assert.deepEqual(configured, { path: skillPath, effectiveEnabled: false });
+  const updated = await customization(
+    "/customizations",
+    "customization.inventory.read",
+  );
+  assert.equal(
+    updated.skills.items.find(({ name }) => name === skillName)?.enabled,
+    false,
+  );
   await eventually(sync, (value) => assert.deepEqual(value, original));
   assert.deepEqual(await sync(), original);
   assert.match(

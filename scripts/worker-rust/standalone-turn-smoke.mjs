@@ -170,7 +170,9 @@ const previewKey =
     : null;
 const policyKey = values.policies ? key("policy-content") : null;
 const customizationKey =
-  values["skill-settings"] || values["customization-inventory"]
+  values["skill-settings"] ||
+  values["customization-inventory"] ||
+  guestThreadSync
     ? key("customization-content")
     : null;
 const mcpKey =
@@ -3170,6 +3172,7 @@ try {
       keyRevision,
       labelKey,
       repositoryKey,
+      customizationKey,
       guest: guestDesktop,
       startWorker,
       stopWorker,

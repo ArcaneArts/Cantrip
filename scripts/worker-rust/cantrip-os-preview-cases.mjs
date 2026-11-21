@@ -197,6 +197,9 @@ finally:
       return {
         bindingId: binding.id,
         bindingGeneration: binding.bindingGeneration,
+        guestPath: binding.guestPath,
+        uid: workspace.uid,
+        gid: workspace.gid,
         worktreeId: binding.worktreeId,
         attachmentGeneration: instance.attachmentGeneration,
         runtimeGeneration: instance.runtimeGeneration,
@@ -205,6 +208,27 @@ finally:
         workspaceId: workspace.id,
         guestWorkspaceId,
       };
+    },
+    async writeProjectSkill({ guestPath, uid, gid }, name, content) {
+      const file = path.posix.join(
+        guestPath,
+        ".agents",
+        "skills",
+        name,
+        "SKILL.md",
+      );
+      await docker(
+        "exec",
+        "--user",
+        `${uid}:${gid}`,
+        container,
+        "/usr/bin/python3",
+        "-c",
+        "from pathlib import Path; import sys; p = Path(sys.argv[1]); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(sys.argv[2], encoding='utf-8')",
+        file,
+        content,
+      );
+      return file;
     },
     close: () => docker("rm", "-f", container),
   };

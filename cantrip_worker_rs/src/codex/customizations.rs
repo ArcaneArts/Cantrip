@@ -117,6 +117,7 @@ impl Command {
 
 pub(super) struct Target<'a> {
     pub runtime: &'a Runtime,
+    pub guest: bool,
     pub cwd: &'a JsString,
     pub thread: &'a Value,
     pub global: Option<&'a Path>,
@@ -156,17 +157,26 @@ async fn set_roots(target: &Target<'_>, input: &Value) -> Result<Value> {
         .as_array()
         .context("Missing extra skill roots.")?
         .clone();
-    let directory = paths::native(target.cwd);
-    let project =
-        tokio::task::spawn_blocking(move || resolve_roots(&directory, &requested)).await??;
+    let project = if target.guest {
+        // Codex scans extra roots on the worker filesystem. A guest path can
+        // shadow the same path in the repository's native skill inventory.
+        ensure!(
+            requested.is_empty(),
+            "Extra skill roots on Cantrip OS require guest filesystem support from Codex."
+        );
+        Vec::new()
+    } else {
+        let directory = paths::native(target.cwd);
+        tokio::task::spawn_blocking(move || resolve_roots(&directory, &requested))
+            .await??
+            .iter()
+            .map(|path| paths::text(path))
+            .collect()
+    };
     let mut roots = target
         .global
         .map(paths::text)
         .into_iter()
-        .collect::<Vec<_>>();
-    let project = project
-        .into_iter()
-        .map(|path| paths::text(&path))
         .collect::<Vec<_>>();
     for entry in &project {
         if !roots
