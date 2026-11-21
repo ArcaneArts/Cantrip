@@ -11142,3 +11142,28 @@ PATH. One earlier direct-broker run failed the existing scrollback row
 count assertion during resize. The relay run and direct-broker rerun
 both passed that case. Twenty-three parser tests, the documentation
 test, and the offline worker build passed.
+
+## 345. Preserve the desktop runtime when packaging fails
+
+Reference commit `daccdcd2ab33cc2250cb5e5145be766f0ab2a315` (#3508).
+
+Desktop packaging assembles and verifies the native services in a sibling
+directory before replacing the runtime resource tree. Assembly failures
+leave the last successful tree in place. If the final rename fails, the
+packager restores the previous tree and reports the original error.
+
+In an isolated macOS ARM64 worktree, the baseline `--from-artifacts` run
+deleted the previous tree and left files from a legacy Node server
+behind after the worker manifest copy failed. The patched packager
+reported the same missing file and kept the previous tree. Focused
+tests also exercised rollback on a failed final rename and replacement
+with a completed tree.
+
+The normal artifact packagers assembled the runtime from existing native
+Core, worker, Codex, CLI, and CUA builds and compiled the legacy PostgreSQL
+helper. The installed helper reported its version with an empty PATH.
+The headless desktop supervisor launched both services with an empty PATH
+in PGlite and bundled PostgreSQL modes. The fixture verified retained
+settings and identity, orderly shutdown, and recovery after supervisor
+loss. The published tree contained no Node runtime or `node_modules`.
+Eighteen focused packaging and workflow tests passed locally.

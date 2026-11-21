@@ -1,6 +1,56 @@
-import { chmod, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { renameSync } from "node:fs";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { buildLegacyPostgres } from "./server-rust/postgres-assets.mjs";
+
+export async function replaceDesktopRuntime(destination, assemble) {
+  const parent = path.dirname(destination);
+  await mkdir(parent, { recursive: true });
+  const stage = await mkdtemp(path.join(parent, ".cantrip-desktop-runtime-"));
+  const candidate = path.join(stage, "runtime");
+  const previous = path.join(stage, "previous");
+  let removeStage = true;
+  try {
+    await mkdir(candidate);
+    await assemble(candidate);
+
+    // Publish or roll back without yielding between the two renames.
+    let hadPrevious = true;
+    try {
+      renameSync(destination, previous);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      hadPrevious = false;
+    }
+    try {
+      renameSync(candidate, destination);
+    } catch (error) {
+      if (hadPrevious) {
+        try {
+          renameSync(previous, destination);
+        } catch (restoreError) {
+          removeStage = false;
+          throw new AggregateError(
+            [error, restoreError],
+            `Could not publish the desktop runtime. The previous runtime is at ${previous}.`,
+          );
+        }
+      }
+      throw error;
+    }
+  } finally {
+    if (removeStage) await rm(stage, { force: true, recursive: true });
+  }
+}
 
 // Tauri copies resources over its previous build staging tree. Homebrew ships
 // some PostgreSQL assets as 0444; copying those modes makes the next real
