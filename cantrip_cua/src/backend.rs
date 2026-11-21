@@ -51,6 +51,14 @@ pub trait CaptureBackend: Send {
         Ok(())
     }
     fn cancel_remote_monitor_open(&mut self, _binding: &crate::interaction::Binding) {}
+    fn open_remote_window(
+        &mut self,
+        _participant: &str,
+        _target: &Target,
+        _cancel: &Cancellation,
+    ) -> Result<()> {
+        Ok(())
+    }
     fn desktop_io(&self) -> bool {
         false
     }

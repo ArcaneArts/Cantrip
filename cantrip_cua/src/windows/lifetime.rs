@@ -26,7 +26,7 @@ use windows_sys::Win32::{
     },
 };
 
-type Shared = Arc<Mutex<Registry>>;
+pub(super) type Shared = Arc<Mutex<Registry>>;
 
 thread_local! {
     static OBSERVED: RefCell<Option<Shared>> = const { RefCell::new(None) };

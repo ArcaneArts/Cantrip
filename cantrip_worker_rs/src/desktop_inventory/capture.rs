@@ -281,7 +281,7 @@ impl Participant {
                 )
                 .await;
             if self.key.host_monitor_input
-                && self.key.target["kind"] == "monitor"
+                && (self.key.target["kind"] == "monitor" || cfg!(windows))
                 && result.as_ref().is_err_and(|error| {
                     error.downcast_ref::<NativeError>().is_some_and(|error| {
                         matches!(error.code(), "ownership-mismatch" | "input-pending")

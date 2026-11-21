@@ -10287,3 +10287,30 @@ The Weston portal fixture, eight participant tests, and macOS ARM64 worker
 compile check passed. Live `ydotoold` kernel delivery and actual GNOME and KDE
 consent remain unverified. This fallback requires a compositor that can bind
 a virtual pointer to an output.
+
+## 307. Send foreground input to shared Windows windows
+
+Reference commit `432af48ecc0eb42b18798008585d1ba7ec47ee37` (#3470).
+
+The retired worker activated the selected Windows window before dispatching
+clicks, keyboard shortcuts, text, scrolling, and copy. The native viewer
+now uses Win32 activation and dispatch for those operations. Each action
+verifies the selected window generation and foreground target. Pointer
+input also checks the actual point and active mouse capture. A visible
+overlapping window can block a click. Plain hover uses directed window
+messages, and agent input retains its independent window-directed path.
+
+Window and display viewers share a single physical input owner. Waiting
+viewers can keep receiving frames. Detach and failed dispatch release the
+owner's recorded holds without bringing a window to the foreground. Copy
+sends Ctrl+C through the same owner and accepts fresh clipboard text from
+the selected window or its hidden same-process clipboard owner.
+
+The statically linked x64 helper and process fixtures built. The helper
+and fixtures also passed the Windows ARM64 compile check, and the x64
+worker compiled. Eight participant tests and the framed helper smoke
+passed on macOS ARM64. The Windows fixtures check scoped capture,
+directed agent clicks, activation, Unicode input, blocked pointer input
+under a topmost window, and clipboard copy after display-to-window handoff.
+Those fixture assertions still need an interactive Windows run.
+[Archived Windows activation implementation](https://raw.githubusercontent.com/zavora-ai/computer-use-mcp/v7.0.0/native/src/windows.rs).

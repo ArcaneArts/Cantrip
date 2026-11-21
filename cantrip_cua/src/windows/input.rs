@@ -42,13 +42,14 @@ pub(super) struct Native {
 
 pub(super) enum Destination {
     Window(Arc<Window>),
+    ForegroundWindow(Arc<Window>, Cancellation),
     Monitor(Monitor),
 }
 
 impl Destination {
     fn target(&self) -> &Target {
         match self {
-            Self::Window(window) => &window.target,
+            Self::Window(window) | Self::ForegroundWindow(window, _) => &window.target,
             Self::Monitor(monitor) => &monitor.target,
         }
     }
@@ -100,8 +101,14 @@ impl Session {
             id: destination.target().id.clone(),
             generation: destination.target().generation,
         };
+        let domain = match destination {
+            Destination::Window(_) => id.id.clone(),
+            Destination::ForegroundWindow(..) | Destination::Monitor(_) => {
+                "windows-desktop".to_owned()
+            }
+        };
         let owner = lock(&host)
-            .open(id.clone(), id.id.clone(), destination)
+            .open(id.clone(), domain, destination)
             .map_err(|_| CuaError::new(ErrorCode::Capacity, "Windows input capacity reached."))?;
         Ok(Self {
             host,
@@ -454,7 +461,18 @@ impl InputBackend for Native {
     ) -> Result<Prepared<Control, Packet>> {
         match destination {
             Destination::Window(window) => self.prepare_window(window, event, held),
-            Destination::Monitor(monitor) => physical::prepare(monitor, event, held),
+            Destination::ForegroundWindow(window, _) => {
+                let holds: Vec<_> = held.collect();
+                if matches!(event, InputEvent::PointerMove { .. })
+                    && !holds
+                        .iter()
+                        .any(|(control, _)| matches!(control, Control::Button(_)))
+                {
+                    return self.prepare_window(window, event, holds.into_iter());
+                }
+                physical::prepare(&window.target.bounds, event, holds.into_iter())
+            }
+            Destination::Monitor(monitor) => physical::prepare(&monitor.target.bounds, event, held),
         }
     }
 
@@ -464,32 +482,24 @@ impl InputBackend for Native {
         packet: &Packet,
     ) -> std::result::Result<Delivery, PostFailure<CuaError>> {
         match (destination, packet) {
-            (Destination::Window(window), Packet::Directed(messages)) => {
-                self.post_window(window, messages)
+            (
+                Destination::Window(window) | Destination::ForegroundWindow(window, _),
+                Packet::Directed(messages),
+            ) => self.post_window(window, messages),
+            (Destination::ForegroundWindow(window, cancel), Packet::System(packet)) => {
+                physical::post_window(&self.registry, window, packet, cancel)
             }
             (Destination::Monitor(monitor), Packet::System(packet)) => {
-                physical::post(monitor, packet)
+                physical::post_monitor(monitor, packet)
             }
             _ => Err(PostFailure::NotDispatched(stale())),
         }
     }
 }
 
-pub(super) fn copy_recipient(window: &Window) -> Result<HWND> {
-    Ok(Recipient::keyboard(window)?.hwnd as HWND)
-}
-
 impl Recipient {
     fn for_window(window: &Window, hwnd: HWND) -> Result<Self> {
-        let mut process = 0;
-        let thread = unsafe { GetWindowThreadProcessId(hwnd, &mut process) };
-        let root = window.identity.hwnd as HWND;
-        if thread == 0
-            || process != window.identity.process
-            || (hwnd != root && unsafe { IsChild(root, hwnd) } == 0)
-        {
-            return Err(stale());
-        }
+        let thread = window.recipient_thread(hwnd).ok_or_else(stale)?;
         Ok(Self {
             hwnd: hwnd as usize,
             thread,
