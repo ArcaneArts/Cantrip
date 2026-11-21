@@ -77,6 +77,7 @@ const { values } = parseArgs({
     "mcp-targets": { type: "boolean" },
     "mcp-explorer": { type: "boolean" },
     "mcp-terminal": { type: "boolean" },
+    "mcp-browser": { type: "string" },
     "mcp-client-controls": { type: "boolean" },
     "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
@@ -225,6 +226,7 @@ const interactionKey =
   values["mcp-client-controls"] ||
   values["mcp-explorer"] ||
   values["mcp-terminal"] ||
+  values["mcp-browser"] ||
   values["cua-preview"] ||
   cuaAgent
     ? key("interaction-content")
@@ -250,6 +252,7 @@ const consoleStateKey =
   values["mcp-targets"] ||
   values["mcp-explorer"] ||
   values["mcp-terminal"] ||
+  values["mcp-browser"] ||
   values["mcp-client-controls"] ||
   values.policies ||
   values.codegraph ||
@@ -3141,9 +3144,19 @@ try {
   const enrollment = await call("POST", "/api/workers/enrollment-codes", 201, {
     label: "Rust standalone turn",
   });
+  const browserFixture = values["mcp-browser"]
+    ? await import("./mcp-browser-cases.mjs")
+    : null;
+  const browserEnvironment = browserFixture
+    ? await browserFixture.browserFixtureEnvironment(
+        root,
+        values["mcp-browser"],
+      )
+    : null;
   workerEnvironment = {
     ...environment,
     PATH: mcpDiscovery?.bin ?? (values.codegraph ? "/usr/bin:/bin" : ""),
+    ...browserEnvironment,
     ...(mcpDiscovery
       ? { CANTRIP_MCP_FIXTURE_TOKEN: "mcp-fixture-private-value" }
       : {}),
@@ -3541,6 +3554,21 @@ try {
       workerId,
       keyRevision,
       labelKey,
+    });
+  } else if (browserFixture) {
+    await browserFixture.verifyManagedMcpBrowser({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      surfaceKey: consoleStateKey,
+      interactionKey,
+      data,
+      origin: server.origin,
     });
   } else if (values["mcp-terminal"]) {
     const { verifyManagedMcpTerminal } =

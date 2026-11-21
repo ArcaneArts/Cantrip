@@ -1,4 +1,5 @@
 mod alerts;
+mod browser;
 mod chats;
 mod client;
 mod computer_use;
@@ -334,6 +335,9 @@ impl Inner {
             }
             "terminal.read" | "terminal.send" | "terminal.restart" => {
                 self.terminal(authorization, &call, operation).await
+            }
+            "browser.services" | "browser.open" => {
+                self.browser(authorization, &call, operation).await
             }
             "client.notify"
             | "client.focus-project"

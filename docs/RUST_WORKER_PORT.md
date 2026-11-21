@@ -51,8 +51,8 @@ covers the current Docker build, enrollment, and volume reuse.
 
 ### Open managed MCP operations
 
-The remaining managed Cantrip MCP work covers worktree, browser, and Run
-tools. Their catalog entries and Core routes are in place. The worker still
+The remaining managed Cantrip MCP work covers worktree and Run tools.
+Their catalog entries and Core routes are in place. The worker still
 needs negotiated admission and endpoint handling for these families.
 
 Bundled Codex still needs to handle MCP results that contain an unpaired UTF-16
@@ -11338,3 +11338,21 @@ PATH. It verified bounded snapshots, approved input reaching a real
 PTY, a new service process and fresh scrollback after restart, and
 rejection of a foreign target and of read-only mutations. The Explorer
 regression smoke and offline worker build also passed.
+
+## 354. Restore managed MCP Browser tools
+
+Reference commit `c413b5e79529b7076be2c3834babe8ee6e64208e` (#3517).
+
+Managed Project Chat bindings advertise service discovery and revision-checked
+navigation when Core supports each operation. Discovery follows the Browser
+placement, including for read-only bindings. Navigation resolves the exact
+surface, normalizes the URL, and seals it for the next revision. Core compares
+the expected revision and sends the saved state to the Browser owner.
+
+The baseline worker omitted `browser_services` from native Codex discovery.
+On macOS ARM64, the fixture used native Codex, Rust Core with PGlite, a
+headless Chromium Browser attached over the WorkerLink relay, and only native
+listener tools in the worker PATH. It exercised discovery on a fixture-owned
+HTTP listener, approved navigation to a normalized URL, encrypted persistence
+at the next revision, and rejection of cross-project and read-only navigation.
+The managed Terminal regression smoke and offline worker build also passed.
