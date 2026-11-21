@@ -62,3 +62,28 @@ fn foreground_and_background_colors_reset_independently() {
         assert_eq!(cell.bgcolor(), background);
     }
 }
+
+#[test]
+fn inserted_and_deleted_cells_paint_broken_wide_glyphs() {
+    let mut parser = vt100::Parser::new(3, 8, 0);
+    parser.process("界ABC\x1b[2G\x1b[31;44;1;4m\x1b[2@".as_bytes());
+    let screen = parser.screen();
+    for col in 0..3 {
+        let cell = screen.cell(0, col).unwrap();
+        assert_eq!(cell.bgcolor(), vt100::Color::Idx(4));
+        assert_eq!(cell.fgcolor(), vt100::Color::Default);
+        assert!(!cell.bold() && !cell.underline());
+        assert!(!cell.is_wide() && !cell.is_wide_continuation());
+    }
+    assert_eq!(screen.cell(0, 4).unwrap().contents(), "A");
+
+    parser.process("\x1b[2;1HABC界D\x1b[2;1H\x1b[45m\x1b[4P".as_bytes());
+    let screen = parser.screen();
+    assert!(screen.cell(1, 0).unwrap().contents().is_empty());
+    assert_eq!(screen.cell(1, 1).unwrap().contents(), "D");
+    for col in [0, 4, 7] {
+        let cell = screen.cell(1, col).unwrap();
+        assert_eq!(cell.bgcolor(), vt100::Color::Idx(5));
+        assert!(!cell.is_wide_continuation());
+    }
+}

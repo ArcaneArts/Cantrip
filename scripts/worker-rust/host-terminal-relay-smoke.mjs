@@ -477,6 +477,102 @@ async function verifyTabStops(view, reattach) {
   }
 }
 
+async function verifyBackgroundErase(view, reattach) {
+  const { Terminal } = createRequire(
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
+  )("@xterm/headless");
+  const token = randomUUID();
+  const paint = [
+    "\\033c",
+    "\\033[2;5r\\033[2;6H\\033[31;1;4;7;44m\\033[L\\033[0m",
+    "\\033[4;6H\\033[48;2;12;34;56m\\033[M\\033[0m",
+    "\\033[7;9r\\033[42m\\033[S\\033[0m",
+    "\\033[11;13r\\033[42m\\033[T\\033[0m",
+    "\\033[15;17r\\033[15;4H\\033[45m\\033M\\033[0m",
+    "\\033[19;21r\\033[21;4H\\033[44m\\n\\033[0m",
+    "\\033[23;25r\\033[25;113H\\033[43mAB\\033[0m",
+    "\\033[r\\033[27;1HABC\\033[27;2H\\033[31;1;4;46m\\033[2@\\033[0m",
+    "\\033[28;1HABCDE\\033[28;2H\\033[45m\\033[2P\\033[0m",
+    "\\033[29;1HABCDE\\033[29;2H\\033[31;1;4;47m\\033[2X\\033[0m",
+    "\\033[30;1HABCDE\\033[31;4;42m\\033[2K\\033[0m",
+    "\\033[32;34r\\033[34;50H\\033[46m\\033D\\033[0m",
+    "\\033[36;38r\\033[38;50H\\033[41m\\033E\\033[0m",
+    "\\033[r\\033[40;1H",
+  ].join("");
+  await view.input(
+    "/bin/stty -echo; printf '" +
+      paint +
+      "%s%s' erase-ready- '" +
+      token +
+      "'; IFS= read -r line; printf '\\033c%s%s\\n' erase-reset- '" +
+      token +
+      "'; /bin/stty echo\r",
+  );
+  const raw = await view.read(new RegExp("erase-ready-" + token));
+  const start = raw.lastIndexOf("\x1bc");
+  assert.notEqual(start, -1);
+  const options = { cols: 113, rows: 43, allowProposedApi: true };
+  const live = new Terminal(options);
+  const replay = new Terminal(options);
+  const write = (term, output) =>
+    new Promise((resolve) => term.write(output, resolve));
+  const readCell = (term, row, col) => {
+    const buffer = term.buffer.active;
+    const cell = buffer.getLine(buffer.baseY + row).getCell(col);
+    return {
+      text: cell.getChars(),
+      background: cell.isBgDefault() ? null : cell.getBgColor(),
+      foreground: cell.isFgDefault() ? null : cell.getFgColor(),
+      bold: Boolean(cell.isBold()),
+      underline: Boolean(cell.isUnderline()),
+      inverse: Boolean(cell.isInverse()),
+    };
+  };
+  let attached;
+  try {
+    await write(live, raw.slice(start));
+    attached = await reattach();
+    assert.equal(attached.hydration.format, "canonical-xterm");
+    await write(replay, attached.replay);
+    for (const [label, row, col, background] of [
+      ["insert line", 1, 20, 4],
+      ["delete line", 4, 20, 0x0c2238],
+      ["scroll up", 8, 20, 2],
+      ["scroll down", 10, 20, null],
+      ["reverse index", 14, 20, 5],
+      ["line feed", 20, 20, 4],
+      ["autowrap", 24, 20, 3],
+      ["insert characters", 26, 1, 6],
+      ["delete characters", 27, 112, 5],
+      ["erase characters", 28, 1, 7],
+      ["erase line", 29, 20, 2],
+      ["index", 33, 20, 6],
+      ["next line", 37, 20, 1],
+    ]) {
+      const expected = {
+        text: "",
+        background,
+        foreground: null,
+        bold: false,
+        underline: false,
+        inverse: false,
+      };
+      assert.deepEqual(readCell(live, row, col), expected, label + " in xterm");
+      assert.deepEqual(
+        readCell(replay, row, col),
+        expected,
+        label + " in replay",
+      );
+    }
+  } finally {
+    await view.input("\r");
+    await view.read(new RegExp("erase-reset-" + token));
+    live.dispose();
+    replay.dispose();
+    await attached?.close();
+  }
+}
+
 async function verifyAlternateReplay(view, reattach, eventually, checkout) {
   const { Terminal } = createRequire(
     new URL("../../tests/reference-node-worker/package.json", import.meta.url),
@@ -846,6 +942,7 @@ export async function verifyHostTerminal({
     await verifyCharacterSets(linkExit, attachWorkerLink);
     await verifySavedCursors(linkExit, attachWorkerLink);
     await verifyTabStops(linkExit, attachWorkerLink);
+    await verifyBackgroundErase(linkExit, attachWorkerLink);
     await verifyAlternateReplay(
       linkExit,
       attachWorkerLink,

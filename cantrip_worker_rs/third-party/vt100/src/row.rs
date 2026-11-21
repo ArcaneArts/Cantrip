@@ -8,8 +8,14 @@ pub struct Row {
 
 impl Row {
     pub fn new(cols: u16) -> Self {
+        Self::blank(cols, crate::attrs::Attrs::default())
+    }
+
+    pub fn blank(cols: u16, attrs: crate::attrs::Attrs) -> Self {
+        let mut cell = crate::Cell::new();
+        cell.clear(attrs);
         Self {
-            cells: vec![crate::Cell::new(); usize::from(cols)],
+            cells: vec![cell; usize::from(cols)],
             wrapped: false,
         }
     }
@@ -41,19 +47,14 @@ impl Row {
         self.cells.get_mut(usize::from(col))
     }
 
-    pub fn insert(&mut self, i: u16, cell: crate::Cell) {
-        self.cells.insert(usize::from(i), cell);
-        self.wrapped = false;
-    }
-
-    pub fn insert_print_cells(
+    pub fn insert_cells(
         &mut self,
         col: u16,
         count: u16,
         attrs: crate::attrs::Attrs,
     ) {
         let col = usize::from(col);
-        let count = usize::from(count);
+        let count = usize::from(count).min(self.cells.len() - col);
         if self.cells[col].is_wide_continuation() {
             self.cells[col - 1].clear(attrs);
             self.cells[col].clear(attrs);
@@ -69,15 +70,30 @@ impl Row {
         }
     }
 
-    pub fn remove(&mut self, i: u16) {
-        self.clear_wide(i);
-        self.cells.remove(usize::from(i));
-        self.wrapped = false;
+    pub fn delete_cells(
+        &mut self,
+        col: u16,
+        count: u16,
+        attrs: crate::attrs::Attrs,
+    ) {
+        let (before, tail) = self.cells.split_at_mut(usize::from(col));
+        let count = usize::from(count).min(tail.len());
+        tail.rotate_left(count);
+        let first_blank = tail.len() - count;
+        for cell in &mut tail[first_blank..] {
+            cell.clear(attrs);
+        }
+        if let Some(left) = before.last_mut().filter(|cell| cell.is_wide()) {
+            left.clear(attrs);
+        }
+        if tail[0].is_wide_continuation() {
+            tail[0].clear(attrs);
+        }
     }
 
     pub fn erase(&mut self, i: u16, attrs: crate::attrs::Attrs) {
         let wide = self.cells[usize::from(i)].is_wide();
-        self.clear_wide(i);
+        self.clear_wide(i, attrs);
         self.cells[usize::from(i)].clear(attrs);
         if i == self.cols() - if wide { 2 } else { 1 } {
             self.wrapped = false;
@@ -116,7 +132,7 @@ impl Row {
         self.wrapped
     }
 
-    pub fn clear_wide(&mut self, col: u16) {
+    fn clear_wide(&mut self, col: u16, attrs: crate::attrs::Attrs) {
         let cell = &self.cells[usize::from(col)];
         let other = if cell.is_wide() {
             &mut self.cells[usize::from(col + 1)]
@@ -125,7 +141,7 @@ impl Row {
         } else {
             return;
         };
-        other.clear(*other.attrs());
+        other.clear(attrs);
     }
 
     pub fn write_contents(
