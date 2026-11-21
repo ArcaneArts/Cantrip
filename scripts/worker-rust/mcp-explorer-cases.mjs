@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  decryptInteractionRequestContent,
-  encryptInteractionResponseContent,
   encryptPrivateDisplayLabel,
   encryptSurfacePrivateState,
 } from "../../packages/crypto/dist/index.js";
 import { createPreparedProjectChat } from "./console-interaction-cases.mjs";
-import { managedMcpClient, managedMcpTurn } from "./mcp-tool-cases.mjs";
+import {
+  approveManagedMcpTool,
+  managedMcpClient,
+  managedMcpRpc,
+  managedMcpTurn,
+} from "./mcp-tool-cases.mjs";
 
 export async function verifyManagedMcpExplorer({
   call,
@@ -103,52 +106,16 @@ export async function verifyManagedMcpExplorer({
     projectUrl,
   };
   const invoke = managedMcpClient(attachment);
-  async function approveWrite() {
-    const [pending] = await eventually(
-      () =>
-        call("GET", `/api/agent-requests?chatId=${chatId}&status=pending`, 200),
-      (items) => assert.equal(items.length, 1),
-    );
-    const material = {
+  const approveWrite = () =>
+    approveManagedMcpTool({
+      call,
+      eventually,
+      chatId,
       ownerId,
       keyRevision,
-      requestKey: pending.requestKey,
-      componentKey: interactionKey,
-    };
-    const classification = pending.classification;
-    const { payload } = await decryptInteractionRequestContent({
-      ...material,
-      encrypted: pending.protectedPayload,
-      publicClassification: classification,
+      interactionKey,
+      expectedTool: /explorer[_ ]write|Explorer file/iu,
     });
-    assert.match(JSON.stringify(payload), /explorer[_ ]write|Explorer file/iu);
-    let response;
-    if (payload.kind === "mcpElicitation") {
-      response = { kind: payload.kind, action: "accept", content: null };
-    } else {
-      assert.equal(payload.kind, "userInput");
-      const [question] = payload.questions;
-      assert.ok(question.options.some(({ label }) => label === "Allow"));
-      response = {
-        kind: payload.kind,
-        answers: { [question.id]: { answers: ["Allow"] } },
-      };
-    }
-    const result = await call(
-      "POST",
-      `/api/agent-requests/${pending.id}/respond`,
-      200,
-      {
-        idempotencyKey: randomUUID(),
-        classification,
-        protectedResponse: await encryptInteractionResponseContent({
-          ...material,
-          content: { version: 1, classification, response },
-        }),
-      },
-    );
-    assert.equal(result.status, "resolved");
-  }
   async function write(args, error) {
     const [result] = await managedMcpTurn(attachment, [
       { name: "explorer_write", args, error, afterInvoke: approveWrite },
@@ -257,30 +224,7 @@ export async function verifyManagedMcpExplorer({
         assert.equal(reopened.data.version, saved.data.version);
         assert.equal(reopened.data.truncated, false);
 
-        const dir = path.join(data, "agent-mcp-bindings");
-        const [session] = await readdir(dir);
-        const connection = JSON.parse(
-          await readFile(path.join(dir, session, "connection.json"), "utf8"),
-        );
-        const rpc = async (method, params) => {
-          const response = await fetch(
-            connection.endpoint + "/v1/mcp/" + connection.bindingId,
-            {
-              method: "POST",
-              headers: {
-                authorization: "Bearer " + connection.credential,
-                "content-type": "application/json",
-                accept: "application/json, text/event-stream",
-              },
-              body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-              signal: AbortSignal.timeout(15_000),
-            },
-          );
-          assert.equal(response.status, 200);
-          const reply = await response.json();
-          assert.ok(reply.result, JSON.stringify(reply));
-          return reply.result;
-        };
+        const rpc = await managedMcpRpc(data);
         const { tools } = await rpc("tools/list");
         assert.ok(tools.some(({ name }) => name === "explorer_read"));
         assert.ok(!tools.some(({ name }) => name === "explorer_write"));

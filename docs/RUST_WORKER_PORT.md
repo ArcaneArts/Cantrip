@@ -51,8 +51,8 @@ covers the current Docker build, enrollment, and volume reuse.
 
 ### Open managed MCP operations
 
-The remaining managed Cantrip MCP work covers worktree, terminal, browser, and
-Run tools. Their catalog entries and Core routes are in place. The worker still
+The remaining managed Cantrip MCP work covers worktree, browser, and Run
+tools. Their catalog entries and Core routes are in place. The worker still
 needs negotiated admission and endpoint handling for these families.
 
 Bundled Codex still needs to handle MCP results that contain an unpaired UTF-16
@@ -11320,3 +11320,21 @@ surrogate pair. Bundled Codex stopped on a response with a split pair, so
 its read fixture ends on a complete character. The host Run and CLI smoke,
 including the Node reference comparison for Explorer, and the offline
 worker build passed.
+
+## 353. Restore managed MCP Terminal tools
+
+Reference commit `66080284ffafe6e061c94df0bc3f0ec04eda5d20` (#3516).
+
+Managed Project Chat bindings advertise Terminal read, send, and restart
+when Core can inspect the target and supports the operation. Read-only
+bindings retain snapshots. Terminal and Explorer share the worker's
+target inspection and protected request handling. The file or PTY owner
+opens the request and Core continues to decide where it can run. Terminal
+restart uses the existing service command and status receipt.
+
+The baseline worker omitted `terminal_read` from native Codex discovery.
+The macOS ARM64 fixture used Rust Core in PGlite mode and an empty worker
+PATH. It verified bounded snapshots, approved input reaching a real
+PTY, a new service process and fresh scrollback after restart, and
+rejection of a foreign target and of read-only mutations. The Explorer
+regression smoke and offline worker build also passed.

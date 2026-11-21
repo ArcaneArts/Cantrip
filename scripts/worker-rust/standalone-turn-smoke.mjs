@@ -76,6 +76,7 @@ const { values } = parseArgs({
     "mcp-alerts": { type: "boolean" },
     "mcp-targets": { type: "boolean" },
     "mcp-explorer": { type: "boolean" },
+    "mcp-terminal": { type: "boolean" },
     "mcp-client-controls": { type: "boolean" },
     "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
@@ -223,6 +224,7 @@ const interactionKey =
   planQuestion ||
   values["mcp-client-controls"] ||
   values["mcp-explorer"] ||
+  values["mcp-terminal"] ||
   values["cua-preview"] ||
   cuaAgent
     ? key("interaction-content")
@@ -247,6 +249,7 @@ const consoleStateKey =
   values["mcp-alerts"] ||
   values["mcp-targets"] ||
   values["mcp-explorer"] ||
+  values["mcp-terminal"] ||
   values["mcp-client-controls"] ||
   values.policies ||
   values.codegraph ||
@@ -3538,6 +3541,22 @@ try {
       workerId,
       keyRevision,
       labelKey,
+    });
+  } else if (values["mcp-terminal"]) {
+    const { verifyManagedMcpTerminal } =
+      await import("./mcp-terminal-cases.mjs");
+    await verifyManagedMcpTerminal({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      surfaceKey: consoleStateKey,
+      interactionKey,
+      data,
     });
   } else if (values["mcp-explorer"]) {
     const { verifyManagedMcpExplorer } =
