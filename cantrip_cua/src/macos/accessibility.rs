@@ -6,6 +6,7 @@ use crate::{
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
     input::{Control, Controls, InputReceipt},
+    interaction::MAX_HOST_CLIPBOARD_UNITS,
     target::{Bounds, Target, TargetKind},
     window_traversal::WindowTraversal,
 };
@@ -17,6 +18,7 @@ use std::{
     time::{Duration, Instant},
 };
 type Ref = *const c_void;
+const CF_RANGE_TYPE: u32 = 4; // kAXValueCFRangeType
 #[repr(C)]
 #[derive(Default)]
 struct Pair {
@@ -36,6 +38,12 @@ unsafe extern "C" {
     fn AXUIElementSetAttributeValue(element: Ref, attribute: Ref, value: Ref) -> i32;
     fn AXUIElementGetTypeID() -> usize;
     fn AXUIElementCopyAttributeValue(element: Ref, attribute: Ref, value: *mut Ref) -> i32;
+    fn AXUIElementCopyParameterizedAttributeValue(
+        element: Ref,
+        attribute: Ref,
+        parameter: Ref,
+        value: *mut Ref,
+    ) -> i32;
     fn AXUIElementGetAttributeValueCount(element: Ref, attribute: Ref, count: *mut isize) -> i32;
     fn AXUIElementCopyAttributeValues(
         element: Ref,
@@ -47,6 +55,8 @@ unsafe extern "C" {
     fn AXUIElementCopyActionNames(element: Ref, value: *mut Ref) -> i32;
     fn AXUIElementPerformAction(element: Ref, action: Ref) -> i32;
     fn AXUIElementSetMessagingTimeout(element: Ref, seconds: f32) -> i32;
+    #[cfg(test)]
+    fn AXValueCreate(kind: u32, value: Ref) -> Ref;
     fn AXValueGetTypeID() -> usize;
     fn AXValueGetValue(value: Ref, kind: u32, result: *mut c_void) -> u8;
 }
@@ -120,6 +130,14 @@ impl Owned {
         let key = Self::string(name);
         let mut value = ptr::null();
         read_result(unsafe { AXUIElementCopyAttributeValue(self.0, key.0, &mut value) })?;
+        Self::take(value)
+    }
+    fn parameterized_attr(&self, name: &str, parameter: &Self) -> Result<Self> {
+        let key = Self::string(name);
+        let mut value = ptr::null();
+        read_result(unsafe {
+            AXUIElementCopyParameterizedAttributeValue(self.0, key.0, parameter.0, &mut value)
+        })?;
         Self::take(value)
     }
     fn request_enhanced_ui(&self) {
@@ -735,38 +753,98 @@ pub(super) fn copy_window_text(target: &Target, cancel: &Cancellation) -> Result
         Some(id) => id == number,
         None => Accessibility::window(target, cancel).is_ok_and(|owner| window.same(&owner)),
     };
-    if !owns_window
-        || element
-            .attr("AXSubrole")
+    if !owns_window || is_secure_input(&element) {
+        return Ok(None);
+    }
+    let selection = selected_text(&element, cancel)?;
+    if selection.is_none() {
+        return Ok(None);
+    }
+    if !app
+        .attr("AXFocusedUIElement")
+        .is_ok_and(|focused| element.same(&focused))
+        || !element
+            .attr("AXWindow")
+            .is_ok_and(|current| window.same(&current))
+        || is_secure_input(&element)
+    {
+        return Ok(None);
+    }
+    cancel.check()?;
+    Ok(selection)
+}
+
+fn is_secure_input(element: &Owned) -> bool {
+    ["AXRole", "AXSubrole"].into_iter().any(|attribute| {
+        element
+            .attr(attribute)
             .ok()
             .and_then(|role| role.text(64))
             .as_deref()
             == Some("AXSecureTextField")
+    })
+}
+
+fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String>> {
+    cancel.check()?;
+    if let Ok(value) = element.attr("AXSelectedText")
+        && let Some(text) = decode_selection(&value)?
     {
-        return Ok(None);
+        return Ok(Some(text));
     }
-    let Ok(selection) = element.attr("AXSelectedText") else {
-        return Ok(None);
-    };
-    if !selection.is(unsafe { CFStringGetTypeID() })
-        || !app
-            .attr("AXFocusedUIElement")
-            .is_ok_and(|focused| element.same(&focused))
-        || !element
-            .attr("AXWindow")
-            .is_ok_and(|current| window.same(&current))
+
+    cancel.check()?;
+    if let Ok(range) = element.attr("AXSelectedTextRange")
+        && let Some(length) = selection_length(&range)
     {
+        if length > MAX_HOST_CLIPBOARD_UNITS {
+            return Err(selection_too_large());
+        }
+        if let Ok(value) = element.parameterized_attr("AXStringForRange", &range)
+            && let Some(text) = decode_selection(&value)?
+        {
+            return Ok(Some(text));
+        }
+    }
+
+    // WebKit and Chromium can expose selection endpoints as opaque markers.
+    // Round-trip them to the same element and accept only its text response.
+    cancel.check()?;
+    if let Ok(range) = element.attr("AXSelectedTextMarkerRange")
+        && let Ok(value) = element.parameterized_attr("AXStringForTextMarkerRange", &range)
+    {
+        return decode_selection(&value);
+    }
+    Ok(None)
+}
+
+fn selection_length(value: &Owned) -> Option<usize> {
+    if !value.is(unsafe { AXValueGetTypeID() }) {
+        return None;
+    }
+    let mut range = Range {
+        location: 0,
+        length: 0,
+    };
+    let accepted =
+        unsafe { AXValueGetValue(value.0, CF_RANGE_TYPE, (&mut range as *mut Range).cast()) };
+    (accepted != 0
+        && range.location >= 0
+        && range.length > 0
+        && range.location.checked_add(range.length).is_some())
+    .then_some(range.length as usize)
+}
+
+fn decode_selection(selection: &Owned) -> Result<Option<String>> {
+    if !selection.is(unsafe { CFStringGetTypeID() }) {
         return Ok(None);
     }
     let length = unsafe { CFStringGetLength(selection.0) };
     if length <= 0 {
         return Ok(None);
     }
-    if length as usize > crate::interaction::MAX_HOST_CLIPBOARD_UNITS {
-        return Err(CuaError::new(
-            ErrorCode::Capacity,
-            "Clipboard text exceeds the supported limit.",
-        ));
+    if length as usize > MAX_HOST_CLIPBOARD_UNITS {
+        return Err(selection_too_large());
     }
     let mut units = vec![0; length as usize];
     unsafe {
@@ -779,8 +857,52 @@ pub(super) fn copy_window_text(target: &Target, cancel: &Cancellation) -> Result
             units.as_mut_ptr(),
         );
     }
-    cancel.check()?;
     Ok(Some(String::from_utf16_lossy(&units)))
+}
+
+fn selection_too_large() -> CuaError {
+    CuaError::new(
+        ErrorCode::Capacity,
+        "Clipboard text exceeds the supported limit.",
+    )
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    fn value(location: isize, length: isize) -> Owned {
+        let range = Range { location, length };
+        Owned::take(unsafe { AXValueCreate(CF_RANGE_TYPE, (&range as *const Range).cast()) })
+            .expect("native range")
+    }
+
+    #[test]
+    fn reads_only_nonempty_nonoverflowing_native_selection_ranges() {
+        assert_eq!(selection_length(&value(12, 7)), Some(7));
+        for (location, length) in [(0, 0), (-1, 7), (1, -1), (isize::MAX, 1)] {
+            assert_eq!(selection_length(&value(location, length)), None);
+        }
+        assert_eq!(selection_length(&Owned::string("wrong type")), None);
+    }
+
+    #[test]
+    fn preserves_clipboard_whitespace_and_unicode_with_a_native_size_bound() {
+        let text = "  selected λ🚋\n\t";
+        assert_eq!(
+            decode_selection(&Owned::string(text)).unwrap().as_deref(),
+            Some(text)
+        );
+        assert!(decode_selection(&Owned::string("")).unwrap().is_none());
+        assert!(decode_selection(&value(0, 1)).unwrap().is_none());
+        let too_large = "🚋".repeat(MAX_HOST_CLIPBOARD_UNITS / 2 + 1);
+        assert_eq!(
+            decode_selection(&Owned::string(&too_large))
+                .unwrap_err()
+                .code,
+            ErrorCode::Capacity
+        );
+    }
 }
 
 /// Read-only focus samples. AX errors are unavailable evidence, not input gates.

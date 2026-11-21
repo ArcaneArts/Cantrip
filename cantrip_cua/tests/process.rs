@@ -1,4 +1,7 @@
 //! Child-process tests. Native X11 coverage requires an explicit disposable display.
+#[cfg(target_os = "macos")]
+#[path = "fixtures/macos_clipboard.rs"]
+mod macos_clipboard;
 #[cfg(windows)]
 #[path = "fixtures/windows_monitor.rs"]
 mod windows_monitor;
