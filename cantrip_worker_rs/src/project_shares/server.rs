@@ -211,4 +211,93 @@ mod tests {
         assert!(TcpStream::connect(address).await.is_err());
         Ok(())
     }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    #[ignore = "uses the local macOS WebDAV mount driver"]
+    async fn macos_mount_reads_and_writes_a_project_share() -> Result<()> {
+        use std::io::{Seek, Write};
+        use std::process::Stdio;
+        use tokio::{fs, process::Command};
+
+        let root = tempfile::tempdir()?;
+        fs::write(root.path().join("worker.txt"), "worker-owned text").await?;
+        let binding = Binding {
+            base: format!("/project-shares/{}", "a".repeat(43)),
+            username: "share-test".into(),
+            password: Zeroizing::new("test-only".repeat(4)),
+            realm: "Cantrip Share Test".into(),
+        };
+        let listener = Listener::bind(root.path().to_owned(), &binding).await?;
+        let url = format!("http://127.0.0.1:{}{}/", listener.port, binding.base);
+        let mut credentials = tempfile::tempfile()?;
+        for value in [
+            binding.username.as_bytes(),
+            binding.password.as_bytes(),
+            &[],
+            &[],
+            &[],
+        ] {
+            credentials.write_all(&(value.len() as u32).to_be_bytes())?;
+            credentials.write_all(value)?;
+        }
+        credentials.rewind()?;
+        // Remove the mount point with rmdir so cleanup never traverses a mount.
+        let mount = tempfile::tempdir()?.keep();
+        let mount_result = timeout(
+            Duration::from_secs(20),
+            Command::new("/sbin/mount_webdav")
+                .args([
+                    "-S",
+                    "-a",
+                    "0",
+                    "-o",
+                    "nobrowse",
+                    "-v",
+                    "Cantrip Share Fixture",
+                ])
+                .arg(url)
+                .arg(&mount)
+                .stdin(Stdio::from(credentials))
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await;
+        let result = async {
+            let started = mount_result??;
+            anyhow::ensure!(
+                started.status.success(),
+                "mount failed: {} {}",
+                started.status,
+                String::from_utf8_lossy(&started.stderr)
+            );
+            timeout(Duration::from_secs(20), async {
+                anyhow::ensure!(
+                    fs::read_to_string(mount.join("worker.txt")).await? == "worker-owned text",
+                    "wrong mounted file"
+                );
+                fs::write(mount.join("viewer.txt"), "mounted write").await?;
+                anyhow::ensure!(
+                    fs::read_to_string(root.path().join("viewer.txt")).await? == "mounted write",
+                    "mounted write did not reach the share"
+                );
+                anyhow::Ok(())
+            })
+            .await?
+        }
+        .await;
+        let _ = timeout(
+            Duration::from_secs(10),
+            Command::new("/sbin/umount")
+                .arg(&mount)
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await;
+        let removed = std::fs::remove_dir(&mount);
+        listener.close().await;
+        result?;
+        removed?;
+        Ok(())
+    }
 }
