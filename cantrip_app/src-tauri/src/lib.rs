@@ -792,7 +792,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     let worker_token = format!("desktop-{}-{token_seed}", std::process::id());
     let server_directory = resources.join("server");
     let worker_directory = resources.join("worker");
-    let worker = worker_command(&node, &worker_directory)?;
+    let worker = worker_command(&worker_directory);
     let launch = server_command(&node, &server_directory)?;
     if let Some(command) = launch.preparation {
         let mut preparation = spawn_service(
@@ -1275,18 +1275,14 @@ pub fn run() {
 
 #[cfg(all(test, desktop))]
 mod tests {
-    use std::{
-        ffi::OsStr,
-        path::Path,
-        sync::{
-            atomic::{AtomicUsize, Ordering},
-            Mutex,
-        },
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex,
     };
 
     use super::{
         desktop_window_state_flags, exit_request_needs_confirmation, run_shutdown_once,
-        should_persist_window_state, worker_command, LocalWorkerRuntime, ManagedRuntime,
+        should_persist_window_state, LocalWorkerRuntime, ManagedRuntime,
     };
     use tauri_plugin_window_state::StateFlags;
 
@@ -1323,22 +1319,6 @@ mod tests {
         assert!(permissions
             .iter()
             .any(|permission| permission == "core:default"));
-    }
-
-    #[test]
-    fn packaged_node_services_use_a_working_directory_relative_entrypoint() {
-        let directory = Path::new(r"C:\Program Files\Cantrip\runtime\server");
-        let command = worker_command(
-            Path::new(r"C:\Program Files\Cantrip\runtime\node.exe"),
-            directory,
-        )
-        .unwrap();
-
-        assert_eq!(command.get_current_dir(), Some(directory));
-        assert_eq!(
-            command.get_args().collect::<Vec<_>>(),
-            vec![OsStr::new("dist/index.js")]
-        );
     }
 
     #[test]

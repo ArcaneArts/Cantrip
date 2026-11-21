@@ -65,3 +65,33 @@ test("smokes the packaged entry with the bundled runtime", async (t) => {
   ]);
   assert.equal(calls[0].options.cwd, root);
 });
+
+test("launches the native Windows MCP subcommands from the package", async (t) => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-native-worker-mcp-"),
+  );
+  t.after(() => rm(root, { force: true, recursive: true }));
+  await mkdir(path.join(root, "bin"));
+  const entry = path.join(root, "bin", "cantrip-worker.exe");
+  await writeFile(entry, "placeholder");
+  await writeFile(
+    path.join(root, "desktop-worker.json"),
+    JSON.stringify({ runtime: "rust" }),
+  );
+  const subcommands = [];
+  const result = await verifyPackagedWorkerMcp(root, {
+    platform: "win32",
+    spawn(command, [subcommand], options) {
+      assert.equal(command, entry);
+      assert.equal(options.cwd, root);
+      assert.equal(options.env.PATH, "");
+      subcommands.push(subcommand);
+      return {
+        status: 1,
+        stderr: `Usage: cantrip-worker ${subcommand} --connection <path>`,
+      };
+    },
+  });
+  assert.equal(result.entryPath, entry);
+  assert.deepEqual(subcommands, ["mcp", "cua-mcp"]);
+});

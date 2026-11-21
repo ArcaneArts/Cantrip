@@ -16,6 +16,7 @@ import { bundleCantripCli } from "./cantrip-cli/build.mjs";
 import { bundleCantripCua } from "./cantrip-cua/build.mjs";
 import { smokeCantripCua } from "./cantrip-cua/smoke.mjs";
 import { verifyBuiltRuntime } from "./cantrip-codex/verify-built-runtime.mjs";
+import { verifyPackagedWorkerMcp } from "./verify-packaged-worker-mcp.mjs";
 
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -132,11 +133,16 @@ export async function packageNativeWorker({
         path.join(stage, ".env.example"),
       );
       await cp(
-        path.join(root, "deploy", "worker-rust.README.md"),
+        path.join(root, "deploy", "worker.README.md"),
         path.join(stage, "README.md"),
       );
     }
+    await writeFile(
+      path.join(stage, "desktop-worker.json"),
+      '{"runtime":"rust"}\n',
+    );
     await verifyNativeWorkerBin(bin, platform);
+    await verifyPackagedWorkerMcp(stage, { platform });
     if (platform !== "win32") await chmod(stage, 0o755);
 
     await rm(destination, { force: true, recursive: true });

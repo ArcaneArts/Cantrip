@@ -25,19 +25,16 @@ RUN apt-get update \
       python3 \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
       | sh -s -- -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN" \
-    && rm -rf /var/lib/apt/lists/* \
-    && corepack enable
+    && rm -rf /var/lib/apt/lists/*
 
 ARG TARGETARCH
 ARG CANTRIP_VERSION_PATCH
-ARG CANTRIP_WORKER_RUNTIME=node
 ENV CANTRIP_VERSION_PATCH=${CANTRIP_VERSION_PATCH}
 
 COPY . .
 
 RUN test -n "$CANTRIP_VERSION_PATCH" \
     || (echo "CANTRIP_VERSION_PATCH is required for Docker builds." >&2; exit 1)
-RUN if [ "$CANTRIP_WORKER_RUNTIME" = node ]; then corepack pnpm install --frozen-lockfile; fi
 RUN --mount=type=cache,id=cantrip-worker-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cantrip-worker-cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=cantrip-worker-target-${TARGETARCH},target=/native-target,sharing=locked \
@@ -46,14 +43,8 @@ RUN --mount=type=cache,id=cantrip-worker-registry,target=/usr/local/cargo/regist
       arm64) cantrip_target=linux-arm64 ;; \
       *) echo "Unsupported worker architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac \
-    && case "$CANTRIP_WORKER_RUNTIME" in \
-      node) artifact=cantrip-worker ;; \
-      rust) artifact=cantrip-worker-rust ;; \
-      *) echo "Unsupported worker runtime: $CANTRIP_WORKER_RUNTIME" >&2; exit 1 ;; \
-    esac \
-    && node scripts/package-distributions.mjs worker \
-      --target "$cantrip_target" --worker-runtime "$CANTRIP_WORKER_RUNTIME" \
-    && mv "artifacts/$artifact-$cantrip_target" /out \
+    && node scripts/package-distributions.mjs worker --target "$cantrip_target" \
+    && mv "artifacts/cantrip-worker-$cantrip_target" /out \
     && rm -rf cantrip_codex/.build
 
 FROM debian:bookworm-slim AS runtime
@@ -77,8 +68,7 @@ COPY --from=build --chown=cantrip:cantrip /out/ /opt/cantrip/
 USER cantrip
 WORKDIR /opt/cantrip
 ENV CANTRIP_WORKER_DATA_DIR=/var/lib/cantrip-worker \
-    HOME=/var/lib/cantrip-worker \
-    NODE_ENV=production
+    HOME=/var/lib/cantrip-worker
 VOLUME ["/var/lib/cantrip-worker"]
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/opt/cantrip/start.sh"]

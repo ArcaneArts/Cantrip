@@ -106,7 +106,6 @@ services:
       dockerfile: deploy/docker/worker.Dockerfile
       args:
         CANTRIP_VERSION_PATCH: ${CANTRIP_VERSION_PATCH:?set CANTRIP_VERSION_PATCH to the Git commit count}
-        CANTRIP_WORKER_RUNTIME: ${CANTRIP_WORKER_RUNTIME:-node}
     image: cantrip-worker:${CANTRIP_IMAGE_TAG:-local}
     restart: unless-stopped
     depends_on:
