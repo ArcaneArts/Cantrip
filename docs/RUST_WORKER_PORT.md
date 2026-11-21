@@ -9498,3 +9498,24 @@ call across the entire run. A direct worker fixture checked cold sync before
 thread preparation, rejected a mismatched checkout path, and observed no MCP
 binding or model call. Host and standalone Chat discovery and observation
 also passed locally.
+
+## 276. Recover an applied Chat Goal's first turn in the Rust worker
+
+Reference commit `9429f6c30446ac640e7473cc751adb53d21283c5` (#3439).
+
+The worker confirms ownership of the native inference journal and matches
+the saved setter, claim revision, Goal epoch, and prepared native thread.
+It observes the native producer's actual enqueue and returns the accepted
+operation identity. For a prior worker's unstarted admission, it asks Core
+to fence that exact admission before the existing Goal recovery path
+continues. If there is no child admission, a current native Goal read can
+prove the saved claim is no longer eligible.
+
+The macOS ARM64 `standalone-turn-smoke.mjs --goal-claim-recovery` fixture
+queued encrypted Goals through Rust Core in PGlite mode, using a production
+Rust worker and bundled Codex. It restarted once before Core accepted the
+first child and once after acceptance with the reply lost. Each scenario
+finished on its original thread and epoch, ran the setter once, consumed its
+queued claim, and retained one copy of the original input. The second
+scenario verified the fence for the replaced worker generation. The
+existing `--goal-handoff-recovery` fixture also passed with the same binaries.
