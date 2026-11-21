@@ -9696,3 +9696,27 @@ The disposable guest kept the static noVNC viewer assets during the purge.
 Debian's full noVNC package pulls Node into the OCI guest and the workspace
 package. That distribution dependency remains open. Linux AMD64 and the
 latest Codex executor build were outside this cycle's validation.
+
+## 284. Ship the Cantrip OS desktop viewers without Node
+
+Reference commit `4f95f946564ef73c025cbd502b61f6d5e25fb240` (#3447).
+
+The OCI image and workspace package 0.5.0 use noVNC browser assets
+extracted from Debian's package at build time. The assets retain their
+Debian version and copyright. Python websockify serves each viewer and
+forwards its VNC connection. The workspace package owns a private copy
+of its browser modules and keeps the existing viewer URLs. The OCI
+personal viewer has its own asset path and can run without Workspaces.
+
+A fresh Linux ARM64 OCI image installed Workspaces 0.5.0, Executor 0.21.0,
+Remote 0.11.0 and Recovery 0.5.0. Its Debian package database and executable
+search path confirmed Node and the full noVNC package were absent. The
+personal viewer served the browser assets and received a live RFB banner.
+The workspace gateway served the same module paths, opened the selected
+desktop and checked restart and stopped-target behavior. Separately,
+upgrading a disposable guest from Workspaces 0.3.0 preserved an existing
+workspace and moved the viewer's module links to the bundled files.
+Thirteen focused Cantrip OS tests passed.
+
+BuildKit checked the AMD64 ISO recipe. The ISO was not built or booted.
+The OCI test reused the earlier Codex 0.166.0 executor from package 0.12.0.

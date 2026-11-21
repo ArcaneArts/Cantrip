@@ -27,7 +27,7 @@ await run("docker", [
   "cp /out/*.deb /export/",
 ]);
 await registerBuiltPackage(
-  resolve(output, "cantrip-os-workspaces_0.4.0_all.deb"),
-  { name: "cantrip-os-workspaces", version: "0.4.0", architecture: "all" },
+  resolve(output, "cantrip-os-workspaces_0.5.0_all.deb"),
+  { name: "cantrip-os-workspaces", version: "0.5.0", architecture: "all" },
 );
-console.log(`Debian package: ${output}/cantrip-os-workspaces_0.4.0_all.deb`);
+console.log(`Debian package: ${output}/cantrip-os-workspaces_0.5.0_all.deb`);
