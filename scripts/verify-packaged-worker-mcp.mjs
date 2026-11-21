@@ -1,13 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { lstat, readFile } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-
-import { nodeExecutableName } from "./package-runtime.mjs";
-
-const EXPECTED_STARTUP_FAILURE =
-  "Cantrip MCP failed to start: Usage: cantrip-worker-mcp --connection <path>";
 
 async function requireRegularFile(filename, description) {
   let metadata;
@@ -26,79 +21,36 @@ export async function verifyPackagedWorkerMcp(
   { platform = process.platform, smoke = true, spawn = spawnSync } = {},
 ) {
   const root = path.resolve(workerRoot);
-  const runtime = await readFile(
-    path.join(root, "desktop-worker.json"),
-    "utf8",
-  ).then(JSON.parse, (error) => {
-    if (error.code !== "ENOENT") throw error;
-  });
-  if (runtime?.runtime === "rust") {
-    const entryPath = path.join(
-      root,
-      "bin",
-      platform === "win32" ? "cantrip-worker.exe" : "cantrip-worker",
-    );
-    await requireRegularFile(entryPath, "Packaged Rust worker");
-    if (smoke) {
-      for (const subcommand of ["mcp", "cua-mcp"]) {
-        const result = spawn(entryPath, [subcommand], {
-          cwd: root,
-          env: { ...process.env, PATH: "" },
-          encoding: "utf8",
-          maxBuffer: 64 * 1_024,
-          timeout: 10_000,
-          windowsHide: true,
-        });
-        if (result.error) throw result.error;
-        if (
-          result.status !== 1 ||
-          !result.stderr.includes(
-            `Usage: cantrip-worker ${subcommand} --connection <path>`,
-          )
-        ) {
-          throw new Error(
-            `Packaged Cantrip ${subcommand} startup failed (${result.status ?? result.signal}): ${result.stderr.trim()}`,
-          );
-        }
+  const entryPath = path.join(
+    root,
+    "bin",
+    platform === "win32" ? "cantrip-worker.exe" : "cantrip-worker",
+  );
+  await requireRegularFile(entryPath, "Packaged Rust worker");
+  if (smoke) {
+    for (const subcommand of ["mcp", "cua-mcp"]) {
+      const result = spawn(entryPath, [subcommand], {
+        cwd: root,
+        env: { ...process.env, PATH: "" },
+        encoding: "utf8",
+        maxBuffer: 64 * 1_024,
+        timeout: 10_000,
+        windowsHide: true,
+      });
+      if (result.error) throw result.error;
+      if (
+        result.status !== 1 ||
+        !result.stderr.includes(
+          `Usage: cantrip-worker ${subcommand} --connection <path>`,
+        )
+      ) {
+        throw new Error(
+          `Packaged Cantrip ${subcommand} startup failed (${result.status ?? result.signal}): ${result.stderr.trim()}`,
+        );
       }
     }
-    return { entryPath, smoke };
   }
-  const manifestPath = path.join(root, "package.json");
-  const entryPath = path.join(root, "dist", "mcp", "stdio.js");
-  const nodePath = path.join(root, "runtime", nodeExecutableName(platform));
-  await requireRegularFile(manifestPath, "Packaged worker manifest");
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  if (manifest?.name !== "@cantrip/worker") {
-    throw new Error(
-      `Packaged worker manifest has unexpected name ${JSON.stringify(manifest?.name)}.`,
-    );
-  }
-  await requireRegularFile(entryPath, "Packaged Cantrip MCP entry point");
-
-  if (smoke) {
-    await requireRegularFile(nodePath, "Packaged Node executable");
-    const result = spawn(nodePath, [entryPath], {
-      cwd: root,
-      encoding: "utf8",
-      maxBuffer: 64 * 1_024,
-      timeout: 10_000,
-      windowsHide: true,
-    });
-    if (result.error) throw result.error;
-    if (result.status !== 1) {
-      throw new Error(
-        `Packaged Cantrip MCP smoke check exited with ${String(result.status)} instead of 1.`,
-      );
-    }
-    if (!result.stderr.includes(EXPECTED_STARTUP_FAILURE)) {
-      throw new Error(
-        `Packaged Cantrip MCP did not reach its argument validation boundary: ${result.stderr.trim()}`,
-      );
-    }
-  }
-
-  return { entryPath, manifestPath, nodePath, smoke };
+  return { entryPath, smoke };
 }
 
 const invokedDirectly =

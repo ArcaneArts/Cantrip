@@ -6,10 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { smokeCuaModelImageEncoder } from "./model-image-smoke.mjs";
 
-const root = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
+const referenceWorker = fileURLToPath(new URL("../", import.meta.url));
 
 test("model encoder smoke actually loads Sharp from the supplied worker layout", async () => {
   const directory = await mkdtemp(
@@ -21,9 +18,7 @@ test("model encoder smoke actually loads Sharp from the supplied worker layout",
     });
     await mkdir(path.join(directory, "node_modules"));
     await symlink(
-      await realpath(
-        path.join(root, "tests/reference-node-worker/node_modules/sharp"),
-      ),
+      await realpath(path.join(referenceWorker, "node_modules", "sharp")),
       path.join(directory, "node_modules/sharp"),
       "junction",
     );

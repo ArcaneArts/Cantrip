@@ -26,7 +26,6 @@ const files = execFileSync(
     "cantrip_app/src-tauri/src/lib.rs",
     "cantrip_app/src-tauri/src/process_environment.rs",
     "scripts/package-distributions.mjs",
-    "scripts/package-runtime.mjs",
     "deploy/docker/worker.Dockerfile",
   ],
   { cwd: root, encoding: "utf8" },

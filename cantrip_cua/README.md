@@ -450,7 +450,7 @@ archival. The importer preserves existing keychains and removes only the
 successfully created temporary signing keychain on failure or job cleanup.
 The CUA verifier checks the actual code signature, `art.cantrip.cua` identifier,
 Developer ID authority and hardened runtime, then launches that exact executable
-and exercises the final worker's Sharp image encoder. To reproduce the signing
+and exercises its native protocol with synthetic frames. To reproduce the signing
 and verification portion after `pnpm package:worker --target darwin-arm64`:
 
 ```sh
