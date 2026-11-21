@@ -9874,3 +9874,29 @@ missing checkout, preserved a user-owned source and a sibling checkout,
 and rejected an escaped path through a linked parent. The response kept
 the rejected project record. Two focused worker tests covered removal
 ordering, retry, and linked path rejection.
+
+## 292. Connect Host desktop creation to the native capture helper
+
+Reference commit `cc71d037805628ed18bde9aa8099e75fec025a9c` (#3455).
+
+The worker advertises its macOS Host desktop capability and handles the
+existing `surface.desktop.probe` command. The desktop actor asks the
+owned native helper for its actual backend capability, fences the reply
+to the connected server epoch, and reports initialization errors through
+the existing response. Attaching the desktop still owns the first image
+request and platform permission result.
+
+On macOS ARM64, the existing WorkerLink relay fixture now creates the
+Host desktop through the public Core route. It verifies the response
+to a missing helper, retries with the native fake capture backend, and
+checks that initialization never requests display inventory or an image.
+The same fixture receives encrypted frames from the native worker,
+checks desktop input and viewport updates, and closes the attached
+viewers. The actual ScreenCaptureKit helper also returned its native
+capabilities with an empty PATH.
+
+The archived Node desktop automation dependency supplied Host capture
+and input on Windows and on supported Linux desktops. The native
+helper currently supplies macOS Host capture and an explicitly assigned
+Cantrip OS Linux desktop backend. The Windows and Linux Host backends
+remain part of the replacement scope.

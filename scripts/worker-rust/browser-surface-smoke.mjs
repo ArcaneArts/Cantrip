@@ -3,7 +3,14 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -1037,30 +1044,13 @@ exec "$CANTRIP_FIXTURE_CHROMIUM" "$@"
         ")",
     );
     if (desktop) {
-      const id = literal(surfaceId);
+      const source = literal(randomUUID());
+      const checkout = literal(path.join(root, "home"));
       await repository.seed(
-        "INSERT INTO project_views(id,project_id,protected_label,kind,position) VALUES(" +
-          [
-            id,
-            project,
-            json(label("project-view")),
-            "'remote-desktop'",
-            0,
-          ].join(",") +
-          ")",
+        `INSERT INTO project_sources(id,project_id,worker_id,source_kind,absolute_path,display_path) VALUES(${source},${project},${worker},'folder',${checkout},${checkout})`,
       );
       await repository.seed(
-        "INSERT INTO remote_surfaces(id,project_id,worker_id,kind,configuration,protected_state,state_revision) VALUES(" +
-          [
-            id,
-            project,
-            worker,
-            "'desktop'",
-            json({ kind: "desktop" }),
-            json(await desktopState()),
-            1,
-          ].join(",") +
-          ")",
+        `INSERT INTO project_worktrees(id,project_source_id,worker_id,name,absolute_path,display_path,is_primary,origin,lifecycle_state) VALUES(${literal(randomUUID())},${source},${worker},'main',${checkout},${checkout},true,'cantrip','ready')`,
       );
     } else {
       const surfaces = [[surfaceId, "/first"]];
@@ -1106,6 +1096,34 @@ exec "$CANTRIP_FIXTURE_CHROMIUM" "$@"
     (worker) => worker.workerId === workerId,
   );
   if (desktop) {
+    assert.equal(
+      advertised.remoteSurfaces.desktop,
+      process.platform === "darwin",
+    );
+    const route = "/api/projects/" + projectId + "/remote-desktops";
+    const request = {
+      id: surfaceId,
+      titleProtection: label("project-view"),
+      stateProtection: await desktopState(),
+    };
+    const disabledHelper = captureHelper + ".disabled";
+    await rename(captureHelper, disabledHelper);
+    try {
+      const unavailable = await call("POST", route, 409, request);
+      assert.equal(
+        unavailable.error,
+        "Could not initialize the Cantrip capture helper.",
+      );
+      assert.deepEqual(await call("GET", route, 200), []);
+    } finally {
+      await rename(disabledHelper, captureHelper);
+    }
+    const created = await call("POST", route, 201, request);
+    assert.equal(created.id, surfaceId);
+    const probeRequests = await readFile(captureRequests, "utf8");
+    assert.ok(probeRequests.includes("capabilities.get"));
+    assert.ok(!probeRequests.includes("targets.list"));
+    assert.ok(!probeRequests.includes("observation.snapshot"));
     await verifyDesktop();
   } else {
     assert.equal(advertised.remoteSurfaces.browser, true);

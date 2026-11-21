@@ -96,7 +96,7 @@ enum Work {
 pub(crate) fn capabilities(environment: &cantrip_config::Environment) -> Value {
     json!({
         "browser": profile::discover(environment),
-        "desktop": false,
+        "desktop": cfg!(target_os = "macos"),
         "transports": ["websocket"],
         "iceTransportPolicies": ["relay"],
         "maxSessions": LIMIT,
