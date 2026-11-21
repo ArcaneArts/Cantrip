@@ -27,10 +27,11 @@ rquickjs = { version = "=0.12.2", default-features = false, features = ["std"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 async-io = "2.6.0"
 futures-lite = "2.6.1"
+libc = "0.2"
 percent-encoding = "2.3.2"
 tempfile = "3.27.0"
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
-rustix = { version = "1.1.6", features = ["event", "fs", "process"] }
+rustix = { version = "1.1.6", features = ["event", "fs", "pipe", "process"] }
 wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }

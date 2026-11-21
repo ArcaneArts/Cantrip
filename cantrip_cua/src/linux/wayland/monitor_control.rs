@@ -1,13 +1,11 @@
 use super::{
-    portal::Portal,
-    portal_desktop::{DesktopSession, Event},
-    stale,
+    inventory::Display, legacy_input, portal::Portal, portal_desktop::DesktopSession, stale,
 };
 use crate::{
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
     interaction::Binding,
-    target::{Bounds, Target},
+    target::{Bounds, Point, Target},
 };
 use cantrip_interaction::{
     host::{Delivery, InputBackend, InputFailure, InputHost, PostFailure, Prepared},
@@ -20,9 +18,33 @@ use std::{
 };
 
 pub(super) struct Control {
-    portal: Portal,
+    backend: Backend,
     pending: Option<Pending>,
     active: Option<Active>,
+}
+
+enum Backend {
+    Portal(Portal),
+    Legacy(legacy_input::Setup),
+}
+
+enum Session {
+    Portal(DesktopSession),
+    Legacy(legacy_input::Session),
+}
+
+enum ClipboardWatch {
+    Portal(zbus::MessageStream),
+    Legacy(u64),
+}
+
+#[derive(Clone)]
+pub(super) enum Event {
+    Move(Point),
+    Button(i32, bool),
+    Scroll(f64, f64),
+    Key(i32, bool),
+    Text(String),
 }
 
 struct Pending {
@@ -45,13 +67,21 @@ struct Active {
     identity: TargetIdentity,
     host: InputHost<Native>,
     participant: Participant,
-    session: Arc<DesktopSession>,
+    session: Arc<Session>,
 }
 
 impl Control {
     pub(super) fn new(portal: Portal) -> Self {
         Self {
-            portal,
+            backend: Backend::Portal(portal),
+            pending: None,
+            active: None,
+        }
+    }
+
+    pub(super) fn legacy(setup: legacy_input::Setup) -> Self {
+        Self {
+            backend: Backend::Legacy(setup),
             pending: None,
             active: None,
         }
@@ -62,6 +92,7 @@ impl Control {
         binding: &Binding,
         participant: &str,
         target: &Target,
+        display: &Display,
         layout: Vec<Bounds>,
         cancel: &Cancellation,
     ) -> Result<()> {
@@ -69,6 +100,13 @@ impl Control {
         if self.active.is_some() {
             return Err(busy());
         }
+        let portal = match &self.backend {
+            Backend::Portal(portal) => portal.clone(),
+            Backend::Legacy(setup) => {
+                let session = Session::Legacy(setup.open(display, cancel)?);
+                return self.activate(participant, target, session, cancel);
+            }
+        };
         if let Some(pending) = &self.pending
             && pending.cancel.is_cancelled()
         {
@@ -91,27 +129,9 @@ impl Control {
                 Err(mpsc::TryRecvError::Disconnected) => Err(input_failed()),
             };
             self.pending.take();
-            let session = Arc::new(result?);
-            let identity = TargetIdentity {
-                id: target.id.clone(),
-                generation: target.generation,
-            };
-            let mut host = InputHost::new(Native(session.clone()), 1, 32);
-            let owner = host
-                .open(identity.clone(), target.id.clone(), cancel.clone())
-                .map_err(|_| input_failed())?;
-            self.active = Some(Active {
-                native_id: participant.to_owned(),
-                target: target.clone(),
-                identity,
-                host,
-                participant: owner,
-                session,
-            });
-            return Ok(());
+            return self.activate(participant, target, Session::Portal(result?), cancel);
         }
 
-        let portal = self.portal.clone();
         let bounds = target.bounds;
         let (sender, result) = mpsc::channel();
         let attempt_cancel = Cancellation::default();
@@ -136,6 +156,34 @@ impl Control {
             result,
         });
         Err(waiting())
+    }
+
+    fn activate(
+        &mut self,
+        participant: &str,
+        target: &Target,
+        session: Session,
+        cancel: &Cancellation,
+    ) -> Result<()> {
+        cancel.check()?;
+        let session = Arc::new(session);
+        let identity = TargetIdentity {
+            id: target.id.clone(),
+            generation: target.generation,
+        };
+        let mut host = InputHost::new(Native(session.clone()), 1, 32);
+        let owner = host
+            .open(identity.clone(), target.id.clone(), cancel.clone())
+            .map_err(|_| input_failed())?;
+        self.active = Some(Active {
+            native_id: participant.to_owned(),
+            target: target.clone(),
+            identity,
+            host,
+            participant: owner,
+            session,
+        });
+        Ok(())
     }
 
     pub(super) fn cancel_open(&mut self, binding: &Binding) {
@@ -172,8 +220,8 @@ impl Control {
         sequence: u64,
         cancel: &Cancellation,
     ) -> Result<Option<String>> {
-        let portal = self.current(session, target)?.session.clone();
-        let Some(signals) = portal.watch_clipboard(cancel)? else {
+        let desktop = self.current(session, target)?.session.clone();
+        let Some(watch) = desktop.watch_clipboard(cancel)? else {
             return Ok(None);
         };
         self.submit(
@@ -194,7 +242,7 @@ impl Control {
             &InputEvent::KeyUp { key: "C".into() },
             cancel,
         )?;
-        portal.copied_text(signals, cancel)
+        desktop.copied_text(watch, cancel)
     }
 
     pub(super) fn close(&mut self, session: &str) -> bool {
@@ -215,6 +263,38 @@ impl Control {
             .as_mut()
             .filter(|active| active.native_id == session && same_target(&active.target, target))
             .ok_or_else(stale)
+    }
+}
+
+impl Session {
+    fn notify(&self, event: &Event, cancel: &Cancellation) -> Result<()> {
+        match self {
+            Self::Portal(portal) => portal.notify(event, cancel),
+            Self::Legacy(legacy) => legacy.notify(event, cancel),
+        }
+    }
+
+    fn watch_clipboard(&self, cancel: &Cancellation) -> Result<Option<ClipboardWatch>> {
+        match self {
+            Self::Portal(portal) => portal
+                .watch_clipboard(cancel)
+                .map(|watch| watch.map(ClipboardWatch::Portal)),
+            Self::Legacy(legacy) => legacy
+                .watch_clipboard(cancel)
+                .map(|watch| watch.map(ClipboardWatch::Legacy)),
+        }
+    }
+
+    fn copied_text(&self, watch: ClipboardWatch, cancel: &Cancellation) -> Result<Option<String>> {
+        match (self, watch) {
+            (Self::Portal(portal), ClipboardWatch::Portal(watch)) => {
+                portal.copied_text(watch, cancel)
+            }
+            (Self::Legacy(legacy), ClipboardWatch::Legacy(watch)) => {
+                legacy.copied_text(watch, cancel)
+            }
+            _ => Err(input_failed()),
+        }
     }
 }
 
@@ -242,7 +322,7 @@ impl Active {
     }
 }
 
-struct Native(Arc<DesktopSession>);
+struct Native(Arc<Session>);
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Held {
@@ -329,7 +409,7 @@ impl InputBackend for Native {
                         .find(|(item, _)| **item == control)
                         .map(|(_, release)| {
                             let mut events = vec![Event::Move(*point)];
-                            events.extend(&release.events);
+                            events.extend(release.events.iter().cloned());
                             Packet {
                                 events,
                                 cleanup: true,
@@ -383,20 +463,7 @@ impl InputBackend for Native {
                 control: Held::Key(key_code(key)?),
                 packet: None,
             },
-            InputEvent::Text(TextInput::Commit(text)) => action(
-                text.replace("\r\n", "\n")
-                    .chars()
-                    .flat_map(|character| {
-                        let code = match character {
-                            '\n' | '\r' => 0xff0d,
-                            '\t' => 0xff09,
-                            short if short as u32 <= 0xff => short as i32,
-                            unicode => 0x0100_0000 | unicode as i32,
-                        };
-                        [Event::Key(code, true), Event::Key(code, false)]
-                    })
-                    .collect(),
-            ),
+            InputEvent::Text(TextInput::Commit(text)) => action(vec![Event::Text(text.clone())]),
             InputEvent::PrepareSurface => action(vec![]),
             _ => {
                 return Err(CuaError::new(
@@ -417,7 +484,7 @@ impl InputBackend for Native {
         cancel.check().map_err(PostFailure::NotDispatched)?;
         for event in &packet.events {
             self.0
-                .notify(*event, cancel)
+                .notify(event, cancel)
                 .map_err(PostFailure::Uncertain)?;
         }
         Ok(Delivery::DispatchedUnverified)

@@ -2,8 +2,10 @@
 mod capture;
 mod drive;
 mod inventory;
+mod legacy_clipboard;
+mod legacy_input;
+mod monitor_control;
 mod portal;
-mod portal_control;
 mod portal_desktop;
 mod screenshot;
 
@@ -26,7 +28,7 @@ struct Host {
     wayland: Arc<Mutex<Desktop>>,
     xwayland: Option<host::Host>,
     portal: Option<portal::Portal>,
-    control: Option<portal_control::Control>,
+    control: Option<monitor_control::Control>,
 }
 
 impl Host {
@@ -38,7 +40,8 @@ impl Host {
             .as_ref()
             .filter(|portal| portal_desktop::available(portal))
             .cloned()
-            .map(portal_control::Control::new);
+            .map(monitor_control::Control::new)
+            .or_else(|| wayland.legacy_setup().map(monitor_control::Control::legacy));
         let portal = if wayland.capture_protocol().is_none() {
             session
         } else {
@@ -274,15 +277,21 @@ impl CaptureBackend for Host {
         target: &Target,
         cancel: &Cancellation,
     ) -> Result<()> {
-        let layout = self
-            .monitors(cancel)?
-            .into_iter()
-            .map(|(display, _)| display.bounds)
-            .collect();
+        let monitors = self.monitors(cancel)?;
+        let (display, _) = monitors
+            .iter()
+            .find(|(_, current)| {
+                current.id == target.id
+                    && current.generation == target.generation
+                    && current.bounds == target.bounds
+            })
+            .ok_or_else(stale)?;
+        let layout = monitors.iter().map(|(display, _)| display.bounds).collect();
         self.control.as_mut().ok_or_else(unavailable)?.open(
             binding,
             participant,
             target,
+            display,
             layout,
             cancel,
         )

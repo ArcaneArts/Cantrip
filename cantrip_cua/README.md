@@ -5,7 +5,7 @@ process/session/image/cursor core and build-chain integration use an explicit
 deterministic test backend. A lazy worker service owns the actual process and
 private protocol. Encrypted server routing, existing durable permission requests,
 and the experimental shared client preview are implemented. The native macOS
-backend uses ScreenCaptureKit. The Linux Host backend uses X11. The managed `cantrip_cua` MCP connects bounded
+backend uses ScreenCaptureKit. The Linux Host backend supports X11 and Wayland. The managed `cantrip_cua` MCP connects bounded
 JavaScript to that same service through the authenticated worker broker. Native
 acceptance and protected operation Trajectory verification are tracked in
 [the CUA plan](../docs/planned/CUA.md). Ordinary Cantrip worker startup
@@ -44,12 +44,30 @@ to that display's stream. The compositor delivers keyboard events, and its
 optional Clipboard portal supplies fresh text after an explicit copy.
 Closing the viewer releases its held input and ends the portal session.
 
+When Remote Desktop portal support is unavailable, compositors that expose
+version 2 of the wlroots virtual pointer protocol can bind pointer input to
+the selected output. Keyboard input uses the host's running `ydotoold` and
+follows the host keyboard focus. Set `YDOTOOL_SOCKET` if the daemon uses a
+custom socket. The default is `.ydotool_socket` in `XDG_RUNTIME_DIR`, or
+`/tmp/.ydotool_socket` when the runtime directory is unset. Clipboard copy
+requires the compositor's wlroots data control protocol. Unicode text input
+uses `wl-copy` to publish text to the session clipboard before pasting.
+The desktop's consent decision governs sessions opened through the portal.
+
 The local process fixture uses a separate D-Bus session, a headless Weston
 output, and a controlled portal. It requires Weston, Python D-Bus bindings,
 and the Python GLib bindings.
 
 ```sh
 dbus-run-session -- python3 cantrip_cua/tests/fixtures/wayland_portal_control.py /path/to/cantrip-cua
+```
+
+Run the local input fixture as an unprivileged user with Sway, Xwayland,
+`xev`, and `wl-clipboard` installed. It uses a disposable two-output desktop
+and records the daemon requests through a local Unix datagram socket.
+
+```sh
+dbus-run-session -- python3 cantrip_cua/tests/fixtures/wayland_local_control.py /path/to/cantrip-cua
 ```
 
 ## Assigned Linux X11 backend

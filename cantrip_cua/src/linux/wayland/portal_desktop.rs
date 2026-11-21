@@ -1,9 +1,12 @@
-use super::portal::{PORTAL_NAME, PORTAL_PATH, Portal, Results, bounded, token};
+use super::{
+    monitor_control::Event,
+    portal::{PORTAL_NAME, PORTAL_PATH, Portal, Results, bounded, token},
+};
 use crate::{
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
     interaction::MAX_HOST_CLIPBOARD_BYTES,
-    target::{Bounds, Point},
+    target::Bounds,
 };
 use async_io::Timer;
 use futures_lite::{StreamExt, future};
@@ -177,12 +180,12 @@ impl DesktopSession {
         })
     }
 
-    pub(super) fn notify(&self, event: Event, cancel: &Cancellation) -> Result<()> {
+    pub(super) fn notify(&self, event: &Event, cancel: &Cancellation) -> Result<()> {
         let path = &self.handle.path;
         let options = Options::new;
         let call = &self.handle;
         async_io::block_on(async {
-            match event {
+            match *event {
                 Event::Move(point) => {
                     call.call(
                         REMOTE,
@@ -218,6 +221,26 @@ impl DesktopSession {
                         cancel,
                     )
                     .await?
+                }
+                Event::Text(ref text) => {
+                    for character in text.replace("\r\n", "\n").chars() {
+                        let code = match character {
+                            '\n' | '\r' => 0xff0d,
+                            '\t' => 0xff09,
+                            short if short as u32 <= 0xff => short as i32,
+                            unicode => 0x0100_0000 | unicode as i32,
+                        };
+                        for state in [1_u32, 0] {
+                            call.call(
+                                REMOTE,
+                                "NotifyKeyboardKeysym",
+                                &(path, options(), code, state),
+                                cancel,
+                            )
+                            .await?;
+                        }
+                    }
+                    return Ok(());
                 }
             };
             Ok(())
@@ -306,14 +329,6 @@ impl Drop for DesktopSession {
     fn drop(&mut self) {
         async_io::block_on(self.handle.close());
     }
-}
-
-#[derive(Clone, Copy)]
-pub(super) enum Event {
-    Move(Point),
-    Button(i32, bool),
-    Scroll(f64, f64),
-    Key(i32, bool),
 }
 
 async fn activate(
