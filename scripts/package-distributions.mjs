@@ -213,9 +213,7 @@ async function packageDesktopRuntime() {
     });
     await assembleNativeWorker(workerRoot, { standalone: false });
   }
-  await configureDesktopServer(path.join(runtime, "server"), {
-    nativeLegacyUpgrade: true,
-  });
+  await configureDesktopServer(path.join(runtime, "server"));
 }
 
 if (fromArtifacts && selection !== "desktop-runtime") {

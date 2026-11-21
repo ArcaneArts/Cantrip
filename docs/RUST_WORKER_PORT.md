@@ -9577,3 +9577,29 @@ legacy format. Thirty-four focused packaging and deployment tests, nine
 desktop launcher tests run serially, and the desktop compile check passed.
 Hosted Compose rendered the expected native build and persistent volume.
 The updated Linux worker image and Windows package were not run in this cycle.
+
+## 279. Retire the desktop Node profile converter fallback
+
+Reference commit `99ca24205297aa11798dd7ea2a9131574331286c` (#3442).
+
+Desktop always invokes the native server for profile preparation. The
+package records a private PostgreSQL compatibility path, and the launcher
+uses the conventional path when older metadata omits it. The server
+attempts to open the actual profile before it needs the compatibility
+binaries. Desktop no longer reads a JavaScript converter path or passes a
+Node executable to the server.
+
+Local macOS ARM64 assembly produced a runtime without Node. The real
+launcher and worker passed restart, retained settings and identity, and
+shutdown and supervisor-loss checks with PGlite, private PostgreSQL, and
+a disposable external PostgreSQL service. The packaged launcher upgraded
+and reopened a legacy profile. The round trip compared 137 tables,
+preserved 1,807 original files, and restored a later write to the legacy
+format. Nine launcher tests and fifteen packaging tests passed.
+Tauri compiled with asset copying disabled for the compile check because
+the shared debug staging directory retained read-only PostgreSQL files.
+
+The standalone server's explicit developer/reference converter flags and
+the development worker launch still need retirement. The older signed
+updater harness rebuilds its baseline with the current launcher and still
+expects an older Node worker. That harness and Windows were not run here.

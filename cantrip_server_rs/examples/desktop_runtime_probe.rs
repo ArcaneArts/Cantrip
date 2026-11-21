@@ -49,34 +49,22 @@ fn main() -> Result<()> {
         .is_some_and(|arg| arg == "--without-worker");
     let logs = data.join("logs");
     std::fs::create_dir_all(&logs)?;
-    let node = resources.join(if cfg!(windows) { "node.exe" } else { "node" });
     let listener = TcpListener::bind(("127.0.0.1", 0))?;
     let port = listener.local_addr()?.port();
     drop(listener);
     let token = format!("desktop-probe-{}", std::process::id());
-    let launch = server_command(&node, &resources.join("server")).map_err(anyhow::Error::msg)?;
-    if let Some(command) = launch.preparation {
+    let launch = server_command(&resources.join("server")).map_err(anyhow::Error::msg)?;
+    let server_env = server_environment(&data, &logs, port, &token);
+    {
         let mut child = OwnedChild(
-            spawn_service(
-                command,
-                &server_environment(&data, &logs, port, &token),
-                true,
-                true,
-            )
-            .map_err(anyhow::Error::msg)?,
+            spawn_service(launch.preparation, &server_env, true, true)
+                .map_err(anyhow::Error::msg)?,
         );
         capture(&mut child.0);
         wait_for_preparation(&mut child.0, || false).map_err(anyhow::Error::msg)?;
     }
-    let native = launch.native;
     let mut server = OwnedChild(
-        spawn_service(
-            launch.command,
-            &server_environment(&data, &logs, port, &token),
-            true,
-            true,
-        )
-        .map_err(anyhow::Error::msg)?,
+        spawn_service(launch.command, &server_env, true, true).map_err(anyhow::Error::msg)?,
     );
     capture(&mut server.0);
     wait_for_server(&mut server.0, port, || false).map_err(anyhow::Error::msg)?;
@@ -99,7 +87,7 @@ fn main() -> Result<()> {
     println!(
         "{}",
         json!({"event":"server.listening", "origin":origin,
-        "serverPid":server.0.id(), "workerPid":worker.as_ref().map(|w|w.0.id()), "native":native})
+        "serverPid":server.0.id(), "workerPid":worker.as_ref().map(|w|w.0.id()), "native":true})
     );
     let mut input = Vec::new();
     std::io::stdin().read_to_end(&mut input)?;

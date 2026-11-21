@@ -188,11 +188,6 @@ try {
         (process.platform === "win32" ? ".exe" : ""),
     ),
   );
-  await copy(
-    process.execPath,
-    path.join(runtime, process.platform === "win32" ? "node.exe" : "node"),
-  );
-  await copy(converter, path.join(runtime, "profile-converter"));
   await configureDesktopServer(path.join(runtime, "server"));
   const desktop = path.join(root, "production-launcher");
   await mkdir(desktop);
@@ -232,9 +227,7 @@ try {
   );
   assert.ok(activation);
   assert.deepEqual(await files(activation.backup), sourceDigest);
-  // A second ordinary desktop launch must retain the accepted write. Even an
-  // absent converter executable is irrelevant once native ownership is recorded.
-  await rm(path.join(runtime, "profile-converter"), { recursive: true });
+  // A second ordinary desktop launch must retain the accepted write.
   server = await startServer(probe, [runtime, desktop, "--without-worker"], {
     env: launchEnvironment,
   });

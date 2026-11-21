@@ -326,14 +326,13 @@ try {
     await assert.rejects(access(path.join(runtime, "worker/node_modules")), {
       code: "ENOENT",
     });
-    if (!report.desktopServerConfiguration.profileConverter) {
-      for (const name of ["node", "node.exe", "profile-converter"]) {
-        await assert.rejects(access(path.join(runtime, name)), {
-          code: "ENOENT",
-        });
-      }
-      report.noBundledNode = true;
+    assert.equal(report.desktopServerConfiguration.profileConverter, undefined);
+    for (const name of ["node", "node.exe", "profile-converter"]) {
+      await assert.rejects(access(path.join(runtime, name)), {
+        code: "ENOENT",
+      });
     }
+    report.noBundledNode = true;
   }
 } catch (error) {
   failure = error;
