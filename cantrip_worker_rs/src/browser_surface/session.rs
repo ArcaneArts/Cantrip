@@ -12,7 +12,7 @@ use cantrip_framing::remote_surface::{self, Frame};
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use std::{
     collections::{HashMap, VecDeque},
-    future::Future,
+    future::{Future, pending},
     pin::Pin,
     sync::Arc,
     time::{Duration, Instant},
@@ -31,7 +31,9 @@ pub(super) struct Session {
     current_url: JsString,
     attachments: HashMap<JsString, Attachment>,
     viewport: Value,
+    viewport_pending: bool,
     loading: bool,
+    navigation: Option<NavigationReply>,
     suspended: bool,
     operations: VecDeque<JsString>,
     cursor: JsString,
@@ -54,6 +56,7 @@ struct Attachment {
 }
 
 pub(super) type Opening = Pin<Box<dyn Future<Output = Result<profile::Lease>> + Send>>;
+type NavigationReply = Pin<Box<dyn Future<Output = Result<Value>> + Send + Sync>>;
 
 impl Session {
     pub fn new(
@@ -88,7 +91,9 @@ impl Session {
             project: command["projectId"].clone(),
             attachments: HashMap::new(),
             viewport: command["viewport"].clone(),
+            viewport_pending: false,
             loading: true,
+            navigation: None,
             suspended: false,
             operations: VecDeque::new(),
             cursor: "default".into(),
@@ -154,6 +159,7 @@ impl Session {
 
     pub fn retire(&mut self) -> Option<profile::Lease> {
         self.agent_lease.close();
+        self.navigation = None;
         self.agent_cursor = agent::Cursor::default();
         self.send_cursor_state(None);
         let lease = self.lease.take();
@@ -179,6 +185,7 @@ impl Session {
 
     pub async fn close(mut self) {
         self.agent_lease.close();
+        self.navigation = None;
         self.attachments.clear();
         if let Some(lease) = self.lease.take() {
             lease.close().await;
@@ -460,7 +467,7 @@ impl Session {
                 }
                 let url = id(&content, "url").clone();
                 if self.lease.is_some() {
-                    self.navigate(url).await?;
+                    self.start_navigation(url).await?;
                 } else {
                     self.current_url = url;
                 }
@@ -479,16 +486,20 @@ impl Session {
                         json!({"entryId":entry["id"]}),
                     )
                     .await?;
+                    self.navigation = None;
                 }
             }
             "reload" => {
                 self.loading = true;
                 self.request("Page.reload", json!({})).await?;
+                self.navigation = None;
             }
             "stop" => {
                 self.request("Page.stopLoading", json!({})).await?;
+                self.navigation = None;
                 self.loading = false;
                 self.publish_state(None).await?;
+                self.restore_viewport().await;
             }
             "pointer" => self.pointer(message).await?,
             "key" => self.key(message).await?,
@@ -628,6 +639,7 @@ impl Session {
     }
 
     async fn navigate(&mut self, url: JsString) -> Result<()> {
+        self.navigation = None;
         self.loading = true;
         match self.request("Page.navigate", json!({"url":url})).await {
             Ok(reply) => {
@@ -645,11 +657,59 @@ impl Session {
         }
     }
 
+    async fn start_navigation(&mut self, url: JsString) -> Result<()> {
+        let response = self
+            .page()?
+            .start_request("Page.navigate", json!({"url":url}))
+            .await?;
+        self.navigation = Some(Box::pin(response));
+        self.loading = true;
+        let _ = self.publish_state(None).await;
+        Ok(())
+    }
+
+    pub async fn navigation_result(&mut self) -> Result<Value> {
+        match &mut self.navigation {
+            Some(response) => response.await,
+            None => pending().await,
+        }
+    }
+
+    pub async fn finish_navigation(&mut self, result: Result<Value>) {
+        self.navigation = None;
+        if result.is_ok() {
+            self.restore_viewport().await;
+        }
+        let new_document = result.is_ok_and(|reply| {
+            reply["loaderId"].as_str().is_some()
+                && reply["errorText"].is_null()
+                && reply["isDownload"].as_bool() != Some(true)
+        });
+        // A new document settles when Chromium finishes loading it.
+        self.loading &= new_document;
+        if !self.loading {
+            let _ = self.publish_state(None).await;
+        }
+    }
+
+    async fn restore_viewport(&mut self) {
+        if self.viewport_pending {
+            let _ = self.configure_viewport(&self.viewport.clone(), true).await;
+            let _ = self.screenshot(None).await;
+        }
+    }
+
     async fn configure_viewport(&mut self, viewport: &Value, restart: bool) -> Result<()> {
-        if !restart && self.viewport == *viewport {
+        if !restart && !self.viewport_pending && self.viewport == *viewport {
             return Ok(());
         }
         self.viewport = viewport.clone();
+        // A renderer command can wait behind an uncommitted navigation.
+        // Keep CDP control available until the navigation settles or is stopped.
+        self.viewport_pending = self.navigation.is_some();
+        if self.viewport_pending {
+            return Ok(());
+        }
         if self.lease.is_none() {
             return Ok(());
         }
@@ -749,11 +809,12 @@ impl Session {
         let count = history["entries"]
             .as_array()
             .map_or(0, |entries| entries.len() as u64);
+        let loading = self.loading || self.navigation.is_some();
         let message = checked(
             "remoteBrowserServerMessageSchema",
             &json!({
                 "type":"browser-state","operationId":operation,"stateProtection":protected,
-                "title":title,"canGoBack":index > 0,"canGoForward":index + 1 < count,"loading":self.loading
+                "title":title,"canGoBack":index > 0,"canGoForward":index + 1 < count,"loading":loading
             }),
         )?;
         self.send_json(only, "control", &message);
@@ -761,7 +822,7 @@ impl Session {
     }
 
     async fn screenshot(&mut self, only: Option<&JsString>) -> Result<()> {
-        if self.suspended || self.attachments.is_empty() {
+        if self.suspended || self.attachments.is_empty() || self.navigation.is_some() {
             return Ok(());
         }
         let screenshot = self

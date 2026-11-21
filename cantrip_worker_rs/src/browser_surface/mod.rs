@@ -468,6 +468,7 @@ async fn run(
                 Some(Work::AgentPresentation(presentation)) => current.present_agent(presentation),
                 None => return Ok(()),
             },
+            result = current.navigation_result() => current.finish_navigation(result).await,
             event = async {
                 match &mut events {
                     Some(events) => events.next().await,

@@ -12,8 +12,8 @@ use std::{
 };
 use tokio::{
     net::TcpStream,
-    sync::{Semaphore, broadcast, mpsc, oneshot, watch},
-    time::timeout,
+    sync::{OwnedSemaphorePermit, Semaphore, broadcast, mpsc, oneshot, watch},
+    time::{Instant, timeout, timeout_at},
 };
 use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream, connect_async_with_config,
@@ -43,7 +43,7 @@ pub struct Client {
 struct State {
     message_limit: usize,
     last_id: AtomicU64,
-    requests: Semaphore,
+    requests: Arc<Semaphore>,
     write_buffer: Arc<Semaphore>,
     pending: Mutex<HashMap<u64, oneshot::Sender<Value>>>,
     events: broadcast::Sender<Event>,
@@ -88,14 +88,16 @@ struct Outgoing {
     _buffer: tokio::sync::OwnedSemaphorePermit,
 }
 
-struct Pending<'a> {
+struct Pending {
     id: u64,
-    pending: &'a Mutex<HashMap<u64, oneshot::Sender<Value>>>,
+    state: Arc<State>,
+    reply: oneshot::Receiver<Value>,
+    _request: OwnedSemaphorePermit,
 }
 
-impl Drop for Pending<'_> {
+impl Drop for Pending {
     fn drop(&mut self) {
-        self.pending.lock().unwrap().remove(&self.id);
+        self.state.pending.lock().unwrap().remove(&self.id);
     }
 }
 
@@ -190,7 +192,7 @@ impl Client {
         let state = Arc::new(State {
             message_limit,
             last_id: AtomicU64::new(0),
-            requests: Semaphore::new(REQUEST_LIMIT),
+            requests: Arc::new(Semaphore::new(REQUEST_LIMIT)),
             write_buffer: Arc::new(Semaphore::new(message_limit)),
             pending: Mutex::new(HashMap::new()),
             events,
@@ -253,13 +255,47 @@ impl Client {
         params: Value,
         session: Option<&JsString>,
     ) -> Result<Value> {
-        timeout(REQUEST_TIMEOUT, self.send(method, params, session))
-            .await
-            .with_context(|| format!("Chromium command {method} timed out."))?
+        self.start_request(method, params, session).await?.await
     }
 
-    async fn send(&self, method: &str, params: Value, session: Option<&JsString>) -> Result<Value> {
-        let _request = self.state.requests.acquire().await.context(CLOSED)?;
+    pub(super) async fn start_request<'m>(
+        &self,
+        method: &'m str,
+        params: Value,
+        session: Option<&JsString>,
+    ) -> Result<impl Future<Output = Result<Value>> + Send + Sync + use<'m>> {
+        let deadline = Instant::now() + REQUEST_TIMEOUT;
+        let timed_out = move || format!("Chromium command {method} timed out.");
+        let mut pending = timeout_at(deadline, self.send(method, params, session))
+            .await
+            .with_context(timed_out)??;
+        Ok(async move {
+            let result = timeout_at(deadline, &mut pending.reply)
+                .await
+                .with_context(timed_out)?
+                .context(CLOSED)?;
+            if let Some(error) = result.get("error") {
+                // Protocol error text may include a private page address.
+                let code = error["code"].as_i64().unwrap_or_default();
+                return Err(anyhow!("Chromium command {method} failed (CDP {code})."));
+            }
+            Ok(result.get("result").cloned().unwrap_or(Value::Null))
+        })
+    }
+
+    async fn send(
+        &self,
+        method: &str,
+        params: Value,
+        session: Option<&JsString>,
+    ) -> Result<Pending> {
+        let permit = self
+            .state
+            .requests
+            .clone()
+            .acquire_owned()
+            .await
+            .context(CLOSED)?;
         ensure!(!*self.state.stop.borrow(), CLOSED);
         let id = self
             .state
@@ -284,11 +320,13 @@ impl Client {
             .clone()
             .try_acquire_many_owned(text.len() as u32)
             .context("Chromium command queue is full.")?;
-        let (callback, result) = oneshot::channel();
+        let (callback, reply) = oneshot::channel();
         self.state.pending.lock().unwrap().insert(id, callback);
-        let _pending = Pending {
+        let pending = Pending {
             id,
-            pending: &self.state.pending,
+            state: self.state.clone(),
+            reply,
+            _request: permit,
         };
         self.writer
             .send(Outgoing {
@@ -298,13 +336,7 @@ impl Client {
             })
             .await
             .map_err(|_| anyhow!(CLOSED))?;
-        let result = result.await.context(CLOSED)?;
-        if let Some(error) = result.get("error") {
-            // Protocol error text may include a private page address.
-            let code = error["code"].as_i64().unwrap_or_default();
-            return Err(anyhow!("Chromium command {method} failed (CDP {code})."));
-        }
-        Ok(result.get("result").cloned().unwrap_or(Value::Null))
+        Ok(pending)
     }
 }
 

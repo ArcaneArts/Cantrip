@@ -160,11 +160,28 @@ impl Page {
     }
 
     pub async fn request(&self, method: &str, params: Value) -> Result<Value> {
-        tokio::select! {
+        self.start_request(method, params).await?.await
+    }
+
+    /// Queues a command in order and lets the caller wait for its reply separately.
+    pub async fn start_request<'m>(
+        &self,
+        method: &'m str,
+        params: Value,
+    ) -> Result<impl Future<Output = Result<Value>> + Send + Sync + use<'m>> {
+        let target = self.watcher.clone();
+        let reply = tokio::select! {
             biased;
-            _ = self.watcher.closed() => bail!("Chromium page was detached or crashed."),
-            result = self.client.request(method, params, Some(&self.session)) => result,
-        }
+            _ = target.closed() => bail!("Chromium page was detached or crashed."),
+            result = self.client.start_request(method, params, Some(&self.session)) => result?,
+        };
+        Ok(async move {
+            tokio::select! {
+                biased;
+                _ = target.closed() => bail!("Chromium page was detached or crashed."),
+                result = reply => result,
+            }
+        })
     }
 
     pub fn session(&self) -> &JsString {
