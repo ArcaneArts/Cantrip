@@ -10766,3 +10766,24 @@ navigation to open a working page on the same attachment. The relay run also
 passed the existing Chromium process and renderer recovery cases. The worker
 ran with an empty PATH. Rust compilation, formatting, script syntax, and
 `git diff --check` passed locally.
+
+## 327. Stop a stalled Browser navigation from the viewer
+
+Reference commit `da663b1e2d19318ecc55e3f060b59ea03b586a75` (#3490).
+
+The Rust worker queues protected viewer navigation in Chromium command
+order and handles its reply separately. The viewer receives loading state
+while Chromium waits for the site. Stop reaches Chromium in that interval,
+and the surface retains its last committed location. A deferred viewport or
+capture restart is applied after the reply or Stop. Closing or replacing the
+page drops its pending reply and releases the CDP request slot.
+[Chromium stop-loading command](https://chromedevtools.github.io/devtools-protocol/tot/Page/#method-stopLoading)
+
+The previous worker reached the fixture's stalled HTTP endpoint and timed
+out waiting for the encrypted loading update. The macOS ARM64 regression
+checks loading, a viewport change, Stop closing the pending HTTP connection,
+the original page state, and subsequent protected navigation on the same
+attachment. It uses the Rust server with PGlite, headless Chromium, and an
+empty worker PATH. WorkerLink relay and the legacy WebSocket passed locally.
+The relay run also passed whole-process and renderer recovery. The two
+`cantrip-browser` unit tests, worker build, and formatting checks passed.

@@ -117,9 +117,14 @@ let serverIdentity;
 let logs = "";
 let worker;
 let core;
+let stalledSocket;
 
 const target = createServer((request, response) => {
   visits.push(request.url);
+  if (request.url === "/stalled") {
+    stalledSocket = request.socket;
+    return;
+  }
   if (request.url === "/unavailable") {
     request.socket.destroy();
     return;
@@ -605,6 +610,40 @@ async function verifyUnavailableLocation() {
   assert.equal(await view.title("Native first page"), origin + "/first");
   await view.close();
   await call("DELETE", "/api/browsers/" + unavailableId, 204);
+}
+
+async function verifyStoppedNavigation(view) {
+  const operationId = randomUUID();
+  await view.send({
+    type: "navigate",
+    operationId,
+    stateProtection: await location(
+      "browser-operation",
+      origin + "/stalled",
+      operationId,
+    ),
+  });
+  await eventually(
+    () => stalledSocket,
+    (socket) => assert.ok(socket, "Chromium requested the stalled page"),
+    5_000,
+  );
+  await view.next(async (value) => {
+    if (value.header?.channel !== "control") return false;
+    const message = JSON.parse(Buffer.from(await view.clear(value)).toString());
+    return message.type === "browser-state" && message.loading;
+  });
+  await view.send({
+    type: "viewport",
+    viewport: { ...viewport, width: viewport.width + 32 },
+  });
+  await view.send({ type: "stop" });
+  await eventually(
+    () => stalledSocket.destroyed,
+    (closed) => assert.ok(closed, "Stop canceled the pending HTTP request"),
+    5_000,
+  );
+  assert.equal(await view.title("Native first page"), origin + "/first");
 }
 
 async function desktopState(
@@ -1182,6 +1221,7 @@ exec "$CANTRIP_FIXTURE_CHROMIUM" "$@"
       assert.ok(image.byteLength > first.link.initialCredit);
       assert.ok(first.link.fragmentedScreenshot);
     }
+    await verifyStoppedNavigation(first);
     const operationId = randomUUID();
     const navigation = {
       type: "navigate",
