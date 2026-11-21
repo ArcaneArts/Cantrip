@@ -2,6 +2,8 @@
 mod capture;
 mod drive;
 mod inventory;
+mod portal;
+mod screenshot;
 
 use super::{host, lock};
 use crate::{
@@ -20,18 +22,25 @@ use std::sync::{Arc, Mutex};
 struct Host {
     wayland: Arc<Mutex<Desktop>>,
     xwayland: Option<host::Host>,
+    portal: Option<portal::Portal>,
 }
 
 impl Host {
     fn open() -> Result<Self> {
         let wayland = Desktop::open(&Cancellation::default())?;
         let xwayland = host::Host::connect().ok();
-        if wayland.capture_protocol().is_none() && xwayland.is_none() {
+        let portal = if wayland.capture_protocol().is_none() {
+            portal::Portal::connect().ok()
+        } else {
+            None
+        };
+        if wayland.capture_protocol().is_none() && xwayland.is_none() && portal.is_none() {
             return Err(unavailable());
         }
         Ok(Self {
             wayland: Arc::new(Mutex::new(wayland)),
             xwayland,
+            portal,
         })
     }
 
@@ -43,7 +52,7 @@ impl Host {
         cancel.check()?;
         let mut wayland = lock(&self.wayland);
         wayland.sync(cancel)?;
-        if wayland.capture_protocol().is_none() {
+        if wayland.capture_protocol().is_none() && self.portal.is_none() {
             return Ok(Vec::new());
         }
         let displays = wayland.displays();
@@ -135,7 +144,11 @@ impl Host {
 
 impl CaptureBackend for Host {
     fn name(&self) -> &'static str {
-        "linux-wayland"
+        if self.portal.is_some() {
+            "linux-wayland-portal"
+        } else {
+            "linux-wayland"
+        }
     }
 
     fn available(&self) -> bool {
@@ -190,21 +203,41 @@ impl CaptureBackend for Host {
         }
         let (display, target) = self.monitor(&target.id, target.generation, cancel)?;
         let desktop = self.wayland.clone();
-        let (connection, shm, protocol) = {
-            let desktop = lock(&desktop);
-            let (shm, protocol) = desktop.capture_objects()?;
-            (desktop.connection.clone(), shm, protocol)
+        let (work, layout): (CaptureWork, _) = {
+            let wayland = lock(&desktop);
+            let cancel = cancel.clone();
+            if let Some((shm, protocol)) = wayland.capture_protocol() {
+                let connection = wayland.connection.clone();
+                let display = display.clone();
+                (
+                    Box::new(move || {
+                        capture::capture(&connection, &shm, &protocol, &display, target, &cancel)
+                    }),
+                    None,
+                )
+            } else if let Some(portal) = self.portal.clone() {
+                let layout = Arc::new(wayland.displays());
+                let geometry = layout.clone();
+                (
+                    Box::new(move || portal.capture(&geometry, target, &cancel)),
+                    Some(layout),
+                )
+            } else {
+                return Err(unavailable());
+            }
         };
         let cancel = cancel.clone();
         Ok(Some(Box::new(move || {
-            let capture =
-                capture::capture(&connection, &shm, &protocol, &display, target, &cancel)?;
+            let capture = work()?;
             // A completed copy cannot outlive a removed output or be published
             // under the old geometry after a mode/layout change.
             let mut desktop = lock(&desktop);
             desktop.sync(&cancel)?;
             let current = desktop.display(display.id, display.generation)?;
-            if current.bounds != display.bounds || current.pixels != display.pixels {
+            if current.bounds != display.bounds
+                || current.pixels != display.pixels
+                || layout.is_some_and(|layout| !same_layout(&layout, &desktop.displays()))
+            {
                 return Err(stale());
             }
             Ok(capture)
@@ -276,6 +309,16 @@ impl CaptureBackend for Host {
             xwayland.input_finished(session, succeeded);
         }
     }
+}
+
+fn same_layout(before: &[Display], after: &[Display]) -> bool {
+    before.len() == after.len()
+        && before.iter().zip(after).all(|(old, new)| {
+            old.id == new.id
+                && old.generation == new.generation
+                && old.bounds == new.bounds
+                && old.pixels == new.pixels
+        })
 }
 
 pub(super) fn selected() -> bool {

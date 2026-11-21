@@ -6,7 +6,7 @@ use crate::{connection::Outbound, encryption::Service};
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use cantrip_interaction::geometry::{MAX_IMAGE_PIXELS, MAX_SEQUENCE};
 use cantrip_wire::{JsString, Value, value::json};
-use std::{path::Path, sync::Arc};
+use std::{path::Path, sync::Arc, time::Duration};
 use tokio::{
     sync::{mpsc, oneshot, watch},
     time::timeout,
@@ -516,15 +516,38 @@ impl Operation {
                 let _ = reply.send(result);
                 broken
             }
-            Self::Frame { key, reply } => {
+            Self::Frame { key, mut reply } => {
                 if reply.is_closed() {
                     return Ok(());
                 }
-                let result = timeout(DEADLINE, frame(current, &key))
+                let portal = current.as_ref().is_some_and(|helper| {
+                    helper.identity == key.generation
+                        && helper.process.backend() == "linux-wayland-portal"
+                });
+                let deadline = if portal {
+                    Duration::from_secs(67)
+                } else {
+                    DEADLINE
+                };
+                let result = timeout(deadline, frame(current, &key, reply.closed()))
                     .await
                     .context("Desktop frame timed out.")
                     .and_then(|result| result)
-                    .and_then(|frame| key.scope.authorize(encryption, outgoing).map(|()| frame));
+                    .and_then(|frame| key.scope.authorize(encryption, outgoing).map(|()| frame))
+                    .map_err(|error| {
+                        if portal
+                            && error.downcast_ref::<NativeError>().is_some_and(|error| {
+                                matches!(
+                                    error.code(),
+                                    "permission-denied" | "capture-image-timeout"
+                                )
+                            })
+                        {
+                            error.context(PortalCaptureConsent)
+                        } else {
+                            error
+                        }
+                    });
                 let broken = result.as_ref().is_err_and(retire);
                 let _ = reply.send(result);
                 broken
@@ -631,7 +654,22 @@ fn same_target(expected: &Value, actual: &Value) -> bool {
         .all(|field| expected[*field] == actual[*field])
 }
 
-async fn frame(current: &mut Option<Helper>, key: &Key) -> Result<Frame> {
+#[derive(Debug)]
+pub(crate) struct PortalCaptureConsent;
+
+impl std::fmt::Display for PortalCaptureConsent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("The desktop portal needs permission. Reconnect to try again.")
+    }
+}
+
+impl std::error::Error for PortalCaptureConsent {}
+
+async fn frame(
+    current: &mut Option<Helper>,
+    key: &Key,
+    cancelled: impl Future<Output = ()>,
+) -> Result<Frame> {
     let Some(helper) = current
         .as_mut()
         .filter(|helper| helper.identity == key.generation)
@@ -640,10 +678,14 @@ async fn frame(current: &mut Option<Helper>, key: &Key) -> Result<Frame> {
     };
     let (response, png) = helper
         .process
-        .frame(json!({
-            "operation":"capture.request",
-            "request":json!({"type":"frame","binding":key.binding,"handle":key.handle})
-        }))
+        .cancellable(
+            json!({
+                "operation":"capture.request",
+                "request":json!({"type":"frame","binding":key.binding,"handle":key.handle})
+            }),
+            true,
+            cancelled,
+        )
         .await?;
     ensure!(
         response["handle"].as_u64() == Some(key.handle)

@@ -4,7 +4,8 @@ mod effects;
 pub(crate) mod preview;
 pub(crate) mod process;
 pub(crate) use capture::{
-    Capture, Captures, ControlState, Frame, GuestControl, InputAuthority, Scope,
+    Capture, Captures, ControlState, Frame, GuestControl, InputAuthority, PortalCaptureConsent,
+    Scope,
 };
 pub(crate) use effects::Updates as EffectUpdates;
 

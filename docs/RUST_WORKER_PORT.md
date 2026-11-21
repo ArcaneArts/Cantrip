@@ -10118,3 +10118,32 @@ window fixture and the headless helper check also passed.
 Wayland sessions that rely on desktop portals for monitor capture still
 need their native fallback. Host clipboard and full-display input remain
 in scope.
+
+## 301. Capture Wayland outputs through desktop screenshot services
+
+Reference commit `f121c01d48d05207afe7e327f1691e5065c64e1f` (#3464).
+
+When the Wayland compositor does not expose either direct capture protocol,
+the helper retains output identities and uses the session screenshot
+services supported by the retired worker. It requests the output rectangle
+from GNOME Shell when the caller is permitted. The XDG Screenshot fallback
+lets the desktop handle permission and correlates the reply by D-Bus sender
+and request path. It crops the returned image to the selected output in
+the observed desktop layout. Unmatched image dimensions and layout changes
+are rejected. The helper removes its GNOME scratch file and releases fresh
+portal screenshots once it has opened them.
+
+The worker allows time for portal consent and cancels the native frame when
+the viewer drops the request. The helper closes a pending portal request.
+The viewer can reconnect or change the target after a decline or consent
+timeout.
+
+On Linux ARM64, a headless Weston session and private D-Bus fixture verified
+the GNOME area request, portal fallback, an immediate response, rejection
+of unrelated replies, screenshot cleanup, denial, and explicit cancellation.
+The scaled negative-origin crop unit test excluded every neighboring pixel
+and rejected an incompatible layout. The headless helper regression and
+worker compile check passed. The D-Bus fixture exercised the application
+protocol without running the GNOME or KDE consent UI.
+
+Host clipboard and full-display input remain in scope.
