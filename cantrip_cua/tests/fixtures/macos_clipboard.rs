@@ -29,19 +29,19 @@ impl Fixture {
         }
     }
 
-    fn read(&mut self) -> Value {
+    fn read(&mut self, step: &str) -> Value {
         let mut line = String::new();
         self.output.read_line(&mut line).unwrap();
         let receipt: Value = serde_json::from_str(&line).expect("AppKit fixture reply");
-        assert_eq!(receipt["foregroundUnchanged"], true);
-        assert_eq!(receipt["clipboardUnchanged"], true);
+        assert_eq!(receipt["foregroundUnchanged"], true, "{step}: {receipt}");
+        assert_eq!(receipt["clipboardUnchanged"], true, "{step}: {receipt}");
         receipt
     }
 
     fn command(&mut self, command: &str) {
         writeln!(self.input, "{command}").unwrap();
         self.input.flush().unwrap();
-        self.read();
+        self.read(command);
     }
 }
 
@@ -56,7 +56,7 @@ impl Drop for Fixture {
 #[ignore = "requires Screen Recording and Accessibility for a local AppKit fixture"]
 fn copies_only_the_bound_macos_selection_without_a_focus_or_clipboard_change() {
     let mut fixture = Fixture::start();
-    let owned = fixture.read();
+    let owned = fixture.read("launch");
     assert_ne!(owned["window"], owned["sibling"]);
     let mut helper = Process::start(false);
     let id = format!("macos-window-{}", owned["window"].as_u64().unwrap());
@@ -88,13 +88,15 @@ fn copies_only_the_bound_macos_selection_without_a_focus_or_clipboard_change() {
     assert_eq!(helper.call(copy(2)).0["text"], "selected λ🚋\n\t");
     fixture.command("range");
     assert_eq!(helper.call(copy(4)).0["text"], "selected λ🚋\n\t");
+    fixture.command("attributed");
+    assert_eq!(helper.call(copy(6)).0["text"], "selected λ🚋\n\t");
     fixture.command("secure");
-    assert!(helper.call(copy(6)).0["text"].is_null());
-    fixture.command("sibling");
     assert!(helper.call(copy(8)).0["text"].is_null());
-    fixture.command("empty");
+    fixture.command("sibling");
     assert!(helper.call(copy(10)).0["text"].is_null());
-    let replay = helper.send(copy(10));
+    fixture.command("empty");
+    assert!(helper.call(copy(12)).0["text"].is_null());
+    let replay = helper.send(copy(12));
     assert!(
         matches!(helper.response(replay).0, Outcome::Error { error } if error.code == ErrorCode::InvalidRequest)
     );
