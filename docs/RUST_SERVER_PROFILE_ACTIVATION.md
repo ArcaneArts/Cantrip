@@ -29,6 +29,13 @@ open the database, the compatibility runtime opens a fresh copy and dumps it.
 The server restores the logical profile into native PGlite and publishes it
 through the activation journal.
 
+If the native open requires compatibility tools and you supplied no tool
+directory, the command exits with status 78 and keeps the original profile.
+The development launcher responds to that status by building the tools in
+a temporary directory and retrying. Set `CANTRIP_LEGACY_POSTGRES_BIN_DIR`
+to reuse the `bin` directory from a matching desktop package or an existing
+compatibility build.
+
 Desktop packaging on a matching macOS or Linux host builds the private tools
 into `runtime/server/legacy-postgres`. The Windows x64 server package carries
 the same directory layout into desktop assembly. The package records the `bin`

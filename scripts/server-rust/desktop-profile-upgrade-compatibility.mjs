@@ -31,7 +31,6 @@ const { values } = parseArgs({
       "failure-fixture",
       "probe",
       "native-assets",
-      "converter",
       "legacy-server",
       "legacy-profile",
       "report",
@@ -41,7 +40,6 @@ const { values } = parseArgs({
 const executable = path.resolve(values["native-server"]);
 const probe = path.resolve(values.probe);
 const assets = path.resolve(values["native-assets"]);
-const converter = path.resolve(values.converter);
 const legacyServer = path.resolve(values["legacy-server"]);
 const legacyProfile = path.resolve(values["legacy-profile"]);
 const manifest = JSON.parse(
@@ -158,22 +156,17 @@ try {
   await copy(legacyProfile, missing);
   const missingResult = await upgrade(
     missing,
-    [
-      "--legacy-node",
-      path.join(root, "absent-node"),
-      "--legacy-profile-converter",
-      path.join(converter, "dist/index.mjs"),
-    ],
+    ["--legacy-postgres-bin-dir", path.join(root, "absent-tools")],
     { allowFailure: true },
   );
   assert.notEqual(missingResult.code, 0);
   assert.match(
     missingResult.stderr,
-    /profile.upgrade.legacy-conversion.started/,
+    /profile\.upgrade\.native-legacy-export\.started/u,
   );
   assert.deepEqual(await files(missing), sourceDigest);
   record({
-    name: "actual-converter-spawn-failure-retains-original",
+    name: "actual-compatibility-tool-spawn-failure-retains-original",
     code: missingResult.code,
   });
 
@@ -188,7 +181,13 @@ try {
         (process.platform === "win32" ? ".exe" : ""),
     ),
   );
-  await configureDesktopServer(path.join(runtime, "server"));
+  const serverAssets = path.join(runtime, "server");
+  const config = await configureDesktopServer(serverAssets);
+  const legacy = path.join(serverAssets, config.legacyPostgresBin);
+  const dump = path.join(
+    legacy,
+    process.platform === "win32" ? "pg_dump.exe" : "pg_dump",
+  );
   const desktop = path.join(root, "production-launcher");
   await mkdir(desktop);
   await copy(legacyProfile, path.join(desktop, "server"));
@@ -241,19 +240,21 @@ try {
   });
 
   const bundle = path.join(root, "after-native-writes");
-  await command(active, ["--migrate-only", "--export-profile", bundle]);
+  await command(active, [
+    "--migrate-only",
+    "--export-profile",
+    bundle,
+    "--pg-dump-path",
+    dump,
+  ]);
   const reverse = path.join(root, "reverse-node-profile");
-  await execute(
-    process.execPath,
-    [
-      path.join(converter, "dist/index.mjs"),
-      "--restore",
-      bundle,
-      reverse,
-      executable,
-    ],
-    { env: environment(active), maxBuffer: 1024 * 1024 },
-  );
+  await command(reverse, [
+    "--migrate-only",
+    "--restore-legacy-profile",
+    bundle,
+    "--legacy-postgres-bin-dir",
+    legacy,
+  ]);
   await command(active, ["--migrate-only", "--activate-profile", reverse]);
   const node = await startPackagedNodeServer(legacyServer, environment(active));
   try {
@@ -316,27 +317,20 @@ try {
   });
 
   // Make the real migration-history read fail after a successful engine open.
-  // It must not be misclassified as a legacy-format failure or invoke Node.
+  // A migration error must not start the legacy-format exporter.
   await execute(path.resolve(values["failure-fixture"]), [fresh], {
     env: environment(fresh),
     maxBuffer: 1024 * 1024,
   });
   await rm(path.join(fresh, "server-database.json"));
   const failedDigest = await files(fresh);
-  const failed = await upgrade(
-    fresh,
-    [
-      "--legacy-node",
-      process.execPath,
-      "--legacy-profile-converter",
-      path.join(converter, "dist/index.mjs"),
-    ],
-    { allowFailure: true },
-  );
+  const failed = await upgrade(fresh, ["--legacy-postgres-bin-dir", legacy], {
+    allowFailure: true,
+  });
   assert.notEqual(failed.code, 0);
   assert.doesNotMatch(
     failed.stderr,
-    /profile.upgrade.legacy-conversion.started/,
+    /profile\.upgrade\.native-legacy-export\.started/u,
   );
   assert.deepEqual(await files(fresh), failedDigest);
   record({
@@ -368,10 +362,8 @@ try {
       "--migrate-only",
       "--upgrade-profile",
       "--shutdown-on-stdin-close",
-      "--legacy-node",
-      process.execPath,
-      "--legacy-profile-converter",
-      path.join(converter, "dist/index.mjs"),
+      "--legacy-postgres-bin-dir",
+      legacy,
     ],
     { env: environment(interrupted), stdio: ["pipe", "pipe", "pipe"] },
   );
@@ -385,9 +377,14 @@ try {
     child.once("close", (code, signal) => resolve({ code, signal }));
   });
   const deadline = Date.now() + 60_000;
-  let converterPid, nodePid;
-  while (!nodePid) {
+  let exporterPid;
+  while (!exporterPid) {
     assert.equal(child.exitCode, null, output);
+    if (!output.includes("profile.upgrade.native-legacy-export.started")) {
+      assert.ok(Date.now() < deadline, output);
+      await delay(10);
+      continue;
+    }
     let processes;
     if (process.platform === "win32") {
       const { stdout } = await execute(
@@ -406,27 +403,14 @@ try {
         Number(match[2]) === child.pid &&
         (process.platform === "win32"
           ? match[3].toLowerCase() === path.basename(executable).toLowerCase()
-          : match[3].includes("--internal-profile-converter-owner")),
+          : match[3].includes("--internal-native-legacy-profile-export")),
     );
-    const node =
-      owner &&
-      processes.find(
-        (match) =>
-          Number(match[2]) === Number(owner[1]) &&
-          (process.platform === "win32"
-            ? match[3].toLowerCase() ===
-              path.basename(process.execPath).toLowerCase()
-            : match[3].includes("dist/index.mjs")),
-      );
-    if (node) {
-      converterPid = Number(owner[1]);
-      nodePid = Number(node[1]);
-    }
+    if (owner) exporterPid = Number(owner[1]);
     assert.ok(
       Date.now() < deadline,
-      "No actual owned Node converter observed: " + output,
+      "No actual owned native exporter observed: " + output,
     );
-    if (!nodePid) await delay(10);
+    if (!exporterPid) await delay(10);
   }
   child.kill("SIGKILL");
   const killed = await closed;
@@ -442,16 +426,15 @@ try {
         throw error;
       }
     };
-    if (!alive(converterPid) && !alive(nodePid)) break;
+    if (!alive(exporterPid)) break;
     assert.ok(Date.now() < deadline, "Conversion child outlived its owner");
     await delay(25);
   }
   assert.deepEqual(await files(interrupted), sourceDigest);
   assert.deepEqual(await files(legacyProfile), sourceDigest);
   record({
-    name: "real-converter-stops-after-owner-sigkill-original-retained",
-    converterPid,
-    nodePid,
+    name: "native-exporter-stops-after-owner-sigkill-original-retained",
+    exporterPid,
   });
   report.status = "passed";
 } catch (error) {

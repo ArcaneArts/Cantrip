@@ -57,7 +57,7 @@ telemetry and its source contract.
 
 Use `desktop-profile-upgrade-compatibility.mjs` with `--native-server`,
 `--failure-fixture` (the test-only `profile_upgrade_fixture` example), `--probe`
-(the `desktop_runtime_probe` example), `--native-assets`, `--converter`,
+(the `desktop_runtime_probe` example), `--native-assets`,
 `--legacy-server`, `--legacy-profile`, and `--report`. Inputs must be disposable
 copies and stopped profiles. Use `desktop-runtime-acceptance.mjs` with the packaged
 runtime, production launcher probe, and an isolated external PostgreSQL URL for

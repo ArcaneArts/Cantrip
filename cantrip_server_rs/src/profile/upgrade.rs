@@ -14,10 +14,21 @@ pub struct Options<'a> {
     pub environment: &'a Environment,
     pub cwd: &'a Path,
     pub executable: &'a Path,
-    pub legacy_node: Option<&'a Path>,
-    pub legacy_converter: Option<&'a Path>,
     pub legacy_postgres: Option<&'a Path>,
 }
+
+pub const LEGACY_POSTGRES_REQUIRED_EXIT: i32 = 78;
+
+#[derive(Debug)]
+pub struct LegacyPostgresRequired;
+
+impl std::fmt::Display for LegacyPostgresRequired {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("The native PGlite open failed. Supply --legacy-postgres-bin-dir to prepare the legacy profile. The active profile was retained.")
+    }
+}
+
+impl std::error::Error for LegacyPostgresRequired {}
 
 // Drain rather than log subprocess diagnostics: engine errors can contain SQL,
 // private paths, or connection credentials. No unbounded output allocation.
@@ -90,44 +101,22 @@ pub fn prepare(options: Options<'_>) -> Result<Option<ActivationReceipt>> {
             return Ok(Some((copy, owner)));
         }
         ensure!(
-            status.code() == Some(78),
+            status.code() == Some(LEGACY_POSTGRES_REQUIRED_EXIT),
             "Native profile preparation failed; the active profile was retained."
         );
         let bundle = owner.path().join("logical-profile");
+        let binaries = options.legacy_postgres.ok_or(LegacyPostgresRequired)?;
+        eprintln!(
+            "{}",
+            serde_json::json!({"event":"profile.upgrade.native-legacy-export.started"})
+        );
         let mut conversion = Command::new(options.executable);
-        conversion.envs(options.environment);
-        if let Some(binaries) = options.legacy_postgres {
-            eprintln!(
-                "{}",
-                serde_json::json!({"event":"profile.upgrade.native-legacy-export.started"})
-            );
-            conversion
-                .arg("--internal-native-legacy-profile-export")
-                .arg(&destination)
-                .arg(&bundle)
-                .arg(binaries);
-        } else {
-            let node = options.legacy_node.context(
-                "The native PGlite open failed. Supply --legacy-postgres-bin-dir for native conversion, or --legacy-node and --legacy-profile-converter; the active profile was retained.",
-            )?;
-            let converter = options.legacy_converter.context(
-                "The native PGlite open failed. Supply --legacy-postgres-bin-dir for native conversion, or --legacy-profile-converter; the active profile was retained.",
-            )?;
-            eprintln!(
-                "{}",
-                serde_json::json!({"event":"profile.upgrade.legacy-conversion.started"})
-            );
-            conversion
-                .arg("--internal-profile-converter-owner")
-                .arg(node)
-                .arg(converter)
-                .arg(&destination)
-                .arg(&bundle)
-                .arg(options.executable)
-                .env("TMPDIR", owner.path())
-                .env("TMP", owner.path())
-                .env("TEMP", owner.path());
-        }
+        conversion
+            .envs(options.environment)
+            .arg("--internal-native-legacy-profile-export")
+            .arg(&destination)
+            .arg(&bundle)
+            .arg(binaries);
         ensure!(
             invoke(&mut conversion, &options)?.success(),
             "Legacy profile export failed; the active profile was retained."
@@ -153,7 +142,13 @@ pub fn prepare(options: Options<'_>) -> Result<Option<ActivationReceipt>> {
         }
         Ok(Some((prepared, owner)))
     });
-    result.map_err(|error| failure(error, "preparing the existing installation"))
+    result.map_err(|error| {
+        if error.is::<LegacyPostgresRequired>() {
+            error
+        } else {
+            failure(error, "preparing the existing installation")
+        }
+    })
 }
 
 /// Pipe ownership also applies to offline native children. Duplicate stdin
@@ -181,42 +176,6 @@ pub async fn run_native_legacy_export() -> Result<()> {
         anyhow::bail!("Invalid internal native legacy profile export invocation");
     };
     super::legacy_postgres::run(Path::new(source), Path::new(output), Path::new(binaries)).await
-}
-
-/// A separate native owner survives the preparation process's SIGKILL, receives
-/// EOF on its owning pipe, and terminates the actual Node converter. Its native
-/// file-only children also observe EOF when Node exits. No watcher runs inside
-/// synchronous legacy WASM and no successful conversion waits on that watcher.
-pub async fn run_converter_owner() -> Result<i32> {
-    let arguments: Vec<_> = std::env::args_os().skip(2).collect();
-    ensure!(
-        arguments.len() == 5,
-        "Invalid internal profile converter invocation"
-    );
-    let mut input = os_pipe::dup_stdin()?;
-    let (closed, lost) = tokio::sync::oneshot::channel();
-    std::thread::spawn(move || {
-        drain(&mut input);
-        let _ = closed.send(());
-    });
-    let mut command = tokio::process::Command::new(&arguments[0]);
-    #[cfg(windows)]
-    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    let mut child = command
-        .args(&arguments[1..])
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .kill_on_drop(true)
-        .spawn()?;
-    let status = tokio::select! {
-        result = child.wait() => result?,
-        _ = lost => {
-            let _ = child.kill().await;
-            child.wait().await?
-        }
-    };
-    Ok(status.code().unwrap_or(1))
 }
 
 #[cfg(test)]

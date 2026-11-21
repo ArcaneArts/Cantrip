@@ -15,6 +15,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { forceKillProcessTree } from "../devtop-processes.mjs";
 
 const version = "18.7";
 const sha256 =
@@ -24,6 +25,7 @@ const { values, positionals } = parseArgs({
   options: {
     jobs: { type: "string", default: "2" },
     target: { type: "string" },
+    "shutdown-on-stdin-close": { type: "boolean" },
   },
 });
 assert.equal(
@@ -41,12 +43,26 @@ const output = path.resolve(positionals[0]);
 const build = await mkdtemp(
   path.join(path.dirname(output), ".cantrip-legacy-postgres-build-"),
 );
+let active;
+let cancelled = false;
+function cancel() {
+  cancelled = true;
+  if (active?.pid && active.exitCode === null && active.signalCode === null)
+    forceKillProcessTree(active.pid);
+}
+if (values["shutdown-on-stdin-close"]) {
+  process.stdin.once("end", cancel);
+  process.stdin.resume();
+}
 
 function run(executable, args, cwd = build, env = process.env) {
+  if (cancelled) throw new Error("Legacy PostgreSQL build was cancelled.");
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, { cwd, env, stdio: "inherit" });
+    active = child;
     child.once("error", reject);
-    child.once("exit", (code, signal) => {
+    child.once("close", (code, signal) => {
+      if (active === child) active = undefined;
       if (code === 0) resolve();
       else reject(new Error(executable + " failed (" + (signal ?? code) + ")"));
     });
@@ -225,5 +241,6 @@ try {
     throw error;
   }
 } finally {
+  if (values["shutdown-on-stdin-close"]) process.stdin.pause();
   await rm(build, { recursive: true, force: true });
 }
