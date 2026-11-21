@@ -84,7 +84,11 @@ fn run_default() -> std::io::Result<()> {
     {
         cantrip_cua::macos::run()
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        cantrip_cua::linux::run_host()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         run(
             cantrip_cua::backend::UnavailableBackend,

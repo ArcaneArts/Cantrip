@@ -2,6 +2,7 @@
 mod capture;
 mod desktop_io;
 mod gestures;
+mod host;
 mod input;
 mod keys;
 
@@ -315,6 +316,17 @@ impl CaptureBackend for X11Backend {
 pub fn run(display: &str, generation: &str) -> std::io::Result<()> {
     let backend = X11Backend::connect(display, generation).map_err(std::io::Error::other)?;
     crate::runtime::run(backend, std::io::stdin(), std::io::stdout())
+}
+
+pub fn run_host() -> std::io::Result<()> {
+    match host::Host::connect() {
+        Ok(backend) => crate::runtime::run(backend, std::io::stdin(), std::io::stdout()),
+        Err(_) => crate::runtime::run(
+            crate::backend::UnavailableBackend,
+            std::io::stdin(),
+            std::io::stdout(),
+        ),
+    }
 }
 
 pub fn run_ready(display: &str, generation: &str, ready_fd: i32) -> std::io::Result<()> {

@@ -1,4 +1,4 @@
-//! Actual child-process tests: no native desktop access or private screenshots.
+//! Child-process tests. Native X11 coverage requires an explicit disposable display.
 use cantrip_cua::protocol::{
     Frame, Header, Message, Outcome, PROTOCOL_VERSION, read_frame, write_frame,
 };
@@ -28,9 +28,15 @@ static PROCESS_SPAWN: Mutex<()> = Mutex::new(());
 impl Process {
     fn start(fake: bool) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_cantrip-cua"));
+        #[cfg(target_os = "linux")]
+        command.env_remove("DISPLAY");
         if fake {
             command.args(["--backend", "fake"]);
         }
+        Self::spawn(command)
+    }
+
+    fn spawn(mut command: Command) -> Self {
         let spawn_guard = PROCESS_SPAWN.lock().unwrap();
         let mut child = command
             .stdin(Stdio::piped())
@@ -657,6 +663,178 @@ fn default_binary_never_silently_uses_fake_capture() {
     }
     // On macOS this is deliberately handshake-only: ordinary CI/tests must
     // never enumerate private windows or request Screen Recording permission.
+    child.stop(true);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires an explicitly selected disposable Xvfb display"]
+fn linux_host_x11_isolates_window_pixels_input_and_lifetimes() {
+    use x11rb::{
+        connection::Connection,
+        protocol::{
+            Event,
+            xproto::{
+                AtomEnum, ConnectionExt, CreateWindowAux, EventMask, InputFocus, WindowClass,
+            },
+        },
+        wrapper::ConnectionExt as _,
+    };
+    let display = std::env::var("CANTRIP_CUA_HOST_X11_TEST_DISPLAY").unwrap();
+    let (x11, screen) = x11rb::connect(Some(&display)).unwrap();
+    let root = &x11.setup().roots[screen];
+    let first = x11.generate_id().unwrap();
+    let second = x11.generate_id().unwrap();
+    let create = |id, x, y, rgb, name: &str| {
+        x11.create_window(
+            root.root_depth,
+            id,
+            root.root,
+            x,
+            y,
+            160,
+            120,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            root.root_visual,
+            &CreateWindowAux::new().background_pixel(rgb).event_mask(
+                EventMask::KEY_PRESS
+                    | EventMask::KEY_RELEASE
+                    | EventMask::BUTTON_PRESS
+                    | EventMask::BUTTON_RELEASE
+                    | EventMask::POINTER_MOTION,
+            ),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        x11.change_property8(
+            x11rb::protocol::xproto::PropMode::REPLACE,
+            id,
+            AtomEnum::WM_NAME,
+            AtomEnum::STRING,
+            name.as_bytes(),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        x11.change_property8(
+            x11rb::protocol::xproto::PropMode::REPLACE,
+            id,
+            AtomEnum::WM_CLASS,
+            AtomEnum::STRING,
+            if id == second {
+                b"cantrip\0Cantrip\0"
+            } else {
+                b"fixture\0Fixture\0"
+            },
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        x11.map_window(id).unwrap().check().unwrap();
+        x11.clear_area(false, id, 0, 0, 0, 0)
+            .unwrap()
+            .check()
+            .unwrap();
+    };
+    create(first, 20, 30, 0x00_00_ff, "native blue fixture");
+    create(second, 80, 55, 0xff_00_00, "covered area fixture");
+    x11.set_input_focus(InputFocus::PARENT, second, x11rb::CURRENT_TIME)
+        .unwrap()
+        .check()
+        .unwrap();
+    x11.warp_pointer(x11rb::NONE, root.root, 0, 0, 0, 0, 100, 90)
+        .unwrap()
+        .check()
+        .unwrap();
+    x11.get_input_focus().unwrap().reply().unwrap();
+    while x11.poll_for_event().unwrap().is_some() {}
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_cantrip-cua"));
+    command
+        .env("DISPLAY", display)
+        .env("XDG_SESSION_TYPE", "x11")
+        .env("PATH", "");
+    let mut child = Process::spawn(command);
+    let (caps, _) = child.call(json!({"operation":"capabilities.get"}));
+    assert_eq!(caps["backend"], "linux-x11");
+    assert_eq!(caps["capture"], true);
+    assert_eq!(caps["nativeInput"], true);
+    let (inventory, _) = child.call(json!({"operation":"targets.list"}));
+    let targets = inventory["targets"].as_array().unwrap();
+    let target = |id| {
+        targets
+            .iter()
+            .find(|t| t["id"] == format!("x11-window-{id}"))
+            .unwrap()
+    };
+    let selected = target(first);
+    assert_eq!(selected["title"], "native blue fixture");
+    assert_eq!(target(second)["access"]["reason"], "cantrip-app-protected");
+    assert!(targets.iter().any(|t| t["kind"] == "monitor"));
+
+    let scope = json!({"workerId":"worker","surfaceId":"desktop","attachmentId":"view","participantId":"viewer"});
+    let open = |operation: &str, target: &Value| json!({"operation":operation,"request":{"type":"open","binding":scope,"targetId":target["id"],"targetGeneration":target["generation"]}});
+    let (lease, _) = child.call(open("capture.request", selected));
+    let frame = json!({"operation":"capture.request","request":{"type":"frame","binding":scope,"handle":lease["handle"]}});
+    let (_, pixels) = child.call(frame.clone());
+    let mut reader = png::Decoder::new(std::io::Cursor::new(pixels))
+        .read_info()
+        .unwrap();
+    let mut raster = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut raster).unwrap();
+    assert_eq!((info.width, info.height), (160, 120));
+    assert_eq!(
+        &raster[(70 * 160 + 90) * 4..(70 * 160 + 90) * 4 + 4],
+        &[0, 0, 255, 255]
+    );
+
+    let (participant, _) = child.call(open("interaction.request", selected));
+    let send = |child: &mut Process, sequence, event| {
+        child.call(json!({"operation":"interaction.request","request":{"type":"input","binding":scope,"handle":participant["handle"],"sequence":sequence,"event":event}}));
+    };
+    send(
+        &mut child,
+        1,
+        json!({"type":"pointerDown","data":{"point":{"x":90,"y":70},"button":"left","modifiers":[]}}),
+    );
+    send(
+        &mut child,
+        2,
+        json!({"type":"keyDown","data":{"key":"a","modifiers":[],"repeat":false}}),
+    );
+    child.call(json!({"operation":"interaction.request","request":{"type":"close","binding":scope,"handle":participant["handle"]}}));
+    assert_eq!(
+        x11.get_input_focus().unwrap().reply().unwrap().focus,
+        second
+    );
+    let pointer = x11.query_pointer(root.root).unwrap().reply().unwrap();
+    assert_eq!((pointer.root_x, pointer.root_y), (100, 90));
+    let mut received = Vec::new();
+    while let Some(event) = x11.poll_for_event().unwrap() {
+        match event {
+            Event::ButtonPress(e) | Event::ButtonRelease(e) => {
+                assert_eq!(e.event, first);
+                assert_eq!((e.event_x, e.event_y), (90, 70));
+                received.push(e.response_type & 0x7f);
+            }
+            Event::KeyPress(e) | Event::KeyRelease(e) => {
+                assert_eq!(e.event, first);
+                received.push(e.response_type & 0x7f);
+            }
+            _ => {}
+        }
+    }
+    received.sort_unstable();
+    assert_eq!(received, [2, 3, 4, 5]);
+
+    x11.destroy_window(first).unwrap().check().unwrap();
+    create(first, 20, 30, 0x00_ff_00, "native blue fixture");
+    let id = child.send(frame);
+    assert!(
+        matches!(child.response(id).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::StaleTarget)
+    );
     child.stop(true);
 }
 

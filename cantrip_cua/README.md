@@ -5,7 +5,7 @@ process/session/image/cursor core and build-chain integration use an explicit
 deterministic test backend. A lazy worker service owns the actual process and
 private protocol. Encrypted server routing, existing durable permission requests,
 and the experimental shared client preview are implemented. The native macOS
-backend uses ScreenCaptureKit. The managed `cantrip_cua` MCP connects bounded
+backend uses ScreenCaptureKit. The Linux Host backend uses X11. The managed `cantrip_cua` MCP connects bounded
 JavaScript to that same service through the authenticated worker broker. Native
 acceptance and protected operation Trajectory verification are tracked in
 [the CUA plan](../docs/planned/CUA.md). Ordinary Cantrip worker startup
@@ -14,6 +14,23 @@ tests the helper without capturing a real desktop or requesting capture permissi
 
 For the short product walkthrough, sample MCP calls and native fixture commands,
 see [first-tranche acceptance](../docs/COMPUTER_USE_ACCEPTANCE.md).
+
+## Linux Host X11 backend
+
+The default Linux helper uses the worker's local X11 session from `DISPLAY`
+and the session's X authority. It lists displays and application windows.
+Window capture uses X11 Composite so an overlapping application stays out of
+the selected window's frame. Input is directed to the selected window and
+leaves the physical pointer and keyboard focus in place. An X11 application
+decides whether to act on synthetic events. Host monitor sharing is view-only.
+
+The isolated Host process test runs against Xvfb with X11 Composite and RandR.
+
+```sh
+xvfb-run -a sh -c 'CANTRIP_CUA_HOST_X11_TEST_DISPLAY="$DISPLAY" \
+  cargo test --locked --manifest-path cantrip_cua/Cargo.toml --test process \
+  linux_host_x11_isolates_window_pixels_input_and_lifetimes -- --exact --ignored'
+```
 
 ## Assigned Linux X11 backend
 
@@ -28,8 +45,7 @@ opens one local X connection, captures that root display, and posts XTEST input
 there. It never discovers an inherited display or reconnects to a replacement X
 server. Its target generation also changes with each helper lifetime. Capture,
 input and interaction requests use the existing framed protocol and shared input
-ownership/cleanup implementation. Default Linux startup still reports unavailable
-until the owning integration supplies an explicit desktop.
+ownership and cleanup. This explicit guest mode is selected by the guest service.
 
 Pointer input moves the real pointer and focus inside that selected desktop.
 The backend supports click/hold, buttons, key combinations, text, wheel, drag and
@@ -284,8 +300,9 @@ Open any project or standalone agent chat and choose **Computer use ·
 Experimental** above the transcript. Desktop, browser and responsive mobile
 clients use the same encrypted app → server → agent-worker route. Opening the
 panel does not launch the helper; **Connect to agent worker** in **Manual preview**
-performs its real capability request. The default backend uses ScreenCaptureKit on supported
-macOS versions; fake pixels are used only by explicitly configured tests.
+performs its real capability request. Default backends use ScreenCaptureKit on
+supported macOS versions and X11 on Linux. Explicit test configuration selects
+the fake backend.
 
 The first operation also prepares this worker's existing encrypted control,
 approval and history channels, including on a new chat that has never run an
@@ -463,14 +480,10 @@ capture authorization, or a signature on unrelated worker binaries. Desktop
 packaging retains its existing nested-runtime and enclosing-app signing path.
 See the progress ledger for actual artifact and permission evidence.
 
-The CUA native CI matrix runs actual fake-backend tests on macOS, Windows, and
-Linux. Windows/Linux native capture remains unavailable. Fake CI intentionally
-does not request Screen Recording or claim permission/capture verification.
-
-On platforms without the macOS backend, default execution advertises unavailable
-native capture and returns a real `unsupported` result. `--backend fake` explicitly selects two fixture
-targets; it is never an automatic fallback. `--version` is a standalone CLI
-diagnostic, not the worker's capability handshake.
+The native helper has focused fake-backend process tests for macOS, Windows and
+Linux, along with the isolated X11 test. Default execution reports unavailable
+when the platform backend or its session is unavailable. `--backend fake`
+explicitly selects two fixture targets. `--version` is a standalone CLI diagnostic.
 
 ## Wire contract: version 1
 

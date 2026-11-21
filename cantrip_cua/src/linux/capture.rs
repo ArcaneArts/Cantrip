@@ -18,14 +18,41 @@ pub(super) fn capture(
     target: Target,
     cancel: &Cancellation,
 ) -> Result<Capture> {
-    cancel.check()?;
     let root = &connection.setup().roots[screen];
+    drawable(
+        connection,
+        screen,
+        root.root,
+        (0, 0),
+        root.root_visual,
+        target,
+        cancel,
+    )
+}
+
+pub(super) fn drawable(
+    connection: &RustConnection,
+    screen: usize,
+    drawable: u32,
+    origin: (i16, i16),
+    visual: u32,
+    target: Target,
+    cancel: &Cancellation,
+) -> Result<Capture> {
+    cancel.check()?;
+    let pixels = u64::from(target.pixel_width) * u64::from(target.pixel_height);
+    if pixels > crate::target::MAX_IMAGE_PIXELS as u64 {
+        return Err(CuaError::new(
+            ErrorCode::CaptureFailed,
+            "X11 capture exceeds the pixel limit.",
+        ));
+    }
     let reply = connection
         .get_image(
             ImageFormat::Z_PIXMAP,
-            root.root,
-            0,
-            0,
+            drawable,
+            origin.0,
+            origin.1,
             target.pixel_width as u16,
             target.pixel_height as u16,
             u32::MAX,
@@ -33,7 +60,11 @@ pub(super) fn capture(
         .map_err(failure)?
         .reply()
         .map_err(failure)?;
-    let visual_id = reply.visual;
+    let visual_id = if reply.visual == 0 {
+        visual
+    } else {
+        reply.visual
+    };
     let image = Image::get_from_reply(
         connection.setup(),
         target.pixel_width as u16,
@@ -41,7 +72,7 @@ pub(super) fn capture(
         reply,
     )
     .map_err(failure)?;
-    let visual = root
+    let visual = connection.setup().roots[screen]
         .allowed_depths
         .iter()
         .flat_map(|d| &d.visuals)
