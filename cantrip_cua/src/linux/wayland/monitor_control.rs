@@ -258,6 +258,13 @@ impl Control {
         }
     }
 
+    pub(super) fn input_closed(&self, session: &str) -> bool {
+        self.active.as_ref().is_some_and(|active| {
+            active.native_id == session
+                && matches!(active.session.as_ref(), Session::Portal(portal) if portal.is_closed())
+        })
+    }
+
     fn current(&mut self, session: &str, target: &Target) -> Result<&mut Active> {
         self.active
             .as_mut()

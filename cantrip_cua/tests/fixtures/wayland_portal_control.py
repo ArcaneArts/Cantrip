@@ -54,6 +54,10 @@ class Session(dbus.service.Object):
     def Close(self):
         self.portal.events.append(["session-close"])
 
+    @dbus.service.signal(SESSION, signature="a{sv}")
+    def Closed(self, details):
+        pass
+
 
 class Portal(dbus.service.Object):
     def __init__(self, root):
@@ -82,6 +86,16 @@ class Portal(dbus.service.Object):
     @dbus.service.method(FIXTURE, out_signature="s")
     def Events(self):
         return json.dumps(self.events)
+
+    @dbus.service.method(FIXTURE, in_signature="b")
+    def CloseFromPortal(self, unrelated):
+        if unrelated:
+            session = Session(self, f"{PATH}/session/foreign/unused")
+            session.Closed({})
+            session.remove_from_connection()
+        else:
+            self.events.append(["host-close"])
+            self.sessions[-1].Closed({})
 
     @dbus.service.method("org.freedesktop.DBus.Properties", in_signature="ss", out_signature="v")
     def Get(self, interface, name):
@@ -283,6 +297,36 @@ def exercise(helper, control, root, env):
         assert log.index(["button", 272, 0]) < log.index(["session-close"])
         assert log.index(["key", 0xFFE1, 0]) < log.index(["session-close"])
 
+        control.SetMode("allow")
+        assert attach(scope)["error"]["code"] == "input-pending"
+        opened = wait(lambda: terminal(scope))
+        assert opened["status"] == "ok", opened
+        handle = opened["data"]["handle"]
+        control.CloseFromPortal(True)
+        assert attach(other)["error"]["code"] == "ownership-mismatch"
+        input_event(1, "keyDown", key="Shift", repeat=False, modifiers=[])
+
+        control.CloseFromPortal(False)
+
+        def replacement_open():
+            result = attach(other)
+            return result if result.get("error", {}).get("code") != "ownership-mismatch" else None
+
+        assert wait(replacement_open)["error"]["code"] == "input-pending"
+        retired, _ = call("interaction.request", request={
+            "type": "input", "binding": scope, "handle": handle, "sequence": 2,
+            "event": {"type": "keyUp", "data": {"key": "Shift"}},
+        })
+        assert retired["error"]["code"] == "session-not-found"
+        _, png = ok("capture.request", request={"type": "frame", "binding": scope, "handle": capture["handle"]})
+        assert png.startswith(b"\x89PNG")
+        replacement = wait(lambda: terminal(other))
+        assert replacement["status"] == "ok", replacement
+        assert replacement["data"]["handle"] != handle
+        close(other)
+        log = events()
+        assert ["key", 0xFFE1, 0] not in log[log.index(["host-close"]):]
+
         control.SetMode("deny")
         assert attach(scope)["error"]["code"] == "input-pending"
         assert wait(lambda: terminal(scope))["error"]["code"] == "permission-denied"
@@ -295,8 +339,8 @@ def exercise(helper, control, root, env):
         assert attach(scope)["error"]["code"] == "input-pending"
         wait(lambda: ["start", "cancel"] in events())
         close(scope)
-        wait(lambda: ["request-close"] in events() and events().count(["session-close"]) == 4)
-        assert events().count(["create"]) == 4
+        wait(lambda: ["request-close"] in events() and events().count(["session-close"]) == 5)
+        assert events().count(["create"]) == 6
         child.stdin.close()
         assert child.wait(timeout=5) == 0
 

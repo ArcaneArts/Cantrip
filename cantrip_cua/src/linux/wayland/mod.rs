@@ -303,6 +303,12 @@ impl CaptureBackend for Host {
         }
     }
 
+    fn remote_input_closed(&self, participant: &str) -> bool {
+        self.control
+            .as_ref()
+            .is_some_and(|control| control.input_closed(participant))
+    }
+
     fn copy_selection_text(
         &mut self,
         participant: &str,
