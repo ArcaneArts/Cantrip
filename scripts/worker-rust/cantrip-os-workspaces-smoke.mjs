@@ -30,6 +30,7 @@ const { values } = parseArgs({
     "product-files": { type: "boolean", default: false },
     "guest-terminal": { type: "boolean", default: false },
     "guest-tunnel": { type: "boolean", default: false },
+    "guest-ssh": { type: "boolean", default: false },
     desktop: { type: "boolean", default: false },
     "backup-capture": { type: "boolean", default: false },
     "backup-restore": { type: "boolean", default: false },
@@ -46,7 +47,11 @@ values["system-capture"] ||= values["system-replacement"];
 const backup = values["backup-capture"] || values["backup-restore"];
 assert.ok(values.worker && values.server);
 assert.ok(
-  !(values["guest-terminal"] || values["guest-tunnel"]) || values.repository,
+  !(
+    values["guest-terminal"] ||
+    values["guest-tunnel"] ||
+    values["guest-ssh"]
+  ) || values.repository,
 );
 assert.ok(
   !values.linked || values.repository,
@@ -521,6 +526,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       productFiles: values["product-files"],
       guestTerminal: values["guest-terminal"],
       guestTunnel: values["guest-tunnel"],
+      guestSsh: values["guest-ssh"],
       origin: server.origin,
       stopWorker,
       crashWorker: async () => {
@@ -660,6 +666,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       nodeCompatibleJournal: true,
       ...(values.desktop ? { guestDesktopLifecycle: true } : {}),
       ...(values["guest-tunnel"] ? { guestTcpTunnel: true } : {}),
+      ...(values["guest-ssh"] ? { guestSshTunnel: true } : {}),
       ...(powerProxy ? { retainedPowerControls: true } : {}),
       ...(values["package-artifact"] ? { guestPackageManagement: true } : {}),
       ...(backup ? { encryptedGuestBackup: true } : {}),
