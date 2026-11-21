@@ -933,7 +933,7 @@ impl Turns {
                 None
             };
             let guest = prepared.environment.is_some();
-            let skill_inputs = if retained.is_none() && !guest && command["contextKind"] == "project" {
+            let skill_inputs = if retained.is_none() && command["contextKind"] == "project" {
                 let names = if protection.is_some()
                     || command["resultMode"]["operation"]["classification"]["kind"] == "direct"
                 {
@@ -948,7 +948,7 @@ impl Turns {
                         .collect()
                 };
                 let cwd = id(&command["cwd"], "native workspace path")?;
-                skills::host_inputs(runtime, &cwd, &names, RPC_TIMEOUT).await?
+                skills::turn_inputs(runtime, &cwd, &names, RPC_TIMEOUT).await?
             } else {
                 Vec::new()
             };

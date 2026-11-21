@@ -1,5 +1,5 @@
 //! Core-claimed host queue turns use the retained native input when present.
-use super::{RPC_TIMEOUT, Runtime};
+use super::{RPC_TIMEOUT, Runtime, skills};
 use crate::{
     attachments::{Store, content},
     cantrip_os::product_files::ProductFiles,
@@ -136,6 +136,10 @@ pub(super) async fn inputs(
     } else {
         Vec::new()
     };
+    if is_retained && guest.is_some() {
+        let cwd = text(&command["osExecution"]["scope"]["guestPath"])?;
+        skills::retain_guest_inputs(runtime, cwd, &mut input, RPC_TIMEOUT).await?;
+    }
     if is_retained && attachments.is_empty() {
         return Ok(input);
     }

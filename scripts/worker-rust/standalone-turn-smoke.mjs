@@ -3173,6 +3173,7 @@ try {
       labelKey,
       repositoryKey,
       customizationKey,
+      chatKey,
       guest: guestDesktop,
       startWorker,
       stopWorker,
