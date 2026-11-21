@@ -7,7 +7,10 @@ use super::{
     list,
 };
 use crate::{
-    codex::{customizations, managed::Runtime, preparation::command::Ensurer},
+    codex::{
+        customizations, guest_environment::Environment, managed::Runtime,
+        preparation::command::Ensurer,
+    },
     encryption::Service,
     filesystem::paths,
     protected_content::customization::{Operation, Replay},
@@ -167,12 +170,12 @@ impl Settings {
         let cwd = resolved["cwd"].as_js_string();
         if let Some(customization) = customizations::Command::find(kind) {
             let cwd = cwd.context("Missing customization workspace.")?;
-            let (runtime, guest) = self.runtime(incoming, operation, cwd).await?;
+            let (runtime, environment) = self.runtime(incoming, operation, cwd).await?;
             return customization
                 .run(
                     customizations::Target {
                         runtime: &runtime,
-                        guest,
+                        environment: environment.as_deref(),
                         cwd,
                         thread: &incoming["threadId"],
                         global: self.global.as_deref(),
@@ -192,11 +195,11 @@ impl Settings {
         }
         if kind == CHAT_CONFIGURE {
             let cwd = cwd.context("Missing skill workspace.")?;
-            let (runtime, guest) = self.runtime(incoming, operation, cwd).await?;
+            let (runtime, environment) = self.runtime(incoming, operation, cwd).await?;
             let path = input["path"]
                 .as_js_string()
                 .context("Missing skill path.")?;
-            return configure(&runtime, cwd, path, input, operation, guest).await;
+            return configure(&runtime, cwd, path, input, operation, environment.is_some()).await;
         }
         let provider = incoming["providerId"]
             .as_js_string()
@@ -262,7 +265,7 @@ impl Settings {
         command: &Value,
         operation: &Operation<'_>,
         cwd: &JsString,
-    ) -> Result<(Runtime, bool)> {
+    ) -> Result<(Runtime, Option<Arc<Environment>>)> {
         let provider = open_runtime_provider(&self.encryption, &command["provider"])?;
         ensure!(
             provider["id"] == operation.scope["providerId"],

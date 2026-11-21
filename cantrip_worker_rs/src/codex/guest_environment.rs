@@ -1,6 +1,12 @@
 //! A managed Codex app-server on the worker with one admitted guest executor.
 use crate::{
-    cantrip_os::{assert_scope, carrier::Transport, operations::save, session::Session},
+    cantrip_os::{
+        assert_scope,
+        carrier::Transport,
+        operations::save,
+        session::{Session, file_path, file_uri},
+        text,
+    },
     codex::managed::Launch,
     filesystem::{Scope, paths},
     run_definitions::repository::read_bounded,
@@ -13,6 +19,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use url::Url;
 
 const MAX_RECORD_BYTES: u64 = 1024 * 1024;
 
@@ -185,6 +192,66 @@ impl Environment {
 
     pub fn assert_execution(&self, execution: &Value) -> Result<()> {
         same_placement(&self.execution, execution)
+    }
+
+    pub async fn resolve_skill_roots(&self, requested: &[Value]) -> Result<Vec<JsString>> {
+        if requested.is_empty() {
+            return Ok(Vec::new());
+        }
+        let scope = &self.execution["scope"];
+        let checkout = text(scope, "guestPath")?;
+        let prefix = format!("{}/", checkout.trim_end_matches('/'));
+        let within = |path: &str| {
+            ensure!(
+                path == checkout || path.starts_with(&prefix),
+                "Extra skill roots must resolve within the selected project checkout."
+            );
+            Ok(())
+        };
+        let transport = Transport::from_value(&self.execution["transport"])?;
+        let lifetime = Scope::default();
+        assert_scope(&transport, scope, true, &lifetime).await?;
+        let (mut session, _) =
+            Session::open(&transport, scope, "cantrip-skill-roots", &lifetime).await?;
+        let result = async {
+            let mut resolved = Vec::new();
+            for root in requested {
+                let name = root.as_str().context("Invalid Linux extra skill root.")?;
+                let uri = if name.starts_with('/') {
+                    file_uri(name)?
+                } else {
+                    file_uri(&format!("{prefix}{name}"))?
+                };
+                within(&file_path(&uri)?)?;
+                let canonical = session
+                    .request(
+                        "fs/canonicalize",
+                        json!({"path":uri.as_str(),"sandbox":Value::Null}),
+                    )
+                    .await?;
+                let uri = Url::parse(text(&canonical, "path")?)?;
+                let path = file_path(&uri)?;
+                within(&path)?;
+                let metadata = session
+                    .request(
+                        "fs/getMetadata",
+                        json!({"path":uri.as_str(),"followSymlinks":true,"sandbox":Value::Null}),
+                    )
+                    .await?;
+                ensure!(
+                    metadata["isDirectory"] == true,
+                    "Extra skill root is not a directory: {name}"
+                );
+                let path = JsString::from(path);
+                if !resolved.contains(&path) {
+                    resolved.push(path);
+                }
+            }
+            Ok(resolved)
+        }
+        .await;
+        session.close().await;
+        result
     }
 
     pub fn configure_launch(self: &Arc<Self>, launch: &mut Launch) {
