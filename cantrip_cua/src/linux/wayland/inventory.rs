@@ -1,4 +1,4 @@
-use super::{drive, missing, unavailable};
+use super::{drive, missing};
 use crate::{
     cancellation::Cancellation,
     error::Result,
@@ -146,10 +146,6 @@ impl Desktop {
             _ => return None,
         };
         Some((shm.clone(), protocol))
-    }
-
-    pub(super) fn capture_objects(&self) -> Result<(wl_shm::WlShm, Protocol)> {
-        self.capture_protocol().ok_or_else(unavailable)
     }
 }
 

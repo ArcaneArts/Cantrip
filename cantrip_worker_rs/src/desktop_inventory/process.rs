@@ -157,10 +157,6 @@ impl Process {
         }
     }
 
-    pub(super) async fn frame(&mut self, operation: Value) -> Result<(Value, Vec<u8>)> {
-        self.exchange(operation, true).await
-    }
-
     async fn exchange(
         &mut self,
         operation: Value,

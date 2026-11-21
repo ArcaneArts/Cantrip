@@ -163,14 +163,8 @@ impl Buffer {
         } else {
             (width, height)
         };
-        let pixel_count = f64::from(width_out) * f64::from(height_out);
-        let ratio = ((MAX_IMAGE_PIXELS as f64 / pixel_count).sqrt()).min(1.);
-        let scaled_width = ((f64::from(width_out) * ratio).floor() as u32).max(1);
-        let scaled_height = ((f64::from(height_out) * ratio).floor() as u32).max(1);
-        let len = (scaled_width as usize) * (scaled_height as usize);
-        if len > MAX_IMAGE_PIXELS {
-            return Err(failed("The Wayland image exceeds the pixel limit."));
-        }
+        let (scaled_width, scaled_height) = scaled_dimensions(width_out, height_out)?;
+        let len = scaled_width as usize * scaled_height as usize;
         let mut rgba = Vec::with_capacity(len * 4);
         for y in 0..scaled_height {
             cancel.check()?;
@@ -197,6 +191,17 @@ impl Buffer {
             rgba,
         })
     }
+}
+
+pub(super) fn scaled_dimensions(width: u32, height: u32) -> Result<(u32, u32)> {
+    let pixel_count = f64::from(width) * f64::from(height);
+    let ratio = ((MAX_IMAGE_PIXELS as f64 / pixel_count).sqrt()).min(1.);
+    let width = ((f64::from(width) * ratio).floor() as u32).max(1);
+    let height = ((f64::from(height) * ratio).floor() as u32).max(1);
+    if u64::from(width) * u64::from(height) > MAX_IMAGE_PIXELS as u64 {
+        return Err(failed("The Wayland image exceeds the pixel limit."));
+    }
+    Ok((width, height))
 }
 
 fn buffer_coordinates(transform: Transform, w: u32, h: u32, x: u32, y: u32) -> Result<(u32, u32)> {

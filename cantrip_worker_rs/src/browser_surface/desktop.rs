@@ -3,7 +3,7 @@ mod input;
 
 use super::{Callback, Endpoint, FrameSource, Route, Shared, Work, accepted, id};
 use crate::{
-    desktop_inventory::{Capture, ControlState, GuestControl, Scope},
+    desktop_inventory::{Capture, ControlState, GuestControl, PortalCaptureConsent, Scope},
     http::checked,
     protected_content::{open_private_state, open_remote_surface, protect_remote_surface},
 };
@@ -173,6 +173,7 @@ pub(super) async fn run(
     };
     let _ = done.send(Ok(attached()));
     let mut work: Option<WorkFrame> = None;
+    let mut awaiting_portal_retry = false;
     let mut due = Instant::now();
     let mut started = due;
     let mut losses = 0_u32;
@@ -195,6 +196,11 @@ pub(super) async fn run(
                                 release(capture).await;
                             }
                             losses = 0;
+                            due = Instant::now();
+                            awaiting_portal_retry = false;
+                        }
+                        if result.is_ok() && attaching && awaiting_portal_retry {
+                            awaiting_portal_retry = false;
                             due = Instant::now();
                         }
                         if result.is_ok() && attaching && active.guest.is_some()
@@ -270,14 +276,16 @@ pub(super) async fn run(
                     }
                     Ok((lease, _)) => release(lease).await,
                     Err(error) if active.visible() => {
+                        awaiting_portal_retry = error.is::<PortalCaptureConsent>();
                         active.retire_inputs();
                         if let Some(lease) = capture.take() {
                             release(lease).await;
                         }
                         losses = losses.saturating_add(1);
-                        if active.status != "error" {
+                        let failure = error.to_string().chars().take(512).collect();
+                        if active.status != "error" || active.failure.as_ref() != Some(&failure) {
                             active.status = "error";
-                            active.failure = Some(error.to_string().chars().take(512).collect());
+                            active.failure = Some(failure);
                             active.publish(None);
                         }
                         due = Instant::now() + Duration::from_millis((250 * (1 << (losses-1).min(5))).min(5000));
@@ -300,7 +308,7 @@ pub(super) async fn run(
                     }
                 }
             },
-            _ = sleep_until(due), if work.is_none() && active.visible() => {
+            _ = sleep_until(due), if work.is_none() && active.visible() && !awaiting_portal_retry => {
                 let Some(epoch) = active.stream_epoch() else { continue };
                 started = Instant::now();
                 work = Some(active.sample(epoch, capture.clone()));
