@@ -139,15 +139,16 @@ impl Replay {
         // A retained viewer can still have modes from the previous attachment.
         // Draw with absolute positions and ordinary overwrite and wrap first.
         let mut bytes =
-            b"\x1b[?1049l\x1b[4l\x1b[?6l\x1b[?7h\x1b[?45;1004;9;1000;1002;1003;1005;1006l\x1b[r"
+            b"\x1b[?1049l\x0f\x1b(B\x1b)B\x1b*B\x1b+B\x1b[4l\x1b[?6l\x1b[?7h\x1b[?45;1004;9;1000;1002;1003;1005;1006l\x1b[r"
                 .to_vec();
-        let tail = if screen.alternate_screen() {
+        let mut tail = if screen.alternate_screen() {
             let mut alternate = b"\x1b[?1049h".to_vec();
             alternate.extend(screen.state_formatted());
             alternate
         } else {
             screen.input_mode_formatted()
         };
+        tail.extend(screen.character_sets_formatted());
         let limit = CHAR_LIMIT.checked_sub(bytes.len() + tail.len())?;
         let history_rows = if let Some((contents, rows)) =
             screen.normal_contents_formatted_with_scrollback(limit)

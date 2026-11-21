@@ -35,7 +35,7 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
         if c == '\u{fffd}' || ('\u{80}'..'\u{a0}').contains(&c) {
             self.callbacks.unhandled_char(&mut self.screen, c);
         } else {
-            self.screen.text(c);
+            self.screen.text(self.screen.charsets.translate(c));
         }
     }
 
@@ -48,14 +48,16 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
             11 => self.screen.vt(),
             12 => self.screen.ff(),
             13 => self.screen.cr(),
-            // we don't implement shift in/out alternate character sets, but
-            // it shouldn't count as an "error"
-            14 | 15 => {}
+            14 => self.screen.charsets.shift(1),
+            15 => self.screen.charsets.shift(0),
             _ => self.callbacks.unhandled_control(&mut self.screen, b),
         }
     }
 
-    fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, b: u8) {
+    fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, b: u8) {
+        if !ignore && self.screen.charsets.escape(intermediates, b) {
+            return;
+        }
         if let Some(i) = intermediates.first() {
             self.callbacks.unhandled_escape(
                 &mut self.screen,

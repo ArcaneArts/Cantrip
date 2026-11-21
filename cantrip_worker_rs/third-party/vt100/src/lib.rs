@@ -49,6 +49,7 @@
 
 mod attrs;
 mod callbacks;
+mod charset;
 mod cell;
 mod grid;
 mod parser;
