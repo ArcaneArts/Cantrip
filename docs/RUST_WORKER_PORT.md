@@ -51,8 +51,8 @@ covers the current Docker build, enrollment, and volume reuse.
 
 ### Open managed MCP operations
 
-The remaining managed Cantrip MCP work covers client control,
-worktree, Explorer, terminal, browser, and Run tools. Their
+The remaining managed Cantrip MCP work covers worktree, Explorer,
+terminal, browser, and Run tools. Their
 catalog entries and Core routes are in place. The worker still needs
 negotiated admission and endpoint handling for these families.
 
@@ -11274,3 +11274,23 @@ Codex with an empty worker PATH. It exercised paged Chat surface discovery,
 the default catalog's worker placement, encrypted titles in Core responses,
 exact target inspection, and rejection of a different project. The
 authenticated Browser inspection test and offline worker build passed.
+
+## 351. Restore managed MCP client controls
+
+Reference commit `1e5961c860e52359ff7f86c3a5f7841f2208e6bf` (#3514).
+
+Writable Project Chat bindings can send a protected notification, focus the
+project or an available surface, and show the originating Chat's pending
+interaction. The worker uses the shared target inspection for surface
+focus and seals notification text to the bound project. Core validates the
+active lane, selects a subscribed client, and returns its acknowledged
+status. Only an applied acknowledgment reports a mutation.
+
+The baseline worker omitted `client_focus_project` from native Codex tool
+search. The macOS ARM64 fixture used production Rust Core with PGlite,
+native Codex, an empty worker PATH, and a headless Live client. It verified
+an unavailable result with no subscribed client, declined project focus, applied surface focus,
+protected notification decoding, and cross-project and invalid interaction
+denial. The authenticated MCP HTTP route showed a real pending Codex
+question, which remained pending until the existing encrypted response
+API settled it. The Alert smoke and offline worker build also passed.

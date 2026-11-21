@@ -75,6 +75,7 @@ const { values } = parseArgs({
     "mcp-chats": { type: "boolean" },
     "mcp-alerts": { type: "boolean" },
     "mcp-targets": { type: "boolean" },
+    "mcp-client-controls": { type: "boolean" },
     "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
@@ -179,7 +180,7 @@ const cuaAgent =
   autonomousCua ||
   taskCua;
 const previewKey =
-  values["cua-preview"] || cuaAgent || childCua
+  values["cua-preview"] || values["mcp-client-controls"] || cuaAgent || childCua
     ? key("client-control-content")
     : null;
 const policyKey = values.policies ? key("policy-content") : null;
@@ -219,6 +220,7 @@ const interactionKey =
   restoredInteractions ||
   subagentInteractions ||
   planQuestion ||
+  values["mcp-client-controls"] ||
   values["cua-preview"] ||
   cuaAgent
     ? key("interaction-content")
@@ -242,6 +244,7 @@ const consoleStateKey =
   values["mcp-chats"] ||
   values["mcp-alerts"] ||
   values["mcp-targets"] ||
+  values["mcp-client-controls"] ||
   values.policies ||
   values.codegraph ||
   consoleInteractions ||
@@ -3388,7 +3391,7 @@ try {
         : null,
       openMessage,
     });
-  } else if (previewKey && !childCua) {
+  } else if (values["cua-preview"] && !childCua) {
     await verifyComputerUsePreview({
       call,
       eventually,
@@ -3533,6 +3536,23 @@ try {
       keyRevision,
       labelKey,
     });
+  } else if (values["mcp-client-controls"]) {
+    const { verifyManagedMcpClientControls } =
+      await import("./mcp-client-control-cases.mjs");
+    await verifyManagedMcpClientControls({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      notificationKey: previewKey,
+      interactionKey,
+      data,
+      server,
+    });
   } else if (values.codegraph) {
     await verifyManagedCodeGraph(data);
   } else if (values.cli || values.bundled) {
@@ -3664,6 +3684,7 @@ try {
     taskKey.fill(0);
     repositoryKey?.fill(0);
     providerKey.fill(0);
+    previewKey?.fill(0);
     policyKey?.fill(0);
     customizationKey?.fill(0);
     mcpKey?.fill(0);
