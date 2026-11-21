@@ -10929,3 +10929,25 @@ rebuilt worker sent one request to the separate naming provider and Core
 returned the new encrypted title. The guest conversation kept its native
 thread and encrypted history across worker restart without another model
 request. The worker build, format checks, and `git diff --check` passed.
+
+## 334. Reopen customization controls for saved Cantrip OS Chats
+
+Reference commit `4c4cac6282d4578a1e30973bf724d1719f692310` (#3497).
+
+The worker reopens the saved Cantrip OS placement for protected Chat
+customization requests. The placement must match the project and guest
+working directory in the request. A live managed runtime can be reused
+when its environment and thread still match. Labeling and other stateless
+helper calls continue using their worker-local profiles.
+
+On macOS ARM64, the local Rust Core and worker fixture used a disposable
+Linux ARM64 Cantrip OS guest. The baseline returned a protected failure
+when listing skills after restart. The rebuilt worker found a guest-only
+skill in both protected lists, disabled it through native Codex, and saw
+the disabled state in a refreshed inventory. The conversation kept its
+history across restart. The Host customization smoke also passed.
+
+Extra skill roots still need guest filesystem support in Codex. Its current
+extra-root scanner uses the worker filesystem, where a guest path can
+shadow an existing guest repository root. Nonempty guest extra roots return
+a protected error until the runtime can resolve them on the guest.

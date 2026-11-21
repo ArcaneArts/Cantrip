@@ -109,6 +109,7 @@ impl Environment {
         chat: &JsString,
         cwd: &JsString,
         supplied: Option<&Value>,
+        project: Option<&Value>,
     ) -> Result<Option<Self>> {
         let previous = stored(&record_path(data, authority, chat))?;
         let supplied = supplied
@@ -120,6 +121,10 @@ impl Environment {
         let Some(execution) = previous.as_ref().or(supplied.as_ref()) else {
             return Ok(None);
         };
+        ensure!(
+            project.is_none_or(|project| execution["scope"]["projectId"] == *project),
+            "The OS runtime belongs to a different project."
+        );
         Ok(Some(Self::open(authority, execution, cwd).await?))
     }
 

@@ -167,11 +167,12 @@ impl Settings {
         let cwd = resolved["cwd"].as_js_string();
         if let Some(customization) = customizations::Command::find(kind) {
             let cwd = cwd.context("Missing customization workspace.")?;
-            let runtime = self.runtime(incoming, operation).await?;
+            let (runtime, guest) = self.runtime(incoming, operation, cwd).await?;
             return customization
                 .run(
                     customizations::Target {
                         runtime: &runtime,
+                        guest,
                         cwd,
                         thread: &incoming["threadId"],
                         global: self.global.as_deref(),
@@ -185,17 +186,17 @@ impl Settings {
         }
         if kind == CHAT_LIST {
             let cwd = cwd.context("Missing skill workspace.")?;
-            let runtime = self.runtime(incoming, operation).await?;
+            let (runtime, _) = self.runtime(incoming, operation, cwd).await?;
             let (skills, _) = list(&runtime, cwd, false, RPC_TIMEOUT).await?;
             return chat_summary(skills);
         }
         if kind == CHAT_CONFIGURE {
             let cwd = cwd.context("Missing skill workspace.")?;
-            let runtime = self.runtime(incoming, operation).await?;
+            let (runtime, guest) = self.runtime(incoming, operation, cwd).await?;
             let path = input["path"]
                 .as_js_string()
                 .context("Missing skill path.")?;
-            return configure(&runtime, cwd, path, input, operation).await;
+            return configure(&runtime, cwd, path, input, operation, guest).await;
         }
         let provider = incoming["providerId"]
             .as_js_string()
@@ -238,8 +239,8 @@ impl Settings {
                 Ok::<_, anyhow::Error>(paths::text(&skill.directory.join("SKILL.md")))
             })
             .await??;
-            let runtime = self.runtime(incoming, operation).await?;
-            let configured = configure(&runtime, cwd, &path, input, operation).await?;
+            let (runtime, _) = self.runtime(incoming, operation, cwd).await?;
+            let configured = configure(&runtime, cwd, &path, input, operation, false).await?;
             return Ok(
                 json!({"skillId":input["skillId"],"effectiveEnabled":configured["effectiveEnabled"]}),
             );
@@ -247,7 +248,7 @@ impl Settings {
         let (native, errors) = if incoming["model"].is_null() || incoming["provider"].is_null() {
             (Vec::new(), Vec::new())
         } else {
-            let runtime = self.runtime(incoming, operation).await?;
+            let (runtime, _) = self.runtime(incoming, operation, cwd).await?;
             list(&runtime, cwd, true, RPC_TIMEOUT).await?
         };
         tokio::task::spawn_blocking(move || {
@@ -256,7 +257,12 @@ impl Settings {
         .await?
     }
 
-    async fn runtime(&self, command: &Value, operation: &Operation<'_>) -> Result<Runtime> {
+    async fn runtime(
+        &self,
+        command: &Value,
+        operation: &Operation<'_>,
+        cwd: &JsString,
+    ) -> Result<(Runtime, bool)> {
         let provider = open_runtime_provider(&self.encryption, &command["provider"])?;
         ensure!(
             provider["id"] == operation.scope["providerId"],
@@ -267,7 +273,7 @@ impl Settings {
                 &command["model"],
                 provider,
                 operation.identity(),
-                operation.scope["chatId"].as_js_string(),
+                Some((&operation.scope, cwd)),
                 command["threadId"].as_js_string(),
             )
             .await
@@ -280,15 +286,22 @@ async fn configure(
     path: &JsString,
     input: &Value,
     operation: &Operation<'_>,
+    guest: bool,
 ) -> Result<Value> {
-    let expected = paths::resolve(&paths::native(path))?;
+    let host_path = (!guest)
+        .then(|| paths::resolve(&paths::native(path)))
+        .transpose()?;
     let (skills, _) = list(runtime, cwd, true, RPC_TIMEOUT).await?;
     let path = skills
         .iter()
         .filter_map(native_skill_path)
-        .find(|path| {
-            paths::resolve(&paths::native(path))
-                .is_ok_and(|candidate| paths::equal(&candidate, &expected))
+        .find(|candidate| {
+            if let Some(expected) = &host_path {
+                paths::resolve(&paths::native(candidate))
+                    .is_ok_and(|candidate| paths::equal(&candidate, expected))
+            } else {
+                *candidate == path
+            }
         })
         .context(
             "The requested skill path is not present in this project's native Codex inventory.",

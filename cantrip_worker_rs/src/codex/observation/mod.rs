@@ -116,6 +116,7 @@ impl Observer {
                 chat,
                 field(command, "cwd")?,
                 command.get("osExecution"),
+                None,
             )
             .await?
             .map(Arc::new)
