@@ -1,4 +1,8 @@
 //! Child-process tests. Native X11 coverage requires an explicit disposable display.
+#[cfg(windows)]
+#[path = "fixtures/windows_monitor.rs"]
+mod windows_monitor;
+
 use cantrip_cua::protocol::{
     Frame, Header, Message, Outcome, PROTOCOL_VERSION, read_frame, write_frame,
 };
