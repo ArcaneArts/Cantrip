@@ -6,7 +6,7 @@ pub(crate) use stream::{LinkTarget, LinkedTerminal};
 
 use super::{
     Authority, Configuration, Manager as Services, Resize, authority,
-    presentation::{Attachment, Display, Transport, detached},
+    presentation::{Attaching, Attachment, Display, Transport, detached},
     private_state,
 };
 use crate::{
@@ -266,7 +266,7 @@ impl Shells {
             sequence: 0,
         };
         let display = {
-            let _transition = self.transition().await;
+            let transition = self.transition().await;
             ports.scope.check()?;
             anyhow::ensure!(
                 authority(ports.encryption)? == key.authority,
@@ -293,7 +293,12 @@ impl Shells {
                 )
                 .await?
             };
-            let finished = display.lock().unwrap().attach(view_id, view)?;
+            let finished = tokio::select! {
+                biased;
+                _ = connection.changed() => return Ok(detached()),
+                _ = ports.scope.stopped() => return Ok(detached()),
+                result = self.present(&key, &display, view_id, view, transition) => result?,
+            };
             if let Some(result) = finished {
                 return Ok(result);
             }
@@ -438,6 +443,47 @@ impl Shells {
             *entry.managed_generation.lock().unwrap() = managed_generation.clone();
         }
         Ok(entry.state.clone())
+    }
+
+    async fn existing_display(&self, key: &Key) -> Result<Arc<Mutex<Display>>> {
+        if let Some(service) = self.services.view(&key.terminal, &key.authority).await? {
+            anyhow::ensure!(service.cwd.is_some(), "Terminal service is stopping.");
+            return Ok(service.state.lock().unwrap().display.clone());
+        }
+        let inner = self.inner.lock().await;
+        let entry = inner.entries.get(key).ok_or_else(|| not_running(key))?;
+        Ok(entry.state.clone())
+    }
+
+    async fn present<'a>(
+        &'a self,
+        key: &Key,
+        display: &Arc<Mutex<Display>>,
+        id: &JsString,
+        mut view: Attachment,
+        mut transition: tokio::sync::MutexGuard<'a, ()>,
+    ) -> Result<Option<Value>> {
+        loop {
+            let attempt = display.lock().unwrap().attach(id, view)?;
+            match attempt {
+                Attaching::Complete(result) => return Ok(result),
+                Attaching::Redrawing {
+                    view: pending,
+                    mut result,
+                } => {
+                    // The PTY actor finishes the pulse even if this viewer leaves.
+                    // Let unrelated terminals continue while waiting for recovery.
+                    drop(transition);
+                    let _ = result.wait_for(Option::is_some).await;
+                    transition = self.transition().await;
+                    anyhow::ensure!(
+                        Arc::ptr_eq(display, &self.existing_display(key).await?),
+                        "Terminal changed during recovery."
+                    );
+                    view = *pending;
+                }
+            }
+        }
     }
 
     async fn detach(&self, key: &Key, view: &JsString) {

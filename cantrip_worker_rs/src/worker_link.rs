@@ -446,8 +446,14 @@ impl Coordinator {
         self.update_channels(|channels| channels.terminal_ready(id, token));
     }
 
-    fn terminal_output(&self, id: &JsString, token: uuid::Uuid, bytes: Vec<u8>, last: bool) {
-        self.update_channels(|channels| channels.terminal_output(id, token, bytes, last));
+    fn terminal_output(
+        &self,
+        id: &JsString,
+        token: uuid::Uuid,
+        bytes: &[u8],
+        last: bool,
+    ) -> carrier::Output {
+        self.update_channels(|channels| channels.terminal_output(id, token, bytes, last))
     }
 
     fn terminal_credit(&self, id: &JsString, token: uuid::Uuid, bytes: usize) {

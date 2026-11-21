@@ -59,7 +59,9 @@ pub(super) async fn spawn(
     let (stop, mut stopping) = watch::channel(false);
     let (finished, done) = watch::channel(false);
     let (resize, mut sizes) = mpsc::channel::<Resize>(64);
-    let state = Arc::new(Mutex::new(Display::new(size, 1)));
+    let mut display = Display::new(size, 1);
+    display.bind_resize(&resize);
+    let state = Arc::new(Mutex::new(display));
     let entry = Entry {
         location,
         stop,
@@ -113,19 +115,19 @@ pub(super) async fn spawn(
                 result = &mut child.exit_rx, if exit.is_none() => {
                     exit = Some(result.unwrap_or(-1));
                 }
+                Some(request) = sizes.recv(), if shutdown.is_none() && exit.is_none() => {
+                    request.apply(
+                        &state,
+                        &mut child.session,
+                        |size| state.lock().unwrap().replay.resize(size),
+                    ).await;
+                }
                 bytes = child.stdout_rx.recv(), if output => {
                     if let Some(bytes) = bytes {
                         state.lock().unwrap().write(&text.push(&bytes));
                     } else {
                         output = false;
                     }
-                }
-                Some(request) = sizes.recv(), if shutdown.is_none() && exit.is_none() => {
-                    let result = child.session.resize(request.size);
-                    if result.is_ok() {
-                        state.lock().unwrap().replay.resize(request.size);
-                    }
-                    let _ = request.complete.send(result);
                 }
             }
         }

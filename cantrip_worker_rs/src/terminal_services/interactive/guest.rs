@@ -24,7 +24,9 @@ pub(super) fn spawn(
     let (finished, done) = watch::channel(false);
     let (resize, sizes) = mpsc::channel(64);
     let (writer, input) = mpsc::channel(64);
-    let state = Arc::new(Mutex::new(Display::new(size, 1)));
+    let mut display = Display::new(size, 1);
+    display.bind_resize(&resize);
+    let state = Arc::new(Mutex::new(display));
     let entry = Entry {
         location,
         stop,
@@ -79,11 +81,11 @@ async fn drive(
                 continue;
             }
             Some(request) = sizes.recv(), if termination.is_none() => {
-                let result = pty.resize(request.size).await;
-                if result.is_ok() {
-                    state.lock().unwrap().replay.resize(request.size);
-                }
-                let _ = request.complete.send(result);
+                request.apply(
+                    state,
+                    pty,
+                    |size| state.lock().unwrap().replay.resize(size),
+                ).await;
                 continue;
             }
             _ = std::future::ready(()) => pty.read(cursor, 200).await?,

@@ -13,7 +13,18 @@ pub(super) struct Replay {
     parser: vt100::Parser,
 }
 
+pub(super) struct Snapshot {
+    pub(super) data: JsString,
+    pub(super) metadata: Option<Value>,
+    pub(super) needs_redraw: bool,
+}
+
 impl Replay {
+    pub fn size(&self) -> TerminalSize {
+        let (rows, cols) = self.parser.screen().size();
+        TerminalSize { rows, cols }
+    }
+
     pub fn raw(&self) -> (JsString, bool) {
         (JsString::new(self.raw.clone()), self.truncated)
     }
@@ -105,17 +116,22 @@ impl Replay {
         metadata
     }
 
-    pub fn attachment(&self, with_metadata: bool) -> (JsString, Option<Value>) {
+    pub fn attachment(&self, with_metadata: bool) -> Snapshot {
         if with_metadata || self.resized || self.truncated {
             if let Some((snapshot, history_rows)) = self.formatted(!with_metadata) {
                 let metadata = with_metadata.then(|| self.hydration(Some(history_rows)));
-                return (snapshot, metadata);
+                return Snapshot {
+                    data: snapshot,
+                    metadata,
+                    needs_redraw: false,
+                };
             }
         }
-        (
-            JsString::new(self.raw.clone()),
-            with_metadata.then(|| self.hydration(None)),
-        )
+        Snapshot {
+            data: JsString::new(self.raw.clone()),
+            metadata: with_metadata.then(|| self.hydration(None)),
+            needs_redraw: self.truncated,
+        }
     }
 
     fn formatted(&self, allow_partial: bool) -> Option<(JsString, usize)> {
@@ -164,7 +180,7 @@ mod tests {
         let resized = TerminalSize { rows: 5, cols: 12 };
         replay.resize(resized);
         let mut client = vt100::Parser::new(resized.rows, resized.cols, 0);
-        client.process(replay.attachment(true).0.as_str().unwrap().as_bytes());
+        client.process(replay.attachment(true).data.as_str().unwrap().as_bytes());
         assert_eq!(client.screen().contents(), "first\nproof");
         assert!(client.screen().bracketed_paste());
         assert_eq!(client.screen().cursor_position(), (1, 5));
@@ -187,9 +203,9 @@ mod tests {
         );
         replay.truncated = true;
         let mut client = vt100::Parser::new(size.rows, size.cols, SCROLLBACK_ROWS);
-        let (snapshot, metadata) = replay.attachment(true);
-        client.process(snapshot.as_str().unwrap().as_bytes());
-        let metadata = metadata.unwrap();
+        let snapshot = replay.attachment(true);
+        client.process(snapshot.data.as_str().unwrap().as_bytes());
+        let metadata = snapshot.metadata.unwrap();
         assert_eq!(metadata["format"], "canonical-xterm");
         assert_eq!(metadata["activeBuffer"], "alternate");
         assert_eq!(metadata["scrollbackRows"], json!(2));
