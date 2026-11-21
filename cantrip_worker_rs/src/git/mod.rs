@@ -2,6 +2,7 @@
 //! recovery protocol. No Node worker is invoked.
 mod actions;
 mod branches;
+mod change_summary;
 pub(crate) mod commits;
 mod conflicts;
 mod diff;
@@ -72,6 +73,7 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
         "git.recovery.preview" => recovery::preview(&cwd, &command["action"], scope).await,
         "git.recovery.apply" => recovery::apply(&cwd, &command["request"], scope).await,
         "git.status" => status(&cwd, scope).await,
+        "git.change-summary" => change_summary::read(&cwd, command, scope).await,
         "git.graph.snapshot" => graph::snapshot(&cwd, command, scope).await,
         "git.graph.metrics" => graph::metrics(&cwd, command, scope).await,
         "git.graph.commit-overlay" => graph::overlay(&cwd, command, scope).await,

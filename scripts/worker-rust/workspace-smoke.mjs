@@ -80,6 +80,7 @@ const { values } = parseArgs({
     "replica-lifecycle-only": { type: "boolean", default: false },
     "folder-conversion-only": { type: "boolean", default: false },
     "git-draft-only": { type: "boolean", default: false },
+    "git-summary-only": { type: "boolean", default: false },
     "project-export-only": { type: "boolean", default: false },
     "terminal-relay-only": { type: "boolean", default: false },
     "terminal-direct-broker": { type: "string" },
@@ -129,6 +130,7 @@ if (
   !values["github-operations-only"] &&
   !values["folder-conversion-only"] &&
   !values["git-draft-only"] &&
+  !values["git-summary-only"] &&
   !values["project-export-only"] &&
   !values["terminal-relay-only"] &&
   !values["run-definitions-only"] &&
@@ -805,6 +807,24 @@ try {
       });
       break exercise;
     }
+    if (values["git-summary-only"]) {
+      await verifyGit({
+        call,
+        ownerId: repository.ownerId,
+        serverId: repository.serverId,
+        componentKey: cryptoClient.deriveComponentKey({
+          accountMasterKey: master,
+          ownerId: repository.ownerId,
+          component: "repository-content",
+          keyRevision: 1,
+        }),
+        projectId,
+        workerId,
+        checkout,
+        summaryOnly: true,
+      });
+      break exercise;
+    }
     if (values["run-runtime-only"]) {
       const ownerId = repository.ownerId;
       const runKey = cryptoClient.deriveComponentKey({
@@ -1176,6 +1196,14 @@ try {
         passed: true,
         structuredFallbackAndUsage: true,
         preservedGitStatusAndHead: true,
+      }),
+    );
+  else if (values["git-summary-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-git-change-summary-worker-server",
+        passed: true,
+        matchedArchivedWorker: true,
       }),
     );
   else if (values["project-export-only"])
