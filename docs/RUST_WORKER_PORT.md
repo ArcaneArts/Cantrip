@@ -56,8 +56,9 @@ covers the current Docker build, enrollment, and volume reuse.
   [macOS selection evidence](#336-copy-attributed-macos-window-selections)
 - The Windows interactive input and clipboard fixtures still need a live run.
   [Windows input evidence](#307-send-foreground-input-to-shared-windows-windows)
-- GNOME and KDE portal approval and physical delivery through `ydotoold` remain
-  unverified. [Wayland input evidence](#306-control-a-wayland-display-through-the-host-input-tools)
+- GNOME and KDE portal approval remains unverified. The local Wayland
+  fallback passed keyboard delivery through Linux uinput.
+  [Wayland input evidence](#337-verify-wayland-keyboard-delivery-through-linux-uinput)
 
 ## Implementation record
 
@@ -10991,3 +10992,22 @@ and Unicode, and left the host focus and pasteboard unchanged. Direct
 selection, plain ranges, secure fields, sibling windows, empty selections,
 and replay checks also passed. Custom Copy handlers without an accessible
 selection remain open.
+
+## 337. Verify Wayland keyboard delivery through Linux uinput
+
+Reference commit `604cec4f05a4be4465298f71c9929d68c69dac19` (#3500).
+
+The optional Sway test mode reads Linux input events from the virtual
+device of a fixture-owned `ydotoold`. Both fixture modes verify the exact
+presses, releases, and synchronization events, including the release of a
+held Shift key when the viewer closes. The XWayland window is sized to
+cover the fixture's fixed pointer test location.
+
+On Debian 13 ARM64 in a disposable Docker environment, the rebuilt native
+helper passed both the local datagram and Linux uinput modes. The latter
+used `ydotoold` v1.0.4 and read the kernel's virtual keyboard event device.
+The headless Sway fixture separately exercised actual XWayland pointer
+delivery, attachment ownership, and the clipboard with a test selection
+source. Live desktop keyboard focus and GNOME and KDE consent dialogs
+were outside this run.
+[Upstream ydotool v1.0.4](https://github.com/ReimuNotMoe/ydotool/releases/tag/v1.0.4)

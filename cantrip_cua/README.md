@@ -101,6 +101,16 @@ and records the daemon requests through a local Unix datagram socket.
 dbus-run-session -- python3 cantrip_cua/tests/fixtures/wayland_local_control.py /path/to/cantrip-cua
 ```
 
+On an isolated Linux system, start a fixture-owned `ydotoold` with a
+dedicated socket. Give the test user access to that socket and read access
+to the daemon's virtual event device. Pass both paths to read the actual
+kernel events, including the key release on disconnect.
+
+```sh
+dbus-run-session -- python3 cantrip_cua/tests/fixtures/wayland_local_control.py \
+  /path/to/cantrip-cua --kernel-keyboard /path/to/event-device /path/to/ydotool-socket
+```
+
 ## Assigned Linux X11 backend
 
 The Linux helper has an explicit X11 backend for a selected desktop:

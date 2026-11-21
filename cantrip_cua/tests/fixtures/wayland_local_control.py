@@ -1,13 +1,17 @@
 """Exercise the framed helper on a disposable two-output Sway desktop.
 
 Run as a non-root user with Sway, Xwayland, xev and wl-clipboard installed.
-A local datagram socket records the ydotoold protocol without a uinput device.
+The default run records the ydotoold datagrams locally. An isolated run
+can read kernel events from its own daemon's virtual input device instead.
 """
 
+import argparse
+from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
 import re
+import select
 import socket
 import struct
 import subprocess
@@ -19,6 +23,7 @@ import time
 
 COPIED = "selected λ🚋\n"
 PASTED = "pasted λ🚋\n"
+INPUT_EVENT = struct.Struct("@llHHi")
 
 
 def wait(predicate):
@@ -58,7 +63,7 @@ class Helper:
         return result["data"], data
 
 
-def exercise(helper, keyboard, env, root):
+def exercise(helper, keyboard_fd, env, root):
     events = []
     sources = []
     acknowledge_copy = threading.Event()
@@ -66,13 +71,14 @@ def exercise(helper, keyboard, env, root):
     stop = threading.Event()
 
     def receive_keys():
-        keyboard.settimeout(0.1)
         while not stop.is_set():
-            try:
-                event = keyboard.recv(32)
-            except TimeoutError:
+            readable, _, _ = select.select([keyboard_fd], [], [], 0.1)
+            if not readable:
                 continue
-            kind, key, state = struct.unpack("=HHi", event[-8:])
+            event = os.read(keyboard_fd, INPUT_EVENT.size)
+            if not event:
+                return
+            _, _, kind, key, state = INPUT_EVENT.unpack(event)
             events.append((kind, key, state))
             if (kind, key, state) == (1, 46, 1) and acknowledge_copy.is_set():
                 acknowledge_copy.clear()
@@ -141,25 +147,33 @@ def verify(cua, keys, env, root):
     assert subprocess.check_output(["wl-paste", "--no-newline"], env=env).decode() == PASTED
     send(7, "keyDown", key="Shift", repeat=False, modifiers=[])
     cua.ok("interaction.request", request={"type": "closeBinding", "binding": scope})
-    wait(lambda: (1, 42, 0) in keys and delivered(r"ButtonRelease event[^\n]*\n[^\n]*root:\(880,160\)[^\n]*\n[^\n]*button 1,"))
-    assert [entry for entry in keys if entry[0] == 1] == [
+    sync = (0, 0, 0)
+    wait(lambda: keys[-2:] == [(1, 42, 0), sync] and delivered(r"ButtonRelease event[^\n]*\n[^\n]*root:\(880,160\)[^\n]*\n[^\n]*button 1,"))
+    expected_keys = [
         (1, 29, 1), (1, 46, 1), (1, 46, 0), (1, 29, 0),
         (1, 29, 1), (1, 46, 1), (1, 46, 0), (1, 29, 0),
         (1, 29, 1), (1, 47, 1), (1, 47, 0), (1, 29, 0),
         (1, 42, 1), (1, 42, 0),
-    ], keys
-    assert keys[1::2] == [(0, 0, 0)] * (len(keys) // 2), keys
+    ]
+    assert keys == [event for key in expected_keys for event in (key, sync)], keys
     cua.ok("interaction.request", request=request_for_other)
     cua.ok("interaction.request", request={"type": "closeBinding", "binding": waiting})
 
 
-def main(helper):
-    with tempfile.TemporaryDirectory() as directory, socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as keyboard:
+def main(helper, kernel_keyboard):
+    with tempfile.TemporaryDirectory() as directory, ExitStack() as resources:
         root = Path(directory)
-        keyboard.bind(str(root / "keyboard"))
+        if kernel_keyboard:
+            device, socket_path = kernel_keyboard
+            keyboard_fd = resources.enter_context(open(device, "rb", buffering=0)).fileno()
+        else:
+            keyboard = resources.enter_context(socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM))
+            socket_path = str(root / "keyboard")
+            keyboard.bind(socket_path)
+            keyboard_fd = keyboard.fileno()
         env = {key: value for key, value in os.environ.items()
             if key not in ("DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "SWAYSOCK")}
-        env.update(XDG_RUNTIME_DIR=directory, XDG_SESSION_TYPE="wayland", YDOTOOL_SOCKET=str(root / "keyboard"),
+        env.update(XDG_RUNTIME_DIR=directory, XDG_SESSION_TYPE="wayland", YDOTOOL_SOCKET=socket_path,
             WLR_BACKENDS="headless", WLR_RENDERER="pixman", WLR_LIBINPUT_NO_DEVICES="1", WLR_HEADLESS_OUTPUTS="2")
         config = root / "sway.conf"
         config.write_text(f"""output HEADLESS-1 mode 640x480 position 0 0
@@ -167,8 +181,9 @@ output HEADLESS-2 mode 640x480 position 640 0
 workspace one output HEADLESS-1
 workspace two output HEADLESS-2
 assign [title=\"Cantrip fixture\"] workspace two
+for_window [title=\"Cantrip fixture\"] floating disable
 default_border none
-exec stdbuf -o0 xev -name 'Cantrip fixture' > {root}/xev.log 2>&1
+exec stdbuf -o0 xev -geometry 480x350+0+0 -name 'Cantrip fixture' > {root}/xev.log 2>&1
 """)
         with (root / "sway.log").open("wb") as log:
             with subprocess.Popen(["sway", "-c", str(config)], env=env, stdout=log, stderr=log) as sway:
@@ -176,7 +191,7 @@ exec stdbuf -o0 xev -name 'Cantrip fixture' > {root}/xev.log 2>&1
                     wayland = wait(lambda: next((p for p in root.glob("wayland-*") if p.is_socket()), None))
                     env["WAYLAND_DISPLAY"] = wayland.name
                     wait(lambda: (root / "xev.log").exists() and "MapNotify" in (root / "xev.log").read_text())
-                    exercise(helper, keyboard, env, root)
+                    exercise(helper, keyboard_fd, env, root)
                 except Exception:
                     for name in ("sway.log", "xev.log"):
                         path = root / name
@@ -186,7 +201,14 @@ exec stdbuf -o0 xev -name 'Cantrip fixture' > {root}/xev.log 2>&1
                 finally:
                     sway.terminate()
     print("Wayland local capture, pointer, clipboard and input ownership checks passed.")
+    if kernel_keyboard:
+        print("ydotoold delivered the expected presses and releases through Linux uinput.")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("helper")
+    parser.add_argument("--kernel-keyboard", nargs=2, metavar=("EVENT_DEVICE", "YDOTOOL_SOCKET"),
+                        help="Use the fixture's own ydotoold and read its kernel event device.")
+    options = parser.parse_args()
+    main(options.helper, options.kernel_keyboard)
