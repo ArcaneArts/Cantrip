@@ -55,8 +55,10 @@ covers the current Docker build, enrollment, and volume reuse.
   Accessibility. Custom Copy handlers that only publish to the shared system
   pasteboard remain a compatibility gap.
   [macOS selection evidence](#358-copy-macos-text-from-a-selection-range-and-value)
-- The Windows interactive input and clipboard fixtures still need a live run.
-  [Windows input evidence](#307-send-foreground-input-to-shared-windows-windows)
+- The Windows interactive input and clipboard fixtures still need a passing
+  live run. The latest guest run reached the interactive fixtures and exposed
+  a foreground activation failure in the window fixture's setup.
+  [Windows fixture evidence](#359-run-the-windows-input-fixtures-in-the-local-qa-guest)
 - GNOME and KDE portal approval remains unverified. The local Wayland
   fallback delivered keyboard input through Linux uinput to a focused
   XWayland window.
@@ -11428,3 +11430,17 @@ The retired Node worker could send Command-C and read the shared system
 pasteboard. AppKit's change counter can report a new owner without identifying
 the writing window, so it cannot attribute that result to the shared target.
 [Apple pasteboard documentation](https://developer.apple.com/documentation/appkit/nspasteboard/changecount).
+
+## 359. Run the Windows input fixtures in the local QA guest
+
+Reference commit `f72e3a6438e84d0e0d6693a3c9dbc6f94a56128b` (#3522).
+
+The current statically linked x64 helper and process fixtures built offline.
+An isolated overlay of the existing Windows 11 Enterprise Evaluation x64
+QA image booted in headless QEMU and signed in to the fixture account.
+The window and monitor fixtures started in sequence on that guest desktop.
+
+The window test failed at its initial `SetForegroundWindow(second)` call,
+before launching the helper or exercising native input. The monitor test
+started and produced no terminal result before shutdown. Both Windows
+runtime checks remain open.
