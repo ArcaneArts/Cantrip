@@ -202,23 +202,30 @@ impl DesktopTurn {
             self.placement_current(),
             "The computer-use placement changed."
         );
+        let guest = self
+            .execution
+            .as_ref()
+            .map(|execution| {
+                self.desktop
+                    .0
+                    .guests
+                    .agent(&self.authority["serverId"], execution)
+            })
+            .transpose()?;
+        let mut signals = vec![request, self.signal.clone()];
+        signals.extend(guest.as_ref().map(|guest| guest.signal.clone()));
         let mut owned = self.evaluation_attachment();
         let frames = Mutex::new(EvaluationFrames::default());
         let value = javascript
-            .evaluate(
-                source,
-                0,
-                Signal::any(vec![request, self.signal.clone()]),
-                |action, signal| {
-                    self.action(
-                        &owned.attachment,
-                        action,
-                        signal,
-                        (&frames, activity),
-                        &authorize,
-                    )
-                },
-            )
+            .evaluate(source, 0, Signal::any(signals), |action, signal| {
+                self.action(
+                    &owned.attachment,
+                    action,
+                    signal,
+                    (&frames, activity),
+                    &authorize,
+                )
+            })
             .await;
         owned.keep = value.is_ok()
             || value.as_ref().is_err_and(|error| {

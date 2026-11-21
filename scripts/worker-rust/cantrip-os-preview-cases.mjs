@@ -11,11 +11,15 @@ import {
   decryptRemoteSurfaceStreamPayload,
   encryptEndpointContentPayload,
   encryptRepositoryOperationPayload,
+  encryptRemoteSurfaceStreamPayload,
   encryptSurfacePrivateState,
   openComputerUseResult,
   protectComputerUseRequest,
 } from "../../packages/crypto/dist/index.js";
-import { cantripOsDesktopPlacement } from "../../packages/protocol/dist/index.js";
+import {
+  cantripOsDesktopPlacement,
+  encodeRemoteSurfaceFrame,
+} from "../../packages/protocol/dist/index.js";
 import { createPreparedProject } from "./console-interaction-cases.mjs";
 import { RemoteSurfaceWorkerLink } from "./remote-surface-worker-link-client.mjs";
 
@@ -77,6 +81,14 @@ export async function startManagedGuestDesktop(image) {
         await guest("cantrip-workspaces", "desktop-target", guestWorkspaceId),
       ),
     disableRemote: () => guest("cantrip-remote", "disable"),
+    seedClipboard: (display, text) =>
+      guest(
+        "/usr/bin/python3",
+        "-c",
+        "import os,subprocess,sys; subprocess.run(['/usr/bin/xclip','-selection','clipboard'],input=sys.argv[2].encode(),env={**os.environ,'DISPLAY':':'+sys.argv[1]},check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)",
+        String(display),
+        text,
+      ),
     async placeProject({
       call,
       projectId,
@@ -164,6 +176,7 @@ export async function startManagedGuestDesktop(image) {
         attachmentGeneration: instance.attachmentGeneration,
         runtimeGeneration: instance.runtimeGeneration,
         instanceId: instance.id,
+        transport,
         workspaceId: workspace.id,
         guestWorkspaceId,
       };
@@ -258,22 +271,77 @@ export async function verifyManagedGuestDesktopPreparation({
   );
 
   if (origin) {
+    const { probeX11 } =
+      await import("../../cantrip_worker/test/fixtures/os-x11-probe.ts");
+    const viewport = { width: 640, height: 480, devicePixelRatio: 1 };
     const connect = async (surfaceId) => {
       let frame;
+      let sequence = 0;
+      const received = [];
+      const latest = new Map();
       const link = await RemoteSurfaceWorkerLink.connect({
         origin,
         call,
         workerId,
         surfaceId,
-        viewport: { width: 640, height: 480, devicePixelRatio: 1 },
+        viewport,
         route: "relay",
         resourceKind: "remote-desktop",
         onFrame(value) {
           if (value.header.channel === "frame") frame = value;
+          else {
+            received.push(value);
+            if (received.length > 32) received.shift();
+          }
         },
       });
+      const context = (header, direction) => ({
+        serverId: server.id,
+        surfaceKind: "desktop",
+        surfaceId,
+        attachmentId: link.attachment,
+        channel: header.channel,
+        direction,
+        sequence: header.sequence,
+      });
+      const decrypt = ({ header, payload }) =>
+        decryptRemoteSurfaceStreamPayload({
+          ownerId,
+          componentKey: surfaceKey,
+          keyRevision,
+          context: context(header, "worker-to-client"),
+          protectedPayload: payload,
+        });
       return {
         close: () => link.close(),
+        async send(message) {
+          const header = {
+            protocolVersion: 1,
+            surfaceId,
+            attachmentId: link.attachment,
+            channel: "control",
+            sequence: sequence++,
+          };
+          const payload = await encryptRemoteSurfaceStreamPayload({
+            ownerId,
+            componentKey: surfaceKey,
+            keyRevision,
+            context: context(header, "client-to-worker"),
+            plaintext: Buffer.from(JSON.stringify(message)),
+          });
+          await link.send(encodeRemoteSurfaceFrame(header, payload));
+        },
+        async message(type, verify) {
+          return eventually(async () => {
+            for (const frame of received.splice(0)) {
+              const message = JSON.parse(
+                Buffer.from(await decrypt(frame)).toString(),
+              );
+              latest.set(message.type, message);
+            }
+            return latest.get(type);
+          }, verify);
+        },
         async read() {
           frame = undefined;
           const { header, payload } = await eventually(
@@ -282,21 +350,7 @@ export async function verifyManagedGuestDesktopPreparation({
           );
           assert.equal(header.surfaceId, surfaceId);
           assert.equal(header.attachmentId, link.attachment);
-          const jpeg = await decryptRemoteSurfaceStreamPayload({
-            ownerId,
-            componentKey: surfaceKey,
-            keyRevision,
-            context: {
-              serverId: server.id,
-              surfaceKind: "desktop",
-              surfaceId,
-              attachmentId: link.attachment,
-              channel: "frame",
-              direction: "worker-to-client",
-              sequence: header.sequence,
-            },
-            protectedPayload: payload,
-          });
+          const jpeg = await decrypt({ header, payload });
           assert.deepEqual([...jpeg.subarray(0, 3)], [255, 216, 255]);
         },
       };
@@ -305,16 +359,39 @@ export async function verifyManagedGuestDesktopPreparation({
     try {
       const one = await connect(id);
       viewers.push(one);
-      const two = await connect(id);
+      const secondSurface = await create(
+        randomUUID(),
+        placement.runtimeGeneration,
+        201,
+      );
+      const two = await connect(secondSurface.id);
       viewers.push(two);
       await Promise.all([one.read(), two.read()]);
       assert.equal(
         (await desktop.connections())[placement.guestWorkspaceId]?.running,
         true,
       );
-      await one.close();
-      viewers.shift();
-      await two.read();
+      await one.send({ type: "viewport", viewport });
+      await two.send({ type: "viewport", viewport });
+      await verifyGuestViewerControl({
+        one,
+        two,
+        desktop,
+        observed,
+        transport: placement.transport,
+        eventually,
+        probeX11,
+      });
+      await two.close();
+      viewers.pop();
+      await one.message("desktop-control", (status) =>
+        assert.equal(status?.mode, "agent"),
+      );
+      await eventually(
+        () => probeX11(placement.transport, observed.display),
+        (state) => assert.equal(state.mask & 256, 0),
+      );
+      await one.read();
     } finally {
       await Promise.all(viewers.map((viewer) => viewer.close()));
     }
@@ -373,6 +450,107 @@ export async function verifyManagedGuestDesktopPreparation({
   );
 }
 
+async function verifyGuestViewerControl({
+  one,
+  two,
+  desktop,
+  observed,
+  transport,
+  eventually,
+  probeX11,
+}) {
+  const control = (operation, leaseId) => ({
+    type: "desktop-control",
+    operation,
+    ...(leaseId ? { leaseId } : {}),
+  });
+  const pressed = (inputEpoch, inputSequence, x, y) => ({
+    type: "pointer",
+    event: "down",
+    button: "left",
+    x,
+    y,
+    inputEpoch,
+    inputSequence,
+  });
+  const pointer = (held) =>
+    eventually(
+      () => probeX11(transport, observed.display),
+      (state) => assert.equal(Boolean(state.mask & 256), held),
+    );
+  const active = (client) =>
+    client.message("desktop-control", (state) => {
+      assert.equal(state?.mode, "human");
+      assert.equal(state.isController, true);
+      assert.ok(state.leaseId);
+    });
+  const input = (client, previous) =>
+    client.message("desktop-input", (state) => {
+      assert.ok(state?.epoch, JSON.stringify(state));
+      assert.notEqual(state.epoch, previous);
+    });
+
+  await one.send(control("take"));
+  const lease = await active(one);
+  const { epoch } = await input(one);
+  await two.send(control("take"));
+  await two.message("desktop-input", (state) =>
+    assert.match(state?.message ?? "", /Another viewer/),
+  );
+  await two.message("desktop-control", (state) => {
+    assert.equal(state?.mode, "human");
+    assert.equal(state.isController, false);
+  });
+  const clipboard = "Cantrip guest clipboard 日本語";
+  await desktop.seedClipboard(observed.display, clipboard);
+  await one.send({
+    type: "clipboard",
+    operation: "copy",
+    inputEpoch: epoch,
+    inputSequence: 1,
+  });
+  await one.message("desktop-clipboard", (state) =>
+    assert.equal(state?.text, clipboard),
+  );
+  await one.send({
+    type: "key",
+    event: "down",
+    code: "ShiftLeft",
+    key: "Shift",
+    inputEpoch: epoch,
+    inputSequence: 2,
+  });
+  await one.send(pressed(epoch, 3, 321, 234));
+  const held = await pointer(true);
+  assert.equal(held.shift, true);
+  assert.equal(held.x, 321);
+  assert.equal(held.y, 234);
+
+  await one.send({ type: "input-cancel", inputEpoch: epoch });
+  const renewed = await input(one, epoch);
+  assert.equal((await pointer(false)).shift, false);
+  assert.equal((await active(one)).leaseId, lease.leaseId);
+  await one.send(pressed(epoch, 4, 900, 500));
+  await one.send(control("return", randomUUID()));
+  await one.message("desktop-input", (state) =>
+    assert.match(state?.message ?? "", /lease changed/),
+  );
+  assert.equal((await pointer(false)).x, 321);
+  await one.send(pressed(renewed.epoch, 1, 445, 320));
+  assert.equal((await pointer(true)).x, 445);
+  await one.send(control("return", lease.leaseId));
+  await one.message("desktop-control", (state) =>
+    assert.equal(state?.mode, "agent"),
+  );
+  await pointer(false);
+
+  await two.send(control("take"));
+  await active(two);
+  const next = await input(two);
+  await two.send(pressed(next.epoch, 1, 250, 300));
+  assert.equal((await pointer(true)).x, 250);
+}
+
 export async function verifyCantripOsPreview({
   image,
   data,
@@ -383,6 +561,7 @@ export async function verifyCantripOsPreview({
   endpointKey,
   hostProcesses,
   reconnectWorker,
+  openDesktopViewer,
 }) {
   const name = "cantrip-preview-fixture-" + randomUUID();
   const workspaceName = "preview-check";
@@ -671,6 +850,59 @@ export async function verifyCantripOsPreview({
       sessionId: otherId,
     });
     assert.equal(otherState.result.data?.session.binding.sessionId, otherId);
+    const { probeX11 } =
+      await import("../../cantrip_worker/test/fixtures/os-x11-probe.ts");
+    const display = JSON.parse(
+      await guest("cantrip-workspaces", "desktop-target", workspaceName),
+    ).display;
+    const viewer = await openDesktopViewer(
+      execution,
+      observed.desktop_generation,
+    );
+    try {
+      const hold = operation(second, other, {
+        operation: "input.perform",
+        sessionId: otherId,
+        ...target,
+        command: {
+          kind: "timeline",
+          frames: [
+            { atMs: 0, pointerDown: { x: 270, y: 210 } },
+            { atMs: 60_000, pointerUp: true },
+          ],
+        },
+      });
+      // The fixture observes the real guest button, then interrupts that action
+      // through the viewer on the Worker command socket.
+      void hold.catch(() => {});
+      assert.equal(
+        (await probeX11(execution.transport, display, true)).mask & 256,
+        256,
+      );
+      await viewer.take();
+      assert.equal(
+        (await probeX11(execution.transport, display, false)).mask & 256,
+        0,
+      );
+      assert.equal((await hold).result.code, "input-unknown");
+      const blocked = await operation(second, other, {
+        operation: "targets.list",
+      });
+      assert.equal(blocked.result.code, "ownership-mismatch");
+      await viewer.release();
+      assert.equal(
+        (
+          await operation(second, other, {
+            operation: "session.state",
+            sessionId: otherId,
+          })
+        ).result.code,
+        "session-not-found",
+      );
+      assert.equal((await operation(second, other, open)).result.status, "ok");
+    } finally {
+      await viewer.close();
+    }
     await stopLease(other);
     await eventually(async () => assert.deepEqual(await connections(), {}));
     assert.deepEqual(await hostProcesses(), host);
