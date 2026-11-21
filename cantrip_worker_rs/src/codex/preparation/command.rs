@@ -1342,10 +1342,10 @@ impl Ensurer {
         bound: &(JsString, Value),
     ) -> Result<Runtime> {
         self.assert_bound(bound)?;
-        let chat = field(job, "chatId")?;
         let provider = open_runtime_provider(&self.0.encryption, &job["provider"])?;
-        self.helper_runtime(&job["model"], provider, bound, Some(&chat))
-            .await
+        // Separate label inference uses the naming provider's local profile.
+        // The label operation retains Chat authorization and result binding.
+        self.helper_runtime(&job["model"], provider, bound).await
     }
 
     pub(in crate::codex) async fn helper_runtime(
@@ -1353,9 +1353,8 @@ impl Ensurer {
         model: &Value,
         provider: Value,
         bound: &(JsString, Value),
-        chat: Option<&JsString>,
     ) -> Result<Runtime> {
-        self.inspection_runtime(model, provider, bound, chat, None)
+        self.inspection_runtime(model, provider, bound, None, None)
             .await
     }
 

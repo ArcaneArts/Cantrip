@@ -54,6 +54,7 @@ export async function createPreparedProject({
 
 export async function createPreparedProjectChat({
   title,
+  autoTitle = false,
   beforeChat,
   ...project
 }) {
@@ -65,7 +66,7 @@ export async function createPreparedProjectChat({
   await call("POST", `${projectUrl}/chats`, 201, {
     id: chatId,
     titleProtection: await label("chat", chatId, title),
-    autoTitle: false,
+    autoTitle,
     ...(placement ? { cantripOsBindingId: placement.bindingId } : {}),
   });
   await eventually(
@@ -74,7 +75,13 @@ export async function createPreparedProjectChat({
       assert.equal(preparation?.phase, "ready", JSON.stringify(preparation)),
     35_000,
   );
-  return { chatId, chatUrl: `/api/chats/${chatId}`, workspaceId, placement };
+  return {
+    chatId,
+    chatUrl: `/api/chats/${chatId}`,
+    projectUrl,
+    workspaceId,
+    placement,
+  };
 }
 
 export async function openConsoleView(url, eventually) {

@@ -10910,3 +10910,22 @@ reported their versions with an empty PATH.
 
 A separate BuildKit run exercised verified Codex bundle reuse. The
 Dockerfile check, 16 deployment tests, and seven Codex bundle tests passed.
+
+## 333. Generate private labels for Cantrip OS Chats
+
+Reference commit `9f2640ee8b783c4df7f1c4cd55464b7c0cceea74` (#3496).
+
+The retired worker ran separate label inference in the naming provider's
+worker-local runtime. The Rust worker passed the Chat identity to its
+conversation profile lookup, which rejects a saved Cantrip OS placement
+when the caller lacks the captured guest runtime. Label requests now use
+the naming provider's stateless runtime. The protected input, inference
+claim, and encrypted label stay bound to the original Chat.
+
+The local `standalone-turn-smoke.mjs --guest-thread-sync` fixture used a
+macOS ARM64 worker, Rust Core in PGlite mode, and an existing Linux ARM64
+Cantrip OS guest image. The baseline retained the original title. The
+rebuilt worker sent one request to the separate naming provider and Core
+returned the new encrypted title. The guest conversation kept its native
+thread and encrypted history across worker restart without another model
+request. The worker build, format checks, and `git diff --check` passed.

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { decryptPrivateDisplayLabel } from "../../packages/crypto/dist/index.js";
 import { createPreparedProjectChat } from "./console-interaction-cases.mjs";
 
 export async function verifyGuestThreadSync({
@@ -18,11 +19,14 @@ export async function verifyGuestThreadSync({
   workerDiagnostics,
 }) {
   const { model, profile } = await createModel("Guest observation fixture");
+  const naming = await createModel("Guest label fixture");
   await call("PATCH", "/api/settings", 200, {
     defaultModelId: profile.id,
-    autoNameChats: false,
+    labelingModelId: naming.profile.id,
+    autoNameChats: true,
+    randomAgentNames: false,
   });
-  const { chatUrl } = await createPreparedProjectChat({
+  const { chatId, chatUrl, projectUrl } = await createPreparedProjectChat({
     call,
     eventually,
     ownerId,
@@ -30,6 +34,7 @@ export async function verifyGuestThreadSync({
     keyRevision,
     labelKey,
     title: "Retained guest Chat",
+    autoTitle: true,
     beforeChat: ({ projectId }) =>
       guest.placeProject({
         call,
@@ -51,13 +56,16 @@ export async function verifyGuestThreadSync({
   assert.match(original.threadId, /^[a-f0-9-]{36}$/);
   assert.deepEqual(original, observe(original.threadId, "idle"));
   const response = "Private reply retained in the Linux Chat.";
+  const prompt = "Read this private prompt.";
+  const title = "Guest Project Notes";
+  const labelReply = naming.model.reply({ text: title });
   const reply = model.reply({ hold: true, text: response });
   try {
     await call(
       "POST",
       chatUrl + "/turns",
       202,
-      await encryptedTurn("Read this private prompt.", profile.id),
+      await encryptedTurn(prompt, profile.id),
     );
     await eventually(
       () => reply.request,
@@ -80,6 +88,25 @@ export async function verifyGuestThreadSync({
       ),
   );
   await eventually(sync, (value) => assert.deepEqual(value, original));
+  await eventually(
+    async () => {
+      const chats = await call("GET", `${projectUrl}/chats`, 200);
+      const chat = chats.find((entry) => entry.id === chatId);
+      assert.ok(chat);
+      assert.ok(!JSON.stringify(chat).includes(title));
+      return decryptPrivateDisplayLabel({
+        ownerId,
+        keyRevision,
+        recordKind: "chat",
+        rowId: chatId,
+        componentKey: labelKey,
+        opaque: chat.titleProtection,
+      });
+    },
+    (value) => assert.equal(value, title, "separate-provider guest Chat title"),
+  );
+  assert.equal(labelReply.request?.completed, true);
+  assert.ok(JSON.stringify(labelReply.request.input.input).includes(prompt));
   const retained = async () => {
     const history = await call("GET", chatUrl + "/messages", 200);
     assert.equal(history.kind, "chat-encrypted");
@@ -112,6 +139,10 @@ export async function verifyGuestThreadSync({
   assert.equal(
     model.requests.filter(({ method }) => method === "POST").length,
     requests,
+  );
+  assert.equal(
+    naming.model.requests.filter(({ method }) => method === "POST").length,
+    1,
   );
   console.log(
     JSON.stringify({ suite: "native-guest-thread-sync", passed: true }),
