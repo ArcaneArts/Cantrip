@@ -2,7 +2,10 @@
 //! the captured guest workspace and service generation.
 use super::super::{Coordinator, Grant, State, expiration, hex_digest, timestamp};
 use crate::{
-    cantrip_os::carrier::Transport, filesystem::Scope, http::checked,
+    cantrip_os::carrier::Transport,
+    desktop_inventory::preview::{Previews, VncDesktop},
+    filesystem::Scope,
+    http::checked,
     protected_content::open_tunnel_record,
 };
 use anyhow::{Context, Result, bail, ensure};
@@ -20,6 +23,16 @@ use uuid::Uuid;
 
 pub(crate) const PREPARE: &str = "surface.tunnel.os-prepare";
 const READY: Duration = Duration::from_secs(35);
+const PLACEMENT: [(&str, &str); 8] = [
+    ("instance_id", "guestInstanceId"),
+    ("generation", "runtimeGeneration"),
+    ("owner_id", "ownerId"),
+    ("worker_id", "workerId"),
+    ("workspace_id", "guestWorkspaceId"),
+    ("uid", "uid"),
+    ("gid", "gid"),
+    ("home", "homeGuestPath"),
+];
 
 #[derive(Default)]
 pub(in crate::worker_link) struct Slot {
@@ -36,6 +49,7 @@ pub(in crate::worker_link) struct Preparation {
     pub(super) record: Value,
     transport: Transport,
     descriptor: Value,
+    vnc: Option<VncDesktop>,
     expires: i64,
     epoch: u64,
     scope: Scope,
@@ -115,7 +129,12 @@ impl State {
 }
 
 impl Coordinator {
-    pub(crate) async fn prepare_guest_tunnel(&self, command: &Value, epoch: u64) -> Result<Value> {
+    pub(crate) async fn prepare_guest_tunnel(
+        &self,
+        command: &Value,
+        epoch: u64,
+        previews: &Previews,
+    ) -> Result<Value> {
         let placement = &command["osExecution"]["scope"];
         let (owner, server) = self.encryption.bound_identity()?;
         let now = Utc::now().timestamp_millis();
@@ -151,7 +170,7 @@ impl Coordinator {
             }
             (token, Scope::with_stop(receiver))
         };
-        let observed = self.observe_guest_tunnel(command, &scope).await;
+        let observed = self.observe_guest_tunnel(command, &scope, previews).await;
         let mut state = self.state.lock().unwrap();
         let now = Utc::now().timestamp_millis();
         let identity = self.encryption.bound_identity();
@@ -171,7 +190,7 @@ impl Coordinator {
             self.outgoing.stream_current(epoch) && expires > now,
             "The OS tunnel preparation was retired."
         );
-        let (transport, descriptor) = observed?;
+        let (transport, descriptor, vnc) = observed?;
         let identity = hex_digest(&Sha256::digest(descriptor.stringify()));
         ensure!(
             command["expectedIdentity"].is_null() || command["expectedIdentity"] == identity,
@@ -196,6 +215,7 @@ impl Coordinator {
                 record: command["protectedRecord"].clone(),
                 transport,
                 descriptor,
+                vnc,
                 expires,
                 epoch,
                 scope,
@@ -209,7 +229,8 @@ impl Coordinator {
         &self,
         command: &Value,
         scope: &Scope,
-    ) -> Result<(Transport, Value)> {
+        previews: &Previews,
+    ) -> Result<(Transport, Value, Option<VncDesktop>)> {
         let content = open_tunnel_record(
             &self.encryption,
             &command["tunnelId"],
@@ -239,69 +260,21 @@ impl Coordinator {
         let service = match destination["kind"].as_str() {
             Some("worker-os-tcp") => json!({"kind":"tcp","port":destination["port"]}),
             Some("worker-os-ssh") => json!({"kind":"ssh"}),
+            Some("worker-os-vnc") => json!({"kind":"vnc"}),
             _ => bail!("The guest tunnel has no supported captured OS destination."),
         };
-        let ssh = service["kind"] == "ssh";
         let transport = Transport::from_value(&command["osExecution"]["transport"])?;
-        let placement = Value::object([
-            ("instance_id", scope_value["guestInstanceId"].clone()),
-            ("generation", scope_value["runtimeGeneration"].clone()),
-            ("owner_id", scope_value["ownerId"].clone()),
-            ("worker_id", scope_value["workerId"].clone()),
-            ("workspace_id", scope_value["guestWorkspaceId"].clone()),
-            ("uid", scope_value["uid"].clone()),
-            ("gid", scope_value["gid"].clone()),
-            ("home", scope_value["homeGuestPath"].clone()),
-        ]);
-        let workspace = placement["workspace_id"]
-            .as_str()
-            .context("The OS workspace is unavailable.")?;
-        let response = transport
-            .remote_control(
-                &[
-                    "service-info",
-                    workspace,
-                    "--service",
-                    &service.stringify(),
-                    "--expect-placement",
-                    &placement.stringify(),
-                ],
-                scope,
-            )
-            .await?;
-        ensure!(
-            placement
-                .as_object()
-                .unwrap()
-                .iter()
-                .all(
-                    |(field, value)| response.as_object().and_then(|fields| fields.get(field))
-                        == Some(value)
-                )
-                && response["service"] == service,
-            "The guest service descriptor differs from its captured placement."
-        );
-        ensure!(
-            response
-                .as_object()
-                .is_some_and(|fields| fields.len() == if ssh { 12 } else { 11 })
-                && response["user"]
-                    .as_str()
-                    .is_some_and(|user| !user.is_empty())
-                && response["remote_generation"]
-                    .as_str()
-                    .is_some_and(|value| Uuid::parse_str(value).is_ok()),
-            "The guest returned an invalid service descriptor."
-        );
-        // Preserve the archived descriptor's JSON field order for saved pins.
-        let mut descriptor = placement;
-        descriptor["user"] = response["user"].clone();
-        descriptor["remote_generation"] = response["remote_generation"].clone();
-        descriptor["service"] = service;
-        if ssh {
-            descriptor["ssh_host_key"] = response["ssh_host_key"].clone();
-        }
-        Ok((transport, descriptor))
+        let placement =
+            Value::object(PLACEMENT.map(|(field, source)| (field, scope_value[source].clone())));
+        let is_vnc = service["kind"] == "vnc";
+        let observe = describe_service(&transport, placement, service, scope);
+        let (descriptor, vnc) = if is_vnc {
+            let desktop = previews.vnc_desktop(&command["serverId"], &command["osExecution"])?;
+            (desktop.reconcile(observe, scope).await?, Some(desktop))
+        } else {
+            (observe.await?, None)
+        };
+        Ok((transport, descriptor, vnc))
     }
 
     pub(super) async fn open_guest_stream(
@@ -355,6 +328,83 @@ impl Coordinator {
     }
 }
 
+async fn describe_service(
+    transport: &Transport,
+    placement: Value,
+    service: Value,
+    scope: &Scope,
+) -> Result<Value> {
+    let ssh = service["kind"] == "ssh";
+    let vnc = service["kind"] == "vnc";
+    let workspace = placement["workspace_id"]
+        .as_str()
+        .context("The OS workspace is unavailable.")?;
+    let response = transport
+        .remote_control(
+            &[
+                "service-info",
+                workspace,
+                "--service",
+                &service.stringify(),
+                "--expect-placement",
+                &placement.stringify(),
+            ],
+            scope,
+        )
+        .await?;
+    ensure!(
+        placement
+            .as_object()
+            .unwrap()
+            .iter()
+            .all(
+                |(field, value)| response.as_object().and_then(|fields| fields.get(field))
+                    == Some(value)
+            )
+            && response["service"] == service,
+        "The guest service descriptor differs from its captured placement."
+    );
+    ensure!(
+        response
+            .as_object()
+            .is_some_and(|fields| fields.len() == 11 + usize::from(ssh) + 2 * usize::from(vnc))
+            && response["user"]
+                .as_str()
+                .is_some_and(|user| !user.is_empty())
+            && response["remote_generation"]
+                .as_str()
+                .is_some_and(|value| Uuid::parse_str(value).is_ok()),
+        "The guest returned an invalid service descriptor."
+    );
+    // Preserve the archived descriptor's JSON field order for saved pins.
+    let mut descriptor = placement;
+    descriptor["user"] = response["user"].clone();
+    descriptor["remote_generation"] = response["remote_generation"].clone();
+    descriptor["service"] = service;
+    if vnc {
+        ensure!(
+            response["display"]
+                .as_u64()
+                .is_some_and(|display| display <= 65_535)
+                && response["desktop_generation"]
+                    .as_str()
+                    .is_some_and(|value| {
+                        value.len() == 64
+                            && value
+                                .bytes()
+                                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                    }),
+            "The VNC service has no captured running desktop."
+        );
+        descriptor["display"] = response["display"].clone();
+        descriptor["desktop_generation"] = response["desktop_generation"].clone();
+    }
+    if ssh {
+        descriptor["ssh_host_key"] = response["ssh_host_key"].clone();
+    }
+    Ok(descriptor)
+}
+
 async fn service_stream(
     preparation: Arc<Preparation>,
     public_key: Option<String>,
@@ -366,6 +416,31 @@ async fn service_stream(
     let connection = Uuid::new_v4().to_string();
     let descriptor = preparation.descriptor.stringify();
     let workspace = preparation.descriptor["workspace_id"].as_str().unwrap();
+    let stop = async {
+        let remaining = preparation
+            .expires
+            .saturating_sub(Utc::now().timestamp_millis())
+            .max(0);
+        tokio::select! {
+            _ = &mut close => {},
+            _ = preparation.scope.stopped() => {},
+            _ = tokio::time::sleep(Duration::from_millis(remaining as u64)) => {},
+        }
+    };
+    tokio::pin!(stop);
+    tokio::select! {
+        biased;
+        _ = &mut stop => return Ok(()),
+        _ = std::future::ready(()) => {},
+    }
+    let vnc = if let Some(desktop) = &preparation.vnc {
+        let Ok(lease) = desktop.acquire(&preparation.scope).await else {
+            return Ok(());
+        };
+        Some(lease)
+    } else {
+        None
+    };
     let mut arguments = vec![
         "service-connect",
         workspace,
@@ -379,8 +454,10 @@ async fn service_stream(
         arguments.extend(["--public-key", key]);
     }
     let (program, args) = preparation.transport.tunnel_service(&arguments);
-    if preparation.scope.check().is_err() {
-        return Ok(());
+    tokio::select! {
+        biased;
+        _ = &mut stop => return Ok(()),
+        _ = std::future::ready(()) => {},
     }
     let mut command = Command::new(program);
     command
@@ -397,18 +474,6 @@ async fn service_stream(
         return Ok(());
     };
     let mut stderr = BufReader::new(child.stderr.take().unwrap());
-    let stop = async {
-        let remaining = preparation
-            .expires
-            .saturating_sub(Utc::now().timestamp_millis())
-            .max(0);
-        tokio::select! {
-            _ = &mut close => {},
-            _ = preparation.scope.stopped() => {},
-            _ = tokio::time::sleep(Duration::from_millis(remaining as u64)) => {},
-        }
-    };
-    tokio::pin!(stop);
     let initialized = tokio::select! {
         biased;
         _ = &mut stop => false,
@@ -429,24 +494,30 @@ async fn service_stream(
     drop(child.stdout.take());
     let closed = preparation
         .transport
-        .remote_control(
-            &[
-                "service-close",
-                workspace,
-                "--expect",
-                &descriptor,
-                "--connection-id",
-                &connection,
-            ],
-            &Scope::default(),
-        )
+        .close_tunnel_service(&preparation.descriptor, &connection, &Scope::default())
         .await;
     retire_child(&mut child).await;
-    ensure!(
-        closed?["status"] == "closed",
-        "Guest service cleanup was not confirmed."
-    );
-    Ok(())
+    if closed.is_err()
+        && let Some(lease) = vnc
+    {
+        let prior = &preparation.descriptor;
+        let placement = Value::object(PLACEMENT.map(|(key, _)| (key, prior[key].clone())));
+        let observed = describe_service(
+            &preparation.transport,
+            placement,
+            prior["service"].clone(),
+            &Scope::default(),
+        )
+        .await
+        .ok();
+        if lease
+            .recover(prior.clone(), connection, observed.as_ref())
+            .await
+        {
+            return Ok(());
+        }
+    }
+    closed
 }
 
 async fn relay(
