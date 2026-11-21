@@ -7,6 +7,7 @@ mod observation;
 mod peer;
 mod terminal;
 mod tunnel;
+pub(crate) use tunnel::guest::PREPARE as PREPARE_GUEST_TUNNEL;
 
 use crate::{
     browser_surface, connection::Outbound, encryption::Service, http::checked, logging::Logs,
@@ -52,6 +53,7 @@ pub(crate) struct Coordinator {
     surfaces: OnceLock<Arc<browser_surface::Manager>>,
     terminals: OnceLock<Arc<terminal::Adapter>>,
     tunnel_streams: Arc<Semaphore>,
+    guest_streams: Mutex<Option<tokio::task::JoinSet<()>>>,
 }
 
 #[derive(Default)]
@@ -74,6 +76,7 @@ struct Session {
 struct Grant {
     value: Value,
     surface: Option<Arc<browser_surface::Link>>,
+    guest: tunnel::guest::Slot,
 }
 
 impl Drop for Grant {
@@ -136,6 +139,7 @@ impl Coordinator {
             surfaces: OnceLock::new(),
             terminals: OnceLock::new(),
             tunnel_streams: Arc::new(Semaphore::new(tunnel::MAX_STREAMS)),
+            guest_streams: Mutex::new(Some(tokio::task::JoinSet::new())),
         }
     }
 
@@ -501,6 +505,7 @@ impl Coordinator {
             state.transport_ready = false;
             state.disconnect = Some(Instant::now() + GRACE);
             state.legacy_tunnels.disconnected();
+            state.retire_guest_tunnels(None, "route-replaced");
             state.channels.disconnect_surface_relay();
             self.wake.notify_one();
         }
@@ -538,6 +543,10 @@ impl Coordinator {
         self.revoke_all();
         let mut peers = self.state.lock().unwrap().peers.take_tasks();
         while peers.join_next().await.is_some() {}
+        let guest_streams = self.guest_streams.lock().unwrap().take();
+        if let Some(mut jobs) = guest_streams {
+            while jobs.join_next().await.is_some() {}
+        }
         if let Some(terminals) = self.terminals.get() {
             terminals.close().await;
         }
@@ -662,6 +671,7 @@ impl State {
             Grant {
                 value: grant.clone(),
                 surface,
+                guest: tunnel::guest::Slot::default(),
             },
         );
         Ok(())

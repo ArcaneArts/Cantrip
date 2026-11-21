@@ -62,6 +62,7 @@ export async function verifySources({
   runRuntime,
   productFiles,
   guestTerminal,
+  guestTunnel,
   origin,
   crashWorker,
   stopWorker,
@@ -74,6 +75,7 @@ export async function verifySources({
     data,
     runRuntime,
     productFiles || guestTerminal,
+    guestTunnel,
   );
   const componentKey = keys.get("repository-content");
   const serverId = bootstrap.server.id;
@@ -180,6 +182,22 @@ export async function verifySources({
   assert.equal(made.source.head, null);
   await guest("test", "-d", folder.guestPath);
   assert.equal((await call("POST", route(folder) + "/verify")).state, "ready");
+  if (guestTunnel) {
+    const { verifyCantripOsTunnel } =
+      await import("./cantrip-os-tunnel-cases.mjs");
+    await verifyCantripOsTunnel({
+      origin,
+      call,
+      docker,
+      container,
+      actual,
+      os,
+      workerId,
+      eventually,
+      binding: folder,
+      componentKey: keys.get("tunnel-content"),
+    });
+  }
 
   // Retain a target that predates dispatch and observe the actual atomic
   // publication failure. Its contents and the operation evidence both survive.

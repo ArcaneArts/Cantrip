@@ -12,6 +12,7 @@ export async function grantCantripOsFixture(
   data,
   runRuntime,
   productFiles,
+  guestTunnel,
 ) {
   const identity = JSON.parse(
     await readFile(path.join(data, "worker-encryption-key.json"), "utf8"),
@@ -62,6 +63,7 @@ export async function grantCantripOsFixture(
   });
   const components = ["repository-content"];
   if (runRuntime) components.push("run-content");
+  if (guestTunnel) components.push("tunnel-content");
   if (productFiles)
     components.push("surface-private-state", "private-surface-metadata");
   const keys = new Map();

@@ -9900,3 +9900,23 @@ and input on Windows and on supported Linux desktops. The native
 helper currently supplies macOS Host capture and an explicitly assigned
 Cantrip OS Linux desktop backend. The Windows and Linux Host backends
 remain part of the replacement scope.
+
+## 293. Forward captured Cantrip OS guest TCP services
+
+Reference commit `f8e6410f8e995568740b9d8b886ebbc3011367a2` (#3456).
+
+The worker handles `surface.tunnel.os-prepare` for guest TCP forwards
+with an installed WorkerLink grant. It decrypts the captured record,
+verifies the workspace placement against the guest service broker, and
+checks the pinned service identity before opening a stream. The worker
+owns the carrier and closes the connection when the attachment is revoked.
+
+On macOS ARM64, the native worker and Core in PGlite mode used the public
+tunnel and WorkerLink endpoints to connect to an owned loopback service
+in a Cantrip OS Docker guest. The `--guest-tunnel` smoke rejected a changed
+protected record, exchanged encrypted traffic across a TCP half-close,
+and observed an open guest socket close on attachment revocation. The
+existing Host tunnel smoke also passed for relay, direct, and legacy
+connections.
+
+Guest SSH and VNC forwarding and reverse listeners remain in scope.

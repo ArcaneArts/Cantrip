@@ -406,7 +406,7 @@ impl Channels {
                 if header["lane"] == "stream" && header["channelKind"] == "reliable-stream" =>
             {
                 let frame_limit = payload_limit(carrier, header, "tunnel-data-plane-v1");
-                let tunnel = Tunnel::open(gateway, header, installed, frame_limit)?;
+                let tunnel = Tunnel::open(gateway, header, installed, frame_limit, &grant.guest)?;
                 if self.active.values().any(|channel| {
                     matches!(&channel.resource, Resource::Tunnel(active) if active.attachment == tunnel.attachment)
                 }) {

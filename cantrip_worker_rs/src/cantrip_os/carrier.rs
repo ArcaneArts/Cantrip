@@ -64,6 +64,10 @@ impl Transport {
         ))
     }
 
+    pub(crate) fn tunnel_service(&self, arguments: &[&str]) -> (&'static OsStr, Vec<OsString>) {
+        self.spec(Program::Remote, arguments)
+    }
+
     pub(crate) async fn remote_control(&self, arguments: &[&str], scope: &Scope) -> Result<Value> {
         self.control(Program::Remote, arguments, scope).await
     }
