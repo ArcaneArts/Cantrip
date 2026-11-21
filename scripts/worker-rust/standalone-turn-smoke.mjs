@@ -82,6 +82,7 @@ const { values } = parseArgs({
     "cua-guest": { type: "string" },
     "os-desktop-prepare": { type: "boolean" },
     "os-desktop-view": { type: "boolean" },
+    "guest-thread-sync": { type: "boolean" },
     "guest-image": { type: "string" },
     "cua-console": { type: "string" },
     "cua-recovered": { type: "string" },
@@ -135,8 +136,11 @@ const cuaConsole = values["cua-console"];
 const guestCua = values["cua-guest"];
 const prepareGuestDesktop =
   values["os-desktop-prepare"] || values["os-desktop-view"];
+const guestThreadSync = values["guest-thread-sync"];
 const repositoryKey =
-  guestCua || prepareGuestDesktop ? key("repository-content") : null;
+  guestCua || prepareGuestDesktop || guestThreadSync
+    ? key("repository-content")
+    : null;
 const recoveredTaskGoalCua = values["cua-task-goal-recovered"];
 const recoveredTaskCua = values["cua-task-recovered"] || recoveredTaskGoalCua;
 const recoveredCua = values["cua-recovered"] || recoveredTaskCua;
@@ -202,6 +206,7 @@ const consoleStateKey =
   cuaConsole ||
   guestCua ||
   prepareGuestDesktop ||
+  guestThreadSync ||
   autonomousCua ||
   values["host-skills"] ||
   values["scratch-files"] ||
@@ -3081,10 +3086,10 @@ try {
     if (values.cli)
       workerEnvironment.CANTRIP_CLI_BIN = path.resolve(values.cli);
   }
-  if (guestCua || prepareGuestDesktop) {
+  if (guestCua || prepareGuestDesktop || guestThreadSync) {
     assert.ok(
       values["guest-image"],
-      "Managed guest desktop verification requires an existing guest image.",
+      "Managed guest verification requires an existing guest image.",
     );
     const environment = await guestDockerEnvironment(root);
     Object.assign(workerEnvironment, environment, {
@@ -3105,7 +3110,26 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (prepareGuestDesktop) {
+  if (guestThreadSync) {
+    const { verifyGuestThreadSync } =
+      await import("./guest-thread-sync-cases.mjs");
+    await verifyGuestThreadSync({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      openMessage,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      repositoryKey,
+      guest: guestDesktop,
+      startWorker,
+      stopWorker,
+      workerDiagnostics: () => diagnostics,
+    });
+  } else if (prepareGuestDesktop) {
     await verifyManagedGuestDesktopPreparation({
       desktop: guestDesktop,
       call,

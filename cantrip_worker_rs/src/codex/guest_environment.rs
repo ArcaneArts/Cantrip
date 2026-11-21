@@ -1,6 +1,7 @@
 //! A managed Codex app-server on the worker with one admitted guest executor.
 use crate::{
     cantrip_os::{assert_scope, carrier::Transport, operations::save, session::Session},
+    codex::managed::Launch,
     filesystem::{Scope, paths},
     run_definitions::repository::read_bounded,
 };
@@ -10,6 +11,7 @@ use cantrip_wire::{JsString, Value, parse_json_text, payload_digest, value::json
 use std::{
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 const MAX_RECORD_BYTES: u64 = 1024 * 1024;
@@ -68,11 +70,6 @@ impl Environment {
             return Ok(None);
         };
         let placement = &execution["scope"];
-        ensure!(
-            placement["ownerId"] == authority["ownerId"]
-                && placement["workerId"] == authority["workerId"],
-            "The OS runtime belongs to a different owner or worker."
-        );
         let root_kind = if placement["sourceKind"] == "git" {
             "git-worktree"
         } else {
@@ -84,6 +81,45 @@ impl Environment {
                 && session["worktreeId"] == placement["worktreeId"]
                 && session["rootKind"] == root_kind,
             "The managed session differs from its captured OS project/worktree."
+        );
+        let environment = Self::open(authority, execution, cwd).await?;
+        if previous.is_none() {
+            match save(&file, execution, true) {
+                Ok(()) => {}
+                Err(error)
+                    if error
+                        .downcast_ref::<std::io::Error>()
+                        .is_some_and(|e| e.kind() == ErrorKind::AlreadyExists) =>
+                {
+                    let recorded =
+                        stored(&file)?.context("The saved OS agent placement disappeared.")?;
+                    same_placement(&recorded, execution)?;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(Some(environment))
+    }
+
+    /// Observe only the placement previously admitted for this Chat.
+    pub async fn reopen(
+        data: &Path,
+        authority: &Value,
+        chat: &JsString,
+        cwd: &JsString,
+    ) -> Result<Option<Self>> {
+        let Some(execution) = stored(&record_path(data, authority, chat))? else {
+            return Ok(None);
+        };
+        Ok(Some(Self::open(authority, &execution, cwd).await?))
+    }
+
+    async fn open(authority: &Value, execution: &Value, cwd: &JsString) -> Result<Self> {
+        let placement = &execution["scope"];
+        ensure!(
+            placement["ownerId"] == authority["ownerId"]
+                && placement["workerId"] == authority["workerId"],
+            "The OS runtime belongs to a different owner or worker."
         );
         ensure!(
             placement["guestPath"].as_js_string() == Some(cwd),
@@ -107,21 +143,6 @@ impl Environment {
             json!(paths::text(Path::new(program))).stringify(),
             json!(args).stringify(),
         );
-        if previous.is_none() {
-            match save(&file, execution, true) {
-                Ok(()) => {}
-                Err(error)
-                    if error
-                        .downcast_ref::<std::io::Error>()
-                        .is_some_and(|e| e.kind() == ErrorKind::AlreadyExists) =>
-                {
-                    let recorded =
-                        stored(&file)?.context("The saved OS agent placement disappeared.")?;
-                    same_placement(&recorded, execution)?;
-                }
-                Err(error) => return Err(error),
-            }
-        }
         let selection =
             json!({"environmentId":id,"cwd":cwd,"runtimeWorkspaceRoots":vec![cwd.clone()]});
         let workspace = &placement["guestWorkspaceId"];
@@ -139,12 +160,21 @@ impl Environment {
             cwd.lossy(),
             uid.stringify(),
         );
-        Ok(Some(Self {
+        Ok(Self {
             id,
             selection,
             document,
             instructions,
-        }))
+        })
+    }
+
+    pub fn configure_launch(self: &Arc<Self>, launch: &mut Launch) {
+        launch.profile.native_host = true;
+        let environment = self.clone();
+        launch.prepare_home = Some(Arc::new(move |home| {
+            let environment = environment.clone();
+            cantrip_transport::lifecycle::owned(async move { environment.prepare_home(&home) })
+        }));
     }
 
     pub fn prepare_home(&self, home: &Path) -> Result<()> {

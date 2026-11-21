@@ -9480,3 +9480,21 @@ stale return and input rejection, and cleanup on return and disconnect.
 The existing managed guest computer-use smoke also passed with Rust Core
 in PGlite mode, bundled Codex, and a local model fixture. Fifty-one focused
 Node tests and seven Node/Rust desktop control verdict comparisons passed.
+
+## 275. Observe saved Cantrip OS Chat threads in the Rust worker
+
+Reference commit `ed54c123690c7720b00047e53447364f94400747` (#3438).
+
+Chat sync prefers the live owner of the exact native thread. After a restart,
+it verifies the saved Linux placement and opens the same scoped Codex home used
+by thread preparation. The worker reads the existing thread status without
+resuming the thread or publishing history.
+
+On macOS ARM64, the public sync smoke ran against Rust Core in PGlite mode,
+the production Rust worker, bundled Codex, and an isolated Linux Docker guest.
+It observed the same thread running and idle, restarted the worker, and
+verified the retained message identities and decrypted text with one model
+call across the entire run. A direct worker fixture checked cold sync before
+thread preparation, rejected a mismatched checkout path, and observed no MCP
+binding or model call. Host and standalone Chat discovery and observation
+also passed locally.

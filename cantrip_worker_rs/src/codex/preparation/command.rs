@@ -638,14 +638,8 @@ impl Ensurer {
                                     &command["model"],
                                     &command["subagentDefaults"]["model"],
                                 )?;
-                                if let Some(environment) = environment.clone() {
-                                    launch.profile.native_host = true;
-                                    launch.prepare_home = Some(Arc::new(move |home| {
-                                        let environment = environment.clone();
-                                        cantrip_transport::lifecycle::owned(async move {
-                                            environment.prepare_home(&home)
-                                        })
-                                    }));
+                                if let Some(environment) = &environment {
+                                    environment.configure_launch(&mut launch);
                                 }
                                 this.0
                                     .codex

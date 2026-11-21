@@ -86,6 +86,7 @@ const { values } = parseArgs({
     worker: { type: "string" },
     codex: { type: "string" },
     "guest-image": { type: "string" },
+    "guest-sync-only": { type: "boolean" },
     "guest-file-helper": { type: "string" },
     turns: { type: "boolean" },
     held: { type: "boolean" },
@@ -3403,6 +3404,32 @@ async function verifyGuestThread() {
 
     await stop();
     await start();
+    const observation = {
+      type: "chat.sync",
+      cwd,
+      chatId: session.chatId,
+      threadId,
+      provider,
+    };
+    const wrongCwd = await ensure({ ...observation, cwd: root });
+    assert.equal(wrongCwd.ok, false);
+    assert.match(wrongCwd.error.message, /captured Linux placement/);
+    assert.deepEqual(await expectSuccess(observation), {
+      threadId,
+      status: "idle",
+      statusSource: "native-thread",
+      turns: [],
+    });
+    assert.deepEqual(await bindings(), []);
+    assert.doesNotMatch(diagnostics, /operation=chat\.thread\.ensure/);
+    assert.equal(providerCalls, 0);
+    console.log(
+      "Cold guest observation opened the existing thread without preparing or resuming it.",
+    );
+    if (values["guest-sync-only"]) {
+      await stop();
+      return;
+    }
     const { osExecution: _placement, ...reopen } = session;
     await expectThread({ cwd, session: reopen, threadId, provider }, threadId);
     const mismatch = await ensure({
