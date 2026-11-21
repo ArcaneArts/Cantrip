@@ -716,9 +716,12 @@ impl Grid {
     }
 
     pub fn row_inc_clamp(&mut self, count: u16) {
-        let in_scroll_region = self.in_scroll_region();
-        self.pos.row = self.pos.row.saturating_add(count);
-        self.row_clamp_bottom(in_scroll_region);
+        let count = if self.pos.row <= self.scroll_bottom {
+            count.min(self.scroll_bottom - self.pos.row)
+        } else {
+            count
+        };
+        self.move_cursor(i32::from(count), 0);
     }
 
     pub fn row_inc_scroll(
@@ -738,9 +741,26 @@ impl Grid {
     }
 
     pub fn row_dec_clamp(&mut self, count: u16) {
-        let in_scroll_region = self.in_scroll_region();
-        self.pos.row = self.pos.row.saturating_sub(count);
-        self.row_clamp_top(in_scroll_region);
+        let count = if self.pos.row >= self.scroll_top {
+            count.min(self.pos.row - self.scroll_top)
+        } else {
+            count
+        };
+        self.move_cursor(-i32::from(count), 0);
+    }
+
+    pub fn move_cursor(&mut self, rows: i32, cols: i32) {
+        // xterm clips a pending wrap before relative addressing, then applies
+        // the same origin adjustment as for an absolute cursor position.
+        self.row_clamp_top(self.origin_mode);
+        self.row_clamp_bottom(self.origin_mode);
+        self.col_clamp();
+        self.set_pos(Pos {
+            row: (i32::from(self.pos.row) + rows)
+                .clamp(0, i32::from(self.size.rows - 1)) as u16,
+            col: (i32::from(self.pos.col) + cols)
+                .clamp(0, i32::from(self.size.cols - 1)) as u16,
+        });
     }
 
     pub fn reverse_index(&mut self, attrs: crate::attrs::Attrs) {

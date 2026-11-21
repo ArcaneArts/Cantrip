@@ -11167,3 +11167,21 @@ in PGlite and bundled PostgreSQL modes. The fixture verified retained
 settings and identity, orderly shutdown, and recovery after supervisor
 loss. The published tree contained no Node runtime or `node_modules`.
 Eighteen focused packaging and workflow tests passed locally.
+
+## 346. Preserve terminal cursor addressing during reattachment
+
+Reference commit `cca8e44f2c24d64afc488a38a5ecb7567037b3e5` (#3509).
+
+The native parser handles xterm's horizontal and vertical relative positioning
+and both additional forms of absolute cursor addressing. Cursor Up and Down
+honor the scroll margin in their direction of travel, including when the
+cursor starts outside the scrolling region. Relative moves clear a pending
+wrap before calculating the new position and apply xterm's origin mode.
+
+The previous worker placed the cursor at the end of the ready marker after
+reattachment. On macOS ARM64, an actual PTY with Rust Core and worker matched
+xterm.js 6.0 for the cursor, viewport, and later output under origin mode.
+The encrypted Host relay, WorkerLink, direct terminal, CLI, and service
+restart and recovery passed with Node absent from the worker PATH. All
+26 parser tests and the documentation test passed, along with the offline
+worker build.
