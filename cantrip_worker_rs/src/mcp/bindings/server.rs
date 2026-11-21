@@ -53,6 +53,35 @@ impl std::fmt::Display for Rejected {
 
 impl std::error::Error for Rejected {}
 
+pub(super) struct TargetInspection {
+    pub resolution: Value,
+    pub server_id: Value,
+    pub state_revision: Value,
+}
+
+impl TargetInspection {
+    pub(super) fn parse(result: &Value) -> Result<Self> {
+        let mut details = result["data"]
+            .as_object()
+            .cloned()
+            .context("Cantrip returned a malformed execution target.")?;
+        let server_id = details
+            .shift_remove(&JsString::from("serverId"))
+            .unwrap_or(Value::Null);
+        let state_revision = details
+            .shift_remove(&JsString::from("stateRevision"))
+            .and_then(|revision| revision.as_u64())
+            .filter(|revision| (1..=9_007_199_254_740_991).contains(revision));
+        let resolution =
+            crate::http::checked("executionTargetResolutionSchema", &Value::Object(details))?;
+        Ok(Self {
+            resolution,
+            server_id,
+            state_revision: json!(state_revision),
+        })
+    }
+}
+
 impl Server {
     pub fn new(server_url: &str, token: WorkerToken) -> Result<Self> {
         Ok(Self {
@@ -189,16 +218,11 @@ impl Server {
                 &format!("{}:inspect-target", uuid::Uuid::new_v4()),
             )
             .await?;
-        let mut details = result["data"]
-            .as_object()
-            .cloned()
-            .context("Cantrip returned a malformed browser target.")?;
-        let server = details
-            .shift_remove(&JsString::from("serverId"))
-            .unwrap_or(Value::Null);
-        details.shift_remove(&JsString::from("stateRevision"));
-        let resolution =
-            crate::http::checked("executionTargetResolutionSchema", &Value::Object(details))?;
+        let TargetInspection {
+            resolution,
+            server_id: server,
+            ..
+        } = TargetInspection::parse(&result)?;
         ensure!(
             result["target"] == target
                 && resolution["target"] == target

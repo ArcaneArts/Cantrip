@@ -74,6 +74,7 @@ const { values } = parseArgs({
     "mcp-tasks": { type: "boolean" },
     "mcp-chats": { type: "boolean" },
     "mcp-alerts": { type: "boolean" },
+    "mcp-targets": { type: "boolean" },
     "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
@@ -240,6 +241,7 @@ const consoleStateKey =
   values["mcp-tasks"] ||
   values["mcp-chats"] ||
   values["mcp-alerts"] ||
+  values["mcp-targets"] ||
   values.policies ||
   values.codegraph ||
   consoleInteractions ||
@@ -3518,6 +3520,18 @@ try {
       labelKey,
       alertKey,
       serverDiagnostics: () => server.diagnostics(),
+    });
+  } else if (values["mcp-targets"]) {
+    const { verifyManagedMcpTargets } = await import("./mcp-target-cases.mjs");
+    await verifyManagedMcpTargets({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
     });
   } else if (values.codegraph) {
     await verifyManagedCodeGraph(data);

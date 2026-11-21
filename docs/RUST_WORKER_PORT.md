@@ -52,7 +52,7 @@ covers the current Docker build, enrollment, and volume reuse.
 ### Open managed MCP operations
 
 The remaining managed Cantrip MCP work covers client control,
-target, worktree, Explorer, terminal, browser, and Run tools. Their
+worktree, Explorer, terminal, browser, and Run tools. Their
 catalog entries and Core routes are in place. The worker still needs
 negotiated admission and endpoint handling for these families.
 
@@ -11256,3 +11256,21 @@ client codec opened the persisted ciphertext, and the inbox and counts
 reflected the current revision and resolution. The fixture keeps one
 active lane because Core resolves prior agent Alerts when a new lane
 starts. The Chat and Task MCP smokes and offline worker build passed.
+
+## 350. Restore managed MCP target discovery and inspection
+
+Reference commit `e65a0ff1ee2e071c924cd2a05d70b0461dd4341e` (#3513).
+
+Project bindings advertise `target_list` and `target_inspect` when Core
+supports them. Discovery keeps Core's filters and cursors. The worker
+opens protected titles with the account's grant and returns the public
+descriptors. Inspection reuses the Browser resolver's response parser,
+checks the returned identity, and exposes the placement and state revision.
+The internal logical server identifier stays in the worker.
+
+The previous worker omitted `target_list` from native Codex tool search.
+The macOS ARM64 fixture ran production Rust Core in PGlite mode and native
+Codex with an empty worker PATH. It exercised paged Chat surface discovery,
+the default catalog's worker placement, encrypted titles in Core responses,
+exact target inspection, and rejection of a different project. The
+authenticated Browser inspection test and offline worker build passed.

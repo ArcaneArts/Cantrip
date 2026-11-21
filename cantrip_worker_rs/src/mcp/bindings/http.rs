@@ -3,6 +3,7 @@ mod chats;
 mod computer_use;
 mod policy;
 mod streamable;
+mod targets;
 mod tasks;
 
 use super::{Active, Entry, Inner, MAXIMUM_OPERATIONS, now, server::Rejected, store};
@@ -322,6 +323,7 @@ impl Inner {
             }
             "policy.list" | "policy.read" => self.policy(authorization, &call, operation).await,
             "alert.raise" | "alert.resolve" => self.alert(authorization, &call, operation).await,
+            "target.list" | "target.inspect" => self.target(authorization, &call, operation).await,
             "task.list" | "task.status" | "task.wait" | "task.create" => {
                 self.task(authorization, &call, operation).await
             }
