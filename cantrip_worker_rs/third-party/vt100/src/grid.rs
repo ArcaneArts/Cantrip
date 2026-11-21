@@ -7,12 +7,13 @@ mod snapshot;
 pub struct Grid {
     size: Size,
     pos: Pos,
-    saved_pos: Pos,
+    // Row index in retained history plus the viewport, as used by xterm.
+    saved_row: usize,
+    saved_col: u16,
     rows: Vec<crate::row::Row>,
     scroll_top: u16,
     scroll_bottom: u16,
     origin_mode: bool,
-    saved_origin_mode: bool,
     scrollback: std::collections::VecDeque<crate::row::Row>,
     scrollback_len: usize,
     scrollback_offset: usize,
@@ -23,12 +24,12 @@ impl Grid {
         Self {
             size,
             pos: Pos::default(),
-            saved_pos: Pos::default(),
+            saved_row: 0,
+            saved_col: 0,
             rows: vec![],
             scroll_top: 0,
             scroll_bottom: size.rows - 1,
             origin_mode: false,
-            saved_origin_mode: false,
             scrollback: std::collections::VecDeque::new(),
             scrollback_len,
             scrollback_offset: 0,
@@ -50,16 +51,16 @@ impl Grid {
         crate::row::Row::new(self.size.cols)
     }
 
-    pub fn clear(&mut self) {
+    pub fn clear(&mut self, attrs: crate::attrs::Attrs) {
         self.pos = Pos::default();
-        self.saved_pos = Pos::default();
+        self.saved_row = 0;
+        self.saved_col = 0;
         for row in self.drawing_rows_mut() {
-            row.clear(crate::attrs::Attrs::default());
+            row.clear(attrs);
         }
         self.scroll_top = 0;
         self.scroll_bottom = self.size.rows - 1;
         self.origin_mode = false;
-        self.saved_origin_mode = false;
     }
 
     pub fn size(&self) -> Size {
@@ -94,12 +95,8 @@ impl Grid {
         self.row_clamp_bottom(false);
         self.col_clamp();
 
-        if self.saved_pos.row > self.size.rows - 1 {
-            self.saved_pos.row = self.size.rows - 1;
-        }
-        if self.saved_pos.col > self.size.cols - 1 {
-            self.saved_pos.col = self.size.cols - 1;
-        }
+        self.saved_row = self.saved_row.min(usize::from(self.size.rows - 1));
+        self.saved_col = self.saved_col.min(self.size.cols - 1);
     }
 
     pub fn pos(&self) -> Pos {
@@ -116,14 +113,30 @@ impl Grid {
         self.col_clamp();
     }
 
+    pub fn activate(&mut self, pos: Pos, origin: bool) {
+        self.pos = pos;
+        self.origin_mode = origin;
+    }
+
     pub fn save_cursor(&mut self) {
-        self.saved_pos = self.pos;
-        self.saved_origin_mode = self.origin_mode;
+        self.saved_row = self.scrollback.len() + usize::from(self.pos.row);
+        self.saved_col = self.pos.col;
+    }
+
+    pub fn saved_position(&self) -> Pos {
+        Pos {
+            row: self
+                .saved_row
+                .saturating_sub(self.scrollback.len())
+                .min(usize::from(self.size.rows - 1)) as u16,
+            col: self.saved_col.min(self.size.cols - 1),
+        }
     }
 
     pub fn restore_cursor(&mut self) {
-        self.pos = self.saved_pos;
-        self.origin_mode = self.saved_origin_mode;
+        self.pos = self.saved_position();
+        self.row_clamp_top(self.origin_mode);
+        self.row_clamp_bottom(self.origin_mode);
     }
 
     pub fn visible_rows(&self) -> impl Iterator<Item = &crate::row::Row> {
@@ -203,6 +216,7 @@ impl Grid {
     }
 
     pub fn clear_scrollback(&mut self) {
+        self.saved_row = self.saved_row.saturating_sub(self.scrollback.len());
         self.scrollback.clear();
         self.scrollback_offset = 0;
     }
@@ -584,6 +598,7 @@ impl Grid {
                 self.scrollback.push_back(removed);
                 while self.scrollback.len() > self.scrollback_len {
                     self.scrollback.pop_front();
+                    self.saved_row = self.saved_row.saturating_sub(1);
                 }
                 if self.scrollback_offset > 0 {
                     self.scrollback_offset =
@@ -636,6 +651,15 @@ impl Grid {
             row = row.saturating_sub(self.scroll_top);
         }
 
+        self.write_snapshot_position(contents, row, attrs);
+    }
+
+    pub fn write_snapshot_position(
+        &self,
+        contents: &mut Vec<u8>,
+        row: u16,
+        attrs: crate::attrs::Attrs,
+    ) {
         let mut col = self.pos.col.min(self.size.cols - 1);
         if self.pos.col == self.size.cols {
             let mut cell = self
@@ -680,8 +704,8 @@ impl Grid {
         self.scroll_top = 0;
         self.scroll_bottom = self.size.rows - 1;
         self.origin_mode = false;
-        self.saved_pos = Pos::default();
-        self.saved_origin_mode = false;
+        self.saved_row = self.scrollback.len();
+        self.saved_col = 0;
     }
 
     pub fn set_origin_mode(&mut self, mode: bool) {

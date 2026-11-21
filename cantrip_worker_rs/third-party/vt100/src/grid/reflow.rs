@@ -12,7 +12,7 @@ impl Grid {
         let old_height = usize::from(self.size.rows);
         let mut base = self.scrollback.len();
         let cursor = base + usize::from(self.pos.row);
-        let saved = base + usize::from(self.saved_pos.row);
+        let saved = self.saved_row;
         let mut source = std::mem::take(&mut self.scrollback);
         source.extend(std::mem::take(&mut self.rows));
         if height > old_height && self.pos.row == self.size.rows - 1 {
@@ -94,10 +94,8 @@ impl Grid {
             row: y(cursor),
             col: self.pos.col.min(width - 1),
         };
-        self.saved_pos = Pos {
-            row: y(saved),
-            col: self.saved_pos.col.min(width - 1),
-        };
+        self.saved_row = saved.saturating_sub(extra).min(base + height - 1);
+        self.saved_col = self.saved_col.min(width - 1);
     }
 }
 
