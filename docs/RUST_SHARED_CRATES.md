@@ -1,9 +1,9 @@
 # Rust foundations for the worker port
 
-The Rust server now consumes eight shared libraries under `crates/`. These are
-existing implementations moved out of the server, with narrow server adapters or
-compatibility re-exports at their original paths. The Node worker remains the
-worker implementation. This extraction adds no worker runtime or new protocol.
+The Rust server consumes eight shared libraries under `crates/`. This record
+describes their extraction from the server, including server adapters and
+compatibility re-exports at the original paths. The
+[native worker](../cantrip_worker_rs/README.md) builds on these foundations.
 
 The baseline is `86f7963df5a87d5da977ff2bcc6f8016a64627ab`, the completed Rust
 server replacement. The implementation milestones and local evidence are recorded

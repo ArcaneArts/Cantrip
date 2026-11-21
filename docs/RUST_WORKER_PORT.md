@@ -21,25 +21,43 @@ Cantrip and CUA MCP through native worker subcommands.
   Keep the package layout and the existing worker data directory. See the
   [standalone worker guide](../deploy/worker.README.md) for launch and enrollment.
 - Assemble desktop with `pnpm package:app`. The supervisor prepares existing
-  profiles with the native server and compatibility PostgreSQL tools. See the
-  [server guide](../deploy/server.README.md#existing-desktop-profiles) for
-  supported database modes, stopped-profile upgrades, and rollback.
+  profiles with the native server and compatibility PostgreSQL tools. The
+  [desktop runtime guide](RUST_SERVER_DESKTOP_RUNTIME.md) covers staging and
+  local validation. The [server guide](../deploy/server.README.md#existing-desktop-profiles)
+  covers database modes, stopped-profile upgrades, and rollback.
 - Hosted Compose builds the worker with `deploy/docker/worker.Dockerfile`.
   It retains the worker profile, enrollment configuration, and persistent volume.
   Winterhold's systemd deployment uses the standalone native server layout.
 
+The packaged services use native OS libraries and the bundled Codex, CLI, CUA,
+and database components. Git handles repository commands. The worker uses
+Chromium for Browser features and Docker or SSH when connecting to a Cantrip OS
+guest. A guest keeps its own native helpers and system tools. The desktop client
+uses the platform WebView.
+
 Node remains in source builds, client and protocol tooling, and the compatibility
 references under `tests/reference-node-worker` and `tests/reference-node-server`.
-Users can still select external runtimes, project tools, and MCP servers that use
-Node. The browser's in-page JavaScript and the native CUA scripting interface
-remain product capabilities. The runtime still uses OS libraries and tools such as
-Git and SSH where applicable, and Cantrip OS keeps its separate guest helpers.
+Project tooling and user-configured MCP servers may bring their own runtimes.
+Optional CodeGraph indexing uses an upstream distribution with its own runtime.
+Browser JavaScript and the CUA scripting interface remain available.
+[CodeGraph installation record](#222-install-and-update-codegraph-from-the-rust-worker)
 
 The [packaging cutover](#278-ship-the-rust-worker-in-cantrip-packages), the
 [Node worker archive](#286-archive-the-node-worker-as-a-compatibility-reference),
 and the [desktop and upgrade checks](#288-verify-the-native-desktop-runtime-and-legacy-profile-round-trip)
 record the transition. See also the
 [local Linux ARM64 image check](#295-verify-the-node-free-linux-arm64-worker-image).
+
+### Open platform checks
+
+- macOS shared-window copy requires a readable Accessibility selection. Apps
+  whose custom Copy handlers expose no selection remain a compatibility gap.
+  The AppKit fixture could not resolve its focused control on the local host.
+  [macOS selection evidence](#308-read-macos-window-selections-exposed-as-text-ranges)
+- The Windows interactive input and clipboard fixtures still need a live run.
+  [Windows input evidence](#307-send-foreground-input-to-shared-windows-windows)
+- GNOME and KDE portal approval and physical delivery through `ydotoold` remain
+  unverified. [Wayland input evidence](#306-control-a-wayland-display-through-the-host-input-tools)
 
 ## Implementation record
 
@@ -10841,3 +10859,28 @@ project share over WorkerLink relay and local direct, and a standalone Chat
 share over the legacy tunnel. The macOS mount test talks directly to the worker
 listener. The encrypted transport fixture opens HTTP requests through the
 existing share tunnels.
+
+## 331. Reconcile the build and deployment guides with native packaging
+
+Reference commit `b60df9faa0bb64771d44ab699f6f6130751a580c` (#3494).
+
+The current guides describe the Rust desktop and standalone launchers, the
+actual service artifact names used by `--from-artifacts`, and profile reuse
+when replacing a worker. Earlier server-port evidence still identifies its
+historical Node worker. The current runtime section records retained runtime
+dependencies and the known desktop platform gaps.
+
+On macOS ARM64, the packagers assembled a standalone worker from a fresh debug
+worker build and the existing native Codex, CLI, and CUA binaries. The standalone
+launcher and packaged MCP checks ran with an empty PATH. The bundled CUA helper
+passed the deterministic protocol smoke. Desktop staging copied the service
+artifacts, including a packaged prebuilt Rust server, and prepared the native
+PostgreSQL compatibility tools. Both inspected package trees contained no Node
+runtime or `node_modules`.
+
+The headless desktop supervisor launched both services with an empty PATH in
+PGlite and bundled PostgreSQL modes. The fixture verified retained settings and
+worker identity, orderly exit, and recovery after supervisor loss. This run
+exercised the staged desktop resources with an existing supervisor probe.
+The worker's normal Cargo dependency tree contained no server, PostgreSQL,
+PGlite, or Redis package. Documentation links and `git diff --check` passed.

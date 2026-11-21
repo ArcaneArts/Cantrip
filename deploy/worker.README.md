@@ -6,7 +6,14 @@ and forwards arguments. The worker loads `.env` and gives variables from
 its supervisor precedence. The package includes the pinned Codex runtime
 and native `cantrip` CLI. Managed Codex and terminal processes use that
 CLI through a protected connection to the local worker broker.
-Generate a short-lived worker link code while signed into
+The launcher and bundled first-party helpers run without Node.js.
+
+When replacing an existing installation, stop its worker and launch the new
+package with the same `CANTRIP_WORKER_DATA_DIR`. If the prior setting was
+relative to its package directory, use the original directory’s absolute path.
+A normal upgrade retains the stored identity and credential.
+
+For a new worker, generate a short-lived link code while signed into
 the target server, place it in
 `CANTRIP_WORKER_ENROLLMENT_CODE`, and start the worker once. The code is
 single-use. On first enrollment the worker stores its stable ID in

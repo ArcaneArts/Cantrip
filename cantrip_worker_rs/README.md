@@ -21,30 +21,28 @@ to resolve the Cantrip version. The packaged executable and bundled first-party
 helpers run natively. The worker crate uses shared protocol, transport, endpoint
 crypto, history, and host code independently of the Rust server and database.
 
-## Implementation notes from the port
+## Early implementation and compatibility fixtures
 
-These notes describe incremental implementations and focused fixtures from the
-port. The ledger records their subsequent integration and cutover.
+These notes record early port milestones. The
+[current runtime](../docs/RUST_WORKER_PORT.md#current-runtime) and later
+milestones in the ledger describe production integration and compatibility.
 
-The native `cantrip-worker` executable currently supports configuration,
+The initial native `cantrip-worker` executable implemented configuration,
 version-1 identity/credential persistence, logging/archive lifecycle, enrollment,
 heartbeat, WebSocket readiness/reconnect, version queries, credential rotation,
 in-process restart, log reads, authenticated encryption-grant refresh and workspace
 repository discovery/import validation, encrypted workspace-root attachment and
-managed-folder creation/attachment/deletion. It opens
-and retains compatible endpoint
-encryption identities using native P-256/HPKE and private version-2 records. The
-ledger also records delivered host Explorer/file-document, Git/GitHub, worktree,
-terminal-service and replica operations. Unimplemented domains fail explicitly and
-advertise unavailable capabilities. This is not yet the complete production replacement.
+managed-folder creation/attachment/deletion. It retained compatible endpoint
+encryption identities using native P-256/HPKE and private version-2 records.
+Later milestones delivered Host Explorer and file-document operations, Git and
+GitHub, worktrees, terminal services, and project replicas.
 
 The implementation reuses `cantrip-config`, `cantrip-wire`, `cantrip-host`,
 `cantrip-logging`, `cantrip-protocol`, `cantrip-framing`, `cantrip-crypto`,
 `cantrip-history` and `cantrip-transport`, without a server or database dependency.
 The worker also uses the same pure vendored ICU library as the server for Node
 locale ordering, without linking the server application or database.
-Other shared foundations will be integrated with their owning domains. Credentials
-omit `Debug`. Initialization loads the optional environment file synchronously
+Credentials omit `Debug`. Initialization loads the optional environment file synchronously
 before starting Tokio/archive threads. Shutdown joins owned producers and closes
 the archive before another runtime starts with the same durable identity.
 
@@ -150,12 +148,10 @@ node --import tsx scripts/worker-rust/history-client-compatibility.mjs --binary 
 node --import tsx scripts/worker-rust/history-client-smoke.mjs --client /absolute/path/to/history-client-fixture --history /absolute/path/to/history-source-fixture --server /absolute/path/to/cantrip-server --repository /absolute/path/to/project-repository-fixture
 ```
 
-The smoke runs the actual native client/projection/outbox against Rust-server
+The smoke runs the native client, projection, and outbox against Rust server
 history routes and loses a real canonical ACK before restarting both processes.
-Content preparation and coherent archive recovery now also execute natively.
-Rendered input and the enrollment/control worker remain fixtures. Production
-rendering/projector, attachment, capture/retry and execution integration remain
-pending; the production worker still selects Node.
+Rendered input and enrollment in this smoke use fixtures. The ledger records
+later production rendering, attachment, capture, retry, and execution integration.
 
 `history::preparation` supplies worker locale policy to the shared pure usage
 kernel and native turn preparation. `history::recovery::read` collects pinned item,
@@ -224,10 +220,9 @@ IO prefixes and callbacks run outside the state mutex. Snapshot subscribers and
 diagnostics cannot own admission. The worker cancellation primitive now composes
 signals while retaining initial input order and subsequent cancellation chronology.
 
-This is the worker-wide manager implementation. The Codex admission adapter,
-canonical command phase/source adapters, runtime owner, server reconciliation
-ports and production model/queue/task wiring still need to consume it. Production
-packaging continues selecting Node until the complete worker cutover is ready.
+The fixture covers the worker-wide admission manager. Later milestones in the
+ledger record its Codex adapter, runtime ownership, server reconciliation, and
+production model, queue, and Task wiring.
 
 ```sh
 node scripts/worker-rust/cargo.mjs test -p cantrip-worker --lib inference::admission::tests

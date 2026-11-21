@@ -1,55 +1,52 @@
-# Packaged desktop Rust server
+# Packaged desktop Rust services
 
-The desktop supervisor can launch the native server distribution directly while
-continuing to run the existing Node worker. Runtime selection is explicit build
-configuration. The default remains Node during existing-installation migration
-and full replacement qualification.
+The desktop supervisor starts `cantrip-server` and `cantrip-worker` from the
+bundled runtime. The worker package includes Codex, the Cantrip CLI, and the
+computer-use helper. The services and first-party helpers run without Node.js.
 
-## Package a native candidate
+## Build and stage the runtime
 
-Build on the target platform, using an isolated QA installation/profile:
+Build on a host matching the desktop target. For example, stage the runtime on
+macOS ARM64 with the desired PostgreSQL installation.
 
 ```sh
 CARGO_TARGET_DIR=/path/to/shared-target CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 \
-  pnpm package:desktop-runtime --server-runtime rust \
+  pnpm package:desktop-runtime --target darwin-arm64 \
   --postgres-bin /path/to/postgresql18/bin
 ```
 
-This builds the existing worker and its native helpers, packages the Rust server
-with matching database assets, and retains Node for the worker. The Codex build
-honors an explicit `CARGO_TARGET_DIR` so worktrees can reuse its existing cache.
-The server target and the separately pinned Codex toolchain can reuse their
-respective shared caches without producing per-worktree target directories.
+The runtime is staged under `cantrip_app/src-tauri/resources/runtime`. For the
+complete Tauri bundle, run `pnpm package:app --target darwin-arm64`.
+The server and the pinned Codex toolchain can use their respective shared build
+caches.
 
-To assemble previously built artifacts on that platform:
+To use existing native service packages on the same platform, stage them with
+the `--from-artifacts` option.
 
 ```sh
-pnpm package:desktop-runtime --target darwin-arm64 \
-  --server-runtime rust --from-artifacts
+pnpm package:desktop-runtime --target darwin-arm64 --from-artifacts
 ```
 
-The inputs are `artifacts/cantrip-server-rust-<target>` and the existing
-`artifacts/cantrip-worker-<target>`. Native server launchers, PGlite assets,
-PostgreSQL layout and shared libraries remain intact. The worker retains its
-existing workspace-import and actual native CUA/image smoke checks. Desktop
-native resource copies retain executable/read bits and gain owner-write
-permission, allowing Tauri to copy resources over its previous staging tree
-when rebuilding. Runtime read-only mounts and sandboxes still apply.
+The package directories are `artifacts/cantrip-server-<target>` and
+`artifacts/cantrip-worker-<target>`, produced by `pnpm package:server` and
+`pnpm package:worker` or extracted from their release archives. Pass
+`--from-artifacts` to `pnpm package:app` to use those same service trees in
+the desktop bundle.
 
-`runtime/server/desktop-server.json` selects the native executable and records
-the distribution's PostgreSQL binary location. The shell passes bundled asset
-fallbacks to the executable; explicit environment and saved database selection
-retain their native-server precedence. No executable-presence probe selects a
-different server after a configured native launch fails.
+`runtime/server/desktop-server.json` records the server's bundled PostgreSQL and
+legacy compatibility paths. The launcher passes the bundled asset paths to the
+server. Explicit environment and saved database selection retain their normal
+precedence for PGlite, bundled PostgreSQL, and external PostgreSQL.
 
-Existing distributions without that configuration retain their Node launcher.
-The subsequent existing-profile milestone (PR #2752) packages the bounded
-converter and prepares a legacy Node profile through the production launcher
-before native startup. It retains the original profile and supports restart
-without the converter after successful activation. See the
-[current acceptance reconciliation](RUST_SERVER_ACCEPTANCE_RECONCILIATION.md)
-for archived actual-app upgrade and post-write rollback evidence. Explicit Rust
-selection does not establish final production cutover readiness.
+## Existing profiles
+
+Close the previous installation before opening a profile with the new desktop
+bundle. The supervisor invokes native profile preparation before starting the
+server. Legacy PGlite conversion uses the packaged PostgreSQL compatibility
+tools and keeps the existing profile identity and directory. The worker reuses
+its identity, credentials, keys, and local state. See the
+[server guide](../deploy/server.README.md#existing-desktop-profiles) for stopped
+profile upgrades and rollback.
 
 ## Lifecycle and logs
 
@@ -60,11 +57,9 @@ The server's owned stdin pipe closes when its desktop supervisor disappears.
 Normal shutdown stops the worker first and requests native shutdown through
 that pipe, with bounded signal/termination fallback.
 
-Native stdout/stderr records are captured into the existing bounded, rotating,
-redacted server archive. The server log view and log dump use that archive;
-the existing Node server continues to own its own archive. The desktop's exit
-and shutdown state is registered before setup starts, so SIGTERM during service
-startup does not access unregistered state.
+Native stdout and stderr records are captured into the bounded, rotating,
+redacted server archive. The server log view and log dump use that archive.
+The desktop registers exit and shutdown state before starting either service.
 
 ## Local acceptance
 
@@ -109,9 +104,11 @@ It retains its fixture roots and the QA installation/log directory for evidence 
 The startup-signal case sends SIGTERM upon the native server's listening event,
 before waiting for renderer or worker readiness.
 
-Local macOS arm64 evidence includes all three storage modes through the production
+### Earlier server-port qualification
+
+The server-port qualification exercised all three storage modes through the production
 launcher probe and the actual release `.app`, using an optimized Rust server,
-the existing Node worker and its matching current Codex source build. The real
+the then-current Node worker and its matching Codex source build. The real
 WebView saved the recovery file, confirmed it and authenticated after reload in
 each mode. Temporary UI instrumentation was removed; the normally built app
 then reopened those fixtures, verified their original identities and preferences
@@ -128,10 +125,5 @@ accepted native writes across all three stores. It preserves the original
 directory and the active pathname. PR #2752 subsequently bundled automatic
 conversion and qualified local existing-client recovery-file continuity,
 encrypted identity, actual worker commands and post-write rollback/re-upgrade.
-Current supported-platform and complete update/product acceptance remain required.
-
-Windows, other supported platforms, installer/update behavior, packaged existing-user
-migration and post-write rollback, full product/coordination/performance
-acceptance and default cutover remain required. The broad repository check
-still stops at unchanged Node source line limits; it is not green. All development
-checks run locally; no production deployment is performed by these drivers.
+The [worker port ledger](RUST_WORKER_PORT.md#current-runtime) records the native
+desktop runtime, later profile round trips, and platform validation limits.
