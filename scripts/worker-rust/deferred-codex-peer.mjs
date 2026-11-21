@@ -8,8 +8,14 @@ const { WebSocket, WebSocketServer } = createRequire(
   new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 )("ws");
 const [binary, marker, prompt, scenario, ...args] = process.argv.slice(2);
-const restoring = scenario === "resume-approval" || scenario === "resume-cua";
-if (!args.some((argument) => argument.startsWith("ws://"))) {
+const restoring =
+  scenario === "resume-approval" ||
+  scenario === "resume-cua" ||
+  scenario === "resume-guest";
+if (
+  args[0] !== "app-server" ||
+  !args.some((argument) => argument.startsWith("ws://"))
+) {
   const child = spawn(binary, args, { stdio: "inherit" });
   child.once("close", (code) => process.exit(code ?? 1));
 } else {
@@ -48,10 +54,30 @@ if (!args.some((argument) => argument.startsWith("ws://"))) {
               JSON.stringify({ threadId, turnId: operation.turnId }),
               { mode: 0o600 },
             );
-          } else if (operation.type === "resume" && approval) {
-            targets.set(frame.id, threadId);
+          } else if (operation.type === "resume") {
+            if (approval) targets.set(frame.id, threadId);
+            if (scenario === "resume-guest") {
+              writeFileSync(
+                marker + ".resume",
+                JSON.stringify({
+                  threadId,
+                  turnId: operation.suspension.turnId,
+                }),
+                { mode: 0o600 },
+              );
+            }
           }
           return;
+        }
+        if (scenario === "resume-guest" && frame.method === "turn/interrupt") {
+          const { threadId, turnId } = frame.params;
+          writeFileSync(
+            marker + ".stop",
+            JSON.stringify({ threadId, turnId }),
+            {
+              mode: 0o600,
+            },
+          );
         }
         if (
           !restoring &&

@@ -82,6 +82,11 @@ pub(in crate::codex) async fn profile(
         data.join("codex-os-homes").join(home)
     });
     let runtime_home = match source {
+        // A recovered guest thread in its ordinary home must share the same
+        // writer with later commands for the same placement and provider.
+        Source::Held(saved) if guest_home.as_deref() == Some(saved.home.as_path()) => {
+            saved.home.clone()
+        }
         Source::Held(saved) => {
             let operation = cantrip_history::source_digest(&json!([
                 json!(
