@@ -17,6 +17,13 @@ pub struct Capture {
 
 pub type CaptureWork = Box<dyn FnOnce() -> Result<Capture> + Send>;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RemoteMonitorInput {
+    Unsupported,
+    AssignedGuest,
+    ExclusiveHost,
+}
+
 impl Raster {
     pub fn validate(&self) -> Result<()> {
         let pixels = (self.width as usize)
@@ -31,9 +38,8 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
-    /// Only an explicitly owned guest display may accept remote monitor input.
-    fn remote_monitor_input(&self) -> bool {
-        false
+    fn remote_monitor_input(&self) -> RemoteMonitorInput {
+        RemoteMonitorInput::Unsupported
     }
     fn desktop_io(&self) -> bool {
         false
@@ -109,9 +115,9 @@ pub trait CaptureBackend: Send {
             "Surface-directed input is unavailable; no input was posted.",
         ))
     }
-    /// Copy text from the selected window as one viewer operation.
+    /// Copy text from the selected destination as one viewer operation.
     /// A backend may dispatch a paired key press using the two reserved sequences.
-    fn copy_window_text(
+    fn copy_selection_text(
         &mut self,
         _participant: &str,
         _target: &Target,

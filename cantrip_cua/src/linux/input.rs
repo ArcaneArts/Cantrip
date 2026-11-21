@@ -98,11 +98,22 @@ impl Native {
                 )
             })
     }
-    fn modifiers(&self, modifiers: &[crate::gesture::Modifier]) -> Result<Vec<u8>> {
-        modifiers
+    fn modifiers(
+        &self,
+        destination: &Destination,
+        modifiers: &[crate::gesture::Modifier],
+        key: Option<u8>,
+    ) -> Result<Vec<u8>> {
+        let mut codes: Vec<_> = modifiers
             .iter()
             .map(|m| self.code(keys::modifier(*m)))
-            .collect()
+            .collect::<Result<_>>()?;
+        codes.retain(|code| {
+            Some(*code) != key
+                && (destination.window.is_some()
+                    || self.held.get(&(KEY_PRESS_EVENT, *code)) != Some(&destination.owner))
+        });
+        Ok(codes)
     }
     fn pair(
         control: Control,
@@ -231,7 +242,22 @@ impl InputBackend for Native {
         held: impl Iterator<Item = (&'a Control, &'a Packet)>,
     ) -> Result<Prepared<Control, Packet>> {
         let target = &destination.target;
-        let point = |p: Point| -> Result<Point> { Ok(target.bounds.to_global(p)?) };
+        let point = |p: Point| -> Result<Point> {
+            let mut global = target.bounds.to_global(p)?;
+            if destination.window.is_none() {
+                // XTEST uses integer coordinates. A fractional point at the
+                // edge must stay inside the selected display after rounding.
+                global.x = global
+                    .x
+                    .round()
+                    .min(target.bounds.x + target.bounds.width - 1.0);
+                global.y = global
+                    .y
+                    .round()
+                    .min(target.bounds.y + target.bounds.height - 1.0);
+            }
+            Ok(global)
+        };
         let action = |events| Prepared::Action {
             controls: vec![],
             packet: Packet::Events(events),
@@ -241,7 +267,7 @@ impl InputBackend for Native {
                 point: p,
                 modifiers,
             } => {
-                if !modifiers.is_empty() {
+                if destination.window.is_some() && !modifiers.is_empty() {
                     return Err(CuaError::new(
                         ErrorCode::Unsupported,
                         "Move modifiers must be held explicitly.",
@@ -261,7 +287,7 @@ impl InputBackend for Native {
                     vec![(MOTION_NOTIFY_EVENT, 0, Some(p))],
                     (BUTTON_PRESS_EVENT, code, None),
                     (BUTTON_RELEASE_EVENT, code, None),
-                    self.modifiers(modifiers)?,
+                    self.modifiers(destination, modifiers, None)?,
                 )
             }
             InputEvent::PointerUp { point: p, button } => {
@@ -299,7 +325,7 @@ impl InputBackend for Native {
                         vec![],
                         (KEY_PRESS_EVENT, code, None),
                         (KEY_RELEASE_EVENT, code, None),
-                        self.modifiers(modifiers)?,
+                        self.modifiers(destination, modifiers, Some(code))?,
                     )
                 }
             }
@@ -316,7 +342,7 @@ impl InputBackend for Native {
                 modifiers,
             } => {
                 let mut events = vec![(MOTION_NOTIFY_EVENT, 0, Some(point(*p)?))];
-                let modifiers = self.modifiers(modifiers)?;
+                let modifiers = self.modifiers(destination, modifiers, None)?;
                 events.extend(modifiers.iter().map(|k| (KEY_PRESS_EVENT, *k, None)));
                 for (delta, negative, positive) in [(*delta_y, 4, 5), (*delta_x, 6, 7)] {
                     for _ in 0..delta.unsigned_abs().div_ceil(40).min(250) {

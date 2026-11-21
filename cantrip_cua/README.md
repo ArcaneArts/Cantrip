@@ -22,14 +22,17 @@ and the session's X authority. It lists displays and application windows.
 Window capture uses X11 Composite so an overlapping application stays out of
 the selected window's frame. Input is directed to the selected window and
 leaves the physical pointer and keyboard focus in place. An X11 application
-decides whether to act on synthetic events. Host monitor sharing is view-only.
+decides whether to act on synthetic window events. A shared X11 monitor has
+one active viewer for physical pointer and keyboard input. Pointer coordinates
+stay within the selected monitor. Keyboard input follows focus on that
+monitor, and ending the viewer's input releases its held keys and buttons.
 
-The isolated Host process test runs against Xvfb with X11 Composite and RandR.
+The isolated Host process tests run against Xvfb with X11 Composite and RandR.
 
 ```sh
 xvfb-run -a sh -c 'CANTRIP_CUA_HOST_X11_TEST_DISPLAY="$DISPLAY" \
   cargo test --locked --manifest-path cantrip_cua/Cargo.toml --test process \
-  linux_host_x11_isolates_window_pixels_input_and_lifetimes -- --exact --ignored'
+  linux_host_x11 -- --ignored --test-threads=1'
 ```
 
 ## Assigned Linux X11 backend

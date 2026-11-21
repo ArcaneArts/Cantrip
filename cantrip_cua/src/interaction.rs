@@ -1,7 +1,7 @@
 //! Trusted worker participant adapter. Remote grants are verified by the worker;
 //! this endpoint is not exposed to JavaScript and never fabricates agent authority.
 use crate::{
-    backend::CaptureBackend,
+    backend::{CaptureBackend, RemoteMonitorInput},
     cancellation::Cancellation,
     cursor::{CursorAppearance, CursorState},
     error::{CuaError, ErrorCode, Result},
@@ -169,13 +169,27 @@ impl Participants {
                 }
                 let target = backend.resolve_target(&target_id, target_generation, cancel)?;
                 target.validate()?;
-                if target.kind != TargetKind::Window
-                    && !(target.kind == TargetKind::Monitor && backend.remote_monitor_input())
-                {
-                    return Err(CuaError::new(
-                        ErrorCode::Unsupported,
-                        "Independent input requires a window target; global input is not substituted.",
-                    ));
+                if target.kind == TargetKind::Monitor {
+                    match backend.remote_monitor_input() {
+                        RemoteMonitorInput::Unsupported => {
+                            return Err(CuaError::new(
+                                ErrorCode::Unsupported,
+                                "This display is view-only.",
+                            ));
+                        }
+                        RemoteMonitorInput::ExclusiveHost
+                            if self
+                                .live
+                                .values()
+                                .any(|state| state.target.kind == TargetKind::Monitor) =>
+                        {
+                            return Err(CuaError::new(
+                                ErrorCode::OwnershipMismatch,
+                                "Another viewer controls the Host display.",
+                            ));
+                        }
+                        _ => {}
+                    }
                 }
                 if target.id != target_id || target.generation != target_generation {
                     return Err(CuaError::new(
@@ -238,7 +252,9 @@ impl Participants {
             Request::ClipboardRead { binding, handle } => {
                 let state = self.get(handle, &binding)?;
                 cancel.check()?;
-                if !backend.remote_monitor_input() || state.target.kind != TargetKind::Monitor {
+                if backend.remote_monitor_input() != RemoteMonitorInput::AssignedGuest
+                    || state.target.kind != TargetKind::Monitor
+                {
                     return Err(CuaError::new(
                         ErrorCode::Unsupported,
                         "Participant clipboard access requires an assigned guest display.",
@@ -262,7 +278,9 @@ impl Participants {
                 if sequence > MAX_SEQUENCE || sequence.saturating_sub(1) <= state.sequence {
                     return Err(CuaError::invalid("Stale clipboard copy sequence."));
                 }
-                if state.target.kind != TargetKind::Window {
+                if state.target.kind == TargetKind::Monitor
+                    && backend.remote_monitor_input() != RemoteMonitorInput::ExclusiveHost
+                {
                     return Err(CuaError::new(
                         ErrorCode::Unsupported,
                         "Clipboard copy requires a selected window.",
@@ -275,7 +293,7 @@ impl Participants {
                 if target.id != state.target.id
                     || target.generation != state.target.generation
                     || target.process_id != state.target.process_id
-                    || target.kind != TargetKind::Window
+                    || target.kind != state.target.kind
                 {
                     return Err(CuaError::new(
                         ErrorCode::StaleTarget,
@@ -283,7 +301,7 @@ impl Participants {
                     ));
                 }
                 cancel.check()?;
-                let text = backend.copy_window_text(
+                let text = backend.copy_selection_text(
                     &state.native_id,
                     &target,
                     state.cursor.position,
@@ -353,9 +371,8 @@ impl Participants {
                         || target.generation != state.target.generation
                         || target.process_id != state.target.process_id
                         || target.kind != state.target.kind
-                        || (target.kind != TargetKind::Window
-                            && !(target.kind == TargetKind::Monitor
-                                && backend.remote_monitor_input()))
+                        || (target.kind == TargetKind::Monitor
+                            && backend.remote_monitor_input() == RemoteMonitorInput::Unsupported)
                     {
                         return Err(CuaError::new(
                             ErrorCode::StaleTarget,

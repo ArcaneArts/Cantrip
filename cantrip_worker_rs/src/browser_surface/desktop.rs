@@ -800,7 +800,7 @@ impl<'a> Session<'a> {
             .as_ref()
             .filter(|controller| controller.attachment == *attachment)
             .map(|controller| controller.lease.clone());
-        if !capture.is_window() && control.is_none() {
+        if !capture.supports_host_input() && control.is_none() {
             self.input_state(
                 Some(attachment),
                 None,
