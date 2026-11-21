@@ -629,10 +629,16 @@ impl Session {
 
     async fn navigate(&mut self, url: JsString) -> Result<()> {
         self.loading = true;
-        let result = self.request("Page.navigate", json!({"url":url})).await;
-        match result {
-            Ok(reply) if reply["errorText"].is_null() => Ok(()),
-            _ => {
+        match self.request("Page.navigate", json!({"url":url})).await {
+            Ok(reply) => {
+                // Chromium can commit a browser error page on network failure.
+                // Keep the viewer attached so it can show that page and retry.
+                if !reply["errorText"].is_null() {
+                    self.loading = false;
+                }
+                Ok(())
+            }
+            Err(_) => {
                 self.loading = false;
                 bail!("Chromium could not navigate to the browser location.")
             }
