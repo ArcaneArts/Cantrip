@@ -989,9 +989,9 @@ async fn cycle(
                     continue;
                 }
                 if kind=="chat.sync" {
-                    let observation=chat_observation.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
+                    let observation=chat_observation.clone();let preparation=thread_preparation.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
                     commands.spawn(async move {
-                        let result=observation.sync(&request["command"]).await;
+                        let result=observation.sync(&request["command"], &preparation).await;
                         finish(&request,&worker,&logs,&outgoing,began,&result);
                     });
                     continue;

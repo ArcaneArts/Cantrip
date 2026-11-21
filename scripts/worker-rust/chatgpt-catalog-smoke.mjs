@@ -701,7 +701,7 @@ try {
   assert.match(wrongChat.error.message, /managed runtime route changed/);
   const osChatResult = await sync(active.id, { chatId: osChat });
   assert.equal(osChatResult.ok, false);
-  assert.match(osChatResult.error.message, /OS-hosted conversation/);
+  assert.match(osChatResult.error.message, /captured Linux placement/);
   const realThread = await seedNativeThread();
   const persisted = await sync(realThread, {
     executionProfile: "standalone-chat",

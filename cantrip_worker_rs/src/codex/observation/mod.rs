@@ -3,12 +3,16 @@ pub(super) mod home;
 pub(super) mod provider;
 pub(crate) use provider::normalize_base_url;
 
-use super::managed::{Runtime, Worker};
+use super::{
+    guest_environment::Environment,
+    managed::{Runtime, Worker},
+    preparation::command::Ensurer,
+};
 use crate::{
     encryption::Service, http::checked, protected_secrets::open_runtime_provider,
     provider_access::Access, routing::Registry,
 };
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail, ensure};
 use cantrip_wire::{JsString, Value, value::json};
 use std::{path::PathBuf, sync::Arc};
 
@@ -44,15 +48,20 @@ impl Observer {
         }
     }
 
-    pub(crate) async fn sync(&self, command: &Value) -> Result<Value> {
+    pub(crate) async fn sync(&self, command: &Value, preparation: &Ensurer) -> Result<Value> {
         let binding = self.encryption.bound_identity()?;
-        let thread = field(command, "threadId")?;
-        let runtime = self.open_runtime(command, &binding).await?;
+        let command = self.routing.resolve(command).await?;
+        self.assert_bound(&binding)?;
+        let thread = field(&command, "threadId")?;
+        let chat = field(&command, "chatId")?;
+        let runtime = match preparation.live_thread(chat, thread, &binding) {
+            Some(live) => live.runtime,
+            None => self.open_resolved(&command, &binding).await?.0,
+        };
         let snapshot = runtime.read_history(thread).await?;
         self.assert_bound(&binding)?;
         let status = status(&snapshot["thread"]);
-        // A cold observer has no attached external-console baseline. Never
-        // re-emit native messages already owned by history or import.
+        // Managed history owns message publication. Sync projects native status.
         checked(
             "agentThreadSyncSchema",
             &json!({
@@ -77,9 +86,17 @@ impl Observer {
         binding: &(JsString, Value),
     ) -> Result<(Runtime, &'static str)> {
         self.assert_bound(binding)?;
-        let (owner, server) = binding;
         let command = self.routing.resolve(command).await?;
-        let chat = field(&command, "chatId")?;
+        self.open_resolved(&command, binding).await
+    }
+
+    async fn open_resolved(
+        &self,
+        command: &Value,
+        binding: &(JsString, Value),
+    ) -> Result<(Runtime, &'static str)> {
+        let (owner, server) = binding;
+        let chat = field(command, "chatId")?;
         let provider = open_runtime_provider(&self.encryption, &command["provider"])?;
         let model_provider = provider::model_provider(&provider);
         let scope = json!({"serverId":server,"ownerId":owner,"workerId":self.worker});
@@ -90,6 +107,17 @@ impl Observer {
                 "ide"
             }
         });
+        let environment = if command["type"] == "chat.sync" {
+            Environment::reopen(&self.data, &scope, chat, field(command, "cwd")?)
+                .await?
+                .map(Arc::new)
+        } else {
+            None
+        };
+        ensure!(
+            environment.is_none() || execution == "ide",
+            "The captured Linux runtime belongs to a Project Chat."
+        );
         let profile = home::profile(
             &self.data,
             &scope,
@@ -98,24 +126,25 @@ impl Observer {
             &provider,
             execution,
             self.skill_root.clone(),
-            None,
+            environment.as_deref(),
         )
         .await?;
         let server_id = server.as_js_string().cloned().ok_or_else(|| {
             anyhow!("Worker encryption has not verified the logical server identity.")
         })?;
+        let mut launch = provider::launch(
+            profile,
+            provider,
+            self.access.clone(),
+            &command["model"],
+            &Value::Null,
+        )?;
+        if let Some(environment) = &environment {
+            environment.configure_launch(&mut launch);
+        }
         let runtime = self
             .codex
-            .launch_in_scope(
-                provider::launch(
-                    profile,
-                    provider,
-                    self.access.clone(),
-                    &command["model"],
-                    &Value::Null,
-                )?,
-                Some((server_id, owner.clone())),
-            )
+            .launch_in_scope(launch, Some((server_id, owner.clone())))
             .await?;
         runtime
             .synchronize_models(&command["model"], &Value::Null)
