@@ -85,6 +85,21 @@ impl Charsets {
         self.active = self.saved[usize::from(alternate)];
     }
 
+    pub(crate) fn clear_alternate_save(&mut self) {
+        self.saved[1] = ASCII;
+    }
+
+    pub(crate) fn write_save(&self, alternate: bool, bytes: &mut Vec<u8>) {
+        let set = self.saved[usize::from(alternate)];
+        if set != ASCII {
+            bytes.extend_from_slice(&[0x1b, b'(', set]);
+        }
+        bytes.extend_from_slice(b"\x1b7");
+        if set != ASCII {
+            bytes.extend_from_slice(b"\x1b(B");
+        }
+    }
+
     pub(crate) fn translate(&self, c: char) -> char {
         if self.active == b'0' && ('\x60'..='~').contains(&c) {
             return DEC_GRAPHICS[c as usize - 0x60];

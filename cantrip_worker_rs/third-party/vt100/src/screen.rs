@@ -62,7 +62,7 @@ pub struct Screen {
     alternate_grid: crate::grid::Grid,
 
     attrs: crate::attrs::Attrs,
-    saved_attrs: crate::attrs::Attrs,
+    saved_attrs: [crate::attrs::Attrs; 2],
     hyperlink: bool,
     pub(crate) charsets: crate::charset::Charsets,
 
@@ -83,7 +83,7 @@ impl Screen {
             alternate_grid: crate::grid::Grid::new(size, 0),
 
             attrs: crate::attrs::Attrs::default(),
-            saved_attrs: crate::attrs::Attrs::default(),
+            saved_attrs: [crate::attrs::Attrs::default(); 2],
             hyperlink: false,
             charsets: crate::charset::Charsets::default(),
 
@@ -272,9 +272,9 @@ impl Screen {
     ) -> Option<(Vec<u8>, usize)> {
         let mut history = self.grid.history_rows();
         let pen = if self.alternate_screen() {
-            &self.saved_attrs
+            self.saved_attrs[0]
         } else {
-            &self.attrs
+            self.attrs
         };
         loop {
             let mut contents = Vec::new();
@@ -283,7 +283,12 @@ impl Screen {
             if let Some(attrs) =
                 self.grid.write_snapshot(&mut contents, history, max_bytes)
             {
-                pen.write_escape_code_diff(&mut contents, &attrs);
+                self.write_snapshot_saved_cursor(
+                    &mut contents,
+                    false,
+                    attrs,
+                    pen,
+                );
                 if contents.len() <= max_bytes {
                     return Some((contents, history));
                 }
@@ -293,6 +298,39 @@ impl Screen {
             }
             history /= 2;
         }
+    }
+
+    /// Enter and draw the alternate viewport of a reconstructed attachment.
+    /// The normal viewport and its saved cursor must already be restored.
+    #[must_use]
+    pub fn alternate_attachment_formatted(&self) -> Vec<u8> {
+        let mut bytes = b"\x1b[?47h".to_vec();
+        self.write_contents_formatted(&mut bytes);
+        self.write_snapshot_saved_cursor(
+            &mut bytes, true, self.attrs, self.attrs,
+        );
+        self.write_input_mode_formatted(&mut bytes);
+        bytes
+    }
+
+    fn write_snapshot_saved_cursor(
+        &self,
+        contents: &mut Vec<u8>,
+        alternate: bool,
+        drawn_attrs: crate::attrs::Attrs,
+        live_attrs: crate::attrs::Attrs,
+    ) {
+        let grid = if alternate {
+            &self.alternate_grid
+        } else {
+            &self.grid
+        };
+        let saved_attrs = self.saved_attrs[usize::from(alternate)];
+        crate::term::MoveTo::new(grid.saved_position()).write_buf(contents);
+        saved_attrs.write_escape_code_diff(contents, &drawn_attrs);
+        self.charsets.write_save(alternate, contents);
+        live_attrs.write_escape_code_diff(contents, &saved_attrs);
+        grid.write_snapshot_position(contents, grid.pos().row, live_attrs);
     }
 
     fn write_contents_formatted(&self, contents: &mut Vec<u8>) {
@@ -758,25 +796,43 @@ impl Screen {
     }
 
     fn enter_alternate_grid(&mut self) {
-        self.grid_mut().set_scrollback(0);
-        self.set_mode(MODE_ALTERNATE_SCREEN);
+        if self.alternate_screen() {
+            return;
+        }
+        self.grid.set_scrollback(0);
         self.alternate_grid.allocate_rows();
+        let mut blank = crate::attrs::Attrs::default();
+        blank.set_bgcolor(self.attrs.bgcolor());
+        self.alternate_grid.clear(blank);
+        self.alternate_grid
+            .activate(self.grid.pos(), self.grid.origin_mode());
+        self.saved_attrs[1] = crate::attrs::Attrs::default();
+        self.charsets.clear_alternate_save();
+        self.set_mode(MODE_ALTERNATE_SCREEN);
     }
 
     fn exit_alternate_grid(&mut self) {
-        self.clear_mode(MODE_ALTERNATE_SCREEN);
+        if self.alternate_screen() {
+            self.grid.activate(
+                self.alternate_grid.pos(),
+                self.alternate_grid.origin_mode(),
+            );
+            self.clear_mode(MODE_ALTERNATE_SCREEN);
+        }
     }
 
     fn save_cursor(&mut self) {
         self.grid_mut().save_cursor();
-        self.saved_attrs = self.attrs;
-        self.charsets.save(self.alternate_screen());
+        let alternate = self.alternate_screen();
+        self.saved_attrs[usize::from(alternate)] = self.attrs;
+        self.charsets.save(alternate);
     }
 
     fn restore_cursor(&mut self) {
         self.grid_mut().restore_cursor();
-        self.attrs = self.saved_attrs;
-        self.charsets.restore(self.alternate_screen());
+        let alternate = self.alternate_screen();
+        self.attrs = self.saved_attrs[usize::from(alternate)];
+        self.charsets.restore(alternate);
     }
 
     fn set_mode(&mut self, mode: u16) {
@@ -1133,7 +1189,7 @@ impl Screen {
         self.charsets = crate::charset::Charsets::default();
         self.modes &= MODE_ALTERNATE_SCREEN;
         self.attrs = crate::attrs::Attrs::default();
-        self.saved_attrs = self.attrs;
+        self.saved_attrs[usize::from(self.alternate_screen())] = self.attrs;
         self.grid_mut().soft_reset();
     }
 
@@ -1296,7 +1352,7 @@ impl Screen {
                 [9] => self.set_mouse_mode(MouseProtocolMode::Press),
                 [25] => self.clear_mode(MODE_HIDE_CURSOR),
                 [45] => self.set_mode(MODE_REVERSE_WRAP),
-                [47] => self.enter_alternate_grid(),
+                [47 | 1047] => self.enter_alternate_grid(),
                 [66] => self.set_mode(MODE_APPLICATION_KEYPAD),
                 [1000] => {
                     self.set_mouse_mode(MouseProtocolMode::PressRelease);
@@ -1312,9 +1368,9 @@ impl Screen {
                 [1006] => {
                     self.set_mouse_encoding(MouseProtocolEncoding::Sgr);
                 }
+                [1048] => self.decsc(),
                 [1049] => {
                     self.decsc();
-                    self.alternate_grid.clear();
                     self.enter_alternate_grid();
                 }
                 [2004] => self.set_mode(MODE_BRACKETED_PASTE),
@@ -1338,9 +1394,7 @@ impl Screen {
                 [9] => self.clear_mouse_mode(MouseProtocolMode::Press),
                 [25] => self.set_mode(MODE_HIDE_CURSOR),
                 [45] => self.clear_mode(MODE_REVERSE_WRAP),
-                [47] => {
-                    self.exit_alternate_grid();
-                }
+                [47 | 1047] => self.exit_alternate_grid(),
                 [66] => self.clear_mode(MODE_APPLICATION_KEYPAD),
                 [1000] => {
                     self.clear_mouse_mode(MouseProtocolMode::PressRelease);
@@ -1358,6 +1412,7 @@ impl Screen {
                 [1006] => {
                     self.clear_mouse_encoding(MouseProtocolEncoding::Sgr);
                 }
+                [1048] => self.decrc(),
                 [1049] => {
                     self.exit_alternate_grid();
                     self.decrc();

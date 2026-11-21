@@ -142,9 +142,7 @@ impl Replay {
             b"\x1b[?1049l\x0f\x1b(B\x1b)B\x1b*B\x1b+B\x1b[4l\x1b[?6l\x1b[?7h\x1b[?45;1004;9;1000;1002;1003;1005;1006l\x1b[r"
                 .to_vec();
         let mut tail = if screen.alternate_screen() {
-            let mut alternate = b"\x1b[?1049h".to_vec();
-            alternate.extend(screen.state_formatted());
-            alternate
+            screen.alternate_attachment_formatted()
         } else {
             screen.input_mode_formatted()
         };

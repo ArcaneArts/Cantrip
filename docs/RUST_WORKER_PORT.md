@@ -10722,3 +10722,27 @@ Canonical underline matches the archived serializer's on/off behavior.
 Full saved-cursor state remains open.
 
 [xterm.js 6.0 style serialization](https://github.com/xtermjs/xterm.js/blob/6.0.0/addons/addon-serialize/src/SerializeAddon.ts)
+
+## 325. Preserve the terminal's saved cursor across reconnect
+
+Reference commit 6069fba17a84dae9080a0a6fae5aa3998ef0ce25 (#3488).
+
+The terminal tracks separate saved positions, drawing attributes, and
+character selections for the normal and alternate screens. It accepts
+ANSI cursor save and restore, DEC cursor save and restore, and the
+alternate-buffer mode aliases used by xterm.js. Saved rows follow
+scrollback displacement, and restore uses the current terminal margins.
+The attachment encodes each saved cursor after drawing its viewport,
+then restores the live cursor. A saved row above the reconstructed
+viewport is restored to its top visible row.
+
+Seventeen parser tests and five worker terminal tests passed locally.
+In the encrypted macOS ARM64 PTY
+fixture, the previous worker lost the alternate screen entered with
+mode 1047. The updated worker matched xterm.js for both cursor saves
+after reconnect, including color, underline, and a saved DEC drawing
+character. The same run covered alternate-screen resize, Host relay,
+the direct broker, CLI, oversized replay, and terminal service recovery.
+The worker PATH contained no Node executable.
+
+[xterm.js 6.0 cursor save and restore](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/InputHandler.ts#L2756)

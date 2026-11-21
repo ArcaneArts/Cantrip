@@ -130,6 +130,8 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                     self.screen.set_insert_mode(c == 'h');
                 }
                 'm' => self.screen.sgr(params, unhandled),
+                's' => self.screen.decsc(),
+                'u' => self.screen.decrc(),
                 'r' => self.screen.decstbm(canonicalize_params_decstbm(
                     params,
                     self.screen.grid().size(),

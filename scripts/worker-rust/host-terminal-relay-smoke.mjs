@@ -331,6 +331,76 @@ async function verifyCharacterSets(view, reattach) {
   }
 }
 
+async function verifySavedCursors(view, reattach) {
+  const { Terminal } = createRequire(
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
+  )("@xterm/headless");
+  const token = randomUUID();
+  const clear = "\x1b[H\x1b[2J";
+  await view.input(
+    "/bin/stty -echo; printf '\\033[H\\033[2J\\033[3J\\033[2;4H\\033[31;1m\\033(0\\033[s\\033(B\\033[0m\\033[H%s%s' cursor-normal- '" +
+      token +
+      "'; printf '\\033[?1047h\\033[3;6H\\033[34;4m\\033[?1048h\\033[0m\\033[H%s%s' cursor-alternate- '" +
+      token +
+      "'; IFS= read -r line; printf '\\033[?1048lX'; IFS= read -r line; printf '\\033[?1047lY\\033[uq'; IFS= read -r line; printf '\\033(B\\033[0m\\r\\n%s%s\\n' cursor-reset- '" +
+      token +
+      "'; /bin/stty echo\r",
+  );
+  const raw = await view.read(new RegExp("cursor-alternate-" + token));
+  const start = raw.lastIndexOf(clear);
+  assert.notEqual(start, -1);
+  const attached = await reattach();
+  const options = { cols: 113, rows: 43, allowProposedApi: true };
+  const live = new Terminal(options);
+  const replay = new Terminal(options);
+  const write = (term, text) =>
+    new Promise((resolve) => term.write(text, resolve));
+  const cell = (term, row, col) => {
+    const buffer = term.buffer.active;
+    const current = buffer.getLine(buffer.baseY + row).getCell(col);
+    return [
+      current.getChars(),
+      current.getFgColor(),
+      Boolean(current.isBold()),
+      Boolean(current.isUnderline()),
+    ];
+  };
+  let pendingReads = 3;
+  try {
+    await write(live, raw.slice(start));
+    assert.equal(attached.hydration.activeBuffer, "alternate");
+    await write(replay, attached.replay);
+    assert.equal(replay.buffer.active.type, "alternate");
+
+    await attached.input("\r");
+    pendingReads--;
+    const alt = await attached.read(/\x1b\[\?1048lX/u);
+    const altOutput = alt.slice(attached.replay.length);
+    await write(live, altOutput);
+    await write(replay, altOutput);
+    assert.deepEqual(cell(live, 2, 5), ["X", 4, false, true]);
+    assert.deepEqual(cell(replay, 2, 5), cell(live, 2, 5));
+
+    await attached.input("\r");
+    pendingReads--;
+    const normal = await attached.read(/\x1b\[\?1047lY\x1b\[uq/u);
+    const normalOutput = normal.slice(alt.length);
+    await write(live, normalOutput);
+    await write(replay, normalOutput);
+    assert.equal(replay.buffer.active.type, "normal");
+    assert.deepEqual(cell(live, 2, 6), ["Y", 4, false, true]);
+    assert.deepEqual(cell(live, 1, 3), ["─", 1, true, false]);
+    assert.deepEqual(cell(replay, 2, 6), cell(live, 2, 6));
+    assert.deepEqual(cell(replay, 1, 3), cell(live, 1, 3));
+  } finally {
+    for (let i = 0; i < pendingReads; i++) await view.input("\r");
+    await view.read(new RegExp("cursor-reset-" + token));
+    live.dispose();
+    replay.dispose();
+    await attached.close();
+  }
+}
+
 async function verifyAlternateReplay(view, reattach, eventually, checkout) {
   const { Terminal } = createRequire(
     new URL("../../tests/reference-node-worker/package.json", import.meta.url),
@@ -698,6 +768,7 @@ export async function verifyHostTerminal({
     await verifyInputModes(linkExit, attachWorkerLink);
     await verifyTextStyles(linkExit, attachWorkerLink);
     await verifyCharacterSets(linkExit, attachWorkerLink);
+    await verifySavedCursors(linkExit, attachWorkerLink);
     await verifyAlternateReplay(
       linkExit,
       attachWorkerLink,
