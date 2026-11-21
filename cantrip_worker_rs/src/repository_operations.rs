@@ -159,6 +159,8 @@ impl RepositoryOperations {
                 | "git.action"
                 | "git.history"
                 | "git.change-summary"
+                | "git.force-push.preview"
+                | "git.force-push.apply"
                 | "git.graph.snapshot"
                 | "git.graph.metrics"
                 | "git.graph.commit-overlay"
@@ -270,6 +272,7 @@ impl RepositoryOperations {
                             | "git.tag.action.apply"
                             | "git.submodule.action.apply"
                             | "git.lfs.action.apply"
+                            | "git.force-push.apply"
                             | "git.worktree.changes.apply"
                             | "git.recovery.apply"
                     ) && crate::git::stored::active(stored.as_ref())

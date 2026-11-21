@@ -1139,6 +1139,7 @@ export const gitObservationContractRoots = [
   "gitManagedOperationResponseSchema",
   "gitConflictListSchema",
   "gitChangeSummarySchema",
+  "gitForcePushPreviewSchema",
 ];
 
 export const remoteSurfaceHttpContractRoots = [

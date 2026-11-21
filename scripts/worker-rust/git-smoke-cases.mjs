@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
 import { handleGitCommand } from "../../tests/reference-node-worker/src/commands/git.ts";
+import { verifyForcePush } from "./git-force-push-smoke.mjs";
 import { verifyCommitActions } from "./git-commit-smoke-cases.mjs";
 import { verifyStashes } from "./git-stash-smoke-cases.mjs";
 import { verifyPartialPatches } from "./git-patch-smoke-cases.mjs";
@@ -133,6 +134,7 @@ export async function verifyGit({
   checkout,
   restartWorker,
   summaryOnly = false,
+  forcePushOnly = false,
 }) {
   const worktrees = await call("GET", `/api/projects/${projectId}/worktrees`);
   assert.equal(worktrees.status, 200, JSON.stringify(worktrees));
@@ -195,6 +197,7 @@ export async function verifyGit({
     }
   }
   if (summaryOnly) return verifyChangeSummary(checkout, operation);
+  if (forcePushOnly) return verifyForcePush(checkout, operation);
   const status = await operation({
     type: "git.status",
     arguments: { cwd: "/untrusted-overridden" },

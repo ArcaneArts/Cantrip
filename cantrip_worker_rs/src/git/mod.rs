@@ -8,6 +8,7 @@ mod conflicts;
 mod diff;
 pub(crate) mod draft;
 pub mod editor;
+mod force_push;
 mod graph;
 mod history;
 mod inspection;
@@ -74,6 +75,10 @@ pub async fn execute(command: &Value, scope: &Scope) -> Result<Value> {
         "git.recovery.apply" => recovery::apply(&cwd, &command["request"], scope).await,
         "git.status" => status(&cwd, scope).await,
         "git.change-summary" => change_summary::read(&cwd, command, scope).await,
+        "git.force-push.preview" => force_push::preview(&cwd, scope).await,
+        "git.force-push.apply" => {
+            force_push::apply(&cwd, command["token"].as_str().unwrap(), scope).await
+        }
         "git.graph.snapshot" => graph::snapshot(&cwd, command, scope).await,
         "git.graph.metrics" => graph::metrics(&cwd, command, scope).await,
         "git.graph.commit-overlay" => graph::overlay(&cwd, command, scope).await,
