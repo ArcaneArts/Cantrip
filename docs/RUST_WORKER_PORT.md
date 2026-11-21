@@ -10360,3 +10360,26 @@ lines in an unborn checkout through a nested Unicode path.
 
 The live Git force-push preview and apply operations still require
 their Rust handlers.
+
+## 310. Restore reviewed Git force push
+
+Reference commit `e018ab4f03f5bb9f6b1f56dff732946992fb0d6a` (#3473).
+
+The app's encrypted preview and apply commands now reach the native worker.
+The preview resolves the configured upstream, fetches that branch into a
+remote-tracking ref, and reports outgoing and replaced commits with the
+archived worker's counts, limits, warnings, and token format. Git resolves
+the remote and branch names independently when their prefixes overlap.
+
+Apply recomputes the preview, checks the token, and submits the reviewed
+local commit with an explicit lease for the expected remote commit.
+Automatic tag following is disabled for this operation.
+[Git push lease semantics](https://git-scm.com/docs/git-push).
+
+The macOS ARM64 worker passed the encrypted repository smoke against local
+Rust Core. The fixture matched the archived preview, preserved the chosen
+upstream with overlapping remote names, and rejected a moved local or remote
+branch. A local fixture hook advanced the remote during the push and
+the remote rejected the update. A fresh apply sent the reviewed local
+object even when HEAD moved during the push. Other remote refs and tags
+were unchanged. All 524 protocol tests passed locally.

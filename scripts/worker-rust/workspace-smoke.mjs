@@ -81,6 +81,7 @@ const { values } = parseArgs({
     "folder-conversion-only": { type: "boolean", default: false },
     "git-draft-only": { type: "boolean", default: false },
     "git-summary-only": { type: "boolean", default: false },
+    "git-force-push-only": { type: "boolean", default: false },
     "project-export-only": { type: "boolean", default: false },
     "terminal-relay-only": { type: "boolean", default: false },
     "terminal-direct-broker": { type: "string" },
@@ -131,6 +132,7 @@ if (
   !values["folder-conversion-only"] &&
   !values["git-draft-only"] &&
   !values["git-summary-only"] &&
+  !values["git-force-push-only"] &&
   !values["project-export-only"] &&
   !values["terminal-relay-only"] &&
   !values["run-definitions-only"] &&
@@ -807,7 +809,7 @@ try {
       });
       break exercise;
     }
-    if (values["git-summary-only"]) {
+    if (values["git-summary-only"] || values["git-force-push-only"]) {
       await verifyGit({
         call,
         ownerId: repository.ownerId,
@@ -821,7 +823,8 @@ try {
         projectId,
         workerId,
         checkout,
-        summaryOnly: true,
+        summaryOnly: values["git-summary-only"],
+        forcePushOnly: values["git-force-push-only"],
       });
       break exercise;
     }
@@ -1204,6 +1207,16 @@ try {
         suite: "actual-native-git-change-summary-worker-server",
         passed: true,
         matchedArchivedWorker: true,
+      }),
+    );
+  else if (values["git-force-push-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-git-force-push-worker-server",
+        passed: true,
+        matchedArchivedWorker: true,
+        rejectedMovedBranches: true,
+        verifiedRemoteLease: true,
       }),
     );
   else if (values["project-export-only"])
