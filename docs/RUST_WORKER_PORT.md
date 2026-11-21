@@ -10823,3 +10823,21 @@ handoff, and guest desktop recovery. It used Rust Core with PGlite and the
 existing guest image with `cantrip-os-remote` 0.11.0. Worker compilation,
 Rust and JavaScript formatting, script syntax, and `git diff --check` passed.
 [X11 selection ownership](https://www.x.org/releases/X11R7.6/doc/libX11/specs/libX11/libX11.html)
+
+## 330. Verify the native macOS WebDAV mount
+
+Reference commit `369ce86664755398e5aaa1d99521d5ead7890984` (#3493).
+
+On macOS ARM64, the system WebDAV driver mounted the production Rust worker’s
+Digest-protected loopback listener with credentials passed on an inherited file
+descriptor. The opt-in test read an existing file, wrote another file back to
+the share, and unmounted. The mount uses a disposable directory and stays out
+of Finder browsing. Run `cargo test --locked --manifest-path cantrip_worker_rs/Cargo.toml --lib macos_mount_reads_and_writes_a_project_share -- --ignored` locally.
+[Apple WebDAV mount implementation](https://github.com/apple-oss-distributions/webdavfs/blob/main/WebDAVPlugin/WebDAV_Mount.c)
+
+The separate `workspace-smoke.mjs --shares-only` run passed on the same host
+with the production Rust worker and Rust Core in PGlite mode. It carried a
+project share over WorkerLink relay and local direct, and a standalone Chat
+share over the legacy tunnel. The macOS mount test talks directly to the worker
+listener. The encrypted transport fixture opens HTTP requests through the
+existing share tunnels.
