@@ -11045,3 +11045,19 @@ The baseline queued turn never reached the model. The rebuilt worker
 sent the explicitly selected guest skill body once, dropped a retained
 reference to a disabled skill, and kept the encrypted display prompt and
 thread history. The Host skill and queued-steering smokes also passed.
+
+## 340. Apply queued plan mode in Cantrip OS Chats
+
+Reference commit `048905dfa3c3da1fa6993060f238a38589e317ad` (#3503).
+
+The worker admits queued `thread/settings/update` to guest preparation
+for the Chat's bound native thread. The existing handler authenticates
+the protected queue item, checks for a bare `/plan`, and settles it using
+the native settings operation receipt.
+
+The macOS ARM64 worker and Rust Core in PGlite mode used the verified
+native Codex fixture bundle and a disposable Linux ARM64 Cantrip OS guest.
+The prior worker left the same native thread in `default` mode. The
+rebuilt worker switched it to `plan`, settled the queue item, and made
+no additional model request. The focused guest thread-sync smoke, worker
+build, and format checks passed.
