@@ -29,7 +29,7 @@ pub(super) fn validate(command: &Value) -> Result<()> {
             && command["attachments"]
                 .as_array()
                 .is_some_and(|items| !items.is_empty()))
-        || ((guest || command["contextKind"] != "project")
+        || (command["contextKind"] != "project"
             && command["skillNames"]
                 .as_array()
                 .is_some_and(|names| !names.is_empty()))
@@ -102,11 +102,15 @@ pub(super) async fn native_input(
         if environment.selection["cwd"] != cwd {
             bail!("The native turn does not match its captured Linux cwd.");
         }
-        if input
-            .iter()
-            .any(|item| !matches!(item["type"].as_str(), Some("text" | "image" | "audio")))
-        {
-            bail!("This Linux turn requires guest attachment or skill materialization.");
+        // The selected runtime resolves skills and mentions through its catalog.
+        // Local media paths need materialization before a guest turn can use them.
+        if input.iter().any(|item| {
+            !matches!(
+                item["type"].as_str(),
+                Some("text" | "image" | "audio" | "skill" | "mention")
+            )
+        }) {
+            bail!("This Linux turn requires guest media materialization.");
         }
         cwd
     } else {

@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   decryptEndpointContentPayload,
   decryptPrivateDisplayLabel,
+  deriveFieldKey,
   encryptEndpointContentPayload,
+  encryptPayload,
 } from "../../packages/crypto/dist/index.js";
 import { createPreparedProjectChat } from "./console-interaction-cases.mjs";
 
@@ -17,6 +19,7 @@ export async function verifyGuestThreadSync({
   workerId,
   keyRevision,
   labelKey,
+  chatKey,
   repositoryKey,
   customizationKey,
   guest,
@@ -128,7 +131,9 @@ export async function verifyGuestThreadSync({
       })),
     );
   };
-  const messages = await retained();
+  const messages = await eventually(retained, (history) =>
+    assert.ok(history.some(({ text }) => text.includes(response))),
+  );
   const requests = model.requests.filter(
     ({ method }) => method === "POST",
   ).length;
@@ -142,10 +147,11 @@ export async function verifyGuestThreadSync({
   );
   const extraRoot = "additional skills";
   const extraName = "cantrip-guest-extra-skill-fixture";
+  const extraBody = "Unique instruction from the selected guest-only skill.";
   const extraPath = await guest.writeProjectSkill(
     placement,
     extraName,
-    `---\nname: ${extraName}\ndescription: Read the extra guest skill.\n---\n\nGuest content.\n`,
+    `---\nname: ${extraName}\ndescription: Read the extra guest skill.\n---\n\n${extraBody}\n`,
     extraRoot,
   );
   await guest.linkProjectDirectory(placement, "outside-skill-root", "/");
@@ -283,19 +289,58 @@ export async function verifyGuestThreadSync({
     1,
   );
 
-  const skillReply = model.reply({ text: "Guest skill inventory read." });
-  await call(
-    "POST",
-    chatUrl + "/turns",
-    202,
-    await encryptedTurn("Inspect the available skills.", profile.id),
-  );
+  const skillReply = model.reply({ text: "Guest skill selection read." });
+  const displayText = "Apply the explicitly selected skills.";
+  const selected = await encryptedTurn(displayText, profile.id);
+  const queued = selected.queuedPrompt;
+  const associatedData = {
+    ownerId,
+    keyRevision,
+    component: "chat-content",
+    table: "managed-queue",
+    rowId: createHash("sha256")
+      .update(JSON.stringify([serverId, chatId, queued.id]))
+      .digest("hex"),
+    field: "native-input",
+    formatVersion: 1,
+  };
+  queued.protectedNativeInput = await encryptPayload({
+    key: deriveFieldKey({ componentKey: chatKey, ...associatedData }),
+    associatedData,
+    plaintext: Buffer.from(
+      JSON.stringify({
+        version: 1,
+        displayText,
+        action: "literal",
+        executionMethod: "turn/start",
+        input: [
+          { type: "text", text: displayText, text_elements: [] },
+          { type: "skill", name: extraName, path: extraPath },
+          { type: "mention", name: extraName, path: `skill://${extraPath}` },
+          { type: "skill", name: skillName, path: skillPath },
+        ],
+      }),
+    ),
+  });
+  queued.executionMethod = "turn/start";
+  const submitted = await call("POST", chatUrl + "/turns", 202, selected);
+  assert.equal(submitted.status, "queued");
   await eventually(
     () => skillReply.request,
     (request) => assert.equal(request?.completed, true),
   );
-  const nativeInput = JSON.stringify(skillReply.request.input.input);
-  assert.ok(nativeInput.includes(extraName));
+  const nativeText = skillReply.request.input.input
+    .filter(({ type, role }) => type === "message" && role === "user")
+    .flatMap(({ content }) => content.map(({ text }) => text ?? ""));
+  assert.ok(nativeText.includes(displayText));
+  const selectedSkills = nativeText.filter((text) =>
+    text.includes(`<skill>\n<name>${extraName}</name>`),
+  );
+  assert.equal(selectedSkills.length, 1);
+  assert.ok(selectedSkills[0].includes(extraBody));
+  assert.ok(
+    nativeText.every((text) => !text.includes(`<name>${skillName}</name>`)),
+  );
   await eventually(sync, (value) => assert.deepEqual(value, original));
   assert.deepEqual(await setRoots([]), { roots: [] });
   const cleared = await customization(

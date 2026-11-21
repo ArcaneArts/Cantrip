@@ -11027,3 +11027,21 @@ Sway, and XWayland. The focused `xev` window received both events with
 Control held. The kernel and datagram modes passed separately. The
 clipboard selection still comes from the fixture, and GNOME and KDE
 portal consent remains unverified.
+
+## 339. Preserve selected skills in queued Cantrip OS turns
+
+Reference commit `f68eb803918392c807dc049d8fc2012c443ef191` (#3502).
+
+Project turns can select skills from their native Codex runtime in either
+placement. For queued Cantrip OS input, the worker checks retained skill
+and skill-mention paths against the guest runtime's current enabled
+inventory. The native turn receives the admitted references, and Codex
+loads the skill body from the selected guest. Local media continues to
+require materialization into a supported guest input.
+
+The local macOS ARM64 worker and Rust Core in PGlite mode used the
+previously built patched Codex CLI and a disposable Linux ARM64 guest.
+The baseline queued turn never reached the model. The rebuilt worker
+sent the explicitly selected guest skill body once, dropped a retained
+reference to a disabled skill, and kept the encrypted display prompt and
+thread history. The Host skill and queued-steering smokes also passed.

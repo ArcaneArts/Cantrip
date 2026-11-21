@@ -25,7 +25,7 @@ pub(super) fn mentions(text: &JsString) -> Vec<JsString> {
         .collect()
 }
 
-pub(super) async fn host_inputs(
+pub(super) async fn turn_inputs(
     runtime: &Runtime,
     cwd: &JsString,
     requested: &[JsString],
@@ -53,6 +53,40 @@ pub(super) async fn host_inputs(
             Some(json!({"type": "skill", "name": name, "path": path}))
         })
         .collect())
+}
+
+pub(super) async fn retain_guest_inputs(
+    runtime: &Runtime,
+    cwd: &JsString,
+    input: &mut Vec<Value>,
+    timeout: Duration,
+) -> Result<()> {
+    if !input.iter().any(|item| guest_skill_path(item).is_some()) {
+        return Ok(());
+    }
+    let (skills, _) = list(runtime, cwd, true, timeout).await?;
+    let enabled = skills
+        .iter()
+        .filter(|skill| skill["enabled"] != false)
+        .filter_map(|skill| skill["path"].as_str())
+        .collect::<HashSet<_>>();
+    input.retain(|item| guest_skill_path(item).is_none_or(|path| enabled.contains(path)));
+    Ok(())
+}
+
+fn guest_skill_path(input: &Value) -> Option<&str> {
+    let path = input["path"].as_str()?;
+    let qualified = path.strip_prefix("skill://");
+    match input["type"].as_str() {
+        Some("skill") => Some(qualified.unwrap_or(path)),
+        Some("mention") => qualified.or_else(|| {
+            path.rsplit(['/', '\\'])
+                .next()
+                .is_some_and(|name| name.eq_ignore_ascii_case("SKILL.md"))
+                .then_some(path)
+        }),
+        _ => None,
+    }
 }
 
 pub(super) async fn list(
