@@ -1,4 +1,4 @@
-use super::{drive, missing};
+use super::{drive, legacy_input, missing};
 use crate::{
     cancellation::Cancellation,
     error::Result,
@@ -14,7 +14,7 @@ use std::{
 };
 use wayland_client::{
     Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum, delegate_noop,
-    protocol::{wl_callback, wl_output, wl_registry, wl_shm},
+    protocol::{wl_callback, wl_output, wl_registry, wl_seat, wl_shm},
 };
 use wayland_protocols::{
     ext::{
@@ -25,7 +25,11 @@ use wayland_protocols::{
         zxdg_output_manager_v1 as xdg_manager, zxdg_output_v1 as xdg_output,
     },
 };
-use wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_manager_v1 as wlr_copy;
+use wayland_protocols_wlr::{
+    data_control::v1::client::zwlr_data_control_manager_v1 as data_control,
+    screencopy::v1::client::zwlr_screencopy_manager_v1 as wlr_copy,
+    virtual_pointer::v1::client::zwlr_virtual_pointer_manager_v1 as virtual_pointer,
+};
 
 const MAX_OUTPUTS: usize = 64;
 const INVENTORY_TIMEOUT: Duration = Duration::from_secs(2);
@@ -63,6 +67,9 @@ struct Inventory {
     screencopy: Option<(u32, wlr_copy::ZwlrScreencopyManagerV1)>,
     copy: Option<(u32, ext_copy::ExtImageCopyCaptureManagerV1)>,
     source: Option<(u32, ext_source::ExtOutputImageCaptureSourceManagerV1)>,
+    seats: BTreeMap<u32, (wl_seat::WlSeat, Option<String>)>,
+    pointer: Option<(u32, virtual_pointer::ZwlrVirtualPointerManagerV1)>,
+    clipboard: Option<(u32, data_control::ZwlrDataControlManagerV1)>,
     generation: u64,
 }
 
@@ -93,6 +100,9 @@ impl Desktop {
             screencopy: None,
             copy: None,
             source: None,
+            seats: BTreeMap::new(),
+            pointer: None,
+            clipboard: None,
             generation: (generation.as_nanos() as u64 & (MAX_SEQUENCE >> 1)).max(1),
         };
         connection.display().get_registry(&queue.handle(), ());
@@ -146,6 +156,27 @@ impl Desktop {
             _ => return None,
         };
         Some((shm.clone(), protocol))
+    }
+
+    pub(super) fn legacy_setup(&self) -> Option<legacy_input::Setup> {
+        let (_, pointer) = self.state.pointer.as_ref()?;
+        let mut seats = self.state.seats.values();
+        let (seat, name) = if self.state.seats.len() == 1 {
+            seats.next()?
+        } else {
+            let expected = std::env::var("XDG_SEAT").unwrap_or_else(|_| "seat0".into());
+            seats.find(|(_, name)| name.as_deref() == Some(expected.as_str()))?
+        };
+        Some(legacy_input::Setup::new(
+            self.connection.clone(),
+            pointer.clone(),
+            seat.clone(),
+            name.clone(),
+            self.state
+                .clipboard
+                .as_ref()
+                .map(|(_, clipboard)| clipboard.clone()),
+        ))
     }
 }
 
@@ -255,6 +286,17 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Inventory {
                 "ext_output_image_capture_source_manager_v1" if state.source.is_none() => {
                     state.source = Some((name, registry.bind(name, 1, qh, ())));
                 }
+                "wl_seat" if state.seats.len() < MAX_OUTPUTS => {
+                    state
+                        .seats
+                        .insert(name, (registry.bind(name, version.min(5), qh, name), None));
+                }
+                "zwlr_virtual_pointer_manager_v1" if version >= 2 && state.pointer.is_none() => {
+                    state.pointer = Some((name, registry.bind(name, 2, qh, ())));
+                }
+                "zwlr_data_control_manager_v1" if state.clipboard.is_none() => {
+                    state.clipboard = Some((name, registry.bind(name, version.min(2), qh, ())));
+                }
                 _ => {}
             },
             wl_registry::Event::GlobalRemove { name } => {
@@ -266,11 +308,38 @@ impl Dispatch<wl_registry::WlRegistry, ()> for Inventory {
                 remove_global(&mut state.copy, name, |proxy| proxy.destroy());
                 remove_global(&mut state.source, name, |proxy| proxy.destroy());
                 remove_global(&mut state.screencopy, name, |proxy| proxy.destroy());
+                remove_global(&mut state.pointer, name, |proxy| proxy.destroy());
+                remove_global(&mut state.clipboard, name, |proxy| proxy.destroy());
+                if let Some((seat, _)) = state.seats.remove(&name)
+                    && seat.version() >= 5
+                {
+                    seat.release();
+                }
             }
             _ => {}
         }
     }
 }
+
+impl Dispatch<wl_seat::WlSeat, u32> for Inventory {
+    fn event(
+        state: &mut Self,
+        _: &wl_seat::WlSeat,
+        event: wl_seat::Event,
+        id: &u32,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_seat::Event::Name { name } = event
+            && let Some((_, observed)) = state.seats.get_mut(id)
+        {
+            *observed = Some(name);
+        }
+    }
+}
+
+delegate_noop!(Inventory: ignore virtual_pointer::ZwlrVirtualPointerManagerV1);
+delegate_noop!(Inventory: ignore data_control::ZwlrDataControlManagerV1);
 
 fn remove_global<T>(value: &mut Option<(u32, T)>, id: u32, remove: impl FnOnce(T)) {
     if value.as_ref().is_some_and(|(current, _)| *current == id)

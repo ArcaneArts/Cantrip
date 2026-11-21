@@ -10264,3 +10264,26 @@ worker and Windows x64 helper compile checks passed.
 Actual GNOME and KDE consent and input still need local runtime coverage.
 Wayland sessions that rely on the legacy system input tools remain in scope.
 [Remote Desktop portal interface](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html).
+
+## 306. Control a Wayland display through the host input tools
+
+Reference commit `15aa104d961e8d8191b8a5efb387ff62463f74ac` (#3469).
+
+When the Remote Desktop portal lacks keyboard and pointer support, the
+helper can open the matching compositor output through its virtual pointer
+protocol. The same exclusive viewer attachment owns button and key holds.
+The helper connects to the host's configured `ydotoold` socket when a
+viewer attaches and dispatches keyboard events to that device. The optional
+Wayland data control protocol observes fresh clipboard text after a copy.
+Unicode text uses `wl-copy` and sends the paste shortcut after checking the
+published text. The selected monitor and active attachment still determine
+pointer coordinates and ownership. Keyboard input follows the seat's focus.
+
+A Linux ARM64 headless Sway fixture verified a framed monitor capture, an
+actual XWayland button press and release at the selected output coordinates,
+exclusive ownership and handoff, and fresh, stale, and Unicode clipboard
+cases. A local socket verified the keyboard protocol and held key release.
+The Weston portal fixture, eight participant tests, and macOS ARM64 worker
+compile check passed. Live `ydotoold` kernel delivery and actual GNOME and KDE
+consent remain unverified. This fallback requires a compositor that can bind
+a virtual pointer to an output.
