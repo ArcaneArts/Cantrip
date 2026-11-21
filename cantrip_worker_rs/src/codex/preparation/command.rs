@@ -768,6 +768,8 @@ impl Ensurer {
                                     crate::mcp::bindings::RUN_READ_TOOLS
                                         .into_iter()
                                         .chain(crate::mcp::bindings::RUN_WRITE_TOOLS)
+                                        .chain(crate::mcp::bindings::WORKTREE_READ_TOOLS)
+                                        .chain(crate::mcp::bindings::WORKTREE_WRITE_TOOLS)
                                         .map(|(operation, _)| operation),
                                 );
                             }

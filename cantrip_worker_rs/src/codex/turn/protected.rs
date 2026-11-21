@@ -35,9 +35,15 @@ impl Protected {
         }
         let grant = scope.material(None)?;
         let prompt = &command["protectedPrompt"];
-        if prompt["id"] != command["clientMessageId"] || prompt["classification"]["role"] != "user"
-        {
-            bail!("Protected chat input does not match the admitted user message.");
+        let role = &prompt["classification"]["role"];
+        // Core's worktree handoff starts an authenticated project turn with
+        // its own system message. User queue commands still require user input.
+        let system_continuation = role == "system"
+            && command["type"] == "chat.turn"
+            && command["contextKind"] == "project"
+            && !super::queued::is_queued(command);
+        if prompt["id"] != command["clientMessageId"] || (role != "user" && !system_continuation) {
+            bail!("Protected chat input does not match the admitted message.");
         }
         if !super::queued::is_queued(command) {
             let ids = array(&prompt["classification"]["attachmentIds"])?;

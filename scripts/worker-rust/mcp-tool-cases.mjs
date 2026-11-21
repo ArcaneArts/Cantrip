@@ -53,7 +53,7 @@ export async function managedMcpTurn(
     );
     for (const [
       index,
-      { name, args, error, verify, afterInvoke },
+      { name, args, error, verify, beforeInvoke, afterInvoke },
     ] of steps.entries()) {
       const { search, invoke } = planned[index];
       await read(search);
@@ -73,6 +73,7 @@ export async function managedMcpTurn(
         "Codex can discover " + name + " in the managed attachment.",
       );
       invoke.calls = [{ ...tool, arguments: args }];
+      await beforeInvoke?.();
       invoke.release();
       await afterInvoke?.();
       const next = await read(planned[index + 1]?.search ?? answer);

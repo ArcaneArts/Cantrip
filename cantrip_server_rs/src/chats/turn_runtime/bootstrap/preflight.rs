@@ -32,6 +32,12 @@ impl Bootstrap {
             .get("encryptedChatMessages")
             .filter(|v| !v.is_null())
             .cloned();
+        let message_role = nullish(options.get("messageRole"), json!("user"));
+        if encrypted_chat.as_ref().is_some_and(|messages| {
+            messages["userMessage"]["classification"]["role"] != message_role
+        }) {
+            bail!("The protected Chat input has an unexpected message role.");
+        }
         let task_conversation = context["experience"] == "task" && truthy(encrypted_chat.as_ref());
         if task_conversation {
             let source = encrypted_chat.as_ref().unwrap();
@@ -142,7 +148,7 @@ impl Bootstrap {
                         .map(turn_storage::attachment_summary)
                         .collect::<Vec<_>>(),
                     configuration.get("requestedReasoningEffort"),
-                    Some(&nullish(options.get("messageRole"), json!("user"))),
+                    Some(&message_role),
                 )
                 .await?;
             let response = json!({"id":uuid::Uuid::new_v4().to_string(),"idempotencyKey":format!("assistant:{}",text(&message,"id")?)});

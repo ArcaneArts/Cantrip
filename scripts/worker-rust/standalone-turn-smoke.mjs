@@ -79,6 +79,7 @@ const { values } = parseArgs({
     "mcp-terminal": { type: "boolean" },
     "mcp-browser": { type: "string" },
     "mcp-run": { type: "boolean" },
+    "mcp-worktree": { type: "boolean" },
     "mcp-client-controls": { type: "boolean" },
     "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
@@ -167,7 +168,8 @@ const repositoryKey =
   guestGoalControls ||
   guestSuspension ||
   guestRuntimeHandoff ||
-  guestClaimRecovery
+  guestClaimRecovery ||
+  values["mcp-worktree"]
     ? key("repository-content")
     : null;
 const recoveredTaskGoalCua = values["cua-task-goal-recovered"];
@@ -230,6 +232,7 @@ const interactionKey =
   values["mcp-terminal"] ||
   values["mcp-browser"] ||
   values["mcp-run"] ||
+  values["mcp-worktree"] ||
   values["cua-preview"] ||
   cuaAgent
     ? key("interaction-content")
@@ -257,6 +260,7 @@ const consoleStateKey =
   values["mcp-terminal"] ||
   values["mcp-browser"] ||
   values["mcp-run"] ||
+  values["mcp-worktree"] ||
   values["mcp-client-controls"] ||
   values.policies ||
   values.codegraph ||
@@ -3158,10 +3162,16 @@ try {
         values["mcp-browser"],
       )
     : null;
+  const worktreeFixture = values["mcp-worktree"]
+    ? await import("./mcp-worktree-cases.mjs")
+    : null;
+  const worktreeEnvironment =
+    await worktreeFixture?.worktreeFixtureEnvironment(root);
   workerEnvironment = {
     ...environment,
     PATH: mcpDiscovery?.bin ?? (values.codegraph ? "/usr/bin:/bin" : ""),
     ...browserEnvironment,
+    ...worktreeEnvironment,
     ...(mcpDiscovery
       ? { CANTRIP_MCP_FIXTURE_TOKEN: "mcp-fixture-private-value" }
       : {}),
@@ -3559,6 +3569,59 @@ try {
       workerId,
       keyRevision,
       labelKey,
+    });
+  } else if (worktreeFixture) {
+    await worktreeFixture.verifyManagedMcpWorktrees({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      interactionKey,
+      repositoryKey,
+      data,
+      root,
+      async enableFixtureCatalog(projectId) {
+        const port = new URL(server.origin).port;
+        const serverPath = path.resolve(values.server);
+        const { repositoryFixture } =
+          await import("../server-rust/repository-fixture.mjs");
+        const { literal } =
+          await import("../server-rust/project-target-state.mjs");
+        await stopWorker();
+        await server.close();
+        server = undefined;
+        const fixture = await repositoryFixture({
+          kind: "rust",
+          root,
+          dataDirectory: environment.CANTRIP_DATA_DIR,
+          executable: path.join(
+            path.dirname(serverPath),
+            "examples",
+            "project-repository-fixture",
+          ),
+          databaseMode: "pglite",
+        });
+        try {
+          // The public API attaches the real Git repository. This fixture supplies
+          // the catalog classification without contacting a GitHub account.
+          await fixture.seed(
+            "UPDATE projects SET origin_kind='github',folder_management=NULL,git_capability=true,github_capability=true,worktree_policy='agent-managed',github_repository_blind_index='managed-mcp-test' WHERE id=" +
+              literal(projectId),
+          );
+        } finally {
+          await fixture.close();
+        }
+        server = await startServer(
+          serverPath,
+          ["--database", "pglite", "--port", port, "--shutdown-on-stdin-close"],
+          { cwd: root, env: environment },
+        );
+        await startWorker();
+      },
     });
   } else if (values["mcp-run"]) {
     const { verifyManagedMcpRun } = await import("./mcp-run-cases.mjs");
