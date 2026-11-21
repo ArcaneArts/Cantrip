@@ -49,6 +49,14 @@ record the transition. The
 [hosted Linux ARM64 image check](#332-bound-hosted-worker-release-build-memory)
 covers the current Docker build, enrollment, and volume reuse.
 
+### Open managed MCP operations
+
+The managed Cantrip MCP attachment still needs the archived Chat, Alert,
+client control, target, worktree, Explorer, terminal, browser, and Run
+tool families. These tools appear in the catalog and have Core routes,
+but the Rust worker must finish admitting them and handling their
+endpoint-side contracts.
+
 ### Open platform checks
 
 - macOS shared-window copy requires a readable Accessibility selection. Apps
@@ -11185,3 +11193,22 @@ The encrypted Host relay, WorkerLink, direct terminal, CLI, and service
 restart and recovery passed with Node absent from the worker PATH. All
 26 parser tests and the documentation test passed, along with the offline
 worker build.
+
+## 347. Restore managed MCP Task tools
+
+Reference commit `4bc34c5a024f8f99af2970af3bd3a0c1f6cdb67d` (#3510).
+
+Project Chat attachments advertise `task_list`, `task_status`,
+`task_wait`, and `task_create` when Core supports them. Read-only and
+Cantrip OS placements omit creation. The worker encrypts the draft brief
+and title, derives the legacy Task identity from the caller and operation
+ID, and submits the request to Core's scheduler. Title decryption stays
+at the endpoint. Wait polls authorized status with the existing timeout,
+binding expiry, and lane cancellation behavior.
+
+The baseline Rust worker's Codex tool search could not find `task_list`.
+On macOS ARM64, production Rust Core in PGlite mode, the Rust worker
+with an empty PATH, and native Codex passed `--mcp-tasks`. The run
+verified encrypted creation, deduplicated IDs, timeout, self-wait
+rejection, actual delegated execution, and completed status and title
+after worker restart. The policy MCP smoke and offline build passed.

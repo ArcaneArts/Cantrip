@@ -1,6 +1,7 @@
 mod computer_use;
 mod policy;
 mod streamable;
+mod tasks;
 
 use super::{Active, Entry, Inner, MAXIMUM_OPERATIONS, now, server::Rejected, store};
 use anyhow::{Result, anyhow};
@@ -81,6 +82,7 @@ struct Authorized {
     active: Arc<Active>,
     identity: (JsString, JsString),
     version: u64,
+    expires_at: i64,
     legacy_root: Option<Value>,
     _slot: RequestSlot,
 }
@@ -317,6 +319,9 @@ impl Inner {
                 }))).map_err(super::response_error)
             }
             "policy.list" | "policy.read" => self.policy(authorization, &call, operation).await,
+            "task.list" | "task.status" | "task.wait" | "task.create" => {
+                self.task(authorization, &call, operation).await
+            }
             _ => Err(anyhow!("Unsupported Cantrip MCP operation.")),
         }
     }
@@ -405,6 +410,7 @@ fn admit(entry: &mut Entry, operation: &str) -> Result<Authorized, Failure> {
         active: active.clone(),
         identity: entry.identity.clone(),
         version: entry.capabilities.version,
+        expires_at: entry.expires_at,
         legacy_root: entry.legacy_root.clone(),
         _slot: RequestSlot(entry.requests.clone()),
     })

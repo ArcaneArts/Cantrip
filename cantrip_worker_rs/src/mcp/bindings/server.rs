@@ -20,10 +20,22 @@ pub struct Server {
 #[derive(Clone)]
 pub(super) struct Capabilities {
     pub version: u64,
-    pub context: bool,
-    pub compact: bool,
-    pub policy_list: bool,
-    pub policy_read: bool,
+    pub operations: Vec<Value>,
+}
+
+impl Capabilities {
+    pub fn legacy() -> Self {
+        Self {
+            version: 1,
+            operations: vec![json!("context.get")],
+        }
+    }
+
+    pub fn supports(&self, operation: &str) -> bool {
+        self.operations
+            .iter()
+            .any(|candidate| candidate == operation)
+    }
 }
 
 #[derive(Debug)]
@@ -85,13 +97,7 @@ impl Server {
             .await
             .map_err(|_| anyhow!("Cantrip MCP capability request failed."))?;
         if response.status().as_u16() == 404 {
-            return Ok(Capabilities {
-                version: 1,
-                context: true,
-                compact: false,
-                policy_list: false,
-                policy_read: false,
-            });
+            return Ok(Capabilities::legacy());
         }
         let response = body(response, MAXIMUM_CAPABILITIES).await?;
         let capabilities =
@@ -106,13 +112,9 @@ impl Server {
                     .any(|candidate| candidate.as_u64() == Some(*version))
             })
             .context("The Cantrip server does not support a compatible MCP binding protocol.")?;
-        let operations = capabilities["operations"].as_array().unwrap();
         Ok(Capabilities {
             version,
-            context: operations.iter().any(|op| op == "context.get"),
-            compact: operations.iter().any(|op| op == "context.compact"),
-            policy_list: operations.iter().any(|op| op == "policy.list"),
-            policy_read: operations.iter().any(|op| op == "policy.read"),
+            operations: capabilities["operations"].as_array().unwrap().clone(),
         })
     }
 
