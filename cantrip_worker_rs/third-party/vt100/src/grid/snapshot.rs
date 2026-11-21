@@ -10,6 +10,15 @@ impl Grid {
         self.scrollback.len()
     }
 
+    pub(crate) fn write_snapshot_tab_stops(&self, bytes: &mut Vec<u8>) {
+        // A legacy viewer can retain tab stops from a previous attachment.
+        bytes.extend_from_slice(b"\x1b[3g");
+        for col in self.tab_stops.range(..self.size.cols).copied() {
+            MoveTo::new(Pos { row: 0, col }).write_buf(bytes);
+            bytes.extend_from_slice(b"\x1bH");
+        }
+    }
+
     pub(crate) fn write_snapshot(
         &self,
         bytes: &mut Vec<u8>,

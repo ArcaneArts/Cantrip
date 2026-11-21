@@ -1,4 +1,5 @@
 use crate::term::BufWrite as _;
+use std::collections::BTreeSet;
 
 mod reflow;
 mod snapshot;
@@ -10,6 +11,7 @@ pub struct Grid {
     // Row index in retained history plus the viewport, as used by xterm.
     saved_row: usize,
     saved_col: u16,
+    tab_stops: BTreeSet<u16>,
     rows: Vec<crate::row::Row>,
     scroll_top: u16,
     scroll_bottom: u16,
@@ -26,6 +28,7 @@ impl Grid {
             pos: Pos::default(),
             saved_row: 0,
             saved_col: 0,
+            tab_stops: (0..size.cols).step_by(8).collect(),
             rows: vec![],
             scroll_top: 0,
             scroll_bottom: size.rows - 1,
@@ -55,6 +58,7 @@ impl Grid {
         self.pos = Pos::default();
         self.saved_row = 0;
         self.saved_col = 0;
+        self.tab_stops = (0..self.size.cols).step_by(8).collect();
         for row in self.drawing_rows_mut() {
             row.clear(attrs);
         }
@@ -792,10 +796,53 @@ impl Grid {
         }
     }
 
-    pub fn col_tab(&mut self) {
-        self.pos.col -= self.pos.col % 8;
-        self.pos.col += 8;
-        self.col_clamp();
+    pub fn col_tab(&mut self, count: u16, backward: bool) {
+        let col = self.pos.col;
+        if col >= self.size.cols {
+            return;
+        }
+        let offset = usize::from(count - 1);
+        self.pos.col = if backward {
+            self.tab_stops
+                .range(..col)
+                .rev()
+                .nth(offset)
+                .copied()
+                .unwrap_or(0)
+        } else {
+            self.tab_stops
+                .range(col + 1..self.size.cols)
+                .nth(offset)
+                .copied()
+                .unwrap_or(self.size.cols - 1)
+        };
+    }
+
+    pub fn set_tab_stop(&mut self) {
+        self.tab_stops.insert(self.pos.col);
+    }
+
+    pub fn clear_tab_stops(&mut self, mode: u16) {
+        match mode {
+            0 => {
+                self.tab_stops.remove(&self.pos.col);
+            }
+            3 => self.tab_stops.clear(),
+            _ => {}
+        }
+    }
+
+    pub fn extend_tab_stops(&mut self) {
+        // xterm retains hidden stops when shrinking and extends the eight-column
+        // pattern from the closest stop in range on resize.
+        let cols = self.size.cols;
+        let anchor = self
+            .tab_stops
+            .range(..=cols)
+            .next_back()
+            .copied()
+            .unwrap_or(0);
+        self.tab_stops.extend((anchor..cols).step_by(8));
     }
 
     pub fn col_set(&mut self, i: u16) {

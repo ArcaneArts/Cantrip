@@ -43,7 +43,7 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
         match b {
             7 => self.callbacks.audible_bell(&mut self.screen),
             8 => self.screen.bs(),
-            9 => self.screen.tab(),
+            9 => self.screen.tab(1, false),
             10 => self.screen.lf(),
             11 => self.screen.vt(),
             12 => self.screen.ff(),
@@ -71,6 +71,7 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                 b'8' => self.screen.decrc(),
                 b'=' => self.screen.deckpam(),
                 b'>' => self.screen.deckpnm(),
+                b'H' => self.screen.set_tab_stop(),
                 b'M' => self.screen.ri(),
                 b'c' => self.screen.ris(),
                 b'g' => self.callbacks.visual_bell(&mut self.screen),
@@ -113,6 +114,7 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                 'F' => self.screen.cpl(canonicalize_params_1(params, 1)),
                 'G' => self.screen.cha(canonicalize_params_1(params, 1)),
                 'H' => self.screen.cup(canonicalize_params_2(params, 1, 1)),
+                'I' => self.screen.tab(canonicalize_params_1(params, 1), false),
                 'J' => self
                     .screen
                     .ed(canonicalize_params_1(params, 0), unhandled),
@@ -125,7 +127,11 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                 'S' => self.screen.su(canonicalize_params_1(params, 1)),
                 'T' => self.screen.sd(canonicalize_params_1(params, 1)),
                 'X' => self.screen.ech(canonicalize_params_1(params, 1)),
+                'Z' => self.screen.tab(canonicalize_params_1(params, 1), true),
                 'd' => self.screen.vpa(canonicalize_params_1(params, 1)),
+                'g' => self
+                    .screen
+                    .clear_tab_stops(canonicalize_params_1(params, 0)),
                 'h' | 'l' if params.iter().any(|param| param == [4]) => {
                     self.screen.set_insert_mode(c == 'h');
                 }
