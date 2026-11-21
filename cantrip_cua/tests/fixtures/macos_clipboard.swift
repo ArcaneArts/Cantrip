@@ -3,10 +3,15 @@ import Foundation
 
 final class SelectionEditor: NSTextView {
     var hideDirectSelection = false
+    var attributedSelectionOnly = false
     var secure = false
 
     override func accessibilitySelectedText() -> String? {
         hideDirectSelection ? nil : super.accessibilitySelectedText()
+    }
+
+    override func accessibilityString(for range: NSRange) -> String? {
+        attributedSelectionOnly ? nil : super.accessibilityString(for: range)
     }
 
     override func accessibilitySubrole() -> NSAccessibility.Subrole? {
@@ -31,13 +36,18 @@ struct ClipboardFixture {
         let app = ClipboardFixtureApp.shared as! ClipboardFixtureApp
         let foreground = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let clipboard = NSPasteboard.general.changeCount
-        app.setActivationPolicy(.accessory)
+        app.setActivationPolicy(.prohibited)
         app.finishLaunching()
 
         func makeWindow(title: String) -> (NSWindow, SelectionEditor) {
             let screen = NSScreen.main!.visibleFrame
             let rect = NSRect(x: screen.minX + 8, y: screen.minY + 8, width: 180, height: 100)
-            let window = NSWindow(contentRect: rect, styleMask: .titled, backing: .buffered, defer: false)
+            let window = NSPanel(
+                contentRect: rect,
+                styleMask: [.titled, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
             window.title = title
             let editor = SelectionEditor(frame: NSRect(origin: .zero, size: rect.size))
             editor.string = "outside " + selection + "outside"
@@ -76,6 +86,8 @@ struct ClipboardFixture {
                     switch command {
                     case "range":
                         editor.hideDirectSelection = true
+                    case "attributed":
+                        editor.attributedSelectionOnly = true
                     case "secure":
                         editor.secure = true
                         editor.hideDirectSelection = false

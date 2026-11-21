@@ -71,6 +71,8 @@ unsafe extern "C" {
     fn CFArrayGetTypeID() -> usize;
     fn CFArrayGetCount(array: Ref) -> isize;
     fn CFArrayGetValueAtIndex(array: Ref, index: isize) -> Ref;
+    fn CFAttributedStringGetTypeID() -> usize;
+    fn CFAttributedStringGetString(value: Ref) -> Ref;
     fn CFStringGetTypeID() -> usize;
     fn CFStringCreateWithBytes(
         allocator: Ref,
@@ -805,6 +807,16 @@ fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String
         {
             return Ok(Some(text));
         }
+        cancel.check()?;
+        if let Ok(value) = element.parameterized_attr("AXAttributedStringForRange", &range)
+            && value.is(unsafe { CFAttributedStringGetTypeID() })
+        {
+            // The attributed value owns the plain string for the duration of the read.
+            let text = unsafe { CFAttributedStringGetString(value.0) };
+            if let Some(text) = decode_selection_text(text)? {
+                return Ok(Some(text));
+            }
+        }
     }
 
     // WebKit and Chromium can expose selection endpoints as opaque markers.
@@ -836,10 +848,14 @@ fn selection_length(value: &Owned) -> Option<usize> {
 }
 
 fn decode_selection(selection: &Owned) -> Result<Option<String>> {
-    if !selection.is(unsafe { CFStringGetTypeID() }) {
+    decode_selection_text(selection.0)
+}
+
+fn decode_selection_text(selection: Ref) -> Result<Option<String>> {
+    if selection.is_null() || unsafe { CFGetTypeID(selection) != CFStringGetTypeID() } {
         return Ok(None);
     }
-    let length = unsafe { CFStringGetLength(selection.0) };
+    let length = unsafe { CFStringGetLength(selection) };
     if length <= 0 {
         return Ok(None);
     }
@@ -849,7 +865,7 @@ fn decode_selection(selection: &Owned) -> Result<Option<String>> {
     let mut units = vec![0; length as usize];
     unsafe {
         CFStringGetCharacters(
-            selection.0,
+            selection,
             Range {
                 location: 0,
                 length,

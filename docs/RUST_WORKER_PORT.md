@@ -53,8 +53,7 @@ covers the current Docker build, enrollment, and volume reuse.
 
 - macOS shared-window copy requires a readable Accessibility selection. Apps
   whose custom Copy handlers expose no selection remain a compatibility gap.
-  The AppKit fixture could not resolve its focused control on the local host.
-  [macOS selection evidence](#308-read-macos-window-selections-exposed-as-text-ranges)
+  [macOS selection evidence](#336-copy-attributed-macos-window-selections)
 - The Windows interactive input and clipboard fixtures still need a live run.
   [Windows input evidence](#307-send-foreground-input-to-shared-windows-windows)
 - GNOME and KDE portal approval and physical delivery through `ydotoold` remain
@@ -10974,3 +10973,21 @@ The local fixture staged the rebuilt Codex CLI and code-mode host with the
 existing executor and responses proxy. Artifact hashes and the native
 protocol verifier passed. The complete release package and Windows and
 Linux worker hosts were outside this run.
+
+## 336. Copy attributed macOS window selections
+
+Reference commit `83b5a3686b4a18f57485d6456bdb86f9851e5ee9` (#3499).
+
+The native helper asks the selected control for its attributed selection
+when the plain text interfaces return no text. It returns the underlying
+Unicode text, with the existing clipboard size limit and checks for the
+original window, focused control, and secure fields.
+
+The AppKit fixture now disables activation and uses nonactivating panels.
+The prior launcher could activate the fixture without any helper request.
+On macOS ARM64 27.0.1, the old helper returned no text for the attributed
+selection. The rebuilt framed helper recovered it, preserved whitespace
+and Unicode, and left the host focus and pasteboard unchanged. Direct
+selection, plain ranges, secure fields, sibling windows, empty selections,
+and replay checks also passed. Custom Copy handlers without an accessible
+selection remain open.

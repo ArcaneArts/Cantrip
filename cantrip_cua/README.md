@@ -19,9 +19,9 @@ see [first-tranche acceptance](../docs/COMPUTER_USE_ACCEPTANCE.md).
 
 Remote copy reads the selection that the attached window's focused control
 exports through Accessibility. The helper accepts selected text and text
-returned for a selection range or browser text-marker range. Secure fields
-and other windows are excluded. Copy leaves host focus and the system
-pasteboard in place.
+returned for a plain or attributed selection range or a browser text-marker
+range. Secure fields and other windows are excluded. Copy leaves host focus
+and the system pasteboard in place.
 
 The framed fixture uses two background AppKit windows and requires a local
 session with Screen Recording and Accessibility access.
