@@ -25,11 +25,11 @@ function native(input: unknown, expected: unknown) {
   return actual.value;
 }
 vi.mock(
-  "../../cantrip_worker/src/native-history-render.js",
+  "../../tests/reference-node-worker/src/native-history-render.js",
   async (importOriginal) => {
     const source =
       await importOriginal<
-        typeof import("../../cantrip_worker/src/native-history-render.js")
+        typeof import("../../tests/reference-node-worker/src/native-history-render.js")
       >();
     return {
       ...source,
@@ -61,11 +61,11 @@ vi.mock(
   },
 );
 vi.mock(
-  "../../cantrip_worker/src/codex/event-normalization.js",
+  "../../tests/reference-node-worker/src/codex/event-normalization.js",
   async (importOriginal) => {
     const source =
       await importOriginal<
-        typeof import("../../cantrip_worker/src/codex/event-normalization.js")
+        typeof import("../../tests/reference-node-worker/src/codex/event-normalization.js")
       >();
     return {
       ...source,

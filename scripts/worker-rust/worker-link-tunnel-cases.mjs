@@ -30,7 +30,7 @@ import {
 import {
   openTunnelDataFrame,
   sealTunnelDataFrame,
-} from "../../cantrip_worker/src/tunnel-data-protection.ts";
+} from "../../tests/reference-node-worker/src/tunnel-data-protection.ts";
 
 import { connectDirect, openLocalWorkerLink } from "./direct-client.mjs";
 

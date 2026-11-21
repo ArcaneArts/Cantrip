@@ -135,7 +135,10 @@ describe.skipIf(!binary)(
         verifyFixtureGeometry,
       } = await import("../../../scripts/cantrip-cua/native-smoke.mjs");
       const requireWorker = createRequire(
-        new URL("../../../cantrip_worker/package.json", import.meta.url),
+        new URL(
+          "../../../tests/reference-node-worker/package.json",
+          import.meta.url,
+        ),
       );
       const sharp = requireWorker("sharp") as typeof import("sharp");
       const native = await launchNativeFixture();

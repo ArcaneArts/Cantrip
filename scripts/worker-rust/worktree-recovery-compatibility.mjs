@@ -18,7 +18,7 @@ import path from "node:path";
 import { parseArgs, isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
 import * as p from "../../packages/protocol/dist/index.js";
-import { handleGitCommand } from "../../cantrip_worker/src/commands/git.ts";
+import { handleGitCommand } from "../../tests/reference-node-worker/src/commands/git.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary workspace-fixture");
 const root = await realpath(

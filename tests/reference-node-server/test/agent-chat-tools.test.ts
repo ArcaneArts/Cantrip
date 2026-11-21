@@ -6,15 +6,15 @@ import {
   type CantripMcpBinding,
   type CantripAgentOperationRequest,
 } from "@cantrip/protocol";
-import { executeCantripMcpChatOperation } from "../../../cantrip_worker/src/mcp/chat-operations.js";
+import { executeCantripMcpChatOperation } from "../../../tests/reference-node-worker/src/mcp/chat-operations.js";
 import {
   openMessage,
   protectChatMessage,
   openEncryptedChatTurn,
-} from "../../../cantrip_worker/src/chat-message-encryption.js";
-import { createManagedQueueInputCodec } from "../../../cantrip_worker/src/managed-queue-input.js";
-import { encodePrivateDisplayLabelForWorker } from "../../../cantrip_worker/src/private-label-encryption.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
+} from "../../../tests/reference-node-worker/src/chat-message-encryption.js";
+import { createManagedQueueInputCodec } from "../../../tests/reference-node-worker/src/managed-queue-input.js";
+import { encodePrivateDisplayLabelForWorker } from "../../../tests/reference-node-worker/src/private-label-encryption.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
 import { createAgentChatOperations } from "../src/agent-tools/chat-operations.js";
 import { LOCAL_USER_ID as owner } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";

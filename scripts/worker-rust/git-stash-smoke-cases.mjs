@@ -7,7 +7,7 @@ import path from "node:path";
 import {
   readGitStashes,
   readGitStashFileDiff,
-} from "../../cantrip_worker/src/git.ts";
+} from "../../tests/reference-node-worker/src/git.ts";
 export async function verifyStashes({
   operation,
   checkout,

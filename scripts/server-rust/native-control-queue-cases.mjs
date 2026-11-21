@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { createManagedQueueInputCodec } from "../../cantrip_worker/src/managed-queue-input.ts";
-import { protectChatTurn } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { createManagedQueueInputCodec } from "../../tests/reference-node-worker/src/managed-queue-input.ts";
+import { protectChatTurn } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import {
   decryptQueuedPromptProtectedContent,
   decryptChatMessageProtectedContent,

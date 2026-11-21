@@ -9,8 +9,8 @@ import { AttachmentFixture } from "./tunnel-attachment-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import {
   targetStateSql,
   localOwner,

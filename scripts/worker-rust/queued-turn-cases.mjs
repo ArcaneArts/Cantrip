@@ -3,11 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { AttachmentStore } from "../../cantrip_worker/src/attachment-store.ts";
-import { protectWorkerAttachmentMetadata } from "../../cantrip_worker/src/attachment-encryption.ts";
-import { protectChatTurn } from "../../cantrip_worker/src/chat-message-encryption.ts";
-import { createManagedQueueInputCodec } from "../../cantrip_worker/src/managed-queue-input.ts";
-import { managedQueueTurnInput } from "../../cantrip_worker/src/codex/managed-queue-command.ts";
+import { AttachmentStore } from "../../tests/reference-node-worker/src/attachment-store.ts";
+import { protectWorkerAttachmentMetadata } from "../../tests/reference-node-worker/src/attachment-encryption.ts";
+import { protectChatTurn } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
+import { createManagedQueueInputCodec } from "../../tests/reference-node-worker/src/managed-queue-input.ts";
+import { managedQueueTurnInput } from "../../tests/reference-node-worker/src/codex/managed-queue-command.ts";
 import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
 

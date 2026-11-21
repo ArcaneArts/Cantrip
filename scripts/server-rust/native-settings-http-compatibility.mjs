@@ -13,7 +13,7 @@ import {
   encryptNativeAccountDefaults,
   decryptNativeAccountDefaults,
 } from "../../packages/crypto/dist/index.js";
-import { openNativeSettingsSnapshot } from "../../cantrip_worker/src/native-settings-content.ts";
+import { openNativeSettingsSnapshot } from "../../tests/reference-node-worker/src/native-settings-content.ts";
 import {
   settingsHttpFixture,
   settingsChat as chat,

@@ -4,7 +4,7 @@ import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { taskGoalOutcomeDeliverySchema } from "../../packages/protocol/dist/index.js";
-import { TaskGoalOutcomeDelivery } from "../../cantrip_worker/src/task-goal-outcome-delivery.ts";
+import { TaskGoalOutcomeDelivery } from "../../tests/reference-node-worker/src/task-goal-outcome-delivery.ts";
 
 function namespace(directory, { serverId, ownerId, workerId }) {
   const digest = createHash("sha256")

@@ -2455,7 +2455,7 @@ describe("durable native command admission", () => {
 
   it("completes the production native adapter acknowledgement-to-terminal flow against the real repository", async () => {
     const { ManagedNativeCommandSession } =
-      await import("../../../cantrip_worker/src/codex/managed-native-command-session.js");
+      await import("../../../tests/reference-node-worker/src/codex/managed-native-command-session.js");
     const { effectivePermissionProfile } =
       await import("../src/chats/execution-helpers.js");
     const repository = database.repository;
@@ -4269,9 +4269,9 @@ describe("native settings application evidence", () => {
 
   it("recovers a lost HTTP acknowledgment through the production worker delivery and authenticated route", async () => {
     const { NativeSettingsDelivery } =
-      await import("../../../cantrip_worker/src/native-settings-delivery.js");
+      await import("../../../tests/reference-node-worker/src/native-settings-delivery.js");
     const { NativeCommandClient } =
-      await import("../../../cantrip_worker/src/native-command-client.js");
+      await import("../../../tests/reference-node-worker/src/native-command-client.js");
     const { input, grant } = await settingsCommand();
     await dispatch(input, grant.receipt);
     const app = Fastify();

@@ -12,12 +12,12 @@ import {
   managedQueueReadSchema,
   managedQueueStartReceiptSchema,
 } from "../../packages/protocol/dist/index.js";
-import { AttachmentStore } from "../../cantrip_worker/src/attachment-store.ts";
-import { createManagedQueueInputCodec } from "../../cantrip_worker/src/managed-queue-input.ts";
+import { AttachmentStore } from "../../tests/reference-node-worker/src/attachment-store.ts";
+import { createManagedQueueInputCodec } from "../../tests/reference-node-worker/src/managed-queue-input.ts";
 import {
   openNativeCommandContent,
   protectNativeCommandContent,
-} from "../../cantrip_worker/src/native-command-content.ts";
+} from "../../tests/reference-node-worker/src/native-command-content.ts";
 
 export function seedNativeQueue(home, threadId) {
   const database = path.join(home, "queue_1.sqlite");

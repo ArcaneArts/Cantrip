@@ -17,20 +17,20 @@ import {
   WorktreeManager,
   buildGitOperationObservation,
   worktreeWatchEventTouchesFiles,
-} from "../../cantrip_worker/src/worktrees.ts";
+} from "../../tests/reference-node-worker/src/worktrees.ts";
 import {
   WorktreeFileActivity,
   activityPath,
   boundedFileChanges,
   commitFileChanges,
-} from "../../cantrip_worker/src/worktree-file-activity.ts";
-import { serverWorkerNotification } from "../../cantrip_worker/src/worker-notification-privacy.ts";
-import { handleWorktreeCommand } from "../../cantrip_worker/src/commands/worktree.ts";
+} from "../../tests/reference-node-worker/src/worktree-file-activity.ts";
+import { serverWorkerNotification } from "../../tests/reference-node-worker/src/worker-notification-privacy.ts";
+import { handleWorktreeCommand } from "../../tests/reference-node-worker/src/commands/worktree.ts";
 import {
   previewGitManagedOperation,
   startGitManagedOperation,
   controlGitManagedOperation,
-} from "../../cantrip_worker/src/git.ts";
+} from "../../tests/reference-node-worker/src/git.ts";
 import * as protocol from "../../packages/protocol/dist/index.js";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary observations-fixture");

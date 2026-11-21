@@ -5,12 +5,12 @@ import { LOCAL_USER_ID } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import { createNativeSettingsFixture } from "./native-settings-repository-fixture.js";
 import { installInternalNativeSettingsRoutes } from "../src/app/routes/internal-native-settings.js";
-import { NativeCommandClient } from "../../../cantrip_worker/src/native-command-client.js";
-import { NativeSettingsPublisher } from "../../../cantrip_worker/src/native-settings-publisher.js";
-import { NativeHistoryObservations } from "../../../cantrip_worker/src/codex/native-history-observation.js";
-import { readProtectedNativeSettings } from "../../../cantrip_worker/src/native-settings-read.js";
-import { protectNativeSettingsSnapshot } from "../../../cantrip_worker/src/native-settings-content.js";
-import { nativeThreadSettings } from "../../../cantrip_worker/test/fixtures/native-thread-settings.js";
+import { NativeCommandClient } from "../../../tests/reference-node-worker/src/native-command-client.js";
+import { NativeSettingsPublisher } from "../../../tests/reference-node-worker/src/native-settings-publisher.js";
+import { NativeHistoryObservations } from "../../../tests/reference-node-worker/src/codex/native-history-observation.js";
+import { readProtectedNativeSettings } from "../../../tests/reference-node-worker/src/native-settings-read.js";
+import { protectNativeSettingsSnapshot } from "../../../tests/reference-node-worker/src/native-settings-content.js";
+import { nativeThreadSettings } from "../../../tests/reference-node-worker/test/fixtures/native-thread-settings.js";
 
 let f: Awaited<ReturnType<typeof createNativeSettingsFixture>>;
 beforeAll(async () => {

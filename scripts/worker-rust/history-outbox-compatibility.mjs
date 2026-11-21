@@ -15,13 +15,13 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { NativeHistoryOutbox } from "../../cantrip_worker/src/native-history-outbox.ts";
+import { NativeHistoryOutbox } from "../../tests/reference-node-worker/src/native-history-outbox.ts";
 import {
   prepareNativeHistoryOutboxBaseline,
   validateNativeHistoryOutboxBaseline,
-} from "../../cantrip_worker/src/native-history-outbox-baseline.ts";
-import { nativeHistoryBatchPayloadDigest } from "../../cantrip_worker/src/native-history-batch-archive.ts";
-import { verifyNativeHistoryRejection } from "../../cantrip_worker/src/native-history-rejection.ts";
+} from "../../tests/reference-node-worker/src/native-history-outbox-baseline.ts";
+import { nativeHistoryBatchPayloadDigest } from "../../tests/reference-node-worker/src/native-history-batch-archive.ts";
+import { verifyNativeHistoryRejection } from "../../tests/reference-node-worker/src/native-history-rejection.ts";
 
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass the built --binary history-source-fixture");

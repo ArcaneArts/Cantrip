@@ -2,7 +2,7 @@
 // native turn, Goal tools, protected history and full worker stay real.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { loadStoredWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { eventually } from "./full-worker.mjs";
 
 const postgres = createRequire(

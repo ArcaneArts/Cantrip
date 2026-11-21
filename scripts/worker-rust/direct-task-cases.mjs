@@ -15,7 +15,7 @@ import {
   taskPauseRuntimeStateSchema,
   taskTurnStopResultSchema,
 } from "../../packages/protocol/dist/index.js";
-import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
+import { NativeSuspensionStore } from "../../tests/reference-node-worker/src/native-suspension-store.ts";
 import { openTaskOperationRelayResult } from "../../packages/crypto/dist/index.js";
 
 function boundaryTool(body, callId) {

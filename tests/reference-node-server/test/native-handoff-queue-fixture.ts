@@ -5,13 +5,13 @@ import type { NativeCommandSession } from "@cantrip/protocol";
 import type { createNativeSettingsFixture } from "./native-settings-repository-fixture.js";
 import { LOCAL_USER_ID as ownerId } from "../src/db/repository.js";
 import { createChatRecoveryRuntime } from "../src/app/runtime/chat-recovery-runtime.js";
-import { createManagedQueueInputCodec } from "../../../cantrip_worker/src/managed-queue-input.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
-import { protectNativeCommandContent } from "../../../cantrip_worker/src/native-command-content.js";
-import type { NativeCommandClient } from "../../../cantrip_worker/src/native-command-client.js";
-import type { CodexAppServer } from "../../../cantrip_worker/src/codex/app-server.js";
-import type { ManagedNativeCommandSession } from "../../../cantrip_worker/src/codex/managed-native-command-session.js";
-import type { HandoffRuntime } from "../../../cantrip_worker/src/codex/managed-runtime-handoff.js";
+import { createManagedQueueInputCodec } from "../../../tests/reference-node-worker/src/managed-queue-input.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
+import { protectNativeCommandContent } from "../../../tests/reference-node-worker/src/native-command-content.js";
+import type { NativeCommandClient } from "../../../tests/reference-node-worker/src/native-command-client.js";
+import type { CodexAppServer } from "../../../tests/reference-node-worker/src/codex/app-server.js";
+import type { ManagedNativeCommandSession } from "../../../tests/reference-node-worker/src/codex/managed-native-command-session.js";
+import type { HandoffRuntime } from "../../../tests/reference-node-worker/src/codex/managed-runtime-handoff.js";
 
 type Fixture = Awaited<ReturnType<typeof createNativeSettingsFixture>>;
 /** Canonical queue claim/dispatch, encrypted input and admitted native execution.

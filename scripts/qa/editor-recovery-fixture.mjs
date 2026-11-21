@@ -50,7 +50,7 @@ const root = path.resolve(
 );
 const appRequire = createRequire(path.join(root, "cantrip_app/package.json"));
 const workerRequire = createRequire(
-  path.join(root, "cantrip_worker/package.json"),
+  path.join(root, "tests/reference-node-worker/package.json"),
 );
 const { WebSocket, WebSocketServer } = workerRequire("ws");
 

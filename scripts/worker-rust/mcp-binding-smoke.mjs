@@ -24,7 +24,7 @@ const { values } = parseArgs({
 assert.ok(values.worker && values.fixture, "Supply the two native binaries.");
 const worker = path.resolve(values.worker);
 const requireWorker = createRequire(
-  new URL("../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 );
 const { Client } = await import(
   requireWorker.resolve("@modelcontextprotocol/sdk/client/index.js")

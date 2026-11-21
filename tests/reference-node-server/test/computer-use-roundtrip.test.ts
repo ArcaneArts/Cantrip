@@ -17,12 +17,12 @@ import {
   type ComputerUseRequest,
   type CuaScope,
 } from "@cantrip/protocol/computer-use";
-import { CantripCuaService } from "../../../cantrip_worker/src/computer-use/service.js";
+import { CantripCuaService } from "../../../tests/reference-node-worker/src/computer-use/service.js";
 import {
   CuaAuthorizationError,
   handleComputerUseOperation,
-} from "../../../cantrip_worker/src/computer-use/handler.js";
-import { launchCuaTransport } from "../../../cantrip_worker/src/computer-use/transport.js";
+} from "../../../tests/reference-node-worker/src/computer-use/handler.js";
+import { launchCuaTransport } from "../../../tests/reference-node-worker/src/computer-use/transport.js";
 import {
   installComputerUseRoutes,
   type ComputerUseRouteDependencies,

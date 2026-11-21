@@ -15,13 +15,13 @@ import { tmpdir, hostname } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { readWorkerConfig } from "../../cantrip_worker/src/config.ts";
-import { resolveCodexInstallation } from "../../cantrip_worker/src/codex/bundled-runtime.ts";
+import { readWorkerConfig } from "../../tests/reference-node-worker/src/config.ts";
+import { resolveCodexInstallation } from "../../tests/reference-node-worker/src/codex/bundled-runtime.ts";
 import {
   loadOrCreateWorkerIdentity,
   loadStoredWorkerCredential,
   saveWorkerCredential,
-} from "../../cantrip_worker/src/credential-store.ts";
+} from "../../tests/reference-node-worker/src/credential-store.ts";
 
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(
@@ -33,7 +33,7 @@ const root = await realpath(
   await mkdtemp(path.join(tmpdir(), "cantrip-worker-config-")),
 );
 const workerRoot = fileURLToPath(
-  new URL("../../cantrip_worker", import.meta.url),
+  new URL("../../tests/reference-node-worker", import.meta.url),
 );
 const credential = "ctwk_" + "a".repeat(43),
   code = "ctwl_" + "b".repeat(32);

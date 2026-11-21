@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { workerCommandSchema } from "../../packages/protocol/dist/index.js";
-import { handleGitCommand } from "../../cantrip_worker/src/commands/git.ts";
+import { handleGitCommand } from "../../tests/reference-node-worker/src/commands/git.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary workspace-fixture");
 const original = { ...process.env };

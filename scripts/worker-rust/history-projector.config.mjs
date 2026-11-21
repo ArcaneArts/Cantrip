@@ -1,7 +1,9 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 export default defineConfig({
-  root: fileURLToPath(new URL("../../cantrip_worker", import.meta.url)),
+  root: fileURLToPath(
+    new URL("../../tests/reference-node-worker", import.meta.url),
+  ),
   test: {
     include: ["test/native-history-projection.test.ts"],
     setupFiles: [

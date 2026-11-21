@@ -6,10 +6,10 @@ import {
   nativeSuspensionStorageScopeSchema,
   nativeSuspensionStorageRecordSchema,
   nativeSuspensionStorageSnapshotSchema,
-} from "../../cantrip_worker/src/native-suspension-store.ts";
-import { workerTurnContinuationSchema } from "../../cantrip_worker/src/codex/worker-turn-continuation.ts";
-import { taskWorkerContinuationSchema } from "../../cantrip_worker/src/task-worker-continuation.ts";
-import { taskEventSealerStateSchema } from "../../cantrip_worker/src/task-event-sealer-state.ts";
+} from "../../tests/reference-node-worker/src/native-suspension-store.ts";
+import { workerTurnContinuationSchema } from "../../tests/reference-node-worker/src/codex/worker-turn-continuation.ts";
+import { taskWorkerContinuationSchema } from "../../tests/reference-node-worker/src/task-worker-continuation.ts";
+import { taskEventSealerStateSchema } from "../../tests/reference-node-worker/src/task-event-sealer-state.ts";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
 
 const schemas = {

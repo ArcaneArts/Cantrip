@@ -8,7 +8,7 @@ import {
 import {
   openNativeCommandContent,
   protectNativeCommandContent,
-} from "../../cantrip_worker/src/native-command-content.ts";
+} from "../../tests/reference-node-worker/src/native-command-content.ts";
 
 const method = "thread/settings/update";
 

@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { readGitBranches } from "../../cantrip_worker/src/git.ts";
+import { readGitBranches } from "../../tests/reference-node-worker/src/git.ts";
 function normalize(v, key) {
   if (key === "generatedAt") {
     assert.ok(Number.isFinite(Date.parse(v)));

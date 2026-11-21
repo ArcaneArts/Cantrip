@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatMessage } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import {
   protectChatPlanState,
   openChatPlanState,
-} from "../../cantrip_worker/src/chat-plan-encryption.ts";
+} from "../../tests/reference-node-worker/src/chat-plan-encryption.ts";
 import {
   protectAgentInteractionRequest,
   protectAgentInteractionResponse,
   openAgentInteractionResponse,
-} from "../../cantrip_worker/src/interaction-encryption.ts";
+} from "../../tests/reference-node-worker/src/interaction-encryption.ts";
 import {
   encryptTaskMessageProtectedContent,
   decryptTaskMessageProtectedContent,

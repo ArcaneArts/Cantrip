@@ -9,16 +9,16 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { enrollWorker } from "../../cantrip_worker/src/enrollment.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { enrollWorker } from "../../tests/reference-node-worker/src/enrollment.ts";
 import {
   createHeartbeat,
   sendHeartbeat,
-} from "../../cantrip_worker/src/heartbeat.ts";
+} from "../../tests/reference-node-worker/src/heartbeat.ts";
 import {
   loadStoredWorkerCredential,
   saveWorkerCredential,
-} from "../../cantrip_worker/src/credential-store.ts";
+} from "../../tests/reference-node-worker/src/credential-store.ts";
 import { buildRustServer, repositoryRoot } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
@@ -212,7 +212,7 @@ async function flow(fixture) {
             );
           }
           // The credential command handler has the same persistence/update order
-          // as cantrip_worker/src/index.ts; all transport behavior is unmodified.
+          // as tests/reference-node-worker/src/index.ts; all transport behavior is unmodified.
           saveWorkerCredential({
             credential: command.credential,
             dataDirectory: config.dataDirectory,

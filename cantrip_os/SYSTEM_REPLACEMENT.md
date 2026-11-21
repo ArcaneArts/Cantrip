@@ -265,7 +265,7 @@ Build normal Worker dependencies/modules, then opt into disposable Engine tests:
 
 ```sh
 pnpm --filter '@cantrip/worker^...' build
-pnpm --filter @cantrip/worker build
+pnpm --filter @cantrip/worker-reference reference:build
 CANTRIP_OS_REPLACEMENT_INTEGRATION=1 \
 CANTRIP_OS_REPLACEMENT_EVIDENCE=/absolute/private/evidence \
   node --test cantrip_os/tests/system-replacement.integration.test.mjs

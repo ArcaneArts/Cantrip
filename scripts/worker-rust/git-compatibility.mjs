@@ -18,11 +18,11 @@ import { parseArgs } from "node:util";
 import {
   readGitStatus,
   readGitFileDiff,
-} from "../../cantrip_worker/src/git.ts";
+} from "../../tests/reference-node-worker/src/git.ts";
 import {
   RepositoryManagedOperationStore,
   managedOperationRecord,
-} from "../../cantrip_worker/src/repository-managed-operation-store.js";
+} from "../../tests/reference-node-worker/src/repository-managed-operation-store.js";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary workspace-fixture");
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-git-native-"));

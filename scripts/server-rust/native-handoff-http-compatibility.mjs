@@ -17,13 +17,13 @@ import {
 import { literal } from "./project-target-state.mjs";
 import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
-import { NativeRuntimeHandoffClient } from "../../cantrip_worker/src/native-runtime-handoff-client.ts";
-import { prepareManagedConsoleState } from "../../cantrip_worker/src/managed-console-state.ts";
-import { openTerminalPrivateState } from "../../cantrip_worker/src/terminal-private-state.ts";
+import { NativeRuntimeHandoffClient } from "../../tests/reference-node-worker/src/native-runtime-handoff-client.ts";
+import { prepareManagedConsoleState } from "../../tests/reference-node-worker/src/managed-console-state.ts";
+import { openTerminalPrivateState } from "../../tests/reference-node-worker/src/terminal-private-state.ts";
 import {
   openNativeSettingsSnapshot,
   protectNativeSettingsSnapshot,
-} from "../../cantrip_worker/src/native-settings-content.ts";
+} from "../../tests/reference-node-worker/src/native-settings-content.ts";
 
 const option = (key) => {
   const index = process.argv.indexOf(key);

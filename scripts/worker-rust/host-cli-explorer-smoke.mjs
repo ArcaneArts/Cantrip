@@ -65,7 +65,7 @@ export async function verifyHostCliExplorer({
   await writeFile(path.join(checkout, directory, "second.txt"), "second file");
 
   const { CantripCliBroker } =
-    await import("../../cantrip_worker/src/cli-broker.ts");
+    await import("../../tests/reference-node-worker/src/cli-broker.ts");
   const relayed = [];
   const oracle = new CantripCliBroker(
     {

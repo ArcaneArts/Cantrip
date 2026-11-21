@@ -6,8 +6,8 @@ import {
   deriveFieldKey,
   encryptPayload,
 } from "../../packages/crypto/dist/index.js";
-import { protectChatTurn } from "../../cantrip_worker/src/chat-message-encryption.ts";
-import { createManagedQueueInputCodec } from "../../cantrip_worker/src/managed-queue-input.ts";
+import { protectChatTurn } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
+import { createManagedQueueInputCodec } from "../../tests/reference-node-worker/src/managed-queue-input.ts";
 
 export async function verifyQueuePreparation({
   request,

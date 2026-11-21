@@ -92,7 +92,7 @@ export async function verifyFlutterRunProvider({
 
   const prefix = `/api/projects/${projectId}/run-configurations`;
   const { RunConfigurationDefinitionService } =
-    await import("../../cantrip_worker/src/run-configuration-definition-service.ts");
+    await import("../../tests/reference-node-worker/src/run-configuration-definition-service.ts");
   const oracle = new RunConfigurationDefinitionService({
     emit: () => {},
     environment: { SHELL: "/bin/sh", PATH: "/usr/bin:/bin" },

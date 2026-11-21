@@ -15,9 +15,9 @@ import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
 import { heartbeat, password, projectLabel } from "./security-fixtures.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
+import { sendHeartbeat } from "../../tests/reference-node-worker/src/heartbeat.ts";
 const option = (key) => {
   const i = process.argv.indexOf(key);
   return i < 0 ? undefined : process.argv[i + 1];

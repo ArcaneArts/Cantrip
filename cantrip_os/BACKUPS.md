@@ -224,7 +224,7 @@ remain required. A local VM reached over SSH is not cloud acceptance.
 
 ## Cross-instance product test
 
-`cantrip_worker/test/os-cross-instance.product.integration.test.ts` uses the
+`tests/reference-node-worker/test/os-cross-instance.product.integration.test.ts` uses the
 actual running Node Server, full external Worker, real account grants and guest
 packages. It creates two disposable Docker instances, captures through the
 product API, verifies encrypted-file permissions, corrupts that test archive,
@@ -247,7 +247,7 @@ CANTRIP_OS_PRODUCT_TEST_RECOVERY=/absolute/private/recovery.json \
 CANTRIP_OS_PRODUCT_TEST_WORKER=disposable-worker-id \
 CANTRIP_OS_PRODUCT_TEST_WORKER_DATA=/absolute/private/worker \
 CANTRIP_OS_CROSS_INSTANCE_TEST_IMAGE=your-current-normal-image \
-  pnpm --filter @cantrip/worker exec vitest run \
+  pnpm --filter @cantrip/worker-reference exec vitest run \
     test/os-cross-instance.product.integration.test.ts --maxWorkers=1
 ```
 

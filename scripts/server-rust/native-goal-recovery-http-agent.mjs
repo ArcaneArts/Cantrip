@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
-import { protectChatTurn } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatTurn } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import {
   nativeGoalRecoveryReceiptSchema,
   nativeGoalClaimRecoveryReceiptSchema,

@@ -14,7 +14,7 @@ import { LOCAL_USER_ID } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import { retainSuspendedChatTurn } from "../src/app/runtime/retain-suspended-chat-turn.js";
 import { installInternalNativeCommandRoutes } from "../src/app/routes/internal-native-commands.js";
-import { NativeCommandClient } from "../../../cantrip_worker/src/native-command-client.js";
+import { NativeCommandClient } from "../../../tests/reference-node-worker/src/native-command-client.js";
 import { createDurableChatStopRuntime } from "../src/app/runtime/durable-chat-stop.js";
 import {
   createNativeSettingsFixture,

@@ -21,7 +21,7 @@ let directory,
   workerCommandSchema,
   decryptCantripOsSystemOperationResult;
 const managerModule = new URL(
-  "../../cantrip_worker/dist/os-executor/system-manager.js",
+  "../../tests/reference-node-worker/dist/os-executor/system-manager.js",
   import.meta.url,
 ).href;
 before(
@@ -33,7 +33,7 @@ before(
       await import("../../packages/crypto/dist/index.js"));
     ({ CantripOsSystemManager } = await import(managerModule));
     ({ systemOperationContext } =
-      await import("../../cantrip_worker/dist/os-executor/system-job.js"));
+      await import("../../tests/reference-node-worker/dist/os-executor/system-job.js"));
     const root = process.env.CANTRIP_OS_SYSTEM_WORKER_EVIDENCE;
     if (root) await mkdir(resolve(root), { recursive: true, mode: 0o700 });
     directory = await mkdtemp(

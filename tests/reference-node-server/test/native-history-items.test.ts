@@ -22,13 +22,13 @@ import { createNativeCommandWorkerFixture } from "./native-command-worker-fixtur
 import {
   EncryptedChatEventSealer,
   openEncryptedChatTurn,
-} from "../../../cantrip_worker/src/chat-message-encryption.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
+} from "../../../tests/reference-node-worker/src/chat-message-encryption.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
 import {
   protectNativeHistoryItemEvidence,
   openNativeHistoryItemEvidence,
-} from "../../../cantrip_worker/src/native-history-item-content.js";
-import type { NativeHistoryStateItem } from "../../../cantrip_worker/src/native-history-state.js";
+} from "../../../tests/reference-node-worker/src/native-history-item-content.js";
+import type { NativeHistoryStateItem } from "../../../tests/reference-node-worker/src/native-history-state.js";
 import {
   buildAgentTurnProjection,
   mergeAgentCardsIntoTimeline,

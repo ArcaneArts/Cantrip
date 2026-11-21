@@ -150,7 +150,12 @@ test(
       await mkdir(path.join(worker, "node_modules"));
       await symlink(
         await realpath(
-          path.join(root, "cantrip_worker", "node_modules", "sharp"),
+          path.join(
+            root,
+            "tests/reference-node-worker",
+            "node_modules",
+            "sharp",
+          ),
         ),
         path.join(worker, "node_modules", "sharp"),
         "junction",

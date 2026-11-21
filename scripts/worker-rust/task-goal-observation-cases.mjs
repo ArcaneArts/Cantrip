@@ -8,7 +8,7 @@ import {
   chatGoalWireResponseSchema,
   taskGoalWorkerResultSchema,
 } from "../../packages/protocol/dist/index.js";
-import { protectTaskGoalResult } from "../../cantrip_worker/src/task-operation.ts";
+import { protectTaskGoalResult } from "../../tests/reference-node-worker/src/task-operation.ts";
 
 export function observeTaskGoal({
   invoke,

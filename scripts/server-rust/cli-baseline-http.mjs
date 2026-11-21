@@ -10,7 +10,7 @@ import {
   settingsHttpFixture,
   settingsWorker,
 } from "./native-settings-http-fixture.mjs";
-import { invokeCantripCliCommand } from "../../cantrip_worker/src/cli-client.ts";
+import { invokeCantripCliCommand } from "../../tests/reference-node-worker/src/cli-client.ts";
 
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-cli-baseline-"));
 const reportPath = ".qa/rust-server/cli-before-http-v1.json";

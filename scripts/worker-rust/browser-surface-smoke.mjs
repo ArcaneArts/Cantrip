@@ -855,7 +855,7 @@ async function verifyWindowInput(second) {
 
 async function verifyDesktop() {
   const workerRequire = createRequire(
-    new URL("../../cantrip_worker/package.json", import.meta.url),
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
   );
   const sharp = workerRequire("sharp");
   const first = await connectDesktop();

@@ -11,7 +11,7 @@ import {
 } from "../src/app/routes/computer-use-agent.js";
 import type { ServerConfig } from "../src/config.js";
 import type { ChatExecutionContext } from "../src/db/repository.js";
-import { requestComputerUseAuthority } from "../../../cantrip_worker/src/computer-use/authority-client.js";
+import { requestComputerUseAuthority } from "../../../tests/reference-node-worker/src/computer-use/authority-client.js";
 
 const now = Date.parse("2026-09-05T00:00:00Z");
 function binding(at = Date.now()): CantripMcpBinding {

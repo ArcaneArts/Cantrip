@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { protectChatTurn } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatTurn } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import {
   decryptQueuedPromptProtectedContent,
   decryptChatMessageProtectedContent,

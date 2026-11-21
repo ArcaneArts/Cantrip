@@ -29,7 +29,7 @@ import {
 } from "./chat-thread-sync-fixtures.mjs";
 import { literal } from "./project-target-state.mjs";
 import { eventually } from "./full-worker.mjs";
-import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatMessage } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import { decryptChatMessageProtectedContent } from "../../packages/crypto/dist/index.js";
 const option = (key) => {
   const i = process.argv.indexOf(key);

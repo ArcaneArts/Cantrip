@@ -17,9 +17,9 @@ import {
   openTaskConversationPrompt,
   prepareEncryptedTaskOperation,
   protectTaskConversationMessage,
-} from "../../cantrip_worker/src/task-operation.ts";
-import { protectChatTurn } from "../../cantrip_worker/src/chat-message-encryption.ts";
-import { NativeCommandClient } from "../../cantrip_worker/src/native-command-client.ts";
+} from "../../tests/reference-node-worker/src/task-operation.ts";
+import { protectChatTurn } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
+import { NativeCommandClient } from "../../tests/reference-node-worker/src/native-command-client.ts";
 import {
   seedEventChats,
   task,

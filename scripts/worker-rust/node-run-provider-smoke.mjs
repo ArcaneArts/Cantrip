@@ -59,7 +59,7 @@ export async function verifyNodeRunProvider({
 
   const prefix = `/api/projects/${projectId}/run-configurations`;
   const { RunConfigurationDefinitionService } =
-    await import("../../cantrip_worker/src/run-configuration-definition-service.ts");
+    await import("../../tests/reference-node-worker/src/run-configuration-definition-service.ts");
   // The worker baseline in this fixture contains native utilities only. The
   // execution cases below add Node and npm through a project environment file.
   const oracle = new RunConfigurationDefinitionService({

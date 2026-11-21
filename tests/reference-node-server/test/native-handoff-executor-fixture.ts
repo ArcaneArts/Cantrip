@@ -1,11 +1,11 @@
-import { createManagedQueueInputCodec } from "../../../cantrip_worker/src/managed-queue-input.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
-import { ManagedNativeQueueClient } from "../../../cantrip_worker/src/managed-native-queue-client.js";
+import { createManagedQueueInputCodec } from "../../../tests/reference-node-worker/src/managed-queue-input.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
+import { ManagedNativeQueueClient } from "../../../tests/reference-node-worker/src/managed-native-queue-client.js";
 import { installInternalNativeQueueRoutes } from "../src/app/routes/internal-native-queue.js";
-import { seedHandoffHistory } from "../../../cantrip_worker/test/native-handoff-history-fixture.js";
+import { seedHandoffHistory } from "../../../tests/reference-node-worker/test/native-handoff-history-fixture.js";
 import { installInternalNativeCommandRoutes } from "../src/app/routes/internal-native-commands.js";
-import { NativeCommandClient } from "../../../cantrip_worker/src/native-command-client.js";
-import { createNativeHandoffPublicationFixture } from "../../../cantrip_worker/test/native-handoff-publication-fixture.js";
+import { NativeCommandClient } from "../../../tests/reference-node-worker/src/native-command-client.js";
+import { createNativeHandoffPublicationFixture } from "../../../tests/reference-node-worker/test/native-handoff-publication-fixture.js";
 import WebSocket from "ws";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -23,17 +23,17 @@ import type { createNativeSettingsFixture } from "./native-settings-repository-f
 import { runtimeHandoffConfiguration } from "../src/terminals/runtime-handoff-configuration.js";
 import { resolveModelRoutePairs } from "../src/models/subagent-routing.js";
 import { installInternalNativeRuntimeHandoffRoutes } from "../src/app/routes/internal-native-runtime-handoffs.js";
-import { NativeRuntimeHandoffClient } from "../../../cantrip_worker/src/native-runtime-handoff-client.js";
-import { CodexAppServer } from "../../../cantrip_worker/src/codex/app-server.js";
-import { ManagedExecutionRunner } from "../../../cantrip_worker/src/codex/managed-execution-runner.js";
-import { discoverCodexRuntime } from "../../../cantrip_worker/src/codex/discovery.js";
+import { NativeRuntimeHandoffClient } from "../../../tests/reference-node-worker/src/native-runtime-handoff-client.js";
+import { CodexAppServer } from "../../../tests/reference-node-worker/src/codex/app-server.js";
+import { ManagedExecutionRunner } from "../../../tests/reference-node-worker/src/codex/managed-execution-runner.js";
+import { discoverCodexRuntime } from "../../../tests/reference-node-worker/src/codex/discovery.js";
 import {
   ManagedRuntimeHandoffCoordinator,
   type HandoffRuntime,
-} from "../../../cantrip_worker/src/codex/managed-runtime-handoff.js";
-import { ManagedRuntimeNamespaces } from "../../../cantrip_worker/src/codex/managed-runtime-namespaces.js";
-import { ManagedRuntimeHandoffJournal } from "../../../cantrip_worker/src/codex/managed-runtime-handoff-journal.js";
-import { protectNativeSettingsSnapshot } from "../../../cantrip_worker/src/native-settings-content.js";
+} from "../../../tests/reference-node-worker/src/codex/managed-runtime-handoff.js";
+import { ManagedRuntimeNamespaces } from "../../../tests/reference-node-worker/src/codex/managed-runtime-namespaces.js";
+import { ManagedRuntimeHandoffJournal } from "../../../tests/reference-node-worker/src/codex/managed-runtime-handoff-journal.js";
+import { protectNativeSettingsSnapshot } from "../../../tests/reference-node-worker/src/native-settings-content.js";
 
 /** Real native engines, encrypted snapshots, authenticated worker HTTP and real
  * migrated storage. A deterministic fake response seeds native history; handoff

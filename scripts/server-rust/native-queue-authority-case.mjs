@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { ManagedNativeQueueClient } from "../../cantrip_worker/src/managed-native-queue-client.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { ManagedNativeQueueClient } from "../../tests/reference-node-worker/src/managed-native-queue-client.ts";
 import {
   settingsChat as chat,
   until,

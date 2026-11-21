@@ -20,13 +20,13 @@ import path from "node:path";
 import {
   ManagedFolderManager,
   deriveManagedFolderLocation,
-} from "../../cantrip_worker/src/managed-folders.ts";
-import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
+} from "../../tests/reference-node-worker/src/managed-folders.ts";
+import { normalizeProjectSourcePath } from "../../tests/reference-node-worker/src/project-source-path.ts";
 import {
   GithubClient,
   githubRepositoryFromRemoteUrl,
-} from "../../cantrip_worker/src/github.ts";
-import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
+} from "../../tests/reference-node-worker/src/github.ts";
+import { WorkerRoutingRegistry } from "../../tests/reference-node-worker/src/routing-registry.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary workspace-fixture");
 const root = await realpath(

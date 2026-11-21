@@ -4,26 +4,26 @@ import { fileURLToPath } from "node:url";
 import { writeFile } from "node:fs/promises";
 import { format } from "prettier";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
-import * as journal from "../../cantrip_worker/src/native-history-source-journal.ts";
-import * as native from "../../cantrip_worker/src/codex/native-history.ts";
+import * as journal from "../../tests/reference-node-worker/src/native-history-source-journal.ts";
+import * as native from "../../tests/reference-node-worker/src/codex/native-history.ts";
 
-import * as state from "../../cantrip_worker/src/native-history-state.ts";
+import * as state from "../../tests/reference-node-worker/src/native-history-state.ts";
 import {
   nativeInitialTurnSettingsSchema,
   nativeHistoryBindingOpenResultSchema,
   nativeHistoryResolveResultSchema,
 } from "../../packages/protocol/dist/index.js";
 
-import * as outbox from "../../cantrip_worker/src/native-history-outbox.ts";
-import * as mutation from "../../cantrip_worker/src/native-history-outbox-mutations.ts";
-import { nativeHistoryOutboxBaselineSchema } from "../../cantrip_worker/src/native-history-outbox-baseline.ts";
+import * as outbox from "../../tests/reference-node-worker/src/native-history-outbox.ts";
+import * as mutation from "../../tests/reference-node-worker/src/native-history-outbox-mutations.ts";
+import { nativeHistoryOutboxBaselineSchema } from "../../tests/reference-node-worker/src/native-history-outbox-baseline.ts";
 import {
   nativeHistoryOutboxRecordSchema,
   historySequenceSchema,
-} from "../../cantrip_worker/src/native-history-outbox-record.ts";
+} from "../../tests/reference-node-worker/src/native-history-outbox-record.ts";
 
-import * as projection from "../../cantrip_worker/src/native-history-projection.ts";
-import * as rebase from "../../cantrip_worker/src/native-history-projection-rebase.ts";
+import * as projection from "../../tests/reference-node-worker/src/native-history-projection.ts";
+import * as rebase from "../../tests/reference-node-worker/src/native-history-projection-rebase.ts";
 
 export const schemas = {
   nativeHistorySourceScopeSchema: journal.scopeSchema,

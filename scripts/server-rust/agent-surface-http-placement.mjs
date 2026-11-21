@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { WorkerInferenceAdmission } from "../../cantrip_worker/src/inference-admission.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { WorkerInferenceAdmission } from "../../tests/reference-node-worker/src/inference-admission.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { heartbeat } from "./security-fixtures.mjs";
 import {
   literal,

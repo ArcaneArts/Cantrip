@@ -69,7 +69,7 @@ export async function verifyHostCli({
   }
 
   const { CantripCliBroker } =
-    await import("../../cantrip_worker/src/cli-broker.ts");
+    await import("../../tests/reference-node-worker/src/cli-broker.ts");
   const dataDirectory = path.join(path.dirname(workerDirectory), "oracle-cli");
   await mkdir(dataDirectory);
   const oracle = new CantripCliBroker(

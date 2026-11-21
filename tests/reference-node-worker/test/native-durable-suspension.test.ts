@@ -1,0 +1,1575 @@
+import {
+  spawn,
+  execFile,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
+import { createHash } from "node:crypto";
+import { once } from "node:events";
+import { constants } from "node:fs";
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+  type FileHandle,
+} from "node:fs/promises";
+import { createServer, type ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import readline from "node:readline";
+import { promisify } from "node:util";
+import { describe, expect, it, vi } from "vitest";
+import { CodexRpcClient } from "../src/codex/rpc-client.js";
+import { verifyBuiltRuntime } from "../../../scripts/cantrip-codex/verify-built-runtime.mjs";
+import { killNativeTree } from "./native-process-tree-fixture.js";
+
+const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
+type Json = Record<string, any>;
+const execute = promisify(execFile);
+
+function incompatibleCheckpoint(
+  original: Buffer,
+  runtimeVersion = "incompatible-native-runtime/continuation-v99",
+) {
+  const envelope = JSON.parse(original.toString());
+  const record = JSON.parse(envelope.recordJson);
+  record.runtimeVersion = runtimeVersion;
+  if (runtimeVersion.includes("incompatible-native-runtime"))
+    record.continuation = { unknownFutureContinuation: true };
+  envelope.recordJson = JSON.stringify(record);
+  envelope.sha256 = createHash("sha256")
+    .update(envelope.recordJson)
+    .digest("hex");
+  return Buffer.from(JSON.stringify(envelope));
+}
+
+function stream(response: ServerResponse, events: Json[]) {
+  for (const event of events)
+    response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  response.end();
+}
+
+function completed(id: string) {
+  return {
+    type: "response.completed",
+    response: {
+      id,
+      usage: { input_tokens: 10, output_tokens: 3, total_tokens: 13 },
+    },
+  };
+}
+
+function answer(response: ServerResponse, id: string, text: string) {
+  stream(response, [
+    {
+      type: "response.output_item.done",
+      item: {
+        type: "message",
+        role: "assistant",
+        id,
+        phase: "final_answer",
+        content: [{ type: "output_text", text }],
+      },
+    },
+    completed(`${id}-response`),
+  ]);
+}
+
+function tool(request: Json, command: string, id: string) {
+  const tools = request.tools.flatMap((entry: Json) =>
+    entry.type === "namespace"
+      ? entry.tools.map((item: Json) => ({ ...item, namespace: entry.name }))
+      : [entry],
+  );
+  const selected = tools.find((entry: Json) => entry.name === "exec_command");
+  expect(
+    selected,
+    "native exec_command must actually be advertised",
+  ).toBeDefined();
+  return {
+    type: "response.output_item.done",
+    item: {
+      type: "function_call",
+      id: `item-${id}`,
+      call_id: id,
+      name: selected.name,
+      ...(selected.namespace ? { namespace: selected.namespace } : {}),
+      arguments: JSON.stringify({ cmd: command, yield_time_ms: 10000 }),
+    },
+  };
+}
+
+describe.skipIf(!binary)(
+  "durable suspension on the real pinned native runtime",
+  () => {
+    it.each([
+      ["paginated", "forced"],
+      ["legacy", "forced"],
+      ["paginated", "EOF"],
+      ["legacy", "EOF"],
+    ] as const)(
+      "keeps one native turn and completed tool results with %s history after %s termination",
+      async (historyMode, termination) => {
+        // Inspect the exact packaged executable and current patch fingerprint.
+        await verifyBuiltRuntime(path.dirname(binary!));
+        const directory = await mkdtemp(
+          path.join(tmpdir(), "cantrip-durable-native-"),
+        );
+        const home = path.join(directory, "home"),
+          cwd = path.join(directory, "workspace");
+        const sessionEndLog = path.join(home, "session-end-events.jsonl");
+        const sessionEndEvents = async (): Promise<Json[]> => {
+          try {
+            return (await readFile(sessionEndLog, "utf8"))
+              .trim()
+              .split("\n")
+              .filter(Boolean)
+              .map((line) => JSON.parse(line) as Json);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+            throw error;
+          }
+        };
+        const requests: { body: Json; response: ServerResponse }[] = [];
+        const provider = createServer(async (request, response) => {
+          let body = "";
+          for await (const chunk of request) body += chunk;
+          if (!request.url?.startsWith("/v1/")) {
+            response.writeHead(404).end();
+            return;
+          }
+          requests.push({ body: JSON.parse(body), response });
+          response.writeHead(200, { "content-type": "text/event-stream" });
+          response.write(
+            `event: response.created\ndata: ${JSON.stringify({ type: "response.created", response: { id: `native-${requests.length}` } })}\n\n`,
+          );
+        });
+        let child: ChildProcessWithoutNullStreams | undefined,
+          client: CodexRpcClient | undefined;
+        let completedSuccessfully = false;
+        let retirementPipe:
+          | {
+              path: string;
+              original: Buffer;
+              opening?: Promise<FileHandle>;
+              writer?: FileHandle;
+            }
+          | undefined;
+        let frames: Json[] = [];
+        const allFrames: Json[][] = [];
+        const nativeStderr: string[] = [];
+        const inferenceAcknowledgements: Promise<void>[] = [];
+        const inferenceProtocolErrors: string[] = [];
+        const rpc = async (method: string, params: Json): Promise<Json> => {
+          const response = await client!.request(method, params);
+          if (response.error)
+            throw new Error(`${method}: ${JSON.stringify(response.error)}`);
+          return response.result as Json;
+        };
+        const start = async () => {
+          child = spawn(binary!, ["app-server"], {
+            cwd,
+            env: { PATH: process.env.PATH, HOME: home, CODEX_HOME: home },
+            stdio: "pipe",
+          });
+          child.stderr.on("data", (chunk) => nativeStderr.push(String(chunk)));
+          frames = [];
+          allFrames.push(frames);
+          const ownFrames = frames;
+          const ownClient = (client = new CodexRpcClient(child, 30000));
+          readline
+            .createInterface({ input: child.stdout })
+            .on("line", (line) => {
+              const frame = JSON.parse(line) as Json;
+              ownFrames.push(frame);
+              if (
+                frame.method === "thread/managedExecution/requested" &&
+                frame.params.trigger === "inference" &&
+                ["suspend", "resume"].includes(frame.params.input.phase)
+              ) {
+                // These are actual ownership handshakes, not notifications.
+                // Only fresh begin grants are withheld by the scenario below.
+                const { threadId, runnerGeneration, attemptId, input } =
+                  frame.params;
+                inferenceAcknowledgements.push(
+                  ownClient
+                    .request("thread/managedExecution/resolve", {
+                      threadId,
+                      runnerGeneration,
+                      attemptId,
+                      operationGeneration: `inference:${input.scopeId}:${attemptId}`,
+                      allow: true,
+                    })
+                    .then((response) => {
+                      if (response.error)
+                        throw new Error(JSON.stringify(response.error));
+                    })
+                    .catch((error: unknown) => {
+                      inferenceProtocolErrors.push(String(error));
+                    }),
+                );
+              }
+            });
+          await rpc("initialize", {
+            clientInfo: { name: "cantrip_durable_native", version: "1" },
+            capabilities: { experimentalApi: true },
+          });
+          client.notify("initialized");
+        };
+        const kill = async () => {
+          if (child) await killNativeTree(child);
+          client?.close();
+          child = undefined;
+          client = undefined;
+        };
+        const closeOwnerViaEof = async () => {
+          if (child && child.exitCode === null && child.signalCode === null) {
+            const closed = once(child, "close");
+            child.stdin.end();
+            await closed;
+          }
+          client?.close();
+          child = undefined;
+          client = undefined;
+        };
+        const terminatePausedOwner = async () => {
+          if (termination === "forced") await kill();
+          else await closeOwnerViaEof();
+          expect(await sessionEndEvents()).toEqual([]);
+        };
+        try {
+          await Promise.all([mkdir(home), mkdir(cwd)]);
+          await writeFile(
+            path.join(cwd, "session_end_hook.cjs"),
+            `const fs = require("node:fs");\nconst input = JSON.parse(fs.readFileSync(0, "utf8"));\nfs.appendFileSync(${JSON.stringify(sessionEndLog)}, JSON.stringify(input) + "\\n");\nprocess.stdout.write("{}");\n`,
+          );
+          await writeFile(
+            path.join(home, "hooks.json"),
+            JSON.stringify({
+              hooks: {
+                SessionEnd: [
+                  {
+                    matcher: "other",
+                    hooks: [
+                      {
+                        type: "command",
+                        command: "node session_end_hook.cjs",
+                      },
+                    ],
+                  },
+                ],
+              },
+            }),
+          );
+          provider.listen(0, "127.0.0.1");
+          await once(provider, "listening");
+          await writeFile(
+            path.join(home, "config.toml"),
+            [
+              'model="gpt-5"',
+              'model_provider="fixture"',
+              'approval_policy="never"',
+              'sandbox_mode="danger-full-access"',
+              "features.plugins=false",
+              "features.code_mode_host=false",
+              "[model_providers.fixture]",
+              'name="Fixture"',
+              `base_url="http://127.0.0.1:${(provider.address() as { port: number }).port}/v1"`,
+              'wire_api="responses"',
+              "requires_openai_auth=false",
+              "request_max_retries=0",
+              "stream_max_retries=0",
+              "",
+            ].join("\n"),
+          );
+          await start();
+          const hookCatalog = await rpc("hooks/list", { cwds: [cwd] });
+          const hooks = hookCatalog.data.flatMap((entry: Json) => entry.hooks);
+          expect(hooks).toHaveLength(1);
+          await rpc("config/value/write", {
+            keyPath: "hooks.state",
+            value: Object.fromEntries(
+              hooks.map((hook: Json) => [
+                hook.key,
+                { trusted_hash: hook.currentHash },
+              ]),
+            ),
+            mergeStrategy: "upsert",
+          });
+          const { thread } = await rpc("thread/start", { cwd, historyMode });
+          const threadId = thread.id;
+          const first = await rpc("turn/start", {
+            threadId,
+            input: [{ type: "text", text: "ORIGINAL_DURABLE_REQUEST" }],
+            effort: "low",
+            summary: "concise",
+          });
+          const turnId = first.turn.id;
+          const checkpointFile = path.join(
+            home,
+            "turn-suspensions",
+            `${createHash("sha256").update(threadId).digest("hex")}.json`,
+          );
+          const modes = ["cold", "live", "cold"] as const;
+          const checkpointSnapshots: Buffer[] = [];
+          const steers = [
+            "ACCEPTED_DURABLE_STEER",
+            "LIVE_DURABLE_STEER",
+            "COLD_DURABLE_STEER",
+          ];
+          for (let cycle = 0; cycle < modes.length; cycle++) {
+            await vi.waitFor(() => expect(requests).toHaveLength(cycle + 1), {
+              timeout: 15000,
+            });
+            const checkpoints = path.join(home, "turn-suspensions");
+            if (cycle === 0) {
+              // An actual filesystem operation will fail while this is a file.
+              // No permissions/readiness heuristic substitutes for the write.
+              await writeFile(
+                checkpoints,
+                "injected checkpoint write failure",
+                { flag: "wx" },
+              );
+            }
+            const pause = rpc("turn/suspension", {
+              threadId,
+              operation: { type: "pause", turnId },
+            });
+            const response = requests[cycle]!;
+            const release = `release-${cycle}`;
+            const command =
+              process.platform === "win32"
+                ? `Add-Content -Path durable-counter.txt -Value 'cycle-${cycle}'; while (!(Test-Path '${release}')) { Start-Sleep -Milliseconds 25 }`
+                : `printf 'cycle-${cycle}\\n' >> durable-counter.txt; while [ ! -f '${release}' ]; do sleep 0.02; done`;
+            stream(response.response, [
+              tool(response.body, command, `durable-tool-${cycle}`),
+              completed(`tool-response-${cycle}`),
+            ]);
+            // Accept steering while a real tool is held, after the provider stream
+            // finished. InstantInterrupt may otherwise cancel that stream before
+            // its tool request ever becomes accepted native work.
+            void pause.catch(() => undefined);
+            await vi.waitFor(
+              async () => {
+                expect(
+                  await readFile(path.join(cwd, "durable-counter.txt"), "utf8"),
+                ).toContain(`cycle-${cycle}`);
+              },
+              { timeout: 15000 },
+            );
+            await rpc("turn/steer", {
+              threadId,
+              expectedTurnId: turnId,
+              input: [
+                {
+                  type: "text",
+                  text: steers[cycle]!,
+                },
+              ],
+            });
+            if (cycle === 0) {
+              // Future defaults may change while this turn retains its captured
+              // model and settings. Read actual application, not just admission.
+              await rpc("thread/settings/update", {
+                threadId,
+                model: "gpt-5.1",
+              });
+              await vi.waitFor(
+                async () => {
+                  expect(
+                    (await rpc("thread/settings/read", { threadId }))
+                      .threadSettings.model,
+                  ).toBe("gpt-5.1");
+                },
+                { timeout: 15000 },
+              );
+            }
+            await writeFile(path.join(cwd, release), "released");
+            let paused: Json;
+            if (cycle === 0) {
+              try {
+                await expect(pause).rejects.toThrow(
+                  /file|directory|path|os error|checkpoint/i,
+                );
+              } finally {
+                await rm(checkpoints);
+              }
+              expect(requests).toHaveLength(cycle + 1);
+              expect(
+                frames.some((frame) => frame.method === "turn/completed"),
+              ).toBe(false);
+              expect(
+                (
+                  await rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  })
+                ).suspension,
+              ).toBeNull();
+              // Retry from the same already-paused live boundary after repair.
+              paused = await rpc("turn/suspension", {
+                threadId,
+                operation: { type: "pause", turnId },
+              });
+            } else {
+              paused = await pause;
+            }
+            expect(paused.paused).toBe(true);
+            expect(paused.suspension).toMatchObject({ threadId, turnId });
+            // No grace delay or history read after durable acknowledgement.
+            if (modes[cycle] === "cold") await terminatePausedOwner();
+            checkpointSnapshots.push(await readFile(checkpointFile));
+            const counter = await readFile(
+              path.join(cwd, "durable-counter.txt"),
+              "utf8",
+            );
+            expect(counter.trim().split(/\r?\n/)).toEqual(
+              Array.from({ length: cycle + 1 }, (_, index) => `cycle-${index}`),
+            );
+            expect(requests).toHaveLength(cycle + 1);
+            if (modes[cycle] === "cold") {
+              await start();
+              // Inspect the actual committed continuation before any native
+              // session exists. Repeated reads must not attach or prewarm it.
+              for (let read = 0; read < 2; read++) {
+                expect(
+                  await rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  }),
+                ).toMatchObject({
+                  paused: true,
+                  suspension: paused.suspension,
+                });
+                expect(
+                  (await rpc("thread/loaded/list", {})).data,
+                ).not.toContain(threadId);
+              }
+              await new Promise((resolve) => setTimeout(resolve, 200));
+              expect(requests).toHaveLength(cycle + 1);
+              const original = await readFile(checkpointFile);
+              if (cycle > 0) {
+                // An old checkpoint still names this same unfinished turn, but
+                // completed work after its boundary makes it stale.
+                await writeFile(checkpointFile, checkpointSnapshots[0]!);
+                await expect(
+                  rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  }),
+                ).rejects.toThrow(
+                  /history.*(advanced|changed)|execution.*advanced/i,
+                );
+                expect(await readFile(checkpointFile)).toEqual(
+                  checkpointSnapshots[0],
+                );
+                expect(
+                  (await rpc("thread/loaded/list", {})).data,
+                ).not.toContain(threadId);
+                await writeFile(checkpointFile, original);
+              }
+              if (cycle === 0) await rm(checkpointFile);
+              else await writeFile(checkpointFile, "{corrupt checkpoint");
+              // The saved intent must hold attachment even if data disappears
+              // after a successful stored inspection. No preflight read can
+              // substitute for this hold at native startup.
+              await rpc("thread/resume", {
+                threadId,
+                expectedSuspension: paused.suspension,
+              });
+              for (const damage of cycle === 0
+                ? [null]
+                : [
+                    Buffer.from("{corrupt checkpoint"),
+                    incompatibleCheckpoint(original),
+                    incompatibleCheckpoint(
+                      original,
+                      "0.166.0/cantrip-suspension-v8",
+                    ),
+                  ]) {
+                if (damage) await writeFile(checkpointFile, damage);
+                const reason =
+                  cycle === 0
+                    ? /missing/i
+                    : damage?.equals(Buffer.from("{corrupt checkpoint"))
+                      ? /corrupt/i
+                      : /runtime version is unsupported/i;
+                await expect(
+                  rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  }),
+                ).rejects.toThrow(reason);
+                await expect(
+                  rpc("turn/suspension", {
+                    threadId,
+                    operation: {
+                      type: "resume",
+                      suspension: paused.suspension,
+                    },
+                  }),
+                ).rejects.toThrow(reason);
+                await expect(
+                  rpc("turn/start", {
+                    threadId,
+                    input: [
+                      { type: "text", text: "MUST_NOT_REPLACE_SUSPENDED_TURN" },
+                    ],
+                  }),
+                ).rejects.toThrow(/paused|suspend/i);
+                if (damage)
+                  expect(await readFile(checkpointFile)).toEqual(damage);
+                await new Promise((resolve) => setTimeout(resolve, 200));
+                expect(requests).toHaveLength(cycle + 1);
+                // The explicit hold must survive teardown without a decodable
+                // payload as well. Neither shutdown nor the next attach repairs
+                // missing/corrupt/incompatible data or runs SessionEnd commands.
+                await terminatePausedOwner();
+                await start();
+                await rpc("thread/resume", {
+                  threadId,
+                  expectedSuspension: paused.suspension,
+                });
+                await expect(
+                  rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  }),
+                ).rejects.toThrow(reason);
+                if (damage)
+                  expect(await readFile(checkpointFile)).toEqual(damage);
+                expect(requests).toHaveLength(cycle + 1);
+              }
+              await writeFile(checkpointFile, original);
+            } else {
+              await rpc("thread/resume", {
+                threadId,
+                expectedSuspension: paused.suspension,
+              });
+            }
+            const observed = await rpc("turn/suspension", {
+              threadId,
+              operation: { type: "read" },
+            });
+            expect(observed).toMatchObject({
+              paused: true,
+              suspension: paused.suspension,
+            });
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            expect(requests).toHaveLength(cycle + 1);
+            expect(
+              frames.filter((frame) => frame.method === "turn/started"),
+            ).toHaveLength(0);
+            if (process.platform !== "win32" && cycle <= 1) {
+              // File creation and replacement need write+execute permissions.
+              // Removing directory read permission makes the real directory
+              // fsync open fail only after the new checkpoint is installed.
+              const frameIndex = frames.length;
+              await chmod(checkpoints, 0o300);
+              try {
+                await expect(
+                  modes[cycle] === "live"
+                    ? rpc("turn/pause", { threadId, turnId, paused: false })
+                    : rpc("turn/suspension", {
+                        threadId,
+                        operation: {
+                          type: "resume",
+                          suspension: observed.suspension,
+                        },
+                      }),
+                ).rejects.toThrow(/permission|denied|os error/i);
+                expect(requests).toHaveLength(cycle + 1);
+                const envelope = JSON.parse(
+                  await readFile(checkpointFile, "utf8"),
+                );
+                const installed = JSON.parse(envelope.recordJson);
+                expect(
+                  installed.continuation,
+                  "a post-replacement failure must retain the only continuation",
+                ).not.toBeNull();
+                expect(installed.state).toBe("resuming");
+                expect(installed.revision).toBeGreaterThan(
+                  observed.suspension.revision,
+                );
+                expect(
+                  frames
+                    .slice(frameIndex)
+                    .filter(
+                      (frame) =>
+                        frame.method === "thread/status/changed" &&
+                        frame.params.status.type === "active",
+                    ),
+                ).toHaveLength(0);
+              } finally {
+                await chmod(checkpoints, 0o700);
+              }
+              // Cold retries use a fresh owner; live retries retain their task.
+              // Both keep the original confirmed identity and actual contents.
+              if (modes[cycle] === "cold") {
+                await terminatePausedOwner();
+                await start();
+                await rpc("thread/resume", {
+                  threadId,
+                  expectedSuspension: observed.suspension,
+                });
+              }
+              expect(
+                await rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                }),
+              ).toMatchObject(observed);
+              expect(requests).toHaveLength(cycle + 1);
+            }
+            if (modes[cycle] === "live") {
+              const held = `${checkpoints}-held`;
+              await rename(checkpoints, held);
+              try {
+                await writeFile(
+                  checkpoints,
+                  "injected checkpoint settlement failure",
+                  { flag: "wx" },
+                );
+                // Exercise the legacy UI/TUI control too. It must return the
+                // real I/O error and preserve the actual paused native task.
+                await expect(
+                  rpc("turn/pause", { threadId, turnId, paused: false }),
+                ).rejects.toThrow(/file|directory|path|os error|checkpoint/i);
+                expect(requests).toHaveLength(cycle + 1);
+                expect(
+                  frames.some((frame) => frame.method === "turn/completed"),
+                ).toBe(false);
+              } finally {
+                await rm(checkpoints, { force: true });
+                await rename(held, checkpoints);
+              }
+              expect(
+                await rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                }),
+              ).toMatchObject(observed);
+              await new Promise((resolve) => setTimeout(resolve, 200));
+              expect(requests).toHaveLength(cycle + 1);
+              if (process.platform !== "win32") {
+                retirementPipe = {
+                  path: checkpointFile,
+                  original: await readFile(checkpointFile),
+                };
+                await rm(checkpointFile);
+                await execute("mkfifo", ["-m", "600", checkpointFile]);
+                retirementPipe.opening = open(checkpointFile, "w");
+                const olderResume = rpc("turn/pause", {
+                  threadId,
+                  turnId,
+                  paused: false,
+                }).then(
+                  (value) => ({ value, error: undefined }),
+                  (error: unknown) => ({ value: undefined, error }),
+                );
+                // This handshake proves Resume is in the actual checkpoint IO.
+                retirementPipe.writer = await retirementPipe.opening;
+                const newerPause = rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "pause", turnId },
+                }).then(
+                  (value) => ({ value, error: undefined }),
+                  (error: unknown) => ({ value: undefined, error }),
+                );
+                await rpc("thread/settings/read", { threadId });
+                await new Promise((resolve) => setTimeout(resolve, 200));
+                await rm(checkpointFile);
+                await writeFile(checkpointFile, retirementPipe.original, {
+                  mode: 0o600,
+                  flag: "wx",
+                });
+                await retirementPipe.writer.writeFile(retirementPipe.original);
+                await retirementPipe.writer.close();
+                retirementPipe = undefined;
+                expect(
+                  (await olderResume).error,
+                  "an older Resume must not release the newer pause",
+                ).toBeDefined();
+                const repaused = await newerPause;
+                expect(repaused.error).toBeUndefined();
+                expect(repaused.value).toMatchObject({
+                  paused: true,
+                  suspension: { threadId, turnId },
+                });
+                observed.suspension = repaused.value!.suspension;
+                expect(
+                  await rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "read" },
+                  }),
+                ).toMatchObject(observed);
+                expect(requests).toHaveLength(cycle + 1);
+              }
+            }
+            const resumes = await Promise.allSettled(
+              Array.from({ length: 2 }, () =>
+                cycle === 2
+                  ? rpc("turn/pause", { threadId, turnId, paused: false })
+                  : rpc("turn/suspension", {
+                      threadId,
+                      operation: {
+                        type: "resume",
+                        suspension: observed.suspension,
+                      },
+                    }),
+              ),
+            );
+            const accepted = resumes.filter(
+              (result) => result.status === "fulfilled",
+            );
+            expect(accepted.length).toBeGreaterThanOrEqual(1);
+            for (const result of accepted)
+              expect(result.value.paused).toBe(false);
+            for (const result of resumes)
+              if (result.status === "rejected") {
+                expect(String(result.reason)).toMatch(
+                  /already|not resumed|checkpoint|no longer suspended|suspension identity|superseded|lost its idle reservation/i,
+                );
+              }
+            await vi.waitFor(() => expect(requests).toHaveLength(cycle + 2), {
+              timeout: 15000,
+            });
+            await expect(
+              rpc("thread/resume", {
+                threadId,
+                expectedSuspension: observed.suspension,
+              }),
+            ).rejects.toThrow(/running|suspend/i);
+            expect(
+              (
+                await rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                })
+              ).suspension,
+            ).toBeNull();
+            const modelInput = JSON.stringify(requests[cycle + 1]!.body.input);
+            expect(modelInput.match(/ORIGINAL_DURABLE_REQUEST/g)).toHaveLength(
+              1,
+            );
+            for (const steer of steers.slice(0, cycle + 1)) {
+              expect(modelInput.split(steer).length - 1).toBe(1);
+            }
+            expect(requests[cycle + 1]!.body.model).toBe(
+              requests[0]!.body.model,
+            );
+            expect(requests[cycle + 1]!.body.reasoning).toEqual(
+              requests[0]!.body.reasoning,
+            );
+            expect(requests[cycle + 1]!.body.reasoning).toMatchObject({
+              effort: "low",
+              summary: "concise",
+            });
+            for (let toolIndex = 0; toolIndex <= cycle; toolIndex++)
+              expect(modelInput).toContain(`durable-tool-${toolIndex}`);
+            expect(
+              await readFile(path.join(cwd, "durable-counter.txt"), "utf8"),
+            ).toBe(counter);
+          }
+          expect(requests).toHaveLength(modes.length + 1);
+          expect(
+            (
+              await rpc("turn/suspension", {
+                threadId,
+                operation: { type: "read" },
+              })
+            ).suspension,
+          ).toBeNull();
+          if (process.platform !== "win32") {
+            retirementPipe = {
+              path: checkpointFile,
+              original: await readFile(checkpointFile),
+            };
+            await rm(checkpointFile);
+            await execute("mkfifo", ["-m", "600", checkpointFile]);
+            // The writer-open handshake proves the old turn's real checkpoint
+            // read has started. Keep it blocked while a later turn pauses.
+            retirementPipe.opening = open(checkpointFile, "w");
+          }
+          answer(
+            requests[modes.length]!.response,
+            "durable-final",
+            "RESUMED_ORIGINAL_TURN",
+          );
+          await vi.waitFor(
+            () =>
+              expect(
+                frames.find(
+                  (frame) =>
+                    frame.method === "turn/completed" &&
+                    frame.params.turn.id === turnId,
+                )?.params.turn.status,
+              ).toBe("completed"),
+            { timeout: 15000 },
+          );
+          if (retirementPipe)
+            retirementPipe.writer = await retirementPipe.opening;
+          const history = await rpc("thread/read", {
+            threadId,
+            includeTurns: true,
+          });
+          expect(history.thread.turns).toHaveLength(1);
+          expect(history.thread.turns[0]).toMatchObject({
+            id: turnId,
+            status: "completed",
+          });
+          expect(
+            frames
+              .filter(
+                (frame) =>
+                  frame.method === "thread/tokenUsage/updated" &&
+                  frame.params.turnId === turnId,
+              )
+              .at(-1)?.params.tokenUsage.total,
+          ).toMatchObject({
+            inputTokens: 40,
+            outputTokens: 12,
+            totalTokens: 52,
+          });
+          const items = history.thread.turns[0].items as Json[];
+          expect(new Set(items.map((item) => item.id)).size).toBe(items.length);
+          const recorded = JSON.stringify(items);
+          for (const input of ["ORIGINAL_DURABLE_REQUEST", ...steers]) {
+            expect(recorded.split(input).length - 1).toBe(1);
+          }
+          expect(
+            allFrames.flat().filter((frame) => frame.method === "turn/started"),
+          ).toHaveLength(1);
+          if (!retirementPipe)
+            expect(
+              (
+                await rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                })
+              ).suspension,
+            ).toBeNull();
+          expect(
+            (await rpc("thread/settings/read", { threadId })).threadSettings
+              .model,
+          ).toBe("gpt-5.1");
+          const next = await rpc("turn/start", {
+            threadId,
+            input: [{ type: "text", text: "NEXT_NORMAL_TURN" }],
+          });
+          expect(next.turn.id).not.toBe(turnId);
+          await vi.waitFor(
+            () => expect(requests).toHaveLength(modes.length + 2),
+            { timeout: 15000 },
+          );
+          expect(requests[modes.length + 1]!.body.model).toBe("gpt-5.1");
+          if (retirementPipe) {
+            const racingPause = rpc("turn/suspension", {
+              threadId,
+              operation: { type: "pause", turnId: next.turn.id },
+            });
+            void racingPause.catch(() => undefined);
+            stream(requests[modes.length + 1]!.response, [
+              tool(
+                requests[modes.length + 1]!.body,
+                "printf 'done\\n' >> retirement-counter.txt",
+                "retirement-tool",
+              ),
+              completed("retirement-tool-response"),
+            ]);
+            await vi.waitFor(
+              async () =>
+                expect(
+                  await readFile(
+                    path.join(cwd, "retirement-counter.txt"),
+                    "utf8",
+                  ),
+                ).toBe("done\n"),
+              { timeout: 15000 },
+            );
+            const accepted: string[] = [];
+            await vi.waitFor(
+              async () => {
+                const text = `RETIREMENT_PENDING_STEER_${accepted.length}`;
+                const response = await client!.request("turn/steer", {
+                  threadId,
+                  expectedTurnId: next.turn.id,
+                  input: [{ type: "text", text }],
+                });
+                if (!response.error) {
+                  accepted.push(text);
+                  throw new Error(
+                    "the later turn has not frozen its boundary yet",
+                  );
+                }
+                expect(JSON.stringify(response.error)).toMatch(
+                  // App Server maps native NotIdle from the frozen gate to
+                  // this same error as an absent active turn.
+                  /paused|suspend|not.?idle|no active turn to steer/i,
+                );
+              },
+              { timeout: 15000 },
+            );
+            // Replace the pathname before releasing EOF. The old read still
+            // owns its FIFO inode; the later capture reads the regular file.
+            await rm(checkpointFile);
+            await writeFile(checkpointFile, retirementPipe.original, {
+              mode: 0o600,
+              flag: "wx",
+            });
+            await retirementPipe.writer!.writeFile(retirementPipe.original);
+            await retirementPipe.writer!.close();
+            retirementPipe = undefined;
+            const raced = await racingPause;
+            expect(raced.suspension.turnId).toBe(next.turn.id);
+            const frozenInput = await client!.request("turn/steer", {
+              threadId,
+              expectedTurnId: next.turn.id,
+              input: [{ type: "text", text: "AFTER_RETIREMENT_MUST_REJECT" }],
+            });
+            expect(frozenInput.error).toBeDefined();
+            await rpc("turn/suspension", {
+              threadId,
+              operation: { type: "resume", suspension: raced.suspension },
+            });
+            await vi.waitFor(
+              () => expect(requests).toHaveLength(modes.length + 3),
+              { timeout: 15000 },
+            );
+            const input = JSON.stringify(requests.at(-1)!.body.input);
+            for (const text of accepted)
+              expect(input.split(text).length - 1).toBe(1);
+            expect(
+              await readFile(path.join(cwd, "retirement-counter.txt"), "utf8"),
+            ).toBe("done\n");
+          }
+          answer(
+            requests.at(-1)!.response,
+            "next-final",
+            "NEXT_TURN_COMPLETED",
+          );
+          await vi.waitFor(
+            () =>
+              expect(
+                frames.find(
+                  (frame) =>
+                    frame.method === "turn/completed" &&
+                    frame.params.turn.id === next.turn.id,
+                )?.params.turn.status,
+              ).toBe("completed"),
+            { timeout: 15000 },
+          );
+          expect(
+            allFrames.flat().filter((frame) => frame.method === "turn/started"),
+          ).toHaveLength(2);
+
+          let starts = 2;
+          for (const stopMode of [
+            "live",
+            "cold-legacy",
+            "corrupt",
+            "incompatible",
+          ] as const) {
+            const requestIndex = requests.length;
+            const counterName = `stopped-${stopMode}.txt`;
+            const stopped = await rpc("turn/start", {
+              threadId,
+              input: [{ type: "text", text: `STOP_DURABLE_TURN_${stopMode}` }],
+            });
+            await vi.waitFor(
+              () => expect(requests).toHaveLength(requestIndex + 1),
+              { timeout: 15000 },
+            );
+            const stoppingPause = rpc("turn/suspension", {
+              threadId,
+              operation: { type: "pause", turnId: stopped.turn.id },
+            });
+            stream(requests[requestIndex]!.response, [
+              tool(
+                requests[requestIndex]!.body,
+                process.platform === "win32"
+                  ? `Add-Content -Path ${counterName} -Value 'done'`
+                  : `printf 'done\\n' >> ${counterName}`,
+                `stopped-tool-${stopMode}`,
+              ),
+              completed(`stopped-tool-response-${stopMode}`),
+            ]);
+            const stopCheckpoint = await stoppingPause;
+            expect(stopCheckpoint.suspension.turnId).toBe(stopped.turn.id);
+            let damaged: Buffer | undefined;
+            if (stopMode === "cold-legacy") {
+              // Existing GUI/native-TUI Stop uses turn/interrupt. It must also
+              // cancel a cold held turn whose original task no longer exists.
+              await terminatePausedOwner();
+              await start();
+              await rpc("thread/resume", {
+                threadId,
+                expectedSuspension: stopCheckpoint.suspension,
+              });
+            } else if (stopMode !== "live") {
+              await kill();
+              const original = await readFile(checkpointFile);
+              damaged =
+                stopMode === "corrupt"
+                  ? Buffer.from("{keep these corrupt checkpoint bytes")
+                  : incompatibleCheckpoint(original);
+              await writeFile(checkpointFile, damaged);
+              await start();
+              await rpc("thread/resume", {
+                threadId,
+                expectedSuspension: stopCheckpoint.suspension,
+              });
+              await expect(
+                rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                }),
+              ).rejects.toThrow(/corrupt|unsupported/i);
+              expect(await readFile(checkpointFile)).toEqual(damaged);
+              expect(requests).toHaveLength(requestIndex + 1);
+            }
+            for (let attempt = 0; attempt < 2; attempt++) {
+              if (stopMode === "cold-legacy" && attempt === 0)
+                await rpc("turn/interrupt", {
+                  threadId,
+                  turnId: stopped.turn.id,
+                });
+              else
+                expect(
+                  await rpc("turn/suspension", {
+                    threadId,
+                    operation: { type: "discard", turnId: stopped.turn.id },
+                  }),
+                ).toMatchObject({ paused: false, suspension: null });
+              await vi.waitFor(
+                () =>
+                  expect(
+                    frames.filter(
+                      (frame) =>
+                        frame.method === "turn/completed" &&
+                        frame.params.turn.id === stopped.turn.id,
+                    ),
+                  ).toHaveLength(1),
+                { timeout: 15000 },
+              );
+            }
+            if (damaged) {
+              const prefix =
+                path.basename(checkpointFile, ".json") + ".retired-";
+              const retained = await Promise.all(
+                (await readdir(path.dirname(checkpointFile)))
+                  .filter((name) => name.startsWith(prefix))
+                  .map((name) =>
+                    readFile(path.join(path.dirname(checkpointFile), name)),
+                  ),
+              );
+              expect(retained.some((bytes) => bytes.equals(damaged!))).toBe(
+                true,
+              );
+            }
+            await kill();
+            await start();
+            await rpc("thread/resume", { threadId });
+            expect(
+              (
+                await rpc("turn/suspension", {
+                  threadId,
+                  operation: { type: "read" },
+                })
+              ).suspension,
+            ).toBeNull();
+            await expect(
+              rpc("turn/suspension", {
+                threadId,
+                operation: {
+                  type: "resume",
+                  suspension: stopCheckpoint.suspension,
+                },
+              }),
+            ).rejects.toThrow(/ended|no longer|identity|suspended|missing/i);
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            expect(requests).toHaveLength(requestIndex + 1);
+            const afterStop = await rpc("turn/start", {
+              threadId,
+              input: [
+                { type: "text", text: `NORMAL_TURN_AFTER_STOP_${stopMode}` },
+              ],
+            });
+            expect(afterStop.turn.id).not.toBe(stopped.turn.id);
+            await vi.waitFor(
+              () => expect(requests).toHaveLength(requestIndex + 2),
+              { timeout: 15000 },
+            );
+            answer(
+              requests[requestIndex + 1]!.response,
+              `after-stop-final-${stopMode}`,
+              "NORMAL_TURN_AFTER_STOP_COMPLETED",
+            );
+            await vi.waitFor(
+              () =>
+                expect(
+                  frames.find(
+                    (frame) =>
+                      frame.method === "turn/completed" &&
+                      frame.params.turn.id === afterStop.turn.id,
+                  )?.params.turn.status,
+                ).toBe("completed"),
+              { timeout: 15000 },
+            );
+            expect(await readFile(path.join(cwd, counterName), "utf8")).toMatch(
+              /^done\r?\n$/,
+            );
+            starts += 2;
+            expect(
+              allFrames
+                .flat()
+                .filter((frame) => frame.method === "turn/started"),
+            ).toHaveLength(starts);
+          }
+
+          // Hold an actual fresh inference admission after cold restoration.
+          // Re-pause and Stop must work without ever granting that request.
+          const managedProfile = {
+            mcpServers: {},
+            developerInstructions: null,
+            multiAgentEnabled: false,
+            subagentModel: null,
+            subagentReasoningEffort: null,
+          };
+          await rpc("thread/managedConfig/update", {
+            threadId,
+            ...managedProfile,
+          });
+          const admissionRequestIndex = requests.length;
+          const awaiting = await rpc("turn/start", {
+            threadId,
+            input: [{ type: "text", text: "RESTORE_WITH_PENDING_ADMISSION" }],
+          });
+          const awaitingTurnId = awaiting.turn.id;
+          await vi.waitFor(
+            () => expect(requests).toHaveLength(admissionRequestIndex + 1),
+            { timeout: 15000 },
+          );
+          const admissionPause = rpc("turn/suspension", {
+            threadId,
+            operation: { type: "pause", turnId: awaitingTurnId },
+          });
+          stream(requests[admissionRequestIndex]!.response, [
+            tool(
+              requests[admissionRequestIndex]!.body,
+              process.platform === "win32"
+                ? "Add-Content -Path admission-counter.txt -Value 'done'"
+                : "printf 'done\\n' >> admission-counter.txt",
+              "admission-tool",
+            ),
+            completed("admission-tool-response"),
+          ]);
+          const admissionCheckpoint = await admissionPause;
+          await terminatePausedOwner();
+          await start();
+          await rpc("thread/resume", {
+            threadId,
+            expectedSuspension: admissionCheckpoint.suspension,
+            managedConfig: managedProfile,
+          });
+          let runnerGeneration = "durable-restoration-admission-fixture";
+          await rpc("thread/managedExecution/bind", {
+            threadId,
+            runnerGeneration,
+            expectedRunnerGeneration: null,
+          });
+          const beginFrames = () =>
+            frames.filter(
+              (frame) =>
+                frame.method === "thread/managedExecution/requested" &&
+                frame.params.turnId === awaitingTurnId &&
+                frame.params.trigger === "inference" &&
+                frame.params.input.phase === "begin",
+            );
+          const beginRestore = () =>
+            rpc("turn/suspension", {
+              threadId,
+              operation: {
+                type: "resume",
+                suspension: admissionCheckpoint.suspension,
+              },
+            }).then(
+              (value) => ({ value, error: undefined }),
+              (error: unknown) => ({ value: undefined, error }),
+            );
+          let waitingForGrant = beginRestore();
+          await vi.waitFor(() => expect(beginFrames()).toHaveLength(1), {
+            timeout: 15000,
+          });
+          let firstGrant = beginFrames()[0]!.params;
+          expect(firstGrant.input.scopeId).toEqual(expect.any(String));
+          expect(requests).toHaveLength(admissionRequestIndex + 1);
+          expect(
+            frames.filter((frame) => frame.method === "turn/started"),
+          ).toHaveLength(0);
+          expect(
+            frames.filter(
+              (frame) =>
+                frame.method === "thread/status/changed" &&
+                frame.params.status.type === "active",
+            ),
+          ).toHaveLength(0);
+          // Teardown while the restored task is waiting for admission must also
+          // retain its continuation. The old process never received a grant.
+          const abandonedGrant = firstGrant;
+          const abandonedRunner = runnerGeneration;
+          await terminatePausedOwner();
+          expect((await waitingForGrant).error).toBeDefined();
+          expect(requests).toHaveLength(admissionRequestIndex + 1);
+          await start();
+          expect(
+            await rpc("turn/suspension", {
+              threadId,
+              operation: { type: "read" },
+            }),
+          ).toMatchObject(admissionCheckpoint);
+          await rpc("thread/resume", {
+            threadId,
+            expectedSuspension: admissionCheckpoint.suspension,
+            managedConfig: managedProfile,
+          });
+          runnerGeneration = "durable-restoration-after-pending-shutdown";
+          await rpc("thread/managedExecution/bind", {
+            threadId,
+            runnerGeneration,
+            expectedRunnerGeneration: null,
+          });
+          expect(
+            (
+              await client!.request("thread/managedExecution/resolve", {
+                threadId,
+                runnerGeneration: abandonedRunner,
+                attemptId: abandonedGrant.attemptId,
+                operationGeneration: `inference:${abandonedGrant.input.scopeId}:${abandonedGrant.attemptId}`,
+                allow: true,
+              })
+            ).error,
+          ).toBeDefined();
+          waitingForGrant = beginRestore();
+          await vi.waitFor(() => expect(beginFrames()).toHaveLength(1), {
+            timeout: 15000,
+          });
+          firstGrant = beginFrames()[0]!.params;
+          expect(firstGrant.attemptId).not.toBe(abandonedGrant.attemptId);
+          expect(firstGrant.input.scopeId).not.toBe(
+            abandonedGrant.input.scopeId,
+          );
+          expect(requests).toHaveLength(admissionRequestIndex + 1);
+          expect(
+            await rpc("turn/suspension", {
+              threadId,
+              operation: { type: "pause", turnId: awaitingTurnId },
+            }),
+          ).toMatchObject(admissionCheckpoint);
+          expect((await waitingForGrant).error).toBeDefined();
+          // With the failed reservation gone, repeated Pause inspects the same
+          // stored boundary and must remain usable without a running task.
+          for (let repeat = 0; repeat < 2; repeat++)
+            expect(
+              await rpc("turn/suspension", {
+                threadId,
+                operation: { type: "pause", turnId: awaitingTurnId },
+              }),
+            ).toMatchObject(admissionCheckpoint);
+          expect(
+            frames.filter((frame) => frame.method === "turn/completed"),
+          ).toHaveLength(0);
+          expect(
+            (
+              await client!.request("thread/managedExecution/resolve", {
+                threadId,
+                runnerGeneration,
+                attemptId: firstGrant.attemptId,
+                operationGeneration: `inference:${firstGrant.input.scopeId}:${firstGrant.attemptId}`,
+                allow: true,
+              })
+            ).error,
+          ).toBeDefined();
+          // Retrying must create a new admission wait for the same native turn.
+          const admittedResume = beginRestore();
+          await vi.waitFor(() => expect(beginFrames()).toHaveLength(2), {
+            timeout: 15000,
+          });
+          const secondGrant = beginFrames()[1]!.params;
+          expect(secondGrant.attemptId).not.toBe(firstGrant.attemptId);
+          expect(secondGrant.input.scopeId).toEqual(expect.any(String));
+          expect(secondGrant.input.scopeId).not.toBe(firstGrant.input.scopeId);
+          // A correctly scoped old grant must not authorize its replacement.
+          expect(
+            (
+              await client!.request("thread/managedExecution/resolve", {
+                threadId,
+                runnerGeneration,
+                attemptId: firstGrant.attemptId,
+                operationGeneration: `inference:${firstGrant.input.scopeId}:${firstGrant.attemptId}`,
+                allow: true,
+              })
+            ).error,
+          ).toBeDefined();
+          expect(requests).toHaveLength(admissionRequestIndex + 1);
+          await rpc("thread/managedExecution/resolve", {
+            threadId,
+            runnerGeneration,
+            attemptId: secondGrant.attemptId,
+            operationGeneration: `inference:${secondGrant.input.scopeId}:${secondGrant.attemptId}`,
+            allow: true,
+          });
+          const admitted = await admittedResume;
+          expect(admitted.error).toBeUndefined();
+          expect(admitted.value).toMatchObject({ paused: false });
+          await vi.waitFor(
+            () => expect(requests).toHaveLength(admissionRequestIndex + 2),
+            { timeout: 15000 },
+          );
+          const admittedInput = JSON.stringify(requests.at(-1)!.body.input);
+          expect(admittedInput).toContain("admission-tool");
+          expect(
+            admittedInput.split("RESTORE_WITH_PENDING_ADMISSION").length - 1,
+          ).toBe(1);
+          const pauseAfterGrant = rpc("turn/suspension", {
+            threadId,
+            operation: { type: "pause", turnId: awaitingTurnId },
+          });
+          stream(requests.at(-1)!.response, [
+            tool(
+              requests.at(-1)!.body,
+              process.platform === "win32"
+                ? "Add-Content -Path admission-resumed-counter.txt -Value 'done'"
+                : "printf 'done\\n' >> admission-resumed-counter.txt",
+              "admission-resumed-tool",
+            ),
+            completed("admission-resumed-tool-response"),
+          ]);
+          admissionCheckpoint.suspension = (await pauseAfterGrant).suspension;
+          await terminatePausedOwner();
+          await start();
+          await rpc("thread/resume", {
+            threadId,
+            expectedSuspension: admissionCheckpoint.suspension,
+            managedConfig: managedProfile,
+          });
+          runnerGeneration = "durable-restoration-admission-fixture-fresh";
+          await rpc("thread/managedExecution/bind", {
+            threadId,
+            runnerGeneration,
+            expectedRunnerGeneration: null,
+          });
+          const waitingToStop = beginRestore();
+          await vi.waitFor(() => expect(beginFrames()).toHaveLength(1), {
+            timeout: 15000,
+          });
+          expect(beginFrames()[0]!.params.input.scopeId).toEqual(
+            expect.any(String),
+          );
+          expect(beginFrames()[0]!.params.input.scopeId).not.toBe(
+            secondGrant.input.scopeId,
+          );
+          for (let stop = 0; stop < 2; stop++)
+            await rpc("turn/suspension", {
+              threadId,
+              operation: { type: "discard", turnId: awaitingTurnId },
+            });
+          expect((await waitingToStop).error).toBeDefined();
+          await vi.waitFor(
+            () =>
+              expect(
+                frames.filter(
+                  (frame) =>
+                    frame.method === "turn/completed" &&
+                    frame.params.turn.id === awaitingTurnId,
+                ),
+              ).toHaveLength(1),
+            { timeout: 15000 },
+          );
+          expect(requests).toHaveLength(admissionRequestIndex + 2);
+          expect(
+            await readFile(path.join(cwd, "admission-counter.txt"), "utf8"),
+          ).toMatch(/^done\r?\n$/);
+          expect(
+            await readFile(
+              path.join(cwd, "admission-resumed-counter.txt"),
+              "utf8",
+            ),
+          ).toMatch(/^done\r?\n$/);
+          await kill();
+          await start();
+          await rpc("thread/resume", { threadId });
+          await expect(
+            rpc("turn/suspension", {
+              threadId,
+              operation: {
+                type: "resume",
+                suspension: admissionCheckpoint.suspension,
+              },
+            }),
+          ).rejects.toThrow(/ended|no longer|identity|suspended|missing/i);
+          const afterAdmissionStop = await rpc("turn/start", {
+            threadId,
+            input: [
+              { type: "text", text: "NORMAL_AFTER_PENDING_RESTORE_STOP" },
+            ],
+          });
+          expect(afterAdmissionStop.turn.id).not.toBe(awaitingTurnId);
+          await vi.waitFor(
+            () => expect(requests).toHaveLength(admissionRequestIndex + 3),
+            { timeout: 15000 },
+          );
+          answer(
+            requests.at(-1)!.response,
+            "after-admission-stop-final",
+            "NORMAL_AFTER_PENDING_RESTORE_STOP_COMPLETED",
+          );
+          await vi.waitFor(
+            () =>
+              expect(
+                frames.find(
+                  (frame) =>
+                    frame.method === "turn/completed" &&
+                    frame.params.turn.id === afterAdmissionStop.turn.id,
+                )?.params.turn.status,
+              ).toBe("completed"),
+            { timeout: 15000 },
+          );
+          expect(
+            allFrames
+              .flat()
+              .filter(
+                (frame) =>
+                  frame.method === "turn/started" &&
+                  frame.params.turn.id === awaitingTurnId,
+              ),
+          ).toHaveLength(1);
+          const admissionHistory = await rpc("thread/read", {
+            threadId,
+            includeTurns: true,
+          });
+          const originalAdmissionTurns = admissionHistory.thread.turns.filter(
+            (turn: Json) => turn.id === awaitingTurnId,
+          );
+          expect(originalAdmissionTurns).toHaveLength(1);
+          expect(originalAdmissionTurns[0].status).toBe("interrupted");
+          const admissionItems = originalAdmissionTurns[0].items as Json[];
+          expect(new Set(admissionItems.map((item) => item.id)).size).toBe(
+            admissionItems.length,
+          );
+          expect(
+            JSON.stringify(admissionItems).split(
+              "RESTORE_WITH_PENDING_ADMISSION",
+            ).length - 1,
+          ).toBe(1);
+          await Promise.all(inferenceAcknowledgements);
+          expect(inferenceProtocolErrors).toEqual([]);
+          const requestCountBeforeExit = requests.length;
+          // Normal completion and explicit Stop still permit the real SessionEnd
+          // command. Its side effect proves that the skipped hooks were trusted
+          // and runnable, rather than absent or disabled in the fixture.
+          await closeOwnerViaEof();
+          const sessionEnds = await sessionEndEvents();
+          expect(sessionEnds).toHaveLength(1);
+          expect(sessionEnds[0]!.hook_event_name).toBe("SessionEnd");
+          await start();
+          expect(
+            (
+              await rpc("turn/suspension", {
+                threadId,
+                operation: { type: "read" },
+              })
+            ).suspension,
+          ).toBeNull();
+          expect(requests).toHaveLength(requestCountBeforeExit);
+          // A turn that was never suspended still receives the ordinary
+          // interrupted lifecycle on EOF and cannot become a recovery candidate.
+          await rpc("thread/resume", { threadId });
+          const ordinaryShutdown = await rpc("turn/start", {
+            threadId,
+            input: [{ type: "text", text: "ORDINARY_ACTIVE_EOF" }],
+          });
+          await vi.waitFor(
+            () => expect(requests).toHaveLength(requestCountBeforeExit + 1),
+            { timeout: 15000 },
+          );
+          await closeOwnerViaEof();
+          expect(await sessionEndEvents()).toHaveLength(2);
+          await start();
+          const shutdownHistory = await rpc("thread/read", {
+            threadId,
+            includeTurns: true,
+          });
+          expect(
+            shutdownHistory.thread.turns.filter(
+              (turn: Json) => turn.id === ordinaryShutdown.turn.id,
+            ),
+          ).toMatchObject([{ status: "interrupted" }]);
+          expect(
+            (
+              await rpc("turn/suspension", {
+                threadId,
+                operation: { type: "read" },
+              })
+            ).suspension,
+          ).toBeNull();
+          expect(requests).toHaveLength(requestCountBeforeExit + 1);
+          completedSuccessfully = true;
+        } finally {
+          requests.forEach(({ response }) => response.destroy());
+          if (retirementPipe) {
+            // Unblock an outstanding writer-open even when a failing native
+            // cleanup never reached its read; do not leak a libuv operation.
+            const reader = await open(
+              retirementPipe.path,
+              constants.O_RDONLY | constants.O_NONBLOCK,
+            ).catch(() => undefined);
+            const writer =
+              retirementPipe.writer ??
+              (await retirementPipe.opening?.catch(() => undefined));
+            await writer?.close().catch(() => undefined);
+            await reader?.close().catch(() => undefined);
+          }
+          await kill();
+          provider.closeAllConnections();
+          await new Promise<void>((resolve) => provider.close(() => resolve()));
+          if (completedSuccessfully)
+            await rm(directory, { recursive: true, force: true });
+          else {
+            await Promise.all([
+              writeFile(
+                path.join(directory, "native-stderr.log"),
+                nativeStderr.join(""),
+              ),
+              writeFile(
+                path.join(directory, "inference-admission-errors.json"),
+                JSON.stringify(inferenceProtocolErrors, null, 2),
+              ),
+              writeFile(
+                path.join(directory, "rpc-frames.json"),
+                JSON.stringify(allFrames, null, 2),
+              ),
+              writeFile(
+                path.join(directory, "provider-requests.json"),
+                JSON.stringify(
+                  requests.map(({ body }) => body),
+                  null,
+                  2,
+                ),
+              ),
+            ]);
+            console.error(
+              `Retained failed native suspension fixture: ${directory}`,
+            );
+          }
+        }
+      },
+      120000,
+    );
+  },
+);

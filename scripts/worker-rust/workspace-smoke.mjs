@@ -19,7 +19,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { repositoryFixture } from "../server-rust/repository-fixture.mjs";
 import { literal } from "../server-rust/project-target-state.mjs";
-import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
+import { WorkerRoutingRegistry } from "../../tests/reference-node-worker/src/routing-registry.ts";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import * as cryptoClient from "../../packages/crypto/dist/index.js";

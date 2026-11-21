@@ -1,9 +1,9 @@
 // Controlled discovery replies travel through the unchanged worker transport.
 import assert from "node:assert/strict";
 import path from "node:path";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { sendHeartbeat } from "../../tests/reference-node-worker/src/heartbeat.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { heartbeat } from "./security-fixtures.mjs";
 import { literal, json, label } from "./project-target-state.mjs";
 import { eventually } from "./full-worker.mjs";

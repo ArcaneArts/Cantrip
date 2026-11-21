@@ -4056,8 +4056,9 @@ mod desktop {
                     .and_then(|path| path.parent())
                     .expect("repository root")
                     .to_path_buf();
-                let fixture =
-                    repository.join("cantrip_worker/test/fixtures/tunnel-transport-e2e-harness.ts");
+                let fixture = repository.join(
+                    "tests/reference-node-worker/test/fixtures/tunnel-transport-e2e-harness.ts",
+                );
                 let mut child = Command::new("node")
                     .args(["--import", "tsx"])
                     .arg(fixture)

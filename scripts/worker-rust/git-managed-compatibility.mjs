@@ -28,11 +28,11 @@ Object.assign(process.env, {
   GIT_COMMITTER_DATE: "2026-11-17T00:00:00+00:00",
 });
 // The source's managed editor environment is captured at module initialization.
-const source = await import("../../cantrip_worker/src/git.ts");
+const source = await import("../../tests/reference-node-worker/src/git.ts");
 const { handleGitCommand } =
-  await import("../../cantrip_worker/src/commands/git.ts");
+  await import("../../tests/reference-node-worker/src/commands/git.ts");
 const { managedOperationRecord, RepositoryManagedOperationStore } =
-  await import("../../cantrip_worker/src/repository-managed-operation-store.ts");
+  await import("../../tests/reference-node-worker/src/repository-managed-operation-store.ts");
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-git-managed-"));
 const template = path.join(root, "template"),
   nodeRoot = path.join(root, "node"),

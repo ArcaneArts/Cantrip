@@ -4,9 +4,9 @@ import { format } from "prettier";
 import { createRequire } from "node:module";
 import * as protocol from "../../packages/protocol/dist/index.js";
 import * as communication from "../../packages/protocol/dist/communication-content.js";
-import * as state from "../../cantrip_worker/src/native-history-state.ts";
-import { nativeHistorySequenceSchema } from "../../cantrip_worker/src/codex/native-history.ts";
-import { nativeHistoryUsageSourceSchema } from "../../cantrip_worker/src/native-history-usage.ts";
+import * as state from "../../tests/reference-node-worker/src/native-history-state.ts";
+import { nativeHistorySequenceSchema } from "../../tests/reference-node-worker/src/codex/native-history.ts";
+import { nativeHistoryUsageSourceSchema } from "../../tests/reference-node-worker/src/native-history-usage.ts";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
 const names = [
   "chatMessageContentSchema",

@@ -4,7 +4,7 @@ import { realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { automationDispatchWorkerEnvironment } from "./actual-automation-dispatch-interruption.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
-import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
+import { normalizeProjectSourcePath } from "../../tests/reference-node-worker/src/project-source-path.ts";
 
 export function actualAutomationHandoff({
   chatId,

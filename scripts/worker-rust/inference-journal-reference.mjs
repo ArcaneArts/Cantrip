@@ -1,14 +1,14 @@
 // Development wrapper around actual Node journal/ownership implementations.
 import assert from "node:assert/strict";
-import { WorkerInferenceJournal } from "../../cantrip_worker/src/inference-journal.ts";
-import { LocalNativeInferenceOwnership } from "../../cantrip_worker/src/native-inference-ownership.ts";
+import { WorkerInferenceJournal } from "../../tests/reference-node-worker/src/inference-journal.ts";
+import { LocalNativeInferenceOwnership } from "../../tests/reference-node-worker/src/native-inference-ownership.ts";
 import {
   launchCodexProcess,
   readCodexProcessEndpoint,
   openCodexWebSocket,
-} from "../../cantrip_worker/src/codex/process-transport.ts";
-import { CodexRpcRequests } from "../../cantrip_worker/src/codex/rpc-requests.ts";
-import { parseCodexRpcMessage } from "../../cantrip_worker/src/codex/rpc-protocol.ts";
+} from "../../tests/reference-node-worker/src/codex/process-transport.ts";
+import { CodexRpcRequests } from "../../tests/reference-node-worker/src/codex/rpc-requests.ts";
+import { parseCodexRpcMessage } from "../../tests/reference-node-worker/src/codex/rpc-protocol.ts";
 export const settle = (pending) =>
   Promise.resolve(pending).then(
     (value) => JSON.parse(JSON.stringify({ ok: true, value })),

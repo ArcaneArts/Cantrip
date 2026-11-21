@@ -3,7 +3,7 @@ FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1de
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-COPY cantrip_os/packages/executor/file-helper/process-owner.c ./
+COPY cantrip_os/packages/executor/process-owner.c ./
 RUN mkdir /out \
     && cc -std=c11 -Os -Wall -Wextra -Werror process-owner.c -o /out/process-owner
 

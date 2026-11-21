@@ -7,15 +7,15 @@ import {
   cantripMcpOperationsForPermissionProfile,
   cantripMcpToolNamesForOperations,
 } from "../../packages/protocol/dist/index.js";
-import { CantripMcpBroker } from "../../cantrip_worker/src/mcp/broker.ts";
-import { CANTRIP_MCP_STANDALONE_OPERATIONS } from "../../cantrip_worker/src/mcp/profile.ts";
+import { CantripMcpBroker } from "../../tests/reference-node-worker/src/mcp/broker.ts";
+import { CANTRIP_MCP_STANDALONE_OPERATIONS } from "../../tests/reference-node-worker/src/mcp/profile.ts";
 import {
   workerWebFixture,
   privateWebText,
   elementRef,
 } from "./mcp-worker-local-fixtures.mjs";
 const workerRequire = createRequire(
-  new URL("../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 );
 const { Client } = await import(
   pathToFileURL(

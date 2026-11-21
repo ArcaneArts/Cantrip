@@ -13,7 +13,7 @@ import * as schema from "../src/db/schema.js";
 import { TelemetryRepository } from "../src/db/repository/telemetry.js";
 import { readChatNativeHistoryTurns } from "../src/db/repository/native-history-turn-read.js";
 import { decryptNativeHistoryTurn } from "../../../packages/crypto/src/native-history-turn.js";
-import { protectNativeHistoryTurnMetadata } from "../../../cantrip_worker/src/native-history-turn-content.js";
+import { protectNativeHistoryTurnMetadata } from "../../../tests/reference-node-worker/src/native-history-turn-content.js";
 
 let fixture: Awaited<ReturnType<typeof createNativeSettingsFixture>>;
 let binding: NativeHistoryBinding;

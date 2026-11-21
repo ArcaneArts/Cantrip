@@ -2,9 +2,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { sendHeartbeat } from "../../tests/reference-node-worker/src/heartbeat.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { chatImportAttachmentId } from "../../tests/reference-node-server/src/db/chat-import-jobs.ts";
 import { externalChatTranscriptSchema } from "../../packages/protocol/dist/external-chat-imports.js";
 import { heartbeat } from "./security-fixtures.mjs";

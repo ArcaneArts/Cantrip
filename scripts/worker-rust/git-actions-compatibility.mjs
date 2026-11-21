@@ -16,7 +16,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { gitActionSchema } from "../../packages/protocol/dist/index.js";
-import { runGitAction, readGitStatus } from "../../cantrip_worker/src/git.ts";
+import {
+  runGitAction,
+  readGitStatus,
+} from "../../tests/reference-node-worker/src/git.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary workspace-fixture");
 const original = { ...process.env };

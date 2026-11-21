@@ -61,7 +61,10 @@ test("explicit development executable overrides remain exact", () => {
 test("browser, direct-worker, and desktop development use the shared projection", async () => {
   const root = fileURLToPath(new URL("../../", import.meta.url));
   const worker = JSON.parse(
-    await readFile(path.join(root, "cantrip_worker/package.json"), "utf8"),
+    await readFile(
+      path.join(root, "tests/reference-node-worker/package.json"),
+      "utf8",
+    ),
   );
   const repository = JSON.parse(
     await readFile(path.join(root, "package.json"), "utf8"),

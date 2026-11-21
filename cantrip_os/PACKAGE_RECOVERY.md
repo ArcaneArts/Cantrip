@@ -292,7 +292,7 @@ saved outcomes after repair. Fixture data and operation records remain for
 inspection; the original recovery conffile is restored at test completion.
 
 After building the Worker, the same environment variables also enable
-`pnpm --filter @cantrip/worker exec vitest run test/os-packages.integration.test.ts`.
+`pnpm --filter @cantrip/worker-reference exec vitest run test/os-packages.integration.test.ts`.
 Use absolute paths because pnpm runs from the Worker package directory. Seven
 actual Docker/SSH tests exercise broken recovery and executor helpers, retained
 data and configuration, an actual Manager process killed during dpkg or after

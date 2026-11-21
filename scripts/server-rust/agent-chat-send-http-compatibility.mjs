@@ -18,9 +18,9 @@ import {
   settingsWorker as worker,
 } from "./native-settings-http-fixture.mjs";
 import { literal, json } from "./project-target-state.mjs";
-import { encodePrivateDisplayLabelForWorker } from "../../cantrip_worker/src/private-label-encryption.ts";
-import { executeCantripMcpChatOperation } from "../../cantrip_worker/src/mcp/chat-operations.ts";
-import { openEncryptedChatTurn } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { encodePrivateDisplayLabelForWorker } from "../../tests/reference-node-worker/src/private-label-encryption.ts";
+import { executeCantripMcpChatOperation } from "../../tests/reference-node-worker/src/mcp/chat-operations.ts";
+import { openEncryptedChatTurn } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import { runAgentChatSendCases } from "./agent-chat-send-http-cases.mjs";
 import { deliveryLifecycle } from "./agent-chat-send-http-lifecycle.mjs";
 import { chatMessageOpaqueContentSchema } from "../../packages/protocol/dist/index.js";

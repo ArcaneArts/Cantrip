@@ -15,12 +15,12 @@ import { LiveProbe } from "./live-sockets.mjs";
 import { heartbeat, password } from "./security-fixtures.mjs";
 import { label, json, literal } from "./project-target-state.mjs";
 import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import {
   protectChatMessage,
   reprotectChatMessages,
-} from "../../cantrip_worker/src/chat-message-encryption.ts";
+} from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import { decryptChatMessageProtectedContent } from "../../packages/crypto/dist/index.js";
 const option = (k) => {
   const i = process.argv.indexOf(k);

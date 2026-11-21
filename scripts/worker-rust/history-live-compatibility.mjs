@@ -6,15 +6,15 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { NativeHistoryObservations } from "../../cantrip_worker/src/codex/native-history-observation.ts";
-import { NativeHistoryCapture } from "../../cantrip_worker/src/native-history-capture.ts";
-import { NativeHistorySourceJournal } from "../../cantrip_worker/src/native-history-source-journal.ts";
-import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
+import { NativeHistoryObservations } from "../../tests/reference-node-worker/src/codex/native-history-observation.ts";
+import { NativeHistoryCapture } from "../../tests/reference-node-worker/src/native-history-capture.ts";
+import { NativeHistorySourceJournal } from "../../tests/reference-node-worker/src/native-history-source-journal.ts";
+import { parseCodexNativeHistory } from "../../tests/reference-node-worker/src/codex/native-history.ts";
 import {
   createNativeHistoryOutputIdentityResolver,
   createManagedNativeOutputIdentityResolver,
-} from "../../cantrip_worker/src/native-history-output-identity.ts";
-import { createNativeHistoryOutputModeResolver } from "../../cantrip_worker/src/native-history-output-mode.ts";
+} from "../../tests/reference-node-worker/src/native-history-output-identity.ts";
+import { createNativeHistoryOutputModeResolver } from "../../tests/reference-node-worker/src/native-history-output-mode.ts";
 import { nativeHistoryWireFixtures } from "../server-rust/native-history-wire-fixtures.mjs";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary);

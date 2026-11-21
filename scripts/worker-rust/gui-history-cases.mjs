@@ -7,8 +7,8 @@ import {
   nativeHistoryResolveSchema,
 } from "../../packages/protocol/dist/index.js";
 import { nativeHistoryPayloadDigest } from "../../tests/reference-node-server/src/db/repository/native-history-digest.ts";
-import { openNativeHistoryItemEvidence } from "../../cantrip_worker/src/native-history-item-content.ts";
-import { NativeHistorySourceJournal } from "../../cantrip_worker/src/native-history-source-journal.ts";
+import { openNativeHistoryItemEvidence } from "../../tests/reference-node-worker/src/native-history-item-content.ts";
+import { NativeHistorySourceJournal } from "../../tests/reference-node-worker/src/native-history-source-journal.ts";
 
 // The local peer reserves stable IDs and returns exact commit receipts. The
 // running worker owns the actual native capture, encryption, and projection.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile, readdir, rename, symlink } from "node:fs/promises";
 import path from "node:path";
-import { ExplorerFileImports } from "../../cantrip_worker/src/explorer-file-imports.ts";
+import { ExplorerFileImports } from "../../tests/reference-node-worker/src/explorer-file-imports.ts";
 
 const pageSize = 256 * 1024;
 const content = Buffer.concat([

@@ -1,11 +1,11 @@
 import { expect } from "vitest";
 import type { WorkerCommand } from "@cantrip/protocol";
 import type { ServerRepository } from "../src/db/repository.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
 import {
   protectNativeSettingsSnapshot,
   openNativeSettingsSnapshot,
-} from "../../../cantrip_worker/src/native-settings-content.js";
+} from "../../../tests/reference-node-worker/src/native-settings-content.js";
 
 /** The foundation test controls its worker boundary. Advance the actual durable
  * handoff and verify protected settings/history; native file transfer has its own

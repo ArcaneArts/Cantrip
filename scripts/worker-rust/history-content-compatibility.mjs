@@ -5,32 +5,32 @@ import { parseArgs } from "node:util";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import * as schemas from "../../packages/protocol/dist/communication-content.js";
 import { reconcileNativeHistoryUsage } from "../../packages/protocol/dist/index.js";
-import { nativeHistoryStateItemSchema } from "../../cantrip_worker/src/native-history-state.ts";
+import { nativeHistoryStateItemSchema } from "../../tests/reference-node-worker/src/native-history-state.ts";
 import {
   protectNativeHistoryItemEvidence,
   openNativeHistoryItemEvidence,
-} from "../../cantrip_worker/src/native-history-item-content.ts";
+} from "../../tests/reference-node-worker/src/native-history-item-content.ts";
 import {
   protectNativeHistoryTurnMetadata,
   openNativeHistoryTurn,
   prepareNativeHistoryTurn,
-} from "../../cantrip_worker/src/native-history-turn-content.ts";
+} from "../../tests/reference-node-worker/src/native-history-turn-content.ts";
 import {
   protectChatMessage,
   openMessage,
-} from "../../cantrip_worker/src/chat-message-encryption.ts";
-import { prepareNativeHistoryRenderedItem } from "../../cantrip_worker/src/native-history-prepare-item.ts";
+} from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
+import { prepareNativeHistoryRenderedItem } from "../../tests/reference-node-worker/src/native-history-prepare-item.ts";
 import {
   openNativeHistoryArchivePage,
   openNativeHistoryTurnArchivePage,
-} from "../../cantrip_worker/src/native-history-archive.ts";
+} from "../../tests/reference-node-worker/src/native-history-archive.ts";
 import {
   openNativeHistoryBatchArchivePage,
   nativeHistoryBatchPayloadDigest,
-} from "../../cantrip_worker/src/native-history-batch-archive.ts";
-import { nativeHistoryUsageForTurn } from "../../cantrip_worker/src/native-history-usage.ts";
-import { nativeHistoryModelAttributionForTurn } from "../../cantrip_worker/src/native-history-model-attribution.ts";
-import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
+} from "../../tests/reference-node-worker/src/native-history-batch-archive.ts";
+import { nativeHistoryUsageForTurn } from "../../tests/reference-node-worker/src/native-history-usage.ts";
+import { nativeHistoryModelAttributionForTurn } from "../../tests/reference-node-worker/src/native-history-model-attribution.ts";
+import { parseCodexNativeHistory } from "../../tests/reference-node-worker/src/codex/native-history.ts";
 import { nativeHistoryWireFixtures } from "../server-rust/native-history-wire-fixtures.mjs";
 import { runHistoryUsageCases } from "../server-rust/native-history-usage-cases.mjs";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });

@@ -17,14 +17,14 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
-import { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.ts";
-import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
-import { attachWorkspaceRoot } from "../../cantrip_worker/src/workspace-root-attachment.ts";
+import { WorkerEncryptionService } from "../../tests/reference-node-worker/src/worker-encryption.ts";
+import { WorkerRoutingRegistry } from "../../tests/reference-node-worker/src/routing-registry.ts";
+import { attachWorkspaceRoot } from "../../tests/reference-node-worker/src/workspace-root-attachment.ts";
 import {
   openWorkerRepositoryOperationContent,
   protectWorkerRepositoryOperationContent,
   RepositoryOperationReplayGuard,
-} from "../../cantrip_worker/src/repository-operation-encryption.ts";
+} from "../../tests/reference-node-worker/src/repository-operation-encryption.ts";
 
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary workspace-fixture");

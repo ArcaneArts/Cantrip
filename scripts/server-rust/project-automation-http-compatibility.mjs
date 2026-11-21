@@ -30,8 +30,8 @@ import {
   projectAutomationProtectedConditionSchema,
 } from "../../packages/protocol/dist/automations.js";
 import { workerCredentialScopes } from "../../packages/protocol/dist/index.js";
-import { protectProjectAutomationDispatch } from "../../cantrip_worker/src/automation-encryption.ts";
-import { ProjectAutomationScheduler } from "../../cantrip_worker/src/automation-scheduler.ts";
+import { protectProjectAutomationDispatch } from "../../tests/reference-node-worker/src/automation-encryption.ts";
+import { ProjectAutomationScheduler } from "../../tests/reference-node-worker/src/automation-scheduler.ts";
 import { eventually } from "./full-worker.mjs";
 
 const option = (key) => {

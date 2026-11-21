@@ -23,7 +23,7 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
-import { RunConfigurationDefinitionService } from "../../../cantrip_worker/src/run-configuration-definition-service.js";
+import { RunConfigurationDefinitionService } from "../../../tests/reference-node-worker/src/run-configuration-definition-service.js";
 
 import {
   protectedChatFields,

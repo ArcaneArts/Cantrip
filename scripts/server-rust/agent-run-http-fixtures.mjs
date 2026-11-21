@@ -5,11 +5,11 @@ import { runConfigurationRuntimeOutputContentSchema } from "../../packages/proto
 import {
   protectWorkerRunContent,
   openWorkerRunContent,
-} from "../../cantrip_worker/src/run-content-encryption.ts";
+} from "../../tests/reference-node-worker/src/run-content-encryption.ts";
 import {
   protectRunConfigurationSecretValue,
   openRunConfigurationSecretValue,
-} from "../../cantrip_worker/src/run-configuration-secret-encryption.ts";
+} from "../../tests/reference-node-worker/src/run-configuration-secret-encryption.ts";
 
 export const configurationId = "eeeeeeee-eeee-4eee-8eee-000000000701";
 export const privateRunMarker = "private-mcp-run-value-🔐";

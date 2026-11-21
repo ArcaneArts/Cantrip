@@ -9,15 +9,15 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { CantripMcpBroker } from "../../cantrip_worker/src/mcp/broker.ts";
-import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
+import { CantripMcpBroker } from "../../tests/reference-node-worker/src/mcp/broker.ts";
+import { CodexRpcClient } from "../../tests/reference-node-worker/src/codex/rpc-client.ts";
 
 const { values } = parseArgs({
   options: { worker: { type: "string" }, codex: { type: "string" } },
 });
 assert.ok(values.worker);
 const requireWorker = createRequire(
-  new URL("../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 );
 const { Client } = await import(
   requireWorker.resolve("@modelcontextprotocol/sdk/client/index.js")
@@ -86,7 +86,11 @@ function host(native, connection, profile) {
   const command = native ? path.resolve(values.worker) : process.execPath;
   const args = native
     ? ["mcp"]
-    : ["--import", "tsx", path.resolve("cantrip_worker/src/mcp/stdio.ts")];
+    : [
+        "--import",
+        "tsx",
+        path.resolve("tests/reference-node-worker/src/mcp/stdio.ts"),
+      ];
   const transport = new StdioClientTransport({
     command,
     args: [...args, "--connection", connection],

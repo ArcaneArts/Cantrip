@@ -8,7 +8,7 @@ import { eventually } from "./full-worker.mjs";
 import {
   sealTunnelDataFrame,
   openTunnelDataFrame,
-} from "../../cantrip_worker/src/tunnel-data-protection.ts";
+} from "../../tests/reference-node-worker/src/tunnel-data-protection.ts";
 
 export async function openShareCarrier(
   page,

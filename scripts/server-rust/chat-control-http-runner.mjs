@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createWriteStream } from "node:fs";
 import { decryptChatMessageProtectedContent } from "../../packages/crypto/dist/index.js";
-import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatMessage } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import {
   settingsHttpFixture,
   componentKey,

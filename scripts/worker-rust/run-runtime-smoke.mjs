@@ -250,7 +250,7 @@ exec /bin/sleep 120`;
   assert.match(nativeOutput.data, /normal-exit/u);
 
   const { RunConfigurationRuntimeSupervisor } =
-    await import("../../cantrip_worker/src/run-configuration-runtime-supervisor.ts");
+    await import("../../tests/reference-node-worker/src/run-configuration-runtime-supervisor.ts");
   const oracle = new RunConfigurationRuntimeSupervisor({
     authorize: async () => ({ sourceRoot: checkout, targetRoot: checkout }),
     environment: { ...process.env, SHELL: "/bin/sh" },

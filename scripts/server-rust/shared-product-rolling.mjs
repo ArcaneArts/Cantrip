@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { loadStoredWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { eventually } from "./full-worker.mjs";
 
 export async function verifySharedProductRolling({

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { executeCantripMcpChatOperation } from "../../cantrip_worker/src/mcp/chat-operations.ts";
+import { executeCantripMcpChatOperation } from "../../tests/reference-node-worker/src/mcp/chat-operations.ts";
 import { LiveProbe } from "./live-sockets.mjs";
 export function deliveryLifecycle({
   h,

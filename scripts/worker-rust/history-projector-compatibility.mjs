@@ -10,19 +10,19 @@ import { parseArgs } from "node:util";
 import {
   createNativeHistoryProjector,
   nativeHistorySourceFingerprint,
-} from "../../cantrip_worker/src/native-history-projector.ts";
-import { restoreNativeHistoryProjectorState } from "../../cantrip_worker/src/native-history-projector-bootstrap.ts";
-import { rebaseNativeHistoryProjector } from "../../cantrip_worker/src/native-history-projector-rebase.ts";
-import { reduceNativeHistory } from "../../cantrip_worker/src/native-history-reducer.ts";
-import { renderNativeHistoryItem } from "../../cantrip_worker/src/native-history-render.ts";
-import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
+} from "../../tests/reference-node-worker/src/native-history-projector.ts";
+import { restoreNativeHistoryProjectorState } from "../../tests/reference-node-worker/src/native-history-projector-bootstrap.ts";
+import { rebaseNativeHistoryProjector } from "../../tests/reference-node-worker/src/native-history-projector-rebase.ts";
+import { reduceNativeHistory } from "../../tests/reference-node-worker/src/native-history-reducer.ts";
+import { renderNativeHistoryItem } from "../../tests/reference-node-worker/src/native-history-render.ts";
+import { parseCodexNativeHistory } from "../../tests/reference-node-worker/src/codex/native-history.ts";
 import {
   protectChatMessage,
   openMessage,
-} from "../../cantrip_worker/src/chat-message-encryption.ts";
-import { openNativeHistoryItemEvidence } from "../../cantrip_worker/src/native-history-item-content.ts";
-import { openNativeHistoryTurn } from "../../cantrip_worker/src/native-history-turn-content.ts";
-import { NativeHistorySourceJournal } from "../../cantrip_worker/src/native-history-source-journal.ts";
+} from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
+import { openNativeHistoryItemEvidence } from "../../tests/reference-node-worker/src/native-history-item-content.ts";
+import { openNativeHistoryTurn } from "../../tests/reference-node-worker/src/native-history-turn-content.ts";
+import { NativeHistorySourceJournal } from "../../tests/reference-node-worker/src/native-history-source-journal.ts";
 import { nativeHistoryWireFixtures } from "../server-rust/native-history-wire-fixtures.mjs";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary);

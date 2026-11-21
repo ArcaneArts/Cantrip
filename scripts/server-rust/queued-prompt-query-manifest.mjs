@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
 import { QueuedPromptRepository } from "../../tests/reference-node-server/src/db/repository/queued-prompts.ts";
-import { protectChatTurn } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatTurn } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 const require = createRequire(
   new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );

@@ -10,8 +10,8 @@ import { workerCommandSchema } from "../../packages/protocol/dist/index.js";
 import {
   GithubClient,
   githubListSearchQuery,
-} from "../../cantrip_worker/src/github.ts";
-import { handleGithubCommand } from "../../cantrip_worker/src/commands/github.ts";
+} from "../../tests/reference-node-worker/src/github.ts";
+import { handleGithubCommand } from "../../tests/reference-node-worker/src/commands/github.ts";
 import {
   githubIssuesFixture,
   issueFixture,

@@ -9,7 +9,7 @@ import {
   readGitTags,
   readGitTagDetail,
   readGitStatus,
-} from "../../cantrip_worker/src/git.ts";
+} from "../../tests/reference-node-worker/src/git.ts";
 function normalize(value, key) {
   if (key === "generatedAt") {
     assert.ok(Number.isFinite(Date.parse(value)));

@@ -19,7 +19,7 @@ import {
   rejectedEventCredentials,
 } from "./native-event-http-setup.mjs";
 import { nativeQueueHttpContent } from "./native-queue-http-content.mjs";
-import { ManagedNativeQueueClient } from "../../cantrip_worker/src/managed-native-queue-client.ts";
+import { ManagedNativeQueueClient } from "../../tests/reference-node-worker/src/managed-native-queue-client.ts";
 
 export async function nativeInferenceHttpCases(h, result) {
   const call = (name, route, json, status = 200, headers = {}) =>

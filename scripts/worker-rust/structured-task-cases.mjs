@@ -16,7 +16,7 @@ import {
   taskPlannerOutputJsonSchema,
   taskFinalizerOutputJsonSchema,
 } from "../../packages/protocol/dist/tasks.js";
-import { executeEncryptedTaskOperation } from "../../cantrip_worker/src/task-operation.ts";
+import { executeEncryptedTaskOperation } from "../../tests/reference-node-worker/src/task-operation.ts";
 import { taskTurn } from "./direct-task-cases.mjs";
 
 export async function verifyStructuredTasks({

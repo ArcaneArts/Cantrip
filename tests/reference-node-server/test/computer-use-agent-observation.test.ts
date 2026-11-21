@@ -8,15 +8,15 @@ import { fileURLToPath } from "node:url";
 import {
   Client,
   StdioClientTransport,
-} from "../../../cantrip_worker/test/support/cua-mcp-test-client.js";
+} from "../../../tests/reference-node-worker/test/support/cua-mcp-test-client.js";
 import {
   decryptChatMessageProtectedContent,
   decryptTaskMessageProtectedContent,
   encryptInteractionResponseContent,
 } from "../../../packages/crypto/src/index.js";
-import { EncryptedChatEventSealer } from "../../../cantrip_worker/src/chat-message-encryption.js";
-import { EncryptedTaskEventSealer } from "../../../cantrip_worker/src/task-operation.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
+import { EncryptedChatEventSealer } from "../../../tests/reference-node-worker/src/chat-message-encryption.js";
+import { EncryptedTaskEventSealer } from "../../../tests/reference-node-worker/src/task-operation.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
 import { agentActivitySchema } from "@cantrip/protocol";
 import type { CuaAgentAuthority } from "@cantrip/protocol/computer-use-agent";
 import type { CuaSnapshot } from "@cantrip/protocol/computer-use";
@@ -26,14 +26,14 @@ import {
   type ComputerUseClient,
   type ComputerUseClientDependencies,
 } from "../../../cantrip_app/src/lib/computer-use-client";
-import { finalizeCuaAgentTurn } from "../../../cantrip_worker/src/computer-use/turn-finalization.js";
-import { CuaAgentCoordinator } from "../../../cantrip_worker/src/computer-use/agent.js";
-import { CuaApprovalManager } from "../../../cantrip_worker/src/computer-use/approvals.js";
+import { finalizeCuaAgentTurn } from "../../../tests/reference-node-worker/src/computer-use/turn-finalization.js";
+import { CuaAgentCoordinator } from "../../../tests/reference-node-worker/src/computer-use/agent.js";
+import { CuaApprovalManager } from "../../../tests/reference-node-worker/src/computer-use/approvals.js";
 import {
   CuaAgentApprovalEvents,
   type CuaAgentApprovalEvent,
-} from "../../../cantrip_worker/src/computer-use/agent-approval-events.js";
-import { CantripMcpBroker } from "../../../cantrip_worker/src/mcp/broker.js";
+} from "../../../tests/reference-node-worker/src/computer-use/agent-approval-events.js";
+import { CantripMcpBroker } from "../../../tests/reference-node-worker/src/mcp/broker.js";
 import { computerUsePreviewAuthority } from "../src/app/routes/computer-use-preview.js";
 import { createComputerUsePreviewFixture } from "./support/computer-use-preview-fixture.js";
 
@@ -295,7 +295,7 @@ async function fixture(
     computerUse: true,
   });
   const workerDirectory = fileURLToPath(
-    new URL("../../../cantrip_worker", import.meta.url),
+    new URL("../../../tests/reference-node-worker", import.meta.url),
   );
   const transport = new StdioClientTransport({
     command: process.execPath,
@@ -429,7 +429,10 @@ describe.skipIf(!process.env.CANTRIP_CUA_TEST_BINARY)(
       expect(await list(second, other)).toEqual(sources);
       const digest = createHash("sha256").update(bytes).digest("hex");
       const requireWorker = createRequire(
-        new URL("../../../cantrip_worker/package.json", import.meta.url),
+        new URL(
+          "../../../tests/reference-node-worker/package.json",
+          import.meta.url,
+        ),
       );
       const sharp = requireWorker("sharp") as typeof import("sharp");
       for (const [client, currentLease] of [

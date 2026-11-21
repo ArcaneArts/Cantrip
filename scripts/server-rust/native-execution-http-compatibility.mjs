@@ -17,7 +17,7 @@ import {
   rejectedEventCredentials,
 } from "./native-event-http-setup.mjs";
 import { scrubEventContent } from "./native-event-http-content.mjs";
-import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatMessage } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import { decryptChatMessageProtectedContent } from "../../packages/crypto/dist/index.js";
 import {
   nativeCommandDispatchSchema,

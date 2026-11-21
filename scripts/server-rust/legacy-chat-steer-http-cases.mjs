@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { CodexAppServer } from "../../cantrip_worker/src/codex/app-server.ts";
-import { AttachmentStore } from "../../cantrip_worker/src/attachment-store.ts";
+import { CodexAppServer } from "../../tests/reference-node-worker/src/codex/app-server.ts";
+import { AttachmentStore } from "../../tests/reference-node-worker/src/attachment-store.ts";
 import {
   openWorkerAttachments,
   protectWorkerAttachmentMetadata,
-} from "../../cantrip_worker/src/attachment-encryption.ts";
+} from "../../tests/reference-node-worker/src/attachment-encryption.ts";
 import {
   openEncryptedChatTurn,
   protectChatTurn,
-} from "../../cantrip_worker/src/chat-message-encryption.ts";
+} from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import { unprobedCodexRuntimeReport } from "../../packages/protocol/dist/index.js";
 import {
   settingsChat,

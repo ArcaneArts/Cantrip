@@ -24,7 +24,7 @@ import {
 import {
   protectAgentInteractionRequest,
   openAgentInteractionResponse,
-} from "../../cantrip_worker/src/interaction-encryption.ts";
+} from "../../tests/reference-node-worker/src/interaction-encryption.ts";
 import { eventually } from "./full-worker.mjs";
 import { runInteractionHttpCases } from "./agent-interaction-http-cases.mjs";
 

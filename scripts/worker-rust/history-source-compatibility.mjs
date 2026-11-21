@@ -16,11 +16,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
-import { NativeHistorySourceJournal } from "../../cantrip_worker/src/native-history-source-journal.ts";
-import { reduceNativeHistory } from "../../cantrip_worker/src/native-history-reducer.ts";
-import { NativeHistoryCursorTracker } from "../../cantrip_worker/src/native-history-cursor-tracker.ts";
-import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
-import * as content from "../../cantrip_worker/src/native-history-content.ts";
+import { NativeHistorySourceJournal } from "../../tests/reference-node-worker/src/native-history-source-journal.ts";
+import { reduceNativeHistory } from "../../tests/reference-node-worker/src/native-history-reducer.ts";
+import { NativeHistoryCursorTracker } from "../../tests/reference-node-worker/src/native-history-cursor-tracker.ts";
+import { parseCodexNativeHistory } from "../../tests/reference-node-worker/src/codex/native-history.ts";
+import * as content from "../../tests/reference-node-worker/src/native-history-content.ts";
 import { schemas } from "./history-source-contracts.mjs";
 
 const { values } = parseArgs({ options: { binary: { type: "string" } } });

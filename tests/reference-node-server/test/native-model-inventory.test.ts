@@ -22,7 +22,7 @@ import { installInternalNativeModelInventoryRoutes } from "../src/app/routes/int
 import { createApplicationOwnerContext } from "../src/app/http/owner-context.js";
 import type { ServerConfig } from "../src/config.js";
 import { protectedSecretEnvelopeFixture } from "./protected-provider-credential-fixture.js";
-import { NativeModelInventoryClient } from "../../../cantrip_worker/src/native-model-inventory-client.js";
+import { NativeModelInventoryClient } from "../../../tests/reference-node-worker/src/native-model-inventory-client.js";
 
 const client = new PGlite();
 const database = drizzle(client, { schema });

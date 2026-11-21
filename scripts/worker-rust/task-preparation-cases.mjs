@@ -9,11 +9,11 @@ import {
   encryptTaskProtectedContent,
   openTaskOperationRelayRequest,
 } from "../../packages/crypto/dist/index.js";
-import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatMessage } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import {
   prepareEncryptedTaskOperation,
   protectTaskConversationMessage,
-} from "../../cantrip_worker/src/task-operation.ts";
+} from "../../tests/reference-node-worker/src/task-operation.ts";
 
 export async function verifyTaskPreparation({
   dispatch,

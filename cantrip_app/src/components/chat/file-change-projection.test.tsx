@@ -7,10 +7,10 @@ import {
   type ChatMessage,
 } from "@cantrip/protocol";
 
-import { normalizeCodexThreadItem } from "../../../../cantrip_worker/src/codex/app-server.js";
-import { renderNativeHistoryItem } from "../../../../cantrip_worker/src/native-history-render.js";
-import { protectChatMessage } from "../../../../cantrip_worker/src/chat-message-encryption.js";
-import type { WorkerEncryptionService } from "../../../../cantrip_worker/src/worker-encryption.js";
+import { normalizeCodexThreadItem } from "../../../../tests/reference-node-worker/src/codex/app-server.js";
+import { renderNativeHistoryItem } from "../../../../tests/reference-node-worker/src/native-history-render.js";
+import { protectChatMessage } from "../../../../tests/reference-node-worker/src/chat-message-encryption.js";
+import type { WorkerEncryptionService } from "../../../../tests/reference-node-worker/src/worker-encryption.js";
 import { projectTrajectory } from "./trajectory-model";
 import { TrajectoryDetails } from "./trajectory-details";
 

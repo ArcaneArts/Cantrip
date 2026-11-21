@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { loadStoredWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { eventually } from "./full-worker.mjs";
 

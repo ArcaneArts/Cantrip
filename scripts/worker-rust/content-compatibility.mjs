@@ -8,16 +8,16 @@ import { parseArgs } from "node:util";
 import * as c from "../../packages/crypto/src/index.ts";
 import { CantripDecryptionError as WorkerDecryptionError } from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/src/index.ts";
-import { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.ts";
-import * as worker from "../../cantrip_worker/src/protected-secrets.ts";
-import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
-import { captureWorkerTurn } from "../../cantrip_worker/src/codex/worker-turn-continuation.ts";
-import { workerTurnState } from "../../cantrip_worker/src/codex/worker-turn-continuation.test-fixture.ts";
+import { WorkerEncryptionService } from "../../tests/reference-node-worker/src/worker-encryption.ts";
+import * as worker from "../../tests/reference-node-worker/src/protected-secrets.ts";
+import { NativeSuspensionStore } from "../../tests/reference-node-worker/src/native-suspension-store.ts";
+import { captureWorkerTurn } from "../../tests/reference-node-worker/src/codex/worker-turn-continuation.ts";
+import { workerTurnState } from "../../tests/reference-node-worker/src/codex/worker-turn-continuation.test-fixture.ts";
 import { taskOperationRelayRequestSchema } from "../../packages/protocol/dist/tasks.js";
 import {
   createNativeResourceProtection,
   createNativeSuspensionSourceProtection,
-} from "../../cantrip_worker/src/native-resource-protection.ts";
+} from "../../tests/reference-node-worker/src/native-resource-protection.ts";
 
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass built --binary content-fixture");

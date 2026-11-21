@@ -18,8 +18,9 @@ Object.assign(process.env, {
   GIT_COMMITTER_DATE: "2026-11-17T00:00:00+00:00",
 });
 const { handleGitCommand } =
-  await import("../../cantrip_worker/src/commands/git.ts");
-const { readGitStatus } = await import("../../cantrip_worker/src/git.ts");
+  await import("../../tests/reference-node-worker/src/commands/git.ts");
+const { readGitStatus } =
+  await import("../../tests/reference-node-worker/src/git.ts");
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-git-branches-")),
   template = path.join(root, "template"),
   nodeRoot = path.join(root, "node"),

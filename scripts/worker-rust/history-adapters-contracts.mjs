@@ -2,7 +2,7 @@
 import { writeFile } from "node:fs/promises";
 import { format } from "prettier";
 import { chatAttachmentSummarySchema } from "../../packages/protocol/dist/index.js";
-import { nativeHistoryRetainedContextsSchema } from "../../cantrip_worker/src/native-history-turn-context.ts";
+import { nativeHistoryRetainedContextsSchema } from "../../tests/reference-node-worker/src/native-history-turn-context.ts";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
 const schemas = {
   nativeHistoryRetainedContextsSchema,

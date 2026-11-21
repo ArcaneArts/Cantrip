@@ -13,8 +13,8 @@ import {
   accountResourceUsageSchema,
   directAttachmentTicketSchema,
 } from "../../packages/protocol/dist/index.js";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { buildRustServer } from "./build.mjs";
 import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { HttpFixture } from "./http-fixture.mjs";

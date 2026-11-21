@@ -130,9 +130,9 @@ export async function actualLab(directory, host, hostModule) {
   }
   async function checkpoint() {
     const { CantripOsSystemCheckpointManager } =
-      await import("../../../cantrip_worker/dist/os-executor/system-checkpoints.js");
+      await import("../../../tests/reference-node-worker/dist/os-executor/system-checkpoints.js");
     const { sealPrivateSystem } =
-      await import("../../../cantrip_worker/dist/os-executor/private-system-file.js");
+      await import("../../../tests/reference-node-worker/dist/os-executor/private-system-file.js");
     const source = await create();
     await install(source.id, "ed");
     await marker(source.id, checkpointBytes);

@@ -3,8 +3,8 @@ import {
   createChatRecoveryRuntime,
   type ChatRecoveryRuntimeDependencies,
 } from "../src/app/runtime/chat-recovery-runtime.js";
-import { protectChatMessage } from "../../../cantrip_worker/src/chat-message-encryption.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
+import { protectChatMessage } from "../../../tests/reference-node-worker/src/chat-message-encryption.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
 import { decryptChatMessageProtectedContent } from "../../../packages/crypto/src/index.js";
 import { chatMessageOpaqueContentSchema } from "@cantrip/protocol";
 

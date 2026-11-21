@@ -3,8 +3,8 @@ import { browserServiceSchema } from "../../packages/protocol/dist/browser-surfa
 import { securityFixtures } from "./security-fixtures.mjs";
 import { json, state as protectedState } from "./project-target-state.mjs";
 import { LiveProbe, initialize } from "./live-sockets.mjs";
-import { protectWorkerClientNotification } from "../../cantrip_worker/src/client-control-content-encryption.ts";
-import { openWorkerEndpointContent } from "../../cantrip_worker/src/endpoint-content-encryption.ts";
+import { protectWorkerClientNotification } from "../../tests/reference-node-worker/src/client-control-content-encryption.ts";
+import { openWorkerEndpointContent } from "../../tests/reference-node-worker/src/endpoint-content-encryption.ts";
 import { clientNotificationContentSchema } from "../../packages/protocol/dist/client-control-content.js";
 import {
   argumentsFor,

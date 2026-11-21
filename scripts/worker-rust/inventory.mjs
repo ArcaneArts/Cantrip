@@ -15,7 +15,7 @@ const files = execFileSync(
   "git",
   [
     "ls-files",
-    "cantrip_worker",
+    "tests/reference-node-worker",
     "cantrip_os/host",
     "packages/crypto",
     "packages/profile-converter",
@@ -37,7 +37,7 @@ const sources = [],
   commandSites = [],
   publications = [],
   startup = {
-    source: "cantrip_worker/src/index.ts",
+    source: "tests/reference-node-worker/src/index.ts",
     constructions: [],
     events: [],
   };
@@ -69,7 +69,10 @@ for (const file of files) {
           imports.set(specifier.local.name, node.source.value);
     });
     source.imports = [...new Set(imports.values())].sort();
-    if (file.startsWith("cantrip_worker/src/") && !file.endsWith(".test.ts"))
+    if (
+      file.startsWith("tests/reference-node-worker/src/") &&
+      !file.endsWith(".test.ts")
+    )
       walk(ast, (node) => {
         if (node.type === "CallExpression") {
           const callee = text.slice(node.callee.start, node.callee.end);
