@@ -1,12 +1,9 @@
 //! Project insights owned by the worker that holds the selected checkout.
-use crate::filesystem::{Scope, paths};
+use crate::filesystem::{Scope, paths, storage::open_rooted_regular};
 use anyhow::{Context, Result};
 use cantrip_wire::{Value, value::json};
-use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt};
-use cap_std::{
-    ambient_authority,
-    fs::{Dir, OpenOptions},
-};
+use cap_fs_ext::DirExt;
+use cap_std::{ambient_authority, fs::Dir};
 use std::{
     ffi::OsStr,
     fs::File,
@@ -65,23 +62,6 @@ async fn git(scope: &Scope, root: &Path, args: &[&str]) -> Result<String> {
         .await
 }
 
-fn open_file(root: &Dir, path: &Path) -> io::Result<File> {
-    let mut options = OpenOptions::new();
-    options.read(true).follow(FollowSymlinks::No);
-    #[cfg(unix)]
-    {
-        use cap_std::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NONBLOCK);
-    }
-    let file = root.open_with(path, &options)?.into_std();
-    if !file.metadata()?.is_file() {
-        return Err(io::Error::other(
-            "Project entry is no longer a regular file.",
-        ));
-    }
-    Ok(file)
-}
-
 #[derive(Default)]
 struct TextCounts {
     bytes_scanned: u64,
@@ -133,7 +113,7 @@ fn repository(root: &Path, commits: u64, tracked: &str, scope: &Scope) -> Result
                 bytes = bytes.saturating_add(entry.len());
             }
             if entry.is_file() && index < MAX_TEXT_FILES {
-                text.scan(open_file(root, path)?, entry.len())?;
+                text.scan(open_rooted_regular(root, path)?, entry.len())?;
             }
             Ok(())
         })();
@@ -255,7 +235,7 @@ fn folder(path: Option<&Path>, scope: &Scope) -> Result<Value> {
             if !root.symlink_metadata(&file)?.is_file() {
                 return Ok(false);
             }
-            let file = open_file(&root, &file)?;
+            let file = open_rooted_regular(&root, &file)?;
             let size = file.metadata()?.len();
             if size > MAX_SAFE_INTEGER {
                 counts.text.truncated = true;

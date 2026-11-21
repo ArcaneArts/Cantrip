@@ -1,7 +1,25 @@
 use super::paths;
 use anyhow::{Result, bail};
 use cantrip_wire::{JsString, Value, value::json};
+use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt};
+use cap_std::fs::{Dir, OpenOptions};
 use std::path::{Path, PathBuf};
+use std::{fs::File, io};
+
+pub(crate) fn open_rooted_regular(root: &Dir, path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true).follow(FollowSymlinks::No);
+    #[cfg(unix)]
+    {
+        use cap_std::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let file = root.open_with(path, &options)?.into_std();
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::other("The entry is no longer a regular file."));
+    }
+    Ok(file)
+}
 
 pub struct WorkspaceRoot {
     pub display_prefix: Option<PathBuf>,

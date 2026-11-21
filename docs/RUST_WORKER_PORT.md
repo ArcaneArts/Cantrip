@@ -10337,3 +10337,26 @@ focused element. The same probe saw application-level references for
 all reported windows of the frontmost app.
 [Apple text-specific parameterized attributes](https://developer.apple.com/documentation/appkit/text-specific-parameterized-attributes)
 [WebKit selection marker implementation](https://github.com/WebKit/webkit/blob/main/Source/WebCore/accessibility/mac/WebAccessibilityObjectWrapperMac.mm).
+
+## 309. Restore task Git change summaries
+
+Reference commit `b958e1fcf466b8820556b3a3689d87feca684955` (#3472).
+
+The task metrics panel's encrypted `git.change-summary` operation now
+reaches the native Git handler through the protected repository route.
+It counts first-parent commit diffs within the requested time window
+and includes staged, unstaged, and untracked files in the selected
+worktree. NUL records preserve rename pairs and unusual filenames.
+The untracked scan reads regular files within the worktree and counts
+symlink text. It reports a partial result when a limit is reached.
+The result validator is generated from the existing public schema.
+
+A macOS ARM64 production Rust worker and local Rust Core matched the
+archived worker in three encrypted endpoint comparisons. The checks
+covered the date cutoff, first-parent merge, rename, dirty checkout,
+binary and symlink entries, a sparse oversized file, and preservation
+of checkout status. The native fixture also counted staged and untracked
+lines in an unborn checkout through a nested Unicode path.
+
+The live Git force-push preview and apply operations still require
+their Rust handlers.

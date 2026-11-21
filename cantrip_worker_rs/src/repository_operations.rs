@@ -158,6 +158,7 @@ impl RepositoryOperations {
                 | "git.diff"
                 | "git.action"
                 | "git.history"
+                | "git.change-summary"
                 | "git.graph.snapshot"
                 | "git.graph.metrics"
                 | "git.graph.commit-overlay"

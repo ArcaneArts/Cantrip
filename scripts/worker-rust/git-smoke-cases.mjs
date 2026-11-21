@@ -1,6 +1,15 @@
 // Production encrypted repository operations against the owned smoke checkout.
 import assert from "node:assert/strict";
-import { readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  rename,
+  rm,
+  stat,
+  symlink,
+  truncate,
+} from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -24,6 +33,95 @@ import {
   managedOperationRecord,
   RepositoryManagedOperationStore,
 } from "../../tests/reference-node-worker/src/repository-managed-operation-store.ts";
+
+async function verifyChangeSummary(checkout, operation) {
+  const start = Math.floor(Date.now() / 1_000) + 120;
+  const date = (seconds) => new Date((start + seconds) * 1_000).toISOString();
+  function gitAt(seconds, ...args) {
+    const timestamp = String(start + seconds) + " +0000";
+    return execFileSync(
+      "git",
+      [
+        "-C",
+        checkout,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        ...args,
+      ],
+      {
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: timestamp,
+          GIT_COMMITTER_DATE: timestamp,
+        },
+        encoding: "utf8",
+      },
+    );
+  }
+  async function compare(until) {
+    const arguments_ = { since: date(0), until };
+    const response = await operation({
+      type: "git.change-summary",
+      arguments: { ...arguments_, cwd: "/not-the-routed-checkout" },
+    });
+    assert.equal(response.ok, true, JSON.stringify(response));
+    const actual = p.gitChangeSummarySchema.parse(response.result);
+    const expected = await handleGitCommand({
+      type: "git.change-summary",
+      cwd: checkout,
+      ...arguments_,
+    });
+    assert.deepEqual(
+      { ...actual, observedAt: null },
+      { ...expected, observedAt: null },
+    );
+    return actual;
+  }
+  const original =
+    process.platform === "win32" ? "before name.txt" : "before\tname.txt";
+  const renamed =
+    (process.platform === "win32" ? "" : "commit:") + "b".repeat(40);
+  const file = (name) => path.join(checkout, name);
+  await writeFile(file(original), "original line\n");
+  gitAt(-60, "add", "--", original);
+  gitAt(-60, "commit", "-qm", "Before task");
+  assert.equal((await compare(null)).commits, 0);
+
+  gitAt(10, "switch", "-qc", "summary-topic");
+  await rename(file(original), file(renamed));
+  await writeFile(file("topic.txt"), "one\ntwo\n");
+  gitAt(10, "add", "--", original, renamed, "topic.txt");
+  gitAt(10, "commit", "-qm", "Topic changes");
+  gitAt(20, "switch", "-q", "main");
+  await writeFile(file("main.txt"), "main\n");
+  gitAt(20, "add", "--", "main.txt");
+  gitAt(20, "commit", "-qm", "Main changes");
+  gitAt(30, "merge", "--no-ff", "-qm", "Merge task branch", "summary-topic");
+  assert.equal((await compare(date(25))).commits, 1);
+
+  await writeFile(file("main.txt"), "staged\n");
+  gitAt(40, "add", "--", "main.txt");
+  await writeFile(file("main.txt"), "staged\nunstaged\n");
+  await writeFile(file("untracked.txt"), "text\nwithout final newline");
+  await writeFile(file("binary.dat"), Buffer.from([0, 1, 2]));
+  await writeFile(file("large.txt"), "");
+  await truncate(file("large.txt"), 8 * 1_024 * 1_024 + 1);
+  if (process.platform !== "win32")
+    await symlink("main.txt", file("untracked-link"));
+  const before = gitAt(40, "status", "--porcelain=v1", "-z");
+  const result = await compare(null);
+  assert.equal(result.commits, 2);
+  assert.equal(result.binaryFiles, 1);
+  assert.equal(result.partial, true);
+  assert.equal(gitAt(40, "status", "--porcelain=v1", "-z"), before);
+}
+
 export async function verifyGit({
   call,
   ownerId,
@@ -34,6 +132,7 @@ export async function verifyGit({
   workerDirectory,
   checkout,
   restartWorker,
+  summaryOnly = false,
 }) {
   const worktrees = await call("GET", `/api/projects/${projectId}/worktrees`);
   assert.equal(worktrees.status, 200, JSON.stringify(worktrees));
@@ -95,6 +194,7 @@ export async function verifyGit({
       opened.fill(0);
     }
   }
+  if (summaryOnly) return verifyChangeSummary(checkout, operation);
   const status = await operation({
     type: "git.status",
     arguments: { cwd: "/untrusted-overridden" },
