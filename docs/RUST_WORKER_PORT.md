@@ -51,9 +51,10 @@ covers the current Docker build, enrollment, and volume reuse.
 
 ### Open platform checks
 
-- macOS shared-window copy requires a readable Accessibility selection. Apps
-  whose custom Copy handlers expose no selection remain a compatibility gap.
-  [macOS selection evidence](#336-copy-attributed-macos-window-selections)
+- macOS shared-window copy supports text and selection ranges exposed through
+  Accessibility. Custom Copy handlers that only publish to the shared system
+  pasteboard remain a compatibility gap.
+  [macOS selection evidence](#358-copy-macos-text-from-a-selection-range-and-value)
 - The Windows interactive input and clipboard fixtures still need a live run.
   [Windows input evidence](#307-send-foreground-input-to-shared-windows-windows)
 - GNOME and KDE portal approval remains unverified. The local Wayland
@@ -11405,3 +11406,25 @@ in PGlite mode with an empty worker PATH. Direct HTTP requests verified both
 the default UTF-16 slice and the opted-in Unicode scalar response. The
 managed Terminal regression, all five wire unit tests, and offline builds
 of Core and the worker passed.
+
+## 358. Copy macOS text from a selection range and value
+
+Reference commit `8606667bbb96b573f3ab76d631e83f04c0cce4c0` (#3521).
+
+The helper can read the focused control's text value when the control
+publishes a UTF-16 selection range and provides no selected text. It returns
+only that range, verifies the range is still current, and retains the
+selected-window and secure-field checks.
+
+On macOS ARM64, the baseline helper returned no text for this AppKit control.
+The rebuilt framed helper returned only the selected Unicode and whitespace
+and rejected a range that changed while the value was being read. It also
+passed the direct, plain range, attributed, secure field, sibling window,
+empty selection, and replay checks. Host focus and pasteboard were unchanged.
+Three Core Foundation selection tests and the 22 noninteractive helper
+process tests passed.
+
+The retired Node worker could send Command-C and read the shared system
+pasteboard. AppKit's change counter can report a new owner without identifying
+the writing window, so it cannot attribute that result to the shared target.
+[Apple pasteboard documentation](https://developer.apple.com/documentation/appkit/nspasteboard/changecount).

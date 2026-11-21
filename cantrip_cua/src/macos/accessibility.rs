@@ -26,6 +26,7 @@ struct Pair {
     y: f64,
 }
 #[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Range {
     location: isize,
     length: isize,
@@ -796,24 +797,24 @@ fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String
     }
 
     cancel.check()?;
-    if let Ok(range) = element.attr("AXSelectedTextRange")
-        && let Some(length) = selection_length(&range)
-    {
-        if length > MAX_HOST_CLIPBOARD_UNITS {
+    let range = element.attr("AXSelectedTextRange").ok();
+    let selection = range.as_ref().and_then(selection_range);
+    if let (Some(range), Some(selection)) = (&range, selection) {
+        if selection.length as usize > MAX_HOST_CLIPBOARD_UNITS {
             return Err(selection_too_large());
         }
-        if let Ok(value) = element.parameterized_attr("AXStringForRange", &range)
+        if let Ok(value) = element.parameterized_attr("AXStringForRange", range)
             && let Some(text) = decode_selection(&value)?
         {
             return Ok(Some(text));
         }
         cancel.check()?;
-        if let Ok(value) = element.parameterized_attr("AXAttributedStringForRange", &range)
+        if let Ok(value) = element.parameterized_attr("AXAttributedStringForRange", range)
             && value.is(unsafe { CFAttributedStringGetTypeID() })
         {
             // The attributed value owns the plain string for the duration of the read.
             let text = unsafe { CFAttributedStringGetString(value.0) };
-            if let Some(text) = decode_selection_text(text)? {
+            if let Some(text) = decode_selection_text(text, None)? {
                 return Ok(Some(text));
             }
         }
@@ -824,13 +825,30 @@ fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String
     cancel.check()?;
     if let Ok(range) = element.attr("AXSelectedTextMarkerRange")
         && let Ok(value) = element.parameterized_attr("AXStringForTextMarkerRange", &range)
+        && let Some(text) = decode_selection(&value)?
     {
-        return decode_selection(&value);
+        return Ok(Some(text));
+    }
+
+    // Some controls only export a selection range and their text value.
+    // Confirm that the same range still applies after reading the value.
+    let Some(selection) = selection else {
+        return Ok(None);
+    };
+    cancel.check()?;
+    if let Ok(value) = element.attr("AXValue")
+        && element
+            .attr("AXSelectedTextRange")
+            .ok()
+            .and_then(|range| selection_range(&range))
+            == Some(selection)
+    {
+        return decode_selection_text(value.0, Some(selection));
     }
     Ok(None)
 }
 
-fn selection_length(value: &Owned) -> Option<usize> {
+fn selection_range(value: &Owned) -> Option<Range> {
     if !value.is(unsafe { AXValueGetTypeID() }) {
         return None;
     }
@@ -844,34 +862,35 @@ fn selection_length(value: &Owned) -> Option<usize> {
         && range.location >= 0
         && range.length > 0
         && range.location.checked_add(range.length).is_some())
-    .then_some(range.length as usize)
+    .then_some(range)
 }
 
 fn decode_selection(selection: &Owned) -> Result<Option<String>> {
-    decode_selection_text(selection.0)
+    decode_selection_text(selection.0, None)
 }
 
-fn decode_selection_text(selection: Ref) -> Result<Option<String>> {
+fn decode_selection_text(selection: Ref, range: Option<Range>) -> Result<Option<String>> {
     if selection.is_null() || unsafe { CFGetTypeID(selection) != CFStringGetTypeID() } {
         return Ok(None);
     }
     let length = unsafe { CFStringGetLength(selection) };
-    if length <= 0 {
+    let range = range.unwrap_or(Range {
+        location: 0,
+        length,
+    });
+    if range.location < 0
+        || range.length <= 0
+        || range.location > length
+        || range.length > length - range.location
+    {
         return Ok(None);
     }
-    if length as usize > MAX_HOST_CLIPBOARD_UNITS {
+    if range.length as usize > MAX_HOST_CLIPBOARD_UNITS {
         return Err(selection_too_large());
     }
-    let mut units = vec![0; length as usize];
+    let mut units = vec![0; range.length as usize];
     unsafe {
-        CFStringGetCharacters(
-            selection,
-            Range {
-                location: 0,
-                length,
-            },
-            units.as_mut_ptr(),
-        );
+        CFStringGetCharacters(selection, range, units.as_mut_ptr());
     }
     Ok(Some(String::from_utf16_lossy(&units)))
 }
@@ -895,11 +914,34 @@ mod selection_tests {
 
     #[test]
     fn reads_only_nonempty_nonoverflowing_native_selection_ranges() {
-        assert_eq!(selection_length(&value(12, 7)), Some(7));
+        assert_eq!(
+            selection_range(&value(12, 7)),
+            Some(Range {
+                location: 12,
+                length: 7
+            })
+        );
         for (location, length) in [(0, 0), (-1, 7), (1, -1), (isize::MAX, 1)] {
-            assert_eq!(selection_length(&value(location, length)), None);
+            assert_eq!(selection_range(&value(location, length)), None);
         }
-        assert_eq!(selection_length(&Owned::string("wrong type")), None);
+        assert_eq!(selection_range(&Owned::string("wrong type")), None);
+    }
+
+    #[test]
+    fn extracts_only_the_valid_utf16_range_from_a_text_value() {
+        let text = Owned::string("🚆before λ🚋\n\tafter");
+        let range = |location, length| Some(Range { location, length });
+        assert_eq!(
+            decode_selection_text(text.0, range(9, 5))
+                .unwrap()
+                .as_deref(),
+            Some("λ🚋\n\t")
+        );
+        assert_eq!(
+            decode_selection_text(text.0, range(9, isize::MAX)).unwrap(),
+            None
+        );
+        assert_eq!(decode_selection_text(text.0, range(80, 1)).unwrap(), None);
     }
 
     #[test]
