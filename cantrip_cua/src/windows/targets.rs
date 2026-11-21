@@ -120,12 +120,34 @@ pub(super) fn monitors() -> Result<Vec<Monitor>> {
     Ok(monitors)
 }
 
-fn monitor(handle: usize) -> Result<Monitor> {
+fn monitor_info(handle: usize) -> Result<MONITORINFOEXW> {
     let mut info = MONITORINFOEXW::default();
     info.monitorInfo.cbSize = size_of::<MONITORINFOEXW>() as u32;
     if unsafe { GetMonitorInfoW(handle as HMONITOR, &mut info.monitorInfo) } == 0 {
         return Err(missing());
     }
+    Ok(info)
+}
+
+impl Monitor {
+    pub(super) fn verify(&self) -> Result<()> {
+        let info = monitor_info(self.handle)?;
+        let rect = info.monitorInfo.rcMonitor;
+        let bounds = &self.target.bounds;
+        if self.device != wide(&info.szDevice)
+            || bounds.x != f64::from(rect.left)
+            || bounds.y != f64::from(rect.top)
+            || bounds.width != f64::from(rect.right - rect.left)
+            || bounds.height != f64::from(rect.bottom - rect.top)
+        {
+            return Err(stale());
+        }
+        Ok(())
+    }
+}
+
+fn monitor(handle: usize) -> Result<Monitor> {
+    let info = monitor_info(handle)?;
     let mut display = DISPLAY_DEVICEW {
         cb: size_of::<DISPLAY_DEVICEW>() as u32,
         ..Default::default()

@@ -1,13 +1,13 @@
 use super::{
     failure,
     lifetime::{Registry, verify_window},
-    lock, stale,
-    targets::{PixelCoordinates, Window},
+    lock, physical, stale,
+    targets::{Monitor, PixelCoordinates, Window},
 };
 use crate::{
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
-    target::Point,
+    target::{Point, Target},
 };
 use cantrip_interaction::{
     host::{Delivery, InputBackend, InputFailure, InputHost, PostFailure, Prepared},
@@ -40,6 +40,20 @@ pub(super) struct Native {
     registry: Arc<Mutex<Registry>>,
 }
 
+pub(super) enum Destination {
+    Window(Arc<Window>),
+    Monitor(Monitor),
+}
+
+impl Destination {
+    fn target(&self) -> &Target {
+        match self {
+            Self::Window(window) => &window.target,
+            Self::Monitor(monitor) => &monitor.target,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Control {
     Key(u16),
@@ -53,14 +67,26 @@ struct Recipient {
 }
 
 #[derive(Clone, Copy)]
-struct Message {
+pub(super) struct Message {
     recipient: Recipient,
     kind: u32,
     word: WPARAM,
     long: LPARAM,
 }
 
-pub(super) struct Packet(Vec<Message>);
+pub(super) enum Packet {
+    Directed(Vec<Message>),
+    System(physical::Packet),
+}
+
+impl Packet {
+    fn first_message(&self) -> Option<Message> {
+        match self {
+            Self::Directed(messages) => messages.first().copied(),
+            Self::System(_) => None,
+        }
+    }
+}
 
 impl Native {
     pub(super) fn host(registry: Arc<Mutex<Registry>>) -> Shared {
@@ -69,13 +95,13 @@ impl Native {
 }
 
 impl Session {
-    pub(super) fn open(host: Shared, window: Arc<Window>) -> Result<Self> {
+    pub(super) fn open(host: Shared, destination: Destination) -> Result<Self> {
         let id = TargetIdentity {
-            id: window.target.id.clone(),
-            generation: window.target.generation,
+            id: destination.target().id.clone(),
+            generation: destination.target().generation,
         };
         let owner = lock(&host)
-            .open(id.clone(), id.id.clone(), window)
+            .open(id.clone(), id.id.clone(), destination)
             .map_err(|_| CuaError::new(ErrorCode::Capacity, "Windows input capacity reached."))?;
         Ok(Self {
             host,
@@ -85,12 +111,13 @@ impl Session {
         })
     }
 
-    pub(super) fn refresh(&mut self, window: Arc<Window>) -> Result<()> {
-        if window.target.id != self.id.id || window.target.generation != self.id.generation {
+    pub(super) fn refresh(&mut self, destination: Destination) -> Result<()> {
+        let target = destination.target();
+        if target.id != self.id.id || target.generation != self.id.generation {
             return Err(stale());
         }
         lock(&self.host)
-            .update_destination(self.owner, &self.id, window)
+            .update_destination(self.owner, &self.id, destination)
             .map_err(|_| stale())
     }
 
@@ -152,15 +179,10 @@ fn input_error(error: InputFailure<CuaError>) -> CuaError {
     }
 }
 
-impl InputBackend for Native {
-    type Target = Arc<Window>;
-    type Control = Control;
-    type Packet = Packet;
-    type Error = CuaError;
-
-    fn prepare<'a>(
-        &mut self,
-        window: &Self::Target,
+impl Native {
+    fn prepare_window<'a>(
+        &self,
+        window: &Window,
         event: &InputEvent,
         held: impl Iterator<Item = (&'a Control, &'a Packet)>,
     ) -> Result<Prepared<Control, Packet>> {
@@ -168,7 +190,7 @@ impl InputBackend for Native {
         let _coordinates = PixelCoordinates::enter();
         let holds: Vec<_> = held.collect();
         let pointer_route = holds.iter().find_map(|(control, release)| match control {
-            Control::Button(button) => Some((*button, release.0[0])),
+            Control::Button(button) => release.first_message().map(|message| (*button, message)),
             _ => None,
         });
         let held_buttons = holds
@@ -179,13 +201,14 @@ impl InputBackend for Native {
             })
             .fold(0, |flags, button| flags | button);
         let held_key = |key| {
-            holds.iter().find_map(|(control, packet)| {
-                (**control == Control::Key(key)).then_some(packet.0[0])
-            })
+            holds
+                .iter()
+                .find(|(control, _)| **control == Control::Key(key))
+                .and_then(|(_, packet)| packet.first_message())
         };
         let action = |messages| Prepared::Action {
             controls: vec![],
-            packet: Packet(messages),
+            packet: Packet::Directed(messages),
         };
         let point = |local: Point| -> Result<POINT> {
             let global = window.target.bounds.to_global(local)?;
@@ -238,7 +261,13 @@ impl InputBackend for Native {
                     })?;
                     Prepared::Repeat {
                         control: Control::Key(key),
-                        packet: Packet(vec![key_message(release.recipient, key, false, true, alt)]),
+                        packet: Packet::Directed(vec![key_message(
+                            release.recipient,
+                            key,
+                            false,
+                            true,
+                            alt,
+                        )]),
                     }
                 } else {
                     let recipient = Recipient::keyboard(window)?;
@@ -255,8 +284,8 @@ impl InputBackend for Native {
                     );
                     Prepared::Down {
                         control: Control::Key(key),
-                        packet: Packet(down),
-                        release: Packet(up),
+                        packet: Packet::Directed(down),
+                        release: Packet::Directed(up),
                     }
                 }
             }
@@ -272,7 +301,7 @@ impl InputBackend for Native {
                 let recipient = pointer_recipient(point)?;
                 let coordinates = recipient.coordinates(point, false)?;
                 let flags = held_buttons | mouse_modifiers(modifiers);
-                let packet = Packet(vec![Message {
+                let packet = Packet::Directed(vec![Message {
                     recipient,
                     kind: WM_MOUSEMOVE,
                     word: flags,
@@ -282,7 +311,7 @@ impl InputBackend for Native {
                     Prepared::MoveHeld {
                         control: Control::Button(button),
                         packet,
-                        release: Packet(vec![Message {
+                        release: Packet::Directed(vec![Message {
                             long: coordinates,
                             ..release
                         }]),
@@ -306,13 +335,13 @@ impl InputBackend for Native {
                 let flags = held_buttons | mouse_modifiers(modifiers);
                 Prepared::Down {
                     control: Control::Button(*button),
-                    packet: Packet(vec![Message {
+                    packet: Packet::Directed(vec![Message {
                         recipient,
                         kind: down,
                         word: flags | flag | xbutton,
                         long,
                     }]),
-                    release: Packet(vec![Message {
+                    release: Packet::Directed(vec![Message {
                         recipient,
                         kind: up,
                         word: flags | xbutton,
@@ -329,12 +358,12 @@ impl InputBackend for Native {
                 let packet = holds
                     .iter()
                     .find(|(held_control, _)| **held_control == control)
-                    .map(|(_, release)| {
-                        let mut message = release.0[0];
+                    .and_then(|(_, release)| release.first_message())
+                    .map(|mut message| {
                         message.long = message.recipient.coordinates(point, false)?;
                         let (_, _, flag, xbutton) = button_flags(*button);
                         message.word = (held_buttons & !flag) | xbutton;
-                        Ok::<_, CuaError>(Packet(vec![message]))
+                        Ok::<_, CuaError>(Packet::Directed(vec![message]))
                     })
                     .transpose()?;
                 Prepared::Up { control, packet }
@@ -375,13 +404,13 @@ impl InputBackend for Native {
         })
     }
 
-    fn post(
-        &mut self,
-        target: &Self::Target,
-        packet: &Packet,
+    fn post_window(
+        &self,
+        target: &Window,
+        messages: &[Message],
     ) -> std::result::Result<Delivery, PostFailure<CuaError>> {
         verify_window(&self.registry, target).map_err(PostFailure::NotDispatched)?;
-        for (position, message) in packet.0.iter().enumerate() {
+        for (position, message) in messages.iter().enumerate() {
             let result = message.recipient.verify(target).and_then(|()| {
                 if unsafe {
                     PostMessageW(
@@ -408,6 +437,41 @@ impl InputBackend for Native {
             }
         }
         Ok(Delivery::DispatchedUnverified)
+    }
+}
+
+impl InputBackend for Native {
+    type Target = Destination;
+    type Control = Control;
+    type Packet = Packet;
+    type Error = CuaError;
+
+    fn prepare<'a>(
+        &mut self,
+        destination: &Destination,
+        event: &InputEvent,
+        held: impl Iterator<Item = (&'a Control, &'a Packet)>,
+    ) -> Result<Prepared<Control, Packet>> {
+        match destination {
+            Destination::Window(window) => self.prepare_window(window, event, held),
+            Destination::Monitor(monitor) => physical::prepare(monitor, event, held),
+        }
+    }
+
+    fn post(
+        &mut self,
+        destination: &Destination,
+        packet: &Packet,
+    ) -> std::result::Result<Delivery, PostFailure<CuaError>> {
+        match (destination, packet) {
+            (Destination::Window(window), Packet::Directed(messages)) => {
+                self.post_window(window, messages)
+            }
+            (Destination::Monitor(monitor), Packet::System(packet)) => {
+                physical::post(monitor, packet)
+            }
+            _ => Err(PostFailure::NotDispatched(stale())),
+        }
     }
 }
 
@@ -520,7 +584,7 @@ fn key_message(recipient: Recipient, key: u16, release: bool, repeat: bool, alt:
     }
 }
 
-fn modifier_key(modifier: Modifier) -> u16 {
+pub(super) fn modifier_key(modifier: Modifier) -> u16 {
     match modifier {
         Modifier::Shift => VK_SHIFT,
         Modifier::Control => VK_CONTROL,
@@ -555,7 +619,7 @@ fn button_flags(button: MouseButton) -> (u32, u32, usize, usize) {
     (down, up, flag as usize, (button as usize) << 16)
 }
 
-fn virtual_key(key: &str) -> Result<u16> {
+pub(super) fn virtual_key(key: &str) -> Result<u16> {
     let code = match key.as_bytes() {
         [code @ (b'A'..=b'Z' | b'0'..=b'9')] => u16::from(*code),
         [code @ b'a'..=b'z'] => u16::from(code.to_ascii_uppercase()),

@@ -1,0 +1,430 @@
+use super::{
+    failure,
+    input::{Control, Packet as InputPacket, modifier_key, virtual_key},
+    stale,
+    targets::{Monitor, PixelCoordinates},
+};
+use crate::{
+    error::{CuaError, ErrorCode, Result},
+    target::Point,
+};
+use cantrip_interaction::{
+    host::{Delivery, PostFailure, Prepared},
+    input::{InputEvent, Modifier, MouseButton, TextInput},
+};
+use std::mem::size_of;
+use windows_sys::Win32::{
+    Graphics::Gdi::{HMONITOR, MONITOR_DEFAULTTONULL, MonitorFromWindow},
+    UI::{Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
+};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Event {
+    Key(u16, bool),
+    Unicode(u16, bool),
+    Mouse(u32, u32),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Dispatch {
+    Held,
+    Release,
+    Action,
+}
+
+pub(super) struct Packet {
+    point: Option<Point>,
+    events: Vec<Event>,
+    dispatch: Dispatch,
+}
+
+pub(super) fn prepare<'a>(
+    monitor: &Monitor,
+    event: &InputEvent,
+    held: impl Iterator<Item = (&'a Control, &'a InputPacket)>,
+) -> Result<Prepared<Control, InputPacket>> {
+    let holds: Vec<_> = held.collect();
+    let modifiers = |modifiers: &[Modifier], key: Option<u16>| -> Vec<u16> {
+        modifiers
+            .iter()
+            .map(|modifier| modifier_key(*modifier))
+            .filter(|&code| {
+                Some(code) != key
+                    && !holds
+                        .iter()
+                        .any(|(control, _)| **control == Control::Key(code))
+                    && !pressed(code)
+            })
+            .collect()
+    };
+    let point = |point: Point| -> Result<Option<Point>> {
+        monitor.target.bounds.to_global(point)?;
+        Ok(Some(point))
+    };
+    let packet = |point, events, dispatch| {
+        InputPacket::System(Packet {
+            point,
+            events,
+            dispatch,
+        })
+    };
+    let action = |point, events| Prepared::Action {
+        controls: vec![],
+        packet: packet(point, events, Dispatch::Action),
+    };
+    Ok(match event {
+        InputEvent::PrepareSurface => action(None, vec![]),
+        InputEvent::PointerMove { point: local, .. } => action(point(*local)?, vec![]),
+        InputEvent::PointerDown {
+            point: local,
+            button: logical_button,
+            modifiers: requested,
+        } => {
+            let button = button(*logical_button);
+            ensure_releasable(button.key)?;
+            let keys = modifiers(requested, None);
+            let mut down: Vec<_> = keys.iter().map(|&key| Event::Key(key, false)).collect();
+            down.push(button.down);
+            let mut up = vec![button.up];
+            up.extend(keys.iter().rev().map(|&key| Event::Key(key, true)));
+            Prepared::Down {
+                control: Control::Button(*logical_button),
+                packet: packet(point(*local)?, down, Dispatch::Held),
+                release: packet(None, up, Dispatch::Release),
+            }
+        }
+        InputEvent::PointerUp {
+            point: local,
+            button,
+        } => {
+            let control = Control::Button(*button);
+            let point = point(*local)?;
+            let pending = holds.iter().find_map(|(owned, release)| match release {
+                InputPacket::System(release) if **owned == control => {
+                    Some(packet(point, release.events.clone(), Dispatch::Release))
+                }
+                _ => None,
+            });
+            Prepared::Up {
+                control,
+                packet: pending,
+            }
+        }
+        InputEvent::Scroll {
+            point: local,
+            delta_x,
+            delta_y,
+            modifiers: requested,
+        } => {
+            let keys = modifiers(requested, None);
+            let mut events: Vec<_> = keys.iter().map(|&key| Event::Key(key, false)).collect();
+            events.extend(
+                [
+                    (MOUSEEVENTF_WHEEL, delta_y.saturating_neg()),
+                    (MOUSEEVENTF_HWHEEL, *delta_x),
+                ]
+                .into_iter()
+                .filter(|(_, delta)| *delta != 0)
+                .map(|(flag, delta)| Event::Mouse(flag, delta as u32)),
+            );
+            events.extend(keys.iter().rev().map(|&key| Event::Key(key, true)));
+            action(point(*local)?, events)
+        }
+        InputEvent::KeyDown {
+            key,
+            modifiers: requested,
+            repeat,
+        } => {
+            let key = virtual_key(key)?;
+            let control = Control::Key(key);
+            if *repeat {
+                Prepared::Repeat {
+                    control,
+                    packet: packet(None, vec![Event::Key(key, false)], Dispatch::Held),
+                }
+            } else {
+                ensure_releasable(key)?;
+                let keys = modifiers(requested, Some(key));
+                let mut down: Vec<_> = keys.iter().map(|&key| Event::Key(key, false)).collect();
+                down.push(Event::Key(key, false));
+                let mut up = vec![Event::Key(key, true)];
+                up.extend(keys.iter().rev().map(|&key| Event::Key(key, true)));
+                Prepared::Down {
+                    control,
+                    packet: packet(None, down, Dispatch::Held),
+                    release: packet(None, up, Dispatch::Release),
+                }
+            }
+        }
+        InputEvent::KeyUp { key } => Prepared::Up {
+            control: Control::Key(virtual_key(key)?),
+            packet: None,
+        },
+        InputEvent::Text(TextInput::Commit(text)) => action(
+            None,
+            text.replace("\r\n", "\r")
+                .replace('\n', "\r")
+                .encode_utf16()
+                .flat_map(|unit| [Event::Unicode(unit, false), Event::Unicode(unit, true)])
+                .collect(),
+        ),
+        _ => {
+            return Err(failure(
+                "This Windows display input operation is unavailable.",
+            ));
+        }
+    })
+}
+
+pub(super) fn post(
+    monitor: &Monitor,
+    packet: &Packet,
+) -> std::result::Result<Delivery, PostFailure<CuaError>> {
+    if packet.point.is_none() && packet.events.is_empty() {
+        return Ok(Delivery::DispatchedUnverified);
+    }
+    let _coordinates = PixelCoordinates::enter();
+    let mut inputs = Vec::with_capacity(packet.events.len() + usize::from(packet.point.is_some()));
+    let releasing = packet.dispatch == Dispatch::Release;
+    let motion = packet
+        .point
+        .map(|point| move_input(monitor, point))
+        .transpose();
+    if releasing {
+        // The button still needs to go up if the old coordinates no longer
+        // describe a current display. Cleanup owns only the recorded releases.
+        inputs.extend(motion.ok().flatten());
+    } else {
+        if packet.point.is_none() {
+            monitor.verify().map_err(PostFailure::NotDispatched)?;
+            monitor_focus(monitor).map_err(PostFailure::NotDispatched)?;
+        }
+        inputs.extend(motion.map_err(PostFailure::NotDispatched)?);
+    }
+    let motion_count = inputs.len();
+    inputs.extend(packet.events.iter().map(|event| event.native()));
+    let sent = send(&inputs);
+    if sent == inputs.len() {
+        return Ok(Delivery::DispatchedUnverified);
+    }
+    if sent == 0 {
+        return Err(PostFailure::NotDispatched(CuaError::new(
+            ErrorCode::InputFailed,
+            "Windows declined display input.",
+        )));
+    }
+
+    // InputHost owns cleanup for held inputs. One-shot batches may also leave a
+    // modifier or a Unicode packet down. Release only the accepted prefix.
+    let accepted = sent.saturating_sub(motion_count).min(packet.events.len());
+    match packet.dispatch {
+        Dispatch::Held => {}
+        Dispatch::Release => {
+            send(&inputs[sent..]);
+        }
+        Dispatch::Action => {
+            let releases: Vec<_> = pending_releases(&packet.events[..accepted])
+                .into_iter()
+                .rev()
+                .map(Event::native)
+                .collect();
+            send(&releases);
+        }
+    }
+    Err(PostFailure::Uncertain(CuaError::new(
+        ErrorCode::InputUnknown,
+        "Windows accepted only part of the display input.",
+    )))
+}
+
+pub(super) fn monitor_focus(monitor: &Monitor) -> Result<usize> {
+    let _coordinates = PixelCoordinates::enter();
+    let foreground = unsafe { GetForegroundWindow() };
+    if foreground.is_null() || unsafe { IsIconic(foreground) } != 0 {
+        return Err(outside());
+    }
+    let mut info = GUITHREADINFO {
+        cbSize: size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    let mut recipient = foreground;
+    if unsafe { GetGUIThreadInfo(0, &mut info) } != 0
+        && !info.hwndFocus.is_null()
+        && (info.hwndFocus == foreground || unsafe { IsChild(foreground, info.hwndFocus) } != 0)
+    {
+        recipient = info.hwndFocus;
+    }
+    if unsafe { MonitorFromWindow(recipient, MONITOR_DEFAULTTONULL) } != monitor.handle as HMONITOR
+        || unsafe { GetForegroundWindow() } != foreground
+    {
+        return Err(outside());
+    }
+    Ok(foreground as usize)
+}
+
+fn move_input(monitor: &Monitor, point: Point) -> Result<INPUT> {
+    monitor.verify()?;
+    let global = monitor.target.bounds.to_global(point)?;
+    let x = normalized(
+        global.x.floor() as i32,
+        unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) },
+        unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) },
+    )?;
+    let y = normalized(
+        global.y.floor() as i32,
+        unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) },
+        unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) },
+    )?;
+    Ok(mouse(
+        x,
+        y,
+        MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+        0,
+    ))
+}
+
+fn normalized(pixel: i32, origin: i32, span: i32) -> Result<i32> {
+    let offset = i64::from(pixel) - i64::from(origin);
+    if !(1..=65536).contains(&span) || !(0..i64::from(span)).contains(&offset) {
+        return Err(stale());
+    }
+    // Choose the first normalized coordinate that maps to the requested pixel.
+    let span = i64::from(span);
+    Ok(((offset * 65536 + span - 1) / span) as i32)
+}
+
+fn outside() -> CuaError {
+    CuaError::new(
+        ErrorCode::PermissionDenied,
+        "Keyboard focus is outside the selected Windows display.",
+    )
+}
+
+fn pressed(key: u16) -> bool {
+    unsafe { GetAsyncKeyState(i32::from(key)) < 0 }
+}
+
+fn ensure_releasable(key: u16) -> Result<()> {
+    if pressed(key) {
+        return Err(CuaError::new(
+            ErrorCode::OwnershipMismatch,
+            "That Windows key or button is already held.",
+        ));
+    }
+    Ok(())
+}
+
+struct Button {
+    key: u16,
+    down: Event,
+    up: Event,
+}
+
+fn button(mut button: MouseButton) -> Button {
+    if unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0 {
+        button = match button {
+            MouseButton::Left => MouseButton::Right,
+            MouseButton::Right => MouseButton::Left,
+            other => other,
+        };
+    }
+    let (key, down, up, data) = match button {
+        MouseButton::Left => (VK_LBUTTON, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, 0),
+        MouseButton::Right => (VK_RBUTTON, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, 0),
+        MouseButton::Middle => (VK_MBUTTON, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, 0),
+        MouseButton::Back => (
+            VK_XBUTTON1,
+            MOUSEEVENTF_XDOWN,
+            MOUSEEVENTF_XUP,
+            u32::from(XBUTTON1),
+        ),
+        MouseButton::Forward => (
+            VK_XBUTTON2,
+            MOUSEEVENTF_XDOWN,
+            MOUSEEVENTF_XUP,
+            u32::from(XBUTTON2),
+        ),
+    };
+    Button {
+        key,
+        down: Event::Mouse(down, data),
+        up: Event::Mouse(up, data),
+    }
+}
+
+fn pending_releases(events: &[Event]) -> Vec<Event> {
+    let mut releases = Vec::new();
+    for event in events {
+        match *event {
+            Event::Key(key, false) => releases.push(Event::Key(key, true)),
+            Event::Unicode(unit, false) => releases.push(Event::Unicode(unit, true)),
+            Event::Key(_, true) | Event::Unicode(_, true) => {
+                if let Some(index) = releases.iter().rposition(|release| release == event) {
+                    releases.remove(index);
+                }
+            }
+            Event::Mouse(..) => {}
+        }
+    }
+    releases
+}
+
+impl Event {
+    fn native(self) -> INPUT {
+        match self {
+            Self::Mouse(flags, data) => mouse(0, 0, flags, data),
+            Self::Key(code, release) => {
+                let mapped = unsafe { MapVirtualKeyW(u32::from(code), MAPVK_VK_TO_VSC_EX) };
+                let flags = if mapped & 0xff00 == 0xe000 {
+                    KEYEVENTF_EXTENDEDKEY
+                } else {
+                    0
+                };
+                keyboard(code, (mapped & 0xff) as u16, flags, release)
+            }
+            Self::Unicode(unit, release) => keyboard(0, unit, KEYEVENTF_UNICODE, release),
+        }
+    }
+}
+
+fn mouse(x: i32, y: i32, flags: u32, data: u32) -> INPUT {
+    INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: x,
+                dy: y,
+                mouseData: data,
+                dwFlags: flags,
+                ..Default::default()
+            },
+        },
+    }
+}
+
+fn keyboard(code: u16, scan: u16, flags: u32, release: bool) -> INPUT {
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: code,
+                wScan: scan,
+                dwFlags: flags | if release { KEYEVENTF_KEYUP } else { 0 },
+                ..Default::default()
+            },
+        },
+    }
+}
+
+fn send(inputs: &[INPUT]) -> usize {
+    if inputs.is_empty() {
+        return 0;
+    }
+    unsafe {
+        SendInput(
+            inputs.len() as u32,
+            inputs.as_ptr(),
+            size_of::<INPUT>() as i32,
+        ) as usize
+    }
+}

@@ -10209,3 +10209,28 @@ waiting viewer received a new input epoch after the first detached and
 then moved the pointer on the same display.
 
 The Windows and Wayland full-display input paths remain in scope.
+
+## 304. Restore Windows full-display viewer input
+
+Reference commit `3d7f2e632ea0f373a0ee060a99b5465745431734` (#3467).
+
+The Win32 helper advertises full-display input and uses the same exclusive
+viewer ownership as the Linux X11 helper. It uses Windows system input for
+pointer movement, buttons, scrolling, keyboard shortcuts, and Unicode
+text. Pointer coordinates are mapped from the selected monitor into the
+virtual desktop. New keyboard input follows focus on the selected monitor.
+The helper releases its recorded holds when a viewer closes. Windows
+continues to enforce its normal input privileges.
+
+An explicit copy sends Ctrl+C to the foreground app on the selected
+monitor. It accepts fresh Unicode text owned by that app. The existing
+worker clipboard message targets the requesting viewer.
+
+The Windows x64 helper and focused process fixture linked with the static
+C runtime. The Windows ARM64 compile check passed. The x64 runtime check
+is pending because the disposable Windows QA guest failed sign-in before
+the fixture could start. The fixture checks physical pointer placement,
+exclusive ownership, copy, input release, and Unicode text after handoff.
+
+Foreground-dependent input for shared Windows windows and full-display
+input on Wayland remain in scope.

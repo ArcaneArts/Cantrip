@@ -3,10 +3,11 @@ mod capture;
 mod clipboard;
 mod input;
 mod lifetime;
+mod physical;
 mod targets;
 
 use crate::{
-    backend::{Capture, CaptureBackend, CaptureWork, UnavailableBackend},
+    backend::{Capture, CaptureBackend, CaptureWork, RemoteMonitorInput, UnavailableBackend},
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
     gesture::InputCommand,
@@ -14,7 +15,7 @@ use crate::{
     input_job::{InputProgress, InputWork},
     target::{Point, Target, TargetKind},
 };
-use cantrip_interaction::input::InputEvent;
+use cantrip_interaction::input::{InputEvent, Modifier};
 use lifetime::Hook;
 use std::{
     collections::{HashMap, HashSet},
@@ -109,19 +110,28 @@ impl Host {
     ) -> Result<(Target, Arc<Mutex<input::Session>>)> {
         let window = Arc::new(self.select_window(&target.id, target.generation, cancel)?);
         let target = window.target.clone();
+        let participant = self.input_participant(session, input::Destination::Window(window))?;
+        Ok((target, participant))
+    }
+
+    fn input_participant(
+        &mut self,
+        session: &str,
+        destination: input::Destination,
+    ) -> Result<Arc<Mutex<input::Session>>> {
         let participant = if let Some(participant) = self.participants.get(session) {
-            lock(participant).refresh(window)?;
+            lock(participant).refresh(destination)?;
             participant.clone()
         } else {
             let participant = Arc::new(Mutex::new(input::Session::open(
                 self.input.clone(),
-                window,
+                destination,
             )?));
             self.participants
                 .insert(session.to_owned(), participant.clone());
             participant
         };
-        Ok((target, participant))
+        Ok(participant)
     }
 
     fn select_monitor(&mut self, id: &str, generation: u64) -> Result<Monitor> {
@@ -234,14 +244,56 @@ impl CaptureBackend for Host {
         true
     }
 
+    fn remote_monitor_input(&self) -> RemoteMonitorInput {
+        RemoteMonitorInput::ExclusiveHost
+    }
+
     fn copy_selection_text(
         &mut self,
-        _: &str,
+        session: &str,
         target: &Target,
-        _: Point,
-        _: u64,
+        position: Point,
+        sequence: u64,
         cancel: &Cancellation,
     ) -> Result<Option<String>> {
+        if target.kind == TargetKind::Monitor {
+            let monitor = self.select_monitor(&target.id, target.generation)?;
+            let foreground = physical::monitor_focus(&monitor)?;
+            let window = match self.window(foreground, cancel) {
+                Ok(window) => window,
+                Err(error) if error.code == ErrorCode::TargetNotFound => return Ok(None),
+                Err(error) => return Err(error),
+            };
+            let original = clipboard::sequence();
+            self.interaction_input(
+                session,
+                target,
+                position,
+                sequence - 1,
+                InputEvent::KeyDown {
+                    key: "C".into(),
+                    modifiers: vec![Modifier::Control],
+                    repeat: false,
+                },
+                cancel,
+            )?;
+            self.interaction_input(
+                session,
+                target,
+                position,
+                sequence,
+                InputEvent::KeyUp { key: "C".into() },
+                cancel,
+            )?;
+            let text = clipboard::read_focused(&window, original, cancel)?;
+            lifetime::verify_window(&self.observations.registered, &window)?;
+            let monitor = self.select_monitor(&target.id, target.generation)?;
+            return if physical::monitor_focus(&monitor)? == foreground {
+                Ok(text)
+            } else {
+                Ok(None)
+            };
+        }
         let window = self.select_window(&target.id, target.generation, cancel)?;
         let text = clipboard::copy(&window, cancel)?;
         lifetime::verify_window(&self.observations.registered, &window)?;
@@ -257,9 +309,20 @@ impl CaptureBackend for Host {
         event: InputEvent,
         cancel: &Cancellation,
     ) -> Result<()> {
-        let result = self
-            .participant(session, target, cancel)
-            .and_then(|(_, participant)| lock(&participant).submit(sequence, &event, cancel));
+        let result = (|| {
+            cancel.check()?;
+            let destination =
+                match target.kind {
+                    TargetKind::Window => input::Destination::Window(Arc::new(
+                        self.select_window(&target.id, target.generation, cancel)?,
+                    )),
+                    TargetKind::Monitor => input::Destination::Monitor(
+                        self.select_monitor(&target.id, target.generation)?,
+                    ),
+                };
+            let participant = self.input_participant(session, destination)?;
+            lock(&participant).submit(sequence, &event, cancel)
+        })();
         if result.is_err() {
             let _ = self.close_input(session);
         }
