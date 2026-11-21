@@ -47,6 +47,14 @@ export async function verifyProductFiles({
       ...args,
     );
   const root = (...args) => docker("exec", "--user", "0", container, ...args);
+  const compare =
+    (await root(
+      "/bin/sh",
+      "-c",
+      'if test -f "$1"; then printf yes; fi',
+      "fixture",
+      legacy,
+    )) === "yes";
   const put = (file, contents) =>
     guest(
       "/bin/sh",
@@ -208,7 +216,7 @@ export async function verifyProductFiles({
     (await operation("file-document", document, request)).send();
 
   await root("test", "-x", native);
-  await root("mv", legacy, legacy + ".fixture");
+  if (compare) await root("mv", legacy, legacy + ".fixture");
   let savedWrite, original;
   try {
     const created = await explore({
@@ -319,7 +327,7 @@ export async function verifyProductFiles({
     );
     assert.match((await closed.send(502)).error, /already completed/u);
   } finally {
-    await root("mv", legacy + ".fixture", legacy);
+    if (compare) await root("mv", legacy + ".fixture", legacy);
   }
 
   const cache = actual.home + "/.local/state/cantrip-os-executor/files";
@@ -398,37 +406,39 @@ export async function verifyProductFiles({
     assert.equal(response.id, id);
     return response.result.outcome;
   };
-  assert.deepEqual(await oracle(savedWrite, true), original);
-  for (const request of [
-    { type: "explorer.binary.read", path: file, offset: 0, limit: 32 },
-    { type: "explorer.file.tail", path: file },
-  ]) {
-    const check = await operation("file-document", document, request);
-    assert.deepEqual(await check.send(), await oracle(check));
+  if (compare) {
+    assert.deepEqual(await oracle(savedWrite, true), original);
+    for (const request of [
+      { type: "explorer.binary.read", path: file, offset: 0, limit: 32 },
+      { type: "explorer.file.tail", path: file },
+    ]) {
+      const check = await operation("file-document", document, request);
+      assert.deepEqual(await check.send(), await oracle(check));
+    }
+
+    const fromNode = await operation("file-document", document, {
+      type: "explorer.file.write",
+      path: file,
+      version: original.result.value.version,
+      content: "legacy completion\n",
+    });
+    const nodeReceipt = await oracle(fromNode);
+    assert.equal(nodeReceipt.ok, true, JSON.stringify(nodeReceipt));
+    // Use the receipt emitted by the old helper and its worker's admission record.
+    await writeFile(
+      admission(fromNode.context),
+      JSON.stringify({ digest: fingerprint(fromNode) }),
+      { flag: "wx", mode: 0o600 },
+    );
+    await put(guestPath + "/" + file, "edited independently\n");
+    assert.deepEqual(await fromNode.send(), nodeReceipt);
+    assert.equal(
+      await guest("cat", guestPath + "/" + file),
+      "edited independently",
+    );
+  } else {
+    await put(guestPath + "/" + file, "edited independently\n");
   }
-
-  const fromNode = await operation("file-document", document, {
-    type: "explorer.file.write",
-    path: file,
-    version: original.result.value.version,
-    content: "legacy completion\n",
-  });
-  const nodeReceipt = await oracle(fromNode);
-  assert.equal(nodeReceipt.ok, true, JSON.stringify(nodeReceipt));
-  // Use the receipt just emitted by the packaged Node peer and the local
-  // admission record its worker would have persisted before dispatch.
-  await writeFile(
-    admission(fromNode.context),
-    JSON.stringify({ digest: fingerprint(fromNode) }),
-    { flag: "wx", mode: 0o600 },
-  );
-
-  await put(guestPath + "/" + file, "edited independently\n");
-  assert.deepEqual(await fromNode.send(), nodeReceipt);
-  assert.equal(
-    await guest("cat", guestPath + "/" + file),
-    "edited independently",
-  );
 
   await crashWorker();
   assert.deepEqual(await savedWrite.send(), original);
@@ -465,10 +475,12 @@ export async function verifyProductFiles({
   // Each implementation finishes the other implementation's staged upload.
   const node = async (request) =>
     oracle(await operation("file-document", document, request));
-  for (const [stage, finish] of [
-    [node, edit],
-    [edit, node],
-  ]) {
+  for (const [stage, finish] of compare
+    ? [
+        [node, edit],
+        [edit, node],
+      ]
+    : []) {
     const baseline = (
       await edit({
         type: "explorer.binary.read",
@@ -520,7 +532,7 @@ export async function verifyProductFiles({
   };
   const noFile = (name) => guest("test", "!", "-e", guestPath + "/" + name);
   let completedDrop, completion;
-  await root("mv", legacy, legacy + ".fixture");
+  if (compare) await root("mv", legacy, legacy + ".fixture");
   try {
     const id = randomUUID();
     const started = imported(await (await drop(chunk, id, 0)).send());
@@ -588,9 +600,9 @@ export async function verifyProductFiles({
     await assert.rejects(readFile(liveHelper), { code: "ENOENT" });
     await noFile("shutdown.bin");
   } finally {
-    await root("mv", legacy + ".fixture", legacy);
+    if (compare) await root("mv", legacy + ".fixture", legacy);
   }
-  assert.deepEqual(await oracle(completedDrop, true), completion);
+  if (compare) assert.deepEqual(await oracle(completedDrop, true), completion);
   await guest("mkdir", guestPath + "/folder.ext");
   await guest("ln", "-s", file, guestPath + "/inside");
   await guest("ln", "-s", "/etc", guestPath + "/outside");
@@ -611,11 +623,11 @@ export async function verifyProductFiles({
       "folder.ext\\..\\" + file,
     ],
   });
-  const legacyReferences = await oracle(references);
-  await root("mv", legacy, legacy + ".fixture");
+  const legacyReferences = compare ? await oracle(references) : undefined;
+  if (compare) await root("mv", legacy, legacy + ".fixture");
   try {
     const nativeReferences = await references.send();
-    assert.deepEqual(nativeReferences, legacyReferences);
+    if (compare) assert.deepEqual(nativeReferences, legacyReferences);
     assert.equal(nativeReferences.result.value.root, guestPath);
     assert.deepEqual(
       nativeReferences.result.value.entries.map(({ kind }) => kind),
@@ -636,7 +648,7 @@ export async function verifyProductFiles({
     );
     assert.match((await references.send(502)).error, /already completed/u);
   } finally {
-    await root("mv", legacy + ".fixture", legacy);
+    if (compare) await root("mv", legacy + ".fixture", legacy);
   }
   console.log(
     "Native guest files passed: protected edits, imports, chat references, and compatible recovery receipts.",

@@ -9673,3 +9673,26 @@ The runtime audit found that the Cantrip OS executor package still carries
 JavaScript file and Run helpers and a Node dependency. The Rust worker
 calls the native guest binaries. Retiring the old helpers requires
 updating the executor package and its comparison fixtures.
+
+## 283. Retire the JavaScript helpers from the Cantrip OS executor package
+
+Reference commit `10ccfda39b4c8a668a2117991b7299bbdcf13ad1` (#3446).
+
+Executor 0.21.0 installs the Rust file and Run helpers and keeps the C
+process owner and Python service bridge. An upgrade removes the old
+JavaScript helpers and their package dependencies. The differential cases
+can still compare with those helpers on historical executor packages.
+
+The Linux ARM64 BuildKit export contained both newly built Rust helpers,
+the process owner and the Codex executor. Debian package inspection found
+no Node dependency or JavaScript helper. The local packaging test reused
+the Codex 0.166.0 executor from guest package 0.12.0, built before the latest
+Codex patches. A disposable guest upgraded from 0.12.0 to 0.21.0, then ran
+with the Node package purged. The production Rust server and worker passed
+workspace provisioning, protected file operations, Run definition and
+execution, and restart recovery. Ten focused Cantrip OS tests also passed.
+
+The disposable guest kept the static noVNC viewer assets during the purge.
+Debian's full noVNC package pulls Node into the OCI guest and the workspace
+package. That distribution dependency remains open. Linux AMD64 and the
+latest Codex executor build were outside this cycle's validation.

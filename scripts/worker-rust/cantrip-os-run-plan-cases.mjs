@@ -28,6 +28,14 @@ export async function verifyRunPlan({
 }) {
   const guest = (...args) =>
     docker("exec", "--user", String(actual.uid), container, ...args);
+  const compare =
+    (await guest(
+      "/bin/sh",
+      "-c",
+      'if test -f "$1"; then printf yes; fi',
+      "fixture",
+      legacy,
+    )) === "yes";
   const put = (file, data) =>
     guest("/bin/sh", "-ec", 'printf "%s" "$2" > "$1"', "fixture", file, data);
   const sourceRoot = binding.guestPath;
@@ -119,7 +127,7 @@ export async function verifyRunPlan({
     );
   const planned = await plan(content, true);
   assert.equal(planned.state, "ready", planned.message);
-  assert.deepEqual(planned, await plan(content, false));
+  if (compare) assert.deepEqual(planned, await plan(content, false));
   assert.equal(planned.environment.FROM_SETUP, "shared");
   assert.equal(planned.environment.FROM_FILE, "target-file");
   assert.equal(planned.environment["DOTENV.KEY"], "dotted");
@@ -131,7 +139,10 @@ export async function verifyRunPlan({
     ...content,
     identity: { ...identity, definitionRevision: "0".repeat(64) },
   };
-  assert.deepEqual(await plan(stale, true), await plan(stale, false));
+  const rejected = await plan(stale, true);
+  assert.equal(rejected.state, "failed");
+  assert.equal(rejected.phase, "definition");
+  if (compare) assert.deepEqual(rejected, await plan(stale, false));
 
   const transport = { kind: "docker", container };
   const execution = (chosen) => ({
@@ -190,7 +201,7 @@ export async function verifyRunPlan({
   );
   // The disposable guest exposes only the new planner for this actual Run.
   const root = (...args) => docker("exec", "--user", "0", container, ...args);
-  await root("mv", legacy, legacy + ".fixture");
+  if (compare) await root("mv", legacy, legacy + ".fixture");
   try {
     let output = "";
     const job = driver.start(
@@ -213,9 +224,9 @@ export async function verifyRunPlan({
     assert.ok(!output.includes(secret));
     assert.equal(await guest("cat", targetRoot + "/before.txt"), "declared");
   } finally {
-    await root("mv", legacy + ".fixture", legacy);
+    if (compare) await root("mv", legacy + ".fixture", legacy);
   }
   console.log(
-    "Native guest Run preparation passed: Node plan parity, separate roots, setup, secrets and actual execution.",
+    `Native guest Run preparation passed: separate roots, setup, secrets and actual execution${compare ? ", with Node plan parity" : ""}.`,
   );
 }

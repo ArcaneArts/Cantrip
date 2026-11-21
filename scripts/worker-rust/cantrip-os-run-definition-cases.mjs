@@ -7,6 +7,7 @@ import path from "node:path";
 import { cantripOsRunDefinitionRequestSchema } from "../../packages/protocol/dist/index.js";
 
 const executable = "/usr/lib/cantrip-os-executor/cantrip-os-run-definitions";
+const legacy = "/usr/lib/cantrip-os-executor/run-definitions.mjs";
 
 export async function verifyRunDefinitions({
   call,
@@ -50,22 +51,32 @@ export async function verifyRunDefinitions({
     );
   const guest = (...arguments_) =>
     docker("exec", "--user", String(actual.uid), container, ...arguments_);
+  const compare =
+    (await guest(
+      "/bin/sh",
+      "-c",
+      'if test -f "$1"; then printf yes; fi',
+      "fixture",
+      legacy,
+    )) === "yes";
   const oracle = async (request) =>
     JSON.parse(
       await guest(
         "/bin/sh",
         "-c",
-        'printf "%s\n" "$1" | /usr/bin/node /usr/lib/cantrip-os-executor/run-definitions.mjs "$2"',
+        'printf "%s\n" "$1" | /usr/bin/node "$3" "$2"',
         "run-definition-oracle",
         JSON.stringify(request),
         binding.guestPath,
+        legacy,
       ),
     );
 
   const initial = request("list");
   const empty = await definition(initial);
   assert.equal(empty.source.bindingId, binding.id);
-  assert.deepEqual(empty.result, await oracle(initial));
+  assert.deepEqual(empty.result.inventory.entries, []);
+  if (compare) assert.deepEqual(empty.result, await oracle(initial));
   const write = request("write", {
     request: {
       document: {
@@ -84,12 +95,18 @@ export async function verifyRunDefinitions({
   const entry = created.result.result.entry;
   const filename = `${binding.guestPath}/${entry.relativePath}`;
   const get = request("get", { configurationId });
-  assert.deepEqual((await definition(get)).result, await oracle(get));
+  const read = (await definition(get)).result;
+  assert.deepEqual(read.result, { found: true, entry });
+  if (compare) assert.deepEqual(read, await oracle(get));
   const list = request("list");
-  assert.deepEqual((await definition(list)).result, await oracle(list));
+  const inventory = (await definition(list)).result;
+  assert.deepEqual(inventory.inventory.entries, [entry]);
+  if (compare) assert.deepEqual(inventory, await oracle(list));
   assert.equal(await guest("stat", "-c", "%u", filename), String(actual.uid));
   const validate = request("validate", { document: entry.document });
-  assert.deepEqual((await definition(validate)).result, await oracle(validate));
+  const validated = (await definition(validate)).result;
+  assert.equal(validated.validation.valid, true);
+  if (compare) assert.deepEqual(validated, await oracle(validate));
 
   // Reopen the exact native process using the durable pre-receipt state while
   // the guest retains its session. A replayed write would report already-exists.
@@ -141,7 +158,9 @@ export async function verifyRunDefinitions({
   );
   assert.equal(deleted.result.result.outcome, "deleted");
   const after = request("get", { configurationId });
-  assert.deepEqual((await definition(after)).result, await oracle(after));
+  const absent = (await definition(after)).result;
+  assert.deepEqual(absent.result, { found: false, id: configurationId });
+  if (compare) assert.deepEqual(absent, await oracle(after));
   if (runPlan) {
     const { verifyRunPlan } = await import("./cantrip-os-run-plan-cases.mjs");
     await verifyRunPlan({
@@ -179,6 +198,6 @@ export async function verifyRunDefinitions({
     });
   }
   console.log(
-    "Native Linux Run definitions passed: package upgrade, Node read parity, revision guards and observation after worker restart.",
+    `Native Linux Run definitions passed: package upgrade, revision guards and observation after worker restart${compare ? ", with Node read parity" : ""}.`,
   );
 }
