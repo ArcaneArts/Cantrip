@@ -11081,3 +11081,24 @@ retained one encrypted prompt and reply. The same Chat accepted a second
 turn, saved it, and stopped that exact turn after another restart without
 an additional model request. The Host cold Resume and protected approval
 smoke, offline worker build, and format checks passed.
+
+## 342. Keep one native writer after checkpoint recovery
+
+Reference commit `fcc9e1361ac9686039919857e4a9025642ec7233` (#3505).
+
+A saved checkpoint in the default runtime home or the exact published
+handoff home now uses the same runtime identity as ordinary turn
+preparation. The worker still opens the authenticated saved home when
+it differs from those homes and uses its suspension-specific runtime
+identity in that case.
+
+The baseline resumed the saved turns but failed the next turn with a
+native writer conflict for both a standalone Chat and a Cantrip OS Chat
+after a committed provider handoff. On macOS ARM64 with Rust Core in
+PGlite mode and bundled Codex, the rebuilt worker resumed the standalone
+turn, accepted its protected approval, and answered another prompt. In a
+disposable Linux ARM64 guest, the worker recovered a handoff after restart,
+then resumed the exact saved turn in the original Linux checkout and
+stopped a later saved turn without another model request.
+The ordinary guest suspension smoke, offline worker build, and format
+checks also passed.
