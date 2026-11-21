@@ -435,6 +435,7 @@ async fn cycle(
         task_delivery.clone(),
         guest_files,
         &desktop_inventory,
+        outgoing.clone(),
     )?;
     thread_preparation.configure_autonomous(turns.autonomous(routing.clone()))?;
     turns.configure_queue_imports()?;

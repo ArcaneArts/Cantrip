@@ -10472,3 +10472,25 @@ regressions and the assigned Linux viewer. A separate local Rust Core
 and Rust worker smoke verified that two WorkerLink viewers in a
 disposable Cantrip OS guest each received their own encrypted monitor
 inventory before either viewer sent a viewport or refresh request.
+
+## 315. Notify Core when a native Project Chat changes outside a turn
+
+Reference commit `bf2bfacd5a4f9730fefc2dcbaaab454ac72682fd` (#3478).
+
+The archived worker batched out-of-band native turn, goal, queue, and
+settings events into `chat.thread.changed`. Core still consumes this
+notification to invalidate the matching Chat resources and reconcile
+native status. The Rust worker now observes the selected Project Chat
+when its console starts or a runtime handoff adopts the destination.
+It batches distinct changes for 75 ms, keeps a monotonic revision,
+and sends only the thread ID and change categories. The selected thread
+owns the subscription, with transport and account checks before sending.
+Active Cantrip turns continue to publish through their existing receipts.
+
+The local macOS ARM64 worker build passed. With production Rust Core
+and bundled Codex, the prior worker timed out waiting for the live
+`chat-plan` invalidation after a console settings change. The updated
+worker delivered the invalidation, and the same fixture completed a
+console-steered turn with the expected durable messages. The separate
+native provider handoff smoke retained the conversation across worker
+restart. The live invalidation case exercises settings on macOS.

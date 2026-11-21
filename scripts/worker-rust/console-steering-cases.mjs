@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { LiveProbe } from "../server-rust/live-sockets.mjs";
 import {
   createPreparedProjectChat,
   openConsoleView,
@@ -16,13 +17,14 @@ export async function verifyConsoleSteering({
   keyRevision,
   labelKey,
   socketFile,
+  server,
 }) {
   const { model, profile } = await createModel("Native console steering");
   await call("PATCH", "/api/settings", 200, {
     defaultModelId: profile.id,
     autoNameChats: false,
   });
-  const { chatUrl } = await createPreparedProjectChat({
+  const { chatId, chatUrl } = await createPreparedProjectChat({
     call,
     eventually,
     ownerId,
@@ -36,6 +38,7 @@ export async function verifyConsoleSteering({
     (value) => assert.ok(value.startsWith("ws://127.0.0.1:")),
   );
   const view = await openConsoleView(url, eventually);
+  const live = new LiveProbe({ server, client: () => ({ cookies: [] }) });
   const { threadId } = view;
   const first = model.reply({ hold: true });
   const answer = "The same native turn completed after console steering.";
@@ -47,6 +50,22 @@ export async function verifyConsoleSteering({
     assert.equal(
       (await view.request(2, "thread/resume", { threadId })).result.thread.id,
       threadId,
+    );
+    await live.open();
+    await live.initialized();
+    await live.subscribed("console-thread-changes", [{ kind: "chat", chatId }]);
+    const settings = await view.request(20, "thread/settings/update", {
+      threadId,
+      effort: "low",
+    });
+    assert.ok(settings.result?.submissionId, JSON.stringify(settings));
+    await live.message(
+      (frame) =>
+        frame.type === "event" &&
+        frame.resource === "chat-plan" &&
+        frame.action === "invalidated" &&
+        frame.scope.kind === "chat" &&
+        frame.scope.chatId === chatId,
     );
     const started = await view.request(3, "turn/start", {
       threadId,
@@ -109,10 +128,15 @@ export async function verifyConsoleSteering({
     );
     assert.deepEqual(model.failures, []);
     console.log(
-      JSON.stringify({ suite: "native-console-steering", passed: true }),
+      JSON.stringify({
+        suite: "native-console-steering",
+        passed: true,
+        planInvalidated: true,
+      }),
     );
   } finally {
     first.release();
     view.close();
+    await live.close();
   }
 }

@@ -138,7 +138,8 @@ impl Turns {
             queue_key,
             queue,
         });
-        let gateway = Gateway::start(view).await?;
+        let gateway = Gateway::start(view.clone()).await?;
+        self.watch_external_changes(&view.chat, &view.prepared)?;
         let mut args = vec!["--remote".into(), gateway.url.clone()];
         for argument in profile.provider_arguments {
             args.extend(["-c".into(), argument]);
