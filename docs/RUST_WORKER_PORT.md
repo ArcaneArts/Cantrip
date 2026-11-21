@@ -11102,3 +11102,22 @@ then resumed the exact saved turn in the original Linux checkout and
 stopped a later saved turn without another model request.
 The ordinary guest suspension smoke, offline worker build, and format
 checks also passed.
+
+## 343. Preserve terminal tab stops on reconnect
+
+Reference commit `1b09120b06af72c2afe25d0a6c2dcc91bb31c599` (#3506).
+
+The native parser maintains tab stops for the normal and alternate
+screens, applies forward and backward tabulation, and retains the tab
+pattern as the viewport resizes. The snapshot restores the stops visible
+at attachment width before restoring each screen's saved cursor. This
+also resets a retained legacy viewer's previous tab map.
+
+In the local macOS ARM64 shell fixture, xterm placed a character at the
+programmed column while the baseline replay used the default stop. The
+rebuilt worker and existing Rust Core build matched xterm.js 6.0 for both screens,
+including output delivered after reattachment and the return to the
+normal screen. The same run passed Host relay, encrypted WorkerLink
+and direct terminal, CLI, and service restart and recovery with Node
+absent from the worker PATH. Twenty parser tests and the documentation
+test passed, as did the offline worker build.

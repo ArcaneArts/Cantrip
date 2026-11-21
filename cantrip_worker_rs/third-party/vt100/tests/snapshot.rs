@@ -43,3 +43,18 @@ fn dropping_history_to_fit_does_not_cut_the_viewport() {
     assert!(bounded_rows < full_rows);
     assert_eq!(restored.screen().scrollback(), bounded_rows);
 }
+
+#[test]
+fn snapshot_restores_default_tabs_over_an_earlier_attachment() {
+    let source = vt100::Parser::new(3, 16, 0);
+    let (bytes, _) = source
+        .screen()
+        .normal_contents_formatted_with_scrollback(1024)
+        .unwrap();
+    let mut restored = vt100::Parser::new(3, 16, 0);
+    restored.process(b"\x1b[3g\x1b[5G\x1bH");
+    restored.process(&bytes);
+    restored.process(b"\tX");
+    assert_eq!(restored.screen().cell(0, 8).unwrap().contents(), "X");
+    assert_eq!(restored.screen().cursor_position(), (0, 9));
+}

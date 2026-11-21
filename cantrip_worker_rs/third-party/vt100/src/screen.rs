@@ -98,6 +98,8 @@ impl Screen {
         self.grid.reflow(crate::grid::Size { rows, cols });
         self.alternate_grid
             .set_size(crate::grid::Size { rows, cols });
+        self.grid.extend_tab_stops();
+        self.alternate_grid.extend_tab_stops();
     }
 
     /// Returns the current size of the terminal.
@@ -326,6 +328,7 @@ impl Screen {
             &self.grid
         };
         let saved_attrs = self.saved_attrs[usize::from(alternate)];
+        grid.write_snapshot_tab_stops(contents);
         crate::term::MoveTo::new(grid.saved_position()).write_buf(contents);
         saved_attrs.write_escape_code_diff(contents, &drawn_attrs);
         self.charsets.write_save(alternate, contents);
@@ -1132,8 +1135,16 @@ impl Screen {
         self.grid_mut().backspace(reverse);
     }
 
-    pub(crate) fn tab(&mut self) {
-        self.grid_mut().col_tab();
+    pub(crate) fn tab(&mut self, count: u16, backward: bool) {
+        self.grid_mut().col_tab(count, backward);
+    }
+
+    pub(crate) fn set_tab_stop(&mut self) {
+        self.grid_mut().set_tab_stop();
+    }
+
+    pub(crate) fn clear_tab_stops(&mut self, mode: u16) {
+        self.grid_mut().clear_tab_stops(mode);
     }
 
     pub(crate) fn lf(&mut self) {

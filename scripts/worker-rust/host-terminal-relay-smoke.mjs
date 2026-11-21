@@ -401,6 +401,82 @@ async function verifySavedCursors(view, reattach) {
   }
 }
 
+async function verifyTabStops(view, reattach) {
+  const { Terminal } = createRequire(
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
+  )("@xterm/headless");
+  const token = randomUUID();
+  const initial = "\x1bc";
+  await view.input(
+    "/bin/stty -echo; printf '\\033c\\033[3g\\033[5G\\033H\\033[13G\\033H\\033[21G\\033H\\033[1;1Hn\\tx\\033[2;1H\\033[2Iy\\033[3;18H\\033[2Zz\\033[4;13H\\033[g\\033[4;1H\\033[2Iw'; printf '\\033[?1047h\\033[3g\\033[7G\\033H\\033[17G\\033H\\033[1;1H\\tA\\033[3;1H%s%s' tabs-ready- '" +
+      token +
+      "'; IFS= read -r line; printf '\\033[2;1H\\033[1IX\\033[4;1H%s%s' tabs-alternate- '" +
+      token +
+      "'; IFS= read -r line; printf '\\033[?1047l\\033[6;1H\\033[2IY\\033[7;1H%s%s' tabs-normal- '" +
+      token +
+      "'; IFS= read -r line; printf '\\033c%s%s\\n' tabs-reset- '" +
+      token +
+      "'; /bin/stty echo\r",
+  );
+  const raw = await view.read(new RegExp("tabs-ready-" + token));
+  const start = raw.lastIndexOf(initial);
+  assert.notEqual(start, -1);
+  const attached = await reattach();
+  const options = { cols: 113, rows: 43, allowProposedApi: true };
+  const live = new Terminal(options);
+  const replay = new Terminal(options);
+  const write = (term, output) =>
+    new Promise((resolve) => term.write(output, resolve));
+  const row = (term, row) => {
+    const buffer = term.buffer.active;
+    return buffer.getLine(buffer.baseY + row).translateToString(true);
+  };
+  let pendingReads = 3;
+  try {
+    await write(live, raw.slice(start));
+    assert.equal(attached.hydration.format, "canonical-xterm");
+    assert.equal(attached.hydration.activeBuffer, "alternate");
+    await write(replay, attached.replay);
+    assert.equal(row(live, 0), "      A");
+    assert.equal(row(replay, 0), row(live, 0));
+
+    await attached.input("\r");
+    pendingReads--;
+    const alternate = await attached.read(
+      new RegExp("tabs-alternate-" + token),
+    );
+    const altOutput = alternate.slice(attached.replay.length);
+    await write(live, altOutput);
+    await write(replay, altOutput);
+    assert.equal(row(live, 1), "      X");
+    assert.equal(row(replay, 1), row(live, 1));
+
+    await attached.input("\r");
+    pendingReads--;
+    const normal = await attached.read(new RegExp("tabs-normal-" + token));
+    const normalOutput = normal.slice(alternate.length);
+    await write(live, normalOutput);
+    await write(replay, normalOutput);
+    assert.equal(replay.buffer.active.type, "normal");
+    for (const [index, text] of [
+      [0, "n   x"],
+      [1, " ".repeat(12) + "y"],
+      [2, "    z"],
+      [3, " ".repeat(20) + "w"],
+      [5, " ".repeat(20) + "Y"],
+    ]) {
+      assert.equal(row(live, index), text);
+      assert.equal(row(replay, index), text);
+    }
+  } finally {
+    for (let i = 0; i < pendingReads; i++) await view.input("\r");
+    await view.read(new RegExp("tabs-reset-" + token));
+    live.dispose();
+    replay.dispose();
+    await attached.close();
+  }
+}
+
 async function verifyAlternateReplay(view, reattach, eventually, checkout) {
   const { Terminal } = createRequire(
     new URL("../../tests/reference-node-worker/package.json", import.meta.url),
@@ -769,6 +845,7 @@ export async function verifyHostTerminal({
     await verifyTextStyles(linkExit, attachWorkerLink);
     await verifyCharacterSets(linkExit, attachWorkerLink);
     await verifySavedCursors(linkExit, attachWorkerLink);
+    await verifyTabStops(linkExit, attachWorkerLink);
     await verifyAlternateReplay(
       linkExit,
       attachWorkerLink,
