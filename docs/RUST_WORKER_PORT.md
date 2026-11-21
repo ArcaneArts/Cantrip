@@ -10787,3 +10787,19 @@ attachment. It uses the Rust server with PGlite, headless Chromium, and an
 empty worker PATH. WorkerLink relay and the legacy WebSocket passed locally.
 The relay run also passed whole-process and renderer recovery. The two
 `cantrip-browser` unit tests, worker build, and formatting checks passed.
+
+## 328. Restore the first live Browser viewer's viewport on resume
+
+Reference commit `2edc8d22b0436d29ecfd124b10f92a4f3f7b4688` (#3491).
+
+The Browser session preserves attachment order and uses the oldest live
+viewer’s latest viewport on resume, matching the archived adapter’s ordered
+attachment map. Detaching a viewer preserves the remaining order.
+
+The previous worker intermittently failed to restore the first viewer's
+704-pixel viewport after a second viewer set it to 768 pixels. The local
+macOS ARM64 regression confirmed both widths through the actual Chromium
+page. The updated worker restored 704 pixels on both WorkerLink relay and
+the legacy WebSocket against Rust Core with PGlite and an empty worker PATH.
+The relay run also passed Chromium process and renderer recovery. Worker
+compilation, Rust and JavaScript formatting, and `git diff --check` passed.
