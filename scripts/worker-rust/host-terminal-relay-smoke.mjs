@@ -203,6 +203,78 @@ async function verifyInputModes(view, reattach) {
   }
 }
 
+async function verifyTextStyles(view, reattach) {
+  const { Terminal } = createRequire(
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
+  )("@xterm/headless");
+  const token = randomUUID();
+  const clear = "\x1b[H\x1b[2J";
+  await view.input(
+    "/bin/stty -echo; printf '\\033[H\\033[2J\\033[3J\\033[31;1;2;5;8;9;53mA\\033[22;1;25;28;29;55mB\\033[22;2mC\\033[0m\\033]8;id=fixture;https://example.invalid/a;b\\007D\\033[0mE\\033]8;;\\007F\\033[21mG\\033[4:0mH\\033[4:3mI\\033[0m\\n\\033[36;9;53m%s%s' style-ready- '" +
+      token +
+      "'; IFS= read -r line; printf '\\n%s%s' style-live- '" +
+      token +
+      "'; IFS= read -r line; printf '\\033[0m\\r\\n%s%s\\n' style-reset- '" +
+      token +
+      "'; /bin/stty echo\r",
+  );
+  const raw = await view.read(new RegExp("style-ready-" + token));
+  const start = raw.lastIndexOf(clear);
+  assert.notEqual(start, -1);
+  const attached = await reattach();
+  const options = { cols: 113, rows: 43, allowProposedApi: true };
+  const live = new Terminal(options);
+  const replay = new Terminal(options);
+  const write = (term, output) =>
+    new Promise((resolve) => term.write(output, resolve));
+  const styles = (term, row, length) => {
+    const buffer = term.buffer.active;
+    const line = buffer.getLine(buffer.baseY + row);
+    return Array.from({ length }, (_, column) => {
+      const cell = line.getCell(column);
+      return {
+        text: cell.getChars(),
+        foreground: cell.getFgColor(),
+        bold: Boolean(cell.isBold()),
+        dim: Boolean(cell.isDim()),
+        blink: Boolean(cell.isBlink()),
+        invisible: Boolean(cell.isInvisible()),
+        strike: Boolean(cell.isStrikethrough()),
+        overline: Boolean(cell.isOverline()),
+        underline: Boolean(cell.isUnderline()),
+      };
+    });
+  };
+  let pendingReads = 2;
+  try {
+    assert.equal(attached.hydration.format, "canonical-xterm");
+    assert.ok(!attached.replay.includes("example.invalid"));
+    await write(live, raw.slice(start));
+    await write(replay, attached.replay);
+    const baseline = styles(live, 0, 9);
+    assert.ok(baseline[0].bold && baseline[0].dim && baseline[0].invisible);
+    assert.ok(baseline[3].underline && baseline[4].underline);
+    assert.equal(baseline[5].underline, false);
+    assert.deepEqual(styles(replay, 0, 9), baseline);
+
+    await attached.input("\r");
+    pendingReads--;
+    const output = await attached.read(new RegExp("style-live-" + token));
+    const continuation = output.slice(attached.replay.length);
+    await write(live, continuation);
+    await write(replay, continuation);
+    const liveStyle = styles(live, 2, 1);
+    assert.ok(liveStyle[0].strike && liveStyle[0].overline);
+    assert.deepEqual(styles(replay, 2, 1), liveStyle);
+  } finally {
+    for (let i = 0; i < pendingReads; i++) await view.input("\r");
+    await view.read(new RegExp("style-reset-" + token));
+    live.dispose();
+    replay.dispose();
+    await attached.close();
+  }
+}
+
 async function verifyCharacterSets(view, reattach) {
   const { Terminal } = createRequire(
     new URL("../../tests/reference-node-worker/package.json", import.meta.url),
@@ -624,6 +696,7 @@ export async function verifyHostTerminal({
     assert.equal(linkExit.hydration.snapshotCharacters, linkExit.replay.length);
     await verifyNormalReflow(linkExit, attachWorkerLink, eventually, checkout);
     await verifyInputModes(linkExit, attachWorkerLink);
+    await verifyTextStyles(linkExit, attachWorkerLink);
     await verifyCharacterSets(linkExit, attachWorkerLink);
     await verifyAlternateReplay(
       linkExit,

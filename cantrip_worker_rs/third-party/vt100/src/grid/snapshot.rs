@@ -87,7 +87,7 @@ fn wrapped_start(
         let first_attrs = *first.attrs();
         first_attrs.write_escape_code_diff(bytes, &attrs);
         bytes.extend_from_slice(first.contents().as_bytes());
-        if width < cols && first_attrs.bgcolor != plain.bgcolor {
+        if width < cols && first_attrs.bgcolor() != plain.bgcolor() {
             // With background-color erase, a scroll can fill the new row
             // with the first cell's background. Restore blank cells before
             // applying the remainder of the recorded row.

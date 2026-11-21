@@ -10698,3 +10698,27 @@ underline. Saving and restoring the full hidden terminal cursor state
 across a reconstructed attachment remains open.
 
 [xterm.js 6.0 character mappings](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/data/Charsets.ts)
+
+## 324. Preserve text styling in native terminal replay
+
+Reference commit 640f9c7a31dda172bc822e4e7e4e31b350960764 (#3487).
+
+The native terminal records blink, concealment, strikeout, overline, and
+separate bold and dim flags. Snapshot output restores each style and uses
+the shared intensity reset before reapplying a flag that remains enabled.
+Canonical replay renders OSC 8 labels as underlined text, matching the
+archived serializer. The worker preserves the existing 32-byte cell and
+its text capacity by packing the foreground and background color kinds.
+
+Fourteen parser tests passed locally. In an encrypted WorkerLink test
+with a real macOS ARM64 shell, the previous worker lost the added flags
+and replayed the wrong intensity on adjacent cells. The updated worker
+matched xterm.js for the test's content and per-cell styles, including
+styled characters emitted after reattach. The same test run exercised
+Host relay, direct, CLI, oversized replay, and service restart. The
+worker PATH contained no Node executable.
+
+Canonical underline matches the archived serializer's on/off behavior.
+Full saved-cursor state remains open.
+
+[xterm.js 6.0 style serialization](https://github.com/xtermjs/xterm.js/blob/6.0.0/addons/addon-serialize/src/SerializeAddon.ts)

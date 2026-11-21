@@ -104,170 +104,84 @@ impl BufWrite for ClearAttrs {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Intensity {
-    Normal,
-    Bold,
-    Dim,
-}
-
-#[derive(Default, Debug)]
-#[must_use = "this struct does nothing unless you call write_buf"]
-pub struct Attrs {
+#[allow(unused_assignments)]
+pub fn write_attrs(
+    buf: &mut Vec<u8>,
     fgcolor: Option<crate::Color>,
     bgcolor: Option<crate::Color>,
-    intensity: Option<Intensity>,
-    italic: Option<bool>,
-    underline: Option<bool>,
-    inverse: Option<bool>,
-}
+    styles: impl Iterator<Item = u8>,
+) {
+    // A color change or a style change always supplies at least one parameter.
+    buf.extend_from_slice(b"\x1b[");
+    let mut first = true;
 
-impl Attrs {
-    pub fn fgcolor(mut self, fgcolor: crate::Color) -> Self {
-        self.fgcolor = Some(fgcolor);
-        self
+    macro_rules! write_param {
+        ($i:expr) => {{
+            if first {
+                first = false;
+            } else {
+                buf.push(b';');
+            }
+            extend_itoa(buf, $i);
+        }};
     }
 
-    pub fn bgcolor(mut self, bgcolor: crate::Color) -> Self {
-        self.bgcolor = Some(bgcolor);
-        self
-    }
-
-    pub fn intensity(mut self, intensity: Intensity) -> Self {
-        self.intensity = Some(intensity);
-        self
-    }
-
-    pub fn italic(mut self, italic: bool) -> Self {
-        self.italic = Some(italic);
-        self
-    }
-
-    pub fn underline(mut self, underline: bool) -> Self {
-        self.underline = Some(underline);
-        self
-    }
-
-    pub fn inverse(mut self, inverse: bool) -> Self {
-        self.inverse = Some(inverse);
-        self
-    }
-}
-
-impl BufWrite for Attrs {
-    #[allow(unused_assignments)]
-    #[allow(clippy::branches_sharing_code)]
-    fn write_buf(&self, buf: &mut Vec<u8>) {
-        if self.fgcolor.is_none()
-            && self.bgcolor.is_none()
-            && self.intensity.is_none()
-            && self.italic.is_none()
-            && self.underline.is_none()
-            && self.inverse.is_none()
-        {
-            return;
-        }
-
-        buf.extend_from_slice(b"\x1b[");
-        let mut first = true;
-
-        macro_rules! write_param {
-            ($i:expr) => {{
-                if first {
-                    first = false;
+    if let Some(fgcolor) = fgcolor {
+        match fgcolor {
+            crate::Color::Default => {
+                write_param!(39);
+            }
+            crate::Color::Idx(i) => {
+                if i < 8 {
+                    write_param!(i + 30);
+                } else if i < 16 {
+                    write_param!(i + 82);
                 } else {
-                    buf.push(b';');
-                }
-                extend_itoa(buf, $i);
-            }};
-        }
-
-        if let Some(fgcolor) = self.fgcolor {
-            match fgcolor {
-                crate::Color::Default => {
-                    write_param!(39);
-                }
-                crate::Color::Idx(i) => {
-                    if i < 8 {
-                        write_param!(i + 30);
-                    } else if i < 16 {
-                        write_param!(i + 82);
-                    } else {
-                        write_param!(38);
-                        write_param!(5);
-                        write_param!(i);
-                    }
-                }
-                crate::Color::Rgb(r, g, b) => {
                     write_param!(38);
-                    write_param!(2);
-                    write_param!(r);
-                    write_param!(g);
-                    write_param!(b);
+                    write_param!(5);
+                    write_param!(i);
                 }
             }
-        }
-
-        if let Some(bgcolor) = self.bgcolor {
-            match bgcolor {
-                crate::Color::Default => {
-                    write_param!(49);
-                }
-                crate::Color::Idx(i) => {
-                    if i < 8 {
-                        write_param!(i + 40);
-                    } else if i < 16 {
-                        write_param!(i + 92);
-                    } else {
-                        write_param!(48);
-                        write_param!(5);
-                        write_param!(i);
-                    }
-                }
-                crate::Color::Rgb(r, g, b) => {
-                    write_param!(48);
-                    write_param!(2);
-                    write_param!(r);
-                    write_param!(g);
-                    write_param!(b);
-                }
+            crate::Color::Rgb(r, g, b) => {
+                write_param!(38);
+                write_param!(2);
+                write_param!(r);
+                write_param!(g);
+                write_param!(b);
             }
         }
-
-        if let Some(intensity) = self.intensity {
-            match intensity {
-                Intensity::Normal => write_param!(22),
-                Intensity::Bold => write_param!(1),
-                Intensity::Dim => write_param!(2),
-            }
-        }
-
-        if let Some(italic) = self.italic {
-            if italic {
-                write_param!(3);
-            } else {
-                write_param!(23);
-            }
-        }
-
-        if let Some(underline) = self.underline {
-            if underline {
-                write_param!(4);
-            } else {
-                write_param!(24);
-            }
-        }
-
-        if let Some(inverse) = self.inverse {
-            if inverse {
-                write_param!(7);
-            } else {
-                write_param!(27);
-            }
-        }
-
-        buf.push(b'm');
     }
+
+    if let Some(bgcolor) = bgcolor {
+        match bgcolor {
+            crate::Color::Default => {
+                write_param!(49);
+            }
+            crate::Color::Idx(i) => {
+                if i < 8 {
+                    write_param!(i + 40);
+                } else if i < 16 {
+                    write_param!(i + 92);
+                } else {
+                    write_param!(48);
+                    write_param!(5);
+                    write_param!(i);
+                }
+            }
+            crate::Color::Rgb(r, g, b) => {
+                write_param!(48);
+                write_param!(2);
+                write_param!(r);
+                write_param!(g);
+                write_param!(b);
+            }
+        }
+    }
+
+    for style in styles {
+        write_param!(style);
+    }
+    buf.push(b'm');
 }
 
 #[derive(Debug)]
