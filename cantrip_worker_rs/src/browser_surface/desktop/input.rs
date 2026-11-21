@@ -1,5 +1,5 @@
 //! Ordered input owned by one remote viewer and one exact native window.
-use crate::desktop_inventory::{Capture, InputAuthority};
+use crate::desktop_inventory::{Capture, GuestControl, InputAuthority};
 use anyhow::{Result, ensure};
 use cantrip_interaction::{
     geometry::Point,
@@ -35,7 +35,13 @@ pub(super) struct Update {
     pub attachment: JsString,
     pub epoch: String,
     pub sprite: Option<Value>,
-    pub message: Option<&'static str>,
+    pub message: Option<String>,
+    pub clipboard: Option<JsString>,
+}
+
+pub(super) struct Authority {
+    pub allowed: InputAuthority,
+    pub control: Option<Arc<GuestControl>>,
 }
 
 pub(super) struct Command {
@@ -64,7 +70,7 @@ impl Viewer {
         capture: Arc<Capture>,
         worker: JsString,
         attachment: JsString,
-        allowed: InputAuthority,
+        authority: Authority,
         previous: Option<watch::Receiver<bool>>,
     ) -> Self {
         let epoch = Uuid::new_v4().to_string();
@@ -72,12 +78,18 @@ impl Viewer {
         let (stop, mut stopped) = watch::channel(false);
         let (finished, closed) = watch::channel(false);
         let live = stopped.clone();
+        let Authority { allowed, control } = authority;
         let allowed: InputAuthority = Arc::new(move || !*live.borrow() && allowed());
         let queue = Arc::new(Queue::default());
         let commands = queue.clone();
         tasks.spawn(async move {
-            let mut participant =
-                capture.participant(&worker, &attachment, &active_epoch, allowed.clone());
+            let mut participant = capture.participant(
+                &worker,
+                &attachment,
+                &active_epoch,
+                allowed.clone(),
+                control.as_deref(),
+            );
             drop(capture);
             // A replacement of this viewer waits for its prior held input to
             // be released, even if several transitions arrive in succession.
@@ -88,32 +100,68 @@ impl Viewer {
                 if !allowed() {
                     return Ok(());
                 }
-                let sprite = participant
-                    .open()
-                    .await
-                    .map_err(|_| "Window input could not attach. Reconnect to try again.")?;
+                if let Some(control) = &control {
+                    control
+                        .take(allowed.clone())
+                        .await
+                        .map_err(|error| error.to_string())?;
+                }
+                let sprite = participant.open().await.map_err(|_| {
+                    "Desktop input could not attach. Reconnect to try again.".to_owned()
+                })?;
                 updates
                     .send(Update {
                         attachment: attachment.clone(),
                         epoch: active_epoch.clone(),
                         sprite: Some(sprite),
                         message: None,
+                        clipboard: None,
                     })
                     .await
-                    .map_err(|_| "Input stopped.")?;
+                    .map_err(|_| "Input stopped.".to_owned())?;
                 let mut state = State::default();
                 loop {
                     let command = commands.next().await;
-                    for event in state.translate(&command).map_err(|_| FAILED)? {
+                    let copy = command.value["operation"] == "copy";
+                    let events = if copy {
+                        vec![
+                            InputEvent::KeyDown {
+                                key: "C".into(),
+                                modifiers: vec![Modifier::Control],
+                                repeat: false,
+                            },
+                            InputEvent::KeyUp { key: "C".into() },
+                        ]
+                    } else {
+                        state.translate(&command).map_err(|_| FAILED.to_owned())?
+                    };
+                    for event in events {
                         if !allowed() {
                             return Ok(());
                         }
-                        event.validate().map_err(|_| FAILED)?;
+                        event.validate().map_err(|_| FAILED.to_owned())?;
                         state.native_sequence += 1;
                         participant
                             .input(state.native_sequence, &event)
                             .await
-                            .map_err(|_| FAILED)?;
+                            .map_err(|_| FAILED.to_owned())?;
+                    }
+                    if copy {
+                        tokio::time::sleep(Duration::from_millis(60)).await;
+                        let text = participant
+                            .clipboard()
+                            .await
+                            .map_err(|_| FAILED.to_owned())?;
+                        updates
+                            .send(Update {
+                                attachment: attachment.clone(),
+                                epoch: active_epoch.clone(),
+                                sprite: None,
+                                message: None,
+                                clipboard: Some(text),
+                            })
+                            .await
+                            .map_err(|_| "Input stopped.".to_owned())?;
                     }
                 }
             };
@@ -129,6 +177,7 @@ impl Viewer {
                 result = run => Some(result),
             };
             participant.close().await;
+            drop(control);
             finished.send_replace(true);
             if let Some(result) = result {
                 let _ = updates
@@ -137,6 +186,7 @@ impl Viewer {
                         epoch: active_epoch,
                         sprite: None,
                         message: result.err(),
+                        clipboard: None,
                     })
                     .await;
             }

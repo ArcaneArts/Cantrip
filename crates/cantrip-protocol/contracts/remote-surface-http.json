@@ -27,7 +27,8 @@
     "remoteDesktopViewerPointerSchema": 385,
     "remoteDesktopViewerKeySchema": 406,
     "remoteDesktopViewerClipboardSchema": 419,
-    "remoteDesktopViewerInputCancelSchema": 428
+    "remoteDesktopViewerInputCancelSchema": 428,
+    "remoteDesktopViewerControlSchema": 431
   },
   "nodes": [
     {
@@ -2591,6 +2592,42 @@
           "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
         }
       ]
-    }
+    },
+    {
+      "type": "object",
+      "shape": { "type": 432, "operation": 433, "leaseId": 434 },
+      "catchall": 436,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "desktop-control-return",
+          "messageAfterPath": true,
+          "message": "Returning control requires the current viewer lease."
+        }
+      ]
+    },
+    { "type": "literal", "values": ["desktop-control"], "checks": [] },
+    { "type": "enum", "values": ["take", "return"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 435,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] }
   ]
 }

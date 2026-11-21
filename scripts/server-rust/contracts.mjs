@@ -1167,6 +1167,7 @@ export const remoteSurfaceHttpContractRoots = [
   "remoteDesktopViewerKeySchema",
   "remoteDesktopViewerClipboardSchema",
   "remoteDesktopViewerInputCancelSchema",
+  "remoteDesktopViewerControlSchema",
 ];
 
 export const computerUseHttpContractRoots = [
@@ -1227,6 +1228,7 @@ const desktopClientKind = new Map([
   ["remoteDesktopViewerKeySchema", "key"],
   ["remoteDesktopViewerClipboardSchema", "clipboard"],
   ["remoteDesktopViewerInputCancelSchema", "input-cancel"],
+  ["remoteDesktopViewerControlSchema", "desktop-control"],
 ]);
 
 // Resolve the actual source schemas, including their separate protocol modules.
@@ -1504,6 +1506,9 @@ registerChecks(protocol.encryptedRemoteDesktopCreateSchema, [
   "desktop-title",
 ]);
 registerChecks(protocol.remoteDesktopWireSummarySchema, ["desktop-wire-title"]);
+registerChecks(sourceContractSchema("remoteDesktopViewerControlSchema"), [
+  "desktop-control-return",
+]);
 registerChecks(protocol.remoteDesktopFleetWireWorkerSchema, [
   "desktop-fleet-inventory",
 ]);

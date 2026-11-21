@@ -15,6 +15,7 @@ pub(super) fn refine(
             | "desktop-title"
             | "desktop-wire-title"
             | "desktop-fleet-inventory"
+            | "desktop-control-return"
     ) {
         return Ok(false);
     }
@@ -136,6 +137,14 @@ pub(super) fn refine(
                 issue(
                     &["inventoryProtection"],
                     "Available Remote Desktop workers require protected inventory.",
+                );
+            }
+        }
+        "desktop-control-return" => {
+            if value["operation"] == "return" && value["leaseId"].is_null() {
+                issue(
+                    &[],
+                    message.unwrap_or("Returning control requires the current viewer lease."),
                 );
             }
         }

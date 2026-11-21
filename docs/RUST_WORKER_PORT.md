@@ -9454,3 +9454,29 @@ a replacement captured a fresh generation and streamed successfully.
 Repeat with `standalone-turn-smoke.mjs --os-desktop-view --guest-image`.
 
 Guest viewer control, keyboard, pointer, and clipboard input remain open.
+
+## 274. Take and return Cantrip OS desktop control from the Rust viewer
+
+Reference commit `9922818de7611935d2562942afd1997cb75a8fcc` (#3437).
+
+One authorized attachment owns human control across the guest workspace's
+viewers. Taking control interrupts in-flight computer use and closes its
+native sessions before opening the viewer's input participant. The takeover
+request can cancel running input while an ordinary frame is waiting for the
+guest pipe. Returning control, suspending, and dropping a route release
+the native binding before agent admission resumes. Input cancellation closes
+held controls and rotates the input epoch while preserving the human lease.
+Keyboard, pointer, and clipboard commands use the existing encrypted viewer
+protocol and ordered native input receipts.
+
+The local desktop inventory smoke ran the production Rust worker and a real
+Linux X11 guest over Docker. The fixture observed an actual held agent button,
+took control, and verified the button was released. The interrupted timeline
+reported uncertain delivery. Guest computer use was rejected during human
+control, the previous native session was retired, and reopening worked after
+return. The public viewer smoke exercised two independent surface attachments,
+exclusive takeover, clipboard copy, live key and button holds, epoch renewal,
+stale return and input rejection, and cleanup on return and disconnect.
+The existing managed guest computer-use smoke also passed with Rust Core
+in PGlite mode, bundled Codex, and a local model fixture. Fifty-one focused
+Node tests and seven Node/Rust desktop control verdict comparisons passed.

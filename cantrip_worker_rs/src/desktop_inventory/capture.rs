@@ -8,7 +8,7 @@ use cantrip_interaction::geometry::{MAX_IMAGE_PIXELS, MAX_SEQUENCE};
 use cantrip_wire::{JsString, Value, value::json};
 use std::{path::Path, sync::Arc};
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, watch},
     time::timeout,
 };
 use uuid::Uuid;
@@ -47,6 +47,26 @@ impl Scope {
 pub(crate) struct Captures {
     requests: mpsc::Sender<Operation>,
     releases: mpsc::UnboundedSender<Release>,
+    control: Option<ControlConnection>,
+}
+
+#[derive(Clone)]
+struct ControlConnection {
+    state: watch::Receiver<Option<ControlState>>,
+    requests: mpsc::Sender<TakeControl>,
+}
+
+pub(super) struct TakeControl {
+    pub(super) generation: Uuid,
+    pub(super) lease: Uuid,
+    pub(super) allowed: InputAuthority,
+    pub(super) reply: oneshot::Sender<Result<()>>,
+}
+
+#[derive(Clone, PartialEq)]
+pub(crate) struct ControlState {
+    pub(crate) id: Uuid,
+    pub(crate) switching: bool,
 }
 
 pub(super) struct Operations {
@@ -61,12 +81,25 @@ impl Captures {
         // needs capacity in the normal frame queue.
         let (releases, cleanup) = mpsc::unbounded_channel();
         (
-            Self { requests, releases },
+            Self {
+                requests,
+                releases,
+                control: None,
+            },
             Operations {
                 requests: input,
                 releases: cleanup,
             },
         )
+    }
+
+    pub(super) fn with_control(
+        mut self,
+        state: watch::Receiver<Option<ControlState>>,
+        requests: mpsc::Sender<TakeControl>,
+    ) -> Self {
+        self.control = Some(ControlConnection { state, requests });
+        self
     }
 
     pub(crate) async fn open(&self, scope: Scope, target: Value) -> Result<Capture> {
@@ -87,7 +120,7 @@ impl Captures {
 #[derive(Clone)]
 pub(super) struct Key {
     scope: Scope,
-    generation: Uuid,
+    pub(super) generation: Uuid,
     binding: Value,
     handle: u64,
     target: Value,
@@ -112,12 +145,29 @@ impl Capture {
         self.key.as_ref().unwrap().target["kind"] == "window"
     }
 
+    pub(crate) fn control_state(&self) -> Option<ControlState> {
+        self.client.control.as_ref()?.state.borrow().clone()
+    }
+
+    pub(crate) fn guest_control(&self) -> Result<GuestControl> {
+        ensure!(
+            self.client.control.is_some(),
+            "Global desktop input requires the assigned guest."
+        );
+        Ok(GuestControl {
+            key: self.key.as_ref().unwrap().clone(),
+            client: self.client.clone(),
+            id: Uuid::new_v4(),
+        })
+    }
+
     pub(crate) fn participant(
         &self,
         worker: &JsString,
         attachment: &JsString,
         input_epoch: &str,
         allowed: InputAuthority,
+        control: Option<&GuestControl>,
     ) -> Participant {
         let key = self.key.as_ref().unwrap().clone();
         Participant {
@@ -127,6 +177,7 @@ impl Capture {
             client: self.client.clone(),
             key,
             allowed,
+            control: control.map(|lease| lease.id),
             handle: 0,
         }
     }
@@ -152,7 +203,7 @@ impl Capture {
 
     fn release(&mut self, reply: Option<oneshot::Sender<()>>) {
         if let Some(key) = self.key.take() {
-            let _ = self.client.releases.send(Release {
+            let _ = self.client.releases.send(Release::Binding {
                 generation: key.generation,
                 binding: key.binding,
                 operation: "capture.request",
@@ -168,18 +219,51 @@ impl Drop for Capture {
     }
 }
 
+pub(crate) struct GuestControl {
+    key: Key,
+    client: Captures,
+    pub(crate) id: Uuid,
+}
+
+impl GuestControl {
+    pub(crate) async fn take(&self, allowed: InputAuthority) -> Result<()> {
+        let (reply, result) = oneshot::channel();
+        self.client
+            .control
+            .as_ref()
+            .expect("Guest control connection")
+            .requests
+            .send(TakeControl {
+                generation: self.key.generation,
+                lease: self.id,
+                allowed,
+                reply,
+            })
+            .await
+            .context("Linux desktop control stopped.")?;
+        result.await.context("Linux desktop control stopped.")?
+    }
+}
+
+impl Drop for GuestControl {
+    fn drop(&mut self) {
+        let _ = self.client.releases.send(Release::Control(self.id));
+    }
+}
+
 pub(crate) struct Participant {
     key: Key,
     client: Captures,
     binding: Option<Value>,
     allowed: InputAuthority,
+    control: Option<Uuid>,
     handle: u64,
 }
 
 impl Participant {
     pub(crate) async fn open(&mut self) -> Result<Value> {
         ensure!(
-            self.key.target["kind"] == "window",
+            self.key.target["kind"] == "window" || self.control.is_some(),
             "Host displays are view-only."
         );
         let result = self
@@ -221,11 +305,23 @@ impl Participant {
                 key: self.key.clone(),
                 request,
                 allowed: self.allowed.clone(),
+                control: self.control,
                 reply,
             })
             .await
             .context("Desktop input service stopped.")?;
         result.await.context("Desktop input service stopped.")?
+    }
+
+    pub(crate) async fn clipboard(&self) -> Result<JsString> {
+        ensure!(
+            self.control.is_some(),
+            "Clipboard access requires the assigned guest."
+        );
+        self.request("clipboardRead", []).await?["text"]
+            .as_js_string()
+            .cloned()
+            .context("Invalid desktop clipboard response.")
     }
 
     pub(crate) async fn input(
@@ -255,7 +351,7 @@ impl Participant {
     fn release(&mut self, reply: Option<oneshot::Sender<()>>) {
         // The unique binding also closes an open whose response was canceled.
         if let Some(binding) = self.binding.take() {
-            let _ = self.client.releases.send(Release {
+            let _ = self.client.releases.send(Release::Binding {
                 generation: self.key.generation,
                 binding,
                 operation: "interaction.request",
@@ -271,31 +367,43 @@ impl Drop for Participant {
     }
 }
 
-pub(super) struct Release {
-    generation: Uuid,
-    binding: Value,
-    operation: &'static str,
-    reply: Option<oneshot::Sender<()>>,
+pub(super) enum Release {
+    Binding {
+        generation: Uuid,
+        binding: Value,
+        operation: &'static str,
+        reply: Option<oneshot::Sender<()>>,
+    },
+    Control(Uuid),
 }
 
 impl Release {
     pub(super) async fn close(self, current: &mut Option<Helper>) {
+        let Self::Binding {
+            generation,
+            binding,
+            operation,
+            reply,
+        } = self
+        else {
+            return;
+        };
         if let Some(helper) = current
             .as_mut()
-            .filter(|helper| helper.identity == self.generation)
+            .filter(|helper| helper.identity == generation)
         {
             let result = helper
                 .process
                 .request(json!({
-                    "operation":self.operation,
-                    "request":json!({"type":"closeBinding","binding":self.binding})
+                    "operation":operation,
+                    "request":json!({"type":"closeBinding","binding":binding})
                 }))
                 .await;
-            if result.is_err() {
+            if !result.is_ok_and(|value| value["closed"] == true) {
                 retire(current).await;
             }
         }
-        if let Some(reply) = self.reply {
+        if let Some(reply) = reply {
             let _ = reply.send(());
         }
     }
@@ -312,6 +420,7 @@ pub(super) enum Operation {
         key: Key,
         request: Value,
         allowed: InputAuthority,
+        control: Option<Uuid>,
         reply: oneshot::Sender<Result<Value>>,
     },
     Frame {
@@ -384,6 +493,7 @@ impl Operation {
                 request,
                 allowed,
                 mut reply,
+                ..
             } => {
                 if reply.is_closed() || !allowed() {
                     let _ = reply.send(Err(anyhow!("The desktop input authority expired.")));

@@ -205,14 +205,25 @@ pub(in crate::desktop_inventory) async fn release(
     attachment: &Attachment,
     process: &mut Option<Helper>,
 ) {
+    if let Err(error) = close_attachment(attachment, process).await
+        && !error.is::<NativeError>()
+    {
+        retire(process).await;
+    }
+}
+
+pub(super) async fn close_attachment(
+    attachment: &Attachment,
+    process: &mut Option<Helper>,
+) -> Result<()> {
     let Some(session) = attachment.session.lock().unwrap().take() else {
-        return;
+        return Ok(());
     };
     let Some(child) = process
         .as_mut()
         .filter(|child| child.identity == session.helper)
     else {
-        return;
+        return Ok(());
     };
     let result = timeout(
         DEADLINE,
@@ -220,12 +231,12 @@ pub(in crate::desktop_inventory) async fn release(
             "operation":"session.close","binding":session.data["binding"],
         })),
     )
-    .await;
-    if !matches!(result, Ok(Ok(_)))
-        && !matches!(result, Ok(Err(ref error)) if error.is::<NativeError>())
-    {
-        retire(process).await;
-    }
+    .await??;
+    ensure!(
+        result["closed"] == true,
+        "The native helper did not close the desktop session."
+    );
+    Ok(())
 }
 
 async fn execute(

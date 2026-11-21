@@ -1,5 +1,6 @@
 //! Desktop carriers pinned to privately recorded Cantrip OS placements.
 mod capture;
+mod control;
 pub(super) use capture::CaptureConnection;
 
 use super::{Request, native};
@@ -73,11 +74,13 @@ struct Group {
     attachment: Value,
     pending: Arc<Semaphore>,
     state: AsyncMutex<State>,
+    control: control::Control,
 }
 
 #[derive(Default)]
 struct State {
     owners: HashSet<uuid::Uuid>,
+    agents: HashMap<uuid::Uuid, Weak<native::Attachment>>,
     carrier: Option<Carrier>,
 }
 
@@ -135,12 +138,13 @@ impl Guests {
         authority: &Value,
         slot: &Mutex<Option<GuestLease>>,
         execution: &Value,
-        request: Request,
+        mut request: Request,
     ) -> Result<()> {
         let mut lease = slot.lock().unwrap();
         request.signal.check()?;
         let mut registry = self.registry.lock().unwrap();
         let group = registry.group(&authority["serverId"], execution)?;
+        request.signal = Signal::any(vec![request.signal, group.control.agent()?]);
         ensure!(
             lease
                 .as_ref()
@@ -201,6 +205,7 @@ impl Guests {
         registry.jobs.spawn(async move {
             let mut state = lease.group.state.lock().await;
             state.owners.remove(&lease.id);
+            state.agents.remove(&lease.id);
             if state.owners.is_empty() {
                 if let Some(carrier) = state.carrier.take() {
                     carrier.close(&lease.group.transport).await;
@@ -273,6 +278,7 @@ impl Registry {
                     attachment: scope["attachmentGeneration"].clone(),
                     pending: Arc::new(Semaphore::new(4)),
                     state: AsyncMutex::default(),
+                    control: control::Control::default(),
                 });
                 self.groups.insert(key, Arc::downgrade(&group));
                 group
@@ -299,6 +305,12 @@ impl GuestLease {
             return;
         }
         state.owners.insert(self.id);
+        state
+            .agents
+            .retain(|_, attachment| attachment.strong_count() > 0);
+        state
+            .agents
+            .insert(self.id, Arc::downgrade(&request.attachment));
         if state.carrier.as_mut().is_some_and(|carrier| {
             carrier
                 .helper

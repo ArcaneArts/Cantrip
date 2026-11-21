@@ -3,7 +3,7 @@ mod input;
 
 use super::{Callback, Endpoint, FrameSource, Route, Shared, Work, accepted, id};
 use crate::{
-    desktop_inventory::{Capture, Scope},
+    desktop_inventory::{Capture, ControlState, GuestControl, Scope},
     http::checked,
     protected_content::{open_private_state, open_remote_surface, protect_remote_surface},
 };
@@ -37,6 +37,8 @@ struct Session<'a> {
     server: Value,
     project: Value,
     guest: Option<GuestSource>,
+    controller: Option<Controller>,
+    control_state: Option<ControlState>,
     desktop: Target,
     attachments: HashMap<JsString, Attachment>,
     fps: u32,
@@ -76,6 +78,11 @@ impl Attachment {
 struct Target {
     revision: u64,
     value: Value,
+}
+
+struct Controller {
+    attachment: JsString,
+    lease: Arc<GuestControl>,
 }
 
 #[derive(Clone)]
@@ -210,7 +217,10 @@ pub(super) async fn run(
                     Some(Work::Frame { frame, source }) => {
                         let _ = active.control(&frame, &source, capture.as_ref());
                     }
-                    Some(Work::Refresh(attachment)) => active.publish(Some(&attachment)),
+                    Some(Work::Refresh(attachment)) => {
+                        active.publish(Some(&attachment));
+                        active.publish_control(Some(&attachment));
+                    }
                     Some(Work::AgentBorrow { done, .. }) => {
                         let _ = done.send(Err(anyhow!("This surface is a desktop.")));
                     }
@@ -278,6 +288,11 @@ pub(super) async fn run(
             _ = check.tick() => {
                 active.authorize()?;
                 active.prune();
+                let control = capture.as_ref().and_then(|capture| capture.control_state());
+                if active.control_state != control {
+                    active.control_state = control;
+                    active.publish_control(None);
+                }
                 if !active.visible() {
                     drop(work.take());
                     if let Some(capture) = capture.take() {
@@ -337,6 +352,8 @@ impl<'a> Session<'a> {
             server: owner.server_id,
             project: incoming["projectId"].clone(),
             guest,
+            controller: None,
+            control_state: None,
             desktop: target,
             attachments: HashMap::new(),
             fps: settings["targetFps"].as_u64().unwrap_or(default_fps) as u32,
@@ -482,6 +499,7 @@ impl<'a> Session<'a> {
                     .is_some_and(|member| member.route.closes_on(epoch))
                 {
                     self.attachments.remove(attachment);
+                    self.release_controller(attachment);
                     self.input_assets();
                 }
                 if !self.visible() {
@@ -606,6 +624,7 @@ impl<'a> Session<'a> {
             Some("viewport") => checked("remoteSurfaceViewportSchema", &message["viewport"])?,
             Some("stream-feedback") => checked("remoteDesktopStreamFeedbackSchema", &message)?,
             Some("input-cancel") => checked("remoteDesktopViewerInputCancelSchema", &message)?,
+            Some("desktop-control") => checked("remoteDesktopViewerControlSchema", &message)?,
             Some("pointer") => checked("remoteDesktopViewerPointerSchema", &message)?,
             Some("key") => checked("remoteDesktopViewerKeySchema", &message)?,
             Some("clipboard") => checked("remoteDesktopViewerClipboardSchema", &message)?,
@@ -626,10 +645,22 @@ impl<'a> Session<'a> {
                 if fresh {
                     member.stop_input();
                     member.source = Some(source.clone());
+                    self.release_controller(attachment);
                     self.publish(Some(attachment));
+                    self.publish_control(Some(attachment));
                     if let Some(capture) = capture {
                         self.start_input(attachment, capture);
                     }
+                }
+            }
+            Some("desktop-control") => {
+                if let Err(error) = self.guest_control(attachment, &data, capture) {
+                    let epoch = self.attachments[attachment]
+                        .input
+                        .as_ref()
+                        .map(|input| input.epoch.clone());
+                    self.input_state(Some(attachment), epoch.as_deref(), Some(&error.to_string()));
+                    self.publish_control(Some(attachment));
                 }
             }
             Some("stream-feedback") => self.tuner.feedback(&data, self.fps),
@@ -650,6 +681,101 @@ impl<'a> Session<'a> {
         Ok(())
     }
 
+    fn guest_control(
+        &mut self,
+        attachment: &JsString,
+        message: &Value,
+        capture: Option<&Arc<Capture>>,
+    ) -> Result<()> {
+        ensure!(
+            self.guest.is_some() && !self.suspended,
+            "Guest desktop control is unavailable."
+        );
+        if message["operation"] == "return" {
+            ensure!(
+                self.controller.as_ref().is_some_and(|controller| {
+                    controller.attachment == *attachment
+                        && message["leaseId"] == controller.lease.id.to_string()
+                }),
+                "The human control lease changed. No input was sent."
+            );
+            self.stop_input(
+                attachment,
+                Some("Viewing only. Take control to use this desktop."),
+            );
+            self.release_controller(attachment);
+            return Ok(());
+        }
+        if let Some(controller) = &self.controller {
+            ensure!(
+                controller.attachment == *attachment,
+                "Another viewer owns this desktop's control lease."
+            );
+            self.publish_control(Some(attachment));
+            return Ok(());
+        }
+        let capture = capture.context("The assigned Linux display is not ready.")?;
+        ensure!(
+            self.attachments[attachment]
+                .source
+                .as_ref()
+                .is_some_and(|source| self.attachments[attachment]
+                    .route
+                    .receives(source, &self.shared.outgoing))
+                && self.status == "ready",
+            "The assigned Linux display is not ready."
+        );
+        self.controller = Some(Controller {
+            attachment: attachment.clone(),
+            lease: Arc::new(capture.guest_control()?),
+        });
+        self.start_input(attachment, capture);
+        Ok(())
+    }
+
+    fn release_controller(&mut self, attachment: &JsString) {
+        if self
+            .controller
+            .as_ref()
+            .is_some_and(|controller| controller.attachment == *attachment)
+        {
+            self.controller.take();
+        }
+    }
+
+    fn publish_control(&mut self, only: Option<&JsString>) {
+        if self.guest.is_none() {
+            return;
+        }
+        let targets: Vec<_> = self
+            .attachments
+            .keys()
+            .filter(|id| only.is_none_or(|only| *id == only))
+            .cloned()
+            .collect();
+        for attachment in targets {
+            let (mode, lease) = match &self.control_state {
+                None => ("agent", None),
+                Some(state) => (
+                    if state.switching {
+                        "switching"
+                    } else {
+                        "human"
+                    },
+                    self.controller
+                        .as_ref()
+                        .filter(|current| {
+                            current.lease.id == state.id && current.attachment == attachment
+                        })
+                        .map(|_| state.id.to_string()),
+                ),
+            };
+            self.send_message(Some(&attachment), &json!({
+                "type":"desktop-control","mode":mode,"isController":lease.is_some(),"leaseId":lease
+            }));
+        }
+    }
+
     fn start_input(&mut self, attachment: &JsString, capture: &Arc<Capture>) {
         let member = self.attachments.get_mut(attachment).unwrap();
         let Some(source) = member.source.clone() else {
@@ -661,12 +787,17 @@ impl<'a> Session<'a> {
         {
             return;
         }
-        if !capture.is_window() {
+        let control = self
+            .controller
+            .as_ref()
+            .filter(|controller| controller.attachment == *attachment)
+            .map(|controller| controller.lease.clone());
+        if !capture.is_window() && control.is_none() {
             self.input_state(
                 Some(attachment),
                 None,
                 Some(if self.guest.is_some() {
-                    "The assigned Linux display is available for viewing."
+                    "Viewing only. Take control to use this desktop."
                 } else {
                     "Select a window for independent input. Display sharing is view-only."
                 }),
@@ -686,7 +817,7 @@ impl<'a> Session<'a> {
             capture.clone(),
             self.shared.encryption.worker_id().clone(),
             attachment.clone(),
-            allowed,
+            input::Authority { allowed, control },
             member.closing.take(),
         ));
     }
@@ -702,20 +833,35 @@ impl<'a> Session<'a> {
         else {
             return;
         };
-        if let Some(sprite) = change.sprite {
+        if change.sprite.is_some() || change.clipboard.is_some() {
             if member
                 .source
                 .as_ref()
                 .is_none_or(|source| !member.route.receives(source, &self.shared.outgoing))
             {
                 self.stop_input(&change.attachment, None);
+                self.release_controller(&change.attachment);
                 return;
             }
+        }
+        if let Some(text) = change.clipboard {
+            if let Ok(message) = checked(
+                "remoteDesktopServerMessageSchema",
+                &json!({"type":"desktop-clipboard","text":text}),
+            ) {
+                self.send(
+                    Some(&change.attachment),
+                    "clipboard",
+                    message.stringify().as_bytes(),
+                );
+            }
+        } else if let Some(sprite) = change.sprite {
             input.sprite = Some(sprite);
             self.input_state(Some(&change.attachment), Some(&change.epoch), None);
             self.input_assets();
         } else {
-            self.stop_input(&change.attachment, change.message);
+            self.stop_input(&change.attachment, change.message.as_deref());
+            self.release_controller(&change.attachment);
         }
     }
 
@@ -731,6 +877,7 @@ impl<'a> Session<'a> {
     }
 
     fn retire_inputs(&mut self) {
+        self.controller.take();
         let mut changed = false;
         for member in self.attachments.values_mut() {
             changed |= member.stop_input();
@@ -757,6 +904,13 @@ impl<'a> Session<'a> {
         }
         if changed {
             self.input_assets();
+        }
+        if self.controller.as_ref().is_some_and(|controller| {
+            self.attachments
+                .get(&controller.attachment)
+                .is_none_or(|member| member.source.is_none())
+        }) {
+            self.controller.take();
         }
     }
 
@@ -787,7 +941,7 @@ impl<'a> Session<'a> {
             .filter(|sequence| *sequence > viewer.sequence && value["inputEpoch"] == viewer.epoch)
             .context("Desktop input epoch or sequence expired.")?;
         viewer.sequence = sequence;
-        if value["operation"] == "copy" {
+        if value["operation"] == "copy" && self.guest.is_none() {
             let epoch = viewer.epoch.clone();
             self.input_state(
                 Some(attachment),
@@ -811,6 +965,7 @@ impl<'a> Session<'a> {
             logical: self.logical,
         }) {
             self.stop_input(attachment, Some(input::FAILED));
+            self.release_controller(attachment);
             return Ok(());
         }
         if let Some((x, y)) = position {

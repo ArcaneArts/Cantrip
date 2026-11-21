@@ -396,7 +396,9 @@ try {
 
   const frames = [];
   socket.on("message", (raw, binary) => {
-    if (binary) frames.push(decodeRemoteSurfaceFrame(new Uint8Array(raw)));
+    if (!binary) return;
+    const frame = decodeRemoteSurfaceFrame(new Uint8Array(raw));
+    if (frame.header.attachmentId === attachmentId) frames.push(frame);
   });
   const counters = new Map();
   async function clear({ header, payload }) {
@@ -594,6 +596,149 @@ try {
   }
 
   if (values["guest-image"]) {
+    async function openDesktopViewer(execution, desktopGeneration) {
+      const surfaceId = randomUUID();
+      const attachmentId = randomUUID();
+      const viewport = { width: 640, height: 480, devicePixelRatio: 1 };
+      const osSource = {
+        desktopGeneration,
+        ...Object.fromEntries(
+          [
+            "bindingId",
+            "worktreeId",
+            "bindingGeneration",
+            "attachmentGeneration",
+            "runtimeGeneration",
+          ].map((field) => [field, execution.scope[field]]),
+        ),
+      };
+      const report = await send({
+        type: "surface.attach",
+        surfaceId,
+        attachmentId,
+        serverId,
+        projectId: execution.scope.projectId,
+        configuration: { kind: "desktop", osSource },
+        osExecution: execution,
+        stateResource: "remote-desktop-row",
+        stateRevision: 1,
+        stateProtection: await encryptSurfacePrivateState({
+          ownerId,
+          componentKey: key,
+          keyRevision: 1,
+          context: {
+            serverId,
+            resourceId: surfaceId,
+            recordKind: "remote-desktop-state",
+            resource: "remote-desktop-row",
+            operationId: null,
+          },
+          content: {
+            version: 1,
+            revision: 1,
+            classification: { recordKind: "remote-desktop-state" },
+            target: { kind: "monitor", id: null, name: null },
+          },
+        }),
+        viewport,
+        preferredTransport: "websocket",
+      });
+      assert.equal(report.ok, true, JSON.stringify(report));
+      let sequence = 0;
+      const queue = [];
+      const capture = (raw, binary) => {
+        if (!binary) return;
+        const frame = decodeRemoteSurfaceFrame(new Uint8Array(raw));
+        if (
+          frame.header.attachmentId === attachmentId &&
+          frame.header.channel === "control"
+        )
+          queue.push(frame);
+      };
+      socket.on("message", capture);
+      const context = (header, direction) => ({
+        serverId,
+        surfaceId,
+        attachmentId,
+        surfaceKind: "desktop",
+        channel: header.channel,
+        sequence: header.sequence,
+        direction,
+      });
+      async function until(filter) {
+        const deadline = Date.now() + 8000;
+        while (Date.now() < deadline) {
+          const frame = queue.shift();
+          if (!frame) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            continue;
+          }
+          const data = await decryptRemoteSurfaceStreamPayload({
+            ownerId,
+            componentKey: key,
+            keyRevision: 1,
+            context: context(frame.header, "worker-to-client"),
+            protectedPayload: frame.payload,
+          });
+          const message = remoteDesktopServerMessageSchema.parse(
+            JSON.parse(Buffer.from(data).toString()),
+          );
+          if (filter(message)) return message;
+        }
+        assert.fail("The guest viewer did not report its state.");
+      }
+      async function control(message) {
+        const header = {
+          protocolVersion: 1,
+          surfaceId,
+          attachmentId,
+          channel: "control",
+          sequence: sequence++,
+        };
+        const payload = await encryptRemoteSurfaceStreamPayload({
+          ownerId,
+          componentKey: key,
+          keyRevision: 1,
+          context: context(header, "client-to-worker"),
+          plaintext: Buffer.from(JSON.stringify(message)),
+        });
+        socket.send(encodeRemoteSurfaceFrame(header, payload));
+      }
+      let leaseId;
+      await control({ type: "viewport", viewport });
+      await until(
+        (value) => value.type === "desktop-state" && value.status === "ready",
+      );
+      return {
+        async take() {
+          await control({ type: "desktop-control", operation: "take" });
+          ({ leaseId } = await until(
+            (value) =>
+              value.type === "desktop-control" &&
+              value.mode === "human" &&
+              value.isController,
+          ));
+        },
+        async release() {
+          await control({
+            type: "desktop-control",
+            operation: "return",
+            leaseId,
+          });
+          await until(
+            (value) =>
+              value.type === "desktop-control" && value.mode === "agent",
+          );
+        },
+        async close() {
+          socket.off("message", capture);
+          assert.equal(
+            (await send({ type: "surface.close", surfaceId })).ok,
+            true,
+          );
+        },
+      };
+    }
     await verifyCantripOsPreview({
       image: values["guest-image"],
       data: path.join(root, "profile"),
@@ -604,6 +749,7 @@ try {
       endpointKey: previewKeys.get("client-control-content"),
       hostProcesses: readPids,
       reconnectWorker,
+      openDesktopViewer,
     });
     assert.deepEqual(await readPids(), [pid]);
   } else {
