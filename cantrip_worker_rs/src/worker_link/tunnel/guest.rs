@@ -12,7 +12,12 @@ use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{Value, value::json};
 use chrono::Utc;
 use sha2::{Digest, Sha256};
-use std::{process::Stdio, sync::Arc, time::Duration};
+use std::{
+    net::SocketAddr,
+    process::Stdio,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, DuplexStream, duplex},
     process::{Child, Command},
@@ -42,7 +47,14 @@ pub(in crate::worker_link) struct Slot {
 
 struct Installed {
     preparation: Arc<Preparation>,
+    listener: Option<Listener>,
     _lifetime: watch::Sender<bool>,
+}
+
+struct Listener {
+    target: Vec<SocketAddr>,
+    stream: Mutex<Option<Stream>>,
+    closed: watch::Receiver<bool>,
 }
 
 pub(in crate::worker_link) struct Preparation {
@@ -58,19 +70,40 @@ pub(in crate::worker_link) struct Preparation {
 pub(super) struct Stream {
     pub(super) socket: DuplexStream,
     pub(super) fault: oneshot::Receiver<()>,
+    closed: watch::Receiver<bool>,
     // Dropping the WorkerLink stream cancels the owned guest carrier.
     pub(super) _lifetime: oneshot::Sender<()>,
 }
 
+impl Stream {
+    pub(super) fn active(&self) -> bool {
+        !*self.closed.borrow() && self.closed.has_changed().is_ok()
+    }
+}
+
 impl Slot {
-    fn retire(&mut self) -> bool {
-        std::mem::take(self).installed.is_some()
+    fn retire(&mut self) -> Option<Installed> {
+        std::mem::take(self).installed
     }
 
     pub(in crate::worker_link) fn opened(&self) -> Option<Arc<Preparation>> {
         self.installed
             .as_ref()
+            .filter(|entry| entry.listener.is_none())
             .map(|entry| entry.preparation.clone())
+    }
+
+    pub(super) fn listen(
+        &self,
+        coordinator: &Coordinator,
+    ) -> Option<(Arc<Preparation>, Stream, Vec<SocketAddr>)> {
+        let entry = self.installed.as_ref()?;
+        let listener = entry.listener.as_ref()?;
+        if !entry.preparation.current(coordinator) || *listener.closed.borrow() {
+            return None;
+        }
+        let stream = listener.stream.lock().unwrap().take()?;
+        Some((entry.preparation.clone(), stream, listener.target.clone()))
     }
 }
 
@@ -79,6 +112,23 @@ impl Preparation {
         self.scope.check().is_ok()
             && self.expires > Utc::now().timestamp_millis()
             && coordinator.outgoing.stream_current(self.epoch)
+    }
+
+    pub(super) async fn confirm_listener(&self) -> Result<()> {
+        let placement =
+            Value::object(PLACEMENT.map(|(key, _)| (key, self.descriptor[key].clone())));
+        let observed = describe_service(
+            &self.transport,
+            placement,
+            self.descriptor["service"].clone(),
+            &self.scope,
+        )
+        .await?;
+        ensure!(
+            observed == self.descriptor,
+            "The prepared guest listener is retired."
+        );
+        self.scope.check()
     }
 }
 
@@ -92,8 +142,9 @@ fn matching(grant: &Grant, command: &Value, now: i64) -> bool {
         && expiration(&binding["lease"]).is_ok_and(|expires| expires > now)
         && binding["lease"]["absoluteExpiresAt"] == command["expiresAt"]
         && binding["operations"].as_array().is_some_and(|operations| {
-            operations.contains(&json!("stream:guest-connect"))
-                && !operations.contains(&json!("stream:guest-listen"))
+            let listen = command["mode"] == "listen";
+            operations.contains(&json!("stream:guest-listen")) == listen
+                && operations.contains(&json!("stream:guest-connect")) != listen
         })
 }
 
@@ -104,20 +155,42 @@ fn grants(state: &mut State) -> impl Iterator<Item = &mut Grant> {
         .flat_map(|session| session.grants.values_mut())
 }
 
+fn pending_grant<'a>(
+    state: &'a mut State,
+    command: &Value,
+    now: i64,
+    token: Uuid,
+) -> Result<&'a mut Grant> {
+    grants(state)
+        .find(|grant| {
+            matching(grant, command, now)
+                && grant
+                    .guest
+                    .pending
+                    .as_ref()
+                    .is_some_and(|pending| pending.0 == token)
+        })
+        .context("The OS tunnel preparation was retired.")
+}
+
 impl State {
     pub(in crate::worker_link) fn retire_guest_tunnels(
         &mut self,
         attachment: Option<&Value>,
         reason: &str,
-    ) {
+    ) -> Vec<watch::Receiver<bool>> {
         let mut retired = Vec::new();
+        let mut listeners = Vec::new();
         for (session, installed) in &mut self.sessions {
             for (grant, current) in &mut installed.grants {
                 let resource = &current.value["binding"]["resource"];
                 if resource["kind"] == "tunnel"
                     && attachment.is_none_or(|attachment| resource["attachmentId"] == *attachment)
-                    && current.guest.retire()
+                    && let Some(entry) = current.guest.retire()
                 {
+                    if let Some(listener) = entry.listener {
+                        listeners.push(listener.closed);
+                    }
                     retired.push((session.clone(), grant.clone()));
                 }
             }
@@ -125,6 +198,7 @@ impl State {
         for (session, grant) in retired {
             self.channels.close_grant(&session, &grant, reason);
         }
+        listeners
     }
 }
 
@@ -170,27 +244,8 @@ impl Coordinator {
             }
             (token, Scope::with_stop(receiver))
         };
-        let observed = self.observe_guest_tunnel(command, &scope, previews).await;
-        let mut state = self.state.lock().unwrap();
-        let now = Utc::now().timestamp_millis();
-        let identity = self.encryption.bound_identity();
-        state.sweep(now, identity.as_ref().ok());
-        let grant = grants(&mut state)
-            .find(|grant| {
-                matching(grant, command, now)
-                    && grant
-                        .guest
-                        .pending
-                        .as_ref()
-                        .is_some_and(|pending| pending.0 == token)
-            })
-            .context("The OS tunnel preparation was retired.")?;
-        let (_, lifetime) = grant.guest.pending.take().unwrap();
-        ensure!(
-            self.outgoing.stream_current(epoch) && expires > now,
-            "The OS tunnel preparation was retired."
-        );
-        let (transport, descriptor, vnc) = observed?;
+        let (transport, descriptor, vnc, target) =
+            self.observe_guest_tunnel(command, &scope, previews).await?;
         let identity = hex_digest(&Sha256::digest(descriptor.stringify()));
         ensure!(
             command["expectedIdentity"].is_null() || command["expectedIdentity"] == identity,
@@ -205,21 +260,69 @@ impl Coordinator {
             });
         }
         let result = checked("tunnelOsPrepareResultSchema", &result)?;
-        state.retire_guest_tunnels(Some(&command["attachmentId"]), "route-replaced");
-        grants(&mut state)
-            .find(|grant| matching(grant, command, now))
-            .unwrap()
-            .guest
-            .installed = Some(Installed {
-            preparation: Arc::new(Preparation {
-                record: command["protectedRecord"].clone(),
-                transport,
-                descriptor,
-                vnc,
-                expires,
-                epoch,
-                scope,
-            }),
+        let previous = {
+            let mut state = self.state.lock().unwrap();
+            let now = Utc::now().timestamp_millis();
+            let identity = self.encryption.bound_identity();
+            state.sweep(now, identity.as_ref().ok());
+            ensure!(
+                self.outgoing.stream_current(epoch),
+                "The OS tunnel preparation was retired."
+            );
+            let pending = pending_grant(&mut state, command, now, token)?
+                .guest
+                .pending
+                .take();
+            let previous =
+                state.retire_guest_tunnels(Some(&command["attachmentId"]), "route-replaced");
+            grants(&mut state)
+                .find(|grant| matching(grant, command, now))
+                .unwrap()
+                .guest
+                .pending = pending;
+            previous
+        };
+        let preparation = Arc::new(Preparation {
+            record: command["protectedRecord"].clone(),
+            transport,
+            descriptor,
+            vnc,
+            expires,
+            epoch,
+            scope,
+        });
+        let listener = if let Some(target) = target {
+            // The replaced port remains owned by the old carrier until it
+            // completes its exact guest cleanup. The new bind reports its
+            // actual availability after that owned work settles.
+            for mut closed in previous {
+                tokio::select! {
+                    _ = preparation.scope.stopped() => bail!("The guest listener preparation was retired."),
+                    _ = closed.wait_for(|closed| *closed) => {},
+                }
+            }
+            let stream = self.open_guest_stream(preparation.clone(), None).await?;
+            Some(Listener {
+                target,
+                closed: stream.closed.clone(),
+                stream: Mutex::new(Some(stream)),
+            })
+        } else {
+            None
+        };
+        let mut state = self.state.lock().unwrap();
+        let now = Utc::now().timestamp_millis();
+        let identity = self.encryption.bound_identity();
+        state.sweep(now, identity.as_ref().ok());
+        ensure!(
+            preparation.current(self),
+            "The OS tunnel preparation was retired."
+        );
+        let slot = &mut pending_grant(&mut state, command, now, token)?.guest;
+        let (_, lifetime) = slot.pending.take().unwrap();
+        slot.installed = Some(Installed {
+            preparation,
+            listener,
             _lifetime: lifetime,
         });
         Ok(result)
@@ -230,7 +333,12 @@ impl Coordinator {
         command: &Value,
         scope: &Scope,
         previews: &Previews,
-    ) -> Result<(Transport, Value, Option<VncDesktop>)> {
+    ) -> Result<(
+        Transport,
+        Value,
+        Option<VncDesktop>,
+        Option<Vec<SocketAddr>>,
+    )> {
         let content = open_tunnel_record(
             &self.encryption,
             &command["tunnelId"],
@@ -238,7 +346,9 @@ impl Coordinator {
         )?;
         let destination = &content["destination"];
         let scope_value = &command["osExecution"]["scope"];
-        let source = Value::object(
+        let source = &content["source"];
+        let listen = command["mode"] == "listen";
+        let captured = Value::object(
             [
                 "bindingId",
                 "worktreeId",
@@ -248,20 +358,45 @@ impl Coordinator {
             ]
             .map(|field| (field, scope_value[field].clone())),
         );
+        let protected_capture = if listen {
+            &source["source"]
+        } else {
+            &destination["source"]
+        };
         ensure!(
             destination["workerId"].as_js_string() == Some(&self.worker)
-                && destination["source"] == source,
+                && *protected_capture == captured,
             "The encrypted tunnel differs from its canonical OS capture."
         );
-        ensure!(
-            command["mode"] != "listen" && content["source"]["kind"] == "desktop-loopback",
-            "The incoming guest service does not match its canonical direction."
-        );
-        let service = match destination["kind"].as_str() {
-            Some("worker-os-tcp") => json!({"kind":"tcp","port":destination["port"]}),
-            Some("worker-os-ssh") => json!({"kind":"ssh"}),
-            Some("worker-os-vnc") => json!({"kind":"vnc"}),
-            _ => bail!("The guest tunnel has no supported captured OS destination."),
+        let (service, target) = if listen {
+            ensure!(
+                source["kind"] == "worker-os-listener"
+                    && source["workerId"].as_js_string() == Some(&self.worker)
+                    && destination["kind"] == "worker-tcp",
+                "The guest listener does not match its canonical direction."
+            );
+            let host = destination["host"]
+                .as_str()
+                .context("Guest listener destination host")?;
+            let port = destination["port"]
+                .as_u64()
+                .context("Guest listener destination port")? as u16;
+            (
+                json!({"kind":"listen","port":source["port"]}),
+                Some(super::loopback_addresses(host, port)),
+            )
+        } else {
+            ensure!(
+                source["kind"] == "desktop-loopback",
+                "The incoming guest service does not match its canonical direction."
+            );
+            let service = match destination["kind"].as_str() {
+                Some("worker-os-tcp") => json!({"kind":"tcp","port":destination["port"]}),
+                Some("worker-os-ssh") => json!({"kind":"ssh"}),
+                Some("worker-os-vnc") => json!({"kind":"vnc"}),
+                _ => bail!("The guest tunnel has no supported captured OS destination."),
+            };
+            (service, None)
         };
         let transport = Transport::from_value(&command["osExecution"]["transport"])?;
         let placement =
@@ -274,7 +409,7 @@ impl Coordinator {
         } else {
             (observe.await?, None)
         };
-        Ok((transport, descriptor, vnc))
+        Ok((transport, descriptor, vnc, target))
     }
 
     pub(super) async fn open_guest_stream(
@@ -290,6 +425,7 @@ impl Coordinator {
         let (retire, retired) = oneshot::channel();
         let (ready, readiness) = oneshot::channel();
         let (fail, fault) = oneshot::channel();
+        let (finished, closed) = watch::channel(false);
         let logs = self.logs.clone();
         {
             let mut jobs = self.guest_streams.lock().unwrap();
@@ -301,10 +437,10 @@ impl Coordinator {
                 "Guest service carrier capacity exhausted."
             );
             jobs.spawn(async move {
-                if service_stream(preparation, public_key, guest, ready, retired, fail)
-                    .await
-                    .is_err()
-                {
+                let result =
+                    service_stream(preparation, public_key, guest, ready, retired, fail).await;
+                finished.send_replace(true);
+                if result.is_err() {
                     logs.event(
                         "warn",
                         "Guest service cleanup was not confirmed",
@@ -323,6 +459,7 @@ impl Coordinator {
         Ok(Stream {
             socket: local,
             fault,
+            closed,
             _lifetime: retire,
         })
     }

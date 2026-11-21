@@ -113,7 +113,8 @@ enum Resource {
 impl Resource {
     fn payload_format(&self) -> &'static str {
         match self {
-            Self::Tunnel(_) => "tunnel-data-plane-v1",
+            Self::Tunnel(tunnel) if !tunnel.listening() => "tunnel-data-plane-v1",
+            Self::Tunnel(_) => "raw",
             Self::Observation { .. } | Self::Terminal(_) | Self::Surface { .. } => "raw",
         }
     }
@@ -405,14 +406,16 @@ impl Channels {
             Some("tunnel")
                 if header["lane"] == "stream" && header["channelKind"] == "reliable-stream" =>
             {
-                let frame_limit = payload_limit(carrier, header, "tunnel-data-plane-v1");
-                let tunnel = Tunnel::open(gateway, header, installed, frame_limit, &grant.guest)?;
                 if self.active.values().any(|channel| {
-                    matches!(&channel.resource, Resource::Tunnel(active) if active.attachment == tunnel.attachment)
+                    matches!(&channel.resource, Resource::Tunnel(active)
+                        if installed["resource"]["attachmentId"].as_js_string() == Some(&active.attachment))
                 }) {
                     return Err("resource-unavailable");
                 }
-                (Resource::Tunnel(tunnel), true)
+                let frame_limit = payload_limit(carrier, header, "tunnel-data-plane-v1");
+                let tunnel = Tunnel::open(gateway, header, installed, frame_limit, &grant.guest)?;
+                let ready = !tunnel.listening();
+                (Resource::Tunnel(tunnel), ready)
             }
             Some("browser" | "remote-desktop") if header["channelKind"] == "reliable-stream" => {
                 let operations = installed["operations"].as_array().unwrap();
@@ -644,6 +647,21 @@ impl Channels {
 
     pub fn tunnel_active(&mut self, id: &JsString, token: Uuid) -> bool {
         self.tunnel_mut(id, token).is_some()
+    }
+
+    pub fn listener_ready(&mut self, id: &JsString, token: Uuid) -> bool {
+        if let Some(channel) = self.tunnel_mut(id, token) {
+            channel.ready = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn listener_closed(&mut self, id: &JsString, token: Uuid) {
+        if self.tunnel_mut(id, token).is_some() {
+            self.close(id, "endpoint-disconnected");
+        }
     }
 
     pub fn tunnel_output(&mut self, id: &JsString, token: Uuid, bytes: &[u8]) -> Output {

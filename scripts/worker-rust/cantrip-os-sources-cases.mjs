@@ -65,6 +65,7 @@ export async function verifySources({
   guestTunnel,
   guestSsh,
   guestVnc,
+  guestReverse,
   origin,
   crashWorker,
   stopWorker,
@@ -77,7 +78,7 @@ export async function verifySources({
     data,
     runRuntime,
     productFiles || guestTerminal,
-    guestTunnel || guestSsh || guestVnc,
+    guestTunnel || guestSsh || guestVnc || guestReverse,
   );
   const componentKey = keys.get("repository-content");
   const serverId = bootstrap.server.id;
@@ -184,9 +185,13 @@ export async function verifySources({
   assert.equal(made.source.head, null);
   await guest("test", "-d", folder.guestPath);
   assert.equal((await call("POST", route(folder) + "/verify")).state, "ready");
-  if (guestTunnel || guestSsh || guestVnc) {
-    const { verifyCantripOsTunnel, verifyCantripOsSsh, verifyCantripOsVnc } =
-      await import("./cantrip-os-tunnel-cases.mjs");
+  if (guestTunnel || guestSsh || guestVnc || guestReverse) {
+    const {
+      verifyCantripOsTunnel,
+      verifyCantripOsSsh,
+      verifyCantripOsVnc,
+      verifyCantripOsReverse,
+    } = await import("./cantrip-os-tunnel-cases.mjs");
     const tunnelOptions = {
       origin,
       call,
@@ -201,6 +206,7 @@ export async function verifySources({
     };
     if (guestTunnel) await verifyCantripOsTunnel(tunnelOptions);
     if (guestSsh) await verifyCantripOsSsh(tunnelOptions);
+    if (guestReverse) await verifyCantripOsReverse(tunnelOptions);
     if (guestVnc) await verifyCantripOsVnc(tunnelOptions);
   }
 
