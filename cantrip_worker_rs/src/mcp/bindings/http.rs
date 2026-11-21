@@ -5,8 +5,10 @@ mod computer_use;
 mod explorer;
 mod policy;
 mod streamable;
+mod surface;
 mod targets;
 mod tasks;
+mod terminal;
 
 use super::{Active, Entry, Inner, MAXIMUM_OPERATIONS, now, server::Rejected, store};
 use anyhow::{Result, anyhow, ensure};
@@ -329,6 +331,9 @@ impl Inner {
             "target.list" | "target.inspect" => self.target(authorization, &call, operation).await,
             "explorer.list" | "explorer.read" | "explorer.write" => {
                 self.explorer(authorization, &call, operation).await
+            }
+            "terminal.read" | "terminal.send" | "terminal.restart" => {
+                self.terminal(authorization, &call, operation).await
             }
             "client.notify"
             | "client.focus-project"

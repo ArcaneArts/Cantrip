@@ -1,9 +1,6 @@
 use super::{Authorized, Inner};
-use crate::{
-    explorer_operations::view, http::checked, mcp::bindings::server::TargetInspection,
-    protected_content::BoundSurfaceContent,
-};
-use anyhow::{Context, Result, bail, ensure};
+use crate::explorer_operations::view;
+use anyhow::{Result, ensure};
 use cantrip_protocol::{mcp_host, response::response_error};
 use cantrip_wire::{Value, value::json};
 
@@ -22,93 +19,31 @@ impl Inner {
         };
         let arguments = mcp_host::parse(&format!("mcpStdioInput/{tool}"), call.get("arguments"))
             .map_err(response_error)?;
-        let binding = &authorization.active.binding;
         let target = &arguments["target"];
-        ensure!(
-            binding["contextKind"] == "project" && target["projectId"] == binding["projectId"],
-            "The Explorer target cannot receive protected operations."
-        );
-        let operation_id = uuid::Uuid::new_v4().to_string();
-        let inspected = self
-            .relay_project(
-                authorization,
-                json!({"operation":"target.inspect","arguments":json!({"target":target})}),
-                &format!("{operation_id}:inspect-target"),
-            )
-            .await?;
-        let resolution = TargetInspection::parse(&inspected)?;
-        ensure!(
-            &inspected["target"] == target
-                && &resolution.resolution["target"] == target
-                && resolution.resolution["availability"] == "available"
-                && resolution.resolution["placement"]["projectId"] == binding["projectId"]
-                && resolution.server_id.as_js_string() == Some(&authorization.identity.1),
-            "The Explorer target cannot receive protected operations."
-        );
-        let cipher = BoundSurfaceContent {
-            service: self
-                .encryption
-                .as_deref()
-                .context("Surface stream encryption is unavailable.")?,
-            owner_id: &authorization.identity.0,
-        };
-        let mut context = json!({
-            "serverId":resolution.server_id,"surfaceKind":"explorer","surfaceId":target["surfaceId"],
-            "operationId":operation_id,"direction":"request","sequence":0,
-        });
+        let surface = self.resolve_surface(authorization, target).await?;
         let writing = operation == "explorer.write";
         let mut request = json!({"type":request_type,"path":arguments["path"]});
         if writing {
             request["content"] = arguments["content"].clone();
             request["version"] = arguments["version"].clone();
         }
-        let protected = cipher.seal(&context, &request, "explorerOperationRequestContentSchema")?;
-        let result = self
-            .relay_project(
-                authorization,
-                json!({
-                    "operation":operation,
-                    "arguments":json!({
-                        "target":target,"operationId":operation_id,"sequence":0,"protectedRequest":protected,
-                    }),
-                }),
-                &operation_id,
+        let (result, opened) = surface
+            .exchange(
+                operation,
+                "request",
+                "explorerOperationRequestContentSchema",
+                &request,
             )
             .await?;
-        let wire = checked("surfaceStreamWireResponseSchema", &result["data"])?;
-        ensure!(
-            wire["operationId"] == context["operationId"]
-                && wire["sequence"] == context["sequence"],
-            "The protected Explorer response is stale."
-        );
-        ensure!(
-            &result["target"] == target,
-            "Explorer returned a different target."
-        );
-        context["direction"] = json!("response");
-        let outcome = cipher.open(
-            &context,
-            &wire["protectedResponse"],
-            "surfaceOperationOutcomeContentSchema",
-        )?;
-        if outcome["ok"] == false {
-            bail!(
-                "{}",
-                outcome["error"]
-                    .as_js_string()
-                    .expect("validated surface error")
-            );
-        }
-        let opened = &outcome["result"];
         let (summary, data) = match operation {
-            "explorer.list" => directory_page(opened, &arguments)?,
-            "explorer.read" => file_read(opened, &arguments)?,
-            "explorer.write" => file_receipt(opened)?,
+            "explorer.list" => directory_page(&opened, &arguments)?,
+            "explorer.read" => file_read(&opened, &arguments)?,
+            "explorer.write" => file_receipt(&opened)?,
             _ => unreachable!("registered Explorer operation"),
         };
         let response = json!({
             "summary":summary,"target":target,"data":data,"mutated":writing,
-            "worktreeId":if writing { &resolution.resolution["placement"]["worktreeId"] } else { &result["worktreeId"] },
+            "worktreeId":if writing { surface.worktree() } else { &result["worktreeId"] },
             "continuationScheduled":false,
         });
         mcp_host::parse(&format!("mcpStdioOutput/{tool}"), Some(&response)).map_err(response_error)
