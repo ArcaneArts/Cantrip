@@ -46,6 +46,29 @@ impl Row {
         self.wrapped = false;
     }
 
+    pub fn insert_print_cells(
+        &mut self,
+        col: u16,
+        count: u16,
+        attrs: crate::attrs::Attrs,
+    ) {
+        let col = usize::from(col);
+        let count = usize::from(count);
+        if self.cells[col].is_wide_continuation() {
+            self.cells[col - 1].clear(attrs);
+            self.cells[col].clear(attrs);
+        }
+        let tail = &mut self.cells[col..];
+        tail.rotate_right(count);
+        for cell in &mut tail[..count] {
+            cell.clear(attrs);
+        }
+        let last = tail.last_mut().unwrap();
+        if last.is_wide() {
+            last.clear(attrs);
+        }
+    }
+
     pub fn remove(&mut self, i: u16) {
         self.clear_wide(i);
         self.cells.remove(usize::from(i));

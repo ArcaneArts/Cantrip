@@ -10590,3 +10590,27 @@ run passed the alternate-screen, signal, relay, and service recovery
 cases. Broader xterm escape-mode coverage remains open.
 
 [xterm.js 6.0 snapshot serializer](https://github.com/xtermjs/xterm.js/blob/6.0.0/addons/addon-serialize/src/SerializeAddon.ts)
+
+## 320. Restore terminal editing and input modes on reattach
+
+Reference commit 35c0bb1d87f1fb0bb6afb93107291c242ae8a296 (#3483).
+
+For a reconstructed snapshot, the native worker resets the viewer's drawing
+and mouse modes before replay, then restores the active viewport's insert,
+origin, autowrap, reverse-wrap, focus reporting, keypad, and scroll-margin
+state. The parser applies insertion, right-edge writes, and reverse backspace
+while processing PTY output. The existing encrypted hydration format and
+complete original-size stream are retained.
+
+Seven local parser tests passed. A macOS ARM64 smoke ran the production Rust
+server and worker with an actual shell PTY. On the previous worker an encrypted
+WorkerLink reattach lost keypad, reverse-wrap, and focus modes and retained
+stale mouse tracking. The updated snapshot matched xterm.js for input modes,
+cursor and viewport. Subsequent live output matched under the restored insert
+mode and origin-relative scroll margins. The same smoke passed reflow,
+alternate-screen replay, Host relay, exit signals, and terminal service
+recovery. The worker PATH contained no Node executable.
+
+Canonical xterm hydration metadata and other escape sequences remain open.
+
+[xterm.js 6.0 editing and input behavior](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/InputHandler.ts)

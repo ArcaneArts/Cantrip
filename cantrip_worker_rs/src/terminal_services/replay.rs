@@ -67,7 +67,11 @@ impl Replay {
         if !self.resized && !self.truncated {
             return JsString::new(self.raw.clone());
         }
-        let mut bytes = b"\x1b[?1049l".to_vec();
+        // A retained viewer can still have modes from the previous attachment.
+        // Draw with absolute positions and ordinary overwrite and wrap first.
+        let mut bytes =
+            b"\x1b[?1049l\x1b[4l\x1b[?6l\x1b[?7h\x1b[?45;1004;9;1000;1002;1003;1005;1006l\x1b[r"
+                .to_vec();
         let tail = if screen.alternate_screen() {
             let mut alternate = b"\x1b[?1049h".to_vec();
             alternate.extend(screen.state_formatted());

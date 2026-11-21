@@ -1,11 +1,15 @@
 use crate::term::BufWrite as _;
 use unicode_width::UnicodeWidthChar as _;
 
-const MODE_APPLICATION_KEYPAD: u8 = 0b0000_0001;
-const MODE_APPLICATION_CURSOR: u8 = 0b0000_0010;
-const MODE_HIDE_CURSOR: u8 = 0b0000_0100;
-const MODE_ALTERNATE_SCREEN: u8 = 0b0000_1000;
-const MODE_BRACKETED_PASTE: u8 = 0b0001_0000;
+const MODE_APPLICATION_KEYPAD: u16 = 1 << 0;
+const MODE_APPLICATION_CURSOR: u16 = 1 << 1;
+const MODE_HIDE_CURSOR: u16 = 1 << 2;
+const MODE_ALTERNATE_SCREEN: u16 = 1 << 3;
+const MODE_BRACKETED_PASTE: u16 = 1 << 4;
+const MODE_INSERT: u16 = 1 << 5;
+const MODE_NO_WRAP: u16 = 1 << 6;
+const MODE_REVERSE_WRAP: u16 = 1 << 7;
+const MODE_REPORT_FOCUS: u16 = 1 << 8;
 
 /// The xterm mouse handling mode currently in use.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
@@ -59,7 +63,7 @@ pub struct Screen {
     attrs: crate::attrs::Attrs,
     saved_attrs: crate::attrs::Attrs,
 
-    modes: u8,
+    modes: u16,
     mouse_protocol_mode: MouseProtocolMode,
     mouse_protocol_encoding: MouseProtocolEncoding,
 }
@@ -407,7 +411,9 @@ impl Screen {
     /// * application keypad
     /// * application cursor
     /// * bracketed paste
-    /// * xterm mouse support
+    /// * xterm mouse and focus reporting
+    /// * insertion, autowrap, and reverse wrap
+    /// * scrolling margins and origin
     #[must_use]
     pub fn input_mode_formatted(&self) -> Vec<u8> {
         let mut contents = vec![];
@@ -436,6 +442,8 @@ impl Screen {
             MouseProtocolEncoding::Default,
         )
         .write_buf(contents);
+        self.grid().write_region(contents, self.attrs);
+        self.write_edit_modes(contents, None);
     }
 
     /// Returns terminal escape sequences sufficient to change the previous
@@ -480,6 +488,25 @@ impl Screen {
             prev.mouse_protocol_encoding,
         )
         .write_buf(contents);
+        self.write_edit_modes(contents, Some(prev));
+    }
+
+    fn write_edit_modes(&self, contents: &mut Vec<u8>, prev: Option<&Self>) {
+        for (mode, enable, disable) in [
+            (MODE_INSERT, &b"\x1b[4h"[..], &b"\x1b[4l"[..]),
+            (MODE_NO_WRAP, &b"\x1b[?7l"[..], &b"\x1b[?7h"[..]),
+            (MODE_REVERSE_WRAP, &b"\x1b[?45h"[..], &b"\x1b[?45l"[..]),
+            (MODE_REPORT_FOCUS, &b"\x1b[?1004h"[..], &b"\x1b[?1004l"[..]),
+        ] {
+            let enabled = self.mode(mode);
+            if enabled != prev.is_some_and(|prev| prev.mode(mode)) {
+                contents.extend_from_slice(if enabled {
+                    enable
+                } else {
+                    disable
+                });
+            }
+        }
     }
 
     /// Returns terminal escape sequences sufficient to set the current
@@ -701,15 +728,15 @@ impl Screen {
         self.attrs = self.saved_attrs;
     }
 
-    fn set_mode(&mut self, mode: u8) {
+    fn set_mode(&mut self, mode: u16) {
         self.modes |= mode;
     }
 
-    fn clear_mode(&mut self, mode: u8) {
+    fn clear_mode(&mut self, mode: u16) {
         self.modes &= !mode;
     }
 
-    fn mode(&self, mode: u8) -> bool {
+    fn mode(&self, mode: u16) -> bool {
         self.modes & mode != 0
     }
 
@@ -772,7 +799,16 @@ impl Screen {
                 wrap = true;
             }
         }
-        self.grid_mut().col_wrap(width, wrap);
+        if self.mode(MODE_NO_WRAP) {
+            if width != 0 && pos.col > size.cols - width {
+                self.grid_mut().col_set(size.cols - 1);
+                if width == 2 {
+                    return;
+                }
+            }
+        } else {
+            self.grid_mut().col_wrap(width, wrap);
+        }
         let pos = self.grid().pos();
 
         if width == 0 {
@@ -847,6 +883,9 @@ impl Screen {
                 }
             }
         } else {
+            if self.mode(MODE_INSERT) {
+                self.grid_mut().insert_print_cells(width, attrs);
+            }
             if self
                 .grid()
                 .drawing_cell(pos)
@@ -974,7 +1013,8 @@ impl Screen {
     // control codes
 
     pub(crate) fn bs(&mut self) {
-        self.grid_mut().col_dec(1);
+        let reverse = self.mode(MODE_REVERSE_WRAP);
+        self.grid_mut().backspace(reverse);
     }
 
     pub(crate) fn tab(&mut self) {
@@ -1166,6 +1206,14 @@ impl Screen {
         self.grid_mut().row_set(row - 1);
     }
 
+    pub(crate) fn set_insert_mode(&mut self, enable: bool) {
+        if enable {
+            self.set_mode(MODE_INSERT);
+        } else {
+            self.clear_mode(MODE_INSERT);
+        }
+    }
+
     // CSI ? h
     pub(crate) fn decset(
         &mut self,
@@ -1176,9 +1224,12 @@ impl Screen {
             match param {
                 [1] => self.set_mode(MODE_APPLICATION_CURSOR),
                 [6] => self.grid_mut().set_origin_mode(true),
+                [7] => self.clear_mode(MODE_NO_WRAP),
                 [9] => self.set_mouse_mode(MouseProtocolMode::Press),
                 [25] => self.clear_mode(MODE_HIDE_CURSOR),
+                [45] => self.set_mode(MODE_REVERSE_WRAP),
                 [47] => self.enter_alternate_grid(),
+                [66] => self.set_mode(MODE_APPLICATION_KEYPAD),
                 [1000] => {
                     self.set_mouse_mode(MouseProtocolMode::PressRelease);
                 }
@@ -1186,6 +1237,7 @@ impl Screen {
                     self.set_mouse_mode(MouseProtocolMode::ButtonMotion);
                 }
                 [1003] => self.set_mouse_mode(MouseProtocolMode::AnyMotion),
+                [1004] => self.set_mode(MODE_REPORT_FOCUS),
                 [1005] => {
                     self.set_mouse_encoding(MouseProtocolEncoding::Utf8);
                 }
@@ -1213,11 +1265,14 @@ impl Screen {
             match param {
                 [1] => self.clear_mode(MODE_APPLICATION_CURSOR),
                 [6] => self.grid_mut().set_origin_mode(false),
+                [7] => self.set_mode(MODE_NO_WRAP),
                 [9] => self.clear_mouse_mode(MouseProtocolMode::Press),
                 [25] => self.set_mode(MODE_HIDE_CURSOR),
+                [45] => self.clear_mode(MODE_REVERSE_WRAP),
                 [47] => {
                     self.exit_alternate_grid();
                 }
+                [66] => self.clear_mode(MODE_APPLICATION_KEYPAD),
                 [1000] => {
                     self.clear_mouse_mode(MouseProtocolMode::PressRelease);
                 }
@@ -1227,6 +1282,7 @@ impl Screen {
                 [1003] => {
                     self.clear_mouse_mode(MouseProtocolMode::AnyMotion);
                 }
+                [1004] => self.clear_mode(MODE_REPORT_FOCUS),
                 [1005] => {
                     self.clear_mouse_encoding(MouseProtocolEncoding::Utf8);
                 }

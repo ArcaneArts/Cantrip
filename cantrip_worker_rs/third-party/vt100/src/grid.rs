@@ -445,7 +445,7 @@ impl Grid {
                         .attrs()
                         .write_escape_code_diff(contents, &prev_attrs);
                     crate::term::SaveCursor.write_buf(contents);
-                    crate::term::Backspace.write_buf(contents);
+                    crate::term::MoveTo::new(pos).write_buf(contents);
                     crate::term::EraseChar::new(1).write_buf(contents);
                     crate::term::RestoreCursor.write_buf(contents);
                     prev_attrs
@@ -530,6 +530,15 @@ impl Grid {
         row.truncate(size.cols);
     }
 
+    pub fn insert_print_cells(
+        &mut self,
+        count: u16,
+        attrs: crate::attrs::Attrs,
+    ) {
+        let col = self.pos.col;
+        self.current_row_mut().insert_print_cells(col, count, attrs);
+    }
+
     pub fn delete_cells(&mut self, count: u16) {
         let size = self.size;
         let pos = self.pos;
@@ -599,12 +608,60 @@ impl Grid {
         if top < bottom {
             self.scroll_top = top;
             self.scroll_bottom = bottom;
-        } else {
-            self.scroll_top = 0;
-            self.scroll_bottom = self.size().rows - 1;
+            self.set_pos(Pos::default());
         }
-        self.pos.row = self.scroll_top;
-        self.pos.col = 0;
+    }
+
+    pub fn write_region(
+        &self,
+        contents: &mut Vec<u8>,
+        attrs: crate::attrs::Attrs,
+    ) {
+        if !self.origin_mode && !self.scroll_region_active() {
+            return;
+        }
+        if self.scroll_region_active() {
+            contents.extend_from_slice(
+                format!(
+                    "\x1b[{};{}r",
+                    self.scroll_top + 1,
+                    self.scroll_bottom + 1
+                )
+                .as_bytes(),
+            );
+        }
+        let mut row = self.pos.row;
+        if self.origin_mode {
+            contents.extend_from_slice(b"\x1b[?6h");
+            row = row.saturating_sub(self.scroll_top);
+        }
+
+        let mut col = self.pos.col.min(self.size.cols - 1);
+        if self.pos.col == self.size.cols {
+            let mut cell = self
+                .drawing_cell(Pos {
+                    row: self.pos.row,
+                    col,
+                })
+                .unwrap();
+            if cell.is_wide_continuation() {
+                col -= 1;
+                cell = self
+                    .drawing_cell(Pos {
+                        row: self.pos.row,
+                        col,
+                    })
+                    .unwrap();
+            }
+            if cell.has_contents() {
+                crate::term::MoveTo::new(Pos { row, col }).write_buf(contents);
+                cell.attrs().write_escape_code_diff(contents, &attrs);
+                contents.extend_from_slice(cell.contents().as_bytes());
+                attrs.write_escape_code_diff(contents, cell.attrs());
+                return;
+            }
+        }
+        crate::term::MoveTo::new(Pos { row, col }).write_buf(contents);
     }
 
     fn in_scroll_region(&self) -> bool {
@@ -655,8 +712,10 @@ impl Grid {
     }
 
     pub fn row_set(&mut self, i: u16) {
-        self.pos.row = i;
-        self.row_clamp();
+        self.set_pos(Pos {
+            row: i,
+            col: self.pos.col,
+        });
     }
 
     pub fn col_inc(&mut self, count: u16) {
@@ -670,6 +729,31 @@ impl Grid {
 
     pub fn col_dec(&mut self, count: u16) {
         self.pos.col = self.pos.col.saturating_sub(count);
+    }
+
+    pub fn backspace(&mut self, reverse: bool) {
+        if !reverse {
+            self.col_clamp();
+        }
+        if self.pos.col > 0 {
+            self.col_dec(1);
+        } else if reverse
+            && self.pos.row > self.scroll_top
+            && self.pos.row <= self.scroll_bottom
+        {
+            let row = self.pos.row - 1;
+            let mut col = self.size.cols - 1;
+            let previous = self.drawing_row_mut(row).unwrap();
+            if previous.wrapped() {
+                previous.wrap(false);
+                let cell = previous.get(col).unwrap();
+                if !cell.has_contents() && !cell.is_wide_continuation() {
+                    // A wide glyph may have wrapped before the right margin.
+                    col = col.saturating_sub(1);
+                }
+                self.pos = Pos { row, col };
+            }
+        }
     }
 
     pub fn col_tab(&mut self) {
@@ -722,12 +806,6 @@ impl Grid {
             rows
         } else {
             0
-        }
-    }
-
-    fn row_clamp(&mut self) {
-        if self.pos.row > self.size.rows - 1 {
-            self.pos.row = self.size.rows - 1;
         }
     }
 
