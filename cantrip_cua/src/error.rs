@@ -33,6 +33,7 @@ pub enum ErrorCode {
     StaleElement,
     InputUnknown,
     InputFailed,
+    InputPending,
     PermissionDenied,
 }
 

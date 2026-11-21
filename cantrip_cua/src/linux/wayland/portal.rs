@@ -7,6 +7,7 @@ use crate::{
 };
 use async_io::Timer;
 use futures_lite::{StreamExt, future};
+use serde::Serialize;
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicU64, Ordering},
@@ -16,11 +17,11 @@ use zbus::{
     Connection, MatchRule, MessageStream,
     connection::Builder,
     message::Type,
-    zvariant::{OwnedObjectPath, OwnedValue, Value},
+    zvariant::{DynamicType, OwnedObjectPath, OwnedValue, Value},
 };
 
-const PORTAL_NAME: &str = "org.freedesktop.portal.Desktop";
-const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
+pub(super) const PORTAL_NAME: &str = "org.freedesktop.portal.Desktop";
+pub(super) const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 const SCREENSHOT: &str = "org.freedesktop.portal.Screenshot";
 const REQUEST: &str = "org.freedesktop.portal.Request";
 const SHELL: &str = "org.gnome.Shell.Screenshot";
@@ -28,9 +29,20 @@ const SHELL_PATH: &str = "/org/gnome/Shell/Screenshot";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
 
+pub(super) type Results = HashMap<String, OwnedValue>;
+
+pub(super) struct Reply {
+    pub(super) owner: String,
+    pub(super) results: Results,
+}
+
+pub(super) fn token() -> String {
+    format!("cantrip_{}", NEXT_REQUEST.fetch_add(1, Ordering::Relaxed))
+}
+
 #[derive(Clone)]
 pub(super) struct Portal {
-    bus: Connection,
+    pub(super) bus: Connection,
 }
 
 impl Portal {
@@ -129,13 +141,51 @@ impl Portal {
     }
 
     async fn screenshot(&self, cancel: &Cancellation) -> Result<String> {
+        let reply = self
+            .request(
+                PORTAL_NAME,
+                SCREENSHOT,
+                "Screenshot",
+                |token| {
+                    (
+                        "",
+                        HashMap::from([
+                            ("handle_token", Value::from(token)),
+                            ("modal", Value::from(true)),
+                            ("interactive", Value::from(false)),
+                        ]),
+                    )
+                },
+                cancel,
+            )
+            .await?;
+        reply
+            .results
+            .get("uri")
+            .and_then(|value| <&str>::try_from(value).ok())
+            .map(str::to_owned)
+            .ok_or_else(|| failed("The desktop portal returned no screenshot."))
+    }
+
+    pub(super) fn sender(&self) -> Result<String> {
         let sender = self
             .bus
             .unique_name()
             .ok_or_else(|| failed("The desktop portal requires a session bus."))?;
-        let sender = sender.as_str().trim_start_matches(':').replace('.', "_");
-        let token = format!("cantrip_{}", NEXT_REQUEST.fetch_add(1, Ordering::Relaxed));
-        let expected = format!("{PORTAL_PATH}/request/{sender}/{token}");
+        Ok(sender.as_str().trim_start_matches(':').replace('.', "_"))
+    }
+
+    pub(super) async fn request<B: Serialize + DynamicType>(
+        &self,
+        destination: &str,
+        interface: &str,
+        method: &str,
+        body: impl FnOnce(String) -> B,
+        cancel: &Cancellation,
+    ) -> Result<Reply> {
+        let token = token();
+        let expected = format!("{PORTAL_PATH}/request/{}/{token}", self.sender()?);
+        let screen = interface == SCREENSHOT;
         let rule = MatchRule::builder()
             .msg_type(Type::Signal)
             .sender(PORTAL_NAME)
@@ -151,27 +201,22 @@ impl Portal {
         let mut owner = None;
         let result = bounded(
             async {
-                // Subscribe before calling Screenshot. A cached permission can
+                // Subscribe before calling the portal. A cached permission can
                 // allow a response to arrive before the method reply.
                 let mut signals = MessageStream::for_match_rule(rule, &self.bus, Some(8))
                     .await
                     .map_err(unavailable)?;
-                let options = HashMap::from([
-                    ("handle_token", Value::from(token.as_str())),
-                    ("modal", Value::from(true)),
-                    ("interactive", Value::from(false)),
-                ]);
                 let message = self
                     .bus
                     .call_method(
-                        Some(PORTAL_NAME),
+                        Some(destination),
                         PORTAL_PATH,
-                        Some(SCREENSHOT),
-                        "Screenshot",
-                        &("", options),
+                        Some(interface),
+                        method,
+                        &body(token),
                     )
                     .await
-                    .map_err(screenshot_error)?;
+                    .map_err(|error| request_error(error, screen))?;
                 owner = message
                     .header()
                     .sender()
@@ -196,30 +241,35 @@ impl Portal {
                     {
                         continue;
                     }
-                    let (status, results): (u32, HashMap<String, OwnedValue>) =
-                        received.body().deserialize().map_err(|_| {
-                            failed("The desktop portal returned an invalid screenshot response.")
-                        })?;
+                    let (status, results): (u32, Results) = received
+                        .body()
+                        .deserialize()
+                        .map_err(|_| failed("The desktop portal returned an invalid response."))?;
                     if status == 1 {
                         return Err(CuaError::new(
                             ErrorCode::PermissionDenied,
-                            "The desktop screenshot was declined.",
+                            if screen {
+                                "The desktop screenshot was declined."
+                            } else {
+                                "Desktop control was declined in the Wayland portal."
+                            },
                         ));
                     }
                     if status != 0 {
-                        return Err(failed(
-                            "The desktop portal did not complete the screenshot.",
-                        ));
+                        return Err(failed("The desktop portal did not complete the request."));
                     }
-                    let uri = results
-                        .get("uri")
-                        .and_then(|value| <&str>::try_from(value).ok())
-                        .ok_or_else(|| failed("The desktop portal returned no screenshot."))?;
-                    return Ok(uri.to_owned());
+                    return Ok(Reply {
+                        owner: owner.take().unwrap(),
+                        results,
+                    });
                 }
                 Err(failed("The desktop portal stopped before replying."))
             },
-            REQUEST_TIMEOUT,
+            if screen || method == "Start" {
+                REQUEST_TIMEOUT
+            } else {
+                Duration::from_secs(5)
+            },
             cancel,
         )
         .await;
@@ -227,7 +277,7 @@ impl Portal {
             .as_ref()
             .is_err_and(|error| error.code != ErrorCode::PermissionDenied)
         {
-            let destination = owner.as_deref().unwrap_or(PORTAL_NAME);
+            let destination = owner.as_deref().unwrap_or(destination);
             let request = request_path.as_deref().unwrap_or(&expected);
             let _ = future::race(
                 self.bus
@@ -268,7 +318,7 @@ fn desktop_bounds(displays: &[Display]) -> Result<Bounds> {
     Ok(bounds)
 }
 
-async fn bounded<T>(
+pub(super) async fn bounded<T>(
     operation: impl Future<Output = Result<T>>,
     timeout: Duration,
     cancel: &Cancellation,
@@ -282,7 +332,7 @@ async fn bounded<T>(
             if remaining.is_zero() {
                 return Err(CuaError::new(
                     ErrorCode::CaptureImageTimeout,
-                    "The Wayland screenshot request timed out.",
+                    "The Wayland portal request timed out.",
                 ));
             }
             Timer::after(remaining.min(Duration::from_millis(40))).await;
@@ -291,17 +341,28 @@ async fn bounded<T>(
     .await
 }
 
-fn screenshot_error(error: zbus::Error) -> CuaError {
+fn request_error(error: zbus::Error, screen: bool) -> CuaError {
     if matches!(&error, zbus::Error::MethodError(name, _, _) if matches!(
         name.as_str(), "org.freedesktop.portal.Error.NotAllowed"
             | "org.freedesktop.DBus.Error.AccessDenied"
     )) {
         return CuaError::new(
             ErrorCode::PermissionDenied,
-            "The desktop portal denied the screenshot.",
+            if screen {
+                "The desktop portal denied the screenshot."
+            } else {
+                "The Wayland portal denied desktop control."
+            },
         );
     }
-    unavailable(error)
+    if screen {
+        unavailable(error)
+    } else {
+        CuaError::new(
+            ErrorCode::Unsupported,
+            "The Wayland Remote Desktop portal is unavailable.",
+        )
+    }
 }
 
 fn unavailable(_: impl std::fmt::Display) -> CuaError {

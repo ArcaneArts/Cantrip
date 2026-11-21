@@ -198,14 +198,18 @@ impl Participants {
                     ));
                 }
                 cancel.check()?;
-                self.next_handle = self
+                let handle = self
                     .next_handle
                     .checked_add(1)
                     .filter(|v| *v <= MAX_SEQUENCE)
                     .ok_or_else(|| {
                         CuaError::new(ErrorCode::Capacity, "Interaction handles exhausted.")
                     })?;
-                let handle = self.next_handle;
+                let native_id = format!("remote\0{handle}");
+                if target.kind == TargetKind::Monitor {
+                    backend.open_remote_monitor(&binding, &native_id, &target, cancel)?;
+                }
+                self.next_handle = handle;
                 let cursor = CursorState {
                     appearance: CursorAppearance::for_identity(&binding.participant_id),
                     ..CursorState::default()
@@ -215,7 +219,7 @@ impl Participants {
                     handle,
                     Participant {
                         binding,
-                        native_id: format!("remote\0{handle}"),
+                        native_id,
                         target,
                         presentation: cursor.clone(),
                         cursor,
@@ -227,6 +231,7 @@ impl Participants {
             }
             Request::CloseBinding { binding } => {
                 binding.validate()?;
+                backend.cancel_remote_monitor_open(&binding);
                 let handles: Vec<_> = self
                     .live
                     .iter()

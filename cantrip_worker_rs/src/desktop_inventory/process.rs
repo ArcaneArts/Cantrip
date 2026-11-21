@@ -327,6 +327,7 @@ impl Process {
                     Some("input-failed" | "input-unknown") => {
                         "Desktop input delivery could not be confirmed."
                     }
+                    Some("input-pending") => "Waiting for desktop input approval.",
                     Some("cancelled") => "Desktop target discovery was cancelled.",
                     Some("script-syntax") => "The computer-use script could not be parsed.",
                     Some("script-evaluation") => {

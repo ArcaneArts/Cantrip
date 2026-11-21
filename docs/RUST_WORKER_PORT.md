@@ -10234,3 +10234,33 @@ exclusive ownership, copy, input release, and Unicode text after handoff.
 
 Foreground-dependent input for shared Windows windows and full-display
 input on Wayland remain in scope.
+
+## 305. Control a Wayland display through the Remote Desktop portal
+
+Reference commit `8605b9766ed7d685466b1eee9b45ad2935020d6c` (#3468).
+
+The Linux helper can open a Remote Desktop portal session for an
+authenticated full-display viewer. Approval runs in the background so the
+viewer can receive frames while the host decides. The helper verifies the
+granted devices and matches the returned monitor stream to the selected
+Wayland output. The worker waits on the same input binding while approval
+is pending. One viewer owns the portal session at a time.
+
+Pointer motion uses the selected stream's logical coordinates. The portal
+delivers buttons, scrolling, and keyboard input through the compositor.
+When clipboard sharing is granted, copy waits for a new selection from that
+session and returns bounded UTF-8 text. Disconnect releases held controls
+and closes the session. Cancelling an approval closes its request and
+session before the next viewer can open one.
+
+A local Linux ARM64 fixture ran the framed helper against a real headless
+Weston output and a private D-Bus portal. It covered screenshot frames
+during delayed approval, exclusive control, exact stream coordinates,
+scrolling, Unicode keysyms and clipboard data, stale clipboard rejection,
+input release, denial, a mismatched monitor, and cancellation. The eight
+participant tests and the screenshot crop test passed. The macOS ARM64
+worker and Windows x64 helper compile checks passed.
+
+Actual GNOME and KDE consent and input still need local runtime coverage.
+Wayland sessions that rely on the legacy system input tools remain in scope.
+[Remote Desktop portal interface](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html).

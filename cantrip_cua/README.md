@@ -35,6 +35,23 @@ xvfb-run -a sh -c 'CANTRIP_CUA_HOST_X11_TEST_DISPLAY="$DISPLAY" \
   linux_host_x11 -- --ignored --test-threads=1'
 ```
 
+## Linux Host Wayland backend
+
+When the desktop provides the Remote Desktop portal, a full-display viewer
+can request control through the desktop's approval dialog. Select the same
+display in the dialog and in Cantrip. An approved session maps pointer input
+to that display's stream. The compositor delivers keyboard events, and its
+optional Clipboard portal supplies fresh text after an explicit copy.
+Closing the viewer releases its held input and ends the portal session.
+
+The local process fixture uses a separate D-Bus session, a headless Weston
+output, and a controlled portal. It requires Weston, Python D-Bus bindings,
+and the Python GLib bindings.
+
+```sh
+dbus-run-session -- python3 cantrip_cua/tests/fixtures/wayland_portal_control.py /path/to/cantrip-cua
+```
+
 ## Assigned Linux X11 backend
 
 The Linux helper has an explicit X11 backend for a selected desktop:
