@@ -32,6 +32,14 @@ export async function verifyGuestRuns({
   const guest = (...args) =>
     docker("exec", "--user", String(actual.uid), container, ...args);
   const root = (...args) => docker("exec", "--user", "0", container, ...args);
+  const oldPlannerPresent =
+    (await root(
+      "/bin/sh",
+      "-c",
+      'if test -f "$1"; then printf yes; fi',
+      "fixture",
+      oldPlanner,
+    )) === "yes";
   const projectId = binding.projectId;
   const ownerId = os.ownerId;
   const worktreeId = target.worktreeId;
@@ -221,7 +229,7 @@ export async function verifyGuestRuns({
       ).catch(() => "")) === "alive"
     );
   };
-  await root("mv", oldPlanner, oldPlanner + ".fixture");
+  if (oldPlannerPresent) await root("mv", oldPlanner, oldPlanner + ".fixture");
   try {
     const operationId = randomUUID();
     const started = await operate("start", fromBinding, operationId);
@@ -300,7 +308,8 @@ export async function verifyGuestRuns({
       "guest-before\nguest-before",
     );
   } finally {
-    await root("mv", oldPlanner + ".fixture", oldPlanner);
+    if (oldPlannerPresent)
+      await root("mv", oldPlanner + ".fixture", oldPlanner);
     key.fill(0);
   }
   console.log(

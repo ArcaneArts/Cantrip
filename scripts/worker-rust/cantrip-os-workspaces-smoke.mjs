@@ -21,6 +21,7 @@ const { values } = parseArgs({
     server: { type: "string" },
     repository: { type: "string" },
     "executor-package": { type: "string" },
+    "node-free-guest": { type: "boolean", default: false },
     "workspaces-package": { type: "string" },
     "recovery-package": { type: "string" },
     "package-artifact": { type: "string" },
@@ -52,6 +53,7 @@ assert.ok(
   !values["executor-package"] || values.repository || backup,
   "--executor-package uses the source or backup fixture",
 );
+assert.ok(!values["node-free-guest"] || values["executor-package"]);
 assert.ok(
   !(values["run-plan"] || values["run-runtime"] || values["product-files"]) ||
     values["executor-package"],
@@ -179,6 +181,29 @@ try {
   }
   if (values["executor-package"]) {
     await installPackage(values["executor-package"], "executor");
+    if (values["node-free-guest"]) {
+      // Some older guest images declare a Node dependency for the noVNC
+      // viewer. Retain its static assets in this disposable guest.
+      await docker(
+        "exec",
+        "--user",
+        "0",
+        container,
+        "dpkg",
+        "--force-depends",
+        "--purge",
+        "nodejs",
+      );
+      await docker(
+        "exec",
+        "--user",
+        "0",
+        container,
+        "/bin/sh",
+        "-ec",
+        'for helper in file-operations run-definitions run-plan; do test ! -e "/usr/lib/cantrip-os-executor/$helper.mjs"; done; ! command -v node && ! command -v nodejs',
+      );
+    }
     const upgraded = await eventually(async () => {
       const status = await guest("cantrip-executor", "status");
       assert.equal(status.service, "running");
