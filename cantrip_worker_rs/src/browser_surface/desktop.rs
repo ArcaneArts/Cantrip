@@ -4,7 +4,8 @@ mod input;
 use super::{Callback, Endpoint, FrameSource, Route, Shared, Work, accepted, id};
 use crate::{
     desktop_inventory::{
-        Capture, ControlState, GuestControl, Inventory, PortalCaptureConsent, Scope, seal_inventory,
+        Capture, ControlState, GuestControl, Inventory, MissingCaptureTarget, PortalCaptureConsent,
+        Scope, seal_inventory,
     },
     http::checked,
     protected_content::{open_private_state, open_remote_surface, protect_remote_surface},
@@ -55,6 +56,10 @@ struct Session<'a> {
     inputs: JoinSet<()>,
     inventories: JoinSet<InventoryRefresh>,
     last_inventory: Inventory,
+    restore_armed: bool,
+    restoring: bool,
+    restored_window: Option<Value>,
+    restore_failure: Option<String>,
 }
 
 struct Attachment {
@@ -154,7 +159,8 @@ struct Image {
 
 static ENCODERS: Semaphore = Semaphore::const_new(2);
 
-type WorkFrame = Pin<Box<dyn Future<Output = Result<(Arc<Capture>, Image)>> + Send>>;
+type WorkFrame =
+    Pin<Box<dyn Future<Output = Result<(Arc<Capture>, Image, Option<Inventory>)>> + Send>>;
 
 pub(super) async fn run(
     shared: &Shared,
@@ -205,6 +211,9 @@ pub(super) async fn run(
                         let mut result = active.command(&value, epoch);
                         if result.as_ref().is_ok_and(|effect| *effect != Effect::Keep) {
                             drop(work.take());
+                            if std::mem::take(&mut active.restoring) {
+                                let _ = active.publish_inventory_state(None, None, None);
+                            }
                             if let Some(capture) = capture.take() {
                                 release(capture).await;
                             }
@@ -234,7 +243,12 @@ pub(super) async fn run(
                         if end { break; }
                     }
                     Some(Work::Frame { frame, source }) => {
+                        let was_armed = active.restore_armed;
                         let _ = active.control(&frame, &source, capture.as_ref());
+                        if !was_armed && active.restore_armed {
+                            due = Instant::now();
+                            awaiting_portal_retry = false;
+                        }
                     }
                     Some(Work::Refresh(attachment)) => {
                         active.publish(Some(&attachment));
@@ -259,8 +273,14 @@ pub(super) async fn run(
             } => {
                 work = None;
                 active.authorize()?;
+                let restoring = std::mem::take(&mut active.restoring);
                 match result {
-                    Ok((lease, image)) if active.visible() => {
+                    Ok((lease, image, inventory)) if active.visible() => {
+                        if let Some(inventory) = inventory {
+                            active.restored_window = Some(lease.selected_target()?);
+                            active.last_inventory = inventory;
+                        }
+                        active.restore_failure = None;
                         let opening = capture.is_none();
                         active.logical = image.logical;
                         capture = Some(lease);
@@ -277,6 +297,9 @@ pub(super) async fn run(
                             active.status = "ready";
                             active.publish(None);
                         }
+                        if restoring {
+                            let _ = active.publish_inventory_state(None, capture.as_deref(), None);
+                        }
                         let accepted = active.send(None, "frame", &image.jpeg);
                         active.tuner.record(image.jpeg.len(), active.fps, accepted);
                         observations += 1;
@@ -290,7 +313,21 @@ pub(super) async fn run(
                         losses = 0;
                         due = started + Duration::from_secs_f64(1.0 / f64::from(active.fps));
                     }
-                    Ok((lease, _)) => release(lease).await,
+                    Ok((lease, _, _)) => release(lease).await,
+                    Err(error) if !restoring &&
+                        error.is::<MissingCaptureTarget>() && active.restore_armed &&
+                        active.guest.is_none() && active.desktop.value["kind"] == "window"
+                    => {
+                        if let Some(epoch) = active.stream_epoch().filter(|_| active.visible()) {
+                            active.restore_armed = false;
+                            active.restoring = true;
+                            active.restore_failure = None;
+                            active.reset_capture();
+                            let _ = active.publish_inventory_state(None, None, None);
+                            started = Instant::now();
+                            work = Some(active.sample(epoch, None, true));
+                        }
+                    }
                     Err(error) if active.visible() => {
                         awaiting_portal_retry = error.is::<PortalCaptureConsent>();
                         active.retire_inputs();
@@ -298,7 +335,19 @@ pub(super) async fn run(
                             release(lease).await;
                         }
                         losses = losses.saturating_add(1);
-                        let failure = error.to_string().chars().take(512).collect();
+                        let failure: String = if restoring {
+                            format!("{error:#}").chars().take(512).collect()
+                        } else if error.is::<MissingCaptureTarget>() {
+                            active.restore_failure.clone().unwrap_or_else(|| {
+                                error.to_string().chars().take(512).collect()
+                            })
+                        } else {
+                            error.to_string().chars().take(512).collect()
+                        };
+                        if restoring {
+                            active.restore_failure = Some(failure.clone());
+                            let _ = active.publish_inventory_state(None, None, Some(&failure));
+                        }
                         if active.status != "error" || active.failure.as_ref() != Some(&failure) {
                             active.status = "error";
                             active.failure = Some(failure);
@@ -319,6 +368,7 @@ pub(super) async fn run(
                 }
                 if !active.visible() {
                     drop(work.take());
+                    active.restoring = false;
                     if let Some(capture) = capture.take() {
                         release(capture).await;
                     }
@@ -327,7 +377,7 @@ pub(super) async fn run(
             _ = sleep_until(due), if work.is_none() && active.visible() && !awaiting_portal_retry => {
                 let Some(epoch) = active.stream_epoch() else { continue };
                 started = Instant::now();
-                work = Some(active.sample(epoch, capture.clone()));
+                work = Some(active.sample(epoch, capture.clone(), false));
             },
         }
     }
@@ -393,6 +443,10 @@ impl<'a> Session<'a> {
             inputs: JoinSet::new(),
             inventories: JoinSet::new(),
             last_inventory: Inventory::default(),
+            restore_armed: true,
+            restoring: false,
+            restored_window: None,
+            restore_failure: None,
         };
         active.attach(incoming, epoch)?;
         Ok(active)
@@ -514,6 +568,9 @@ impl<'a> Session<'a> {
                 }
                 self.desktop = next;
                 if changed {
+                    self.restore_armed = true;
+                    self.restored_window = None;
+                    self.restore_failure = None;
                     self.retire_inputs();
                     self.reset_capture();
                     return Ok(Effect::Retire);
@@ -563,7 +620,11 @@ impl<'a> Session<'a> {
             self.server.clone(),
             self.surface.clone(),
         );
-        let target = self.desktop.value.clone();
+        let target = self
+            .restored_window
+            .as_ref()
+            .unwrap_or(&self.desktop.value)
+            .clone();
         if let Some(guest) = self.guest.clone() {
             let previews = self.shared.guest_capture.clone();
             Box::pin(async move {
@@ -583,8 +644,47 @@ impl<'a> Session<'a> {
         }
     }
 
-    fn sample(&self, epoch: u64, capture: Option<Arc<Capture>>) -> WorkFrame {
-        let opening = capture.is_none().then(|| self.open_capture(epoch));
+    fn restore_capture(
+        &self,
+        epoch: u64,
+    ) -> cantrip_history::projection::Work<(Capture, Inventory)> {
+        let scope = Scope::new(
+            epoch,
+            self.owner.clone(),
+            self.server.clone(),
+            self.surface.clone(),
+        );
+        let target = self.desktop.value.clone();
+        let client = self.shared.capture.clone();
+        let outgoing = self.shared.outgoing.clone();
+        let encryption = self.shared.encryption.clone();
+        let routes = self
+            .attachments
+            .values()
+            .filter(|member| member.route.epoch == epoch)
+            .map(|member| Arc::downgrade(&member.route))
+            .collect::<Vec<_>>();
+        Box::pin(async move {
+            let authorize = || {
+                scope.authorize(&encryption, &outgoing)?;
+                ensure!(
+                    routes
+                        .iter()
+                        .any(|route| route.upgrade().is_some_and(|r| r.alive(&outgoing))),
+                    "The desktop attachment expired before launch."
+                );
+                Ok(())
+            };
+            client
+                .context("The Host desktop capture service is unavailable.")?
+                .restore_window(scope.clone(), target, authorize)
+                .await
+        })
+    }
+
+    fn sample(&self, epoch: u64, capture: Option<Arc<Capture>>, restoring: bool) -> WorkFrame {
+        let restore = restoring.then(|| self.restore_capture(epoch));
+        let opening = (capture.is_none() && restore.is_none()).then(|| self.open_capture(epoch));
         let width = self
             .attachments
             .values()
@@ -599,9 +699,13 @@ impl<'a> Session<'a> {
         let width = (f64::from(width) * self.tuner.scale).round().max(480.0) as u32;
         let quality = self.tuner.quality;
         Box::pin(async move {
-            let capture = match opening {
-                Some(opening) => Arc::new(opening.await?),
-                None => capture.expect("retained desktop capture"),
+            let (capture, inventory) = if let Some(restore) = restore {
+                let (capture, inventory) = restore.await?;
+                (Arc::new(capture), Some(inventory))
+            } else if let Some(opening) = opening {
+                (Arc::new(opening.await?), None)
+            } else {
+                (capture.expect("retained desktop capture"), None)
             };
             let frame = capture.frame().await?;
             let permit = ENCODERS.acquire().await?;
@@ -610,7 +714,7 @@ impl<'a> Session<'a> {
                 encode(frame, width, quality)
             })
             .await??;
-            Ok((capture, image))
+            Ok((capture, image, inventory))
         })
     }
 
@@ -694,6 +798,10 @@ impl<'a> Session<'a> {
             }
             Some("stream-feedback") => self.tuner.feedback(&data, self.fps),
             Some("refresh-targets") => {
+                if self.guest.is_none() && capture.is_none() && !self.restoring {
+                    self.restore_armed = true;
+                    self.restore_failure = None;
+                }
                 self.refresh_inventory(attachment, source, sequence, capture.map(Arc::as_ref))?;
             }
             Some("input-cancel") => {
@@ -787,14 +895,6 @@ impl<'a> Session<'a> {
         result: Result<Inventory>,
         capture: Option<&Capture>,
     ) -> Result<()> {
-        let identity = self
-            .shared
-            .encryption
-            .bound_component("surface-private-state", None)?;
-        ensure!(
-            identity.owner_id == self.owner && identity.server_id == self.server,
-            "Desktop session authority changed."
-        );
         let message = match result {
             Ok(inventory) => {
                 self.last_inventory = inventory;
@@ -805,6 +905,27 @@ impl<'a> Session<'a> {
                 Some(message.chars().take(512).collect::<String>())
             }
         };
+        let message = message
+            .as_deref()
+            .or(self.restore_failure.as_deref())
+            .map(str::to_owned);
+        self.publish_inventory_state(Some(attachment), capture, message.as_deref())
+    }
+
+    fn publish_inventory_state(
+        &mut self,
+        attachment: Option<&JsString>,
+        capture: Option<&Capture>,
+        message: Option<&str>,
+    ) -> Result<()> {
+        let identity = self
+            .shared
+            .encryption
+            .bound_component("surface-private-state", None)?;
+        ensure!(
+            identity.owner_id == self.owner && identity.server_id == self.server,
+            "Desktop session authority changed."
+        );
         let mut content = self.last_inventory.content();
         content["requested"] = self.desktop.value.clone();
         content["active"] = capture
@@ -812,10 +933,13 @@ impl<'a> Session<'a> {
             .transpose()?
             .unwrap_or(Value::Null);
         content["message"] = json!(message);
+        if self.restoring {
+            content["launchingApplication"] = self.desktop.value["application"].clone();
+        }
         let operation: JsString = uuid::Uuid::new_v4().to_string().into();
         let protected = seal_inventory(&identity, self.surface, &operation, &content)?;
         self.send_message(
-            Some(attachment),
+            attachment,
             &json!({
                 "type":"desktop-targets","operationId":operation,"stateProtection":protected,
                 "monitorCount":self.last_inventory.monitors.len(),

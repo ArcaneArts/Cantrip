@@ -1,11 +1,12 @@
 //! Authenticated Host desktop target discovery and protected fleet inventory.
 mod capture;
 mod effects;
+mod launch;
 pub(crate) mod preview;
 pub(crate) mod process;
 pub(crate) use capture::{
-    Capture, Captures, ControlState, Frame, GuestControl, InputAuthority, PortalCaptureConsent,
-    Scope,
+    Capture, Captures, ControlState, Frame, GuestControl, InputAuthority, MissingCaptureTarget,
+    PortalCaptureConsent, Scope,
 };
 pub(crate) use effects::Updates as EffectUpdates;
 

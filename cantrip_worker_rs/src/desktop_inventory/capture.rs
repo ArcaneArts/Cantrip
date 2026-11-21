@@ -32,7 +32,7 @@ impl Scope {
         }
     }
 
-    pub(super) fn authorize(&self, encryption: &Service, outgoing: &Outbound) -> Result<()> {
+    pub(crate) fn authorize(&self, encryption: &Service, outgoing: &Outbound) -> Result<()> {
         let bound = encryption.bound_component("surface-private-state", None)?;
         ensure!(
             bound.owner_id == self.owner
@@ -551,8 +551,11 @@ impl Operation {
         }
         // A native operation error is an authoritative response. A partial
         // frame or late response makes the ordered pipe unusable.
-        let retire =
-            |error: &anyhow::Error| !error.is::<NativeError>() && !error.is::<Unavailable>();
+        let retire = |error: &anyhow::Error| {
+            !error.is::<NativeError>()
+                && !error.is::<Unavailable>()
+                && !error.is::<MissingCaptureTarget>()
+        };
         let broken = match self {
             Self::Inventory { scope, reply } => {
                 if reply.is_closed() {
@@ -749,8 +752,19 @@ fn select<'a>(targets: &'a [Value], requested: &Value) -> Result<&'a Value> {
             return Ok(target);
         }
     }
-    Err(Unavailable("Requested capture target is unavailable.").into())
+    Err(MissingCaptureTarget.into())
 }
+
+#[derive(Debug)]
+pub(crate) struct MissingCaptureTarget;
+
+impl std::fmt::Display for MissingCaptureTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Requested capture target is unavailable.")
+    }
+}
+
+impl std::error::Error for MissingCaptureTarget {}
 
 fn same_target(expected: &Value, actual: &Value) -> bool {
     ["id", "generation", "kind", "processId"]

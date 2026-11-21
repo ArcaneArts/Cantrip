@@ -10407,3 +10407,26 @@ existing control handoff.
 The archived viewer can also return application icons and launch an
 application when explicitly restoring a missing target. Those
 capabilities still need native integration.
+
+## 312. Restore a missing Remote Desktop window
+
+Reference commit `1beeec5c3f9ae7af7d8056f9596dd5d3a81b9a2d` (#3475).
+
+When the requested Host window is absent, the worker looks for the
+saved application and prefers its saved window identity and title.
+If the application has no listed windows, the worker checks the
+viewer attachment again before invoking the platform launcher. It
+waits for a window belonging to the application and opens that exact
+capture. The saved target and the new capture identity remain separate.
+The same surface reuses its resolved window on resume. A failed launch
+leaves the view unavailable and a fresh refresh can request another
+attempt. Launch status and updated inventory travel in the existing
+encrypted viewer messages.
+
+The macOS ARM64 smoke used a controlled launcher and the native
+helper's deterministic backend to verify failure, successful launch,
+the newly observed window, and resume without a second launch. A
+separate background-only application bundle exercised the system launcher.
+The assigned Cantrip OS guest viewer smoke and the Windows x64 worker
+compile check also passed. Host application launch was exercised
+locally on macOS. Application icons remain open.
