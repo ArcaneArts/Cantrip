@@ -1,5 +1,6 @@
 //! Native desktop inventory and capture for the worker's interactive Windows session.
 mod capture;
+mod clipboard;
 mod input;
 mod lifetime;
 mod targets;
@@ -231,6 +232,20 @@ impl CaptureBackend for Host {
 
     fn native_input(&self) -> bool {
         true
+    }
+
+    fn copy_window_text(
+        &mut self,
+        _: &str,
+        target: &Target,
+        _: Point,
+        _: u64,
+        cancel: &Cancellation,
+    ) -> Result<Option<String>> {
+        let window = self.select_window(&target.id, target.generation, cancel)?;
+        let text = clipboard::copy(&window, cancel)?;
+        lifetime::verify_window(&self.observations.registered, &window)?;
+        Ok(text)
     }
 
     fn interaction_input(

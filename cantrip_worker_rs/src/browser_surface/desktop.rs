@@ -949,15 +949,6 @@ impl<'a> Session<'a> {
             .filter(|sequence| *sequence > viewer.sequence && value["inputEpoch"] == viewer.epoch)
             .context("Desktop input epoch or sequence expired.")?;
         viewer.sequence = sequence;
-        if value["operation"] == "copy" && self.guest.is_none() {
-            let epoch = viewer.epoch.clone();
-            self.input_state(
-                Some(attachment),
-                Some(&epoch),
-                Some("Copying from this desktop is unavailable."),
-            );
-            return Ok(());
-        }
         let (width, height, _) = self.dimensions;
         let click = value["event"] == "down";
         let position = (value["type"] == "pointer").then(|| {

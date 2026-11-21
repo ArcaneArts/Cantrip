@@ -15,6 +15,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
+pub(crate) const MAX_HOST_CLIPBOARD_UNITS: usize = 1_000_000;
+pub(crate) const MAX_HOST_CLIPBOARD_BYTES: usize = 3 * MAX_HOST_CLIPBOARD_UNITS;
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Binding {
@@ -73,6 +76,11 @@ pub enum Request {
     ClipboardRead {
         binding: Binding,
         handle: u64,
+    },
+    ClipboardCopy {
+        binding: Binding,
+        handle: u64,
+        sequence: u64,
     },
 }
 struct Participant {
@@ -244,6 +252,55 @@ impl Participants {
                     ));
                 }
                 Ok(json!({"text":backend.clipboard_read(&target,cancel)?}))
+            }
+            Request::ClipboardCopy {
+                binding,
+                handle,
+                sequence,
+            } => {
+                let state = self.get(handle, &binding)?;
+                if sequence > MAX_SEQUENCE || sequence.saturating_sub(1) <= state.sequence {
+                    return Err(CuaError::invalid("Stale clipboard copy sequence."));
+                }
+                if state.target.kind != TargetKind::Window {
+                    return Err(CuaError::new(
+                        ErrorCode::Unsupported,
+                        "Clipboard copy requires a selected window.",
+                    ));
+                }
+                self.live.get_mut(&handle).unwrap().sequence = sequence;
+                let state = self.live.get(&handle).unwrap();
+                let target = backend.resolve_interaction_target(&state.target, cancel)?;
+                target.validate()?;
+                if target.id != state.target.id
+                    || target.generation != state.target.generation
+                    || target.process_id != state.target.process_id
+                    || target.kind != TargetKind::Window
+                {
+                    return Err(CuaError::new(
+                        ErrorCode::StaleTarget,
+                        "Interaction target was replaced.",
+                    ));
+                }
+                cancel.check()?;
+                let text = backend.copy_window_text(
+                    &state.native_id,
+                    &target,
+                    state.cursor.position,
+                    sequence,
+                    cancel,
+                )?;
+                cancel.check()?;
+                if text.as_ref().is_some_and(|text| {
+                    text.len() > MAX_HOST_CLIPBOARD_BYTES
+                        || text.encode_utf16().count() > MAX_HOST_CLIPBOARD_UNITS
+                }) {
+                    return Err(CuaError::new(
+                        ErrorCode::Capacity,
+                        "Clipboard text exceeds the supported limit.",
+                    ));
+                }
+                Ok(json!({"handle":handle,"sequence":sequence,"text":text}))
             }
             Request::Present {
                 binding,

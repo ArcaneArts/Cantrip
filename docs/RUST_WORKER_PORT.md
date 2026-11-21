@@ -10147,3 +10147,34 @@ worker compile check passed. The D-Bus fixture exercised the application
 protocol without running the GNOME or KDE consent UI.
 
 Host clipboard and full-display input remain in scope.
+
+## 302. Copy selected text from shared Host windows
+
+Reference commit `983b7d2fb3abc92717749572920200d130b4d8cd` (#3465).
+
+The Rust worker sends an explicit copy through the bound input participant
+and returns the existing encrypted clipboard message to that viewer. The
+helper ties the operation to the selected window generation, handle, and
+input sequence. A copy with no new text leaves the viewer's clipboard in
+place. Paste continues to deliver text to the selected window.
+
+On macOS the helper reads the selected text exported by the window's
+focused accessibility element. It skips secure text fields. On Windows
+it requests native copy from the selected control and accepts a new
+Unicode clipboard value owned by that window. On X11, including XWayland
+windows, it sends Ctrl+C to the selected window and receives a fresh
+selection owned by that X11 client. It supports the X11 incremental
+selection protocol for larger text.
+
+On Linux ARM64, the framed helper on Xvfb copied whitespace and Unicode
+from a hidden selection-owner window of the selected client. The fixture
+rejected another client's selection, a stale selection, a mismatched
+attachment, and a replay. Keyboard focus stayed with the other window.
+The existing X11 capture and input regression and headless checks passed.
+The macOS ARM64 worker compile and helper handshake passed. The Windows
+x64 helper cross-check passed.
+
+Live runtime checks for macOS and Windows clipboard copy remain open.
+Apps with custom copy handlers that do not export selected accessibility
+text on macOS or respond to native copy messages on Windows still need
+coverage. Host full-display input and clipboard behavior remain in scope.

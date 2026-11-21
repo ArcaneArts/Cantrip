@@ -347,6 +347,18 @@ impl CaptureBackend for MacOsBackend {
         }
         refreshed
     }
+    fn copy_window_text(
+        &mut self,
+        _: &str,
+        target: &Target,
+        _: crate::target::Point,
+        _: u64,
+        cancel: &Cancellation,
+    ) -> Result<Option<String>> {
+        let text = accessibility::copy_window_text(target, cancel)?;
+        self.resolve_interaction_target(target, cancel)?;
+        Ok(text)
+    }
     fn interaction_input(
         &mut self,
         session: &str,

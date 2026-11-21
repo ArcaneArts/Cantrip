@@ -324,6 +324,40 @@ impl Participant {
             .context("Invalid desktop clipboard response.")
     }
 
+    pub(crate) async fn copy_window_text(&self, sequence: u64) -> Result<Option<JsString>> {
+        let response = match self
+            .request("clipboardCopy", [("sequence", json!(sequence))])
+            .await
+        {
+            Ok(response) => response,
+            Err(error)
+                if error.downcast_ref::<NativeError>().is_some_and(|error| {
+                    matches!(
+                        error.code(),
+                        "unsupported" | "permission-denied" | "input-failed" | "capacity"
+                    )
+                }) =>
+            {
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        ensure!(
+            response["handle"].as_u64() == Some(self.handle)
+                && response["sequence"].as_u64() == Some(sequence),
+            "Invalid desktop clipboard receipt."
+        );
+        if response["text"].is_null() {
+            return Ok(None);
+        }
+        Ok(Some(
+            response["text"]
+                .as_js_string()
+                .cloned()
+                .context("Invalid desktop clipboard text.")?,
+        ))
+    }
+
     pub(crate) async fn input(
         &self,
         sequence: u64,
