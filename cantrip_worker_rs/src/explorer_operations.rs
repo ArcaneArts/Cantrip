@@ -1,5 +1,7 @@
 //! Protected Explorer/file-document commands. Files remain worker-owned and all
 //! private outcomes, including path errors, are sealed before transport reply.
+pub(crate) mod view;
+
 use crate::{
     cantrip_os::product_files::ProductFiles,
     encryption::Service,

@@ -2,6 +2,7 @@
 use super::server::Relay;
 use crate::{
     encryption::Service,
+    explorer_operations::view,
     http::checked,
     protected_content::{open_surface_content, protect_surface_content},
 };
@@ -66,7 +67,7 @@ pub(super) async fn execute(
                 "Explorer returned an unexpected protected file.",
             )?;
             let file = &result["value"];
-            relayed["summary"] = file_summary("Saved ", &file["path"], ".");
+            relayed["summary"] = view::file_summary("Saved ", &file["path"], ".");
             relayed["mutated"] = json!(true);
             relayed["data"] = file.clone();
         }
@@ -252,23 +253,13 @@ fn list(relayed: &mut Value, result: &Value, arguments: &Value) -> Result<()> {
         200.0,
         "Explorer pagination is invalid.",
     )?;
-    let directory = &result["value"];
-    let entries = directory["entries"]
+    let page = view::directory_page(&result["value"], cursor, limit);
+    let count = page["entries"]
         .as_array()
-        .context("Explorer directory entries")?;
-    let page = entries
-        .iter()
-        .skip(cursor)
-        .take(limit)
-        .cloned()
-        .collect::<Vec<_>>();
-    let next = (cursor + page.len() < entries.len()).then_some(cursor + page.len());
-    let summary = format!("Found {} encrypted Explorer entries.", page.len());
-    relayed["summary"] = json!(summary);
-    relayed["data"] = json!({
-        "path":directory["path"], "entries":page,"cursor":cursor, "nextCursor":next,
-        "total":entries.len(), "truncated":directory["truncated"] == true || next.is_some(),
-    });
+        .expect("Explorer page entries")
+        .len();
+    relayed["summary"] = json!(format!("Found {count} encrypted Explorer entries."));
+    relayed["data"] = page;
     Ok(())
 }
 
@@ -285,32 +276,8 @@ fn read(relayed: &mut Value, result: Value, arguments: &Value) -> Result<()> {
         200_000.0,
         "maxChars is invalid.",
     )?;
-    let mut file = result["value"].clone();
-    let content = file["content"]
-        .as_js_string()
-        .context("Explorer file content")?;
-    let truncated = content.len() > maximum;
-    if truncated {
-        file["content"] = json!(JsString::new(content.units()[..maximum].to_vec()));
-    }
-    file["truncated"] = json!(truncated);
-    let suffix = if truncated {
-        " (content truncated)."
-    } else {
-        "."
-    };
-    relayed["summary"] = file_summary("Read ", &file["path"], suffix);
+    let (summary, file) = view::text_preview(result["value"].clone(), maximum);
+    relayed["summary"] = summary;
     relayed["data"] = file;
     Ok(())
-}
-
-fn file_summary(prefix: &str, path: &Value, suffix: &str) -> Value {
-    let path = path.as_js_string().expect("validated Explorer file path");
-    json!(JsString::new(
-        prefix
-            .encode_utf16()
-            .chain(path.units().iter().copied())
-            .chain(suffix.encode_utf16())
-            .collect()
-    ))
 }

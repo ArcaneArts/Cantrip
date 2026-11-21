@@ -2,6 +2,7 @@ mod alerts;
 mod chats;
 mod client;
 mod computer_use;
+mod explorer;
 mod policy;
 mod streamable;
 mod targets;
@@ -326,6 +327,9 @@ impl Inner {
             "policy.list" | "policy.read" => self.policy(authorization, &call, operation).await,
             "alert.raise" | "alert.resolve" => self.alert(authorization, &call, operation).await,
             "target.list" | "target.inspect" => self.target(authorization, &call, operation).await,
+            "explorer.list" | "explorer.read" | "explorer.write" => {
+                self.explorer(authorization, &call, operation).await
+            }
             "client.notify"
             | "client.focus-project"
             | "client.focus-surface"

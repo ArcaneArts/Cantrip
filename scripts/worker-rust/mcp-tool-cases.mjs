@@ -44,7 +44,10 @@ export async function managedMcpTurn(
         profile.id,
       ),
     );
-    for (const [index, { name, args, error, verify }] of steps.entries()) {
+    for (const [
+      index,
+      { name, args, error, verify, afterInvoke },
+    ] of steps.entries()) {
       const { search, invoke } = planned[index];
       await read(search);
       search.release();
@@ -64,6 +67,7 @@ export async function managedMcpTurn(
       );
       invoke.calls = [{ ...tool, arguments: args }];
       invoke.release();
+      await afterInvoke?.();
       const next = await read(planned[index + 1]?.search ?? answer);
       const result = toolOutput(next, error);
       await verify?.(result);
