@@ -158,12 +158,10 @@ impl Viewer {
                         }
                         if copy {
                             tokio::time::sleep(Duration::from_millis(60)).await;
-                            Some(
-                                participant
-                                    .clipboard()
-                                    .await
-                                    .map_err(|_| FAILED.to_owned())?,
-                            )
+                            participant
+                                .clipboard_after_copy()
+                                .await
+                                .map_err(|_| FAILED.to_owned())?
                         } else {
                             None
                         }

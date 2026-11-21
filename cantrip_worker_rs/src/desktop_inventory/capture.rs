@@ -364,14 +364,32 @@ impl Participant {
         result.await.context("Desktop input service stopped.")?
     }
 
-    pub(crate) async fn clipboard(&self) -> Result<JsString> {
+    pub(crate) async fn clipboard_after_copy(&self) -> Result<Option<JsString>> {
         ensure!(
             self.control.is_some(),
             "Clipboard access requires the assigned guest."
         );
-        self.request("clipboardRead", []).await?["text"]
-            .as_js_string()
+        let reply = match self.request("clipboardRead", []).await {
+            // Older guest helpers report an empty selection as a read failure.
+            // The copy shortcut already completed and the input lease is usable.
+            Err(error)
+                if error
+                    .downcast_ref::<NativeError>()
+                    .is_some_and(|error| error.code() == "input-failed") =>
+            {
+                return Ok(None);
+            }
+            result => result?,
+        };
+        let text = reply
+            .get("text")
+            .context("Invalid desktop clipboard response.")?;
+        if text.is_null() {
+            return Ok(Some("".into()));
+        }
+        text.as_js_string()
             .cloned()
+            .map(Some)
             .context("Invalid desktop clipboard response.")
     }
 
