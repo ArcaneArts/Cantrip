@@ -30,6 +30,12 @@ use tokio::{
 pub type Identity = Arc<dyn Fn() -> Result<(JsString, JsString)> + Send + Sync>;
 const DEFAULT_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 const MAXIMUM_OPERATIONS: usize = 4;
+pub(crate) const TASK_TOOLS: [(&str, &str); 4] = [
+    ("task.list", "task_list"),
+    ("task.status", "task_status"),
+    ("task.wait", "task_wait"),
+    ("task.create", "task_create"),
+];
 
 #[derive(Clone)]
 pub struct Attachment {
@@ -325,31 +331,44 @@ impl Broker {
         let sessions = self.inner.web.has_sessions()
             && !standalone
             && claims["permissionProfileId"] != ":read-only";
-        let policies = !standalone && self.inner.encryption.is_some() && capabilities.policy_list;
+        let project_encryption = !standalone && self.inner.encryption.is_some();
+        let policies = project_encryption && capabilities.supports("policy.list");
+        let task_status = capabilities.supports("task.status")
+            && requested.iter().any(|operation| operation == "task.status");
         let (operations, tools): (Vec<_>, Vec<JsString>) = [
             (
                 "context.get",
                 "context_get",
-                !standalone && capabilities.context,
+                !standalone && capabilities.supports("context.get"),
             ),
             (
                 "context.compact",
                 "context_compact",
                 !standalone
-                    && capabilities.compact
+                    && capabilities.supports("context.compact")
                     && claims["permissionProfileId"] != ":read-only",
             ),
             ("policy.list", "policy_list", policies),
             (
                 "policy.read",
                 "policy_read",
-                policies && capabilities.policy_read,
+                policies && capabilities.supports("policy.read"),
             ),
             ("tool.help", "tool_help", true),
             ("web.read", "web_read", true),
             ("web.search", "web_search", self.inner.web.has_search()),
         ]
         .into_iter()
+        .chain(TASK_TOOLS.into_iter().map(|(operation, tool)| {
+            let supported = project_encryption
+                && capabilities.supports(operation)
+                && match operation {
+                    "task.create" => claims["permissionProfileId"] != ":read-only",
+                    "task.wait" => task_status,
+                    _ => true,
+                };
+            (operation, tool, supported)
+        }))
         .chain(
             crate::web::session::TOOLS
                 .into_iter()
@@ -537,13 +556,7 @@ impl Inner {
             .server
             .capabilities(&self.worker)
             .await
-            .unwrap_or(Capabilities {
-                version: 1,
-                context: true,
-                compact: false,
-                policy_list: false,
-                policy_read: false,
-            });
+            .unwrap_or_else(|_| Capabilities::legacy());
         *cached = Some(Negotiated {
             identity: identity.clone(),
             capabilities: capabilities.clone(),
@@ -628,10 +641,7 @@ mod tests {
             identity,
             capabilities: Capabilities {
                 version: 2,
-                context: true,
-                compact: false,
-                policy_list: false,
-                policy_read: false,
+                operations: vec![json!("context.get")],
             },
             until: Instant::now() + Duration::from_secs(60),
         });

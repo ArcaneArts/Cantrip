@@ -71,6 +71,7 @@ const { values } = parseArgs({
     "scratch-files": { type: "boolean" },
     "permission-profiles": { type: "boolean" },
     "mcp-discovery": { type: "boolean" },
+    "mcp-tasks": { type: "boolean" },
     "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
     "customization-inventory": { type: "boolean" },
@@ -233,6 +234,7 @@ const consoleStateKey =
   values["host-skills"] ||
   values["scratch-files"] ||
   values["permission-profiles"] ||
+  values["mcp-tasks"] ||
   values.policies ||
   values.codegraph ||
   consoleInteractions ||
@@ -3467,6 +3469,22 @@ try {
     await verifyHostSkills();
   } else if (values.policies) {
     await verifyPolicies();
+  } else if (values["mcp-tasks"]) {
+    const { verifyManagedMcpTasks } = await import("./mcp-task-cases.mjs");
+    await verifyManagedMcpTasks({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      taskKey,
+      startWorker,
+      stopWorker,
+      serverDiagnostics: () => server.diagnostics(),
+    });
   } else if (values.codegraph) {
     await verifyManagedCodeGraph(data);
   } else if (values.cli || values.bundled) {

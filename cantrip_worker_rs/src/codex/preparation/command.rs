@@ -718,6 +718,12 @@ impl Ensurer {
                                 vec!["context.get", "tool.help", "web.read", "web.search"];
                             if !standalone {
                                 operations.extend(["policy.list", "policy.read"]);
+                                operations.extend(
+                                    crate::mcp::bindings::TASK_TOOLS
+                                        .into_iter()
+                                        .map(|(operation, _)| operation)
+                                        .filter(|operation| !guest || *operation != "task.create"),
+                                );
                             }
                             if !standalone && command["taskOwned"] != true {
                                 operations.push("context.compact");
