@@ -383,7 +383,7 @@ Cantrip/
 ├── cantrip_server_rs/ # Rust API, persistence, identity, and worker routing
 ├── cantrip_server/    # SQL migration chain embedded by the Rust server
 ├── cantrip_worker_rs/ # Native Codex runtime, terminals, files, and Git access
-├── cantrip_worker/    # Node worker for development and compatibility fixtures
+├── cantrip_worker/    # Node worker reference and development working directory
 ├── cantrip_cli/       # Worker-authenticated Rust command-line interface
 ├── cantrip_codex/     # Pinned upstream Codex source and source manifest
 ├── packages/          # Protocol, crypto, logging, version, and shared UI packages
@@ -479,7 +479,7 @@ This starts the shared protocol watcher, Cantrip server, local worker, and Vite 
 - App: <http://127.0.0.1:5173>
 - Server: <http://127.0.0.1:4310>
 
-Vite hot module replacement updates the app as frontend files change. The development launcher rebuilds and restarts the Rust server when its source changes, and the Node worker restarts when its own source changes. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
+Vite hot module replacement updates the app as frontend files change. The development launchers rebuild and restart the Rust server and worker when their sources change. Run `pnpm worker:dev` to run the worker watcher on its own after development preparation. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
 
 Local database files, worker-owned repository clones, and managed project
 folders are stored under `.cantrip/browser-dev/` and are ignored by Git.
@@ -781,13 +781,13 @@ pnpm typecheck
 pnpm test
 pnpm check:large-files
 pnpm --filter @cantrip/protocol test
-pnpm --filter @cantrip/server test
-pnpm --filter @cantrip/worker test
+pnpm server:test
+pnpm worker:rust:test
 pnpm --filter @cantrip/app test
 pnpm --filter @cantrip/site build
 ```
 
-The opt-in Z.ai end-to-end smoke test uses the bundled Codex runtime and only
+The opt-in Z.ai reference worker smoke test uses the bundled Codex runtime and
 runs when a real Coding Plan key is explicitly supplied:
 
 ```shell

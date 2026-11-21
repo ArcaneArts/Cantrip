@@ -1,81 +1,36 @@
-import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { rustEnvironment } from "./cargo.mjs";
+import { buildRustExecutable } from "../build-rust-executable.mjs";
 
-export const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+export { repositoryRoot } from "../build-rust-executable.mjs";
 
-async function buildRustExecutable({
-  release = false,
-  example,
-  manifest = "cantrip_server_rs/Cargo.toml",
-  binary = "cantrip-server",
-  environment,
-  signal,
-} = {}) {
-  const child = spawn(
-    "cargo",
-    [
-      "build",
-      "--locked",
-      "--manifest-path",
-      manifest,
-      "--message-format=json-render-diagnostics",
-      ...(release ? ["--release"] : []),
-      ...(example ? ["--example", example] : []),
-    ],
-    {
-      cwd: repositoryRoot,
-      env: environment ?? (await rustEnvironment()),
-      signal,
-      stdio: ["ignore", "pipe", "inherit"],
-    },
-  );
-  let executable;
-  const lines = createInterface({ input: child.stdout });
-  lines.on("line", (line) => {
-    try {
-      const message = JSON.parse(line);
-      if (
-        message.reason === "compiler-artifact" &&
-        message.target.name === (example ?? binary) &&
-        message.executable
-      ) {
-        executable = message.executable;
-      }
-    } catch {
-      process.stderr.write(`${line}\n`);
-    }
+async function buildServerTool({ environment, ...options } = {}) {
+  return buildRustExecutable({
+    manifest: "cantrip_server_rs/Cargo.toml",
+    binary: "cantrip-server",
+    ...options,
+    environment: environment ?? (await rustEnvironment()),
   });
-  await new Promise((resolve, reject) => {
-    child.once("error", reject);
-    child.once("close", (code, signal) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Rust server build failed (${code ?? signal}).`));
-    });
-  });
-  if (!executable) throw new Error("Cargo did not emit a server executable.");
-  return executable;
 }
 
 export function buildRustServer(options) {
-  return buildRustExecutable(options);
+  return buildServerTool(options);
 }
 
 export function buildRustExample(example) {
-  return buildRustExecutable({ example });
+  return buildServerTool({ example });
 }
 
 export function buildWorkerCli() {
-  return buildRustExecutable({
+  return buildServerTool({
     manifest: "cantrip_cli/Cargo.toml",
     binary: "cantrip",
   });
 }
 
 export function buildDesktopDirectProbe() {
-  return buildRustExecutable({
+  return buildServerTool({
     manifest: "cantrip_app/src-tauri/Cargo.toml",
     example: "server_direct_probe",
     environment: process.env,

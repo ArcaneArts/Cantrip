@@ -69,6 +69,8 @@ function pathIsWithin(root, candidate) {
 
 const CUA_DEVELOPMENT_LAUNCHER =
   /(?:^|[\s/])scripts\/cantrip-cua\/development-launch\.mjs(?:\s|$)/u;
+const NATIVE_WORKER_DEVELOPMENT_LAUNCHER =
+  /(?:^|[\s/])scripts\/worker-rust\/dev\.mjs(?:\s|$)/u;
 
 function isCantripDevelopmentCommand(process, repositoryRoots) {
   const normalizedCommand = process.command.replaceAll("\\", "/");
@@ -98,6 +100,12 @@ function isCantripDevelopmentCommand(process, repositoryRoots) {
   }
   const normalizedCwd = process.cwd.replaceAll("\\", "/");
   return (
+    (NATIVE_WORKER_DEVELOPMENT_LAUNCHER.test(normalizedCommand) &&
+      repositoryRoots.some(
+        (root) =>
+          path.resolve(root) === path.resolve(process.cwd) ||
+          path.resolve(root, "cantrip_worker") === path.resolve(process.cwd),
+      )) ||
     (CUA_DEVELOPMENT_LAUNCHER.test(normalizedCommand) &&
       /\/cantrip_worker$/u.test(normalizedCwd)) ||
     (/\b(?:tsx(?:\.cmd)?|cli\.mjs)\s+watch\s+src\/index\.ts(?:\s|$)/u.test(
@@ -186,8 +194,10 @@ function processWorkingDirectory(pid) {
 }
 
 function commandMayNeedWorkingDirectory(command) {
+  const normalized = command.replaceAll("\\", "/");
   return (
-    CUA_DEVELOPMENT_LAUNCHER.test(command.replaceAll("\\", "/")) ||
+    CUA_DEVELOPMENT_LAUNCHER.test(normalized) ||
+    NATIVE_WORKER_DEVELOPMENT_LAUNCHER.test(normalized) ||
     /(?:^|[\\/\s])(?:concurrently|pnpm|tauri|tsc|tsx|vite)(?:\.cmd)?(?:[\\/\s]|$)|cantrip-app/u.test(
       command,
     )

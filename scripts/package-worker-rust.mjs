@@ -17,37 +17,10 @@ import { bundleCantripCua } from "./cantrip-cua/build.mjs";
 import { smokeCantripCua } from "./cantrip-cua/smoke.mjs";
 import { verifyBuiltRuntime } from "./cantrip-codex/verify-built-runtime.mjs";
 import { verifyPackagedWorkerMcp } from "./verify-packaged-worker-mcp.mjs";
+import { buildRustWorker } from "./worker-rust/cargo.mjs";
 
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL("../", import.meta.url));
-
-async function buildRustWorker() {
-  const { stdout, stderr } = await execute(
-    process.execPath,
-    [
-      "scripts/worker-rust/cargo.mjs",
-      "build",
-      "--release",
-      "--bin",
-      "cantrip-worker",
-      "--message-format=json-render-diagnostics",
-    ],
-    { cwd: root, maxBuffer: 16 * 1024 * 1024 },
-  );
-  if (stderr.trim()) console.error(stderr.trimEnd());
-  for (const line of stdout.trim().split(/\r?\n/u)) {
-    const artifact = JSON.parse(line);
-    if (
-      artifact.reason === "compiler-artifact" &&
-      artifact.target.name === "cantrip-worker" &&
-      artifact.target.kind.includes("bin") &&
-      artifact.executable
-    ) {
-      return artifact.executable;
-    }
-  }
-  throw new Error("Cargo did not report a Cantrip worker executable.");
-}
 
 async function writeLaunchers(stage) {
   await writeFile(
@@ -85,7 +58,7 @@ export async function packageNativeWorker({
   standalone = true,
 }) {
   const { platform } = target;
-  const worker = inputs.worker ?? (await buildRustWorker());
+  const worker = inputs.worker ?? (await buildRustWorker({ release: true }));
   await mkdir(path.dirname(destination), { recursive: true });
   const stage = await mkdtemp(
     path.join(path.dirname(destination), ".cantrip-worker-rust-"),

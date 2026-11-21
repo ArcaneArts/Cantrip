@@ -9603,3 +9603,27 @@ The standalone server's explicit developer/reference converter flags and
 the development worker launch still need retirement. The older signed
 updater harness rebuilds its baseline with the current launcher and still
 expects an older Node worker. That harness and Windows were not run here.
+
+## 280. Run the Rust worker in the development stack
+
+Reference commit `dcd1e1255acb34cd8e171fb5cb4c61a70d4ddaaf` (#3443).
+
+Browser, PostgreSQL, and named desktop development all use the same Rust
+worker launcher. Relative profile and log paths, development identity, and
+helper selection retain their existing conventions. The watcher attempts
+the actual Cargo build before stopping the running worker. It closes the
+worker's owning pipe and awaits its exit before launching the replacement.
+Direct `start` loads the worker's `.env`, and development watch retains its
+environment-only configuration. The old worker has a `reference:start` entry.
+The root build, typecheck, and test commands include the native worker.
+
+Both native services built locally on macOS ARM64. The real
+`pnpm worker:dev` command connected to Rust Core, retained its existing
+worker ID and relative profile paths, reported an intentional compile
+failure while the original worker still answered commands, rebuilt once
+the source was restored, and shut down its replacement through stdin.
+The direct workspace start read its worker ID and connection options
+from an owned `.env` fixture. The native worker package assembled from
+the local build and launched with an empty PATH. Twenty-six development
+tests and fifteen release configuration and MCP packaging tests passed.
+Windows and the desktop renderer were outside this cycle's runtime checks.
