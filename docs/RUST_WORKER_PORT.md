@@ -10383,3 +10383,27 @@ branch. A local fixture hook advanced the remote during the push and
 the remote rejected the update. A fresh apply sent the reviewed local
 object even when HEAD moved during the push. Other remote refs and tags
 were unchanged. All 524 protocol tests passed locally.
+
+## 311. Refresh the Remote Desktop target picker
+
+Reference commit `f35e3249c1e8093de6fa174f2b4fef9a2e2a6260` (#3474).
+
+The Rust worker accepts the existing encrypted viewer refresh request
+and scans the Host inventory through the shared capture helper. Its
+reply includes the requested target and the active capture identity.
+Each scan is bounded and its reply stays with the attachment and
+transport that requested it. An assigned Linux desktop reports only
+its captured monitor. The worker seals the inventory using the same
+private-state format as the fleet inventory and binds it to the
+desktop surface.
+
+The macOS ARM64 worker and the native helper's deterministic backend
+passed the viewer smoke. It checked window and monitor refresh,
+an unavailable requested window, and encrypted inventory scope.
+The same smoke reused a disposable local Cantrip OS guest and
+verified the assigned monitor inventory and the guest viewer's
+existing control handoff.
+
+The archived viewer can also return application icons and launch an
+application when explicitly restoring a missing target. Those
+capabilities still need native integration.
