@@ -11121,3 +11121,24 @@ normal screen. The same run passed Host relay, encrypted WorkerLink
 and direct terminal, CLI, and service restart and recovery with Node
 absent from the worker PATH. Twenty parser tests and the documentation
 test passed, as did the offline worker build.
+
+## 344. Preserve terminal background colors during edits and scrolls
+
+Reference commit `5dce922257af99c836473401cc7eee574147054c` (#3507).
+
+The native parser uses the active background for blank cells created by
+line and character edits, erase, line feed, autowrap, and reverse index.
+Explicit scroll down uses the default background, as in xterm. Index
+and Next Line also use the scrolling path. Edits stay within their
+margins. Line feed through a region anchored at the top retains
+scrollback, while an explicit Scroll Up edits the viewport.
+
+In a local macOS ARM64 shell, the baseline encrypted snapshot lost the
+background of an inserted line. The rebuilt worker and existing Rust
+Core matched xterm.js 6.0 for indexed and RGB backgrounds across 13
+scroll, edit, and erase cases. The relay, WorkerLink, direct terminal,
+CLI, and service recovery smoke passed with Node absent from the worker
+PATH. One earlier direct-broker run failed the existing scrollback row
+count assertion during resize. The relay run and direct-broker rerun
+both passed that case. Twenty-three parser tests, the documentation
+test, and the offline worker build passed.

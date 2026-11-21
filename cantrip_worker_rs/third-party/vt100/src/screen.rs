@@ -804,9 +804,7 @@ impl Screen {
         }
         self.grid.set_scrollback(0);
         self.alternate_grid.allocate_rows();
-        let mut blank = crate::attrs::Attrs::default();
-        blank.set_bgcolor(self.attrs.bgcolor());
-        self.alternate_grid.clear(blank);
+        self.alternate_grid.clear(self.attrs.for_erase());
         self.alternate_grid
             .activate(self.grid.pos(), self.grid.origin_mode());
         self.saved_attrs[1] = crate::attrs::Attrs::default();
@@ -925,7 +923,7 @@ impl Screen {
                 }
             }
         } else {
-            self.grid_mut().col_wrap(width, wrap);
+            self.grid_mut().col_wrap(width, wrap, attrs.for_erase());
         }
         let pos = self.grid().pos();
 
@@ -1002,7 +1000,7 @@ impl Screen {
             }
         } else {
             if self.mode(MODE_INSERT) {
-                self.grid_mut().insert_print_cells(width, attrs);
+                self.grid_mut().insert_cells(width, attrs);
             }
             if self
                 .grid()
@@ -1148,7 +1146,10 @@ impl Screen {
     }
 
     pub(crate) fn lf(&mut self) {
-        self.grid_mut().row_inc_scroll(1);
+        let attrs = self.attrs.for_erase();
+        let grid = self.grid_mut();
+        grid.row_inc_scroll(1, attrs);
+        grid.col_inc_clamp(0);
     }
 
     pub(crate) fn vt(&mut self) {
@@ -1187,7 +1188,8 @@ impl Screen {
 
     // ESC M
     pub(crate) fn ri(&mut self) {
-        self.grid_mut().row_dec_scroll(1);
+        let attrs = self.attrs.for_erase();
+        self.grid_mut().reverse_index(attrs);
     }
 
     // ESC c
@@ -1208,7 +1210,8 @@ impl Screen {
 
     // CSI @
     pub(crate) fn ich(&mut self, count: u16) {
-        self.grid_mut().insert_cells(count);
+        let attrs = self.attrs.for_erase();
+        self.grid_mut().insert_cells(count, attrs);
     }
 
     // CSI A
@@ -1262,7 +1265,7 @@ impl Screen {
         mode: u16,
         mut unhandled: impl FnMut(&mut Self),
     ) {
-        let attrs = self.attrs;
+        let attrs = self.attrs.for_erase();
         match mode {
             0 => self.grid_mut().erase_all_forward(attrs),
             1 => self.grid_mut().erase_all_backward(attrs),
@@ -1287,7 +1290,7 @@ impl Screen {
         mode: u16,
         mut unhandled: impl FnMut(&mut Self),
     ) {
-        let attrs = self.attrs;
+        let attrs = self.attrs.for_erase();
         match mode {
             0 => self.grid_mut().erase_row_forward(attrs),
             1 => self.grid_mut().erase_row_backward(attrs),
@@ -1307,32 +1310,37 @@ impl Screen {
 
     // CSI L
     pub(crate) fn il(&mut self, count: u16) {
-        self.grid_mut().insert_lines(count);
+        let attrs = self.attrs.for_erase();
+        self.grid_mut().edit_lines(count, attrs, true);
     }
 
     // CSI M
     pub(crate) fn dl(&mut self, count: u16) {
-        self.grid_mut().delete_lines(count);
+        let attrs = self.attrs.for_erase();
+        self.grid_mut().edit_lines(count, attrs, false);
     }
 
     // CSI P
     pub(crate) fn dch(&mut self, count: u16) {
-        self.grid_mut().delete_cells(count);
+        let attrs = self.attrs.for_erase();
+        self.grid_mut().delete_cells(count, attrs);
     }
 
     // CSI S
     pub(crate) fn su(&mut self, count: u16) {
-        self.grid_mut().scroll_up(count);
+        let attrs = self.attrs.for_erase();
+        self.grid_mut().scroll_up(count, attrs, false);
     }
 
     // CSI T
     pub(crate) fn sd(&mut self, count: u16) {
-        self.grid_mut().scroll_down(count);
+        self.grid_mut()
+            .scroll_down(count, crate::attrs::Attrs::default());
     }
 
     // CSI X
     pub(crate) fn ech(&mut self, count: u16) {
-        let attrs = self.attrs;
+        let attrs = self.attrs.for_erase();
         self.grid_mut().erase_cells(count, attrs);
     }
 

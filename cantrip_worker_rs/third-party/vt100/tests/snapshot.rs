@@ -58,3 +58,25 @@ fn snapshot_restores_default_tabs_over_an_earlier_attachment() {
     assert_eq!(restored.screen().cell(0, 8).unwrap().contents(), "X");
     assert_eq!(restored.screen().cursor_position(), (0, 9));
 }
+
+#[test]
+fn line_feed_at_top_anchored_region_retains_history_and_scroll_up_does_not() {
+    let mut parser = vt100::Parser::new(4, 8, 16);
+    parser.process(b"top\x1b[1;2r\x1b[2;1H\x1b[44m\n");
+    assert_eq!(
+        parser.screen().cell(1, 7).unwrap().bgcolor(),
+        vt100::Color::Idx(4)
+    );
+    parser.process(b"\x1b[r\x1b[41m\x1b[S");
+    assert_eq!(
+        parser.screen().cell(3, 7).unwrap().bgcolor(),
+        vt100::Color::Idx(1)
+    );
+    let (_, history) = parser
+        .screen()
+        .normal_contents_formatted_with_scrollback(4096)
+        .unwrap();
+    assert_eq!(history, 1);
+    parser.screen_mut().set_scrollback(1);
+    assert_eq!(parser.screen().cell(0, 0).unwrap().contents(), "t");
+}

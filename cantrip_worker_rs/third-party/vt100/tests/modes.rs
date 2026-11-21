@@ -94,3 +94,19 @@ fn tabulation_keeps_pending_wrap_at_the_right_margin() {
     assert_eq!(parser.screen().cell(1, 0).unwrap().contents(), "X");
     assert_eq!(parser.screen().cursor_position(), (1, 1));
 }
+
+#[test]
+fn line_edits_respect_margins_and_reset_the_cursor_inside_them() {
+    let mut parser = vt100::Parser::new(5, 8, 0);
+    parser.process(b"A\r\nB\r\nC\r\nD\r\nE\x1b[2;4r\x1b[1;5H");
+    parser.process(b"\x1b[44m\x1b[65535L\x1b[65535M");
+    assert_eq!(parser.screen().contents(), "A\nB\nC\nD\nE");
+    assert_eq!(parser.screen().cursor_position(), (0, 4));
+    parser.process(b"\x1b[3;5H\x1b[65535L");
+    assert_eq!(parser.screen().contents(), "A\nB\n\n\nE");
+    assert_eq!(parser.screen().cursor_position(), (2, 0));
+    assert_eq!(
+        parser.screen().cell(3, 7).unwrap().bgcolor(),
+        vt100::Color::Idx(4)
+    );
+}

@@ -53,6 +53,15 @@ pub struct Attrs {
 }
 
 impl Attrs {
+    pub fn for_erase(self) -> Self {
+        Self {
+            background: self.background,
+            color_kinds: self.color_kinds
+                & (COLOR_KIND_MASK << BACKGROUND_KIND_SHIFT),
+            ..Self::default()
+        }
+    }
+
     pub fn fgcolor(&self) -> Color {
         decode_color(self.color_kinds & COLOR_KIND_MASK, self.foreground)
     }
