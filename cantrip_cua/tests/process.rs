@@ -651,7 +651,16 @@ fn default_binary_never_silently_uses_fake_capture() {
             }
         );
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    assert_eq!(
+        capabilities["backend"],
+        if capabilities["capture"] == true {
+            "windows-win32"
+        } else {
+            "unavailable"
+        }
+    );
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         assert_eq!(capabilities["backend"], "unavailable");
         assert_eq!(capabilities["capture"], false);
@@ -661,7 +670,7 @@ fn default_binary_never_silently_uses_fake_capture() {
             matches!(outcome, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Unsupported)
         );
     }
-    // On macOS this is deliberately handshake-only: ordinary CI/tests must
+    // On macOS and Windows this is deliberately handshake-only: ordinary CI/tests must
     // never enumerate private windows or request Screen Recording permission.
     child.stop(true);
 }
@@ -970,3 +979,7 @@ fn full_worst_escaped_inventory_page_returns_through_unchanged_javascript_output
     assert_eq!(actual, expected);
     child.stop(true);
 }
+
+#[cfg(windows)]
+#[path = "fixtures/windows_host.rs"]
+mod windows_host;

@@ -49,6 +49,8 @@ test("build uses Cargo's actual executable even with a configured/custom target"
     "--release",
     "--target",
     "x86_64-pc-windows-msvc",
+    "--config",
+    `target.'cfg(all(windows, target_env = "msvc"))'.rustflags=["-C","target-feature=+crt-static"]`,
     "--target-dir",
     path.join(root, "shared output"),
   ]);

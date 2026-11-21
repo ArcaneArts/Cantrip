@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { cantripCuaExecutableName } from "./layout.mjs";
+
+const windowsRuntime = `target.'cfg(all(windows, target_env = "msvc"))'.rustflags=["-C","target-feature=+crt-static"]`;
 export {
   cantripCuaExecutableName,
   CUA_SIGNING_IDENTIFIER,
@@ -44,6 +46,10 @@ export function buildCantripCua(
   ];
   if (release) args.push("--release");
   if (target) args.push("--target", target);
+  // The helper must start on a clean Windows installation.
+  if (target?.endsWith("-windows-msvc") || (!target && process.platform === "win32")) {
+    args.push("--config", windowsRuntime);
+  }
   if (cargoTargetDirectory) {
     args.push("--target-dir", path.resolve(root, cargoTargetDirectory));
   }
