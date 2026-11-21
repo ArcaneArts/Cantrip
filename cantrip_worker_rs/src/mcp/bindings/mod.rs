@@ -50,6 +50,10 @@ pub(crate) const TERMINAL_TOOLS: [(&str, &str); 3] = [
     ("terminal.send", "terminal_send"),
     ("terminal.restart", "terminal_restart"),
 ];
+pub(crate) const BROWSER_TOOLS: [(&str, &str); 2] = [
+    ("browser.services", "browser_services"),
+    ("browser.open", "browser_navigate"),
+];
 pub(crate) const ALERT_TOOLS: [(&str, &str); 2] = [
     ("alert.raise", "alert_raise"),
     ("alert.resolve", "alert_resolve"),
@@ -424,6 +428,15 @@ impl Broker {
                 && target_inspect
                 && capabilities.supports(operation)
                 && (operation == "terminal.read" || claims["permissionProfileId"] != ":read-only");
+            (operation, tool, supported)
+        }))
+        .chain(BROWSER_TOOLS.into_iter().map(|(operation, tool)| {
+            let supported = !standalone
+                && capabilities.supports(operation)
+                && (operation == "browser.services"
+                    || (project_encryption
+                        && target_inspect
+                        && claims["permissionProfileId"] != ":read-only"));
             (operation, tool, supported)
         }))
         .chain(ALERT_TOOLS.into_iter().map(|(operation, tool)| {

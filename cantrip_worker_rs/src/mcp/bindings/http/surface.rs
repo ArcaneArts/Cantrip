@@ -55,6 +55,14 @@ impl Inner {
 }
 
 impl Surface<'_> {
+    pub(super) fn server_id(&self) -> &Value {
+        &self.inspection.server_id
+    }
+
+    pub(super) fn state_revision(&self) -> Option<u64> {
+        self.inspection.state_revision.as_u64()
+    }
+
     pub(super) fn worktree(&self) -> &Value {
         &self.inspection.resolution["placement"]["worktreeId"]
     }
