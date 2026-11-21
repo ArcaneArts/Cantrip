@@ -4,12 +4,13 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { on, once } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { fileURLToPath } from "node:url";
 import {
   decryptRemoteSurfaceStreamPayload,
   decryptSurfacePrivateState,
@@ -46,14 +47,18 @@ async function withTimeout(work, milliseconds, action) {
 }
 
 const { values } = parseArgs({
-  options: Object.fromEntries(
-    ["worker", "codex", "helper", "guest-image"].map((name) => [
-      name,
-      { type: "string" },
-    ]),
-  ),
+  options: {
+    ...Object.fromEntries(
+      ["worker", "codex", "helper", "guest-image"].map((name) => [
+        name,
+        { type: "string" },
+      ]),
+    ),
+    "target-launch": { type: "boolean", default: false },
+  },
 });
 assert.ok(values.worker && values.codex && values.helper);
+assert.ok(!values["target-launch"] || process.platform === "darwin");
 const require = createRequire(
   new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 );
@@ -81,9 +86,25 @@ let failure;
 const helper = path.join(root, "capture-helper");
 const pids = path.join(root, "helper-pids");
 const quote = (text) => "'" + text.replaceAll("'", "'\\''") + "'";
+const launcherDir = path.join(root, "launch-bin");
+const launchReceipt = path.join(root, "window-launched");
+const launchName = "Cantrip launch fixture";
+let helperCommand = `${quote(path.resolve(values.helper))} --backend fake`;
+if (values["target-launch"]) {
+  await mkdir(launcherDir);
+  await writeFile(
+    path.join(launcherDir, "open"),
+    `#!/bin/sh\n[ "$1" = -g ] && [ "$2" = -a ] && [ "$3" = ${quote(launchName)} ] || exit 1\n[ -z "$CANTRIP_WORKER_CREDENTIAL" ] || exit 2\nprintf '%s\\n' "$3" >> ${quote(launchReceipt)}\n`,
+    { mode: 0o700 },
+  );
+  const proxy = fileURLToPath(
+    new URL("./desktop-launch-helper.py", import.meta.url),
+  );
+  helperCommand = `/usr/bin/python3 ${quote(proxy)} ${quote(path.resolve(values.helper))} ${quote(launchReceipt)}`;
+}
 await writeFile(
   helper,
-  `#!/bin/sh\nprintf '%s\\n' "$$" >> ${quote(pids)}\nexec ${quote(path.resolve(values.helper))} --backend fake\n`,
+  `#!/bin/sh\nprintf '%s\\n' "$$" >> ${quote(pids)}\nexec ${helperCommand}\n`,
   { mode: 0o700 },
 );
 
@@ -199,6 +220,13 @@ const child = spawn(
       CANTRIP_CODEX_BIN: path.resolve(values.codex),
       CANTRIP_CUA_BIN: helper,
       ...guestEnvironment,
+      ...(values["target-launch"]
+        ? {
+            PATH: [launcherDir, guestEnvironment.PATH]
+              .filter(Boolean)
+              .join(path.delimiter),
+          }
+        : {}),
     },
   },
 );
@@ -579,7 +607,11 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 450));
   assert.ok(frames.every(({ header }) => header.channel !== "frame"));
 
-  const missing = { ...selected, id: "missing-window" };
+  const missing = {
+    ...selected,
+    id: "missing-window",
+    application: "Missing fixture application",
+  };
   assert.equal(
     (
       await send({
@@ -605,12 +637,57 @@ try {
   });
   await refreshTargets(missing, null);
 
+  if (values["target-launch"]) {
+    const choice = {
+      ...selected,
+      id: "previous-window",
+      application: launchName,
+    };
+    const result = await send({
+      ...common,
+      type: "surface.configure",
+      ...(await state(choice, 3)),
+    });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    await untilFrame(async (channel, bytes) => {
+      if (channel !== "control") return false;
+      const message = remoteDesktopServerMessageSchema.parse(JSON.parse(bytes));
+      if (message.type !== "desktop-targets") return false;
+      const opened = await decryptSurfacePrivateState(
+        inventoryCredentials(surfaceId, message),
+      );
+      return (
+        opened.launchingApplication === launchName && opened.active === null
+      );
+    });
+    await untilFrame(async (channel, bytes) => {
+      if (channel !== "control") return false;
+      const message = remoteDesktopServerMessageSchema.parse(JSON.parse(bytes));
+      if (message.type !== "desktop-targets") return false;
+      const opened = await decryptSurfacePrivateState(
+        inventoryCredentials(surfaceId, message),
+      );
+      if (opened.active?.id !== "launched-window") return false;
+      assert.deepEqual(opened.requested, choice);
+      assert.equal(opened.active.application, launchName);
+      assert.equal(opened.launchingApplication, null);
+      assert.equal(opened.windows[0].id, "launched-window");
+      return true;
+    });
+    await dimensions(320, 200);
+    assert.equal((await send({ type: "surface.suspend", surfaceId })).ok, true);
+    assert.equal((await send({ type: "surface.resume", surfaceId })).ok, true);
+    await dimensions(320, 200);
+    assert.equal(await readFile(launchReceipt, "utf8"), `${launchName}\n`);
+    await rm(launchReceipt);
+  }
+
   assert.equal(
     (
       await send({
         ...common,
         type: "surface.configure",
-        ...(await state(monitor, 3)),
+        ...(await state(monitor, 4)),
       })
     ).ok,
     true,
