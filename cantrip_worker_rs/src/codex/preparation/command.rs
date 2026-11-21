@@ -467,7 +467,9 @@ impl Ensurer {
             ) => command["taskContext"].is_null(),
             Some(crate::codex::goals::QUEUE_EXECUTE) => matches!(
                 command["executionMethod"].as_str(),
-                Some("thread/goal/set" | "thread/goal/clear")
+                Some(
+                    "thread/goal/set" | "thread/goal/clear" | crate::codex::turn::settings::UPDATE
+                )
             ),
             Some(crate::codex::turn::RUN) => session.get("osExecution").is_some(),
             _ => false,

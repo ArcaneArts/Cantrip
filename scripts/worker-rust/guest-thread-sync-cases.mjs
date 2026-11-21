@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import {
   decryptEndpointContentPayload,
+  decryptNativeSettingsSnapshot,
   decryptPrivateDisplayLabel,
   deriveFieldKey,
   encryptEndpointContentPayload,
@@ -289,42 +290,54 @@ export async function verifyGuestThreadSync({
     1,
   );
 
+  async function submitNative(
+    displayText,
+    action,
+    executionMethod,
+    items = [],
+  ) {
+    const turn = await encryptedTurn(displayText, profile.id);
+    const queued = turn.queuedPrompt;
+    const associatedData = {
+      ownerId,
+      keyRevision,
+      component: "chat-content",
+      table: "managed-queue",
+      rowId: createHash("sha256")
+        .update(JSON.stringify([serverId, chatId, queued.id]))
+        .digest("hex"),
+      field: "native-input",
+      formatVersion: 1,
+    };
+    queued.protectedNativeInput = await encryptPayload({
+      key: deriveFieldKey({ componentKey: chatKey, ...associatedData }),
+      associatedData,
+      plaintext: Buffer.from(
+        JSON.stringify({
+          version: 1,
+          displayText,
+          action,
+          executionMethod,
+          input: [
+            { type: "text", text: displayText, text_elements: [] },
+            ...items,
+          ],
+        }),
+      ),
+    });
+    queued.nativeAction = action;
+    queued.executionMethod = executionMethod;
+    const submitted = await call("POST", chatUrl + "/turns", 202, turn);
+    assert.equal(submitted.status, "queued");
+  }
+
   const skillReply = model.reply({ text: "Guest skill selection read." });
   const displayText = "Apply the explicitly selected skills.";
-  const selected = await encryptedTurn(displayText, profile.id);
-  const queued = selected.queuedPrompt;
-  const associatedData = {
-    ownerId,
-    keyRevision,
-    component: "chat-content",
-    table: "managed-queue",
-    rowId: createHash("sha256")
-      .update(JSON.stringify([serverId, chatId, queued.id]))
-      .digest("hex"),
-    field: "native-input",
-    formatVersion: 1,
-  };
-  queued.protectedNativeInput = await encryptPayload({
-    key: deriveFieldKey({ componentKey: chatKey, ...associatedData }),
-    associatedData,
-    plaintext: Buffer.from(
-      JSON.stringify({
-        version: 1,
-        displayText,
-        action: "literal",
-        executionMethod: "turn/start",
-        input: [
-          { type: "text", text: displayText, text_elements: [] },
-          { type: "skill", name: extraName, path: extraPath },
-          { type: "mention", name: extraName, path: `skill://${extraPath}` },
-          { type: "skill", name: skillName, path: skillPath },
-        ],
-      }),
-    ),
-  });
-  queued.executionMethod = "turn/start";
-  const submitted = await call("POST", chatUrl + "/turns", 202, selected);
-  assert.equal(submitted.status, "queued");
+  await submitNative(displayText, "literal", "turn/start", [
+    { type: "skill", name: extraName, path: extraPath },
+    { type: "mention", name: extraName, path: `skill://${extraPath}` },
+    { type: "skill", name: skillName, path: skillPath },
+  ]);
   await eventually(
     () => skillReply.request,
     (request) => assert.equal(request?.completed, true),
@@ -350,6 +363,39 @@ export async function verifyGuestThreadSync({
   assert.deepEqual(cleared.skillRoots, []);
   assert.ok(!cleared.skills.items.some(({ name }) => name === extraName));
   assert.ok(cleared.skills.items.some(({ name }) => name === skillName));
+
+  const nativeMode = async () => {
+    const { effective } = await call(
+      "POST",
+      chatUrl + "/native-settings/refresh",
+      200,
+      {},
+    );
+    assert.equal(effective.context.threadId, original.threadId);
+    const settings = await decryptNativeSettingsSnapshot({
+      ownerId,
+      serverId,
+      keyRevision,
+      componentKey: chatKey,
+      context: effective.context,
+      snapshot: effective,
+    });
+    return settings.collaborationMode.mode;
+  };
+  assert.equal(await nativeMode(), "default");
+  const requestsBeforePlan = model.requests.filter(
+    ({ method }) => method === "POST",
+  ).length;
+  await submitNative("/plan", "parseSlash", "thread/settings/update");
+  await eventually(nativeMode, (mode) => assert.equal(mode, "plan"));
+  await eventually(
+    () => call("GET", chatUrl + "/queue", 200),
+    (queue) => assert.equal((queue.items ?? queue).length, 0),
+  );
+  assert.equal(
+    model.requests.filter(({ method }) => method === "POST").length,
+    requestsBeforePlan,
+  );
   console.log(
     JSON.stringify({ suite: "native-guest-thread-sync", passed: true }),
   );
