@@ -76,6 +76,16 @@ pub(crate) const RUN_WRITE_TOOLS: [(&str, &str); 7] = [
         "run_configuration_secret_set",
     ),
 ];
+pub(crate) const WORKTREE_READ_TOOLS: [(&str, &str); 2] = [
+    ("worktree.list", "worktree_list"),
+    ("worktree.status", "worktree_status"),
+];
+pub(crate) const WORKTREE_WRITE_TOOLS: [(&str, &str); 4] = [
+    ("worktree.create", "worktree_create"),
+    ("worktree.switch", "worktree_switch"),
+    ("worktree.release", "worktree_release"),
+    ("worktree.remove", "worktree_remove"),
+];
 pub(crate) const ALERT_TOOLS: [(&str, &str); 2] = [
     ("alert.raise", "alert_raise"),
     ("alert.resolve", "alert_resolve"),
@@ -470,6 +480,19 @@ impl Broker {
         }))
         .chain(RUN_WRITE_TOOLS.into_iter().map(|(operation, tool)| {
             let supported = project_encryption
+                && capabilities.supports(operation)
+                && claims["permissionProfileId"] != ":read-only";
+            (operation, tool, supported)
+        }))
+        .chain(WORKTREE_READ_TOOLS.into_iter().map(|(operation, tool)| {
+            (
+                operation,
+                tool,
+                !standalone && capabilities.supports(operation),
+            )
+        }))
+        .chain(WORKTREE_WRITE_TOOLS.into_iter().map(|(operation, tool)| {
+            let supported = !standalone
                 && capabilities.supports(operation)
                 && claims["permissionProfileId"] != ":read-only";
             (operation, tool, supported)

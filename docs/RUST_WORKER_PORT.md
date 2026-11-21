@@ -49,11 +49,7 @@ record the transition. The
 [hosted Linux ARM64 image check](#332-bound-hosted-worker-release-build-memory)
 covers the current Docker build, enrollment, and volume reuse.
 
-### Open managed MCP operations
-
-The remaining managed Cantrip MCP work covers worktree tools. Their catalog
-entries and Core routes are in place. The worker still needs negotiated
-admission and endpoint handling for them.
+### Open MCP compatibility
 
 Bundled Codex still needs to handle MCP results that contain an unpaired UTF-16
 surrogate. The [Explorer fixture](#352-restore-managed-mcp-explorer-tools)
@@ -11376,3 +11372,24 @@ output, deletion, and read-only admission. Restart replaced the process, and
 stop returned the runtime to idle and released its process. The host Run and
 CLI comparison with the Node reference and the offline worker build also
 passed.
+
+## 356. Restore managed MCP Worktree tools and continuation
+
+Reference commit `ada0542e171dedd3e8dfae2bef621e12de466852` (#3519).
+
+Managed Project Chat bindings can list and inspect Worktrees, create a
+checkout, switch, release, and remove an eligible checkout. The worker
+validates the returned Worktree or lane, preserves protected references, and
+omits host path fields. Cantrip OS bindings retain the host Worktree exclusion.
+Core still schedules transitions and owns the lease. The worker authenticates
+Core's system continuation message, while admitted client messages retain
+the user role.
+
+The baseline omitted `worktree_list` in native Codex. The local macOS ARM64
+fixture used native Codex, a disposable Git repository, and production Rust
+Core in PGlite mode. The fixture supplied the project catalog classification.
+It verified pagination, a physical checkout, a scheduled switch and release
+with encrypted history in each destination lane, dirty release rejection,
+branch retention after removal, and read-only admission. The focused Core
+worktree fixture also passed 102 HTTP calls with controlled Git replies.
+The managed Run regression and offline builds of Core and the worker passed.

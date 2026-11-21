@@ -11,6 +11,7 @@ mod surface;
 mod targets;
 mod tasks;
 mod terminal;
+mod worktree;
 
 use super::{Active, Entry, Inner, MAXIMUM_OPERATIONS, now, server::Rejected, store};
 use anyhow::{Result, anyhow, ensure};
@@ -343,6 +344,9 @@ impl Inner {
             operation if operation.starts_with("run-configuration.") => {
                 self.run_configuration(authorization, &call, operation)
                     .await
+            }
+            operation if operation.starts_with("worktree.") => {
+                self.worktree(authorization, &call, operation).await
             }
             "client.notify"
             | "client.focus-project"
