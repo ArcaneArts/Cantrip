@@ -63,7 +63,7 @@ class Helper:
         return result["data"], data
 
 
-def exercise(helper, keyboard_fd, env, root):
+def exercise(helper, keyboard_fd, env, root, verify_focus):
     events = []
     sources = []
     acknowledge_copy = threading.Event()
@@ -92,7 +92,7 @@ def exercise(helper, keyboard_fd, env, root):
     try:
         with subprocess.Popen([helper], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE) as child:
             try:
-                verify(Helper(child), events, env, root)
+                verify(Helper(child), events, env, root, verify_focus)
                 child.stdin.close()
                 assert child.wait(timeout=5) == 0
             finally:
@@ -106,7 +106,7 @@ def exercise(helper, keyboard_fd, env, root):
             source.wait(timeout=3)
 
 
-def verify(cua, keys, env, root):
+def verify(cua, keys, env, root, verify_focus):
     assert cua.ok("capabilities.get")[0]["hostMonitorInput"]
     monitors = [t for t in cua.ok("targets.list")[0]["targets"] if t["kind"] == "monitor"]
     assert len(monitors) == 2, monitors
@@ -142,6 +142,12 @@ def verify(cua, keys, env, root):
     send(1, "pointerDown", point=point, button="left", modifiers=[])
     wait(lambda: delivered(r"ButtonPress event[^\n]*\n[^\n]*root:\(880,160\)[^\n]*\n[^\n]*button 1,"))
     assert copy(3) == COPIED
+    if verify_focus:
+        for event in ("KeyPress", "KeyRelease"):
+            wait(lambda: delivered(
+                rf"{event} event[^\n]*synthetic NO[^\n]*\n[^\n]*\n"
+                r"\s*state 0x104, keycode \d+ \(keysym 0x63, c\)"
+            ))
     assert copy(5) is None
     send(6, "text", type="commit", data=PASTED)
     assert subprocess.check_output(["wl-paste", "--no-newline"], env=env).decode() == PASTED
@@ -160,7 +166,27 @@ def verify(cua, keys, env, root):
     cua.ok("interaction.request", request={"type": "closeBinding", "binding": waiting})
 
 
-def main(helper, kernel_keyboard):
+def position_fixture(root, env):
+    ipc = wait(lambda: next((path for path in root.glob("sway-ipc.*.sock") if path.is_socket()), None))
+    env["SWAYSOCK"] = str(ipc)
+
+    def contains_fixture(node):
+        return node.get("name") == "Cantrip fixture" or any(
+            contains_fixture(child) for child in node["nodes"] + node["floating_nodes"]
+        )
+
+    def registered():
+        tree = subprocess.check_output(["swaymsg", "-t", "get_tree"], env=env)
+        return contains_fixture(json.loads(tree))
+
+    wait(registered)
+    subprocess.run(
+        ["swaymsg", '[title="^Cantrip fixture$"] move container to output HEADLESS-2, focus'],
+        env=env, check=True, stdout=subprocess.DEVNULL,
+    )
+
+
+def main(helper, kernel_keyboard, verify_focus):
     with tempfile.TemporaryDirectory() as directory, ExitStack() as resources:
         root = Path(directory)
         if kernel_keyboard:
@@ -174,7 +200,8 @@ def main(helper, kernel_keyboard):
         env = {key: value for key, value in os.environ.items()
             if key not in ("DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "SWAYSOCK")}
         env.update(XDG_RUNTIME_DIR=directory, XDG_SESSION_TYPE="wayland", YDOTOOL_SOCKET=socket_path,
-            WLR_BACKENDS="headless", WLR_RENDERER="pixman", WLR_LIBINPUT_NO_DEVICES="1", WLR_HEADLESS_OUTPUTS="2")
+            WLR_BACKENDS="headless,libinput" if verify_focus else "headless",
+            WLR_RENDERER="pixman", WLR_LIBINPUT_NO_DEVICES="1", WLR_HEADLESS_OUTPUTS="2")
         config = root / "sway.conf"
         config.write_text(f"""output HEADLESS-1 mode 640x480 position 0 0
 output HEADLESS-2 mode 640x480 position 640 0
@@ -191,7 +218,8 @@ exec stdbuf -o0 xev -geometry 480x350+0+0 -name 'Cantrip fixture' > {root}/xev.l
                     wayland = wait(lambda: next((p for p in root.glob("wayland-*") if p.is_socket()), None))
                     env["WAYLAND_DISPLAY"] = wayland.name
                     wait(lambda: (root / "xev.log").exists() and "MapNotify" in (root / "xev.log").read_text())
-                    exercise(helper, keyboard_fd, env, root)
+                    position_fixture(root, env)
+                    exercise(helper, keyboard_fd, env, root, verify_focus)
                 except Exception:
                     for name in ("sway.log", "xev.log"):
                         path = root / name
@@ -203,6 +231,8 @@ exec stdbuf -o0 xev -geometry 480x350+0+0 -name 'Cantrip fixture' > {root}/xev.l
     print("Wayland local capture, pointer, clipboard and input ownership checks passed.")
     if kernel_keyboard:
         print("ydotoold delivered the expected presses and releases through Linux uinput.")
+    if verify_focus:
+        print("The focused XWayland window received the Ctrl+C press and release.")
 
 
 if __name__ == "__main__":
@@ -210,5 +240,9 @@ if __name__ == "__main__":
     parser.add_argument("helper")
     parser.add_argument("--kernel-keyboard", nargs=2, metavar=("EVENT_DEVICE", "YDOTOOL_SOCKET"),
                         help="Use the fixture's own ydotoold and read its kernel event device.")
+    parser.add_argument("--verify-focus", action="store_true",
+                        help="Use libinput in the isolated seat and verify delivery in XWayland.")
     options = parser.parse_args()
-    main(options.helper, options.kernel_keyboard)
+    if options.verify_focus and not options.kernel_keyboard:
+        parser.error("--verify-focus requires --kernel-keyboard")
+    main(options.helper, options.kernel_keyboard, options.verify_focus)
