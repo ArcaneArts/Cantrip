@@ -1,6 +1,7 @@
 //! Authenticated Host desktop target discovery and protected fleet inventory.
 mod capture;
 mod effects;
+pub(crate) mod icons;
 mod launch;
 pub(crate) mod preview;
 pub(crate) mod process;
@@ -629,12 +630,15 @@ impl Inventory {
                 }));
                 return Ok(());
             }
-            Some("window") if self.windows.len() < 2_000 => json!({
-                "kind":"window","id":id,"application":nonempty(&target["application"]).unwrap_or("Application"),
-                "title":title.unwrap_or("Untitled window"),"iconKey":Value::Null,
-                "x":x,"y":y,"width":width,"height":height,
-                "focused":target["focused"] == true,"minimized":target["minimized"] == true
-            }),
+            Some("window") if self.windows.len() < 2_000 => {
+                let application = nonempty(&target["application"]).unwrap_or("Application");
+                json!({
+                    "kind":"window","id":id,"application":application,
+                    "title":title.unwrap_or("Untitled window"),"iconKey":icons::key(application),
+                    "x":x,"y":y,"width":width,"height":height,
+                    "focused":target["focused"] == true,"minimized":target["minimized"] == true
+                })
+            }
             Some("window" | "monitor") => {
                 self.truncated = true;
                 return Ok(());

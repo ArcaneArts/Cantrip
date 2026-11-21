@@ -71,6 +71,7 @@ struct Shared {
     profiles: profile::Profiles,
     capture: Option<crate::desktop_inventory::Captures>,
     guest_capture: Option<crate::desktop_inventory::preview::Previews>,
+    icons: Arc<crate::desktop_inventory::icons::Store>,
 }
 
 type Callback = oneshot::Sender<Result<Value>>;
@@ -132,6 +133,10 @@ impl Manager {
                 profiles: profile::Profiles::new(data_directory, environment),
                 capture: None,
                 guest_capture: None,
+                icons: Arc::new(crate::desktop_inventory::icons::Store::new(
+                    data_directory,
+                    environment,
+                )),
             }),
             stop: watch::channel(false).0,
         }

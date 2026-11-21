@@ -19,7 +19,7 @@ use image::{
 };
 use input::{Update, Viewer};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     future::{Future, pending},
     io::Cursor,
     pin::Pin,
@@ -55,6 +55,7 @@ struct Session<'a> {
     updates: mpsc::Sender<Update>,
     inputs: JoinSet<()>,
     inventories: JoinSet<InventoryRefresh>,
+    icon_jobs: JoinSet<IconReply>,
     last_inventory: Inventory,
     restore_armed: bool,
     restoring: bool,
@@ -71,6 +72,8 @@ struct Attachment {
     input: Option<Viewer>,
     closing: Option<watch::Receiver<bool>>,
     inventory_request: Option<u64>,
+    icon_requests: VecDeque<(FrameSource, Value)>,
+    resolving_icons: bool,
 }
 
 struct InventoryRefresh {
@@ -80,6 +83,15 @@ struct InventoryRefresh {
     sequence: u64,
     result: Result<Inventory>,
 }
+
+struct IconReply {
+    attachment: JsString,
+    route: Weak<Route>,
+    source: FrameSource,
+    icons: Vec<Value>,
+}
+
+const ICON_BATCHES_PER_VIEWER: usize = 32;
 
 impl Attachment {
     fn stop_input(&mut self) -> bool {
@@ -265,6 +277,10 @@ pub(super) async fn run(
             Some(Ok(refresh)) = active.inventories.join_next(), if !active.inventories.is_empty() => {
                 active.finish_inventory(refresh, capture.as_deref());
             }
+            Some(Ok(reply)) = active.icon_jobs.join_next(), if !active.icon_jobs.is_empty() => {
+                active.finish_icons(reply);
+                active.start_icon_jobs();
+            }
             result = async {
                 match &mut work {
                     Some(work) => work.await,
@@ -385,6 +401,7 @@ pub(super) async fn run(
     active.attachments.clear();
     active.inputs.shutdown().await;
     active.inventories.shutdown().await;
+    active.icon_jobs.shutdown().await;
     if let Some(capture) = capture {
         release(capture).await;
     }
@@ -442,6 +459,7 @@ impl<'a> Session<'a> {
             updates,
             inputs: JoinSet::new(),
             inventories: JoinSet::new(),
+            icon_jobs: JoinSet::new(),
             last_inventory: Inventory::default(),
             restore_armed: true,
             restoring: false,
@@ -506,6 +524,8 @@ impl<'a> Session<'a> {
                 input: None,
                 closing: None,
                 inventory_request: None,
+                icon_requests: VecDeque::new(),
+                resolving_icons: false,
             });
         self.publish(Some(&attachment));
         Ok(())
@@ -761,6 +781,9 @@ impl<'a> Session<'a> {
             Some("key") => checked("remoteDesktopViewerKeySchema", &message)?,
             Some("clipboard") => checked("remoteDesktopViewerClipboardSchema", &message)?,
             Some("refresh-targets") => Value::Null,
+            Some("request-target-icons") => {
+                checked("remoteDesktopViewerTargetIconsSchema", &message)?
+            }
             _ => bail!("Desktop control is unavailable."),
         };
         ensure!(
@@ -804,6 +827,16 @@ impl<'a> Session<'a> {
                 }
                 self.refresh_inventory(attachment, source, sequence, capture.map(Arc::as_ref))?;
             }
+            Some("request-target-icons") => {
+                ensure!(
+                    member.icon_requests.len() < ICON_BATCHES_PER_VIEWER,
+                    "Desktop icon requests are busy."
+                );
+                member
+                    .icon_requests
+                    .push_back((source.clone(), data["keys"].clone()));
+                self.start_icon_jobs();
+            }
             Some("input-cancel") => {
                 if member
                     .input
@@ -819,6 +852,68 @@ impl<'a> Session<'a> {
             _ => self.viewer_input(attachment, data, clear.len(), source)?,
         }
         Ok(())
+    }
+
+    fn start_icon_jobs(&mut self) {
+        for (attachment, member) in &mut self.attachments {
+            if self.icon_jobs.len() >= 4 {
+                break;
+            }
+            if member.resolving_icons {
+                continue;
+            }
+            let route = &member.route;
+            let Some((source, keys)) = std::iter::from_fn(|| member.icon_requests.pop_front())
+                .find(|(source, _)| route.receives(source, &self.shared.outgoing))
+            else {
+                continue;
+            };
+            member.resolving_icons = true;
+            let attachment = attachment.clone();
+            let route = Arc::downgrade(&member.route);
+            let scope = Scope::new(
+                member.route.epoch,
+                self.owner.clone(),
+                self.server.clone(),
+                self.surface.clone(),
+            );
+            // The assigned guest shares one monitor and has no Host icon list.
+            let captures = if self.guest.is_none() {
+                self.shared.capture.clone()
+            } else {
+                None
+            };
+            let store = self.shared.icons.clone();
+            self.icon_jobs.spawn(async move {
+                let inventory = match captures {
+                    Some(captures) => captures.inventory(scope).await.unwrap_or_default(),
+                    None => Inventory::default(),
+                };
+                let icons = store.resolve(&inventory, &keys).await;
+                IconReply {
+                    attachment,
+                    route,
+                    source,
+                    icons,
+                }
+            });
+        }
+    }
+
+    fn finish_icons(&mut self, reply: IconReply) {
+        let Some(member) = self.attachments.get_mut(&reply.attachment) else {
+            return;
+        };
+        if !Weak::ptr_eq(&reply.route, &Arc::downgrade(&member.route)) {
+            return;
+        }
+        member.resolving_icons = false;
+        if member.route.receives(&reply.source, &self.shared.outgoing) {
+            self.send_message(
+                Some(&reply.attachment),
+                &json!({"type":"desktop-target-icons","icons":reply.icons}),
+            );
+        }
     }
 
     fn refresh_inventory(

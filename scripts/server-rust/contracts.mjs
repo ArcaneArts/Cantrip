@@ -1171,6 +1171,7 @@ export const remoteSurfaceHttpContractRoots = [
   "remoteDesktopViewerClipboardSchema",
   "remoteDesktopViewerInputCancelSchema",
   "remoteDesktopViewerControlSchema",
+  "remoteDesktopViewerTargetIconsSchema",
 ];
 
 export const computerUseHttpContractRoots = [
@@ -1232,6 +1233,7 @@ const desktopClientKind = new Map([
   ["remoteDesktopViewerClipboardSchema", "clipboard"],
   ["remoteDesktopViewerInputCancelSchema", "input-cancel"],
   ["remoteDesktopViewerControlSchema", "desktop-control"],
+  ["remoteDesktopViewerTargetIconsSchema", "request-target-icons"],
 ]);
 
 // Resolve the actual source schemas, including their separate protocol modules.

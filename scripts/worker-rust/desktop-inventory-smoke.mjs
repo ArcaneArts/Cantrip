@@ -2,7 +2,7 @@
 // The real cantrip-cua executable uses its explicit deterministic backend.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { on, once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -65,6 +65,62 @@ const require = createRequire(
 const { WebSocketServer } = require("ws");
 const sharp = require("sharp");
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-desktop-inventory-"));
+const fixtureApplication = "Cantrip CUA fixture";
+const fixtureIconKey =
+  "desktop-app-v1-" +
+  createHash("sha256")
+    .update(
+      `v1\0${process.platform}\0${fixtureApplication.normalize("NFKC").toLocaleLowerCase()}`,
+    )
+    .digest("hex")
+    .slice(0, 40);
+const unrelatedIconKey = "desktop-app-v1-unrelated";
+const cache = path.join(root, "profile", "desktop", "application-icons");
+const png = await sharp({
+  create: { width: 64, height: 64, channels: 4, background: "#4274d4" },
+})
+  .png()
+  .toBuffer();
+await mkdir(cache, { recursive: true });
+await writeFile(path.join(cache, `${unrelatedIconKey}.png`), png);
+if (process.platform === "darwin") {
+  const contents = path.join(
+    root,
+    "Applications",
+    `${fixtureApplication}.app`,
+    "Contents",
+  );
+  const resources = path.join(contents, "Resources");
+  await mkdir(resources, { recursive: true });
+  await writeFile(
+    path.join(contents, "Info.plist"),
+    '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIconFile</key><string>FixtureIcon</string></dict></plist>',
+  );
+  const header = Buffer.alloc(16);
+  header.write("icns", 0);
+  header.writeUInt32BE(header.length + png.length, 4);
+  header.write("icp6", 8); // The 64-by-64 PNG representation.
+  header.writeUInt32BE(8 + png.length, 12);
+  await writeFile(
+    path.join(resources, "FixtureIcon.icns"),
+    Buffer.concat([header, png]),
+  );
+} else if (process.platform === "linux") {
+  const apps = path.join(root, "applications");
+  const icons = path.join(root, "icons", "hicolor", "scalable", "apps");
+  await mkdir(apps, { recursive: true });
+  await mkdir(icons, { recursive: true });
+  await writeFile(
+    path.join(apps, "fixture.desktop"),
+    `[Desktop Entry]\nName=${fixtureApplication}\nIcon=fixture\n`,
+  );
+  await writeFile(
+    path.join(icons, "fixture.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="#4274d4" d="M0 0h64v64H0z"/></svg>',
+  );
+} else {
+  await writeFile(path.join(cache, `${fixtureIconKey}.png`), png);
+}
 const serverId = randomUUID();
 const ownerId = randomUUID();
 const workerId = "desktop-inventory-fixture";
@@ -211,6 +267,7 @@ const child = spawn(
     stdio: ["pipe", "pipe", "pipe"],
     env: {
       HOME: root,
+      XDG_DATA_HOME: root,
       PATH: "",
       NO_COLOR: "1",
       CANTRIP_WORKER_ID: workerId,
@@ -371,7 +428,7 @@ try {
       id: "fake-window",
       application: "Cantrip CUA fixture",
       title: "CUA fixture window",
-      iconKey: null,
+      iconKey: fixtureIconKey,
       x: 24,
       y: 32,
       width: 160,
@@ -561,6 +618,41 @@ try {
     ...selected,
     title: inventory.windows[0].title,
   });
+  async function iconReply() {
+    let reply;
+    await untilFrame((channel, bytes) => {
+      if (channel !== "control") return false;
+      const message = remoteDesktopServerMessageSchema.parse(JSON.parse(bytes));
+      if (message.type !== "desktop-target-icons") return false;
+      reply = message.icons;
+      return true;
+    });
+    return reply;
+  }
+  await input({
+    type: "request-target-icons",
+    keys: [fixtureIconKey, fixtureIconKey, unrelatedIconKey],
+  });
+  await input({ type: "request-target-icons", keys: [fixtureIconKey] });
+  const [fixtureIcon, unrelatedIcon] = await iconReply();
+  assert.deepEqual(unrelatedIcon, {
+    key: unrelatedIconKey,
+    mimeType: "image/png",
+    data: null,
+  });
+  assert.equal(fixtureIcon.key, fixtureIconKey);
+  assert.equal(fixtureIcon.mimeType, "image/png");
+  const iconBytes = Buffer.from(fixtureIcon.data, "base64");
+  const raster = await sharp(iconBytes)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  assert.deepEqual([raster.info.width, raster.info.height], [64, 64]);
+  assert.deepEqual([...raster.data.subarray(0, 3)], [0x42, 0x74, 0xd4]);
+  assert.deepEqual(
+    await readFile(path.join(cache, `${fixtureIconKey}.png`)),
+    iconBytes,
+  );
+  assert.deepEqual(await iconReply(), [fixtureIcon]);
   let inputEpoch;
   await input({
     type: "viewport",
@@ -852,6 +944,13 @@ try {
       assert.equal(opened.active.id, opened.monitors[0].id);
       assert.notEqual(opened.active.id, "fake-monitor");
       assert.deepEqual(opened.windows, []);
+      await control({ type: "request-target-icons", keys: [fixtureIconKey] });
+      const icons = await until(
+        (value) => value.type === "desktop-target-icons",
+      );
+      assert.deepEqual(icons.icons, [
+        { key: fixtureIconKey, mimeType: "image/png", data: null },
+      ]);
       return {
         async take() {
           await control({ type: "desktop-control", operation: "take" });
