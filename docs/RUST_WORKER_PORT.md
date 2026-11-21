@@ -10430,3 +10430,25 @@ separate background-only application bundle exercised the system launcher.
 The assigned Cantrip OS guest viewer smoke and the Windows x64 worker
 compile check also passed. Host application launch was exercised
 locally on macOS. Application icons remain open.
+
+## 313. Restore icons in the Remote Desktop target picker
+
+Reference commit `837f6069fb4c77c11c4ce7cae1d448932b6acb9e` (#3476).
+
+Host inventory again advertises the archived icon key format. The worker
+resolves an icon batch against the current Host inventory and returns
+bounded PNGs through the requesting attachment's encrypted control
+stream. It retains the existing positive and negative cache paths.
+macOS reads application bundle icons, Windows extracts the associated
+icon of the matching process, and Linux resolves desktop-entry icons
+including PNG, SVG, and XPM. Linux SVG rendering disables image references
+outside the vector document. Assigned Cantrip OS viewers have no Host
+application inventory.
+
+The local macOS ARM64 viewer smoke verified native ICNS conversion,
+cache reuse, duplicate keys, a queued batch, and rejection of a cached
+key outside the inventory. An isolated Cantrip OS guest verified Host
+icon isolation. The production Linux resolver decoded SVG and XPM in a
+disposable local ARM64 container. The Windows x64 worker compile check
+and all 524 protocol tests passed. Full Linux worker and Windows icon
+runtime checks were outside this fixture.

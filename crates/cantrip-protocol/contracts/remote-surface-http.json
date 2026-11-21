@@ -28,7 +28,8 @@
     "remoteDesktopViewerKeySchema": 406,
     "remoteDesktopViewerClipboardSchema": 419,
     "remoteDesktopViewerInputCancelSchema": 428,
-    "remoteDesktopViewerControlSchema": 431
+    "remoteDesktopViewerControlSchema": 431,
+    "remoteDesktopViewerTargetIconsSchema": 437
   },
   "nodes": [
     {
@@ -2628,6 +2629,16 @@
         }
       ]
     },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    { "type": "object", "shape": { "type": 438, "keys": 439 }, "checks": [] },
+    { "type": "literal", "values": ["request-target-icons"], "checks": [] },
+    {
+      "type": "array",
+      "element": 371,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    }
   ]
 }
