@@ -63,6 +63,7 @@ pub struct Screen {
 
     attrs: crate::attrs::Attrs,
     saved_attrs: crate::attrs::Attrs,
+    pub(crate) charsets: crate::charset::Charsets,
 
     modes: u16,
     mouse_protocol_mode: MouseProtocolMode,
@@ -82,6 +83,7 @@ impl Screen {
 
             attrs: crate::attrs::Attrs::default(),
             saved_attrs: crate::attrs::Attrs::default(),
+            charsets: crate::charset::Charsets::default(),
 
             modes: 0,
             mouse_protocol_mode: MouseProtocolMode::default(),
@@ -295,6 +297,13 @@ impl Screen {
         crate::term::HideCursor::new(self.hide_cursor()).write_buf(contents);
         let prev_attrs = self.grid().write_contents_formatted(contents);
         self.attrs.write_escape_code_diff(contents, &prev_attrs);
+    }
+
+    /// Selects the live character sets in a terminal with default mappings.
+    /// Apply after drawing the already translated snapshot text.
+    #[must_use]
+    pub fn character_sets_formatted(&self) -> Vec<u8> {
+        self.charsets.formatted()
     }
 
     /// Returns the formatted visible contents of the terminal by row,
@@ -759,11 +768,13 @@ impl Screen {
     fn save_cursor(&mut self) {
         self.grid_mut().save_cursor();
         self.saved_attrs = self.attrs;
+        self.charsets.save(self.alternate_screen());
     }
 
     fn restore_cursor(&mut self) {
         self.grid_mut().restore_cursor();
         self.attrs = self.saved_attrs;
+        self.charsets.restore(self.alternate_screen());
     }
 
     fn set_mode(&mut self, mode: u16) {
@@ -1108,6 +1119,7 @@ impl Screen {
     }
 
     pub(crate) fn soft_reset(&mut self) {
+        self.charsets = crate::charset::Charsets::default();
         self.modes &= MODE_ALTERNATE_SCREEN;
         self.attrs = crate::attrs::Attrs::default();
         self.saved_attrs = self.attrs;

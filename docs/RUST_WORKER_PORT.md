@@ -10672,3 +10672,29 @@ passed, including both resize failure cases. Guest and Windows redraw
 runtime behavior were outside this fixture.
 
 Additional escape-sequence parity remains open.
+
+## 323. Preserve terminal character-set glyphs across reconnect
+
+Reference commit 32e0567850133b7474647b2b45d601a59e4acca4 (#3486).
+
+The native terminal parser tracks G0 through G3, applies the DEC graphics
+and national character mappings before storing terminal cells, and updates
+the effective mapping on locking shifts and cursor restore. A reconstructed
+snapshot starts with the default maps so it draws the translated cells as
+written. It then restores the live mapping and the other designated slots
+for subsequent output. The existing terminal message format is retained.
+
+A real macOS ARM64 shell sent DEC line drawing through G0 and G1 and a
+national replacement through G2. The prior worker replayed letters and
+punctuation where the reference terminal displayed box glyphs and a pound
+sign. The updated encrypted WorkerLink snapshot matched xterm.js, including
+the next unshifted text and a later switch to G2. Eleven local parser tests
+passed, including split input, cursor restore, and reset. The shell fixture
+also exercised the existing terminal paths.
+
+The archived xterm serializer replayed an OSC 8 link label with underline
+and omitted its destination. Native replay still needs parity for that
+underline. Saving and restoring the full hidden terminal cursor state
+across a reconstructed attachment remains open.
+
+[xterm.js 6.0 character mappings](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/data/Charsets.ts)

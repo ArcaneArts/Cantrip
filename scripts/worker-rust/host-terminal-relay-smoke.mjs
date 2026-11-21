@@ -203,6 +203,62 @@ async function verifyInputModes(view, reattach) {
   }
 }
 
+async function verifyCharacterSets(view, reattach) {
+  const { Terminal } = createRequire(
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
+  )("@xterm/headless");
+  const token = randomUUID();
+  const clear = "\x1b[H\x1b[2J";
+  await view.input(
+    "/bin/stty -echo; printf '\\033[H\\033[2J\\033[3J\\033(0lqk\\033(B\\n\\033)0\\016x\\033*A\\033n#\\017\\n%s%s\\016' charset-ready- '" +
+      token +
+      "'; IFS= read -r line; printf '\\nmqqj\\033n#\\017%s%s\\n' charset-live- '" +
+      token +
+      "'; IFS= read -r line; printf '\\017\\033(B\\033)B\\033*B%s%s\\n' charset-reset- '" +
+      token +
+      "'; /bin/stty echo\r",
+  );
+  const raw = await view.read(new RegExp("charset-ready-" + token + "\\x0e"));
+  const start = raw.lastIndexOf(clear);
+  assert.notEqual(start, -1);
+
+  const attached = await reattach();
+  const options = { cols: 113, rows: 43, allowProposedApi: true };
+  const live = new Terminal(options);
+  const replay = new Terminal(options);
+  const write = (term, output) =>
+    new Promise((resolve) => term.write(output, resolve));
+  const lines = (term) => {
+    const buffer = term.buffer.active;
+    return Array.from({ length: 4 }, (_, row) =>
+      buffer.getLine(buffer.baseY + row).translateToString(true),
+    );
+  };
+  let pendingReads = 2;
+  try {
+    assert.equal(attached.hydration.format, "canonical-xterm");
+    await write(live, raw.slice(start));
+    await write(replay, attached.replay);
+    assert.deepEqual(lines(live).slice(0, 2), ["┌─┐", "│£"]);
+    assert.deepEqual(lines(replay), lines(live));
+
+    await attached.input("\r");
+    pendingReads--;
+    const output = await attached.read(new RegExp("charset-live-" + token));
+    const continuation = output.slice(attached.replay.length);
+    await write(live, continuation);
+    await write(replay, continuation);
+    assert.equal(lines(live)[3], "└──┘£charset-live-" + token);
+    assert.deepEqual(lines(replay), lines(live));
+  } finally {
+    for (let i = 0; i < pendingReads; i++) await view.input("\r");
+    await view.read(new RegExp("charset-reset-" + token));
+    live.dispose();
+    replay.dispose();
+    await attached.close();
+  }
+}
+
 async function verifyAlternateReplay(view, reattach, eventually, checkout) {
   const { Terminal } = createRequire(
     new URL("../../tests/reference-node-worker/package.json", import.meta.url),
@@ -568,6 +624,7 @@ export async function verifyHostTerminal({
     assert.equal(linkExit.hydration.snapshotCharacters, linkExit.replay.length);
     await verifyNormalReflow(linkExit, attachWorkerLink, eventually, checkout);
     await verifyInputModes(linkExit, attachWorkerLink);
+    await verifyCharacterSets(linkExit, attachWorkerLink);
     await verifyAlternateReplay(
       linkExit,
       attachWorkerLink,
