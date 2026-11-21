@@ -237,7 +237,7 @@ async fn run(
                         retire(&mut process).await;
                         continue;
                     }
-                    reply = operation.execute(&mut process, &binary, &encryption, &outgoing) => reply,
+                    reply = operation.execute(&mut process, Some(&binary), &encryption, &outgoing) => reply,
                 };
                 if result.is_err() {
                     retire(&mut process).await;

@@ -1,4 +1,7 @@
 //! Desktop carriers pinned to privately recorded Cantrip OS placements.
+mod capture;
+pub(super) use capture::CaptureConnection;
+
 use super::{Request, native};
 use crate::{
     cantrip_os::carrier::Transport,
@@ -341,20 +344,9 @@ impl Group {
             reason = signal.cancelled() => return Err(reason.into()),
             state = self.state.lock() => state,
         };
-        let context = self.open_context(signal).await?;
-        if state.carrier.as_mut().is_some_and(|carrier| {
-            carrier.context != context
-                || carrier
-                    .helper
-                    .as_mut()
-                    .is_none_or(|helper| helper.process.exited())
-        }) && let Some(carrier) = state.carrier.take()
-        {
-            carrier.close(&self.transport).await;
-        }
-        if state.carrier.is_none() {
-            state.carrier = Some(self.connect_context(context.clone(), signal).await?);
-        }
+        let context = self.open_context(signal, None).await?;
+        let generation = context["desktop_generation"].clone();
+        self.install_context(&mut state, context, signal).await?;
         let process = &mut state
             .carrier
             .as_mut()
@@ -380,28 +372,67 @@ impl Group {
             targets.iter().any(|target| target["kind"] == "monitor"),
             "The assigned Linux display is unavailable."
         );
-        Ok(json!({"desktopGeneration":context["desktop_generation"]}))
+        Ok(json!({"desktopGeneration":generation}))
     }
 
     async fn connect(&self, signal: &Signal) -> Result<Carrier> {
-        let context = self.open_context(signal).await?;
+        let context = self.open_context(signal, None).await?;
         self.connect_context(context, signal).await
     }
 
-    async fn open_context(&self, signal: &Signal) -> Result<Value> {
+    async fn install_context(
+        &self,
+        state: &mut State,
+        context: Value,
+        signal: &Signal,
+    ) -> Result<()> {
+        if state.carrier.as_mut().is_some_and(|carrier| {
+            carrier.context != context
+                || carrier
+                    .helper
+                    .as_mut()
+                    .is_none_or(|helper| helper.process.exited())
+        }) && let Some(carrier) = state.carrier.take()
+        {
+            carrier.close(&self.transport).await;
+        }
+        if state.carrier.is_none() {
+            state.carrier = Some(self.connect_context(context, signal).await?);
+        }
+        Ok(())
+    }
+
+    async fn open_context(&self, signal: &Signal, generation: Option<&str>) -> Result<Value> {
         let workspace = self.placement["workspace_id"]
             .as_str()
             .context("Missing guest workspace.")?;
         let lifetime = Scope::default();
-        let expected = self.placement.stringify();
+        let mut expected = self.placement.clone();
+        if let Some(generation) = generation {
+            expected["desktop_generation"] = json!(generation);
+        }
+        let expected = expected.stringify();
         let arguments = ["open", workspace, "--expect-placement", &expected];
         let control = self.transport.remote_control(&arguments, &lifetime);
         let context = tokio::select! {
             biased;
             _ = signal.cancelled() => return Err(native::cancelled("not-sent")),
-            receipt = control => receipt.map_err(|_| native::reject("unavailable", "The assigned Cantrip OS desktop could not be opened."))?,
+            receipt = control => receipt.map_err(|_| native::reject("unavailable", if generation.is_some() {
+                "The captured Linux desktop is unavailable. Open a new view."
+            } else {
+                "The assigned Cantrip OS desktop could not be opened."
+            }))?,
         };
         validate_context(&self.placement, &context)?;
+        if let Some(generation) = generation {
+            ensure!(
+                context["desktop_generation"] == generation,
+                native::reject(
+                    "ownership-mismatch",
+                    "The captured Linux desktop generation changed."
+                )
+            );
+        }
         Ok(context)
     }
 

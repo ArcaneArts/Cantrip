@@ -81,6 +81,7 @@ const { values } = parseArgs({
     "cua-agent": { type: "string" },
     "cua-guest": { type: "string" },
     "os-desktop-prepare": { type: "boolean" },
+    "os-desktop-view": { type: "boolean" },
     "guest-image": { type: "string" },
     "cua-console": { type: "string" },
     "cua-recovered": { type: "string" },
@@ -132,7 +133,8 @@ const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const cuaConsole = values["cua-console"];
 const guestCua = values["cua-guest"];
-const prepareGuestDesktop = values["os-desktop-prepare"];
+const prepareGuestDesktop =
+  values["os-desktop-prepare"] || values["os-desktop-view"];
 const repositoryKey =
   guestCua || prepareGuestDesktop ? key("repository-content") : null;
 const recoveredTaskGoalCua = values["cua-task-goal-recovered"];
@@ -3114,6 +3116,7 @@ try {
       labelKey,
       repositoryKey,
       surfaceKey: consoleStateKey,
+      origin: values["os-desktop-view"] ? server.origin : undefined,
     });
   } else if (values["scratch-files"]) {
     const { verifyStandaloneChatFiles } =

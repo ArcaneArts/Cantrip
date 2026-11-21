@@ -175,6 +175,29 @@ impl Previews {
         *self.0.outgoing.stream_epoch().borrow()
     }
 
+    pub(crate) async fn open_guest_capture(
+        &self,
+        scope: super::Scope,
+        execution: &Value,
+        generation: String,
+        target: Value,
+    ) -> Result<super::Capture> {
+        self.0
+            .guests
+            .capture(
+                guest::CaptureConnection {
+                    scope,
+                    generation,
+                    encryption: self.0.encryption.clone(),
+                    outgoing: self.0.outgoing.clone(),
+                    stop: self.0.running.clone(),
+                },
+                execution,
+                target,
+            )
+            .await
+    }
+
     pub(crate) async fn execute(
         &self,
         command: &Value,
