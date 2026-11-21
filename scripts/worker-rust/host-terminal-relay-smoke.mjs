@@ -97,6 +97,76 @@ async function verifyNormalReflow(view, reattach, eventually, checkout) {
   }
 }
 
+async function verifyInputModes(view, reattach) {
+  const { Terminal } = createRequire(
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
+  )("@xterm/headless");
+  const token = randomUUID();
+  const cleared = "\x1b[H\x1b[2J";
+  await view.input(
+    "/bin/stty -echo; printf '\\033[H\\033[2J\\033[3J%s%s' modes-ready- '" +
+      token +
+      "'; printf '\\033[2;8r\\033[?6h\\033[3;4Habcde\\033[3;5H\\033[4h\\033[?45;1004;66h\\033[?7l'; IFS= read -r line; printf 'X\\033[4;6HZ\\033[8;1H%s%s' modes-live- '" +
+      token +
+      "'; IFS= read -r line; printf '\\033[4l\\033[?6;45;1004;66l\\033[?7h\\033[r%s%s\\n' modes-reset- '" +
+      token +
+      "'; /bin/stty echo\r",
+  );
+  const raw = await view.read(
+    new RegExp("modes-ready-" + token + "[\\s\\S]*\\x1b\\[\\?7l"),
+  );
+  const start = raw.lastIndexOf(cleared);
+  assert.notEqual(start, -1);
+
+  const attached = await reattach();
+  const options = { cols: 113, rows: 43, allowProposedApi: true };
+  const live = new Terminal(options);
+  const replay = new Terminal(options);
+  const write = (term, output) =>
+    new Promise((resolve) => term.write(output, resolve));
+  const viewport = (term) => {
+    const buffer = term.buffer.active;
+    return {
+      cursor: [buffer.cursorX, buffer.cursorY],
+      text: Array.from({ length: options.rows }, (_, row) =>
+        buffer.getLine(buffer.baseY + row).translateToString(true),
+      ),
+    };
+  };
+
+  let pendingReads = 2;
+  try {
+    await write(live, raw.slice(start));
+    assert.equal(live.modes.insertMode, true);
+    assert.equal(live.modes.wraparoundMode, false);
+    assert.equal(live.modes.reverseWraparoundMode, true);
+    assert.equal(live.modes.sendFocusMode, true);
+    assert.equal(live.modes.applicationKeypadMode, true);
+    assert.equal(live.modes.originMode, true);
+    // Retained viewers may still have modes from an earlier attachment.
+    await write(replay, "\x1b[3;5r\x1b[?6h\x1b[4h\x1b[?7l\x1b[?1003;1006h");
+    await write(replay, attached.replay);
+    assert.deepEqual(replay.modes, live.modes);
+    assert.deepEqual(viewport(replay), viewport(live));
+
+    await attached.input("\r");
+    pendingReads--;
+    const output = await attached.read(new RegExp("modes-live-" + token));
+    const continuation = output.slice(attached.replay.length);
+    await write(live, continuation);
+    await write(replay, continuation);
+    assert.equal(viewport(live).text[3], "   aXbcde");
+    assert.equal(viewport(live).text[7], "modes-live-" + token);
+    assert.deepEqual(viewport(replay), viewport(live));
+  } finally {
+    for (let i = 0; i < pendingReads; i++) await view.input("\r");
+    await view.read(new RegExp("modes-reset-" + token));
+    live.dispose();
+    replay.dispose();
+    await attached.close();
+  }
+}
+
 async function verifyAlternateReplay(view, reattach, eventually, checkout) {
   const { Terminal } = createRequire(
     new URL("../../tests/reference-node-worker/package.json", import.meta.url),
@@ -384,6 +454,7 @@ export async function verifyHostTerminal({
     assert.equal(linkExit.hydration.cols, 113);
     assert.equal(linkExit.hydration.snapshotCharacters, linkExit.replay.length);
     await verifyNormalReflow(linkExit, attachWorkerLink, eventually, checkout);
+    await verifyInputModes(linkExit, attachWorkerLink);
     await verifyAlternateReplay(
       linkExit,
       attachWorkerLink,
