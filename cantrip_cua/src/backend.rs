@@ -109,6 +109,22 @@ pub trait CaptureBackend: Send {
             "Surface-directed input is unavailable; no input was posted.",
         ))
     }
+    /// Copy text from the selected window as one viewer operation.
+    /// A backend may dispatch a paired key press using the two reserved sequences.
+    fn copy_window_text(
+        &mut self,
+        _participant: &str,
+        _target: &Target,
+        _position: crate::target::Point,
+        _sequence: u64,
+        _cancel: &Cancellation,
+    ) -> Result<Option<String>> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Window clipboard access is unavailable.",
+        ))
+    }
+
     fn present_interaction_cursors(
         &mut self,
         _participants: Vec<cantrip_interaction::presentation::CursorPresentation<Target>>,

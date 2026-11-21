@@ -123,35 +123,55 @@ impl Viewer {
                 loop {
                     let command = commands.next().await;
                     let copy = command.value["operation"] == "copy";
-                    let events = if copy {
-                        vec![
-                            InputEvent::KeyDown {
-                                key: "C".into(),
-                                modifiers: vec![Modifier::Control],
-                                repeat: false,
-                            },
-                            InputEvent::KeyUp { key: "C".into() },
-                        ]
-                    } else {
-                        state.translate(&command).map_err(|_| FAILED.to_owned())?
-                    };
-                    for event in events {
+                    let text = if copy && control.is_none() {
                         if !allowed() {
                             return Ok(());
                         }
-                        event.validate().map_err(|_| FAILED.to_owned())?;
-                        state.native_sequence += 1;
+                        state.native_sequence += 2;
                         participant
-                            .input(state.native_sequence, &event)
+                            .copy_window_text(state.native_sequence)
                             .await
-                            .map_err(|_| FAILED.to_owned())?;
-                    }
-                    if copy {
-                        tokio::time::sleep(Duration::from_millis(60)).await;
-                        let text = participant
-                            .clipboard()
-                            .await
-                            .map_err(|_| FAILED.to_owned())?;
+                            .map_err(|_| FAILED.to_owned())?
+                    } else {
+                        let events = if copy {
+                            vec![
+                                InputEvent::KeyDown {
+                                    key: "C".into(),
+                                    modifiers: vec![Modifier::Control],
+                                    repeat: false,
+                                },
+                                InputEvent::KeyUp { key: "C".into() },
+                            ]
+                        } else {
+                            state.translate(&command).map_err(|_| FAILED.to_owned())?
+                        };
+                        for event in events {
+                            if !allowed() {
+                                return Ok(());
+                            }
+                            event.validate().map_err(|_| FAILED.to_owned())?;
+                            state.native_sequence += 1;
+                            participant
+                                .input(state.native_sequence, &event)
+                                .await
+                                .map_err(|_| FAILED.to_owned())?;
+                        }
+                        if copy {
+                            tokio::time::sleep(Duration::from_millis(60)).await;
+                            Some(
+                                participant
+                                    .clipboard()
+                                    .await
+                                    .map_err(|_| FAILED.to_owned())?,
+                            )
+                        } else {
+                            None
+                        }
+                    };
+                    if let Some(text) = text {
+                        if !allowed() {
+                            return Ok(());
+                        }
                         updates
                             .send(Update {
                                 attachment: attachment.clone(),

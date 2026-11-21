@@ -1,4 +1,5 @@
 //! Capture the local user's X11 session with window and display identities.
+mod clipboard;
 pub(super) mod window;
 
 use super::{capture, failure, gestures, input, lock};
@@ -11,7 +12,7 @@ use crate::{
     input_job::{InputProgress, InputWork},
     target::{Bounds, MAX_SEQUENCE, Point, Target, TargetKind},
 };
-use cantrip_interaction::input::InputEvent;
+use cantrip_interaction::input::{InputEvent, Modifier};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
@@ -27,6 +28,7 @@ const INVENTORY_LIMIT: usize = 2_000;
 type Windows = HashMap<u32, (window::Identity, u64)>;
 
 pub(super) struct Host {
+    display: String,
     connection: Arc<RustConnection>,
     screen: usize,
     atoms: window::Atoms,
@@ -54,6 +56,7 @@ impl Host {
             .max(1);
         let connection = Arc::new(connection);
         Ok(Self {
+            display,
             input: Arc::new(Mutex::new(input::host(connection.clone(), screen))),
             connection,
             screen,
@@ -326,6 +329,44 @@ impl CaptureBackend for Host {
 
     fn native_input(&self) -> bool {
         true
+    }
+
+    fn copy_window_text(
+        &mut self,
+        session: &str,
+        target: &Target,
+        position: Point,
+        sequence: u64,
+        cancel: &Cancellation,
+    ) -> Result<Option<String>> {
+        let window = self.current_window(target, cancel)?;
+        let clipboard = clipboard::Selection::subscribe(&self.display)?;
+        self.interaction_input(
+            session,
+            target,
+            position,
+            sequence - 1,
+            InputEvent::KeyDown {
+                key: "C".into(),
+                modifiers: vec![Modifier::Control],
+                repeat: false,
+            },
+            cancel,
+        )?;
+        if let Err(error) = self.interaction_input(
+            session,
+            target,
+            position,
+            sequence,
+            InputEvent::KeyUp { key: "C".into() },
+            cancel,
+        ) {
+            let _ = self.close_input(session);
+            return Err(error);
+        }
+        let text = clipboard.read(window.id, cancel)?;
+        self.current_window(target, cancel)?;
+        Ok(text)
     }
 
     fn interaction_input(

@@ -865,6 +865,228 @@ fn invalid_operation_is_bounded_and_does_not_poison_connection() {
     child.stop(true);
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires an explicitly selected disposable Xvfb display"]
+fn linux_host_x11_clipboard_accepts_only_a_fresh_copy_from_the_selected_client() {
+    use cantrip_cua::error::ErrorCode;
+    use x11rb::{
+        CURRENT_TIME, NONE,
+        connection::Connection,
+        protocol::{
+            Event,
+            xproto::{
+                ConnectionExt, CreateWindowAux, EventMask, InputFocus, KeyButMask, PropMode,
+                Property, SELECTION_NOTIFY_EVENT, SelectionNotifyEvent, WindowClass,
+            },
+        },
+        rust_connection::RustConnection,
+        wrapper::ConnectionExt as _,
+    };
+    let display = std::env::var("CANTRIP_CUA_HOST_X11_TEST_DISPLAY").unwrap();
+    let (selected, screen) = x11rb::connect(Some(&display)).unwrap();
+    let (foreign, _) = x11rb::connect(Some(&display)).unwrap();
+    let root = &selected.setup().roots[screen];
+    let create = |connection: &RustConnection, events| {
+        let window = connection.generate_id().unwrap();
+        connection
+            .create_window(
+                root.root_depth,
+                window,
+                root.root,
+                0,
+                0,
+                100,
+                100,
+                0,
+                WindowClass::INPUT_OUTPUT,
+                root.root_visual,
+                &CreateWindowAux::new().event_mask(events),
+            )
+            .unwrap()
+            .check()
+            .unwrap();
+        window
+    };
+    let window = create(&selected, EventMask::KEY_PRESS | EventMask::KEY_RELEASE);
+    let owner = create(&selected, EventMask::NO_EVENT);
+    let other = create(&foreign, EventMask::KEY_PRESS);
+    selected.map_window(window).unwrap().check().unwrap();
+    foreign.map_window(other).unwrap().check().unwrap();
+    foreign
+        .set_input_focus(InputFocus::PARENT, other, CURRENT_TIME)
+        .unwrap()
+        .check()
+        .unwrap();
+    let atom = |name| {
+        selected
+            .intern_atom(false, name)
+            .unwrap()
+            .reply()
+            .unwrap()
+            .atom
+    };
+    let clipboard = atom(b"CLIPBOARD");
+    let incr = atom(b"INCR");
+    let own = |connection: &RustConnection, owner| {
+        connection
+            .set_selection_owner(owner, clipboard, CURRENT_TIME)
+            .unwrap()
+            .check()
+            .unwrap();
+    };
+    own(&foreign, other);
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_cantrip-cua"));
+    command
+        .env("DISPLAY", &display)
+        .env("XDG_SESSION_TYPE", "x11")
+        .env("PATH", "");
+    let mut child = Process::spawn(command);
+    let (inventory, _) = child.call(json!({"operation":"targets.list"}));
+    let id = format!("x11-window-{window}");
+    let target = inventory["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|target| target["id"] == id)
+        .unwrap();
+    let binding = json!({"workerId":"w","surfaceId":"s","attachmentId":"a","participantId":"p"});
+    let (participant, _) = child.call(json!({"operation":"interaction.request","request":{"type":"open","binding":binding,"targetId":id,"targetGeneration":target["generation"]}}));
+    let copy = |sequence| json!({"operation":"interaction.request","request":{"type":"clipboardCopy","binding":binding,"handle":participant["handle"],"sequence":sequence}});
+    let mut forged = copy(2);
+    forged["request"]["binding"]["attachmentId"] = json!("other");
+    let request = child.send(forged);
+    assert!(matches!(child.response(request).0, Outcome::Error { .. }));
+    let request = child.send(json!({"operation":"interaction.request","request":{"type":"clipboardRead","binding":binding,"handle":participant["handle"]}}));
+    assert!(
+        matches!(child.response(request).0, Outcome::Error { error } if error.code == ErrorCode::Unsupported)
+    );
+
+    let chunks = [" first ", "λ🚋\n", ""];
+    for (sequence, expected) in [(2, None), (4, Some(chunks.concat())), (6, None)] {
+        let request = child.send(copy(sequence));
+        let (result, presses, releases, conversions) = std::thread::scope(|scope| {
+            let reply = scope.spawn(|| child.response(request).0);
+            let mut presses = 0;
+            let mut releases = 0;
+            let mut copied_key = None;
+            let mut conversions = 0;
+            let mut transfer = None;
+            let mut chunks = chunks.into_iter();
+            while !reply.is_finished() {
+                while let Some(event) = selected.poll_for_event().unwrap() {
+                    match event {
+                        Event::KeyPress(e) if e.state.contains(KeyButMask::CONTROL) => {
+                            assert_eq!(e.event, window);
+                            presses += 1;
+                            copied_key = Some(e.detail);
+                            if sequence == 2 {
+                                own(&foreign, other);
+                            } else if sequence == 4 {
+                                own(&selected, owner);
+                            }
+                        }
+                        Event::KeyRelease(e) if Some(e.detail) == copied_key => {
+                            assert_eq!(e.event, window);
+                            releases += 1;
+                        }
+                        Event::SelectionRequest(e) => {
+                            assert_eq!(e.owner, owner);
+                            assert_eq!(e.selection, clipboard);
+                            conversions += 1;
+                            selected
+                                .change_window_attributes(
+                                    e.requestor,
+                                    &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
+                                        .event_mask(EventMask::PROPERTY_CHANGE),
+                                )
+                                .unwrap()
+                                .check()
+                                .unwrap();
+                            selected
+                                .change_property32(
+                                    PropMode::REPLACE,
+                                    e.requestor,
+                                    e.property,
+                                    incr,
+                                    &[14],
+                                )
+                                .unwrap()
+                                .check()
+                                .unwrap();
+                            selected
+                                .send_event(
+                                    false,
+                                    e.requestor,
+                                    EventMask::NO_EVENT,
+                                    SelectionNotifyEvent {
+                                        response_type: SELECTION_NOTIFY_EVENT,
+                                        sequence: 0,
+                                        time: e.time,
+                                        requestor: e.requestor,
+                                        selection: e.selection,
+                                        target: e.target,
+                                        property: e.property,
+                                    },
+                                )
+                                .unwrap()
+                                .check()
+                                .unwrap();
+                            transfer = Some(e);
+                        }
+                        Event::PropertyNotify(e) if e.state == Property::DELETE => {
+                            let transfer = transfer.unwrap();
+                            assert_eq!((e.window, e.atom), (transfer.requestor, transfer.property));
+                            if let Some(chunk) = chunks.next() {
+                                selected
+                                    .change_property8(
+                                        PropMode::REPLACE,
+                                        e.window,
+                                        e.atom,
+                                        transfer.target,
+                                        chunk.as_bytes(),
+                                    )
+                                    .unwrap()
+                                    .check()
+                                    .unwrap();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                while let Some(event) = foreign.poll_for_event().unwrap() {
+                    assert!(!matches!(
+                        event,
+                        Event::SelectionRequest(_) | Event::KeyPress(_)
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            (reply.join().unwrap(), presses, releases, conversions)
+        });
+        assert_eq!((presses, releases), (1, 1));
+        assert_eq!(conversions, usize::from(expected.is_some()));
+        assert_eq!(
+            result,
+            Outcome::Ok {
+                data: json!({"handle":participant["handle"],"sequence":sequence,"text":expected})
+            }
+        );
+    }
+    let request = child.send(copy(6));
+    assert!(
+        matches!(child.response(request).0, Outcome::Error { error } if error.code == ErrorCode::InvalidRequest)
+    );
+    assert_eq!(
+        selected.get_input_focus().unwrap().reply().unwrap().focus,
+        other
+    );
+    // Drop the fixture's selection before the display is used by another test.
+    own(&selected, NONE);
+    child.stop(true);
+}
+
 #[test]
 fn unknown_cancellation_does_not_cancel_a_future_request() {
     let mut child = Process::start(true);

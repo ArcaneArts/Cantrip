@@ -411,6 +411,10 @@ impl InputBackend for Native {
     }
 }
 
+pub(super) fn copy_recipient(window: &Window) -> Result<HWND> {
+    Ok(Recipient::keyboard(window)?.hwnd as HWND)
+}
+
 impl Recipient {
     fn for_window(window: &Window, hwnd: HWND) -> Result<Self> {
         let mut process = 0;

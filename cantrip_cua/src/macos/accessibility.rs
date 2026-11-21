@@ -686,6 +686,103 @@ pub(super) fn activate_for_click(
     }
 }
 
+fn window_number(window: &Owned) -> Option<u32> {
+    type WindowId = unsafe extern "C" fn(Ref, *mut u32) -> i32;
+    unsafe extern "C" {
+        fn dlsym(handle: *mut c_void, name: *const std::ffi::c_char) -> *mut c_void;
+    }
+    static GET_WINDOW: OnceLock<Option<WindowId>> = OnceLock::new();
+    let get = GET_WINDOW
+        .get_or_init(|| unsafe {
+            let symbol = dlsym((-2_isize) as *mut c_void, c"_AXUIElementGetWindow".as_ptr());
+            (!symbol.is_null()).then(|| std::mem::transmute::<*mut c_void, WindowId>(symbol))
+        })
+        .as_ref()?;
+    let mut id = 0;
+    (unsafe { get(window.0, &mut id) } == 0 && id != 0).then_some(id)
+}
+
+/// Read the selection exported by the focused editor of the attached window.
+/// This reads the app's AX element without changing focus or using the general pasteboard.
+pub(super) fn copy_window_text(target: &Target, cancel: &Cancellation) -> Result<Option<String>> {
+    cancel.check()?;
+    let pid = target
+        .process_id
+        .and_then(|pid| i32::try_from(pid).ok())
+        .ok_or_else(stale)?;
+    let number = target
+        .id
+        .strip_prefix("macos-window-")
+        .and_then(|id| id.parse::<u32>().ok())
+        .ok_or_else(stale)?;
+    let app = Owned::take(unsafe { AXUIElementCreateApplication(pid) })?;
+    read_result(unsafe { AXUIElementSetMessagingTimeout(app.0, 0.2) })?;
+    app.request_enhanced_ui();
+    let Ok(element) = app.attr("AXFocusedUIElement") else {
+        return Ok(None);
+    };
+    if !element.is(unsafe { AXUIElementGetTypeID() }) {
+        return Ok(None);
+    }
+    read_result(unsafe { AXUIElementSetMessagingTimeout(element.0, 0.2) })?;
+    let Ok(window) = element.attr("AXWindow") else {
+        return Ok(None);
+    };
+    if !window.is(unsafe { AXUIElementGetTypeID() }) {
+        return Ok(None);
+    }
+    let owns_window = match window_number(&window) {
+        Some(id) => id == number,
+        None => Accessibility::window(target, cancel).is_ok_and(|owner| window.same(&owner)),
+    };
+    if !owns_window
+        || element
+            .attr("AXSubrole")
+            .ok()
+            .and_then(|role| role.text(64))
+            .as_deref()
+            == Some("AXSecureTextField")
+    {
+        return Ok(None);
+    }
+    let Ok(selection) = element.attr("AXSelectedText") else {
+        return Ok(None);
+    };
+    if !selection.is(unsafe { CFStringGetTypeID() })
+        || !app
+            .attr("AXFocusedUIElement")
+            .is_ok_and(|focused| element.same(&focused))
+        || !element
+            .attr("AXWindow")
+            .is_ok_and(|current| window.same(&current))
+    {
+        return Ok(None);
+    }
+    let length = unsafe { CFStringGetLength(selection.0) };
+    if length <= 0 {
+        return Ok(None);
+    }
+    if length as usize > crate::interaction::MAX_HOST_CLIPBOARD_UNITS {
+        return Err(CuaError::new(
+            ErrorCode::Capacity,
+            "Clipboard text exceeds the supported limit.",
+        ));
+    }
+    let mut units = vec![0; length as usize];
+    unsafe {
+        CFStringGetCharacters(
+            selection.0,
+            Range {
+                location: 0,
+                length,
+            },
+            units.as_mut_ptr(),
+        );
+    }
+    cancel.check()?;
+    Ok(Some(String::from_utf16_lossy(&units)))
+}
+
 /// Read-only focus samples. AX errors are unavailable evidence, not input gates.
 pub(super) struct FocusSample {
     pid: Option<u32>,
@@ -698,21 +795,7 @@ impl FocusSample {
             let app = Owned::take(unsafe { AXUIElementCreateApplication(pid as i32) }).ok()?;
             read_result(unsafe { AXUIElementSetMessagingTimeout(app.0, 0.05) }).ok()?;
             let focused = app.attr("AXFocusedWindow").ok()?;
-            type WindowId = unsafe extern "C" fn(Ref, *mut u32) -> i32;
-            unsafe extern "C" {
-                fn dlsym(handle: *mut c_void, name: *const std::ffi::c_char) -> *mut c_void;
-            }
-            static GET_WINDOW: OnceLock<Option<WindowId>> = OnceLock::new();
-            let get = GET_WINDOW
-                .get_or_init(|| unsafe {
-                    let symbol =
-                        dlsym((-2_isize) as *mut c_void, c"_AXUIElementGetWindow".as_ptr());
-                    (!symbol.is_null())
-                        .then(|| std::mem::transmute::<*mut c_void, WindowId>(symbol))
-                })
-                .as_ref()?;
-            let mut id = 0;
-            (unsafe { get(focused.0, &mut id) } == 0 && id != 0).then_some(id)
+            window_number(&focused)
         });
         Self { pid, window }
     }
