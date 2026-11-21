@@ -1,4 +1,4 @@
-import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
@@ -13,7 +13,10 @@ import {
   packageNativeWorker,
   verifyNativeWorkerBin,
 } from "./package-worker-rust.mjs";
-import { configureDesktopServer } from "./desktop-server-runtime.mjs";
+import {
+  configureDesktopServer,
+  replaceDesktopRuntime,
+} from "./desktop-server-runtime.mjs";
 import { verifyPackagedWorkerMcp } from "./verify-packaged-worker-mcp.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -179,17 +182,15 @@ async function packageStandalone(selection) {
   if (selection !== "server") await assembleNativeWorker(workerArtifact);
 }
 
-async function packageDesktopRuntime() {
-  await rm(runtime, { force: true, recursive: true });
-  await mkdir(runtime, { recursive: true });
-  await writeFile(path.join(runtime, ".gitkeep"), "");
-  const workerRoot = path.join(runtime, "worker");
+async function assembleDesktopRuntime(destination) {
+  await writeFile(path.join(destination, ".gitkeep"), "");
+  const workerRoot = path.join(destination, "worker");
   if (fromArtifacts) {
     const serverArtifact = path.join(
       artifacts,
       `cantrip-server-${packageTarget.id}`,
     );
-    await cp(serverArtifact, path.join(runtime, "server"), {
+    await cp(serverArtifact, path.join(destination, "server"), {
       recursive: true,
       dereference: true,
     });
@@ -208,12 +209,12 @@ async function packageDesktopRuntime() {
   } else {
     await packageNativeServer({
       target: packageTarget.id,
-      output: path.join(runtime, "server"),
+      output: path.join(destination, "server"),
       postgresBin,
     });
     await assembleNativeWorker(workerRoot, { standalone: false });
   }
-  await configureDesktopServer(path.join(runtime, "server"));
+  await configureDesktopServer(path.join(destination, "server"));
 }
 
 if (fromArtifacts && selection !== "desktop-runtime") {
@@ -227,5 +228,6 @@ if (skipProtocolBuild && selection === "desktop-runtime" && !fromArtifacts) {
   );
 }
 
-if (selection === "desktop-runtime") await packageDesktopRuntime();
+if (selection === "desktop-runtime")
+  await replaceDesktopRuntime(runtime, assembleDesktopRuntime);
 else await packageStandalone(selection);
