@@ -107,10 +107,18 @@ impl Observer {
                 "ide"
             }
         });
-        let environment = if command["type"] == "chat.sync" {
-            Environment::reopen(&self.data, &scope, chat, field(command, "cwd")?)
-                .await?
-                .map(Arc::new)
+        let environment = if command["type"] == "chat.sync"
+            || (command["type"] == super::goals::GET && command["taskContext"].is_null())
+        {
+            Environment::reopen(
+                &self.data,
+                &scope,
+                chat,
+                field(command, "cwd")?,
+                command.get("osExecution"),
+            )
+            .await?
+            .map(Arc::new)
         } else {
             None
         };

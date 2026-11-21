@@ -83,6 +83,7 @@ const { values } = parseArgs({
     "os-desktop-prepare": { type: "boolean" },
     "os-desktop-view": { type: "boolean" },
     "guest-thread-sync": { type: "boolean" },
+    "guest-goal-controls": { type: "boolean" },
     "guest-image": { type: "string" },
     "cua-console": { type: "string" },
     "cua-recovered": { type: "string" },
@@ -138,8 +139,15 @@ const guestCua = values["cua-guest"];
 const prepareGuestDesktop =
   values["os-desktop-prepare"] || values["os-desktop-view"];
 const guestThreadSync = values["guest-thread-sync"];
+const guestGoalControls = values["guest-goal-controls"];
+const guestClaimRecovery =
+  values["goal-claim-recovery"] && values["guest-image"];
 const repositoryKey =
-  guestCua || prepareGuestDesktop || guestThreadSync
+  guestCua ||
+  prepareGuestDesktop ||
+  guestThreadSync ||
+  guestGoalControls ||
+  guestClaimRecovery
     ? key("repository-content")
     : null;
 const recoveredTaskGoalCua = values["cua-task-goal-recovered"];
@@ -208,6 +216,7 @@ const consoleStateKey =
   guestCua ||
   prepareGuestDesktop ||
   guestThreadSync ||
+  guestGoalControls ||
   autonomousCua ||
   values["host-skills"] ||
   values["scratch-files"] ||
@@ -3099,7 +3108,13 @@ try {
     if (values.cli)
       workerEnvironment.CANTRIP_CLI_BIN = path.resolve(values.cli);
   }
-  if (guestCua || prepareGuestDesktop || guestThreadSync) {
+  if (
+    guestCua ||
+    prepareGuestDesktop ||
+    guestThreadSync ||
+    guestGoalControls ||
+    guestClaimRecovery
+  ) {
     assert.ok(
       values["guest-image"],
       "Managed guest verification requires an existing guest image.",
@@ -3123,7 +3138,25 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (guestThreadSync) {
+  if (guestGoalControls) {
+    const { verifyGuestGoalControls } =
+      await import("./guest-goal-control-cases.mjs");
+    await verifyGuestGoalControls({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      openMessage,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      repositoryKey,
+      guest: guestDesktop,
+      startWorker,
+      stopWorker,
+    });
+  } else if (guestThreadSync) {
     const { verifyGuestThreadSync } =
       await import("./guest-thread-sync-cases.mjs");
     await verifyGuestThreadSync({
@@ -3439,6 +3472,8 @@ try {
       workerId,
       keyRevision,
       labelKey,
+      repositoryKey,
+      guest: guestClaimRecovery ? guestDesktop : null,
       startWorker,
       stopWorker,
       workerDiagnostics: () => diagnostics,

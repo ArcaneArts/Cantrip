@@ -19,6 +19,7 @@ const MAX_RECORD_BYTES: u64 = 1024 * 1024;
 pub(super) struct Environment {
     pub id: String,
     pub selection: Value,
+    execution: Value,
     document: String,
     pub instructions: String,
 }
@@ -101,17 +102,25 @@ impl Environment {
         Ok(Some(environment))
     }
 
-    /// Observe only the placement previously admitted for this Chat.
+    /// Reopen the saved placement or use Core's captured execution for a read.
     pub async fn reopen(
         data: &Path,
         authority: &Value,
         chat: &JsString,
         cwd: &JsString,
+        supplied: Option<&Value>,
     ) -> Result<Option<Self>> {
-        let Some(execution) = stored(&record_path(data, authority, chat))? else {
+        let previous = stored(&record_path(data, authority, chat))?;
+        let supplied = supplied
+            .map(|execution| checked("cantripOsExecutionSchema", execution))
+            .transpose()?;
+        if let (Some(previous), Some(supplied)) = (&previous, &supplied) {
+            same_placement(previous, supplied)?;
+        }
+        let Some(execution) = previous.as_ref().or(supplied.as_ref()) else {
             return Ok(None);
         };
-        Ok(Some(Self::open(authority, &execution, cwd).await?))
+        Ok(Some(Self::open(authority, execution, cwd).await?))
     }
 
     async fn open(authority: &Value, execution: &Value, cwd: &JsString) -> Result<Self> {
@@ -163,9 +172,14 @@ impl Environment {
         Ok(Self {
             id,
             selection,
+            execution: execution.clone(),
             document,
             instructions,
         })
+    }
+
+    pub fn assert_execution(&self, execution: &Value) -> Result<()> {
+        same_placement(&self.execution, execution)
     }
 
     pub fn configure_launch(self: &Arc<Self>, launch: &mut Launch) {

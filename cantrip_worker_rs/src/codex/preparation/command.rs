@@ -447,17 +447,28 @@ impl Ensurer {
         let chat = field(session, "chatId")?;
         let project = session["projectId"].as_js_string().cloned();
         let change_plan = incoming["type"] == PLAN_SET;
-        let guest_allowed = matches!(
-            incoming["type"].as_str(),
+        let guest_allowed = match incoming["type"].as_str() {
             Some(
                 COMMAND
-                    | PLAN_SET
-                    | crate::codex::turn::ROLLBACK
-                    | crate::codex::turn::COMPACT
-                    | crate::codex::turn::queue_wake::RESUME
-            )
-        ) || (incoming["type"] == crate::codex::turn::RUN
-            && session.get("osExecution").is_some());
+                | PLAN_SET
+                | crate::codex::turn::ROLLBACK
+                | crate::codex::turn::COMPACT
+                | crate::codex::turn::queue_wake::RESUME
+                | crate::codex::turn::goal_recovery::COMMAND
+                | crate::codex::turn::goal_recovery::CLAIM_COMMAND,
+            ) => true,
+            Some(
+                crate::codex::goals::CREATE
+                | crate::codex::goals::UPDATE
+                | crate::codex::goals::CLEAR,
+            ) => command["taskContext"].is_null(),
+            Some(crate::codex::goals::QUEUE_EXECUTE) => matches!(
+                command["executionMethod"].as_str(),
+                Some("thread/goal/set" | "thread/goal/clear")
+            ),
+            Some(crate::codex::turn::RUN) => session.get("osExecution").is_some(),
+            _ => false,
+        };
         if !guest_allowed && session.get("osExecution").is_some() {
             bail!(
                 "This command requires guest execution support beyond native thread preparation."
@@ -779,7 +790,7 @@ impl Ensurer {
                             configuration.expected_suspension = native_stop;
                         }
                         let delivery = this.0.codex.project_goals().filter(|_| {
-                            !staged && !guest && !standalone && held.is_none() && !task_restoration
+                            !staged && !standalone && held.is_none() && !task_restoration
                         });
                         let task = command["taskOwned"] == true;
                         let latch = task.then(|| this.task_latch(&bound, &chat)).transpose()?;
@@ -916,7 +927,7 @@ impl Ensurer {
                                 );
                             }
                             let native_session = native_session(&command, &runtime, loaded.id());
-                            let goal_session = (!task && !guest).then(|| native_session.clone());
+                            let goal_session = (!task).then(|| native_session.clone());
                             let queue = if !task
                                 && !stopping
                                 && result.saved.is_none()
@@ -980,6 +991,7 @@ impl Ensurer {
                                         session: session.clone(),
                                         bound: bound.clone(),
                                         cwd: cwd.clone(),
+                                        environment: result.environment.clone(),
                                         model: command["model"].clone(),
                                         provider: command["provider"].clone(),
                                         permission: result.permission.clone(),

@@ -13,9 +13,6 @@ impl Goals {
         turns: &Turns,
         objective: &JsString,
     ) -> Result<Value> {
-        if command["osExecution"].is_object() || command["session"]["osExecution"].is_object() {
-            bail!("Native creation of an OS-hosted Goal is unavailable.");
-        }
         let bound = self.encryption.bound_identity()?;
         let command = self.preparation.resolve_routing(command).await?;
         let (thread, owner) = self.chat_goal_thread(&command, &bound).await?;
@@ -80,8 +77,10 @@ impl Goals {
         }
         if let Some(thread) = command["threadId"].as_js_string()
             && let Some(owner) = self.preparation.live_thread(chat, thread, bound)
+            && !command["osExecution"].is_object()
             && (!managed
                 || (command["session"].get("heldSuspension").is_none()
+                    && command["session"].get("osExecution").is_none()
                     && command["session"]["computerUseEnabled"] != true
                     && owner.session.as_ref()
                         == Some(&native_session(command, &owner.runtime, thread))))
@@ -90,6 +89,14 @@ impl Goals {
         }
         if managed {
             let mut prepare = command.clone();
+            if let Some(execution) = command.get("osExecution") {
+                if let Some(session_execution) = command["session"].get("osExecution")
+                    && session_execution != execution
+                {
+                    bail!("The Goal command specifies a different OS placement.");
+                }
+                prepare["session"]["osExecution"] = execution.clone();
+            }
             if prepare["planMode"].is_null() {
                 prepare["planMode"] = json!("default");
             }
@@ -106,6 +113,9 @@ impl Goals {
                     session: Some(session),
                 },
             ));
+        }
+        if command["osExecution"].is_object() {
+            bail!("An OS-hosted Goal requires its managed session.");
         }
         let (runtime, model_provider) = self.observation.open_target(command, bound).await?;
         // Core will submit the canonical turn separately on this path. Keep
