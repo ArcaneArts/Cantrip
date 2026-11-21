@@ -1,4 +1,4 @@
-use super::{failure, keys, lock};
+use super::{failure, host::window, keys, lock};
 use crate::{
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
@@ -10,7 +10,7 @@ use cantrip_interaction::{
     ownership::{Participant, TargetIdentity},
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -42,12 +42,14 @@ pub(super) struct Destination {
     pub target: Target,
     pub cancel: Cancellation,
     pub owner: u64,
+    window: Option<window::Pin>,
 }
 
 pub(super) struct Native {
     connection: Arc<RustConnection>,
     root: u32,
     held: BTreeMap<(u8, u8), u64>,
+    directed: HashMap<u64, window::Input>,
     keyboard: keys::Keyboard,
 }
 pub(super) type Host = InputHost<Native>;
@@ -58,6 +60,7 @@ impl Native {
             keyboard: keys::Keyboard::new(connection.clone()),
             connection,
             held: BTreeMap::new(),
+            directed: HashMap::new(),
         }
     }
     fn release(&mut self, owner: u64) {
@@ -156,16 +159,37 @@ impl Native {
         }
         self.connection.flush().map_err(failure)
     }
-    fn text(&mut self, text: &str, cancel: &Cancellation, owner: u64) -> Result<()> {
+    fn emit(
+        &mut self,
+        destination: &Destination,
+        events: &[(u8, u8, Option<Point>)],
+    ) -> Result<()> {
+        if let Some(window) = &destination.window {
+            let current = window.current(&self.connection)?;
+            self.directed.entry(destination.owner).or_default().send(
+                &self.connection,
+                window,
+                &destination.target,
+                &current,
+                events,
+            )
+        } else {
+            self.events(events, destination.owner)
+        }
+    }
+
+    fn text(&mut self, text: &str, destination: &Destination) -> Result<()> {
         for ch in text.replace("\r\n", "\n").chars() {
-            cancel.check()?;
+            destination.cancel.check()?;
             let symbol = match ch {
                 '\n' | '\r' => 0xff0d,
                 '\t' => 0xff09,
                 c if c as u32 <= 0xff => c as u32,
                 c => 0x01000000 | c as u32,
             };
-            let (code, shift) = self.keyboard.resolve(symbol)?;
+            let (code, shift) = self
+                .keyboard
+                .resolve(symbol, destination.window.is_none())?;
             let mut events = vec![];
             let shift_code = self.code(keys::modifier(crate::gesture::Modifier::Shift))?;
             if shift {
@@ -178,7 +202,7 @@ impl Native {
             if shift {
                 events.push((KEY_RELEASE_EVENT, shift_code, None));
             }
-            self.events(&events, owner)?;
+            self.emit(destination, &events)?;
         }
         Ok(())
     }
@@ -198,6 +222,7 @@ impl InputBackend for Native {
     type Error = CuaError;
     fn closed(&mut self, destination: &Destination) {
         self.release(destination.owner);
+        self.directed.remove(&destination.owner);
     }
     fn prepare<'a>(
         &mut self,
@@ -330,15 +355,17 @@ impl InputBackend for Native {
     ) -> std::result::Result<Delivery, PostFailure<CuaError>> {
         // XTEST changes this display's physical state. Another participant
         // cannot move/type while the first still owns a physical hold.
-        if self.held.values().any(|owner| *owner != destination.owner) {
+        if destination.window.is_none()
+            && self.held.values().any(|owner| *owner != destination.owner)
+        {
             return Err(PostFailure::NotDispatched(CuaError::new(
                 ErrorCode::OwnershipMismatch,
                 "Another participant owns held input on this display.",
             )));
         }
         let result = match packet {
-            Packet::Events(events) => self.events(events, destination.owner),
-            Packet::Text(text) => self.text(text, &destination.cancel, destination.owner),
+            Packet::Events(events) => self.emit(destination, events),
+            Packet::Text(text) => self.text(text, destination),
         };
         if result.is_err() {
             self.release(destination.owner);
@@ -379,6 +406,22 @@ fn map(error: InputFailure<CuaError>) -> CuaError {
 }
 impl Session {
     pub(super) fn open(host: Arc<Mutex<Host>>, target: &Target) -> Result<Self> {
+        Self::open_route(host, target, None)
+    }
+
+    pub(super) fn open_window(
+        host: Arc<Mutex<Host>>,
+        target: &Target,
+        window: window::Pin,
+    ) -> Result<Self> {
+        Self::open_route(host, target, Some(window))
+    }
+
+    fn open_route(
+        host: Arc<Mutex<Host>>,
+        target: &Target,
+        window: Option<window::Pin>,
+    ) -> Result<Self> {
         let identity = TargetIdentity {
             id: target.id.clone(),
             generation: target.generation,
@@ -388,6 +431,7 @@ impl Session {
             target: target.clone(),
             cancel: Cancellation::default(),
             owner: NEXT_OWNER.fetch_add(1, Ordering::Relaxed),
+            window,
         };
         let owner = lock(&host)
             .open(identity.clone(), target.id.clone(), destination.clone())

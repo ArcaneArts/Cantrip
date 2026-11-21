@@ -453,7 +453,10 @@ async fn probe(current: &mut Option<Helper>, binary: &Path) -> Result<Value> {
     // attachment owns the first capture and any platform permission result.
     let message = match helper(current, binary).await {
         Ok(helper) if helper.process.capture_available() => None,
-        Ok(_) => Some("Managed desktop capture is unavailable."),
+        Ok(_) => {
+            retire(current).await;
+            Some("Managed desktop capture is unavailable.")
+        }
         Err(_) => Some("Could not initialize the Cantrip capture helper."),
     };
     probe_result(message)
@@ -569,6 +572,8 @@ fn public_target_id(id: &JsString) -> &str {
     let id = id.as_str().expect("validated native target identity");
     id.strip_prefix("macos-window-")
         .or_else(|| id.strip_prefix("macos-display-"))
+        .or_else(|| id.strip_prefix("x11-window-"))
+        .or_else(|| id.strip_prefix("x11-display-"))
         .unwrap_or(id)
 }
 

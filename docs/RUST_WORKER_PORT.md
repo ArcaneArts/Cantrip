@@ -10039,3 +10039,24 @@ two concurrent bidirectional exchanges over 1 MiB each, and a complete
 guest request after the Host sent EOF first. Invalid control data and Core
 revocation closed actual guest and Host sockets and released the guest port.
 The Host relay, direct, and legacy TCP smoke passed separately.
+
+## 298. Capture and control Linux Host X11 windows natively
+
+Reference commit `bf746a8193860b464f9cf5e29b32ae04c7ffb70a` (#3461).
+
+The Linux worker advertises the native Host desktop backend and probes the
+helper when a desktop is created. The helper uses the local X11 session,
+enumerates displays and application windows, and uses X11 Composite for
+window pixels. X11 input is directed to the selected window using the shared
+participant ownership and release code. Full-display remote views are view-only.
+The explicitly assigned Cantrip OS X11 backend continues to own guest input.
+
+On Linux ARM64, the real helper distinguished pixels in overlapping windows,
+delivered input and releases to the selected window without changing focus or
+pointer location, and rejected a retired capture after its X11 ID was reused.
+The headless check and the existing two-display guest X11 check passed. A native
+Linux ARM64 worker (`1.1.3461`) advertised and created a Host desktop and
+delivered an encrypted window frame through the existing Core `1.1.3059`
+fixture in PGlite mode with Node absent from the worker PATH.
+
+Native Wayland and Windows Host capture and input remain in scope.

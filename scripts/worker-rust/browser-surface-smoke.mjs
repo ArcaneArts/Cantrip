@@ -1098,7 +1098,7 @@ exec "$CANTRIP_FIXTURE_CHROMIUM" "$@"
   if (desktop) {
     assert.equal(
       advertised.remoteSurfaces.desktop,
-      process.platform === "darwin",
+      ["darwin", "linux"].includes(process.platform),
     );
     const route = "/api/projects/" + projectId + "/remote-desktops";
     const request = {

@@ -74,7 +74,7 @@ impl Keyboard {
             temporary: BTreeMap::new(),
         }
     }
-    pub(super) fn resolve(&mut self, symbol: u32) -> Result<(u8, bool)> {
+    pub(super) fn resolve(&mut self, symbol: u32, physical_lock: bool) -> Result<(u8, bool)> {
         let setup = self.connection.setup();
         let map = self
             .connection
@@ -86,7 +86,8 @@ impl Keyboard {
         for (index, row) in map.keysyms.chunks(width).enumerate() {
             if let Some(level) = row.iter().take(2).position(|key| *key == symbol) {
                 let mut shift = level == 1;
-                if char::from_u32(symbol).is_some_and(|c| c.is_ascii_alphabetic()) {
+                if physical_lock && char::from_u32(symbol).is_some_and(|c| c.is_ascii_alphabetic())
+                {
                     let pointer = self
                         .connection
                         .query_pointer(setup.roots[0].root)
