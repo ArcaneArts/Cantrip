@@ -22,30 +22,36 @@ export async function verifyGuestSuspension({
   marker,
   startWorker,
   stopWorker,
+  prepared,
 }) {
-  const { model, profile } = await createModel("Guest suspension fixture");
-  await call("PATCH", "/api/settings", 200, {
-    defaultModelId: profile.id,
-    autoNameChats: false,
-  });
-  const { chatUrl, placement } = await createPreparedProjectChat({
-    call,
-    eventually,
-    ownerId,
-    workerId,
-    keyRevision,
-    labelKey,
-    title: "Cantrip OS suspension",
-    beforeChat: ({ projectId }) =>
-      guest.placeProject({
-        call,
-        ownerId,
-        workerId,
-        keyRevision,
-        projectId,
-        repositoryKey,
-      }),
-  });
+  const { model, profile } =
+    prepared ?? (await createModel("Guest suspension fixture"));
+  if (!prepared) {
+    await call("PATCH", "/api/settings", 200, {
+      defaultModelId: profile.id,
+      autoNameChats: false,
+    });
+  }
+  const { chatUrl, placement } =
+    prepared?.chat ??
+    (await createPreparedProjectChat({
+      call,
+      eventually,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      title: "Cantrip OS suspension",
+      beforeChat: ({ projectId }) =>
+        guest.placeProject({
+          call,
+          ownerId,
+          workerId,
+          keyRevision,
+          projectId,
+          repositoryKey,
+        }),
+    }));
   const { threadId } = await call("POST", chatUrl + "/sync", 200, {});
   const suspensionFixture = { call, eventually, chatUrl, marker };
   const beforePause = model.reply({ hold: true });

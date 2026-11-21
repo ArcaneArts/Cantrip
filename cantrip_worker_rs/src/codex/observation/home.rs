@@ -81,47 +81,55 @@ pub(in crate::codex) async fn profile(
         );
         data.join("codex-os-homes").join(home)
     });
-    let runtime_home = match source {
-        // A recovered guest thread in its ordinary home must share the same
-        // writer with later commands for the same placement and provider.
-        Source::Held(saved) if guest_home.as_deref() == Some(saved.home.as_path()) => {
-            saved.home.clone()
-        }
-        Source::Held(saved) => {
-            let operation = cantrip_history::source_digest(&json!([
-                json!(
-                    saved
-                        .home
-                        .to_str()
-                        .ok_or_else(|| anyhow!("Invalid native suspension home."))?
-                ),
-                json!(chat.context("The saved suspension requires its chat identity.")?),
-                saved.source["threadId"].clone(),
-                saved.evidence["suspension"]["checkpointId"].clone(),
-            ]));
-            id = surround("", &id, &format!(":namespace:suspension:{operation}"));
-            overlay = Some(configuration_home);
-            saved.home.clone()
-        }
-        Source::Staged { thread, operation } => {
-            id = surround("", &id, &format!(":namespace:{operation}"));
-            overlay = Some(configuration_home);
-            root(data, scope, thread).join("homes").join(operation)
-        }
-        Source::Current(thread) => {
-            if let Some(thread) = thread
-                && let Some((operation, home)) =
-                    selection(data, scope, thread, chat, provider).await?
-            {
+    let default_home = if standalone {
+        data.join("codex-standalone-homes")
+            .join(sha256(&id.lossy()))
+    } else {
+        guest_home.unwrap_or_else(|| configuration_home.clone())
+    };
+    let (thread, saved_home) = match &source {
+        Source::Current(thread) => (*thread, None),
+        Source::Held(saved) => (
+            saved.source["threadId"].as_js_string(),
+            Some(saved.home.as_path()),
+        ),
+        Source::Staged { .. } => (None, None),
+    };
+    let published = if let Some(thread) = thread {
+        selection(data, scope, thread, chat, provider, saved_home).await?
+    } else {
+        None
+    };
+    // Share the native writer with ordinary preparation when recovery opens
+    // its exact published or default home.
+    let runtime_home = if let Some((operation, home)) = published {
+        id = surround("", &id, &format!(":namespace:{operation}"));
+        overlay = Some(configuration_home);
+        home
+    } else {
+        match source {
+            Source::Held(saved) if saved.home != default_home => {
+                let operation = cantrip_history::source_digest(&json!([
+                    json!(
+                        saved
+                            .home
+                            .to_str()
+                            .ok_or_else(|| anyhow!("Invalid native suspension home."))?
+                    ),
+                    json!(chat.context("The saved suspension requires its chat identity.")?),
+                    saved.source["threadId"].clone(),
+                    saved.evidence["suspension"]["checkpointId"].clone(),
+                ]));
+                id = surround("", &id, &format!(":namespace:suspension:{operation}"));
+                overlay = Some(configuration_home);
+                saved.home.clone()
+            }
+            Source::Staged { thread, operation } => {
                 id = surround("", &id, &format!(":namespace:{operation}"));
                 overlay = Some(configuration_home);
-                home
-            } else if standalone {
-                data.join("codex-standalone-homes")
-                    .join(sha256(&id.lossy()))
-            } else {
-                guest_home.unwrap_or(configuration_home)
+                root(data, scope, thread).join("homes").join(operation)
             }
+            Source::Held(_) | Source::Current(_) => default_home,
         }
     };
     let mut profile = Profile::new(id, runtime_home);
@@ -137,11 +145,21 @@ async fn selection(
     thread: &JsString,
     chat: Option<&JsString>,
     provider: &Value,
+    saved_home: Option<&Path>,
 ) -> Result<Option<(String, PathBuf)>> {
     let root = root(data, scope, thread);
+    let homes = root.join("homes");
+    if saved_home.is_some_and(|saved| !saved.starts_with(&homes)) {
+        return Ok(None);
+    }
     let Some(head) = current(&root, scope, thread).await? else {
         return Ok(None);
     };
+    let operation = head["operationId"].as_str().unwrap().to_owned();
+    let home = homes.join(&operation);
+    if saved_home.is_some_and(|saved| saved != home) {
+        return Ok(None);
+    }
     if chat.is_some_and(|chat| head["chatId"].as_js_string() != Some(chat))
         || ["id", "kind", "accountId"]
             .iter()
@@ -149,11 +167,7 @@ async fn selection(
     {
         bail!("The managed runtime route changed. Reload the canonical conversation binding.");
     }
-    let operation = head["operationId"].as_str().unwrap().to_owned();
-    Ok(Some((
-        operation.clone(),
-        root.join("homes").join(operation),
-    )))
+    Ok(Some((operation, home)))
 }
 
 fn root(data: &Path, scope: &Value, thread: &JsString) -> PathBuf {

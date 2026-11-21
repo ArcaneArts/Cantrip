@@ -144,12 +144,18 @@ const guestGoalControls = values["guest-goal-controls"];
 const guestSuspension = values["guest-suspension"];
 const guestClaimRecovery =
   values["goal-claim-recovery"] && values["guest-image"];
+const guestRuntimeHandoff =
+  values["guest-image"] &&
+  (values["runtime-handoff"] ||
+    values["runtime-handoff-recovery"] ||
+    values["runtime-handoff-cancel"]);
 const repositoryKey =
   guestCua ||
   prepareGuestDesktop ||
   guestThreadSync ||
   guestGoalControls ||
   guestSuspension ||
+  guestRuntimeHandoff ||
   guestClaimRecovery
     ? key("repository-content")
     : null;
@@ -1390,6 +1396,21 @@ async function verifyInteraction() {
       );
     },
   );
+  if (heldTurn) {
+    const followUp = model.model.reply({
+      text: "The restored Chat can continue.",
+    });
+    await call(
+      "POST",
+      `${chatUrl}/turns`,
+      202,
+      await encryptedTurn("Continue the restored Chat.", model.profile.id),
+    );
+    await eventually(
+      () => followUp.request,
+      (request) => assert.equal(request?.completed, true),
+    );
+  }
   assert.deepEqual(model.model.failures, []);
   console.log(
     heldTurn
@@ -1916,7 +1937,7 @@ async function verifyRuntimeHandoff() {
     defaultModelId: source.profile.id,
     autoNameChats: false,
   });
-  const { chatId, chatUrl } = queuedHandoff
+  const { chatId, chatUrl, placement } = queuedHandoff
     ? await createChat("Native queued provider handoff", false)
     : await createPreparedProjectChat({
         call,
@@ -1926,6 +1947,17 @@ async function verifyRuntimeHandoff() {
         keyRevision,
         labelKey,
         title: "Native provider handoff",
+        beforeChat: guestRuntimeHandoff
+          ? ({ projectId }) =>
+              guestDesktop.placeProject({
+                call,
+                ownerId,
+                workerId,
+                keyRevision,
+                projectId,
+                repositoryKey,
+              })
+          : undefined,
       });
   const submit = async (provider, content, text, modelId) => {
     const reply = provider.model.reply({ text });
@@ -2196,6 +2228,24 @@ async function verifyRuntimeHandoff() {
   }
   assert.deepEqual(source.model.failures, []);
   assert.deepEqual(target.model.failures, []);
+  if (placement) {
+    const { verifyGuestSuspension } =
+      await import("./guest-suspension-cases.mjs");
+    await verifyGuestSuspension({
+      call,
+      eventually,
+      encryptedTurn,
+      openMessage,
+      prepared: {
+        chat: { chatUrl, placement },
+        model: target.model,
+        profile: targetProfile,
+      },
+      marker: approvalMarker,
+      stopWorker,
+      startWorker,
+    });
+  }
   console.log(
     "Native provider handoff retained the conversation across worker restart.",
   );
@@ -3095,13 +3145,14 @@ try {
           consoleInteractions ||
           restoredInteractions ||
           guestSuspension ||
+          guestRuntimeHandoff ||
           recoveredCua
         ? await fixtureCodex(root, values.codex, {
             scenario: recoveredCua
               ? "resume-cua"
               : restoredInteractions
                 ? "resume-approval"
-                : guestSuspension
+                : guestSuspension || guestRuntimeHandoff
                   ? "resume-guest"
                   : "approval",
             marker: approvalMarker,
@@ -3123,6 +3174,7 @@ try {
     guestThreadSync ||
     guestGoalControls ||
     guestSuspension ||
+    guestRuntimeHandoff ||
     guestClaimRecovery
   ) {
     assert.ok(
