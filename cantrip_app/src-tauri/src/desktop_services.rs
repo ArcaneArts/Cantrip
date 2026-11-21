@@ -26,45 +26,16 @@ enum ServerRuntime {
     },
 }
 
-#[derive(Deserialize)]
-#[serde(tag = "runtime", rename_all = "lowercase")]
-enum WorkerRuntime {
-    Node,
-    Rust,
-}
-
-pub fn worker_command(node: &Path, directory: &Path) -> Result<Command, String> {
-    let file = directory.join("desktop-worker.json");
-    let runtime = match fs::read(&file) {
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .map_err(|error| format!("Could not read {}: {error}", file.display()))?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => WorkerRuntime::Node,
-        Err(error) => return Err(format!("Could not read {}: {error}", file.display())),
-    };
-    Ok(match runtime {
-        WorkerRuntime::Node => node_service_command(node, directory),
-        WorkerRuntime::Rust => {
-            let mut command = Command::new(directory.join("bin").join(if cfg!(windows) {
-                "cantrip-worker.exe"
-            } else {
-                "cantrip-worker"
-            }));
-            command
-                .current_dir(directory)
-                .arg("--shutdown-on-stdin-close")
-                .stdin(Stdio::piped());
-            command
-        }
-    })
-}
-
-fn node_service_command(node: &Path, directory: &Path) -> Command {
-    let mut command = Command::new(node);
-    command.arg("dist/index.js").current_dir(directory);
-    // A Windows worker does not read stdin. An inherited supervisor pipe can
-    // stall Node before worker startup when the process has no console.
-    #[cfg(windows)]
-    command.stdin(Stdio::null());
+pub fn worker_command(directory: &Path) -> Command {
+    let mut command = Command::new(directory.join("bin").join(if cfg!(windows) {
+        "cantrip-worker.exe"
+    } else {
+        "cantrip-worker"
+    }));
+    command
+        .current_dir(directory)
+        .arg("--shutdown-on-stdin-close")
+        .stdin(Stdio::piped());
     command
 }
 
@@ -460,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_native_worker_attempts_the_executable_without_node_fallback() {
+    fn packaged_worker_attempts_the_native_executable() {
         let directory = std::env::temp_dir().join(format!(
             "cantrip-desktop-worker-command-{}-{}",
             std::process::id(),
@@ -470,15 +441,14 @@ mod tests {
                 .as_nanos()
         ));
         fs::create_dir(&directory).unwrap();
-        fs::write(
-            directory.join("desktop-worker.json"),
-            r#"{"runtime":"rust"}"#,
-        )
-        .unwrap();
-        let command = worker_command(Path::new("unused-node"), &directory).unwrap();
+        let command = worker_command(&directory);
+        assert_eq!(command.get_current_dir(), Some(directory.as_path()));
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            vec![std::ffi::OsStr::new("--shutdown-on-stdin-close")]
+        );
         let error = spawn_service(command, &[], false, false).unwrap_err();
         assert!(error.contains("cantrip-worker"), "{error}");
-        assert!(!error.contains("unused-node"), "{error}");
         fs::remove_dir_all(directory).unwrap();
     }
 

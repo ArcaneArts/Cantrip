@@ -2,12 +2,10 @@
 
 Logical profile conversion can now be followed by an in-place directory switch.
 The active pathname stays the same, and the previous directory is retained at a
-unique backup pathname reported by the CLI. The worker remains Node.
+unique backup pathname reported by the CLI.
 
 These are offline operations. Stop the source server and its worker before
 exporting, converting or activating a profile. Use copies for qualification.
-The native server's ordinary serving and background work do not run the bounded
-JavaScript converter.
 
 ## Upgrade a stopped legacy PGlite profile
 
@@ -36,9 +34,8 @@ into `runtime/server/legacy-postgres`. The Windows x64 server package carries
 the same directory layout into desktop assembly. The package records the `bin`
 directory in `desktop-server.json`, and desktop startup tries the upgrade before
 serving. For manual operations, point `--legacy-postgres-bin-dir` at that same
-directory. The packaged conversion uses the binaries directly. Older Windows
-artifacts and cross-target packages without native tools still use the
-JavaScript converter.
+directory. The packaged conversion uses the binaries directly and runs without
+Node.
 
 Use explicit export and restore if you need to keep an archive, prepare at a
 separate path, or select another database backend.

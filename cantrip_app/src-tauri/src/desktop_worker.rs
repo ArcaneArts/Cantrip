@@ -59,7 +59,7 @@ pub struct DesktopWorkerCandidate {
 
 enum WorkerLaunch {
     Development { repository: PathBuf, tsx: PathBuf },
-    Packaged { directory: PathBuf, node: PathBuf },
+    Packaged { directory: PathBuf },
 }
 
 pub struct DesktopWorkers {
@@ -492,7 +492,7 @@ impl DesktopWorkers {
                     .current_dir(repository);
                 command
             }
-            WorkerLaunch::Packaged { directory, node } => worker_command(node, directory)?,
+            WorkerLaunch::Packaged { directory } => worker_command(directory),
         };
         configure_desktop_child(&mut command);
         command
@@ -792,7 +792,6 @@ pub fn build(app: &App, active_local_server_url: &str) -> Result<DesktopWorkers,
             .join("runtime");
         WorkerLaunch::Packaged {
             directory: resources.join("worker"),
-            node: resources.join(if cfg!(windows) { "node.exe" } else { "node" }),
         }
     };
     let manager = DesktopWorkers {

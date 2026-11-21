@@ -9542,4 +9542,38 @@ accepted admission reply, fenced the replaced process, and finished on
 the original thread with one copy of the queued input. Host claim recovery
 and guest Chat sync also passed.
 
-Encrypted Task Goal execution in Cantrip OS still needs native support.
+The current Task creation API in both Core implementations reserves
+explicit Cantrip OS placement for Agent Chats.
+
+## 278. Ship the Rust worker in Cantrip packages
+
+Reference commit `872d343ecc100fc6154f0580d0e88f48baeb2bd2` (#3441).
+
+Standalone archives, desktop runtime assembly, and hosted Compose use the
+canonical Rust worker package. The standalone archive carries the native
+worker, Codex, CLI, CUA, and notices under the existing archive name. Desktop
+launches the native executable directly and stages private PostgreSQL tools for
+legacy PGlite upgrades. Hosted Compose retains the same enrollment environment
+and persistent worker volume.
+
+On macOS ARM64, the canonical packager assembled local native service builds
+with a freshly verified pinned Codex bundle. The archive extracted into a path
+with spaces and Unicode and contained no Node runtime or Node worker modules.
+Both MCP entry points launched, and the bundled native CUA helper passed its
+fake-capture smoke. With an empty worker PATH, the complete package ran a
+managed Codex turn with the bundled CLI against packaged Rust Core. The
+worker control fixture passed enrollment, credential rotation and revocation,
+restart, and clean SIGTERM shutdown.
+
+The desktop runtime assembled from packaged services without Node. The
+production launcher kept the server and worker identities stable across
+restarts, persisted settings, and reaped both native services on orderly
+shutdown and supervisor loss for PGlite and bundled PostgreSQL.
+
+The packaged desktop launcher also upgraded and reopened a real legacy PGlite
+fixture. The native profile round trip compared 137 database tables, preserved
+1,807 original files, and restored a write made after upgrade back into the
+legacy format. Thirty-four focused packaging and deployment tests, nine
+desktop launcher tests run serially, and the desktop compile check passed.
+Hosted Compose rendered the expected native build and persistent volume.
+The updated Linux worker image and Windows package were not run in this cycle.

@@ -153,7 +153,7 @@ async function verifyDesktopUpgrade(original) {
   await mkdir(resources);
   await mkdir(desktop);
   // Use the packaged server tree with its configuration and private tools.
-  // The independently shipped worker and its Node binary stay outside the probe.
+  // Launch only the server to isolate profile preparation and restart.
   await copy(
     path.resolve(values["desktop-runtime"], "server"),
     path.join(resources, "server"),

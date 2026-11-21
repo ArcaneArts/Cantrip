@@ -183,19 +183,17 @@ volume retains its unique credential, identity, repositories, Code profile, and
 extensions. It also retains worker-managed project folders beneath `folders/`.
 Never clone this volume to create a second worker.
 
-Set `CANTRIP_WORKER_RUNTIME=rust` in `deploy/hosted.env` to build the opt-in
-Rust worker image with the same Compose command. Its final image contains the
-Rust worker, Codex, the Cantrip CLI and native helper binaries. It uses the
-same enrollment variables and persistent volume. The Compose default remains
-`node` while the worker port is in progress.
+The worker image starts the Rust worker and includes Codex, the Cantrip CLI,
+and native helper binaries. Upgrade an existing Compose worker by stopping
+it and rebuilding the service with its existing `worker-data` volume.
 
 ## Native server and worker packages
 
 `pnpm bundle` creates platform-native server, worker, and desktop archives. The
 server archive contains the Rust executable, native PGlite and private
-PostgreSQL assets; the worker archive contains its own Node runtime. Copy
-`.env.example` to `.env` and use `start.sh` or `start.cmd`; no system Node
-installation is required. The server archive also includes `migrate.sh` and
+PostgreSQL assets. The worker archive contains the native worker and its
+helpers. Copy `.env.example` to `.env` and use `start.sh` or `start.cmd`.
+The server archive also includes `migrate.sh` and
 `migrate.cmd` for an explicit migration-only run.
 
 For a native worker, keep `CANTRIP_WORKER_DATA_DIR` on a persistent local disk.

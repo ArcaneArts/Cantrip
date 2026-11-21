@@ -86,7 +86,7 @@ fn main() -> Result<()> {
     } else {
         let mut child = OwnedChild(
             spawn_service(
-                worker_command(&node, &resources.join("worker")).map_err(anyhow::Error::msg)?,
+                worker_command(&resources.join("worker")),
                 &worker_environment(&data, &logs, &origin, &token),
                 true,
                 true,

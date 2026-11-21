@@ -71,10 +71,9 @@ documented platform, client, migration and rollback qualification.
 
 `pnpm package:app` packages the native server by default. The existing
 `--server-runtime rust` spelling is also accepted.
-`--from-artifacts` reuses the canonical native server and unchanged worker artifacts;
-it still builds and packages the small `@cantrip/profile-converter` tool. The
-worker's shared Node runtime supplies that bounded tool. The native server does
-not load it for serving or background work.
+`--from-artifacts` reuses the canonical Rust server and worker artifacts. Desktop
+assembly includes private PostgreSQL compatibility binaries that can read legacy
+PGlite data.
 
 Before starting the native desktop server, the supervisor runs `--migrate-only
 --upgrade-profile` with the same data directory and environment. It recovers an
@@ -93,12 +92,11 @@ ownership after the real database setup succeeds, avoiding a repeated copy on
 subsequent launches. Distribution PostgreSQL paths are not pinned into saved
 configuration; an explicitly configured custom binary path is retained.
 
-Standalone operators can run the same stopped-profile operation using
-`./migrate.sh --upgrade-profile --legacy-node /path/to/node
---legacy-profile-converter /path/to/profile-converter/dist/index.mjs`.
-The legacy tool is needed only when the native PGlite open actually fails.
-The bundled converter uses the existing JavaScript PGlite 0.5.4 export runtime;
-a conversion failure retains the original and reports failure.
+Standalone operators can run the same stopped-profile operation with
+`./migrate.sh --upgrade-profile --legacy-postgres-bin-dir /path/to/legacy-postgres/bin`.
+Use the desktop bundle's compatibility binaries for the same platform, or build
+them with `node scripts/database-transfer/build-legacy-postgres.mjs` in the source
+checkout. A conversion failure retains the original and reports failure.
 
 For an explicit backend change, export a stopped full profile with
 `./migrate.sh --export-profile /private/latest-profile`, restore it to a new
@@ -108,9 +106,13 @@ its connection options, then activate that prepared directory with
 transfer of the old database.
 
 Rollback after accepted Rust writes must export the latest active profile.
-For a return to the legacy PGlite server, use the packaged converter's
-`--restore <latest-profile-bundle> <new-node-profile> <native-server-executable>`
-mode, activate that prepared Node profile while services are stopped, and then
-start the old package. Activating an old retained snapshot would discard later
-writes and is not the rollback procedure. Keep original and reverse-conversion
-evidence until the rollback window is closed.
+Restore the export into a new directory for the legacy PGlite server.
+
+```sh
+./migrate.sh --restore-legacy-profile /path/to/latest-profile-bundle \
+  --data-dir /path/to/prepared-legacy-profile \
+  --legacy-postgres-bin-dir /path/to/legacy-postgres/bin
+```
+
+Activate the prepared directory while services are stopped, then start the old
+package. Keep both profile directories until the rollback window is closed.
