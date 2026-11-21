@@ -108,6 +108,7 @@ const { values } = parseArgs({
     "queued-handoff-cancel": { type: "boolean" },
     "goal-handoff": { type: "boolean" },
     "goal-handoff-recovery": { type: "boolean" },
+    "goal-claim-recovery": { type: "boolean" },
   },
 });
 assert.ok(
@@ -217,7 +218,8 @@ const consoleStateKey =
   subagentInteractions ||
   planQuestion ||
   runtimeHandoff ||
-  goalHandoff
+  goalHandoff ||
+  values["goal-claim-recovery"]
     ? key("surface-private-state")
     : null;
 const consoleSocket = path.join(root, "managed-console-socket");
@@ -226,6 +228,7 @@ const approvalMarker = path.join(root, "native-approval-replies.jsonl");
 let server;
 let receiptProxy;
 let goalHandoffFault;
+let goalClaimRecovery;
 let goalAdmission;
 let child;
 let workerExit;
@@ -2960,6 +2963,16 @@ try {
     { cwd: root, env: environment },
   );
   if (values.deferred) receiptProxy = await deferredReceiptProxy(server.origin);
+  if (values["goal-claim-recovery"]) {
+    const { goalClaimRecoveryCases } =
+      await import("./goal-claim-recovery-cases.mjs");
+    goalClaimRecovery = goalClaimRecoveryCases();
+    receiptProxy = await deferredReceiptProxy(
+      server.origin,
+      goalClaimRecovery.faults,
+    );
+    receiptProxy.open();
+  }
   if (values["runtime-handoff-recovery"])
     receiptProxy = await deferredReceiptProxy(server.origin, {
       handoffAction: "commit",
@@ -3416,6 +3429,20 @@ try {
     });
   } else if (planQuestion) {
     await verifyPlanQuestion();
+  } else if (goalClaimRecovery) {
+    await goalClaimRecovery.verify({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      startWorker,
+      stopWorker,
+      workerDiagnostics: () => diagnostics,
+    });
   } else if (goalHandoff) {
     await verifyGoalHandoff();
   } else if (runtimeHandoff) {

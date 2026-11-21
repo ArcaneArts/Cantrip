@@ -972,7 +972,7 @@ impl Client {
         attempt: &Value,
         permission: &Value,
         queue: &Value,
-    ) -> Result<(Receipt<'_>, Value)> {
+    ) -> Result<(Receipt<'_>, Value, Option<Value>)> {
         let operation = crate::native_items::concat(&[
             "native:".into(),
             id(&attempt["runnerGeneration"], "native runner")?,
@@ -1046,7 +1046,7 @@ impl Client {
             scope,
         };
         receipt.verify(&response, "accepted")?;
-        Ok((receipt, response))
+        Ok((receipt, response, input.get("goalQueueHandoff").cloned()))
     }
 
     pub async fn admit_command(

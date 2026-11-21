@@ -103,7 +103,7 @@ impl Autonomous {
         );
 
         let permission;
-        let (receipt, granted, owner, signal, recovery) = {
+        let (receipt, granted, owner, signal, recovery, goal_claim) = {
             self.released(&key, &admission_signal).await?;
             let _mutations = gate.lock().await;
             admission_signal.check()?;
@@ -129,7 +129,7 @@ impl Autonomous {
             {
                 bail!("The native producer belongs to another Goal recovery.");
             }
-            let (receipt, grant) = self
+            let (receipt, grant, goal_claim) = self
                 .receipts
                 .admit_autonomous(scope, session, &attempt.request, &permission, &queue)
                 .await?;
@@ -182,6 +182,7 @@ impl Autonomous {
                 owner,
                 Signal::any(vec![signal, admission_signal]),
                 recovery.clone(),
+                goal_claim,
             )
         };
         let execution = &granted["execution"];
@@ -213,10 +214,17 @@ impl Autonomous {
         owner.active.queued_inference.get_or_init(|| {
             handoff::withdrawal::QueuedInference::new(adapter.clone(), source.clone())
         });
-        let observation = recovery.is_object().then(|| {
-            self.recoveries
-                .observe(&owner.key, &recovery, runtime.generation())
-        });
+        let observation = if recovery.is_object() {
+            Some(
+                self.recoveries
+                    .observe(&owner.key, &recovery, runtime.generation()),
+            )
+        } else {
+            goal_claim.as_ref().map(|claim| {
+                self.recoveries
+                    .observe_claim(&owner.key, thread, claim, runtime.generation())
+            })
+        };
         let outcome = async {
             let mut request = Acquire::new(adapter.lifetime_for_source(&source)?, runner.provider.clone());
             request.purpose = Some("turn".into());

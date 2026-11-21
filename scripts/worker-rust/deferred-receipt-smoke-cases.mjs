@@ -104,7 +104,7 @@ export async function recoverHeldTurn({
 // close only deferred receipt requests without forwarding them to Core.
 export async function deferredReceiptProxy(
   origin,
-  { handoffAction, blockRequest } = {},
+  { handoffAction, blockRequest, blockResponse } = {},
 ) {
   const sockets = new Set();
   let hold = true;
@@ -137,6 +137,11 @@ export async function deferredReceiptProxy(
           headers: { ...req.headers, host: new URL(origin).host },
         },
         (response) => {
+          if (blockResponse?.(req.url, body, response.statusCode)) {
+            response.resume();
+            reply.destroy();
+            return;
+          }
           if (
             hold &&
             handoffRequest &&

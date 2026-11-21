@@ -1,10 +1,17 @@
 //! Resume an existing managed Goal through its native producer. The recovery
 //! reply observes a queued admission and does not own a physical turn.
+mod claim;
+pub(crate) use claim::COMMAND as CLAIM_COMMAND;
+
 use super::{Key, RPC_TIMEOUT, Runtime, Scope, Turns, id};
 use crate::{
     codex::{
         managed::Worker,
-        preparation::{Intent, command::native_session, native::LoadedThread},
+        preparation::{
+            Intent,
+            command::{Prepared, native_session},
+            native::LoadedThread,
+        },
         rpc_requests::Failure,
     },
     http::checked,
@@ -12,7 +19,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_history::content::Encryption;
-use cantrip_wire::{Value, payload_digest, value::json};
+use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, Weak},
@@ -33,13 +40,45 @@ impl Observations {
         recovery: &Value,
         runtime_generation: &str,
     ) -> Arc<Observation> {
+        self.subscribe(
+            key,
+            runtime_generation,
+            json!([
+                json!(COMMAND),
+                recovery["source"].clone(),
+                order_epoch(recovery),
+            ]),
+        )
+    }
+
+    pub(super) fn observe_claim(
+        &self,
+        key: &Key,
+        thread: &JsString,
+        claim: &Value,
+        runtime_generation: &str,
+    ) -> Arc<Observation> {
+        self.subscribe(
+            key,
+            runtime_generation,
+            json!([
+                json!(CLAIM_COMMAND),
+                json!(thread),
+                claim["claimId"].clone(),
+                claim["operationId"].clone(),
+                claim["operationGeneration"].clone(),
+                claim["goalEpoch"].clone(),
+            ]),
+        )
+    }
+
+    fn subscribe(&self, key: &Key, runtime_generation: &str, source: Value) -> Arc<Observation> {
         let key = payload_digest(&json!([
             json!(key.0),
             json!(key.1),
             json!(key.2),
-            recovery["source"].clone(),
-            order_epoch(recovery),
             json!(runtime_generation),
+            source,
         ]));
         let mut observations = self.0.lock().unwrap();
         observations.retain(|_, observation| observation.strong_count() != 0);
@@ -55,6 +94,10 @@ impl Observations {
 impl Observation {
     pub(super) fn queued(&self, admission: Value) {
         self.0.send_replace(Some(admission));
+    }
+
+    fn observed(&self) -> Option<Value> {
+        self.0.borrow().clone()
     }
 
     async fn admission(&self) -> Result<Value> {
@@ -74,7 +117,58 @@ struct Target {
     session: Value,
 }
 
+impl Target {
+    fn from_prepared(command: &Value, prepared: Prepared) -> Self {
+        let session = native_session(command, &prepared.runtime, prepared.thread.id());
+        Self {
+            runtime: prepared.runtime,
+            thread: prepared.thread,
+            session,
+        }
+    }
+
+    async fn wake(&self, guard: &Guard) -> Result<()> {
+        let runner = self
+            .runtime
+            .inference_router()
+            .goal_runner(self.thread.id())
+            .context("The recovered Goal has no current native producer.")?;
+        let result = native(
+            &self.runtime,
+            "thread/managedExecution/wake",
+            json!({"threadId":self.thread.id(),"runnerGeneration":runner}),
+            guard,
+        )
+        .await?;
+        ensure!(
+            result["scheduled"].is_boolean(),
+            "Codex did not acknowledge the Goal recovery wake."
+        );
+        Ok(())
+    }
+
+    async fn wait(&self, observation: &Observation, guard: &Guard) -> Result<Value> {
+        tokio::select! {
+            result = guard.run(observation.admission()) => result,
+            _ = self.runtime.retired() => bail!("The recovered Goal runtime retired before admission."),
+        }
+    }
+}
+
 impl Turns {
+    fn live_goal_target(&self, command: &Value, scope: &Scope, chat: &JsString) -> Option<Target> {
+        let bound = (scope.owner.clone(), json!(scope.server));
+        let (thread, owner) = self.preparation.selected_live_owner(chat, &bound)?;
+        let session = native_session(command, &owner.runtime, thread.id());
+        (command["threadId"].as_js_string() == Some(thread.id())
+            && owner.session.as_ref() == Some(&session))
+        .then_some(Target {
+            runtime: owner.runtime,
+            thread,
+            session,
+        })
+    }
+
     pub(crate) async fn recover_goal(
         &self,
         command: &Value,
@@ -93,21 +187,7 @@ impl Turns {
         );
         let key = (scope.owner.clone(), scope.server.clone(), chat.clone());
         let manager = worker.inference_manager(&scope.owner, &scope.server)?;
-        let bound = (scope.owner.clone(), json!(scope.server));
-        let live = self
-            .preparation
-            .selected_live_owner(&chat, &bound)
-            .and_then(|(thread, owner)| {
-                let session = native_session(command, &owner.runtime, thread.id());
-                (command["threadId"].as_js_string() == Some(thread.id())
-                    && owner.session.as_ref() == Some(&session))
-                .then_some(Target {
-                    runtime: owner.runtime,
-                    thread,
-                    session,
-                })
-            });
-        let prepared = if let Some(live) = live {
+        let prepared = if let Some(live) = self.live_goal_target(command, &scope, &chat) {
             live
         } else {
             let preparation = if target.is_null() {
@@ -133,13 +213,7 @@ impl Turns {
                     Err(_) => preparation.failed(),
                 }
             }
-            let prepared = observed?;
-            let session = native_session(command, &prepared.runtime, prepared.thread.id());
-            Target {
-                runtime: prepared.runtime,
-                thread: prepared.thread,
-                session,
-            }
+            Target::from_prepared(command, observed?)
         };
         let session = &prepared.session;
         let guard = Guard::metadata_timeout(Some(signal), None, Duration::from_secs(10));
@@ -200,7 +274,7 @@ impl Turns {
         let observation =
             self.goal_recoveries
                 .observe(&key, recovery, prepared.runtime.generation());
-        let admitted = observation.0.borrow().clone();
+        let admitted = observation.observed();
         if let Some(admission) = admitted
             .as_ref()
             .filter(|admission| *admission == &recovery["admission"])
@@ -217,32 +291,12 @@ impl Turns {
         if goal["status"] != "active" {
             return ineligible("not-active", Some(&epoch), recovery);
         }
-        let admitted = observation.0.borrow().clone();
+        let admitted = observation.observed();
         let admission = if let Some(admission) = admitted {
             admission
         } else {
-            let runner = prepared
-                .runtime
-                .inference_router()
-                .goal_runner(prepared.thread.id())
-                .context("The recovered Goal has no current native producer.")?;
-            let result = native(
-                &prepared.runtime,
-                "thread/managedExecution/wake",
-                json!({
-                    "threadId":prepared.thread.id(),"runnerGeneration":runner,
-                }),
-                &guard,
-            )
-            .await?;
-            ensure!(
-                result["scheduled"].is_boolean(),
-                "Codex did not acknowledge the Goal recovery wake."
-            );
-            tokio::select! {
-                result = guard.run(observation.admission()) => result?,
-                _ = prepared.runtime.retired() => bail!("The recovered Goal runtime retired before admission."),
-            }
+            prepared.wake(&guard).await?;
+            prepared.wait(&observation, &guard).await?
         };
         prepared.thread.assert_current(&prepared.runtime)?;
         scope.identity()?;

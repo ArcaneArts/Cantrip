@@ -830,7 +830,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind, crate::codex::turn::handoff::COMMAND | crate::codex::turn::handoff::TASK_SOURCE | crate::codex::turn::TASK_GOAL_RECOVERY | crate::codex::turn::goal_recovery::COMMAND) {
+                if matches!(kind, crate::codex::turn::handoff::COMMAND | crate::codex::turn::handoff::TASK_SOURCE | crate::codex::turn::TASK_GOAL_RECOVERY | crate::codex::turn::goal_recovery::COMMAND | crate::codex::turn::goal_recovery::CLAIM_COMMAND) {
                     let turns = turns.clone();
                     let codex = codex.clone();
                     let signal = command_signal.clone();
@@ -841,6 +841,7 @@ async fn cycle(
                         let command = &request["command"];
                         let result = match command["type"].as_str() {
                             Some(crate::codex::turn::goal_recovery::COMMAND) => turns.recover_goal(command, &codex, signal).await,
+                            Some(crate::codex::turn::goal_recovery::CLAIM_COMMAND) => turns.recover_goal_claim(command, &codex, signal).await,
                             Some(crate::codex::turn::handoff::TASK_SOURCE) => turns.capture_task_goal(command, signal).await,
                             Some(crate::codex::turn::TASK_GOAL_RECOVERY) => turns.recover_task_goal(command, &codex, signal).await,
                             _ => turns.runtime_handoff(command, signal, codex).await,
