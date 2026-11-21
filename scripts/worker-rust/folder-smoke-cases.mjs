@@ -58,6 +58,17 @@ export async function verifyManagedFolders({
   if (process.platform !== "win32")
     assert.equal((await lstat(target)).mode & 0o777, 0o700);
   await writeFile(path.join(target, "dirty.txt"), "managed data\n");
+  const stats = await call("GET", `/api/projects/${projectId}/repository-stats`);
+  assert.equal(stats.status, 200, JSON.stringify(stats));
+  assert.deepEqual(stats.body, {
+    kind: "folder",
+    fileCount: 1,
+    byteCount: 13,
+    textFileCount: 1,
+    lineCount: 1,
+    excludedFileCount: 0,
+    truncated: false,
+  });
   const sibling = target + "-sibling";
   await mkdir(sibling);
   await writeFile(path.join(sibling, "kept.txt"), "sibling kept\n");

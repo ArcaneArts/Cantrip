@@ -1299,6 +1299,21 @@ async fn cycle(
                     });
                     continue;
                 }
+                if crate::project_stats::supports(kind) {
+                    let routing = routing.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    let scope = crate::filesystem::Scope::with_stop(stop_rx.clone());
+                    commands.spawn(async move {
+                        let result = async {
+                            let command = routing.resolve(&request["command"]).await?;
+                            crate::project_stats::execute(&command, scope).await
+                        }.await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if crate::github::Client::supports(kind) {
                     let github=github.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
