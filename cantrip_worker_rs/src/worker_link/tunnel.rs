@@ -1,5 +1,6 @@
-//! Host tunnel destinations and the carriers that own their logical streams.
+//! Tunnel destinations and the carriers that own their logical streams.
 mod direct;
+pub(super) mod guest;
 mod legacy;
 mod tcp;
 
@@ -77,6 +78,7 @@ struct Link {
     logs: Arc<Logs>,
     carrier: Carrier,
     frame_limit: Option<usize>,
+    guest: Option<Arc<guest::Preparation>>,
 }
 
 impl Tunnel {
@@ -85,6 +87,7 @@ impl Tunnel {
         header: &Value,
         grant: &Value,
         frame_limit: Option<usize>,
+        slot: &guest::Slot,
     ) -> Result<Box<Self>, &'static str> {
         let resource = &grant["resource"];
         let attachment = resource["attachmentId"]
@@ -93,11 +96,19 @@ impl Tunnel {
         let operations = grant["operations"].as_array().unwrap();
         if !operations.contains(&json!("stream:read"))
             || !operations.contains(&json!("stream:write"))
-            || operations.contains(&json!("stream:guest-connect"))
             || operations.contains(&json!("stream:guest-listen"))
         {
             return Err("resource-unavailable");
         }
+        let guest = if guest::guest_grant(grant) {
+            Some(
+                slot.opened()
+                    .filter(|preparation| preparation.current(gateway))
+                    .ok_or("resource-unavailable")?,
+            )
+        } else {
+            None
+        };
         Ok(Box::new(Self {
             attachment: attachment.clone(),
             resource: id(resource, "resourceId").clone(),
@@ -107,6 +118,7 @@ impl Tunnel {
                 gateway: Arc::downgrade(gateway),
                 logs: gateway.logs.clone(),
                 frame_limit,
+                guest,
                 carrier: Carrier::WorkerLink {
                     channel: id(&header["channel"], "channelId").clone(),
                     token: Uuid::new_v4(),
@@ -249,15 +261,22 @@ impl Streams {
 
 impl Link {
     fn active(&self) -> bool {
-        self.gateway
-            .upgrade()
-            .is_some_and(|gateway| match &self.carrier {
+        self.gateway.upgrade().is_some_and(|gateway| {
+            if self
+                .guest
+                .as_ref()
+                .is_some_and(|guest| !guest.current(&gateway))
+            {
+                return false;
+            }
+            match &self.carrier {
                 Carrier::WorkerLink { channel, token } => {
                     gateway.update_channels(|channels| channels.tunnel_active(channel, *token))
                 }
                 Carrier::Legacy { token } => legacy::active(&gateway, *token),
                 Carrier::Direct(pipe) => pipe.upgrade().is_some_and(|pipe| pipe.active()),
-            })
+            }
+        })
     }
 
     fn send(&self, frame: &Frame, stopped: &watch::Receiver<Option<Stop>>) -> Output {

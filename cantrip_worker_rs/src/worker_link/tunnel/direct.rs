@@ -85,6 +85,7 @@ impl DirectTunnel {
             logs: gateway.logs.clone(),
             frame_limit: None,
             carrier: Carrier::Direct(Arc::downgrade(self)),
+            guest: None,
         };
         let routed = if header["kind"] == "open" {
             ensure!(

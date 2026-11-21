@@ -88,6 +88,38 @@ async fn serve_socket(
             () = adapter.serve_direct(&terminal, endpoint) => transport.await,
         };
     }
+    if let Some(guest) = output.link.guest.clone() {
+        let target = &request["target"];
+        if target["targetKind"] != "tcp" || target["protectedRecord"] != guest.record {
+            return End::Rejected("protected-target-invalid");
+        }
+        let content = match crate::protected_content::open_tunnel_record(
+            &gateway.encryption,
+            &request["tunnelId"],
+            &guest.record,
+        ) {
+            Ok(content) => content,
+            Err(_) => return End::Rejected("protected-record-unavailable"),
+        };
+        let guest = match gateway.open_guest_stream(guest).await {
+            Ok(stream) => stream,
+            Err(_) => return End::Rejected("target-unavailable"),
+        };
+        drop(gateway);
+        if !output.link.active() {
+            return End::Remote;
+        }
+        let super::guest::Stream {
+            socket,
+            fault,
+            _lifetime,
+        } = guest;
+        return tokio::select! {
+            biased;
+            Ok(()) = fault => End::Error,
+            result = connected(socket, Some(content["dataProtection"].clone()), request, input, output, log) => result,
+        };
+    }
     let destination = Destination::open(&gateway, request).await;
     drop(gateway);
     if !output.link.active() {

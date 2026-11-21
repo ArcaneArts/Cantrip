@@ -49,6 +49,7 @@ impl Legacy {
             logs: gateway.logs.clone(),
             frame_limit: None,
             carrier: Carrier::Legacy { token: self.token },
+            guest: None,
         };
         if let Ok(Inbound::Reply(rejection)) =
             self.streams.receive(frame, &link, &gateway.tunnel_streams)

@@ -627,6 +627,22 @@ async fn cycle(
                     });
                     continue;
                 }
+                if kind == crate::worker_link::PREPARE_GUEST_TUNNEL {
+                    let gateway = worker_link.clone();
+                    let routing = routing.clone();
+                    let logs = logs.clone();
+                    let outgoing = outgoing.clone();
+                    let worker = worker.clone();
+                    commands.spawn(async move {
+                        let result = async {
+                            let epoch = request["socketEpoch"].as_u64().context("Guest tunnel control socket")?;
+                            let command = routing.resolve(&request["command"]).await?;
+                            gateway.prepare_guest_tunnel(&command, epoch).await
+                        }.await;
+                        finish(&request, &worker, &logs, &outgoing, began, &result);
+                    });
+                    continue;
+                }
                 if crate::worker_link::supports(kind) {
                     let result = worker_link.execute(command);
                     finish(&request, &worker, logs, &outgoing, began, &result);
@@ -1663,7 +1679,10 @@ fn finish(
     let outcome = crate::outcomes::chat(&request["command"], &response);
     let sent = if matches!(
         kind,
-        "surface.desktop.targets" | crate::desktop_inventory::preview::PREPARE_OS_DESKTOP | crate::desktop_inventory::PROBE
+        "surface.desktop.targets"
+            | crate::desktop_inventory::preview::PREPARE_OS_DESKTOP
+            | crate::desktop_inventory::PROBE
+            | crate::worker_link::PREPARE_GUEST_TUNNEL
     ) {
         if let Some(epoch) = request["socketEpoch"].as_u64() {
             outgoing.send_for_epoch(epoch, response)
