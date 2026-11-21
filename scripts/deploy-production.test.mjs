@@ -329,6 +329,26 @@ test("builds the canonical server image without the Node server workspace", asyn
   assert.doesNotMatch(dockerfile, /^COPY cantrip_server \.\/cantrip_server$/mu);
 });
 
+test("includes the shared Rust build module in both Linux server build contexts", async () => {
+  for (const file of ["server.Dockerfile", "server-rust.Dockerfile"]) {
+    const dockerfile = await readFile(
+      new URL(`../deploy/docker/${file}`, import.meta.url),
+      "utf8",
+    );
+    const stages = dockerfile
+      .split(/^FROM /mu)
+      .filter((stage) => /^\S+ AS (build|package)\n/u.test(stage));
+    assert.equal(stages.length, 2, file);
+    for (const stage of stages) {
+      assert.match(
+        stage,
+        /^COPY .*scripts\/build-rust-executable\.mjs .*\.\/scripts\/$/mu,
+        file,
+      );
+    }
+  }
+});
+
 test("requires explicit commit-count versions for hosted Docker services", async () => {
   const [compose, workerDockerfile] = await Promise.all([
     readFile(new URL("../deploy/compose.hosted.yml", import.meta.url), "utf8"),

@@ -9653,3 +9653,23 @@ The historical desktop fixture now uses the native conversion commands.
 The local historical Node archive exited at startup due to a missing
 generated protocol module, so the full historical HTTP fixture was not
 run. Windows runtime verification remains separate.
+
+## 282. Restore the shared Rust build module in Linux server packaging
+
+Reference commit `59d5f5a1a2287a095387f7c814a590901dabf9b8` (#3445).
+
+Both server Dockerfiles copy the shared Cargo launcher into the build and
+packaging stages. Each stage imports the server build module, including
+packaging with a prebuilt executable. The deployment tests check both
+stages in each Dockerfile.
+
+The canonical Linux ARM64 distribution built and exported with local
+BuildKit. The exported artifact ran PGlite and bundled PostgreSQL migrations
+as the service user without Node, then reached HTTP readiness with PGlite
+and shut down successfully. The sixteen deployment tests passed. The
+Linux x64 export was outside this cycle's build validation.
+
+The runtime audit found that the Cantrip OS executor package still carries
+JavaScript file and Run helpers and a Node dependency. The Rust worker
+calls the native guest binaries. Retiring the old helpers requires
+updating the executor package and its comparison fixtures.
