@@ -36,6 +36,7 @@ wayland-client = "0.31.15"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 x11rb = { version = "0.13.2", features = ["composite", "image", "randr", "res", "xfixes", "xtest"] }
+xkeysym = { version = "0.2.1", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [

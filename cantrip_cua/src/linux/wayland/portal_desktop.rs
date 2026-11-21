@@ -317,7 +317,7 @@ impl DesktopSession {
                             '\n' | '\r' => 0xff0d,
                             '\t' => 0xff09,
                             short if short as u32 <= 0xff => short as i32,
-                            unicode => 0x0100_0000 | unicode as i32,
+                            unicode => xkeysym::Keysym::from_char(unicode).raw() as i32,
                         };
                         for state in [1_u32, 0] {
                             call.call(

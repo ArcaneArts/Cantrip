@@ -11465,3 +11465,24 @@ release to the closed session. The existing approval, denial, cancellation,
 clipboard, and ordinary input cleanup checks passed. Eight shared interaction
 unit tests passed on macOS ARM64.
 [XDG portal session interface](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Session.html#org-freedesktop-portal-session-closed).
+
+## 361. Use XKB keysyms for Wayland text and keys
+
+Reference commit `55c1e1e71ff35fc6a1a64347faf635c9312b8977` (#3524).
+
+The Wayland helper uses the Linux-only `xkeysym` crate to choose the
+standard XKB keysym for non-Latin-1 text and single-character key events.
+Characters with historical keysyms use those forms. Characters without
+one retain the generic Unicode form.
+
+Linux libxkbcommon confirmed that the standard Greek layout contains
+`0x07eb` for lambda and has no entry for the baseline's generic keysym.
+Older Plasma portals look up the supplied keysym in the active layout, so
+their support for characters absent from that layout still depends on the
+compositor. [Plasma portal source](https://github.com/KDE/xdg-desktop-portal-kde/blob/v6.3.6/src/waylandintegration.cpp#L522-L550).
+
+The baseline failed the focused keysym assertion. On Linux ARM64, the
+rebuilt helper passed the framed Weston and controlled D-Bus fixture,
+including Greek key down/up, emoji, Latin-1, Return, and Tab. The fixture
+also passed its existing input, clipboard, approval, and revocation checks.
+Eight shared interaction tests passed on macOS ARM64.

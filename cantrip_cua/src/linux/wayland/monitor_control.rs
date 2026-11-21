@@ -515,8 +515,10 @@ fn button_code(button: MouseButton) -> i32 {
 fn key_code(key: &str) -> Result<i32> {
     super::super::keys::symbol(key)
         .map(|code| {
-            if code > 0xff && key.chars().count() == 1 {
-                (0x0100_0000 | code) as i32
+            if code > 0xff
+                && let Ok(character) = key.parse::<char>()
+            {
+                xkeysym::Keysym::from_char(character).raw() as i32
             } else {
                 code as i32
             }
