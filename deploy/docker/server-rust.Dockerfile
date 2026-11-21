@@ -1,5 +1,5 @@
-# Node is build tooling only. No Node runtime is copied to the distribution or
-# final image; the unchanged worker continues to use its own image/runtime.
+# The build and packaging stages use Node. The final image runs the native
+# server from the exported distribution.
 FROM node:24.22.1-bookworm-slim AS node-build-tool
 
 # Build the pinned native engine against the same libc baseline as the server.
@@ -50,7 +50,7 @@ COPY cantrip_server_rs ./cantrip_server_rs
 COPY cantrip_worker_rs ./cantrip_worker_rs
 COPY cantrip_interaction ./cantrip_interaction
 COPY cantrip_server/drizzle ./cantrip_server/drizzle
-COPY scripts/version.mjs ./scripts/
+COPY scripts/build-rust-executable.mjs scripts/version.mjs ./scripts/
 COPY scripts/server-rust/build.mjs scripts/server-rust/build-version.mjs \
     scripts/server-rust/cargo.mjs ./scripts/server-rust/
 COPY policy_templates ./policy_templates
@@ -72,7 +72,7 @@ ENV CANTRIP_VERSION_PATCH=${CANTRIP_VERSION_PATCH}
 WORKDIR /workspace
 COPY --from=node-build-tool /usr/local/bin/node /usr/local/bin/node
 COPY --from=build /cantrip-server /cantrip-server
-COPY scripts/version.mjs scripts/native-target.mjs scripts/package-server-rust.mjs ./scripts/
+COPY scripts/build-rust-executable.mjs scripts/version.mjs scripts/native-target.mjs scripts/package-server-rust.mjs ./scripts/
 COPY scripts/server-rust/build.mjs scripts/server-rust/build-version.mjs \
     scripts/server-rust/cargo.mjs scripts/server-rust/postgres-assets.mjs ./scripts/server-rust/
 COPY --from=build /workspace/version.json ./version.json
