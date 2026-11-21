@@ -281,7 +281,7 @@ def exercise(helper, control, root, env):
         point = {"x": 18.5, "y": 24.5}
         input_event(1, "pointerDown", point=point, button="left", modifiers=[])
         input_event(2, "scroll", point=point, deltaX=7, deltaY=-12, modifiers=[])
-        input_event(3, "text", type="commit", data="λ")
+        input_event(3, "text", type="commit", data="λ🚋é\r\n\t")
         copied, _ = ok("interaction.request", request={"type": "clipboardCopy", "binding": scope, "handle": handle, "sequence": 5})
         assert copied["text"] == COPIED
         control.SetMode("no-new-clipboard")
@@ -292,7 +292,10 @@ def exercise(helper, control, root, env):
         log = events()
         assert ["motion", 71, 18.5, 24.5] in log
         assert ["scroll", 7.0, -12.0, True] in log
-        assert ["key", 0x010003BB, 1] in log
+        text_keys = [0x07EB, 0x0101F68B, 0xE9, 0xFF0D, 0xFF09]
+        assert [event for event in log if event[0] == "key"][:2 * len(text_keys)] == [
+            ["key", keysym, state] for keysym in text_keys for state in (1, 0)
+        ]
         assert log.count(["clipboard-read"]) == 1
         assert log.index(["button", 272, 0]) < log.index(["session-close"])
         assert log.index(["key", 0xFFE1, 0]) < log.index(["session-close"])
@@ -304,7 +307,13 @@ def exercise(helper, control, root, env):
         handle = opened["data"]["handle"]
         control.CloseFromPortal(True)
         assert attach(other)["error"]["code"] == "ownership-mismatch"
-        input_event(1, "keyDown", key="Shift", repeat=False, modifiers=[])
+        input_event(1, "keyDown", key="λ", repeat=False, modifiers=[])
+        input_event(2, "keyUp", key="λ")
+        assert [event for event in events() if event[0] == "key"][-2:] == [
+            ["key", 0x07EB, 1],
+            ["key", 0x07EB, 0],
+        ]
+        input_event(3, "keyDown", key="Shift", repeat=False, modifiers=[])
 
         control.CloseFromPortal(False)
 
@@ -314,7 +323,7 @@ def exercise(helper, control, root, env):
 
         assert wait(replacement_open)["error"]["code"] == "input-pending"
         retired, _ = call("interaction.request", request={
-            "type": "input", "binding": scope, "handle": handle, "sequence": 2,
+            "type": "input", "binding": scope, "handle": handle, "sequence": 4,
             "event": {"type": "keyUp", "data": {"key": "Shift"}},
         })
         assert retired["error"]["code"] == "session-not-found"
