@@ -213,6 +213,17 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
             [b"2", s] => {
                 self.callbacks.set_window_title(&mut self.screen, s);
             }
+            [b"8", parameters, first, rest @ ..] => {
+                // Semicolons can appear in the destination. Store only the
+                // visible link underline used by canonical snapshot replay.
+                if !first.is_empty() || !rest.is_empty() {
+                    self.screen.set_hyperlink(true);
+                } else if std::str::from_utf8(parameters)
+                    .is_ok_and(|p| p.trim().is_empty())
+                {
+                    self.screen.set_hyperlink(false);
+                }
+            }
             [b"52", ty, data] => {
                 match (
                     ty.iter().all(|c| CLIPBOARD_SELECTOR.contains(c)),

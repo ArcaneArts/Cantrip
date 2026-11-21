@@ -63,6 +63,7 @@ pub struct Screen {
 
     attrs: crate::attrs::Attrs,
     saved_attrs: crate::attrs::Attrs,
+    hyperlink: bool,
     pub(crate) charsets: crate::charset::Charsets,
 
     modes: u16,
@@ -83,6 +84,7 @@ impl Screen {
 
             attrs: crate::attrs::Attrs::default(),
             saved_attrs: crate::attrs::Attrs::default(),
+            hyperlink: false,
             charsets: crate::charset::Charsets::default(),
 
             modes: 0,
@@ -695,13 +697,13 @@ impl Screen {
     /// Returns the currently active foreground color.
     #[must_use]
     pub fn fgcolor(&self) -> crate::Color {
-        self.attrs.fgcolor
+        self.attrs.fgcolor()
     }
 
     /// Returns the currently active background color.
     #[must_use]
     pub fn bgcolor(&self) -> crate::Color {
-        self.attrs.bgcolor
+        self.attrs.bgcolor()
     }
 
     /// Returns whether newly drawn text should be rendered with the bold text
@@ -811,10 +813,18 @@ impl Screen {
 }
 
 impl Screen {
+    pub(crate) fn set_hyperlink(&mut self, active: bool) {
+        self.hyperlink = active;
+    }
+
     pub(crate) fn text(&mut self, c: char) {
         let pos = self.grid().pos();
         let size = self.grid().size();
         let attrs = self.attrs;
+        let mut text_attrs = attrs;
+        if self.hyperlink {
+            text_attrs.set_underline(true);
+        }
 
         let width = c.width();
         if width.is_none() && (u32::from(c)) < 256 {
@@ -997,7 +1007,7 @@ impl Screen {
                 // called col_wrap() immediately before this, which ensures
                 // that self.grid().pos().col has a valid value.
                 .unwrap();
-            cell.set(c, attrs);
+            cell.set(c, text_attrs);
             self.grid_mut().col_inc(1);
             if width > 1 {
                 let pos = self.grid().pos();
@@ -1119,6 +1129,7 @@ impl Screen {
     }
 
     pub(crate) fn soft_reset(&mut self) {
+        self.hyperlink = false;
         self.charsets = crate::charset::Charsets::default();
         self.modes &= MODE_ALTERNATE_SCREEN;
         self.attrs = crate::attrs::Attrs::default();
@@ -1406,35 +1417,32 @@ impl Screen {
         loop {
             match next_param!() {
                 [0] => self.attrs = crate::attrs::Attrs::default(),
-                [1] => self.attrs.set_bold(),
-                [2] => self.attrs.set_dim(),
-                [3] => self.attrs.set_italic(true),
-                [4] => self.attrs.set_underline(true),
-                [7] => self.attrs.set_inverse(true),
-                [22] => self.attrs.set_normal_intensity(),
-                [23] => self.attrs.set_italic(false),
-                [24] => self.attrs.set_underline(false),
-                [27] => self.attrs.set_inverse(false),
+                [21] => self.attrs.set_underline(true),
+                [4, style] => self.attrs.set_underline(*style != 0),
+                [param] if self.attrs.apply_style(*param) => {}
                 [n] if (30..=37).contains(n) => {
-                    self.attrs.fgcolor = crate::Color::Idx(to_u8!(*n) - 30);
+                    self.attrs.set_fgcolor(crate::Color::Idx(to_u8!(*n) - 30));
                 }
                 [38, 2, r, g, b] => {
-                    self.attrs.fgcolor =
-                        crate::Color::Rgb(to_u8!(*r), to_u8!(*g), to_u8!(*b));
+                    self.attrs.set_fgcolor(crate::Color::Rgb(
+                        to_u8!(*r),
+                        to_u8!(*g),
+                        to_u8!(*b),
+                    ));
                 }
                 [38, 5, i] => {
-                    self.attrs.fgcolor = crate::Color::Idx(to_u8!(*i));
+                    self.attrs.set_fgcolor(crate::Color::Idx(to_u8!(*i)));
                 }
                 [38] => match next_param!() {
                     [2] => {
                         let r = next_param_u8!();
                         let g = next_param_u8!();
                         let b = next_param_u8!();
-                        self.attrs.fgcolor = crate::Color::Rgb(r, g, b);
+                        self.attrs.set_fgcolor(crate::Color::Rgb(r, g, b));
                     }
                     [5] => {
-                        self.attrs.fgcolor =
-                            crate::Color::Idx(next_param_u8!());
+                        self.attrs
+                            .set_fgcolor(crate::Color::Idx(next_param_u8!()));
                     }
                     _ => {
                         unhandled(self);
@@ -1442,28 +1450,31 @@ impl Screen {
                     }
                 },
                 [39] => {
-                    self.attrs.fgcolor = crate::Color::Default;
+                    self.attrs.set_fgcolor(crate::Color::Default);
                 }
                 [n] if (40..=47).contains(n) => {
-                    self.attrs.bgcolor = crate::Color::Idx(to_u8!(*n) - 40);
+                    self.attrs.set_bgcolor(crate::Color::Idx(to_u8!(*n) - 40));
                 }
                 [48, 2, r, g, b] => {
-                    self.attrs.bgcolor =
-                        crate::Color::Rgb(to_u8!(*r), to_u8!(*g), to_u8!(*b));
+                    self.attrs.set_bgcolor(crate::Color::Rgb(
+                        to_u8!(*r),
+                        to_u8!(*g),
+                        to_u8!(*b),
+                    ));
                 }
                 [48, 5, i] => {
-                    self.attrs.bgcolor = crate::Color::Idx(to_u8!(*i));
+                    self.attrs.set_bgcolor(crate::Color::Idx(to_u8!(*i)));
                 }
                 [48] => match next_param!() {
                     [2] => {
                         let r = next_param_u8!();
                         let g = next_param_u8!();
                         let b = next_param_u8!();
-                        self.attrs.bgcolor = crate::Color::Rgb(r, g, b);
+                        self.attrs.set_bgcolor(crate::Color::Rgb(r, g, b));
                     }
                     [5] => {
-                        self.attrs.bgcolor =
-                            crate::Color::Idx(next_param_u8!());
+                        self.attrs
+                            .set_bgcolor(crate::Color::Idx(next_param_u8!()));
                     }
                     _ => {
                         unhandled(self);
@@ -1471,13 +1482,13 @@ impl Screen {
                     }
                 },
                 [49] => {
-                    self.attrs.bgcolor = crate::Color::Default;
+                    self.attrs.set_bgcolor(crate::Color::Default);
                 }
                 [n] if (90..=97).contains(n) => {
-                    self.attrs.fgcolor = crate::Color::Idx(to_u8!(*n) - 82);
+                    self.attrs.set_fgcolor(crate::Color::Idx(to_u8!(*n) - 82));
                 }
                 [n] if (100..=107).contains(n) => {
-                    self.attrs.bgcolor = crate::Color::Idx(to_u8!(*n) - 92);
+                    self.attrs.set_bgcolor(crate::Color::Idx(to_u8!(*n) - 92));
                 }
                 _ => unhandled(self),
             }
