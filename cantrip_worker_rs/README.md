@@ -1,9 +1,30 @@
 # Native Cantrip worker
 
-This package is the incremental Rust worker replacement. See
-[the implementation ledger](../docs/RUST_WORKER_PORT.md) for complete scope,
-coverage, compatibility and delivery milestones. Production packaging continues
-selecting the Node worker until the complete implementation is ready.
+This crate builds the `cantrip-worker` executable used by Cantrip development,
+desktop, standalone, and hosted packaging. See the
+[implementation ledger](../docs/RUST_WORKER_PORT.md) for coverage, compatibility
+fixtures, and the validation recorded for each milestone.
+
+- Build with `pnpm worker:rust:build`.
+- Run focused checks with `pnpm worker:rust:check` and `pnpm worker:rust:test`.
+- Package with `pnpm package:worker --target <target>`. See the
+  [standalone distribution guide](../deploy/worker.README.md) for launch
+  commands, environment variables, and enrollment.
+
+The worker runs with the existing profile paths and credentials. Optional flags
+include `--env-file-if-exists=<path>`, `--shutdown-on-stdin-close`, `--version`,
+and `--help`. Use a disposable profile and explicit enrollment for integration
+checks. Keep one worker process per mutable profile.
+
+The Cargo wrapper shares the bounded Rust cache. Build-time tooling can use Node
+to resolve the Cantrip version. The packaged executable and bundled first-party
+helpers run natively. The worker crate uses shared protocol, transport, endpoint
+crypto, history, and host code independently of the Rust server and database.
+
+## Implementation notes from the port
+
+These notes describe incremental implementations and focused fixtures from the
+port. The ledger records their subsequent integration and cutover.
 
 The native `cantrip-worker` executable currently supports configuration,
 version-1 identity/credential persistence, logging/archive lifecycle, enrollment,
@@ -101,7 +122,7 @@ the current native implementation. Basic host Explorer and file-document text
 operations are implemented; paged readers, transfers, watches, media and other
 filesystem services remain pending. See the ledger for current coverage.
 
-## Native history transport
+### Native history transport
 
 `history::client::Client` implements binding open, canonical item resolution,
 prepared-batch ingest/delivery, and item/turn/batch archive readers using the
@@ -144,7 +165,7 @@ only after every resource is coherent. Caller cancellation remains live through
 fetches, offloaded decryption and the existing 100ms conflict delay. Reporting
 callback errors cannot stop recovery. Recovery never advances a projector cursor.
 
-## Native inference ownership and journal
+### Native inference ownership and journal
 
 `inference::ownership::Owner` talks to the existing bundled Codex Rust lifetime
 keeper. It claims one server/owner/worker scope, prepares native runtime
@@ -182,7 +203,7 @@ keeper, including real registered Codex app-server retirement without inference.
 Node runs only the development reference; native children have Node absent from
 PATH. Do not point fixtures at an active user profile.
 
-## Worker-wide admission
+### Worker-wide admission
 
 `inference::admission::Manager` now owns provider-wide FIFO pools across native
 runtimes and direct HTTP execution. It preserves provider configuration/catalog

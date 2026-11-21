@@ -7,7 +7,7 @@ contains the server, embedded migrations, PGlite runtime assets, private Postgre
 assets, and shared libraries. PGlite's helpers run from the immutable distribution,
 so a `noexec` temporary filesystem is supported. The executable also retains its
 embedded runtime for unbundled use. Server startup does not invoke Node or a package
-manager. The existing worker continues to run separately using Node.
+manager. The [native worker](worker.README.md) runs as a separate service.
 
 Copy `.env.example` to `.env` and set `CANTRIP_DATA_DIR` to persistent storage.
 Dotenv values use the existing Node 24 syntax without shell evaluation or
