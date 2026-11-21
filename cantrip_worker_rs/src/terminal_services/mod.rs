@@ -89,7 +89,6 @@ struct State {
     display: Arc<Mutex<Display>>,
     size: TerminalSize,
     io: Option<ServiceIo>,
-    boundary: u64,
     generation: u64,
     restarts: u64,
     phase: &'static str,
@@ -122,10 +121,9 @@ impl Default for State {
     fn default() -> Self {
         let size = TerminalSize::default();
         Self {
-            display: Arc::new(Mutex::new(Display::new(size))),
+            display: Arc::new(Mutex::new(Display::new(size, 0))),
             size,
             io: None,
-            boundary: 0,
             generation: 0,
             restarts: 0,
             phase: "starting",
@@ -136,17 +134,20 @@ impl Default for State {
 
 impl State {
     fn append(&mut self, text: &str) {
-        self.boundary += 1;
         self.display.lock().unwrap().write(text);
     }
     fn reset(&mut self) {
-        self.display.lock().unwrap().reset(self.size);
-        self.boundary = 0;
+        self.generation += 1;
+        self.display
+            .lock()
+            .unwrap()
+            .reset(self.size, self.generation);
         self.exit = None;
     }
     fn value(&self) -> Value {
-        let (buffer, truncated) = self.display.lock().unwrap().replay.raw();
-        json!({"buffer":buffer,"truncated":truncated,"outputBoundary":self.boundary,"processGeneration":self.generation,"restartCount":self.restarts,"phase":self.phase,"exitCode":self.exit.map(|exit| exit.code)})
+        let display = self.display.lock().unwrap();
+        let (buffer, truncated) = display.replay.raw();
+        json!({"buffer":buffer,"truncated":truncated,"outputBoundary":display.replay.output_boundary(),"processGeneration":self.generation,"restartCount":self.restarts,"phase":self.phase,"exitCode":self.exit.map(|exit| exit.code)})
     }
     fn resize(&mut self, size: TerminalSize) {
         self.size = size;

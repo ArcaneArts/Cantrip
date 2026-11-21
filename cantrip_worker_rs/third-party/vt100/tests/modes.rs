@@ -43,3 +43,25 @@ fn snapshot_restores_the_origin_margin_and_pending_wrap() {
     assert_eq!(restored.screen().cell(3, 0).unwrap().contents(), "X");
     assert_eq!(restored.screen().cursor_position(), (2, 2));
 }
+
+#[test]
+fn soft_reset_clears_snapshot_modes_without_erasing_the_grid() {
+    let mut parser = vt100::Parser::new(4, 8, 0);
+    parser.process(
+        b"\x1b[2;4r\x1b[?6;45;66;1004;2004;2026h\x1b[?7l\x1b[4h\x1b[2;3HZ",
+    );
+    assert!(parser.screen().synchronized_output());
+    let cursor = parser.screen().cursor_position();
+    parser.process(b"\x1b[!p");
+    let screen = parser.screen();
+    assert_eq!(screen.cursor_position(), cursor);
+    assert_eq!(screen.cell(2, 2).unwrap().contents(), "Z");
+    assert!(!screen.insert_mode());
+    assert!(!screen.origin_mode());
+    assert!(!screen.reverse_wraparound());
+    assert!(!screen.focus_reporting());
+    assert!(!screen.application_keypad());
+    assert!(!screen.bracketed_paste());
+    assert!(!screen.synchronized_output());
+    assert!(screen.wraparound());
+}

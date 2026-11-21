@@ -421,7 +421,7 @@ impl Shells {
                             return Ok(display);
                         }
                         terminal::Opened::Exited(result) => {
-                            let mut state = Display::new(size);
+                            let mut state = Display::new(size, 1);
                             state.finish(result);
                             return Ok(Arc::new(Mutex::new(state)));
                         }

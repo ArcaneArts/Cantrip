@@ -10,6 +10,7 @@ const MODE_INSERT: u16 = 1 << 5;
 const MODE_NO_WRAP: u16 = 1 << 6;
 const MODE_REVERSE_WRAP: u16 = 1 << 7;
 const MODE_REPORT_FOCUS: u16 = 1 << 8;
+const MODE_SYNCHRONIZED_OUTPUT: u16 = 1 << 9;
 
 /// The xterm mouse handling mode currently in use.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
@@ -257,13 +258,14 @@ impl Screen {
     }
 
     /// Serialize the normal viewport and cursor, including the newest
-    /// scrollback rows that fit in the byte budget. While the alternate
+    /// scrollback rows that fit in the byte budget. Returns the serialized
+    /// bytes and the number of retained history rows. While the alternate
     /// screen is active, restore the normal screen's saved drawing style.
     #[must_use]
     pub fn normal_contents_formatted_with_scrollback(
         &self,
         max_bytes: usize,
-    ) -> Option<Vec<u8>> {
+    ) -> Option<(Vec<u8>, usize)> {
         let mut history = self.grid.history_rows();
         let pen = if self.alternate_screen() {
             &self.saved_attrs
@@ -279,7 +281,7 @@ impl Screen {
             {
                 pen.write_escape_code_diff(&mut contents, &attrs);
                 if contents.len() <= max_bytes {
-                    return Some(contents);
+                    return Some((contents, history));
                 }
             }
             if history == 0 {
@@ -631,6 +633,42 @@ impl Screen {
     #[must_use]
     pub fn bracketed_paste(&self) -> bool {
         self.mode(MODE_BRACKETED_PASTE)
+    }
+
+    /// Whether printed cells shift the rest of the row to the right.
+    #[must_use]
+    pub fn insert_mode(&self) -> bool {
+        self.mode(MODE_INSERT)
+    }
+
+    /// Whether the cursor is addressed relative to the scroll margins.
+    #[must_use]
+    pub fn origin_mode(&self) -> bool {
+        self.grid().origin_mode()
+    }
+
+    /// Whether backspace can cross a soft wrap.
+    #[must_use]
+    pub fn reverse_wraparound(&self) -> bool {
+        self.mode(MODE_REVERSE_WRAP)
+    }
+
+    /// Whether a viewer reports focus changes to the application.
+    #[must_use]
+    pub fn focus_reporting(&self) -> bool {
+        self.mode(MODE_REPORT_FOCUS)
+    }
+
+    /// Whether the application is currently batching visible output.
+    #[must_use]
+    pub fn synchronized_output(&self) -> bool {
+        self.mode(MODE_SYNCHRONIZED_OUTPUT)
+    }
+
+    /// Whether printing at the right margin wraps the cursor.
+    #[must_use]
+    pub fn wraparound(&self) -> bool {
+        !self.mode(MODE_NO_WRAP)
     }
 
     /// Returns the currently active [`MouseProtocolMode`].
@@ -1069,6 +1107,13 @@ impl Screen {
         *self = Self::new(self.grid.size(), self.grid.scrollback_len());
     }
 
+    pub(crate) fn soft_reset(&mut self) {
+        self.modes &= MODE_ALTERNATE_SCREEN;
+        self.attrs = crate::attrs::Attrs::default();
+        self.saved_attrs = self.attrs;
+        self.grid_mut().soft_reset();
+    }
+
     // csi codes
 
     // CSI @
@@ -1250,6 +1295,7 @@ impl Screen {
                     self.enter_alternate_grid();
                 }
                 [2004] => self.set_mode(MODE_BRACKETED_PASTE),
+                [2026] => self.set_mode(MODE_SYNCHRONIZED_OUTPUT),
                 _ => unhandled(self),
             }
         }
@@ -1294,6 +1340,7 @@ impl Screen {
                     self.decrc();
                 }
                 [2004] => self.clear_mode(MODE_BRACKETED_PASTE),
+                [2026] => self.clear_mode(MODE_SYNCHRONIZED_OUTPUT),
                 _ => unhandled(self),
             }
         }

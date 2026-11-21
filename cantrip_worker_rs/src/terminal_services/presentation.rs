@@ -66,7 +66,7 @@ impl Attachment {
         Ok(())
     }
 
-    fn output(&mut self, data: &JsString, snapshot: Option<&Replay>) -> Result<()> {
+    fn output(&mut self, data: &JsString, mut hydration: Option<Value>) -> Result<()> {
         if self.discard {
             return Ok(());
         }
@@ -74,17 +74,13 @@ impl Attachment {
             Transport::Command { .. } => 32 * 1024,
             // A JSON-escaped UTF-16 unit can occupy six bytes before
             // encryption and Base64 expansion. Keep that case frameable.
-            Transport::WorkerLink(_) => {
-                if data.is_empty() {
-                    return Ok(());
-                }
-                8 * 1024
-            }
+            Transport::WorkerLink(_) => 8 * 1024,
         };
         let chunks = output_chunks(data, chunk);
-        let mut hydration = snapshot
-            .filter(|_| matches!(self.transport, Transport::WorkerLink(_)))
-            .map(|replay| replay.hydration(data, chunks.clone().count()));
+        if let Some(metadata) = &mut hydration {
+            metadata["snapshotCharacters"] = json!(data.len());
+            metadata["snapshotChunks"] = json!(chunks.clone().count());
+        }
         for units in chunks {
             self.binding["sequence"] = json!(self.sequence);
             let protected = protect_surface_content(
@@ -131,16 +127,16 @@ pub(super) struct Display {
 }
 
 impl Display {
-    pub(super) fn new(size: TerminalSize) -> Self {
+    pub(super) fn new(size: TerminalSize, process_generation: u64) -> Self {
         Self {
-            replay: Replay::new(size),
+            replay: Replay::new(size, process_generation),
             views: HashMap::new(),
             exited: None,
         }
     }
 
-    pub(super) fn reset(&mut self, size: TerminalSize) {
-        self.replay = Replay::new(size);
+    pub(super) fn reset(&mut self, size: TerminalSize, process_generation: u64) {
+        self.replay = Replay::new(size, process_generation);
         self.exited = None;
     }
 
@@ -153,7 +149,9 @@ impl Display {
             "Terminal attachment already exists."
         );
         if !view.discard {
-            view.output(&self.replay.attachment(), Some(&self.replay))?;
+            let with_metadata = matches!(view.transport, Transport::WorkerLink(_));
+            let (snapshot, metadata) = self.replay.attachment(with_metadata);
+            view.output(&snapshot, metadata)?;
         }
         view.emit(json!({"type":"terminal.ready"}))?;
         self.views.insert(id.clone(), view);

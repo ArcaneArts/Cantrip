@@ -47,6 +47,7 @@ export async function protectedTerminalView(
       outputSequence = 0,
       data = "",
       hydration;
+    const snapshotParts = [];
     async function output(frame) {
       assert.equal(frame.type, "output", JSON.stringify(frame));
       assert.equal(frame.operationId, operationId);
@@ -58,7 +59,13 @@ export async function protectedTerminalView(
       });
       const content = JSON.parse(Buffer.from(bytes).toString());
       assert.equal(content.type, "terminal.output");
-      hydration ??= frame.hydration;
+      if (frame.hydration) {
+        assert.equal(frame.sequence, 0, "metadata starts the snapshot");
+        hydration = frame.hydration;
+      }
+      if (hydration && snapshotParts.length < hydration.snapshotChunks) {
+        snapshotParts.push(content.data);
+      }
       data += content.data;
     }
     for (;;) {
@@ -66,10 +73,15 @@ export async function protectedTerminalView(
       if (frame.type === "ready") break;
       await output(frame);
     }
+    if (hydration) {
+      assert.equal(snapshotParts.length, hydration.snapshotChunks);
+      assert.equal(snapshotParts.join("").length, hydration.snapshotCharacters);
+    }
     return {
       relay,
       replay: data,
       hydration,
+      snapshotParts,
       async input(text) {
         const protectedData = await crypto.encryptSurfaceStreamPayload({
           ...secret,

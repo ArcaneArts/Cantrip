@@ -37,7 +37,6 @@ pub(super) async fn run(
             state.reset();
             state.phase = "starting";
             state.append("\r\n\x1b[90m[Starting terminal service]\x1b[0m\r\n");
-            state.generation += 1;
             (state.restarts + 1, state.generation, state.size)
         };
         let mut environment = environment.clone();

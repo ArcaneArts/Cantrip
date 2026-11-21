@@ -672,6 +672,18 @@ impl Grid {
         self.scroll_top != 0 || self.scroll_bottom != self.size.rows - 1
     }
 
+    pub fn origin_mode(&self) -> bool {
+        self.origin_mode
+    }
+
+    pub fn soft_reset(&mut self) {
+        self.scroll_top = 0;
+        self.scroll_bottom = self.size.rows - 1;
+        self.origin_mode = false;
+        self.saved_pos = Pos::default();
+        self.saved_origin_mode = false;
+    }
+
     pub fn set_origin_mode(&mut self, mode: bool) {
         self.origin_mode = mode;
         self.set_pos(Pos { row: 0, col: 0 });

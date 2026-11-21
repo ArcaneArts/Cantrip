@@ -2,7 +2,7 @@
 fn scrollback_and_viewport_share_the_same_soft_wrap() {
     let mut source = vt100::Parser::new(3, 5, 16);
     source.process(b"\x1b[31mabcdefghijk\x1b[m\r\none\r\ntwo");
-    let bytes = source
+    let (bytes, history_rows) = source
         .screen()
         .normal_contents_formatted_with_scrollback(1024)
         .unwrap();
@@ -12,7 +12,8 @@ fn scrollback_and_viewport_share_the_same_soft_wrap() {
     assert_eq!(restored.screen().contents(), "k\none\ntwo");
     assert_eq!(restored.screen().cursor_position(), (2, 3));
     restored.screen_mut().set_scrollback(16);
-    assert_eq!(restored.screen().scrollback(), 2);
+    assert_eq!(history_rows, 2);
+    assert_eq!(restored.screen().scrollback(), history_rows);
     assert_eq!(restored.screen().contents(), "abcdefghijk");
     assert!(restored.screen().row_wrapped(0));
     assert!(restored.screen().row_wrapped(1));
@@ -26,11 +27,11 @@ fn scrollback_and_viewport_share_the_same_soft_wrap() {
 fn dropping_history_to_fit_does_not_cut_the_viewport() {
     let mut source = vt100::Parser::new(3, 5, 16);
     source.process(b"old1\r\nold2\r\nold3\r\none\r\ntwo\r\nthree");
-    let full = source
+    let (full, full_rows) = source
         .screen()
         .normal_contents_formatted_with_scrollback(1024)
         .unwrap();
-    let bounded = source
+    let (bounded, bounded_rows) = source
         .screen()
         .normal_contents_formatted_with_scrollback(full.len() - 1)
         .unwrap();
@@ -39,5 +40,6 @@ fn dropping_history_to_fit_does_not_cut_the_viewport() {
     restored.process(&bounded);
     assert_eq!(restored.screen().contents(), "one\ntwo\nthree");
     restored.screen_mut().set_scrollback(16);
-    assert!(restored.screen().scrollback() < 3);
+    assert!(bounded_rows < full_rows);
+    assert_eq!(restored.screen().scrollback(), bounded_rows);
 }

@@ -10614,3 +10614,33 @@ recovery. The worker PATH contained no Node executable.
 Canonical xterm hydration metadata and other escape sequences remain open.
 
 [xterm.js 6.0 editing and input behavior](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/InputHandler.ts)
+
+## 321. Send canonical terminal hydration over WorkerLink and direct
+
+Reference commit 59734b7c3896907695c93c8ed0a34b79782a2ae5 (#3484).
+
+The worker now sends the canonical snapshot and its metadata over WorkerLink
+and the direct terminal socket. The first encrypted output frame carries the
+metadata. The snapshot records the active buffer, cursor, modes, and the actual
+number of history rows retained in the bounded replay. The output boundary
+advances when the PTY writes and is reset with a new service process generation.
+The app resets its terminal before applying the snapshot and receives ready
+after every chunk. Synchronized output is recorded in metadata and the
+snapshot can display immediately. The command relay keeps its existing
+envelope. An oversized viewport can still fall back to bounded raw output.
+
+The local macOS ARM64 fixture ran actual Rust Core and worker with a real PTY,
+the native direct broker, and Cantrip CLI. The previous worker sent raw metadata
+in the same fixture. The updated worker sent canonical metadata before the
+first resize and matched xterm.js after narrowing and widening. The fixture
+used the app's hydration controller with multiple encrypted chunks and
+compared the cursor, scrollback and modes. It also verified
+alternate-screen replay, an advanced service process generation with fresh
+output after restart, and the existing relay, direct, and CLI terminal paths.
+Eight parser tests and two worker replay tests passed. The worker PATH
+contained no Node executable.
+
+Automatic redraw when an oversized viewport also has a truncated raw buffer
+and additional escape-sequence parity remain open.
+
+[xterm.js 6.0 snapshot serializer](https://github.com/xtermjs/xterm.js/blob/6.0.0/addons/addon-serialize/src/SerializeAddon.ts)
