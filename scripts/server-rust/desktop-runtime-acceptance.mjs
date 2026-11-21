@@ -11,7 +11,7 @@ import {
   wrapAccountMasterKeyForClient,
   wrapAccountMasterKeyWithPassword,
 } from "../../packages/crypto/dist/index.js";
-import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -29,14 +29,7 @@ const { values } = parseArgs({
 });
 const runtime = path.resolve(values.runtime);
 const probe = path.resolve(values.probe);
-const workerConfiguration = await readFile(
-  path.join(runtime, "worker/desktop-worker.json"),
-  "utf8",
-).then(JSON.parse, (error) => {
-  if (error.code !== "ENOENT") throw error;
-});
-const nativeWorker =
-  !values["without-worker"] && workerConfiguration?.runtime === "rust";
+const nativeWorker = !values["without-worker"];
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-desktop-native-"));
 const report = {
   suite: "desktop-native-launcher",
@@ -87,17 +80,9 @@ try {
     environment.CANTRIP_DATABASE_MODE = mode;
     const workerHome = path.join(data, "isolated-worker-home");
     await mkdir(workerHome);
-    if (nativeWorker) {
-      environment.HOME = workerHome;
-      environment.USERPROFILE = workerHome;
-    }
-    environment.CANTRIP_TEST_WORKER_HOME = workerHome;
-    environment.NODE_OPTIONS = [
-      environment.NODE_OPTIONS,
-      "--import=" + new URL("./worker-test-home.mjs", import.meta.url).href,
-    ]
-      .filter(Boolean)
-      .join(" ");
+    environment.HOME = workerHome;
+    environment.USERPROFILE = workerHome;
+    environment.PATH = "";
     if (mode === "postgres") environment.DATABASE_URL = values["external-url"];
     const launch = () =>
       startServer(
@@ -276,11 +261,7 @@ try {
       }
     }
     // Abrupt supervisor loss closes the pipes owned by the native services.
-    const crashed = nativeWorker
-      ? await launch()
-      : await startServer(probe, [runtime, data, "--without-worker"], {
-          env: environment,
-        });
+    const crashed = await launch();
     const child = crashed.events.find(
       (e) => e.event === "server.listening" && e.serverPid,
     );
@@ -323,16 +304,20 @@ try {
     await readFile(path.join(runtime, "server/desktop-server.json")),
   );
   if (nativeWorker) {
-    await assert.rejects(access(path.join(runtime, "worker/node_modules")), {
-      code: "ENOENT",
-    });
     assert.equal(report.desktopServerConfiguration.profileConverter, undefined);
-    for (const name of ["node", "node.exe", "profile-converter"]) {
-      await assert.rejects(access(path.join(runtime, name)), {
-        code: "ENOENT",
-      });
-    }
+    const retired = new Set([
+      "node",
+      "node.exe",
+      "node_modules",
+      "profile-converter",
+    ]);
+    const files = await readdir(runtime, { recursive: true });
+    assert.deepEqual(
+      files.filter((file) => retired.has(path.basename(file))),
+      [],
+    );
     report.noBundledNode = true;
+    report.emptyServicePath = true;
   }
 } catch (error) {
   failure = error;

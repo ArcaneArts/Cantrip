@@ -9784,3 +9784,31 @@ called its bundled CLI against the Rust server with an empty worker PATH.
 Thirty-four focused verification and reference tests passed. Windows
 paths were covered by fixtures. No Windows artifact or certificate signing
 was run during this cycle.
+
+## 288. Verify the native desktop runtime and legacy profile round trip
+
+Reference commit `4a3b256e4071cf4db56add2b61f59036dbf255bd` (#3451).
+
+The current desktop acceptance scripts expect the native worker child.
+The signed updater fixture still recognizes Node when it is testing a
+historical baseline. The updated installation must launch Rust in both
+scenarios. The headless supervisor fixture starts the actual packaged
+services with an empty PATH and checks the entire runtime tree for old
+Node components. The legacy profile fixture reuses the prepared desktop
+server configuration when it is supplied in the test artifact.
+
+On macOS ARM64, the current packagers assembled desktop resources using
+prebuilt debug services and the pinned Codex bundle. A fresh build of the
+headless desktop supervisor ran those resources with PGlite, bundled
+PostgreSQL and a disposable external PostgreSQL cluster. Settings and
+identities survived restart. Both native processes exited on orderly
+shutdown and after supervisor loss. The package contained no old Node
+components.
+
+The compiled Node server reference created a real PGlite profile.
+The eight-case round trip preserved the original 1,774 files, read a
+new Rust settings write through the Node reference after rollback, and
+observed the subsequent Node write after re-upgrade. It also verified
+actual migration failure and interrupted-export recovery. Twelve release
+workflow tests passed. The WebView and signed installer update paths were
+checked for script syntax in this cycle.
