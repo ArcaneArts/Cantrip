@@ -13,8 +13,8 @@ import {
   type NbtMessageEndpoint,
 } from "@cantrip/nbt/document";
 import type { BinaryWriteRequest } from "@cantrip/protocol/surface-stream";
-import { BinaryFileWrites } from "../../../../cantrip_worker/src/binary-file-writes";
-import { readExplorerBinaryFile } from "../../../../cantrip_worker/src/explorer";
+import { BinaryFileWrites } from "../../../../tests/reference-node-worker/src/binary-file-writes";
+import { readExplorerBinaryFile } from "../../../../tests/reference-node-worker/src/explorer";
 import { openProtectedBinarySource } from "@/lib/binary-file-source";
 import { NbtSaveController } from "./save";
 import { NbtViewSession } from "./session-registry";

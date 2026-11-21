@@ -189,7 +189,7 @@ export const topologyMatrix = [
         "adopts a renewed route generation and reconnects without stale authority",
       ),
       evidence(
-        "cantrip_worker/src/worker-link-webrtc.test.ts",
+        "tests/reference-node-worker/src/worker-link-webrtc.test.ts",
         "fails closed when the peer identity handshake is stale",
       ),
     ],
@@ -205,7 +205,7 @@ export const featureMatrix = [
         "uses the same grant and stream boundary when the manager selects %s",
       ),
       evidence(
-        "cantrip_worker/src/terminal-worker-link-adapter.test.ts",
+        "tests/reference-node-worker/src/terminal-worker-link-adapter.test.ts",
         "preserves replay-before-ready ordering and resumes output on credit",
       ),
     ],
@@ -219,11 +219,11 @@ export const featureMatrix = [
         "reopens only the WorkerLink stream after a route failure",
       ),
       evidence(
-        "cantrip_worker/src/tunnel-worker-link-adapter.test.ts",
+        "tests/reference-node-worker/src/tunnel-worker-link-adapter.test.ts",
         "waits for fresh outer credit after a nested frame is rejected",
       ),
       evidence(
-        "cantrip_worker/test/tunnel-tcp-adapter.test.ts",
+        "tests/reference-node-worker/test/tunnel-tcp-adapter.test.ts",
         "pauses destination reads until the source grants more byte credit",
         "split a queued read at the exact credit boundary instead of deadlocking",
       ),
@@ -233,7 +233,7 @@ export const featureMatrix = [
     id: "worker-link-byte-window-drain",
     evidence: [
       evidence(
-        "cantrip_worker/src/worker-link-gateway.test.ts",
+        "tests/reference-node-worker/src/worker-link-gateway.test.ts",
         "coalesces carrier wakeups without spending credit or sequence on rejection",
         "retries rejected credit controls exactly before waking adapter output",
         "does not authorize input from credit queued behind carrier congestion",
@@ -242,20 +242,20 @@ export const featureMatrix = [
         "drains four exact 64 KiB nested tunnel frames through one outer credit window",
       ),
       evidence(
-        "cantrip_worker/test/direct-broker.test.ts",
+        "tests/reference-node-worker/test/direct-broker.test.ts",
         "coalesces direct WorkerLink high-water waits across drain and close",
       ),
       evidence(
-        "cantrip_worker/test/tunnel-data-transport.test.ts",
+        "tests/reference-node-worker/test/tunnel-data-transport.test.ts",
         "coalesces WorkerLink capacity waits through reconnect grace",
       ),
       evidence(
-        "cantrip_worker/src/worker-link-webrtc.test.ts",
+        "tests/reference-node-worker/src/worker-link-webrtc.test.ts",
         "coalesces lane low-water waits and resolves them on capacity or close",
         "fails a capacity wait for a frame that cannot fit legal lane ceilings",
       ),
       evidence(
-        "cantrip_worker/test/tunnel-tcp-adapter.test.ts",
+        "tests/reference-node-worker/test/tunnel-tcp-adapter.test.ts",
         "relays binary echo and preserves TCP half-close",
         "retains and retries nested credit when the outer carrier is congested",
         "interleaves sustained sibling streams within the shared byte window",
@@ -271,7 +271,7 @@ export const featureMatrix = [
     id: "browser-remote-surface",
     evidence: [
       evidence(
-        "cantrip_worker/src/remote-surface-worker-link-adapter.test.ts",
+        "tests/reference-node-worker/src/remote-surface-worker-link-adapter.test.ts",
         "isolates reliable control from disposable frame and cursor output",
       ),
       evidence(
@@ -284,7 +284,7 @@ export const featureMatrix = [
     id: "remote-desktop",
     evidence: [
       evidence(
-        "cantrip_worker/src/remote-surface-worker-link-adapter.test.ts",
+        "tests/reference-node-worker/src/remote-surface-worker-link-adapter.test.ts",
         "binds Remote Desktop attachments through the same lane adapter",
         "finishes a large realtime frame across credit returns",
       ),
@@ -298,7 +298,7 @@ export const featureMatrix = [
     id: "provisional-observations",
     evidence: [
       evidence(
-        "cantrip_worker/src/worker-observation-worker-link-adapter.test.ts",
+        "tests/reference-node-worker/src/worker-observation-worker-link-adapter.test.ts",
         "fans provisional chat and filesystem events to exact topics",
         "never publishes final messages or durable turn outcomes",
       ),
@@ -457,7 +457,7 @@ export const targetedTests = {
 const packageTestRoots = {
   protocol: "packages/protocol/",
   app: "cantrip_app/",
-  worker: "cantrip_worker/",
+  worker: "tests/reference-node-worker/",
   server: "tests/reference-node-server/",
 };
 

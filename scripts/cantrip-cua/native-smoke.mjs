@@ -19,7 +19,7 @@ const fixtureSource = fileURLToPath(
   new URL("./native-fixture.swift", import.meta.url),
 );
 const requireWorker = createRequire(
-  new URL("../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 );
 
 export class NativeSmokeError extends Error {

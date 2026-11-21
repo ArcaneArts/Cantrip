@@ -22,8 +22,8 @@ import { AppLiveHub } from "../src/live/hub.js";
 import {
   openNativeHistoryTurn,
   prepareNativeHistoryTurn,
-} from "../../../cantrip_worker/src/native-history-turn-content.js";
-import { parseCodexNativeHistory } from "../../../cantrip_worker/src/codex/native-history.js";
+} from "../../../tests/reference-node-worker/src/native-history-turn-content.js";
+import { parseCodexNativeHistory } from "../../../tests/reference-node-worker/src/codex/native-history.js";
 import {
   protectedChatFields,
   protectedProjectFields,

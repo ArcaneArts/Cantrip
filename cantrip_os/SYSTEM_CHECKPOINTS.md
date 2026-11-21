@@ -123,10 +123,10 @@ The actual transfer integration can be run against a disposable Docker Engine:
 
 ```sh
 pnpm --filter '@cantrip/worker^...' build
-pnpm --filter @cantrip/worker build
+pnpm --filter @cantrip/worker-reference reference:build
 CANTRIP_OS_SYSTEM_INTEGRATION=1 \
 CANTRIP_OS_SYSTEM_EVIDENCE=/absolute/private/evidence \
-  pnpm --filter @cantrip/worker exec vitest run \
+  pnpm --filter @cantrip/worker-reference exec vitest run \
     test/os-system-checkpoints.integration.test.ts
 ```
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { protectNativeCommandContent } from "../../../cantrip_worker/src/native-command-content.js";
+import { protectNativeCommandContent } from "../../../tests/reference-node-worker/src/native-command-content.js";
 import { decryptNativeCommandRequest } from "../src/native-command-request.js";
 
 const material = () => ({

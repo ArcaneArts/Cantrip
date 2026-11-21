@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
-import { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.ts";
+import { WorkerEncryptionService } from "../../tests/reference-node-worker/src/worker-encryption.ts";
 import {
   wrapComponentKeyForWorker,
   encodeBase64Url,

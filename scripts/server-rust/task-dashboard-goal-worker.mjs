@@ -2,7 +2,7 @@
 // the unchanged worker/crypto implementation, never a server-side plaintext path.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatMessage } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import { taskMessageOpaqueContentSchema } from "../../packages/protocol/dist/index.js";
 import {
   encryptTaskProtectedContent,

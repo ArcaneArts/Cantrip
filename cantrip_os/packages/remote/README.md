@@ -143,7 +143,7 @@ The actual Worker-service test uses:
 
 ```sh
 CANTRIP_OS_CUA_TEST_CONTAINER=disposable-container \
-  pnpm --dir cantrip_worker exec vitest run test/os-cua.integration.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/os-cua.integration.test.ts
 ```
 
 For an installed guest set `CANTRIP_OS_CUA_TEST_TRANSPORT` to a Worker-local JSON
@@ -252,7 +252,7 @@ Actual transport acceptance runs with either fixture mechanism from above:
 
 ```sh
 CANTRIP_OS_CUA_TEST_CONTAINER=disposable-container \
-  pnpm --dir cantrip_worker exec vitest run test/os-tunnels.integration.test.ts --maxWorkers=2
+  pnpm --dir tests/reference-node-worker exec vitest run test/os-tunnels.integration.test.ts --maxWorkers=2
 ```
 
 The opt-in app test `src/lib/os-tunnel.product.integration.test.ts` additionally
@@ -306,7 +306,7 @@ Opt-in real Worker/package acceptance:
 
 ```sh
 CANTRIP_OS_CUA_TEST_CONTAINER=<disposable-container> \
-  pnpm --filter @cantrip/worker exec vitest run test/os-vnc.integration.test.ts --maxWorkers=1
+  pnpm --filter @cantrip/worker-reference exec vitest run test/os-vnc.integration.test.ts --maxWorkers=1
 ```
 
 For an installed VM use `CANTRIP_OS_CUA_TEST_TRANSPORT` with the established
@@ -365,7 +365,7 @@ it does not clear retained preferences, host identity, diagnostics or files.
 
 ```sh
 CANTRIP_OS_CUA_TEST_CONTAINER=<disposable-container> \
-  pnpm --filter @cantrip/worker exec vitest run test/os-reverse-forward.integration.test.ts --maxWorkers=1
+  pnpm --filter @cantrip/worker-reference exec vitest run test/os-reverse-forward.integration.test.ts --maxWorkers=1
 ```
 
 Use the existing SSH transport JSON through `CANTRIP_OS_CUA_TEST_TRANSPORT` for

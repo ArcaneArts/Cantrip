@@ -13,8 +13,8 @@ import {
   folderLeaseRenewal,
 } from "./folder-creation-shutdown.mjs";
 import { heartbeat, projectLabel, password } from "./security-fixtures.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { provisioningStateReopen } from "./provisioning-state-reopen.mjs";
 const option = (key) => {

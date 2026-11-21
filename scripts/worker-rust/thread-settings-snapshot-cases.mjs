@@ -8,7 +8,7 @@ import {
 import {
   openNativeSettingsSnapshot,
   protectNativeSettingsSnapshot,
-} from "../../cantrip_worker/src/native-settings-content.ts";
+} from "../../tests/reference-node-worker/src/native-settings-content.ts";
 
 export function settingsSnapshotPeer({ ensure, available, oracle, scope }) {
   const ready = Promise.withResolvers();

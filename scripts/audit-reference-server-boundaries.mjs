@@ -59,14 +59,17 @@ const clientAutomationSettingsPath = resolve(
   repositoryRoot,
   "cantrip_app/src/components/projects/project-automations-settings.tsx",
 );
-const workerPath = resolve(repositoryRoot, "cantrip_worker/src/index.ts");
+const workerPath = resolve(
+  repositoryRoot,
+  "tests/reference-node-worker/src/index.ts",
+);
 const workerAutomationEncryptionPath = resolve(
   repositoryRoot,
-  "cantrip_worker/src/automation-encryption.ts",
+  "tests/reference-node-worker/src/automation-encryption.ts",
 );
 const workerRoutingPath = resolve(
   repositoryRoot,
-  "cantrip_worker/src/routing-registry.ts",
+  "tests/reference-node-worker/src/routing-registry.ts",
 );
 const remoteSurfaceStreamProtocolPath = resolve(
   repositoryRoot,
@@ -78,7 +81,7 @@ const remoteSurfaceTransportPath = resolve(
 );
 const remoteSurfaceManagerPath = resolve(
   repositoryRoot,
-  "cantrip_worker/src/remote-surface-manager.ts",
+  "tests/reference-node-worker/src/remote-surface-manager.ts",
 );
 const remoteSurfaceRelayPath = resolve(
   repositoryRoot,
@@ -2171,7 +2174,10 @@ async function policyRepositoryBoundaryAudit() {
 async function providerSecretRepositoryBoundaryAudit() {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
   const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
-  const workerPath = resolve(repositoryRoot, "cantrip_worker/src/index.ts");
+  const workerPath = resolve(
+    repositoryRoot,
+    "tests/reference-node-worker/src/index.ts",
+  );
   const clientSecretsPath = resolve(
     repositoryRoot,
     "cantrip_app/src/lib/protected-secrets.ts",
@@ -2456,15 +2462,15 @@ async function tunnelConfigurationBoundaryAudit() {
     ),
     worker: resolve(
       repositoryRoot,
-      "cantrip_worker/src/tunnel-content-encryption.ts",
+      "tests/reference-node-worker/src/tunnel-content-encryption.ts",
     ),
     router: resolve(
       repositoryRoot,
-      "cantrip_worker/src/tunnel-destination-router.ts",
+      "tests/reference-node-worker/src/tunnel-destination-router.ts",
     ),
     workerDataProtection: resolve(
       repositoryRoot,
-      "cantrip_worker/src/tunnel-data-protection.ts",
+      "tests/reference-node-worker/src/tunnel-data-protection.ts",
     ),
     desktopDataPlane: resolve(
       repositoryRoot,
@@ -2922,11 +2928,11 @@ async function clientControlNotificationBoundaryAudit() {
     liveProtocol: liveProtocolPath,
     worker: resolve(
       repositoryRoot,
-      "cantrip_worker/src/mcp/client-control-operations.ts",
+      "tests/reference-node-worker/src/mcp/client-control-operations.ts",
     ),
     workerEncryption: resolve(
       repositoryRoot,
-      "cantrip_worker/src/client-control-content-encryption.ts",
+      "tests/reference-node-worker/src/client-control-content-encryption.ts",
     ),
     client: resolve(
       repositoryRoot,
@@ -3188,7 +3194,10 @@ async function attachmentContentRepositoryBoundaryAudit() {
     resolve(serverSourcePath, "chat-relocations/executor.ts"),
     resolve(serverSourcePath, "chats/execution-helpers.ts"),
     resolve(repositoryRoot, "packages/protocol/src/worker-command-surfaces.ts"),
-    resolve(repositoryRoot, "cantrip_worker/src/commands/attachment.ts"),
+    resolve(
+      repositoryRoot,
+      "tests/reference-node-worker/src/commands/attachment.ts",
+    ),
   ];
   const [
     schemaText,
@@ -4400,7 +4409,7 @@ async function surfacePrivateStateRepositoryBoundaryAudit() {
   ];
   const workerManagerPath = resolve(
     repositoryRoot,
-    "cantrip_worker/src/remote-surface-manager.ts",
+    "tests/reference-node-worker/src/remote-surface-manager.ts",
   );
   const [schemaText, protocolTexts, repositoryTexts, workerManagerText] =
     await Promise.all([
@@ -4732,7 +4741,7 @@ async function buildInventory() {
     await readFile(
       resolve(
         repositoryRoot,
-        "cantrip_worker/src/repository-operation-dispatch.ts",
+        "tests/reference-node-worker/src/repository-operation-dispatch.ts",
       ),
       "utf8",
     ),

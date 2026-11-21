@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
-import { invokeCantripCliCommand } from "../../cantrip_worker/src/cli-client.ts";
+import { invokeCantripCliCommand } from "../../tests/reference-node-worker/src/cli-client.ts";
 import { buildRustExample } from "./build.mjs";
 import { cliHttpCases } from "./cli-http-cases.mjs";
 import { cliWorkerHeartbeat } from "./cli-worker-heartbeat.mjs";

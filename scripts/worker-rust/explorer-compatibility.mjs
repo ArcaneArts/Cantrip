@@ -20,9 +20,9 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { executeExplorerRequest } from "../../cantrip_worker/src/commands/explorer-request.ts";
-import { BinaryFileChangedError } from "../../cantrip_worker/src/explorer-binary.ts";
-import { TextPreviewRequiredError } from "../../cantrip_worker/src/explorer-text-preview.ts";
+import { executeExplorerRequest } from "../../tests/reference-node-worker/src/commands/explorer-request.ts";
+import { BinaryFileChangedError } from "../../tests/reference-node-worker/src/explorer-binary.ts";
+import { TextPreviewRequiredError } from "../../tests/reference-node-worker/src/explorer-text-preview.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary explorer-fixture");
 const root = await realpath(

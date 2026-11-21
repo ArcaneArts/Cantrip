@@ -10,7 +10,7 @@ import {
 import {
   openPrivateBackup,
   sealPrivateBackup,
-} from "../../cantrip_worker/src/os-executor/private-backup-file.ts";
+} from "../../tests/reference-node-worker/src/os-executor/private-backup-file.ts";
 import { grantCantripOsFixture } from "./cantrip-os-grant.mjs";
 
 export async function verifyCantripOsCapture({

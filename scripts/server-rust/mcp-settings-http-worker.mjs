@@ -11,8 +11,8 @@ import {
   clearSensitiveBytes,
 } from "../../packages/crypto/dist/index.js";
 import { mcpServerConfigurationSchema } from "../../packages/protocol/dist/index.js";
-import { discoverMcpConfigurations } from "../../cantrip_worker/src/mcp/discovery.ts";
-import { openMcpServers } from "../../cantrip_worker/src/protected-secrets.ts";
+import { discoverMcpConfigurations } from "../../tests/reference-node-worker/src/mcp/discovery.ts";
+import { openMcpServers } from "../../tests/reference-node-worker/src/protected-secrets.ts";
 import { settingsWorker as worker } from "./native-settings-http-fixture.mjs";
 
 export const mcpSettingsMarker = "private-mcp-endpoint-proof";

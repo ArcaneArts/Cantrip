@@ -15,13 +15,13 @@ import {
 import {
   openNativeCommandContent,
   protectNativeCommandContent,
-} from "../../cantrip_worker/src/native-command-content.ts";
+} from "../../tests/reference-node-worker/src/native-command-content.ts";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
 import { verifyQueuePreparation } from "./queue-prepare-cases.mjs";
 import {
   protectChatMessage,
   protectChatTurn,
-} from "../../cantrip_worker/src/chat-message-encryption.ts";
+} from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 
 export async function verifyAutonomousGoal({
   expectThread,

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import {
   recoveryIdentity,
   recoveryQueueIdentity,
-} from "../../cantrip_worker/src/inference-journal.ts";
+} from "../../tests/reference-node-worker/src/inference-journal.ts";
 import { schemas } from "./inference-journal-contracts.mjs";
 export async function pure({ native, same }) {
   for (const value of [

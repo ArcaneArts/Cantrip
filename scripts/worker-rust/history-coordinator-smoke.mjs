@@ -1,11 +1,11 @@
 // Whole native history coordinator over real Rust HTTP and retained child state.
 import assert from "node:assert/strict";
 import path from "node:path";
-import { NativeHistoryClient } from "../../cantrip_worker/src/native-history-client.ts";
-import { ManagedNativeHistory } from "../../cantrip_worker/src/managed-native-history.ts";
-import { NativeHistorySourceJournal } from "../../cantrip_worker/src/native-history-source-journal.ts";
-import { AttachmentStore } from "../../cantrip_worker/src/attachment-store.ts";
-import { readNativeHistoryRecovery } from "../../cantrip_worker/src/native-history-recovery.ts";
+import { NativeHistoryClient } from "../../tests/reference-node-worker/src/native-history-client.ts";
+import { ManagedNativeHistory } from "../../tests/reference-node-worker/src/managed-native-history.ts";
+import { NativeHistorySourceJournal } from "../../tests/reference-node-worker/src/native-history-source-journal.ts";
+import { AttachmentStore } from "../../tests/reference-node-worker/src/attachment-store.ts";
+import { readNativeHistoryRecovery } from "../../tests/reference-node-worker/src/native-history-recovery.ts";
 import { verifyHistoryRuntimeRecovery } from "./history-runtime-smoke.mjs";
 export async function verifyHistoryCoordinator({
   spawn,

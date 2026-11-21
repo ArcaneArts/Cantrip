@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { deriveManagedFolderLocation } from "../../cantrip_worker/src/managed-folders.ts";
-import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
+import { deriveManagedFolderLocation } from "../../tests/reference-node-worker/src/managed-folders.ts";
+import { normalizeProjectSourcePath } from "../../tests/reference-node-worker/src/project-source-path.ts";
 import { eventually } from "./full-worker.mjs";
 
 async function initialPushFixture(dataDirectory) {

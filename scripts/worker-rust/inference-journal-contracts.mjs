@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { writeFile } from "node:fs/promises";
 import { format } from "prettier";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
-import { workerInferenceJournalSnapshotSchema } from "../../cantrip_worker/src/inference-journal.ts";
+import { workerInferenceJournalSnapshotSchema } from "../../tests/reference-node-worker/src/inference-journal.ts";
 import {
   inferenceJournalIdentitySchema,
   inferenceJournalRecordSchema,

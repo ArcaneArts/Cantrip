@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { ChatScratchManager } from "../../cantrip_worker/src/chat-scratch.ts";
+import { ChatScratchManager } from "../../tests/reference-node-worker/src/chat-scratch.ts";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { standaloneSql } from "./project-share-http-state.mjs";
 import { eventually } from "./full-worker.mjs";

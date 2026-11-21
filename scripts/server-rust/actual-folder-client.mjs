@@ -69,9 +69,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 import { createPasswordKdfParameters } from "../../packages/crypto/src/index.ts";
-import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { deriveManagedFolderLocation } from "../../cantrip_worker/src/managed-folders.ts";
-import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
+import { loadStoredWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
+import { deriveManagedFolderLocation } from "../../tests/reference-node-worker/src/managed-folders.ts";
+import { normalizeProjectSourcePath } from "../../tests/reference-node-worker/src/project-source-path.ts";
 import {
   buildRustServer,
   buildRustExample,
@@ -628,7 +628,7 @@ async function flow(
                 CANTRIP_TEST_QUEUE_RESUME_ACK: resumeAckFile,
                 CANTRIP_TEST_QUEUE_RESUME_ACK_WORKER_ENTRY: path.resolve(
                   process.env.CANTRIP_TEST_WORKER_PACKAGE ??
-                    path.join(repositoryRoot, "cantrip_worker"),
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
                   "dist/index.js",
                 ),
                 NODE_OPTIONS: [
@@ -648,7 +648,7 @@ async function flow(
                 CANTRIP_TEST_QUEUE_RESUME_RACE: resumeRaceFile,
                 CANTRIP_TEST_QUEUE_RESUME_RACE_WORKER_ENTRY: path.resolve(
                   process.env.CANTRIP_TEST_WORKER_PACKAGE ??
-                    path.join(repositoryRoot, "cantrip_worker"),
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
                   "dist/index.js",
                 ),
                 NODE_OPTIONS: [
@@ -682,7 +682,7 @@ async function flow(
                   : {}),
                 CANTRIP_TEST_GOAL_LANE_WORKER_ENTRY: path.resolve(
                   process.env.CANTRIP_TEST_WORKER_PACKAGE ??
-                    path.join(repositoryRoot, "cantrip_worker"),
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
                   "dist/index.js",
                 ),
                 NODE_OPTIONS: [
@@ -703,7 +703,7 @@ async function flow(
                 CANTRIP_TEST_TASK_OUTCOME_ORDER_KIND: taskOutcomeOrder.kind,
                 CANTRIP_TEST_TASK_ROUND_ORDER_WORKER_ENTRY: path.resolve(
                   process.env.CANTRIP_TEST_WORKER_PACKAGE ??
-                    path.join(repositoryRoot, "cantrip_worker"),
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
                   "dist/index.js",
                 ),
                 NODE_OPTIONS: [
@@ -724,7 +724,7 @@ async function flow(
                   taskGoalFirstInputPhase,
                 CANTRIP_TEST_TASK_GOAL_FIRST_INPUT_WORKER_ENTRY: path.resolve(
                   process.env.CANTRIP_TEST_WORKER_PACKAGE ??
-                    path.join(repositoryRoot, "cantrip_worker"),
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
                   "dist/index.js",
                 ),
                 NODE_OPTIONS: [
@@ -753,7 +753,7 @@ async function flow(
                     : "commit",
                 CANTRIP_TEST_TASK_GOAL_HANDOFF_WORKER_ENTRY: path.resolve(
                   process.env.CANTRIP_TEST_WORKER_PACKAGE ??
-                    path.join(repositoryRoot, "cantrip_worker"),
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
                   "dist/index.js",
                 ),
                 NODE_OPTIONS: [

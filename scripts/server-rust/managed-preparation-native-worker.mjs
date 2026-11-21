@@ -6,19 +6,19 @@ import { once } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
-import { CodexAppServer } from "../../cantrip_worker/src/codex/app-server.ts";
-import { discoverCodexRuntime } from "../../cantrip_worker/src/codex/discovery.ts";
-import { ManagedSessionCoordinator } from "../../cantrip_worker/src/codex/managed-session.ts";
-import { ManagedNativeCommandSession } from "../../cantrip_worker/src/codex/managed-native-command-session.ts";
-import { ManagedNativeQueue } from "../../cantrip_worker/src/codex/managed-native-queue.ts";
-import { createManagedNativeGateway } from "../../cantrip_worker/src/codex/managed-native-gateway.ts";
-import { createManagedQueueInputCodec } from "../../cantrip_worker/src/managed-queue-input.ts";
-import { NativeCommandClient } from "../../cantrip_worker/src/native-command-client.ts";
-import { ManagedNativeQueueClient } from "../../cantrip_worker/src/managed-native-queue-client.ts";
-import { TerminalManager } from "../../cantrip_worker/src/terminal-manager.ts";
-import { prepareManagedConsoleState } from "../../cantrip_worker/src/managed-console-state.ts";
-import { openTerminalPrivateState } from "../../cantrip_worker/src/terminal-private-state.ts";
-import { readProtectedNativeSettings } from "../../cantrip_worker/src/native-settings-read.ts";
+import { CodexAppServer } from "../../tests/reference-node-worker/src/codex/app-server.ts";
+import { discoverCodexRuntime } from "../../tests/reference-node-worker/src/codex/discovery.ts";
+import { ManagedSessionCoordinator } from "../../tests/reference-node-worker/src/codex/managed-session.ts";
+import { ManagedNativeCommandSession } from "../../tests/reference-node-worker/src/codex/managed-native-command-session.ts";
+import { ManagedNativeQueue } from "../../tests/reference-node-worker/src/codex/managed-native-queue.ts";
+import { createManagedNativeGateway } from "../../tests/reference-node-worker/src/codex/managed-native-gateway.ts";
+import { createManagedQueueInputCodec } from "../../tests/reference-node-worker/src/managed-queue-input.ts";
+import { NativeCommandClient } from "../../tests/reference-node-worker/src/native-command-client.ts";
+import { ManagedNativeQueueClient } from "../../tests/reference-node-worker/src/managed-native-queue-client.ts";
+import { TerminalManager } from "../../tests/reference-node-worker/src/terminal-manager.ts";
+import { prepareManagedConsoleState } from "../../tests/reference-node-worker/src/managed-console-state.ts";
+import { openTerminalPrivateState } from "../../tests/reference-node-worker/src/terminal-private-state.ts";
+import { readProtectedNativeSettings } from "../../tests/reference-node-worker/src/native-settings-read.ts";
 
 export async function nativePreparationWorker({ root, binary }) {
   const home = path.join(root, "codex-home"),

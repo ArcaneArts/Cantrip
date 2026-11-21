@@ -16,14 +16,14 @@ import {
 import { literal } from "./project-target-state.mjs";
 import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { heartbeat, password } from "./security-fixtures.mjs";
-import { NativeHistoryClient } from "../../cantrip_worker/src/native-history-client.ts";
-import { prepareNativeHistoryRenderedItem } from "../../cantrip_worker/src/native-history-prepare-item.ts";
+import { NativeHistoryClient } from "../../tests/reference-node-worker/src/native-history-client.ts";
+import { prepareNativeHistoryRenderedItem } from "../../tests/reference-node-worker/src/native-history-prepare-item.ts";
 import {
   protectNativeHistoryTurnMetadata,
   openNativeHistoryTurn,
-} from "../../cantrip_worker/src/native-history-turn-content.ts";
-import { openNativeHistoryItemEvidence } from "../../cantrip_worker/src/native-history-item-content.ts";
-import { openNativeHistoryBatchArchivePage } from "../../cantrip_worker/src/native-history-batch-archive.ts";
+} from "../../tests/reference-node-worker/src/native-history-turn-content.ts";
+import { openNativeHistoryItemEvidence } from "../../tests/reference-node-worker/src/native-history-item-content.ts";
+import { openNativeHistoryBatchArchivePage } from "../../tests/reference-node-worker/src/native-history-batch-archive.ts";
 const option = (key) => {
   const i = process.argv.indexOf(key);
   return i < 0 ? undefined : process.argv[i + 1];

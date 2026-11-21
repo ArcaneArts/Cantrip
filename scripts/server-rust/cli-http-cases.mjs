@@ -4,7 +4,7 @@ import { hashSecret } from "../../tests/reference-node-server/src/auth/service.t
 import {
   invokeCantripCliCommand,
   CantripServerRequestError,
-} from "../../cantrip_worker/src/cli-client.ts";
+} from "../../tests/reference-node-worker/src/cli-client.ts";
 import {
   literal,
   state as protectedState,

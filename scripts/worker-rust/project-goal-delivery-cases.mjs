@@ -5,7 +5,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { decryptChatMessageProtectedContent } from "../../packages/crypto/dist/index.js";
 import { projectGoalObservationSchema } from "../../packages/protocol/dist/index.js";
-import { ProjectGoalDelivery } from "../../cantrip_worker/src/project-goal-delivery.ts";
+import { ProjectGoalDelivery } from "../../tests/reference-node-worker/src/project-goal-delivery.ts";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 

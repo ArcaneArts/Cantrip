@@ -16,8 +16,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { workerCommandSchema } from "../../packages/protocol/dist/index.js";
-import { GithubClient } from "../../cantrip_worker/src/github.ts";
-import { handleGithubCommand } from "../../cantrip_worker/src/commands/github.ts";
+import { GithubClient } from "../../tests/reference-node-worker/src/github.ts";
+import { handleGithubCommand } from "../../tests/reference-node-worker/src/commands/github.ts";
 import {
   githubCatalogFixture,
   catalogRepository,

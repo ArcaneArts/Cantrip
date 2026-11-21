@@ -29,7 +29,7 @@ docker exec cantrip-os-stream-test cantrip-executor attach \
   00000000-0000-4000-8000-000000000002
 CANTRIP_OS_STREAM_TEST_CONTAINER=cantrip-os-stream-test \
 CANTRIP_OS_STREAM_OUTPUT=/tmp/cantrip-os-stream-results.json \
-  pnpm --filter @cantrip/worker exec vitest run \
+  pnpm --filter @cantrip/worker-reference exec vitest run \
   test/os-stream-measurement.integration.test.ts --maxWorkers=1
 docker stop cantrip-os-stream-test
 ```
@@ -70,7 +70,7 @@ alongside raw and anonymous memory. Other host work can affect elapsed timings.
 ```sh
 CANTRIP_OS_RESOURCE_TEST_IMAGE=cantrip-os:dev \
 CANTRIP_OS_RESOURCE_OUTPUT=/tmp/cantrip-os-active-resources.json \
-  pnpm --filter @cantrip/worker exec vitest run \
+  pnpm --filter @cantrip/worker-reference exec vitest run \
   test/os-active-resources.integration.test.ts --maxWorkers=1
 ```
 

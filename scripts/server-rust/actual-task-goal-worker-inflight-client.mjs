@@ -1,7 +1,7 @@
 // Existing encrypted Task/Goal APIs, full worker and actual native Goal tools.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { loadStoredWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { eventually } from "./full-worker.mjs";
 

@@ -38,24 +38,24 @@ import { providerCredentialProtectedContentSchema } from "../../packages/protoco
 import {
   quotaSnapshotFromRateLimits,
   weeklyUsageFromRateLimits,
-} from "../../cantrip_worker/src/codex/rate-limits.ts";
-import { codexAccountHome } from "../../cantrip_worker/src/codex/account-home.ts";
+} from "../../tests/reference-node-worker/src/codex/rate-limits.ts";
+import { codexAccountHome } from "../../tests/reference-node-worker/src/codex/account-home.ts";
 import {
   captureLegacyProviderCredential,
   legacyProviderCredentialSubject,
-} from "../../cantrip_worker/src/legacy-provider-credentials.ts";
+} from "../../tests/reference-node-worker/src/legacy-provider-credentials.ts";
 
-import { codexRuntimeId } from "../../cantrip_worker/src/codex/app-server.ts";
-import { ManagedRuntimeNamespaces } from "../../cantrip_worker/src/codex/managed-runtime-namespaces.ts";
-import { observedCodexThreadStatus } from "../../cantrip_worker/src/codex/event-normalization.ts";
+import { codexRuntimeId } from "../../tests/reference-node-worker/src/codex/app-server.ts";
+import { ManagedRuntimeNamespaces } from "../../tests/reference-node-worker/src/codex/managed-runtime-namespaces.ts";
+import { observedCodexThreadStatus } from "../../tests/reference-node-worker/src/codex/event-normalization.ts";
 
-import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
-import { safeEndpointProviderError } from "../../cantrip_worker/src/codex/provider-errors.ts";
+import { CodexRpcClient } from "../../tests/reference-node-worker/src/codex/rpc-client.ts";
+import { safeEndpointProviderError } from "../../tests/reference-node-worker/src/codex/provider-errors.ts";
 
-import { OsAgentPlacements } from "../../cantrip_worker/src/os-executor/agent-placements.ts";
+import { OsAgentPlacements } from "../../tests/reference-node-worker/src/os-executor/agent-placements.ts";
 
 const require = createRequire(
-  new URL("../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 );
 const { WebSocketServer } = require("ws");
 const { values } = parseArgs({

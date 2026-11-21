@@ -7,8 +7,8 @@ import {
   encryptEndpointContentPayload,
   decryptEndpointContentPayload,
 } from "../../packages/crypto/dist/index.js";
-import { handleSkillsCommand } from "../../cantrip_worker/src/commands/skills.ts";
-import { CustomizationContentReplayGuard } from "../../cantrip_worker/src/customization-content-encryption.ts";
+import { handleSkillsCommand } from "../../tests/reference-node-worker/src/commands/skills.ts";
+import { CustomizationContentReplayGuard } from "../../tests/reference-node-worker/src/customization-content-encryption.ts";
 import {
   settingsWorker as worker,
   componentKey,

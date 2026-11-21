@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {
   protectNativeCommandContent,
   openNativeCommandContent,
-} from "../../cantrip_worker/src/native-command-content.ts";
+} from "../../tests/reference-node-worker/src/native-command-content.ts";
 import { settingsChat as chatId } from "./native-settings-http-fixture.mjs";
 
 const key = (value) =>

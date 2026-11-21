@@ -10,22 +10,22 @@ import {
   AttachmentStore,
   safeAttachmentFileName,
   MAX_ATTACHMENT_CHUNK_BYTES,
-} from "../../cantrip_worker/src/attachment-store.ts";
-import { NativeHistoryAttachmentStore } from "../../cantrip_worker/src/native-history-attachment-store.ts";
-import { createNativeHistoryInputMaterializer } from "../../cantrip_worker/src/native-history-input-materializer.ts";
-import { openWorkerAttachment } from "../../cantrip_worker/src/attachment-encryption.ts";
+} from "../../tests/reference-node-worker/src/attachment-store.ts";
+import { NativeHistoryAttachmentStore } from "../../tests/reference-node-worker/src/native-history-attachment-store.ts";
+import { createNativeHistoryInputMaterializer } from "../../tests/reference-node-worker/src/native-history-input-materializer.ts";
+import { openWorkerAttachment } from "../../tests/reference-node-worker/src/attachment-encryption.ts";
 import {
   NativeHistoryTurnContextIndex,
   resolveNativeHistoryTurnContext,
-} from "../../cantrip_worker/src/native-history-turn-context.ts";
-import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
+} from "../../tests/reference-node-worker/src/native-history-turn-context.ts";
+import { parseCodexNativeHistory } from "../../tests/reference-node-worker/src/codex/native-history.ts";
 import { nativeHistoryWireFixtures } from "../server-rust/native-history-wire-fixtures.mjs";
-import { createNativeHistoryProjectorAdapters } from "../../cantrip_worker/src/native-history-projector-adapters.ts";
-import { NativeHistorySourceJournal } from "../../cantrip_worker/src/native-history-source-journal.ts";
-import { createNativeHistoryProjector } from "../../cantrip_worker/src/native-history-projector.ts";
-import { reduceNativeHistory } from "../../cantrip_worker/src/native-history-reducer.ts";
-import { renderNativeHistoryItem } from "../../cantrip_worker/src/native-history-render.ts";
-import { openMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { createNativeHistoryProjectorAdapters } from "../../tests/reference-node-worker/src/native-history-projector-adapters.ts";
+import { NativeHistorySourceJournal } from "../../tests/reference-node-worker/src/native-history-source-journal.ts";
+import { createNativeHistoryProjector } from "../../tests/reference-node-worker/src/native-history-projector.ts";
+import { reduceNativeHistory } from "../../tests/reference-node-worker/src/native-history-reducer.ts";
+import { renderNativeHistoryItem } from "../../tests/reference-node-worker/src/native-history-render.ts";
+import { openMessage } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary);
 const child = spawn(values.binary, [], {

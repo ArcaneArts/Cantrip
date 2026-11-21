@@ -28,7 +28,7 @@ Object.assign(process.env, {
   GIT_COMMITTER_DATE: "2026-11-17T00:00:00+00:00",
 });
 const { WorktreeManager } =
-  await import("../../cantrip_worker/src/worktrees.ts");
+  await import("../../tests/reference-node-worker/src/worktrees.ts");
 const root = await realpath(
   await mkdtemp(path.join(tmpdir(), "cantrip-worktree-")),
 );

@@ -7,10 +7,10 @@ import {
   encryptEndpointContentPayload,
   decryptEndpointContentPayload,
 } from "../../packages/crypto/dist/index.js";
-import { handleCustomizationCommand } from "../../cantrip_worker/src/commands/customization.ts";
-import { handleSkillsCommand } from "../../cantrip_worker/src/commands/skills.ts";
-import { CustomizationContentReplayGuard } from "../../cantrip_worker/src/customization-content-encryption.ts";
-import { updateNativePermissions } from "../../cantrip_worker/src/native-permission-update.ts";
+import { handleCustomizationCommand } from "../../tests/reference-node-worker/src/commands/customization.ts";
+import { handleSkillsCommand } from "../../tests/reference-node-worker/src/commands/skills.ts";
+import { CustomizationContentReplayGuard } from "../../tests/reference-node-worker/src/customization-content-encryption.ts";
+import { updateNativePermissions } from "../../tests/reference-node-worker/src/native-permission-update.ts";
 import {
   settingsWorker as worker,
   settingsChat,

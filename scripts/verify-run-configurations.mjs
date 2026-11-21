@@ -119,9 +119,9 @@ export const validationSteps = [
     inputs: ["tests/reference-node-server/test/worktree-api.test.ts"],
   },
   packageTestStep(
-    "Worker providers, process ownership, environment, and security",
-    "@cantrip/worker",
-    "cantrip_worker",
+    "Reference worker providers, process ownership, environment, and security",
+    "@cantrip/worker-reference",
+    "tests/reference-node-worker",
     workerTests,
   ),
   packageTestStep(

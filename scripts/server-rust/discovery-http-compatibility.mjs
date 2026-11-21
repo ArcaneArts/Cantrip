@@ -16,9 +16,9 @@ import {
   initialization,
 } from "./security-fixtures.mjs";
 import { discoveryWireFixtures } from "./discovery-wire-fixtures.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
+import { sendHeartbeat } from "../../tests/reference-node-worker/src/heartbeat.ts";
 import { discoveryLifecycleCases } from "./discovery-lifecycle-cases.mjs";
 import { discoveryExpiryCases } from "./discovery-expiry-cases.mjs";
 import { discoveryLifetimeCases } from "./discovery-lifetime-cases.mjs";

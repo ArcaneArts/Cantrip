@@ -17,9 +17,9 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import * as source from "../../cantrip_worker/src/workspace-repository-discovery.ts";
-import { handleWorkspaceCommand } from "../../cantrip_worker/src/commands/workspace.ts";
-import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
+import * as source from "../../tests/reference-node-worker/src/workspace-repository-discovery.ts";
+import { handleWorkspaceCommand } from "../../tests/reference-node-worker/src/commands/workspace.ts";
+import { WorkerRoutingRegistry } from "../../tests/reference-node-worker/src/routing-registry.ts";
 import { REPOSITORY_METADATA_FIELDS } from "../../packages/protocol/src/repository-operation.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary workspace-fixture");

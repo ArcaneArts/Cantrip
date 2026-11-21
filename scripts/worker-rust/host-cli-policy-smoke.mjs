@@ -71,7 +71,7 @@ export async function verifyHostCliPolicies({
   assert.deepEqual(wireDetail.body.data.policy.content, direct.content);
 
   const { openPolicyCliList, openPolicyCliDetail } =
-    await import("../../cantrip_worker/src/policy-encryption.ts");
+    await import("../../tests/reference-node-worker/src/policy-encryption.ts");
   const service = {
     ownerId: () => ownerId,
     componentKey: () => ({

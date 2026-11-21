@@ -10,12 +10,12 @@ import {
   cantripVersionSchema,
   workerHeartbeatSchema,
 } from "../../packages/protocol/dist/index.js";
-import { enrollWorker } from "../../cantrip_worker/src/enrollment.ts";
+import { enrollWorker } from "../../tests/reference-node-worker/src/enrollment.ts";
 import {
   createHeartbeat,
   sendHeartbeat,
-} from "../../cantrip_worker/src/heartbeat.ts";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
+} from "../../tests/reference-node-worker/src/heartbeat.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
 import { buildRustServer, repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment, startServer } from "./process.mjs";
 

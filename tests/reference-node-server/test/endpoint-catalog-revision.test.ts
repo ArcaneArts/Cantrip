@@ -12,7 +12,7 @@ import * as schema from "../src/db/schema.js";
 import { OllamaCatalogService } from "../src/models/ollama-catalog.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
-import { normalizeEndpointModel } from "../../../cantrip_worker/src/endpoint-models.js";
+import { normalizeEndpointModel } from "../../../tests/reference-node-worker/src/endpoint-models.js";
 import { protectedSecretEnvelopeFixture } from "./protected-provider-credential-fixture.js";
 
 function inventory(kind: string, context: number) {

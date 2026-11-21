@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import {
   readGitLfsStatus,
   readGitStatus,
-} from "../../cantrip_worker/src/git.ts";
+} from "../../tests/reference-node-worker/src/git.ts";
 import { startLfsFixture } from "./lfs-test-server.mjs";
 function normalize(value, key) {
   if (key === "generatedAt") {

@@ -7,8 +7,8 @@ import {
   openWorkerAttachmentMetadata,
   protectWorkerAttachmentChunk,
   protectWorkerAttachmentMetadata,
-} from "../../cantrip_worker/src/attachment-encryption.ts";
-import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+} from "../../tests/reference-node-worker/src/attachment-encryption.ts";
+import { protectChatMessage } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import { decryptChatMessageProtectedContent } from "../../packages/crypto/dist/index.js";
 import { chatAttachmentSummarySchema } from "../../packages/protocol/dist/attachment-content.js";
 

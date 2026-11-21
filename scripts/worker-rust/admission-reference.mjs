@@ -1,6 +1,6 @@
 // Development adapter around the unchanged production admission implementation.
-import { WorkerInferenceAdmission } from "../../cantrip_worker/src/inference-admission.ts";
-import { LocalNativeInferenceOwnership } from "../../cantrip_worker/src/native-inference-ownership.ts";
+import { WorkerInferenceAdmission } from "../../tests/reference-node-worker/src/inference-admission.ts";
+import { LocalNativeInferenceOwnership } from "../../tests/reference-node-worker/src/native-inference-ownership.ts";
 import { performance } from "node:perf_hooks";
 export const settle = (pending) =>
   Promise.resolve(pending).then(
@@ -183,14 +183,12 @@ export class Reference {
         const lifetime = this.lifetimes.get(input.lifetime);
         this.tickets.set(
           name,
-          this.runtimes
-            .get(runtime)
-            .request({
-              ...input.input,
-              operationId: lifetime.operationId,
-              lifetime,
-              providerId: input.provider,
-            }),
+          this.runtimes.get(runtime).request({
+            ...input.input,
+            operationId: lifetime.operationId,
+            lifetime,
+            providerId: input.provider,
+          }),
         );
         return null;
       }

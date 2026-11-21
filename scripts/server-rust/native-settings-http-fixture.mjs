@@ -6,16 +6,16 @@ import { repositoryFixture } from "./repository-fixture.mjs";
 import { LiveProbe } from "./live-sockets.mjs";
 import { heartbeat, password } from "./security-fixtures.mjs";
 import { label, json, literal } from "./project-target-state.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { WorkerInferenceAdmission } from "../../cantrip_worker/src/inference-admission.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { readProtectedNativeSettings } from "../../cantrip_worker/src/native-settings-read.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { WorkerInferenceAdmission } from "../../tests/reference-node-worker/src/inference-admission.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
+import { readProtectedNativeSettings } from "../../tests/reference-node-worker/src/native-settings-read.ts";
 import {
   openNativeSettingsSnapshot,
   protectNativeSettingsSnapshot,
-} from "../../cantrip_worker/src/native-settings-content.ts";
-import { updateProtectedNativeSettings } from "../../cantrip_worker/src/native-settings-update.ts";
-import { protectedNativeAccountDefaults } from "../../cantrip_worker/src/native-account-defaults.ts";
+} from "../../tests/reference-node-worker/src/native-settings-content.ts";
+import { updateProtectedNativeSettings } from "../../tests/reference-node-worker/src/native-settings-update.ts";
+import { protectedNativeAccountDefaults } from "../../tests/reference-node-worker/src/native-account-defaults.ts";
 export const settingsChat = "22222222-2222-4222-8222-222222222222",
   settingsProject = "11111111-1111-4111-8111-111111111111",
   settingsTree = "33333333-3333-4333-8333-333333333333",

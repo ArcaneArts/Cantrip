@@ -12,7 +12,7 @@ import {
   taskTurnStopResultSchema,
 } from "../../packages/protocol/dist/index.js";
 
-import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
+import { NativeSuspensionStore } from "../../tests/reference-node-worker/src/native-suspension-store.ts";
 
 function checkpointTool(body) {
   const exec = body.tools

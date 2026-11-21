@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { codexAccountHome } from "../../cantrip_worker/src/codex/account-home.ts";
+import { codexAccountHome } from "../../tests/reference-node-worker/src/codex/account-home.ts";
 import { eventually } from "./full-worker.mjs";
 
 const signedOut = {

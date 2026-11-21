@@ -9738,3 +9738,27 @@ worker control smoke against the Rust server passed enrollment, credential
 rotation and revocation, reconnect, retained state, and stdin shutdown
 with the worker's PATH empty. The desktop tests used an asset-free Tauri
 test configuration. They did not launch a desktop window or run on Windows.
+
+## 286. Archive the Node worker as a compatibility reference
+
+Reference commit `43075daf3928b8f407ba375f637cded9dd6d075f` (#3449).
+
+The TypeScript worker, its tests and Node dependencies, and the historical
+JavaScript guest helpers live under `tests/reference-node-worker`. The
+reference package exposes explicit build, test, typecheck, and start
+commands. The dependency-free `cantrip_worker` package keeps the Rust
+development launcher and its working directory. Production Docker build
+contexts exclude the archived worker. The native Cantrip OS process-owner
+source remains with the executor.
+
+A frozen offline install, the reference build and typecheck, the app
+typecheck, and a desktop test compile passed on macOS ARM64. The selected
+reference, app, and launcher tests passed. The Rust and archived Node
+worker configuration fixture passed 61 comparisons and reopened persisted
+identities and credentials in both directions. The original workspace
+launcher invoked the native binary's version command from `cantrip_worker`.
+The three historical guest helpers built independently, and the Linux
+ARM64 executor's C compile stage and the existing boundary checks passed.
+
+The current release packagers already use Rust. The historical Node
+artifact verification helpers and final release audit remain open.

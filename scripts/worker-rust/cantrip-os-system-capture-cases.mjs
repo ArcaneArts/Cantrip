@@ -9,7 +9,7 @@ import { decryptCantripOsSystemOperationResult } from "../../packages/crypto/dis
 import {
   sealPrivateSystem,
   verifyPrivateSystem,
-} from "../../cantrip_worker/src/os-executor/private-system-file.ts";
+} from "../../tests/reference-node-worker/src/os-executor/private-system-file.ts";
 
 async function carrier(root, socket, container) {
   const endpoint = new URL(socket);

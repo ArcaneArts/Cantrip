@@ -9,8 +9,8 @@ import type {
 import { createNativeSettingsFixture } from "./native-settings-repository-fixture.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
-import { protectNativeHistoryTurnMetadata } from "../../../cantrip_worker/src/native-history-turn-content.js";
-import { protectChatMessage } from "../../../cantrip_worker/src/chat-message-encryption.js";
+import { protectNativeHistoryTurnMetadata } from "../../../tests/reference-node-worker/src/native-history-turn-content.js";
+import { protectChatMessage } from "../../../tests/reference-node-worker/src/chat-message-encryption.js";
 import { decryptNativeHistoryTurn } from "../../../packages/crypto/src/native-history-turn.js";
 import { readChatNativeHistoryTurns } from "../src/db/repository/native-history-turn-read.js";
 let f: Awaited<ReturnType<typeof createNativeSettingsFixture>>;

@@ -21,13 +21,13 @@ import {
 import {
   protectNativeSettingsSnapshot,
   openNativeSettingsSnapshot,
-} from "../../cantrip_worker/src/native-settings-content.ts";
+} from "../../tests/reference-node-worker/src/native-settings-content.ts";
 import {
   taskGoalHandoffCaptureSchema,
   taskGoalCycleRecoverySchema,
   taskGoalCycleRecoveryReceiptSchema,
 } from "../../packages/protocol/dist/index.js";
-import { recoveryQueueIdentity } from "../../cantrip_worker/src/inference-journal.ts";
+import { recoveryQueueIdentity } from "../../tests/reference-node-worker/src/inference-journal.ts";
 
 export const goalRecoveryRouting = {
   provider: "goal-capture-provider",

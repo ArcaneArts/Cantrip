@@ -18,7 +18,7 @@ export async function verifyRunDefinitions({
   restartWorker,
 }) {
   const { RunConfigurationDefinitionService } =
-    await import("../../cantrip_worker/src/run-configuration-definition-service.ts");
+    await import("../../tests/reference-node-worker/src/run-configuration-definition-service.ts");
   const oracle = await mkdtemp(
     path.join(path.dirname(path.dirname(checkout)), "node-reference-"),
   );

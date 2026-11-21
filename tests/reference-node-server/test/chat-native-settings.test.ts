@@ -7,9 +7,9 @@ import type {
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import { createNativeSettingsFixture } from "./native-settings-repository-fixture.js";
 import { installChatNativeSettingsRoutes } from "../src/app/routes/chat-native-settings.js";
-import { readProtectedNativeSettings } from "../../../cantrip_worker/src/native-settings-read.js";
-import { openNativeSettingsSnapshot } from "../../../cantrip_worker/src/native-settings-content.js";
-import { nativeThreadSettings } from "../../../cantrip_worker/test/fixtures/native-thread-settings.js";
+import { readProtectedNativeSettings } from "../../../tests/reference-node-worker/src/native-settings-read.js";
+import { openNativeSettingsSnapshot } from "../../../tests/reference-node-worker/src/native-settings-content.js";
+import { nativeThreadSettings } from "../../../tests/reference-node-worker/test/fixtures/native-thread-settings.js";
 
 let fixture: Awaited<ReturnType<typeof createNativeSettingsFixture>>;
 beforeAll(async () => {

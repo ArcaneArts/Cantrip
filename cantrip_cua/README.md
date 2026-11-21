@@ -221,7 +221,7 @@ recorded in the [first-tranche progress ledger](../docs/planned/CUA.md#first-tra
 
 ### Worker ownership and lifecycle
 
-`cantrip_worker/src/computer-use/service.ts` is the only worker process owner.
+`tests/reference-node-worker/src/computer-use/service.ts` is the only worker process owner.
 Construction, status inspection, idle disconnect, and shutdown perform no CUA
 launch, filesystem lookup, or native permission request. First authorized use
 launches one helper and performs its actual capability handshake. The worker

@@ -6,10 +6,10 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { WorkerLinkGateway } from "../../cantrip_worker/src/worker-link-gateway.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { WorkerLinkGateway } from "../../tests/reference-node-worker/src/worker-link-gateway.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
+import { sendHeartbeat } from "../../tests/reference-node-worker/src/heartbeat.ts";
 import {
   decodeWorkerLinkFrame,
   encodeWorkerLinkFrame,

@@ -5,7 +5,7 @@ import path from "node:path";
 import { once } from "node:events";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import { workerLinkTunnelGrantSchema } from "../../packages/protocol/dist/worker-link.js";
-import { openTunnelDataFrame } from "../../cantrip_worker/src/tunnel-data-protection.ts";
+import { openTunnelDataFrame } from "../../tests/reference-node-worker/src/tunnel-data-protection.ts";
 import { parseWebdavResponse } from "../server-rust/project-share-webdav.mjs";
 import {
   Connection,

@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
-import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
+import { normalizeProjectSourcePath } from "../../tests/reference-node-worker/src/project-source-path.ts";
 
 export async function actualProjectReplicas({
   page,

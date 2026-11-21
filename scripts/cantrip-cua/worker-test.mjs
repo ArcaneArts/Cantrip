@@ -8,7 +8,8 @@ const root = path.resolve(
   "../..",
 );
 const binary = buildCantripCua(root);
-// Exercise production worker service and transport against this exact artifact.
+const reference = process.argv.includes("--reference");
+// Exercise the current contracts or explicitly compare the Node references.
 // No installed-helper inference, native capture, or Screen Recording prompt.
 for (const [project, ...tests] of [
   [
@@ -22,7 +23,7 @@ for (const [project, ...tests] of [
   ],
   ["packages/crypto", "test/computer-use.test.ts"],
   [
-    "cantrip_worker",
+    "tests/reference-node-worker",
     "src/computer-use",
     "test/computer-use-execution-lifetime.test.ts",
     "test/cua-raw-capture.test.ts",
@@ -76,6 +77,7 @@ for (const [project, ...tests] of [
     "src/components/computer-use",
   ],
 ]) {
+  if (project.startsWith("tests/reference-node-") !== reference) continue;
   const result = spawnSync(
     process.execPath,
     [

@@ -25,7 +25,7 @@ import {
   parseGithubCloneProgress,
   summarizeGithubCloneFailure,
   githubCloneFailureDetails,
-} from "../../cantrip_worker/src/github.ts";
+} from "../../tests/reference-node-worker/src/github.ts";
 import { workerEventSchema } from "../../packages/protocol/dist/index.js";
 import { replicaProvisionFixture } from "./replica-provision-fixture.mjs";
 import { verifyReplicaLifecycle } from "./replica-lifecycle-compatibility-cases.mjs";

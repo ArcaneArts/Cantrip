@@ -146,25 +146,25 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
 import { buildApp } from "../src/app.js";
-import { WorkerRoutingRegistry } from "../../../cantrip_worker/src/routing-registry.js";
+import { WorkerRoutingRegistry } from "../../../tests/reference-node-worker/src/routing-registry.js";
 import {
   openEncryptedChatTurn,
   protectChatTurn,
   encryptChatTurnResult,
   EncryptedChatEventSealer,
-} from "../../../cantrip_worker/src/chat-message-encryption.js";
-import { openChatPlanState } from "../../../cantrip_worker/src/chat-plan-encryption.js";
+} from "../../../tests/reference-node-worker/src/chat-message-encryption.js";
+import { openChatPlanState } from "../../../tests/reference-node-worker/src/chat-plan-encryption.js";
 import {
   protectAgentInteractionRequest,
   protectAgentInteractionResponse,
   openAgentInteractionResponse,
-} from "../../../cantrip_worker/src/interaction-encryption.js";
-import { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
-import { readExplorerMediaFile } from "../../../cantrip_worker/src/explorer.js";
+} from "../../../tests/reference-node-worker/src/interaction-encryption.js";
+import { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
+import { readExplorerMediaFile } from "../../../tests/reference-node-worker/src/explorer.js";
 import {
   openWorkerSurfaceStreamContent,
   protectWorkerSurfaceStreamContent,
-} from "../../../cantrip_worker/src/surface-stream-encryption.js";
+} from "../../../tests/reference-node-worker/src/surface-stream-encryption.js";
 import {
   explorerOperationRequestContentSchema,
   explorerOperationResultContentSchema,

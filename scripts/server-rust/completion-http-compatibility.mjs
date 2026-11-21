@@ -17,8 +17,8 @@ import {
 } from "./native-settings-http-fixture.mjs";
 import { command } from "./native-command-admission-cases.mjs";
 import { literal, stamp } from "./project-target-state.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 const option = (k) => {
   const n = process.argv.indexOf(k);
   return n < 0 ? undefined : process.argv[n + 1];

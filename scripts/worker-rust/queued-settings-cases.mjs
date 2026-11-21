@@ -11,12 +11,12 @@ import {
   nativeSettingsEvidenceSchema,
   nativeSettingsEvidenceResultSchema,
 } from "../../packages/protocol/dist/index.js";
-import { createManagedQueueInputCodec } from "../../cantrip_worker/src/managed-queue-input.ts";
+import { createManagedQueueInputCodec } from "../../tests/reference-node-worker/src/managed-queue-input.ts";
 import {
   openNativeCommandContent,
   protectNativeCommandContent,
-} from "../../cantrip_worker/src/native-command-content.ts";
-import { NativeSettingsDelivery } from "../../cantrip_worker/src/native-settings-delivery.ts";
+} from "../../tests/reference-node-worker/src/native-command-content.ts";
+import { NativeSettingsDelivery } from "../../tests/reference-node-worker/src/native-settings-delivery.ts";
 
 const hash = (parts) =>
   createHash("sha256").update(JSON.stringify(parts)).digest("hex");

@@ -23,7 +23,7 @@ import {
   ProjectReplicaPlacementManager,
   ProjectReplicaPlacementError,
   probeManagedLinkPlacement,
-} from "../../cantrip_worker/src/project-replica-placement.ts";
+} from "../../tests/reference-node-worker/src/project-replica-placement.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass --binary replica-placement-fixture");
 const root = await realpath(

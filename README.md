@@ -383,7 +383,8 @@ Cantrip/
 ├── cantrip_server_rs/ # Rust API, persistence, identity, and worker routing
 ├── cantrip_server/    # SQL migration chain embedded by the Rust server
 ├── cantrip_worker_rs/ # Native Codex runtime, terminals, files, and Git access
-├── cantrip_worker/    # Node worker reference and development working directory
+├── cantrip_worker/    # Rust worker development working directory
+├── tests/reference-node-worker/ # Retired worker for compatibility tests
 ├── cantrip_cli/       # Worker-authenticated Rust command-line interface
 ├── cantrip_codex/     # Pinned upstream Codex source and source manifest
 ├── packages/          # Protocol, crypto, logging, version, and shared UI packages
@@ -793,7 +794,7 @@ The opt-in Z.ai reference worker smoke test uses the bundled Codex runtime and
 runs when a real Coding Plan key is explicitly supplied:
 
 ```shell
-ZAI_CODING_PLAN_API_KEY=... pnpm --filter @cantrip/worker exec vitest run test/zai-live.test.ts
+ZAI_CODING_PLAN_API_KEY=... pnpm --filter @cantrip/worker-reference exec vitest run test/zai-live.test.ts
 ```
 
 Worktree-focused tests and manual PGlite/PostgreSQL checks are documented in

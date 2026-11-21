@@ -79,7 +79,7 @@ workspace and closes its executor afterward, retaining its files for inspection.
 ```sh
 CANTRIP_OS_TEST_CONTAINER=cantrip-os-sources-test \
 CANTRIP_CODEX_TEST_BINARY=/absolute/path/to/pinned/codex \
-  pnpm --dir cantrip_worker exec vitest run \
+  pnpm --dir tests/reference-node-worker exec vitest run \
   test/os-native-environment.integration.test.ts \
   test/os-native-turn.integration.test.ts --maxWorkers=1
 ```

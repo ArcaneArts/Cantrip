@@ -28,18 +28,18 @@ import {
   nativeTurnRecoveryObservationSchema,
   workerCliCommandCallSchema,
 } from "../../packages/protocol/dist/index.js";
-import { NativeSuspensionStore } from "../../cantrip_worker/src/native-suspension-store.ts";
-import { CodexRpcClient } from "../../cantrip_worker/src/codex/rpc-client.ts";
-import { AttachmentStore } from "../../cantrip_worker/src/attachment-store.ts";
+import { NativeSuspensionStore } from "../../tests/reference-node-worker/src/native-suspension-store.ts";
+import { CodexRpcClient } from "../../tests/reference-node-worker/src/codex/rpc-client.ts";
+import { AttachmentStore } from "../../tests/reference-node-worker/src/attachment-store.ts";
 import {
   openWorkerAttachment,
   protectWorkerAttachmentMetadata,
-} from "../../cantrip_worker/src/attachment-encryption.ts";
-import { OsAgentPlacements } from "../../cantrip_worker/src/os-executor/agent-placements.ts";
-import { OsFileOperations } from "../../cantrip_worker/src/os-executor/files.ts";
-import { OsNativeEnvironment } from "../../cantrip_worker/src/os-executor/native-environment.ts";
-import { osNativeMcpServers } from "../../cantrip_worker/src/os-executor/native-mcp.ts";
-import { createCantripMcpServer } from "../../cantrip_worker/src/mcp/server.ts";
+} from "../../tests/reference-node-worker/src/attachment-encryption.ts";
+import { OsAgentPlacements } from "../../tests/reference-node-worker/src/os-executor/agent-placements.ts";
+import { OsFileOperations } from "../../tests/reference-node-worker/src/os-executor/files.ts";
+import { OsNativeEnvironment } from "../../tests/reference-node-worker/src/os-executor/native-environment.ts";
+import { osNativeMcpServers } from "../../tests/reference-node-worker/src/os-executor/native-mcp.ts";
+import { createCantripMcpServer } from "../../tests/reference-node-worker/src/mcp/server.ts";
 import {
   decryptChatMessageProtectedContent,
   decryptChatPlanProtectedContent,
@@ -55,10 +55,10 @@ import {
   EncryptedChatEventSealer,
   openEncryptedChatTurn,
   protectChatMessage,
-} from "../../cantrip_worker/src/chat-message-encryption.ts";
-import { protectChatPlanState } from "../../cantrip_worker/src/chat-plan-encryption.ts";
-import { openNativeCommandContent } from "../../cantrip_worker/src/native-command-content.ts";
-import { createManagedQueueInputCodec } from "../../cantrip_worker/src/managed-queue-input.ts";
+} from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
+import { protectChatPlanState } from "../../tests/reference-node-worker/src/chat-plan-encryption.ts";
+import { openNativeCommandContent } from "../../tests/reference-node-worker/src/native-command-content.ts";
+import { createManagedQueueInputCodec } from "../../tests/reference-node-worker/src/managed-queue-input.ts";
 import { admit, GuiReceiptPeer, logical } from "./gui-receipt-cases.mjs";
 import { RestoredSuspensionPeer } from "./cold-resume-cases.mjs";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
@@ -144,7 +144,7 @@ const taskGoals =
   values.taskGoalStop;
 const structuredTasks = values.structuredTasks || taskGoals;
 const requireWorker = createRequire(
-  new URL("../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 );
 const { WebSocket, WebSocketServer } = requireWorker("ws");
 const { Client } = await import(

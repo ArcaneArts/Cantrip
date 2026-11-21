@@ -115,7 +115,7 @@ describe.skipIf(!origin || !recoveryPath)(
         await once(socket, "connect");
         const { RfbClient } = await import(
           new URL(
-            "../../../cantrip_worker/test/fixtures/rfb-client.ts",
+            "../../../tests/reference-node-worker/test/fixtures/rfb-client.ts",
             import.meta.url,
           ).href
         );

@@ -3,8 +3,8 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import {
   directAttachmentTicketSchema,
   workerLinkSessionSchema,

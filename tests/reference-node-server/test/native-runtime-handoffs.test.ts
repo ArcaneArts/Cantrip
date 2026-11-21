@@ -16,7 +16,7 @@ import type { NativeRuntimeHandoffPrepared } from "@cantrip/protocol";
 import { LOCAL_USER_ID as owner } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import { installInternalNativeRuntimeHandoffRoutes } from "../src/app/routes/internal-native-runtime-handoffs.js";
-import { NativeRuntimeHandoffClient } from "../../../cantrip_worker/src/native-runtime-handoff-client.js";
+import { NativeRuntimeHandoffClient } from "../../../tests/reference-node-worker/src/native-runtime-handoff-client.js";
 import {
   createNativeSettingsFixture,
   settingsEnvelope,

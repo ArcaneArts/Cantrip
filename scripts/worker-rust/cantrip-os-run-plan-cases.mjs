@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { OsRunExecution } from "../../cantrip_worker/src/os-executor/run-execution.ts";
-import { CantripOsController } from "../../cantrip_worker/src/os-executor/controller.ts";
+import { OsRunExecution } from "../../tests/reference-node-worker/src/os-executor/run-execution.ts";
+import { CantripOsController } from "../../tests/reference-node-worker/src/os-executor/controller.ts";
 import {
   openRunConfigurationSecretValue,
   protectRunConfigurationSecretValue,
-} from "../../cantrip_worker/src/run-configuration-secret-encryption.ts";
+} from "../../tests/reference-node-worker/src/run-configuration-secret-encryption.ts";
 import { osRunPlanResponseSchema } from "../../packages/protocol/dist/index.js";
 
 const helper = "/usr/lib/cantrip-os-executor/cantrip-os-run-definitions";

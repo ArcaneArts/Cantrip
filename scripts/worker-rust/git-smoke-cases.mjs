@@ -6,7 +6,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
-import { handleGitCommand } from "../../cantrip_worker/src/commands/git.ts";
+import { handleGitCommand } from "../../tests/reference-node-worker/src/commands/git.ts";
 import { verifyCommitActions } from "./git-commit-smoke-cases.mjs";
 import { verifyStashes } from "./git-stash-smoke-cases.mjs";
 import { verifyPartialPatches } from "./git-patch-smoke-cases.mjs";
@@ -19,11 +19,11 @@ import { verifyGraph } from "./git-graph-smoke-cases.mjs";
 import {
   inspectGitManagedOperation,
   previewGitManagedOperation,
-} from "../../cantrip_worker/src/git.ts";
+} from "../../tests/reference-node-worker/src/git.ts";
 import {
   managedOperationRecord,
   RepositoryManagedOperationStore,
-} from "../../cantrip_worker/src/repository-managed-operation-store.ts";
+} from "../../tests/reference-node-worker/src/repository-managed-operation-store.ts";
 export async function verifyGit({
   call,
   ownerId,

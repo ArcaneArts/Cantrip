@@ -19,12 +19,12 @@ import {
   cuaPreviewLeaseSchema,
   type CuaPreviewLease,
 } from "@cantrip/protocol/computer-use-preview";
-import { publishCuaPreviewActivity } from "../../../cantrip_worker/src/computer-use/activity-publication.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
-import { CuaApprovalManager } from "../../../cantrip_worker/src/computer-use/approvals.js";
-import { CuaPreviewCoordinator } from "../../../cantrip_worker/src/computer-use/preview.js";
-import { CantripCuaService } from "../../../cantrip_worker/src/computer-use/service.js";
-import { launchCuaTransport } from "../../../cantrip_worker/src/computer-use/transport.js";
+import { publishCuaPreviewActivity } from "../../../tests/reference-node-worker/src/computer-use/activity-publication.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
+import { CuaApprovalManager } from "../../../tests/reference-node-worker/src/computer-use/approvals.js";
+import { CuaPreviewCoordinator } from "../../../tests/reference-node-worker/src/computer-use/preview.js";
+import { CantripCuaService } from "../../../tests/reference-node-worker/src/computer-use/service.js";
+import { launchCuaTransport } from "../../../tests/reference-node-worker/src/computer-use/transport.js";
 import {
   computerUsePreviewAuthority,
   installComputerUsePreviewRoutes,

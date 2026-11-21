@@ -40,8 +40,8 @@ const scanRoots = [
   "crates",
   "tests/reference-node-server/src",
   "tests/reference-node-server/test",
-  "cantrip_worker/src",
-  "cantrip_worker/test",
+  "tests/reference-node-worker/src",
+  "tests/reference-node-worker/test",
   "packages",
   "scripts",
 ];

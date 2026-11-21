@@ -17,7 +17,7 @@ import { createServer as tcpServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { discoverBrowserServices } from "../../cantrip_worker/src/browser/service-discovery.ts";
+import { discoverBrowserServices } from "../../tests/reference-node-worker/src/browser/service-discovery.ts";
 import { remoteSurfaceConfigurationSchema } from "../../packages/protocol/dist/remote-surfaces.js";
 import { eventually } from "../server-rust/full-worker.mjs";
 import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";

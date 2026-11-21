@@ -5,10 +5,10 @@ import { mkdtemp, mkdir, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { ManagedNativeHistorySources } from "../../cantrip_worker/src/managed-native-history-sources.ts";
-import { NativeHistorySourceJournal } from "../../cantrip_worker/src/native-history-source-journal.ts";
-import { NativeHistoryObservations } from "../../cantrip_worker/src/codex/native-history-observation.ts";
-import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
+import { ManagedNativeHistorySources } from "../../tests/reference-node-worker/src/managed-native-history-sources.ts";
+import { NativeHistorySourceJournal } from "../../tests/reference-node-worker/src/native-history-source-journal.ts";
+import { NativeHistoryObservations } from "../../tests/reference-node-worker/src/codex/native-history-observation.ts";
+import { parseCodexNativeHistory } from "../../tests/reference-node-worker/src/codex/native-history.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary);
 const child = spawn(values.binary, [], {

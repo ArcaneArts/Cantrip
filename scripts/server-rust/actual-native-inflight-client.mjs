@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
-import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { loadStoredWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { taskModelProvider } from "./task-model-provider.mjs";
 import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
 import { eventually } from "./full-worker.mjs";

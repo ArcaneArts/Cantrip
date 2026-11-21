@@ -1,6 +1,6 @@
-import { createManagedQueueInputCodec } from "../../../cantrip_worker/src/managed-queue-input.js";
-import { protectChatTurn } from "../../../cantrip_worker/src/chat-message-encryption.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
+import { createManagedQueueInputCodec } from "../../../tests/reference-node-worker/src/managed-queue-input.js";
+import { protectChatTurn } from "../../../tests/reference-node-worker/src/chat-message-encryption.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { eq } from "drizzle-orm";

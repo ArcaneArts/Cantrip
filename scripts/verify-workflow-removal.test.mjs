@@ -46,7 +46,7 @@ test("allows the GitHub Actions workflow_runs response field", () => {
   assert.deepEqual(
     forbiddenWorkflowReferences([
       {
-        file: "cantrip_worker/src/github.ts",
+        file: "tests/reference-node-worker/src/github.ts",
         sourceText: "const runs = response.workflow_runs;",
       },
     ]),
@@ -55,7 +55,7 @@ test("allows the GitHub Actions workflow_runs response field", () => {
   assert.equal(
     forbiddenWorkflowReferences([
       {
-        file: "cantrip_worker/src/github.ts",
+        file: "tests/reference-node-worker/src/github.ts",
         sourceText: "const definitions = response.workflow_definitions;",
       },
     ]).length,

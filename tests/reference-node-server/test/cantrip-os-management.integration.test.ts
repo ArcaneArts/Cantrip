@@ -13,20 +13,20 @@ import {
   workerCommandSchema,
   type WorkerCommand,
 } from "@cantrip/protocol";
-import { CantripOsController } from "../../../cantrip_worker/src/os-executor/controller.js";
-import { OsRunDefinitionOperations } from "../../../cantrip_worker/src/os-executor/run-definitions.js";
+import { CantripOsController } from "../../../tests/reference-node-worker/src/os-executor/controller.js";
+import { OsRunDefinitionOperations } from "../../../tests/reference-node-worker/src/os-executor/run-definitions.js";
 import {
   executorControl,
   OsExecutorConnection,
   type OsExecutorBinding,
   type OsExecutorTransport,
-} from "../../../cantrip_worker/src/os-executor/connection.js";
-import { guestFileUri } from "../../../cantrip_worker/src/os-executor/paths.js";
-import { runGuestProcess } from "../../../cantrip_worker/src/os-executor/process.js";
-import { prepareOsSourceCommand } from "../../../cantrip_worker/src/os-executor/protected-source.js";
-import { WorkerRoutingRegistry } from "../../../cantrip_worker/src/routing-registry.js";
-import { protectWorkerRepositoryOperationContent } from "../../../cantrip_worker/src/repository-operation-encryption.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
+} from "../../../tests/reference-node-worker/src/os-executor/connection.js";
+import { guestFileUri } from "../../../tests/reference-node-worker/src/os-executor/paths.js";
+import { runGuestProcess } from "../../../tests/reference-node-worker/src/os-executor/process.js";
+import { prepareOsSourceCommand } from "../../../tests/reference-node-worker/src/os-executor/protected-source.js";
+import { WorkerRoutingRegistry } from "../../../tests/reference-node-worker/src/routing-registry.js";
+import { protectWorkerRepositoryOperationContent } from "../../../tests/reference-node-worker/src/repository-operation-encryption.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
 import { installCantripOsRoutes } from "../src/app/routes/cantrip-os.js";
 import type { RepositoryDatabase } from "../src/db/repository/database.js";
 import { ServerRepository } from "../src/db/repository.js";
@@ -35,10 +35,10 @@ import { createRunConfigurationRuntime } from "../src/app/runtime/run-configurat
 import { createWorkerNotificationRuntime } from "../src/app/runtime/worker-notification-runtime.js";
 import type { ProjectWorktreeCoordinator } from "../src/worktrees/coordinator.js";
 import type { LimitedWorkerCommandBus } from "../src/workers/limited-command-bus.js";
-import { RunConfigurationRuntimeSupervisor } from "../../../cantrip_worker/src/run-configuration-runtime-supervisor.js";
-import { OsRunExecution } from "../../../cantrip_worker/src/os-executor/run-execution.js";
-import { handleOsRunCommand } from "../../../cantrip_worker/src/os-executor/run-commands.js";
-import { openWorkerRunContent } from "../../../cantrip_worker/src/run-content-encryption.js";
+import { RunConfigurationRuntimeSupervisor } from "../../../tests/reference-node-worker/src/run-configuration-runtime-supervisor.js";
+import { OsRunExecution } from "../../../tests/reference-node-worker/src/os-executor/run-execution.js";
+import { handleOsRunCommand } from "../../../tests/reference-node-worker/src/os-executor/run-commands.js";
+import { openWorkerRunContent } from "../../../tests/reference-node-worker/src/run-content-encryption.js";
 import { runConfigurationRuntimeOutputContentSchema } from "@cantrip/protocol/run-configuration-runtime";
 import * as schema from "../src/db/schema.js";
 import { readdir } from "node:fs/promises";

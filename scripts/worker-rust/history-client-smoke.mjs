@@ -17,13 +17,13 @@ import {
   settingsChat,
   settingsWorker,
 } from "../server-rust/native-settings-http-fixture.mjs";
-import { NativeHistoryClient } from "../../cantrip_worker/src/native-history-client.ts";
-import { readNativeHistoryRecovery } from "../../cantrip_worker/src/native-history-recovery.ts";
-import { createNativeHistoryProjector } from "../../cantrip_worker/src/native-history-projector.ts";
-import { restoreNativeHistoryProjectorState } from "../../cantrip_worker/src/native-history-projector-bootstrap.ts";
-import { parseCodexNativeHistory } from "../../cantrip_worker/src/codex/native-history.ts";
-import { createManagedNativeOutputIdentityResolver } from "../../cantrip_worker/src/native-history-output-identity.ts";
-import { createNativeHistoryOutputModeResolver } from "../../cantrip_worker/src/native-history-output-mode.ts";
+import { NativeHistoryClient } from "../../tests/reference-node-worker/src/native-history-client.ts";
+import { readNativeHistoryRecovery } from "../../tests/reference-node-worker/src/native-history-recovery.ts";
+import { createNativeHistoryProjector } from "../../tests/reference-node-worker/src/native-history-projector.ts";
+import { restoreNativeHistoryProjectorState } from "../../tests/reference-node-worker/src/native-history-projector-bootstrap.ts";
+import { parseCodexNativeHistory } from "../../tests/reference-node-worker/src/codex/native-history.ts";
+import { createManagedNativeOutputIdentityResolver } from "../../tests/reference-node-worker/src/native-history-output-identity.ts";
+import { createNativeHistoryOutputModeResolver } from "../../tests/reference-node-worker/src/native-history-output-mode.ts";
 import { verifyManagedHistory } from "./history-managed-smoke.mjs";
 import { verifyHistoryCoordinator } from "./history-coordinator-smoke.mjs";
 const { values } = parseArgs({

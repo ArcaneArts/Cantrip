@@ -113,7 +113,7 @@ An older executor remains usable, with an explicit coverage-unavailable notice
 when rebuilding a model after recovery. Read-only administrative observation
 never starts, writes to, or terminates a process, including on observation limits.
 
-The worker module `cantrip_worker/src/os-executor/connection.ts` implements the
+The worker module `tests/reference-node-worker/src/os-executor/connection.ts` implements the
 carrier and preserves unknown delivery outcomes. Product callers must apply
 server admission and project binding in later cycles. Guest paths are not
 worker-local paths.
@@ -144,7 +144,7 @@ The opt-in real-runtime test requires a disposable instance with `exec-a` and
 
 ```sh
 CANTRIP_OS_TEST_CONTAINER=cantrip-os-executor-test \
-  pnpm --dir cantrip_worker exec vitest run test/os-executor.integration.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/os-executor.integration.test.ts
 ```
 
 For an installed VM, set `CANTRIP_OS_TEST_TRANSPORT` to a JSON file with `kind:

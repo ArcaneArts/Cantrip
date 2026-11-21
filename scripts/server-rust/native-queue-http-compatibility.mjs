@@ -18,7 +18,7 @@ import {
   prepareEventCommands,
 } from "./native-event-http-setup.mjs";
 import { literal } from "./project-target-state.mjs";
-import { ManagedNativeQueueClient } from "../../cantrip_worker/src/managed-native-queue-client.ts";
+import { ManagedNativeQueueClient } from "../../tests/reference-node-worker/src/managed-native-queue-client.ts";
 import { nativeQueueHttpCases } from "./native-queue-http-cases.mjs";
 
 const option = (key) => {

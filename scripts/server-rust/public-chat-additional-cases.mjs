@@ -6,7 +6,7 @@ import {
 } from "./native-settings-http-fixture.mjs";
 import { standalone } from "./native-event-http-setup.mjs";
 import { queuedPromptOpaqueContentSchema } from "../../packages/protocol/dist/index.js";
-import { protectChatTurn } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatTurn } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 
 export async function additionalPublicChatCases({
   h,

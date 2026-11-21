@@ -13,18 +13,18 @@ import {
   workerCantripMcpServerCapabilitiesSchema,
 } from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
-import { createCantripMcpServer } from "../../cantrip_worker/src/mcp/server.ts";
-import { createCuaMcpServer } from "../../cantrip_worker/src/mcp/cua-server.ts";
+import { createCantripMcpServer } from "../../tests/reference-node-worker/src/mcp/server.ts";
+import { createCuaMcpServer } from "../../tests/reference-node-worker/src/mcp/cua-server.ts";
 import {
   cuaMcpBrokerRequestSchema,
   cuaMcpResetArgumentsSchema,
   cuaMcpScriptArgumentsSchema,
   cuaMcpScriptSchema,
-} from "../../cantrip_worker/src/mcp/cua-contract.ts";
-import { cantripMcpToolHelp } from "../../cantrip_worker/src/mcp/tool-catalog.ts";
+} from "../../tests/reference-node-worker/src/mcp/cua-contract.ts";
+import { cantripMcpToolHelp } from "../../tests/reference-node-worker/src/mcp/tool-catalog.ts";
 
 const requireWorker = createRequire(
-  new URL("../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 );
 const { z } = requireWorker("zod");
 const { Client } = await import(

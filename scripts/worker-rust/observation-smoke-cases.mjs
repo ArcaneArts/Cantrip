@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { writeFile, rm, readFile } from "node:fs/promises";
 import path from "node:path";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
-import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
+import { WorkerRoutingRegistry } from "../../tests/reference-node-worker/src/routing-registry.ts";
 export async function verifyNativeObservations({
   call,
   origin,

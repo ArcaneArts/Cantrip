@@ -7,7 +7,7 @@ import {
 import {
   protectNativeCommandContent,
   openNativeCommandContent,
-} from "../../cantrip_worker/src/native-command-content.ts";
+} from "../../tests/reference-node-worker/src/native-command-content.ts";
 import {
   settingsChat as chat,
   settingsWorker as worker,

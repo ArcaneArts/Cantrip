@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { createInterface } from "node:readline";
 
 const { WebSocket, WebSocketServer } = createRequire(
-  new URL("../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 )("ws");
 const [binary, marker, prompt, scenario, ...args] = process.argv.slice(2);
 const restoring = scenario === "resume-approval" || scenario === "resume-cua";

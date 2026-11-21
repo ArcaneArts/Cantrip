@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { ManagedNativeCommandSession } from "../../cantrip_worker/src/codex/managed-native-command-session.ts";
-import { managedQueueNativeCommand } from "../../cantrip_worker/src/codex/managed-queue-command.ts";
-import { NativeCommandClient } from "../../cantrip_worker/src/native-command-client.ts";
+import { ManagedNativeCommandSession } from "../../tests/reference-node-worker/src/codex/managed-native-command-session.ts";
+import { managedQueueNativeCommand } from "../../tests/reference-node-worker/src/codex/managed-queue-command.ts";
+import { NativeCommandClient } from "../../tests/reference-node-worker/src/native-command-client.ts";
 import {
   openEncryptedChatTurn,
   protectChatTurn,
-} from "../../cantrip_worker/src/chat-message-encryption.ts";
+} from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import {
   openNativeCommandContent,
   protectNativeCommandContent,
-} from "../../cantrip_worker/src/native-command-content.ts";
+} from "../../tests/reference-node-worker/src/native-command-content.ts";
 import { decryptQueuedPromptProtectedContent } from "../../packages/crypto/dist/index.js";
 import { deadline } from "./live-sockets.mjs";
 import { literal } from "./project-target-state.mjs";

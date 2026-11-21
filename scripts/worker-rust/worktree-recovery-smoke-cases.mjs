@@ -6,8 +6,8 @@ import { readFile, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
-import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
-import { RepositoryManagedOperationStore } from "../../cantrip_worker/src/repository-managed-operation-store.ts";
+import { WorkerRoutingRegistry } from "../../tests/reference-node-worker/src/routing-registry.ts";
+import { RepositoryManagedOperationStore } from "../../tests/reference-node-worker/src/repository-managed-operation-store.ts";
 import { nodeGit } from "./git-node-reference.mjs";
 export async function verifyWorktreeRecovery({
   call,

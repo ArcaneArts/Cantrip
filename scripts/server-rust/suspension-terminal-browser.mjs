@@ -153,7 +153,7 @@ export async function openSuspensionTerminal(
     },
   );
   const require = createRequire(
-    path.join(repositoryRoot, "cantrip_worker/package.json"),
+    path.join(repositoryRoot, "tests/reference-node-worker/package.json"),
   );
   const { Terminal } = require("@xterm/headless");
   const display = new Terminal({

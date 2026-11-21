@@ -55,7 +55,7 @@ const { values } = parseArgs({
 });
 assert.ok(values.worker && values.codex && values.helper);
 const require = createRequire(
-  new URL("../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 );
 const { WebSocketServer } = require("ws");
 const sharp = require("sharp");

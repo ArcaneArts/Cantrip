@@ -5,9 +5,9 @@ import { readFile, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
-import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
-import { WorktreeManager } from "../../cantrip_worker/src/worktrees.ts";
-import { RepositoryManagedOperationStore } from "../../cantrip_worker/src/repository-managed-operation-store.ts";
+import { WorkerRoutingRegistry } from "../../tests/reference-node-worker/src/routing-registry.ts";
+import { WorktreeManager } from "../../tests/reference-node-worker/src/worktrees.ts";
+import { RepositoryManagedOperationStore } from "../../tests/reference-node-worker/src/repository-managed-operation-store.ts";
 export async function verifyNativeWorktrees({
   call,
   ownerId,

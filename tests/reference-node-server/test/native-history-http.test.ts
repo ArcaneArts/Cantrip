@@ -10,33 +10,33 @@ import type {
 } from "@cantrip/protocol";
 import * as schema from "../src/db/schema.js";
 import { createNativeCommandWorkerFixture } from "./native-command-worker-fixture.js";
-import { NativeHistoryClient } from "../../../cantrip_worker/src/native-history-client.js";
-import { NativeHistoryBatchRejectedError } from "../../../cantrip_worker/src/native-history-rejection.js";
-import { NativeHistoryOutbox } from "../../../cantrip_worker/src/native-history-outbox.js";
-import { NativeHistoryDelivery } from "../../../cantrip_worker/src/native-history-delivery.js";
+import { NativeHistoryClient } from "../../../tests/reference-node-worker/src/native-history-client.js";
+import { NativeHistoryBatchRejectedError } from "../../../tests/reference-node-worker/src/native-history-rejection.js";
+import { NativeHistoryOutbox } from "../../../tests/reference-node-worker/src/native-history-outbox.js";
+import { NativeHistoryDelivery } from "../../../tests/reference-node-worker/src/native-history-delivery.js";
 import {
   protectChatMessage,
   openEncryptedChatTurn,
-} from "../../../cantrip_worker/src/chat-message-encryption.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
-import { protectNativeHistoryItemEvidence } from "../../../cantrip_worker/src/native-history-item-content.js";
+} from "../../../tests/reference-node-worker/src/chat-message-encryption.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
+import { protectNativeHistoryItemEvidence } from "../../../tests/reference-node-worker/src/native-history-item-content.js";
 import {
   openNativeHistoryArchivePage,
   openNativeHistoryTurnArchivePage,
-} from "../../../cantrip_worker/src/native-history-archive.js";
-import { NativeHistorySourceJournal } from "../../../cantrip_worker/src/native-history-source-journal.js";
-import { NativeHistoryProjection } from "../../../cantrip_worker/src/native-history-projection.js";
-import { createNativeHistoryProjector } from "../../../cantrip_worker/src/native-history-projector.js";
-import { restoreNativeHistoryProjectorState } from "../../../cantrip_worker/src/native-history-projector-bootstrap.js";
-import { readNativeHistoryRecovery } from "../../../cantrip_worker/src/native-history-recovery.js";
-import { openNativeHistoryBatchArchivePage } from "../../../cantrip_worker/src/native-history-batch-archive.js";
-import { nativeHistoryStateItemSchema } from "../../../cantrip_worker/src/native-history-state.js";
-import { reduceNativeHistory } from "../../../cantrip_worker/src/native-history-reducer.js";
+} from "../../../tests/reference-node-worker/src/native-history-archive.js";
+import { NativeHistorySourceJournal } from "../../../tests/reference-node-worker/src/native-history-source-journal.js";
+import { NativeHistoryProjection } from "../../../tests/reference-node-worker/src/native-history-projection.js";
+import { createNativeHistoryProjector } from "../../../tests/reference-node-worker/src/native-history-projector.js";
+import { restoreNativeHistoryProjectorState } from "../../../tests/reference-node-worker/src/native-history-projector-bootstrap.js";
+import { readNativeHistoryRecovery } from "../../../tests/reference-node-worker/src/native-history-recovery.js";
+import { openNativeHistoryBatchArchivePage } from "../../../tests/reference-node-worker/src/native-history-batch-archive.js";
+import { nativeHistoryStateItemSchema } from "../../../tests/reference-node-worker/src/native-history-state.js";
+import { reduceNativeHistory } from "../../../tests/reference-node-worker/src/native-history-reducer.js";
 import {
   prepareNativeHistoryTurn,
   protectNativeHistoryTurnMetadata,
-} from "../../../cantrip_worker/src/native-history-turn-content.js";
-import { parseCodexNativeHistory } from "../../../cantrip_worker/src/codex/native-history.js";
+} from "../../../tests/reference-node-worker/src/native-history-turn-content.js";
+import { parseCodexNativeHistory } from "../../../tests/reference-node-worker/src/codex/native-history.js";
 
 let f: Awaited<ReturnType<typeof createNativeCommandWorkerFixture>>;
 let directory: string;

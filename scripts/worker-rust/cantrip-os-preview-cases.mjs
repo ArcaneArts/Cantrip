@@ -272,7 +272,7 @@ export async function verifyManagedGuestDesktopPreparation({
 
   if (origin) {
     const { probeX11 } =
-      await import("../../cantrip_worker/test/fixtures/os-x11-probe.ts");
+      await import("../../tests/reference-node-worker/test/fixtures/os-x11-probe.ts");
     const viewport = { width: 640, height: 480, devicePixelRatio: 1 };
     const connect = async (surfaceId) => {
       let frame;
@@ -851,7 +851,7 @@ export async function verifyCantripOsPreview({
     });
     assert.equal(otherState.result.data?.session.binding.sessionId, otherId);
     const { probeX11 } =
-      await import("../../cantrip_worker/test/fixtures/os-x11-probe.ts");
+      await import("../../tests/reference-node-worker/test/fixtures/os-x11-probe.ts");
     const display = JSON.parse(
       await guest("cantrip-workspaces", "desktop-target", workspaceName),
     ).display;

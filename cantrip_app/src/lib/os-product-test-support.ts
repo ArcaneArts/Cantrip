@@ -12,7 +12,7 @@ import {
   type WorkerLinkWebSocketLike,
 } from "./worker-link-carriers";
 const WebSocket = createRequire(
-  new URL("../../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../../tests/reference-node-worker/package.json", import.meta.url),
 )("ws");
 /** Disposable private product profile only. Never log the returned master key. */
 export async function productTestContext(origin: string, recoveryPath: string) {

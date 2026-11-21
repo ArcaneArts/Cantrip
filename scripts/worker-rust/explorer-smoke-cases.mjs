@@ -177,7 +177,7 @@ export async function verifyExplorer({
       references,
     });
     const { chatFileReferences } =
-      await import("../../cantrip_worker/src/chat-file-references.ts");
+      await import("../../tests/reference-node-worker/src/chat-file-references.ts");
     assert.deepEqual(outcome, {
       ok: true,
       result: {
@@ -346,7 +346,7 @@ export async function verifyExplorer({
     ).result.value.version;
     await binary.stopWorker();
     const { BinaryFileWrites } =
-      await import("../../cantrip_worker/src/binary-file-writes.ts");
+      await import("../../tests/reference-node-worker/src/binary-file-writes.ts");
     const legacy = new BinaryFileWrites(binary.workerDirectory, {
       ownerId: () => ownerId,
       componentKey: () => ({ key: surfaceKey.slice(), keyRevision: 1 }),

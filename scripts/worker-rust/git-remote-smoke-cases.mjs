@@ -5,7 +5,10 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { readGitRemotes, readGitStatus } from "../../cantrip_worker/src/git.ts";
+import {
+  readGitRemotes,
+  readGitStatus,
+} from "../../tests/reference-node-worker/src/git.ts";
 
 function normalize(value, key) {
   if (key === "generatedAt") {

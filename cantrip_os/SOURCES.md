@@ -9,7 +9,7 @@ or retarget a chat. See the final [acceptance](ACCEPTANCE.md#phase-3-acceptance-
 
 ## Linked Docker worktrees
 
-`cantrip_worker/src/os-executor/linked.ts` accepts the owning worker's resolved,
+`tests/reference-node-worker/src/os-executor/linked.ts` accepts the owning worker's resolved,
 explicitly selected worktree path and a canonical binding ID. Protected worker
 path handles must be resolved by the existing routing registry first. The helper
 never substitutes a browser-supplied path or mounts the host home, repository
@@ -51,7 +51,7 @@ the launcher prints the actual connection information.
 
 ## Linux-owned sources
 
-`cantrip_worker/src/os-executor/checkouts.ts` provisions an exact admitted commit
+`tests/reference-node-worker/src/os-executor/checkouts.ts` provisions an exact admitted commit
 under persistent `~/checkouts/<source-id>`. It stages the clone in a durable
 operation directory, verifies the commit, and publishes with atomic no-replacement
 rename. A Git bundle can supply a fixture or authenticated worker-owned export.
@@ -134,10 +134,10 @@ named instance and retains its host fixture because the live mount needs it.
 ```sh
 node --test cantrip_os/tests/*.test.mjs
 CANTRIP_OS_TEST_CONTAINER=cantrip-os-sources-test \
-  pnpm --dir cantrip_worker exec vitest run \
+  pnpm --dir tests/reference-node-worker exec vitest run \
   test/os-sources.integration.test.ts test/os-process-cancellation.integration.test.ts --maxWorkers=1
 CANTRIP_OS_TEST_LINKED_CONTAINER=cantrip-os-sources-test \
-  pnpm --dir cantrip_worker exec vitest run test/os-linked-source.integration.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/os-linked-source.integration.test.ts
 ```
 
 For the installed VM, use the protected SSH transport JSON from the

@@ -37,7 +37,7 @@ export function launchActualWorker(
     homeDirectory,
     workerBinary = process.env.CANTRIP_TEST_WORKER_BINARY,
     workerPackage = process.env.CANTRIP_TEST_WORKER_PACKAGE ??
-      path.join(repositoryRoot, "cantrip_worker"),
+      path.join(repositoryRoot, "tests/reference-node-worker"),
     environment: extraEnvironment = {},
   } = {},
 ) {

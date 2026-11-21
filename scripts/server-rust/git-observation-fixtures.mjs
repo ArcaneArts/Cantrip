@@ -1,5 +1,5 @@
 import { gitManagedOperationWorkerStateSchema } from "../../packages/protocol/dist/index.js";
-import { buildGitOperationObservation } from "../../cantrip_worker/src/worktrees.ts";
+import { buildGitOperationObservation } from "../../tests/reference-node-worker/src/worktrees.ts";
 import {
   settingsProject,
   settingsTree,

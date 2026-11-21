@@ -6,7 +6,7 @@ import { mkdir, realpath, writeFile, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { eventually } from "./full-worker.mjs";
 import { actualGithubConversion } from "./actual-github-conversion.mjs";
-import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
+import { normalizeProjectSourcePath } from "../../tests/reference-node-worker/src/project-source-path.ts";
 export async function actualWorkspaceDiscovery({
   page,
   fixture,

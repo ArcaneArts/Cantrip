@@ -2,8 +2,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { dispatchRepositoryOperation } from "../../../cantrip_worker/src/repository-operation-dispatch.js";
-import { RepositoryManagedOperationStore } from "../../../cantrip_worker/src/repository-managed-operation-store.js";
+import { dispatchRepositoryOperation } from "../../../tests/reference-node-worker/src/repository-operation-dispatch.js";
+import { RepositoryManagedOperationStore } from "../../../tests/reference-node-worker/src/repository-managed-operation-store.js";
 import {
   decryptRepositoryOperationPayload,
   encryptRepositoryOperationPayload,

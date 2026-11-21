@@ -1,8 +1,8 @@
 import { createHandoffQueueFixture } from "./native-handoff-queue-fixture.js";
 import { createManagedQueueDelivery } from "../src/app/runtime/managed-queue-delivery.js";
-import { completeManagedRuntimeHandoff } from "../../../cantrip_worker/src/codex/managed-runtime-handoff-completion.js";
-import { wakeManagedQueueAutonomy } from "../../../cantrip_worker/src/codex/managed-queue-wake.js";
-import { ManagedNativeQueueClient } from "../../../cantrip_worker/src/managed-native-queue-client.js";
+import { completeManagedRuntimeHandoff } from "../../../tests/reference-node-worker/src/codex/managed-runtime-handoff-completion.js";
+import { wakeManagedQueueAutonomy } from "../../../tests/reference-node-worker/src/codex/managed-queue-wake.js";
+import { ManagedNativeQueueClient } from "../../../tests/reference-node-worker/src/managed-native-queue-client.js";
 import { installInternalNativeQueueRoutes } from "../src/app/routes/internal-native-queue.js";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
@@ -22,20 +22,20 @@ import { installInternalNativeRuntimeHandoffRoutes } from "../src/app/routes/int
 import { installInternalNativeCommandRoutes } from "../src/app/routes/internal-native-commands.js";
 import { runtimeHandoffConfiguration } from "../src/terminals/runtime-handoff-configuration.js";
 import { resolveModelRoutePairs } from "../src/models/subagent-routing.js";
-import { CodexAppServer } from "../../../cantrip_worker/src/codex/app-server.js";
-import { discoverCodexRuntime } from "../../../cantrip_worker/src/codex/discovery.js";
-import { ManagedExecutionRunner } from "../../../cantrip_worker/src/codex/managed-execution-runner.js";
-import { ManagedNativeCommandSession } from "../../../cantrip_worker/src/codex/managed-native-command-session.js";
-import { ManagedRuntimeHandoffStaging } from "../../../cantrip_worker/src/codex/managed-runtime-handoff-staging.js";
+import { CodexAppServer } from "../../../tests/reference-node-worker/src/codex/app-server.js";
+import { discoverCodexRuntime } from "../../../tests/reference-node-worker/src/codex/discovery.js";
+import { ManagedExecutionRunner } from "../../../tests/reference-node-worker/src/codex/managed-execution-runner.js";
+import { ManagedNativeCommandSession } from "../../../tests/reference-node-worker/src/codex/managed-native-command-session.js";
+import { ManagedRuntimeHandoffStaging } from "../../../tests/reference-node-worker/src/codex/managed-runtime-handoff-staging.js";
 import {
   ManagedRuntimeHandoffCoordinator,
   type HandoffRuntime,
-} from "../../../cantrip_worker/src/codex/managed-runtime-handoff.js";
-import { ManagedRuntimeNamespaces } from "../../../cantrip_worker/src/codex/managed-runtime-namespaces.js";
-import { ManagedRuntimeHandoffJournal } from "../../../cantrip_worker/src/codex/managed-runtime-handoff-journal.js";
-import { NativeRuntimeHandoffClient } from "../../../cantrip_worker/src/native-runtime-handoff-client.js";
-import { NativeCommandClient } from "../../../cantrip_worker/src/native-command-client.js";
-import { protectNativeSettingsSnapshot } from "../../../cantrip_worker/src/native-settings-content.js";
+} from "../../../tests/reference-node-worker/src/codex/managed-runtime-handoff.js";
+import { ManagedRuntimeNamespaces } from "../../../tests/reference-node-worker/src/codex/managed-runtime-namespaces.js";
+import { ManagedRuntimeHandoffJournal } from "../../../tests/reference-node-worker/src/codex/managed-runtime-handoff-journal.js";
+import { NativeRuntimeHandoffClient } from "../../../tests/reference-node-worker/src/native-runtime-handoff-client.js";
+import { NativeCommandClient } from "../../../tests/reference-node-worker/src/native-command-client.js";
+import { protectNativeSettingsSnapshot } from "../../../tests/reference-node-worker/src/native-settings-content.js";
 
 /** Own native processes + migrated database + admitted execution, no user accounts. */
 it.skipIf(!process.env.CANTRIP_CODEX_TEST_BINARY).each([

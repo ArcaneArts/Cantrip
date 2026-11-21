@@ -1,8 +1,8 @@
 // Production worker services, with controlled search/fetch/browser boundaries.
 // This proves server negotiation and worker routing, not managed-browser QA.
 import assert from "node:assert/strict";
-import { WorkerWebService } from "../../cantrip_worker/src/web/service.ts";
-import { RobotsPolicy } from "../../cantrip_worker/src/web/robots.ts";
+import { WorkerWebService } from "../../tests/reference-node-worker/src/web/service.ts";
+import { RobotsPolicy } from "../../tests/reference-node-worker/src/web/robots.ts";
 
 export const workerLocalOperations = [
   "tool.help",

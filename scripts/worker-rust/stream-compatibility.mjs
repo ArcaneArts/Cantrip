@@ -9,11 +9,11 @@ import * as c from "../../packages/crypto/src/index.ts";
 import { CantripDecryptionError as WorkerDecryptionError } from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/src/index.ts";
 import * as remote from "../../packages/protocol/src/remote-surface-stream.ts";
-import * as endpointWorker from "../../cantrip_worker/src/endpoint-content-encryption.ts";
-import * as surfaceWorker from "../../cantrip_worker/src/surface-stream-encryption.ts";
-import * as remoteWorker from "../../cantrip_worker/src/remote-surface-stream-encryption.ts";
-import * as tunnel from "../../cantrip_worker/src/tunnel-data-protection.ts";
-import { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.ts";
+import * as endpointWorker from "../../tests/reference-node-worker/src/endpoint-content-encryption.ts";
+import * as surfaceWorker from "../../tests/reference-node-worker/src/surface-stream-encryption.ts";
+import * as remoteWorker from "../../tests/reference-node-worker/src/remote-surface-stream-encryption.ts";
+import * as tunnel from "../../tests/reference-node-worker/src/tunnel-data-protection.ts";
+import { WorkerEncryptionService } from "../../tests/reference-node-worker/src/worker-encryption.ts";
 
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass built --binary content-fixture");

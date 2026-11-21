@@ -108,7 +108,7 @@ Run the actual Worker Manager acceptance against a disposable attached instance:
 
 ```sh
 CANTRIP_OS_TEST_CONTAINER=cantrip-os-lifecycle-test \
-  pnpm --filter @cantrip/worker exec vitest run test/os-power.integration.test.ts
+  pnpm --filter @cantrip/worker-reference exec vitest run test/os-power.integration.test.ts
 ```
 
 This interrupts that instance. It exercises actual stop/start, a completed restart
@@ -236,7 +236,7 @@ container with the workspace and executor packages installed:
 
 ```sh
 CANTRIP_OS_TEST_DESKTOP_CONTAINER=your-disposable-container \
-  pnpm --filter @cantrip/worker exec vitest run test/os-desktop.integration.test.ts
+  pnpm --filter @cantrip/worker-reference exec vitest run test/os-desktop.integration.test.ts
 ```
 
 The check creates its own workspace, retains private proof and test files, stops

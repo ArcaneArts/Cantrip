@@ -36,11 +36,11 @@ export const removedWorkflowArtifactPaths = [
   "tests/reference-node-server/test/workflow-repository-api.test.ts",
   "tests/reference-node-server/test/workflow-run-api.test.ts",
   "tests/reference-node-server/test/workflow-values.test.ts",
-  "cantrip_worker/src/workflow-execution-encryption.ts",
-  "cantrip_worker/src/workflow-repository.ts",
-  "cantrip_worker/test/workflow-execution-encryption.test.ts",
-  "cantrip_worker/test/workflow-repository.test.ts",
-  "cantrip_worker/test/workflow-trigger-encryption.test.ts",
+  "tests/reference-node-worker/src/workflow-execution-encryption.ts",
+  "tests/reference-node-worker/src/workflow-repository.ts",
+  "tests/reference-node-worker/test/workflow-execution-encryption.test.ts",
+  "tests/reference-node-worker/test/workflow-repository.test.ts",
+  "tests/reference-node-worker/test/workflow-trigger-encryption.test.ts",
   "packages/crypto/src/workflow-content.ts",
   "packages/crypto/test/workflow-content.test.ts",
   "packages/protocol/src/workflow-content.ts",
@@ -84,8 +84,8 @@ const scanTargets = [
   "tests/reference-node-server/src",
   "tests/reference-node-server/test",
   "cantrip_site/src",
-  "cantrip_worker/src",
-  "cantrip_worker/test",
+  "tests/reference-node-worker/src",
+  "tests/reference-node-worker/test",
   "deploy",
   "distribution",
   "docs",
@@ -129,8 +129,8 @@ const selfPaths = new Set([
 ]);
 
 const githubActionsResponsePaths = new Set([
-  "cantrip_worker/src/github.ts",
-  "cantrip_worker/test/github.test.ts",
+  "tests/reference-node-worker/src/github.ts",
+  "tests/reference-node-worker/test/github.test.ts",
 ]);
 const githubActionsFixturePaths = new Set([
   "scripts/worker-rust/github-operations-compatibility.mjs",

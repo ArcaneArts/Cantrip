@@ -2,10 +2,10 @@
 import { writeFile } from "node:fs/promises";
 import { format } from "prettier";
 import * as protocol from "../../packages/protocol/dist/index.js";
-import { nativeHistoryProjectorStateSchema } from "../../cantrip_worker/src/native-history-projector.ts";
-import { nativeHistoryProjectorTurnContentSchema } from "../../cantrip_worker/src/native-history-projector-bootstrap.ts";
-import { nativeHistoryStateObjectSchema } from "../../cantrip_worker/src/native-history-state.ts";
-import { nativeHistorySequenceSchema } from "../../cantrip_worker/src/codex/native-history.ts";
+import { nativeHistoryProjectorStateSchema } from "../../tests/reference-node-worker/src/native-history-projector.ts";
+import { nativeHistoryProjectorTurnContentSchema } from "../../tests/reference-node-worker/src/native-history-projector-bootstrap.ts";
+import { nativeHistoryStateObjectSchema } from "../../tests/reference-node-worker/src/native-history-state.ts";
+import { nativeHistorySequenceSchema } from "../../tests/reference-node-worker/src/codex/native-history.ts";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
 const schemas = {
   nativeHistoryProjectorStateSchema,

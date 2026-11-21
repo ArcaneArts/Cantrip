@@ -7,11 +7,11 @@ import { afterAll, vi } from "vitest";
 
 let comparisons = 0;
 vi.mock(
-  "../../cantrip_worker/src/native-history-reducer.js",
+  "../../tests/reference-node-worker/src/native-history-reducer.js",
   async (importOriginal) => {
     const source =
       await importOriginal<
-        typeof import("../../cantrip_worker/src/native-history-reducer.js")
+        typeof import("../../tests/reference-node-worker/src/native-history-reducer.js")
       >();
     return {
       ...source,

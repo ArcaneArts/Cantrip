@@ -3,11 +3,11 @@
 import assert from "node:assert/strict";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { NativeHistoryClient } from "../../cantrip_worker/src/native-history-client.ts";
-import { ManagedNativeHistoryProjection } from "../../cantrip_worker/src/managed-native-history-projection.ts";
-import { createNativeHistoryProjectorAdapters } from "../../cantrip_worker/src/native-history-projector-adapters.ts";
-import { AttachmentStore } from "../../cantrip_worker/src/attachment-store.ts";
-import { readNativeHistoryRecovery } from "../../cantrip_worker/src/native-history-recovery.ts";
+import { NativeHistoryClient } from "../../tests/reference-node-worker/src/native-history-client.ts";
+import { ManagedNativeHistoryProjection } from "../../tests/reference-node-worker/src/managed-native-history-projection.ts";
+import { createNativeHistoryProjectorAdapters } from "../../tests/reference-node-worker/src/native-history-projector-adapters.ts";
+import { AttachmentStore } from "../../tests/reference-node-worker/src/attachment-store.ts";
+import { readNativeHistoryRecovery } from "../../tests/reference-node-worker/src/native-history-recovery.ts";
 async function until(test, label) {
   for (let i = 0; i < 400; i++) {
     if (await test()) return;

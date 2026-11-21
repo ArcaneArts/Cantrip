@@ -36,9 +36,9 @@ import {
   protectTaskGoalLaunchFailure,
   protectTaskConversationMessage,
   openTaskConversationPrompt,
-} from "../../../cantrip_worker/src/task-operation.js";
-import { protectChatTurn } from "../../../cantrip_worker/src/chat-message-encryption.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
+} from "../../../tests/reference-node-worker/src/task-operation.js";
+import { protectChatTurn } from "../../../tests/reference-node-worker/src/chat-message-encryption.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
 import {
   createTaskOperationRelayRequest,
   decryptTaskGoalObjective,

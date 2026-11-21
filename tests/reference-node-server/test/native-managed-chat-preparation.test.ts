@@ -15,23 +15,23 @@ import { installInternalNativeCommandRoutes } from "../src/app/routes/internal-n
 import { installInternalNativeQueueRoutes } from "../src/app/routes/internal-native-queue.js";
 import { resolveModelRoutePairs } from "../src/models/subagent-routing.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
-import { CodexAppServer } from "../../../cantrip_worker/src/codex/app-server.js";
-import { discoverCodexRuntime } from "../../../cantrip_worker/src/codex/discovery.js";
-import { ManagedSessionCoordinator } from "../../../cantrip_worker/src/codex/managed-session.js";
-import { ManagedNativeCommandSession } from "../../../cantrip_worker/src/codex/managed-native-command-session.js";
-import { NativeCommandClient } from "../../../cantrip_worker/src/native-command-client.js";
-import { ManagedNativeQueueClient } from "../../../cantrip_worker/src/managed-native-queue-client.js";
-import { ManagedNativeQueue } from "../../../cantrip_worker/src/codex/managed-native-queue.js";
-import { createManagedQueueInputCodec } from "../../../cantrip_worker/src/managed-queue-input.js";
+import { CodexAppServer } from "../../../tests/reference-node-worker/src/codex/app-server.js";
+import { discoverCodexRuntime } from "../../../tests/reference-node-worker/src/codex/discovery.js";
+import { ManagedSessionCoordinator } from "../../../tests/reference-node-worker/src/codex/managed-session.js";
+import { ManagedNativeCommandSession } from "../../../tests/reference-node-worker/src/codex/managed-native-command-session.js";
+import { NativeCommandClient } from "../../../tests/reference-node-worker/src/native-command-client.js";
+import { ManagedNativeQueueClient } from "../../../tests/reference-node-worker/src/managed-native-queue-client.js";
+import { ManagedNativeQueue } from "../../../tests/reference-node-worker/src/codex/managed-native-queue.js";
+import { createManagedQueueInputCodec } from "../../../tests/reference-node-worker/src/managed-queue-input.js";
 import {
   createManagedNativeGateway,
   type ManagedNativeGateway,
-} from "../../../cantrip_worker/src/codex/managed-native-gateway.js";
-import { TerminalManager } from "../../../cantrip_worker/src/terminal-manager.js";
-import { prepareManagedConsoleState } from "../../../cantrip_worker/src/managed-console-state.js";
-import { openTerminalPrivateState } from "../../../cantrip_worker/src/terminal-private-state.js";
-import { protectNativeSettingsSnapshot } from "../../../cantrip_worker/src/native-settings-content.js";
-import type { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
+} from "../../../tests/reference-node-worker/src/codex/managed-native-gateway.js";
+import { TerminalManager } from "../../../tests/reference-node-worker/src/terminal-manager.js";
+import { prepareManagedConsoleState } from "../../../tests/reference-node-worker/src/managed-console-state.js";
+import { openTerminalPrivateState } from "../../../tests/reference-node-worker/src/terminal-private-state.js";
+import { protectNativeSettingsSnapshot } from "../../../tests/reference-node-worker/src/native-settings-content.js";
+import type { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
 const binary = process.env.CANTRIP_CODEX_TEST_BINARY?.trim();
 // Real preparation, migrated storage, encryption, authenticated admission and
 // native PTY. No visible terminal, synthetic prompt, user apps or real accounts.

@@ -2,46 +2,8 @@
   "name": "@cantrip/worker",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
-  "files": [
-    "dist"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
     "dev": "node ../scripts/worker-rust/dev.mjs --watch",
-    "start": "node ../scripts/worker-rust/dev.mjs",
-    "reference:start": "node --env-file-if-exists=.env dist/index.js",
-    "test": "pnpm --filter @cantrip/version build && pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/crypto build && vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@cantrip/crypto": "workspace:*",
-    "@cantrip/logging": "workspace:*",
-    "@cantrip/os-host": "workspace:*",
-    "@cantrip/protocol": "workspace:*",
-    "@cantrip/version": "workspace:*",
-    "@modelcontextprotocol/sdk": "1.29.0",
-    "@mozilla/readability": "0.6.0",
-    "@xterm/addon-serialize": "0.14.0",
-    "@xterm/headless": "6.0.0",
-    "@zavora-ai/computer-use-mcp": "7.0.0",
-    "dotenv": "^17.4.2",
-    "jsonc-parser": "3.3.1",
-    "linkedom": "0.18.13",
-    "node-pty": "1.2.0-beta.15",
-    "node-screenshots": "0.2.8",
-    "sharp": "0.34.4",
-    "smol-toml": "^1.8.0",
-    "tar": "^7.5.11",
-    "undici": "8.10.0",
-    "webdav-server": "2.6.3",
-    "werift": "^0.24.3",
-    "ws": "^8.21.2",
-    "yauzl": "^3.2.0",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@types/ws": "^8.18.1",
-    "@types/yauzl": "^2.10.3"
+    "start": "node ../scripts/worker-rust/dev.mjs"
   }
 }

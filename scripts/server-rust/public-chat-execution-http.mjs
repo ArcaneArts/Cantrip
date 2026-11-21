@@ -28,7 +28,7 @@ import {
   task,
   taskProject,
 } from "./native-event-http-setup.mjs";
-import { protectChatTurn } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatTurn } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import {
   decryptChatMessageProtectedContent,
   decryptQueuedPromptProtectedContent,

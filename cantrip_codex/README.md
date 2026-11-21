@@ -25,7 +25,7 @@ build workflow with Cargo's development profile:
 ```sh
 node scripts/cantrip-codex/build.mjs --dev
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/$(node -p 'process.platform + "-" + process.arch')/dev/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run test/native-durable-goal.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/native-durable-goal.test.ts
 ```
 
 Development builds use a separate `dev/` source and bundle directory and record
@@ -161,7 +161,7 @@ The actual native request can be tested without account credentials or charges:
 
 ```sh
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run test/native-label-inference.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/native-label-inference.test.ts
 ```
 
 The fixture uses an isolated home and local fake provider. It checks request
@@ -192,7 +192,7 @@ The worker has opt-in regressions against the built native executable:
 
 ```sh
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run \
+  pnpm --dir tests/reference-node-worker exec vitest run \
   test/native-thread-observation.test.ts test/native-empty-thread-attach.test.ts
 ```
 
@@ -225,7 +225,7 @@ The opt-in actual TUI regression can be run against the packaged executable:
 
 ```sh
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run test/native-managed-tui-attach.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/native-managed-tui-attach.test.ts
 ```
 
 It starts the real TUI in isolated PTYs through `TerminalManager`, records its
@@ -327,7 +327,7 @@ restart. Run it against the rebuilt bundle:
 
 ```sh
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run test/native-managed-worker-session.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/native-managed-worker-session.test.ts
 ```
 
 This fixture uses isolated synthetic credentials and a rejecting provider;
@@ -383,7 +383,7 @@ Run its actual-runtime fixture against the rebuilt bundle with:
 
 ```sh
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run test/native-history-foundation.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/native-history-foundation.test.ts
 ```
 
 The fixture uses an isolated home, a synthetic local provider, image-only input,

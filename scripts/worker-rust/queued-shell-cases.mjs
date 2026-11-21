@@ -9,9 +9,9 @@ import {
   nativeCommandReceiptSchema,
   nativeCommandSettlementSchema,
 } from "../../packages/protocol/dist/index.js";
-import { createManagedQueueInputCodec } from "../../cantrip_worker/src/managed-queue-input.ts";
-import { managedQueueNativeCommand } from "../../cantrip_worker/src/codex/managed-queue-command.ts";
-import { openNativeCommandContent } from "../../cantrip_worker/src/native-command-content.ts";
+import { createManagedQueueInputCodec } from "../../tests/reference-node-worker/src/managed-queue-input.ts";
+import { managedQueueNativeCommand } from "../../tests/reference-node-worker/src/codex/managed-queue-command.ts";
+import { openNativeCommandContent } from "../../tests/reference-node-worker/src/native-command-content.ts";
 import { GuiHistoryPeer } from "./gui-history-cases.mjs";
 import { GuiReceiptPeer } from "./gui-receipt-cases.mjs";
 

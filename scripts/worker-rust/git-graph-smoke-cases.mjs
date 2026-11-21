@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import * as p from "../../packages/protocol/dist/index.js";
-import { handleGitCommand } from "../../cantrip_worker/src/commands/git.ts";
+import { handleGitCommand } from "../../tests/reference-node-worker/src/commands/git.ts";
 function normalize(value, key) {
   if (key === "analyzedAt") {
     assert.ok(Number.isFinite(Date.parse(value)));

@@ -52,7 +52,7 @@ describe.skipIf(!origin || !recoveryPath)(
         expect(peer).toBeDefined();
         const protection = await import(
           new URL(
-            "../../../cantrip_worker/src/tunnel-data-protection.ts",
+            "../../../tests/reference-node-worker/src/tunnel-data-protection.ts",
             import.meta.url,
           ).href
         );

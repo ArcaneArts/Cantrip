@@ -48,7 +48,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
-import { RunConfigurationDefinitionService } from "../../../cantrip_worker/src/run-configuration-definition-service.js";
+import { RunConfigurationDefinitionService } from "../../../tests/reference-node-worker/src/run-configuration-definition-service.js";
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";

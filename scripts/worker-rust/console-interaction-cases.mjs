@@ -79,7 +79,7 @@ export async function createPreparedProjectChat({
 
 export async function openConsoleView(url, eventually) {
   const { WebSocket } = createRequire(
-    new URL("../../cantrip_worker/package.json", import.meta.url),
+    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
   )("ws");
   const socket = new WebSocket(url.trim());
   const frames = [];

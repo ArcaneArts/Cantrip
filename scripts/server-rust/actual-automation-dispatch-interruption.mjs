@@ -17,7 +17,7 @@ export function automationDispatchWorkerEnvironment(file) {
     CANTRIP_TEST_AUTOMATION_DISPATCH: file,
     CANTRIP_TEST_AUTOMATION_WORKER_ENTRY: path.resolve(
       process.env.CANTRIP_TEST_WORKER_PACKAGE ??
-        path.join(repositoryRoot, "cantrip_worker"),
+        path.join(repositoryRoot, "tests/reference-node-worker"),
       "dist/index.js",
     ),
     NODE_OPTIONS: [

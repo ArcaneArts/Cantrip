@@ -11,7 +11,7 @@ import {
   workerInferenceStatusSchema,
   workerEnrollmentCodeCreateSchema,
 } from "../../packages/protocol/dist/index.js";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 
 export async function workerLifecycleRuntimeCases(
   origin,

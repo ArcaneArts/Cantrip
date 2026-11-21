@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
+import { sendHeartbeat } from "../../tests/reference-node-worker/src/heartbeat.ts";
 import { heartbeat } from "./security-fixtures.mjs";
 import { eventually } from "./full-worker.mjs";
 
 const WebSocket = createRequire(
-  new URL("../../cantrip_worker/package.json", import.meta.url),
+  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
 )("ws");
 const frames = [];
 const emit = WebSocket.prototype.emit;

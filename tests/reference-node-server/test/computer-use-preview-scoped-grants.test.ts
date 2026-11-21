@@ -23,7 +23,7 @@ import type {
   WorkerEncryptionComponentScope,
 } from "@cantrip/protocol/encryption";
 import { encryptionKeyGrantCreateSchema } from "@cantrip/protocol/encryption";
-import { WorkerEncryptionService } from "../../../cantrip_worker/src/worker-encryption.js";
+import { WorkerEncryptionService } from "../../../tests/reference-node-worker/src/worker-encryption.js";
 import { ClientEncryptionService } from "../../../cantrip_app/src/lib/client-encryption";
 import {
   createComputerUseClient,

@@ -16,13 +16,13 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import * as c from "../../packages/crypto/dist/index.js";
 import * as p from "../../packages/protocol/dist/index.js";
-import { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.ts";
-import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
-import { handleExplorerCommand } from "../../cantrip_worker/src/commands/explorer.ts";
+import { WorkerEncryptionService } from "../../tests/reference-node-worker/src/worker-encryption.ts";
+import { WorkerRoutingRegistry } from "../../tests/reference-node-worker/src/routing-registry.ts";
+import { handleExplorerCommand } from "../../tests/reference-node-worker/src/commands/explorer.ts";
 import {
   SurfaceStreamReplayGuard,
   openWorkerSurfaceStreamContent,
-} from "../../cantrip_worker/src/surface-stream-encryption.ts";
+} from "../../tests/reference-node-worker/src/surface-stream-encryption.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary);
 const root = await realpath(

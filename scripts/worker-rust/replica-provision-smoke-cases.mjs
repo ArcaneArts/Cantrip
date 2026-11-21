@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile, rm, realpath, lstat } from "node:fs/promises";
 import path from "node:path";
-import { WorkerRoutingRegistry } from "../../cantrip_worker/src/routing-registry.ts";
+import { WorkerRoutingRegistry } from "../../tests/reference-node-worker/src/routing-registry.ts";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 export async function verifyReplicaProvision({
   lifecycle,

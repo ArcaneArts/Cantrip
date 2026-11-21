@@ -18,6 +18,7 @@ cantrip_app/src-tauri/resources/runtime
 # Exclude retired editor source/build leftovers from older checkouts.
 cantrip_code
 cantrip_codex/.build
+tests/reference-node-worker
 coverage
 logs
 test-results

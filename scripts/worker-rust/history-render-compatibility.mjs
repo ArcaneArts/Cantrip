@@ -3,25 +3,25 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { parseArgs } from "node:util";
-import { renderNativeHistoryItem } from "../../cantrip_worker/src/native-history-render.ts";
+import { renderNativeHistoryItem } from "../../tests/reference-node-worker/src/native-history-render.ts";
 import {
   normalizeCodexThreadItem,
   latestChangedLine,
   changedLinesPreview,
-} from "../../cantrip_worker/src/codex/event-normalization.ts";
+} from "../../tests/reference-node-worker/src/codex/event-normalization.ts";
 import {
   createAgentActivityRawEnvelope,
   redactAgentActivityText,
-} from "../../cantrip_worker/src/codex/raw-capture.ts";
+} from "../../tests/reference-node-worker/src/codex/raw-capture.ts";
 import {
   appendBoundedCommandOutput,
   boundedCommandOutput,
   transcriptCommandOutput,
-} from "../../cantrip_worker/src/codex/command-output.ts";
+} from "../../tests/reference-node-worker/src/codex/command-output.ts";
 import {
   protectChatMessage,
   openMessage,
-} from "../../cantrip_worker/src/chat-message-encryption.ts";
+} from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary);
 const child = spawn(values.binary, [], {

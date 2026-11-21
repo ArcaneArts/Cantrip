@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import * as crypto from "../../packages/crypto/src/index.ts";
-import { WorkerEncryptionService } from "../../cantrip_worker/src/worker-encryption.ts";
+import { WorkerEncryptionService } from "../../tests/reference-node-worker/src/worker-encryption.ts";
 
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "--binary requires the built crypto-fixture example");

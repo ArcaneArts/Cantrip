@@ -1,14 +1,14 @@
 // Existing worker encryption/session/client code around a controlled model.
 // All admission, dispatch and settlement use the actual server HTTP endpoints.
 import assert from "node:assert/strict";
-import { ManagedNativeCommandSession } from "../../cantrip_worker/src/codex/managed-native-command-session.ts";
-import { NativeCommandClient } from "../../cantrip_worker/src/native-command-client.ts";
-import { createManagedQueueInputCodec } from "../../cantrip_worker/src/managed-queue-input.ts";
+import { ManagedNativeCommandSession } from "../../tests/reference-node-worker/src/codex/managed-native-command-session.ts";
+import { NativeCommandClient } from "../../tests/reference-node-worker/src/native-command-client.ts";
+import { createManagedQueueInputCodec } from "../../tests/reference-node-worker/src/managed-queue-input.ts";
 import {
   openEncryptedChatTurn,
   encryptChatTurnResult,
   protectChatMessage,
-} from "../../cantrip_worker/src/chat-message-encryption.ts";
+} from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 
 export function publicExecutionWorker() {
   let fixture, nextGate, nextPause, nextPauseGate;

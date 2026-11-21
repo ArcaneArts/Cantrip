@@ -7,7 +7,7 @@ import {
 import {
   openWorkerRepositoryOperationContent,
   protectWorkerRepositoryOperationContent,
-} from "../../cantrip_worker/src/repository-operation-encryption.ts";
+} from "../../tests/reference-node-worker/src/repository-operation-encryption.ts";
 import {
   settingsWorker as worker,
   settingsProject as project,

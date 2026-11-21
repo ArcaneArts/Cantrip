@@ -23,8 +23,8 @@ import { directAttachmentWireFixtures } from "./direct-attachment-wire-fixtures.
 import { terminalGrantWorker } from "./terminal-worker-link-cases.mjs";
 import { LiveProbe } from "./live-sockets.mjs";
 import { until } from "./tunnel-attachment-probe.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 const option = (key) => {
   const at = process.argv.indexOf(key);
   return at < 0 ? undefined : process.argv[at + 1];

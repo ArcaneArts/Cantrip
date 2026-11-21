@@ -15,15 +15,15 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { NativeHistoryProjection } from "../../cantrip_worker/src/native-history-projection.ts";
-import { NativeHistorySourceJournal } from "../../cantrip_worker/src/native-history-source-journal.ts";
-import { NativeHistoryOutbox } from "../../cantrip_worker/src/native-history-outbox.ts";
-import { reduceNativeHistory } from "../../cantrip_worker/src/native-history-reducer.ts";
+import { NativeHistoryProjection } from "../../tests/reference-node-worker/src/native-history-projection.ts";
+import { NativeHistorySourceJournal } from "../../tests/reference-node-worker/src/native-history-source-journal.ts";
+import { NativeHistoryOutbox } from "../../tests/reference-node-worker/src/native-history-outbox.ts";
+import { reduceNativeHistory } from "../../tests/reference-node-worker/src/native-history-reducer.ts";
 import {
   NativeHistoryBatchRejectedError,
   verifyNativeHistoryRejection,
-} from "../../cantrip_worker/src/native-history-rejection.ts";
-import { nativeHistoryBatchPayloadDigest } from "../../cantrip_worker/src/native-history-batch-archive.ts";
+} from "../../tests/reference-node-worker/src/native-history-rejection.ts";
+import { nativeHistoryBatchPayloadDigest } from "../../tests/reference-node-worker/src/native-history-batch-archive.ts";
 
 const { values } = parseArgs({ options: { binary: { type: "string" } } });
 assert.ok(values.binary, "Pass built --binary history-source-fixture");
