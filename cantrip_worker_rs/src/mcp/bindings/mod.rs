@@ -36,6 +36,12 @@ pub(crate) const TASK_TOOLS: [(&str, &str); 4] = [
     ("task.wait", "task_wait"),
     ("task.create", "task_create"),
 ];
+pub(crate) const CHAT_TOOLS: [(&str, &str); 4] = [
+    ("chat.list", "chat_list"),
+    ("chat.read", "chat_read"),
+    ("chat.wait", "chat_wait"),
+    ("chat.send", "chat_send"),
+];
 
 #[derive(Clone)]
 pub struct Attachment {
@@ -335,6 +341,8 @@ impl Broker {
         let policies = project_encryption && capabilities.supports("policy.list");
         let task_status = capabilities.supports("task.status")
             && requested.iter().any(|operation| operation == "task.status");
+        let chat_read = capabilities.supports("chat.read")
+            && requested.iter().any(|operation| operation == "chat.read");
         let (operations, tools): (Vec<_>, Vec<JsString>) = [
             (
                 "context.get",
@@ -367,6 +375,13 @@ impl Broker {
                     "task.wait" => task_status,
                     _ => true,
                 };
+            (operation, tool, supported)
+        }))
+        .chain(CHAT_TOOLS.into_iter().map(|(operation, tool)| {
+            let supported = project_encryption
+                && capabilities.supports(operation)
+                && (operation != "chat.send"
+                    || (chat_read && claims["permissionProfileId"] != ":read-only"));
             (operation, tool, supported)
         }))
         .chain(

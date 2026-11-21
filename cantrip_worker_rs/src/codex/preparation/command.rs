@@ -727,6 +727,11 @@ impl Ensurer {
                             }
                             if !standalone && command["taskOwned"] != true {
                                 operations.push("context.compact");
+                                operations.extend(
+                                    crate::mcp::bindings::CHAT_TOOLS
+                                        .into_iter()
+                                        .map(|(operation, _)| operation),
+                                );
                             }
                             let admission = json!({
                                 "ownerId": bound.0, "workerId": this.0.worker, "chatId": chat,

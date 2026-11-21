@@ -1,10 +1,11 @@
+mod chats;
 mod computer_use;
 mod policy;
 mod streamable;
 mod tasks;
 
 use super::{Active, Entry, Inner, MAXIMUM_OPERATIONS, now, server::Rejected, store};
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 use bytes::Bytes;
 use cantrip_protocol::mcp_host;
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
@@ -322,8 +323,33 @@ impl Inner {
             "task.list" | "task.status" | "task.wait" | "task.create" => {
                 self.task(authorization, &call, operation).await
             }
+            "chat.list" | "chat.read" | "chat.wait" | "chat.send" => {
+                self.chat(authorization, &call, operation).await
+            }
             _ => Err(anyhow!("Unsupported Cantrip MCP operation.")),
         }
+    }
+
+    async fn relay_project(
+        &self,
+        authorization: &Authorized,
+        call: Value,
+        request_id: &str,
+    ) -> Result<Value> {
+        ensure!(
+            !*authorization.active.stopped.borrow()
+                && (self.identity)().as_ref().ok() == Some(&authorization.identity),
+            "The managed MCP attachment was replaced."
+        );
+        self.server
+            .invoke(
+                authorization.active.binding.clone(),
+                authorization.version,
+                authorization.legacy_root.as_ref(),
+                call,
+                request_id,
+            )
+            .await
     }
 
     fn revoke_current(&self, id: &JsString, active: &Arc<Active>) -> Result<()> {

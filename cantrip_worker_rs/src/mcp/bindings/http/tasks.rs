@@ -69,17 +69,9 @@ impl Inner {
         arguments: &Value,
         request_id: &str,
     ) -> Result<Value> {
-        verify_identity(self, authorization)?;
-        ensure!(
-            !*authorization.active.stopped.borrow(),
-            "The managed Task attachment was replaced."
-        );
         let mut result = self
-            .server
-            .invoke(
-                authorization.active.binding.clone(),
-                authorization.version,
-                authorization.legacy_root.as_ref(),
+            .relay_project(
+                authorization,
                 json!({"operation":operation,"arguments":arguments}),
                 request_id,
             )

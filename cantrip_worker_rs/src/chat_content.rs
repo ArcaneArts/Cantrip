@@ -7,6 +7,7 @@ use crate::{
     encryption::Service,
     history::EncryptionService,
     http::checked,
+    native_items::{concat, text},
 };
 use anyhow::{Result, bail};
 use cantrip_crypto::content::{Communication, encrypt_communication};
@@ -168,7 +169,33 @@ pub(crate) fn turn_with_attachments(
     command: &Value,
     attachments: &[Value],
 ) -> Result<Value> {
-    let mut content = vec![json!({"type": "text", "text": command["text"]})];
+    protect_turn(scope, command, attachments, None)
+}
+
+pub(crate) fn turn_with_communication(
+    scope: &Scope,
+    command: &Value,
+    communication: &Value,
+) -> Result<Value> {
+    protect_turn(scope, command, &[], Some(communication))
+}
+
+fn protect_turn(
+    scope: &Scope,
+    command: &Value,
+    attachments: &[Value],
+    communication: Option<&Value>,
+) -> Result<Value> {
+    let mut text = json!({"type": "text", "text": command["text"]});
+    if let Some(communication) = communication {
+        text["chatCommunication"] = communication.clone();
+    }
+    let prompt_text = if communication.is_some() {
+        json!(runtime_text(&text)?)
+    } else {
+        command["text"].clone()
+    };
+    let mut content = vec![text];
     content.extend(attachments.iter().map(|attachment| {
         json!({
             "type":"attachment", "attachment":attachment,
@@ -189,7 +216,7 @@ pub(crate) fn turn_with_attachments(
                 Communication::QueuedPrompt,
                 &grant.key,
                 &json!({"ownerId": grant.owner_id, "promptId": command["promptId"], "keyRevision": grant.key_revision}),
-                &json!({"version": 1, "classification": classification, "text": command["text"]}),
+                &json!({"version": 1, "classification": classification, "text": prompt_text}),
             )?,
             "modelId": command["modelId"], "reasoningEffort": command["reasoningEffort"],
             "customSubagentModel": command["customSubagentModel"].as_bool().unwrap_or(false),
@@ -204,4 +231,28 @@ pub(crate) fn turn_with_attachments(
             "message": message, "queuedPrompt": prompt, "modelId": command["modelId"],
         }),
     )
+}
+
+pub(crate) fn runtime_text(item: &Value) -> Result<JsString> {
+    let value = text(&item["text"])?;
+    let source = &item["chatCommunication"];
+    Ok(match source["direction"].as_str() {
+        Some("received") => concat(&[
+            "Message from Cantrip agent ".into(),
+            source["sourceTitle"].stringify().into(),
+            " (chat ".into(),
+            text(&source["sourceChatId"])?.clone(),
+            "). This is another agent, not the human user.\n\n".into(),
+            value.clone(),
+        ]),
+        Some("sent") => concat(&[
+            "Message sent by this agent to ".into(),
+            source["targetTitle"].stringify().into(),
+            " (chat ".into(),
+            text(&source["targetChatId"])?.clone(),
+            "):\n\n".into(),
+            value.clone(),
+        ]),
+        _ => value.clone(),
+    })
 }
