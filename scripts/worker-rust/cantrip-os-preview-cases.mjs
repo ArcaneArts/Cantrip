@@ -209,14 +209,13 @@ finally:
         guestWorkspaceId,
       };
     },
-    async writeProjectSkill({ guestPath, uid, gid }, name, content) {
-      const file = path.posix.join(
-        guestPath,
-        ".agents",
-        "skills",
-        name,
-        "SKILL.md",
-      );
+    async writeProjectSkill(
+      { guestPath, uid, gid },
+      name,
+      content,
+      root = ".agents/skills",
+    ) {
+      const file = path.posix.join(guestPath, root, name, "SKILL.md");
       await docker(
         "exec",
         "--user",
@@ -229,6 +228,18 @@ finally:
         content,
       );
       return file;
+    },
+    async linkProjectDirectory({ guestPath, uid, gid }, name, target) {
+      await docker(
+        "exec",
+        "--user",
+        `${uid}:${gid}`,
+        container,
+        "/usr/bin/ln",
+        "-s",
+        target,
+        path.posix.join(guestPath, name),
+      );
     },
     close: () => docker("rm", "-f", container),
   };

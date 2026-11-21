@@ -283,7 +283,7 @@ pub(crate) fn file_uri(path: &str) -> Result<Url> {
     Ok(Url::parse(&format!("file://{encoded}"))?)
 }
 
-pub(super) fn file_path(uri: &Url) -> Result<String> {
+pub(crate) fn file_path(uri: &Url) -> Result<String> {
     ensure!(
         uri.scheme() == "file"
             && uri.host().is_none()

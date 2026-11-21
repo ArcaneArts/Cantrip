@@ -140,6 +140,15 @@ export async function verifyGuestThreadSync({
     skillName,
     `---\nname: ${skillName}\ndescription: Read the guest-only fixture.\n---\n\nGuest content.\n`,
   );
+  const extraRoot = "additional skills";
+  const extraName = "cantrip-guest-extra-skill-fixture";
+  const extraPath = await guest.writeProjectSkill(
+    placement,
+    extraName,
+    `---\nname: ${extraName}\ndescription: Read the extra guest skill.\n---\n\nGuest content.\n`,
+    extraRoot,
+  );
+  await guest.linkProjectDirectory(placement, "outside-skill-root", "/");
   const scope = await call("GET", chatUrl + "/customizations/target", 200);
   const { id: serverId } = (await call("GET", "/api/bootstrap", 200)).server;
   async function customization(
@@ -216,12 +225,33 @@ export async function verifyGuestThreadSync({
     inventory.skills.items.find(({ name }) => name === skillName)?.path,
     skillPath,
   );
-  const rootsError = await customization(
-    "/customizations/skill-roots",
-    "customization.skill-roots.set",
-    { method: "PUT", content: { roots: [".agents/skills"] }, status: "failed" },
+  assert.ok(!inventory.skills.items.some(({ name }) => name === extraName));
+  const setRoots = (roots, status) =>
+    customization(
+      "/customizations/skill-roots",
+      "customization.skill-roots.set",
+      {
+        method: "PUT",
+        content: { roots },
+        status,
+      },
+    );
+  const roots = { roots: [`${placement.guestPath}/${extraRoot}`] };
+  assert.deepEqual(await setRoots([extraRoot, ...roots.roots]), roots);
+  const extraInventory = await customization(
+    "/customizations",
+    "customization.inventory.read",
   );
-  assert.match(rootsError.message, /require guest filesystem support/);
+  assert.deepEqual(extraInventory.skillRoots, roots.roots);
+  assert.equal(
+    extraInventory.skills.items.find(({ name }) => name === extraName)?.path,
+    extraPath,
+  );
+  const rootsError = await setRoots(["outside-skill-root"], "failed");
+  assert.match(
+    rootsError.message,
+    /resolve within the selected project checkout/,
+  );
   const configured = await customization(
     "/customizations/skill",
     "customization.skill.configure",
@@ -236,6 +266,7 @@ export async function verifyGuestThreadSync({
     updated.skills.items.find(({ name }) => name === skillName)?.enabled,
     false,
   );
+  assert.deepEqual(updated.skillRoots, roots.roots);
   await eventually(sync, (value) => assert.deepEqual(value, original));
   assert.deepEqual(await sync(), original);
   assert.match(
@@ -251,6 +282,29 @@ export async function verifyGuestThreadSync({
     naming.model.requests.filter(({ method }) => method === "POST").length,
     1,
   );
+
+  const skillReply = model.reply({ text: "Guest skill inventory read." });
+  await call(
+    "POST",
+    chatUrl + "/turns",
+    202,
+    await encryptedTurn("Inspect the available skills.", profile.id),
+  );
+  await eventually(
+    () => skillReply.request,
+    (request) => assert.equal(request?.completed, true),
+  );
+  const nativeInput = JSON.stringify(skillReply.request.input.input);
+  assert.ok(nativeInput.includes(extraName));
+  await eventually(sync, (value) => assert.deepEqual(value, original));
+  assert.deepEqual(await setRoots([]), { roots: [] });
+  const cleared = await customization(
+    "/customizations",
+    "customization.inventory.read",
+  );
+  assert.deepEqual(cleared.skillRoots, []);
+  assert.ok(!cleared.skills.items.some(({ name }) => name === extraName));
+  assert.ok(cleared.skills.items.some(({ name }) => name === skillName));
   console.log(
     JSON.stringify({ suite: "native-guest-thread-sync", passed: true }),
   );

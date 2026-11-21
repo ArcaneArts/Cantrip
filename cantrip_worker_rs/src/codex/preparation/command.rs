@@ -1375,7 +1375,7 @@ impl Ensurer {
         bound: &(JsString, Value),
         workspace: Option<(&Value, &JsString)>,
         thread: Option<&JsString>,
-    ) -> Result<(Runtime, bool)> {
+    ) -> Result<(Runtime, Option<Arc<Environment>>)> {
         self.assert_bound(bound)?;
         let chat = workspace.and_then(|(scope, _)| scope["chatId"].as_js_string());
         let owner = &bound.0;
@@ -1399,7 +1399,6 @@ impl Ensurer {
             None
         };
         self.assert_bound(bound)?;
-        let guest = environment.is_some();
         if let (Some(chat), Some(thread)) = (chat, thread) {
             let owners = self.0.live_threads.lock().unwrap();
             if let Some(live) = owners.get(chat)
@@ -1412,7 +1411,7 @@ impl Ensurer {
                 && let Some(runtime) = live.runtime.upgrade()
                 && live.thread.assert_current(&runtime).is_ok()
             {
-                return Ok((runtime, guest));
+                return Ok((runtime, environment));
             }
         }
         let profile = home::profile(
@@ -1444,7 +1443,7 @@ impl Ensurer {
             .await?;
         runtime.synchronize_models(model, &Value::Null).await?;
         self.assert_bound(bound)?;
-        Ok((runtime, guest))
+        Ok((runtime, environment))
     }
 
     pub(in crate::codex) async fn repository_draft_mcp(&self, command: &Value) -> Result<Value> {

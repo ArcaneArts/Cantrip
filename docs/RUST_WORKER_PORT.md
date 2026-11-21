@@ -10951,3 +10951,26 @@ Extra skill roots still need guest filesystem support in Codex. Its current
 extra-root scanner uses the worker filesystem, where a guest path can
 shadow an existing guest repository root. Nonempty guest extra roots return
 a protected error until the runtime can resolve them on the guest.
+
+## 335. Resolve extra Chat skill roots on Cantrip OS
+
+Reference commit `857226e293cd4cd871a8a50db83b2a9a27acd26e` (#3498).
+
+The worker resolves requested roots through the captured guest executor.
+It accepts relative checkout paths and absolute guest paths, deduplicates
+their canonical directories, and rejects paths that resolve outside the
+checkout. Codex registers those roots on the selected remote filesystem.
+Its worker-local registrations and their watcher continue to use the
+local filesystem.
+
+On macOS ARM64, the Rust worker and PGlite Core used a rebuilt native Codex
+CLI and a disposable Linux ARM64 guest. The protected customization smoke
+registered a guest-only skill, found it in the inventory and a real turn's
+model input, rejected an out-of-checkout symlink, and cleared the extra
+root while retaining the default repository skill. The Host customization
+smoke passed against the same Codex executable.
+
+The local fixture staged the rebuilt Codex CLI and code-mode host with the
+existing executor and responses proxy. Artifact hashes and the native
+protocol verifier passed. The complete release package and Windows and
+Linux worker hosts were outside this run.

@@ -4,7 +4,7 @@ mod inventory;
 mod mcp;
 pub(super) mod oauth;
 
-use super::{managed::Runtime, skills};
+use super::{guest_environment::Environment, managed::Runtime, skills};
 use crate::{filesystem::paths, protected_content::customization::Operation};
 use anyhow::{Context, Result, ensure};
 use cantrip_wire::{JsString, Value, value::json};
@@ -117,7 +117,7 @@ impl Command {
 
 pub(super) struct Target<'a> {
     pub runtime: &'a Runtime,
-    pub guest: bool,
+    pub environment: Option<&'a Environment>,
     pub cwd: &'a JsString,
     pub thread: &'a Value,
     pub global: Option<&'a Path>,
@@ -157,42 +157,33 @@ async fn set_roots(target: &Target<'_>, input: &Value) -> Result<Value> {
         .as_array()
         .context("Missing extra skill roots.")?
         .clone();
-    let project = if target.guest {
-        // Codex scans extra roots on the worker filesystem. A guest path can
-        // shadow the same path in the repository's native skill inventory.
-        ensure!(
-            requested.is_empty(),
-            "Extra skill roots on Cantrip OS require guest filesystem support from Codex."
-        );
-        Vec::new()
+    let (project, params) = if let Some(environment) = target.environment {
+        let project = environment.resolve_skill_roots(&requested).await?;
+        let params = json!({"guestRoots":project});
+        (project, params)
     } else {
         let directory = paths::native(target.cwd);
-        tokio::task::spawn_blocking(move || resolve_roots(&directory, &requested))
-            .await??
-            .iter()
-            .map(|path| paths::text(path))
-            .collect()
-    };
-    let mut roots = target
-        .global
-        .map(paths::text)
-        .into_iter()
-        .collect::<Vec<_>>();
-    for entry in &project {
-        if !roots
-            .iter()
-            .any(|root| paths::equal(&paths::native(root), &paths::native(entry)))
-        {
-            roots.push(entry.clone());
+        let resolved =
+            tokio::task::spawn_blocking(move || resolve_roots(&directory, &requested)).await??;
+        let project: Vec<_> = resolved.iter().map(|path| paths::text(path)).collect();
+        let mut roots: Vec<_> = target.global.map(paths::text).into_iter().collect();
+        for (entry, path) in project.iter().zip(resolved) {
+            if !roots
+                .iter()
+                .any(|root| paths::equal(&paths::native(root), &path))
+            {
+                roots.push(entry.clone());
+            }
         }
-    }
+        (project, json!({"extraRoots":roots}))
+    };
     let mut state = target.runtime.project_skill_roots().write().await;
     target.operation.assert_current()?;
     target
         .runtime
         .request(
             "skills/extraRoots/set".into(),
-            Some(json!({"extraRoots":roots})),
+            Some(params),
             Some(TIMEOUT),
             None,
         )
