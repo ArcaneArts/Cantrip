@@ -9720,3 +9720,21 @@ Thirteen focused Cantrip OS tests passed.
 
 BuildKit checked the AMD64 ISO recipe. The ISO was not built or booted.
 The OCI test reused the earlier Codex 0.166.0 executor from package 0.12.0.
+
+## 285. Launch linked desktop workers in Rust during development
+
+Reference commit `c1c07cc82189409e58f6a1665c9ad1f73e0a89c0` (#3448).
+
+The desktop's linked worker launch uses the native executable in both
+development and packaged builds. `devtop` passes the worker path reported
+by Cargo and the development CLI path to Tauri. Linking retains its profile
+paths and explicit enrollment or retained credential. Both launch paths use
+an owning stdin pipe and skip `.env` to protect linked-worker settings.
+
+Nineteen desktop worker tests and nineteen development launcher tests passed
+on macOS ARM64. The linked launch regression checks the executable,
+working directory, and arguments in both configurations. The production
+worker control smoke against the Rust server passed enrollment, credential
+rotation and revocation, reconnect, retained state, and stdin shutdown
+with the worker's PATH empty. The desktop tests used an asset-free Tauri
+test configuration. They did not launch a desktop window or run on Windows.

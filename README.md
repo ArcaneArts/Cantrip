@@ -239,7 +239,7 @@ commands, limits, and threat controls are documented in
 
 ## Current deployment model
 
-The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately. A packaged Tauri desktop app carries the Rust server and its database assets, plus the existing worker and its Node.js runtime. It starts those services on a private dynamic loopback port and stops them with the app.
+The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately. The packaged Tauri desktop app carries the Rust server, its database assets, and the Rust worker. It starts those services on a private dynamic loopback port and stops them with the app.
 
 The account area in the main sidebar is also the server switcher. Its **Add server** action saves a named server origin in client bootstrap storage, tests `/api/bootstrap`, and switches every HTTP and WebSocket request after a reload. The built-in **Local** profile always selects the desktop-bundled stack in a release build and the normal development stack in `devtop`. Server profiles contain no credentials; hosted sessions remain in server-owned HttpOnly cookies.
 
@@ -606,6 +606,8 @@ pnpm devtop
 ```
 
 `devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri starts its Vite hot-reload server on <http://127.0.0.1:1420>, separately from the browser-development port.
+
+When you pair the desktop with another server, `devtop` supplies the built Rust worker to the app. If you launch Tauri directly, set `CANTRIP_DEV_WORKER_BIN` to the native executable or make `cantrip-worker` available on `PATH`.
 
 Use the sidebar server switcher to select **Local**, a saved server such as
 **Winterhold**, or **Add server**. The selected server persists across reloads
