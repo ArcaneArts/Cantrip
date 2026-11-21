@@ -1058,7 +1058,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if kind==crate::codex::catalog::COMMAND {
+                if crate::codex::catalog::supports(command) {
                     let catalog=model_catalog.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();
                     commands.spawn(async move {
                         let result=catalog.execute(request["command"].clone()).await;

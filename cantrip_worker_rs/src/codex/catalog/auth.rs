@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    codex::{managed::ExternalAuth, provider_errors, session::Session},
+    codex::{managed::ExternalAuth, provider_errors, rpc_requests::Failure, session::Session},
     inference::admission::Promise,
 };
 use cantrip_transport::lifecycle::owned;
@@ -214,7 +214,9 @@ fn login(lease: &Lease) -> Value {
 }
 
 pub(super) fn expired(error: &anyhow::Error) -> bool {
-    provider_errors::token_expired(&crate::error::message(error))
+    error.downcast_ref::<Failure>().is_some_and(|failure| {
+        failure.native_error.is_some() && provider_errors::token_expired(&failure.message)
+    })
 }
 
 pub(super) fn reauth_required() -> anyhow::Error {

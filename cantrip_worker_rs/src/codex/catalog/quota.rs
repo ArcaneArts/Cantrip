@@ -6,6 +6,60 @@ pub(super) fn now() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
+pub(super) async fn consume_reset(
+    runtime: &Runtime,
+    codex_version: &Value,
+    command: &Value,
+) -> Result<Value> {
+    let before = read_quota_snapshot(runtime, codex_version).await?;
+    if should_use_credits(&before["credits"]) {
+        bail!(
+            "This account has more than 100 credits. Use those credits before redeeming a banked usage reset."
+        );
+    }
+    let mut params = json!({"idempotencyKey":command["idempotencyKey"]});
+    if let Some(credit) = command.get("creditId") {
+        params["creditId"] = credit.clone();
+    }
+    let reply = call_with_auth_recovery(
+        runtime,
+        "account/rateLimitResetCredit/consume",
+        Some(params),
+    )
+    .await?;
+    let outcome = cantrip_protocol::parse_property(
+        "providerRateLimitResetConsumeResultSchema",
+        "outcome",
+        &reply["outcome"],
+    )
+    .map_err(cantrip_protocol::response::response_error)?;
+    let after = read_quota_snapshot(runtime, codex_version)
+        .await
+        .unwrap_or(Value::Null);
+    Ok(json!({"outcome":outcome,"quotaSnapshot":after}))
+}
+
+fn should_use_credits(credits: &Value) -> bool {
+    credits["hasCredits"] == true
+        && (credits["unlimited"] == true
+            || credits["balance"]
+                .as_str()
+                .map(cantrip_wire::text::trim)
+                .is_some_and(|balance| {
+                    let digits = |part: &str| {
+                        !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())
+                    };
+                    let decimal = match balance.split_once('.') {
+                        Some((whole, fraction)) => digits(whole) && digits(fraction),
+                        None => digits(balance),
+                    };
+                    decimal
+                        && balance
+                            .parse::<f64>()
+                            .is_ok_and(|n| n.is_finite() && n > 100.)
+                }))
+}
+
 pub fn snapshot(
     result: &Value,
     worker_version: &Value,
