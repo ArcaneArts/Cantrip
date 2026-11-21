@@ -99,6 +99,7 @@ const workerId = "native-browser-surface-worker";
 const projectId = "browser-surface-fixture-project";
 const surfaceId = desktop ? randomUUID() : "native-browser-surface-fixture";
 const siblingId = "native-browser-recovery-sibling";
+const unavailableId = "native-browser-unavailable-location";
 const sharedProfile = "fixture shared browser profile";
 const component = "surface-private-state";
 const keyRevision = 1;
@@ -119,6 +120,10 @@ let core;
 
 const target = createServer((request, response) => {
   visits.push(request.url);
+  if (request.url === "/unavailable") {
+    request.socket.destroy();
+    return;
+  }
   const title =
     {
       "/second": "Native second page",
@@ -419,6 +424,10 @@ class BrowserSocket {
   }
 
   async title(expected) {
+    return this.settledLocation((message) => message.title === expected);
+  }
+
+  async settledLocation(matches = () => true) {
     let state;
     await this.next(async (value) => {
       if (value.header?.channel !== "control") return false;
@@ -427,8 +436,8 @@ class BrowserSocket {
       );
       if (
         message.type !== "browser-state" ||
-        message.title !== expected ||
-        message.loading
+        message.loading ||
+        !matches(message)
       )
         return false;
       assert.equal(message.url, undefined);
@@ -569,6 +578,33 @@ async function verifyRecovery(view) {
   await call("DELETE", "/api/browsers/" + siblingId, 204);
   await view.send({ type: "viewport", viewport });
   assert.equal(await view.title("A & private!"), origin + "/second");
+}
+
+async function verifyUnavailableLocation() {
+  const view = new BrowserSocket(unavailableId);
+  await view.ready();
+  assert.equal(await view.settledLocation(), origin + "/unavailable");
+  const screenshot = await view.next(
+    (value) => value.header?.channel === "frame",
+  );
+  assert.deepEqual(
+    [...Buffer.from(await view.clear(screenshot)).slice(0, 2)],
+    [0xff, 0xd8],
+  );
+  const operationId = randomUUID();
+  await view.send({
+    type: "navigate",
+    operationId,
+    stateProtection: await location(
+      "browser-operation",
+      origin + "/first",
+      operationId,
+      unavailableId,
+    ),
+  });
+  assert.equal(await view.title("Native first page"), origin + "/first");
+  await view.close();
+  await call("DELETE", "/api/browsers/" + unavailableId, 204);
 }
 
 async function desktopState(
@@ -1053,7 +1089,10 @@ exec "$CANTRIP_FIXTURE_CHROMIUM" "$@"
         `INSERT INTO project_worktrees(id,project_source_id,worker_id,name,absolute_path,display_path,is_primary,origin,lifecycle_state) VALUES(${literal(randomUUID())},${source},${worker},'main',${checkout},${checkout},true,'cantrip','ready')`,
       );
     } else {
-      const surfaces = [[surfaceId, "/first"]];
+      const surfaces = [
+        [surfaceId, "/first"],
+        [unavailableId, "/unavailable"],
+      ];
       if (values.recover) surfaces.push([siblingId, "/sibling"]);
       for (const [surface, address] of surfaces) {
         const id = literal(surface);
@@ -1216,6 +1255,7 @@ exec "$CANTRIP_FIXTURE_CHROMIUM" "$@"
     if (values.recover) await verifyRecovery(second);
     await second.close();
     await call("DELETE", "/api/browsers/" + surfaceId, 204);
+    await verifyUnavailableLocation();
   }
   console.log(
     JSON.stringify({

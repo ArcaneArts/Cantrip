@@ -10746,3 +10746,23 @@ the direct broker, CLI, oversized replay, and terminal service recovery.
 The worker PATH contained no Node executable.
 
 [xterm.js 6.0 cursor save and restore](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/InputHandler.ts#L2756)
+
+## 326. Keep browser surfaces open when a saved site fails to load
+
+Reference commit `924984f070d480ee29af56c6d12088a5dd8c398f` (#3489).
+
+The archived browser adapter keeps the viewer attached when Chromium
+reports a navigation error in a completed `Page.navigate` response. The
+Rust worker now keeps the same session and streams Chromium's error page.
+CDP command failures still propagate through the existing error handling.
+[Chromium navigation response](https://chromedevtools.github.io/devtools-protocol/tot/Page/#method-navigate)
+
+With the previous worker, an encrypted Browser record whose saved URL closed
+the connection yielded HTTP 502 when attaching through WorkerLink. On macOS
+ARM64, the updated worker and the Rust server with PGlite passed the same
+headless Chromium test through WorkerLink relay and the legacy WebSocket.
+Both received the encrypted location and a JPEG frame, then used protected
+navigation to open a working page on the same attachment. The relay run also
+passed the existing Chromium process and renderer recovery cases. The worker
+ran with an empty PATH. Rust compilation, formatting, script syntax, and
+`git diff --check` passed locally.
