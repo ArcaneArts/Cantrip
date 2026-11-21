@@ -44,9 +44,7 @@ pub(crate) async fn execute(
     let bound = encryption.bound_identity()?;
     let opened = open_runtime_provider(encryption, &command["provider"])?;
     let model_provider = provider::model_provider(&opened);
-    let runtime = preparation
-        .helper_runtime(model, opened, &bound, None)
-        .await?;
+    let runtime = preparation.helper_runtime(model, opened, &bound).await?;
     let source = Source::claimed(format!("operation:{operation}").into(), Some(signal));
     let result = async {
         let admission = runtime.admission();

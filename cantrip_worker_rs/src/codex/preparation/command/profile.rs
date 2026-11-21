@@ -22,7 +22,7 @@ impl Ensurer {
         let command = self.resolve_routing(command).await?;
         let provider = open_runtime_provider(&self.0.encryption, &command["provider"])?;
         let runtime = self
-            .helper_runtime(&command["model"], provider, &bound, None)
+            .helper_runtime(&command["model"], provider, &bound)
             .await?;
         let result = permission_profiles(&runtime, &command["cwd"]).await?;
         self.assert_bound(&bound)?;
