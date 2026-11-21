@@ -51,7 +51,7 @@ covers the current Docker build, enrollment, and volume reuse.
 
 ### Open managed MCP operations
 
-The remaining managed Cantrip MCP work covers Alert, client control,
+The remaining managed Cantrip MCP work covers client control,
 target, worktree, Explorer, terminal, browser, and Run tools. Their
 catalog entries and Core routes are in place. The worker still needs
 negotiated admission and endpoint handling for these families.
@@ -11236,3 +11236,23 @@ and observed inference on the prior native route. The passing fixture
 selected the receiver's provider before native preparation. The current
 app's provider changes use the native handoff path.
 The Task and policy MCP smokes and offline worker build passed.
+
+## 349. Restore managed MCP Alert tools
+
+Reference commit `283fe4688ad45a03b015ca3c73fdd7f856fb519c` (#3512).
+
+Managed Project Chat bindings advertise `alert_raise` and `alert_resolve`
+when Core supports them. These operations retain the read-only profile's
+Alert permissions. The worker seals the detail under the current account's
+Alert grant and binds the ciphertext to the admitted worker, Chat, episode,
+and revision. Core checks the active lane and owns the inbox projection and
+resolution.
+
+The baseline worker omitted `alert_raise` from native Codex tool search.
+The local macOS ARM64 run used Rust Core in PGlite mode, native Codex, and
+the rebuilt Rust worker with an empty PATH. A read-only Chat exercised
+raise, retry, update, resolve, and a late raise in one active turn. The
+client codec opened the persisted ciphertext, and the inbox and counts
+reflected the current revision and resolution. The fixture keeps one
+active lane because Core resolves prior agent Alerts when a new lane
+starts. The Chat and Task MCP smokes and offline worker build passed.

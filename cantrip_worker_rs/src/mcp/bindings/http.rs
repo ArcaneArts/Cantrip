@@ -1,3 +1,4 @@
+mod alerts;
 mod chats;
 mod computer_use;
 mod policy;
@@ -320,6 +321,7 @@ impl Inner {
                 }))).map_err(super::response_error)
             }
             "policy.list" | "policy.read" => self.policy(authorization, &call, operation).await,
+            "alert.raise" | "alert.resolve" => self.alert(authorization, &call, operation).await,
             "task.list" | "task.status" | "task.wait" | "task.create" => {
                 self.task(authorization, &call, operation).await
             }

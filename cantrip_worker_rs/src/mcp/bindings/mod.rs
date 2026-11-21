@@ -30,6 +30,10 @@ use tokio::{
 pub type Identity = Arc<dyn Fn() -> Result<(JsString, JsString)> + Send + Sync>;
 const DEFAULT_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 const MAXIMUM_OPERATIONS: usize = 4;
+pub(crate) const ALERT_TOOLS: [(&str, &str); 2] = [
+    ("alert.raise", "alert_raise"),
+    ("alert.resolve", "alert_resolve"),
+];
 pub(crate) const TASK_TOOLS: [(&str, &str); 4] = [
     ("task.list", "task_list"),
     ("task.status", "task_status"),
@@ -367,6 +371,13 @@ impl Broker {
             ("web.search", "web_search", self.inner.web.has_search()),
         ]
         .into_iter()
+        .chain(ALERT_TOOLS.into_iter().map(|(operation, tool)| {
+            (
+                operation,
+                tool,
+                project_encryption && capabilities.supports(operation),
+            )
+        }))
         .chain(TASK_TOOLS.into_iter().map(|(operation, tool)| {
             let supported = project_encryption
                 && capabilities.supports(operation)
