@@ -173,7 +173,7 @@ export async function approveManagedMcpTool({
   assert.equal(result.status, "resolved");
 }
 
-export async function managedMcpRpc(data) {
+export async function managedMcpRpc(data, headers = {}) {
   const dir = path.join(data, "agent-mcp-bindings");
   const [session] = await readdir(dir);
   const connection = JSON.parse(
@@ -188,6 +188,7 @@ export async function managedMcpRpc(data) {
           authorization: "Bearer " + connection.credential,
           "content-type": "application/json",
           accept: "application/json, text/event-stream",
+          ...headers,
         },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
         signal: AbortSignal.timeout(15_000),

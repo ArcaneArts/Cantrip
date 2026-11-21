@@ -105,7 +105,9 @@ impl Inner {
             .cua_call(binding, credential, envelope["request"].clone())
             .await
         {
-            Ok(result) => json_response_with_limit(StatusCode::OK, result, cua::MAXIMUM_RESPONSE),
+            Ok(result) => {
+                json_response_with_limit(StatusCode::OK, result, cua::MAXIMUM_RESPONSE, false)
+            }
             Err(error) => error.reply(),
         }
     }

@@ -154,10 +154,10 @@ export async function verifyManagedMcpExplorer({
   const preview = await invoke("explorer_read", {
     target,
     path: file,
-    maxChars: 3,
+    maxChars: 2,
   });
   assert.equal(preview.summary, "Read " + file + " (content truncated).");
-  assert.equal(preview.data.content, original.slice(0, 3));
+  assert.equal(preview.data.content, original.slice(0, 2).toWellFormed());
   assert.equal(preview.data.truncated, true);
   assert.ok(preview.data.version);
   const saved = await write({
@@ -228,17 +228,22 @@ export async function verifyManagedMcpExplorer({
         const { tools } = await rpc("tools/list");
         assert.ok(tools.some(({ name }) => name === "explorer_read"));
         assert.ok(!tools.some(({ name }) => name === "explorer_write"));
-        const truncated = await rpc("tools/call", {
+        const maxChars = replacement.indexOf("🔐") + 1;
+        const previewCall = {
           name: "explorer_read",
-          arguments: {
-            target,
-            path: file,
-            maxChars: replacement.indexOf("🔐") + 1,
-          },
+          arguments: { target, path: file, maxChars },
+        };
+        const truncated = await rpc("tools/call", previewCall);
+        const slice = replacement.slice(0, maxChars);
+        assert.equal(truncated.structuredContent.data.content, slice);
+
+        const scalarRpc = await managedMcpRpc(data, {
+          "cantrip-mcp-unicode-scalars": "1",
         });
+        const scalar = await scalarRpc("tools/call", previewCall);
         assert.equal(
-          truncated.structuredContent.data.content,
-          replacement.slice(0, replacement.indexOf("🔐") + 1),
+          scalar.structuredContent.data.content,
+          slice.toWellFormed(),
         );
         const denied = await rpc("tools/call", {
           name: "explorer_write",

@@ -130,8 +130,10 @@ impl Attachment {
             let connection = configuration["args"].as_array().unwrap()[2].clone();
             configuration["args"] =
                 json!(vec![json!("cua-mcp"), json!("--connection"), connection]);
-            configuration["env"] =
-                json!({"CANTRIP_MCP_CONNECTION_GENERATION":self.connection["bindingId"]});
+            configuration["env"] = json!({
+                "CANTRIP_MCP_CONNECTION_GENERATION":self.connection["bindingId"],
+            });
+            configuration["env"][super::UNICODE_SCALARS_ENV] = json!("1");
             configuration
         };
         configuration["enabled_tools"] = json!(["js", "js_reset"]);
@@ -144,9 +146,11 @@ impl Attachment {
         let endpoint = self.connection["endpoint"].as_str().unwrap();
         let id = self.connection["bindingId"].as_str().unwrap();
         let credential = self.connection["credential"].as_str().unwrap();
+        let mut headers = json!({"Authorization":format!("Bearer {credential}")});
+        headers[super::UNICODE_SCALARS_HEADER] = json!("1");
         json!({
             "url": format!("{endpoint}/v1/mcp/{id}"),
-            "http_headers": json!({"Authorization":format!("Bearer {credential}")}),
+            "http_headers": headers,
             "enabled": true,
             "required": true,
             "tool_timeout_sec": 0,
@@ -164,13 +168,15 @@ impl Attachment {
             .connection_path
             .to_str()
             .ok_or_else(|| anyhow!("MCP connection path is not Unicode."))?;
+        let mut env = json!({
+            "CANTRIP_MCP_PROFILE": self.profile,
+            "CANTRIP_MCP_CONNECTION_GENERATION": self.connection["bindingId"],
+        });
+        env[super::UNICODE_SCALARS_ENV] = json!("1");
         Ok(json!({
             "command": command,
             "args": vec!["mcp", "--connection", connection],
-            "env": json!({
-                "CANTRIP_MCP_PROFILE": self.profile,
-                "CANTRIP_MCP_CONNECTION_GENERATION": self.connection["bindingId"]
-            }),
+            "env": env,
             "enabled": true,
             "required": true,
             "tool_timeout_sec": 0,
