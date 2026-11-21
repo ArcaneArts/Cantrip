@@ -9997,3 +9997,25 @@ its version, and reopened its persistent volume without an enrollment code.
 Both stops returned zero after SIGTERM. The launcher ran the native worker,
 all four packaged executables resolved their native libraries, and the image
 had no Node executable, Node package, or bundled `node_modules`.
+
+## 296. Forward captured Cantrip OS guest VNC
+
+Reference commit `be0d09b32fd474bfba6e388d8523de23039707e9` (#3459).
+
+The native WorkerLink grant prepares VNC against the selected workspace's
+running desktop and its captured display and remote-service generations.
+The VNC stream acquires the same exclusive human-control lease used by
+native desktop viewers. It cancels agent input and closes old agent bindings
+before opening the guest service. The Worker returns control after the guest
+confirms closure. If confirmation is unavailable, it retains the control lease
+until the matching close succeeds or a fresh guest observation proves the
+old desktop or remote manager was replaced.
+
+On macOS ARM64, the PGlite Core and native worker passed the Cantrip OS smoke
+with `--guest-vnc --guest-tunnel --guest-ssh` in a disposable Docker guest.
+The real RFB 3.8 session read pixels from the guest, blocked a second viewer,
+and injected a key and pointer button. Independent X11 observations verified
+both holds and their release after attachment revocation. A fresh VNC stream
+then opened on the same workspace. TCP and SSH passed in the same run.
+A focused Rust test also covered agent cancellation, exclusive ownership,
+and retained control until a new guest generation is observed.

@@ -37,6 +37,7 @@ const OPERATION: &str = "computer-use.operation";
 const ANSWER: &str = "computer-use.approval.respond";
 pub(crate) const PREPARE_OS_DESKTOP: &str = "surface.desktop.os-prepare";
 pub use agent::{DesktopTurn, HostAction, HostActivity, HostEvaluation, HostSnapshot};
+pub(crate) use guest::VncDesktop;
 pub(super) use native::{release, run};
 pub(crate) use observations::{ModelImage, ObservedTurn};
 
@@ -196,6 +197,10 @@ impl Previews {
                 target,
             )
             .await
+    }
+
+    pub(crate) fn vnc_desktop(&self, server: &Value, execution: &Value) -> Result<VncDesktop> {
+        self.0.guests.vnc_desktop(server, execution)
     }
 
     pub(crate) async fn execute(

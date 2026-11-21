@@ -629,6 +629,7 @@ async fn cycle(
                 }
                 if kind == crate::worker_link::PREPARE_GUEST_TUNNEL {
                     let gateway = worker_link.clone();
+                    let previews = desktop_inventory.previews();
                     let routing = routing.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
@@ -637,7 +638,7 @@ async fn cycle(
                         let result = async {
                             let epoch = request["socketEpoch"].as_u64().context("Guest tunnel control socket")?;
                             let command = routing.resolve(&request["command"]).await?;
-                            gateway.prepare_guest_tunnel(&command, epoch).await
+                            gateway.prepare_guest_tunnel(&command, epoch, &previews).await
                         }.await;
                         finish(&request, &worker, &logs, &outgoing, began, &result);
                     });

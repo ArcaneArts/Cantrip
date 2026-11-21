@@ -68,6 +68,33 @@ impl Transport {
         self.spec(Program::Remote, arguments)
     }
 
+    pub(crate) async fn close_tunnel_service(
+        &self,
+        descriptor: &Value,
+        connection: &str,
+        scope: &Scope,
+    ) -> Result<()> {
+        let workspace = super::text(descriptor, "workspace_id")?;
+        let closed = self
+            .remote_control(
+                &[
+                    "service-close",
+                    workspace,
+                    "--expect",
+                    &descriptor.stringify(),
+                    "--connection-id",
+                    connection,
+                ],
+                scope,
+            )
+            .await?;
+        anyhow::ensure!(
+            closed["status"] == "closed" && closed["connection_id"] == connection,
+            "Guest service cleanup was not confirmed."
+        );
+        Ok(())
+    }
+
     pub(crate) async fn remote_control(&self, arguments: &[&str], scope: &Scope) -> Result<Value> {
         self.control(Program::Remote, arguments, scope).await
     }

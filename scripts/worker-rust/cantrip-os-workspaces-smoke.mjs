@@ -31,6 +31,7 @@ const { values } = parseArgs({
     "guest-terminal": { type: "boolean", default: false },
     "guest-tunnel": { type: "boolean", default: false },
     "guest-ssh": { type: "boolean", default: false },
+    "guest-vnc": { type: "boolean", default: false },
     desktop: { type: "boolean", default: false },
     "backup-capture": { type: "boolean", default: false },
     "backup-restore": { type: "boolean", default: false },
@@ -50,7 +51,8 @@ assert.ok(
   !(
     values["guest-terminal"] ||
     values["guest-tunnel"] ||
-    values["guest-ssh"]
+    values["guest-ssh"] ||
+    values["guest-vnc"]
   ) || values.repository,
 );
 assert.ok(
@@ -527,6 +529,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       guestTerminal: values["guest-terminal"],
       guestTunnel: values["guest-tunnel"],
       guestSsh: values["guest-ssh"],
+      guestVnc: values["guest-vnc"],
       origin: server.origin,
       stopWorker,
       crashWorker: async () => {
@@ -667,6 +670,7 @@ exec "$CANTRIP_TEST_DOCKER_CLI" "$@"
       ...(values.desktop ? { guestDesktopLifecycle: true } : {}),
       ...(values["guest-tunnel"] ? { guestTcpTunnel: true } : {}),
       ...(values["guest-ssh"] ? { guestSshTunnel: true } : {}),
+      ...(values["guest-vnc"] ? { guestVncTunnel: true } : {}),
       ...(powerProxy ? { retainedPowerControls: true } : {}),
       ...(values["package-artifact"] ? { guestPackageManagement: true } : {}),
       ...(backup ? { encryptedGuestBackup: true } : {}),

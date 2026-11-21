@@ -2,6 +2,7 @@
 mod capture;
 mod control;
 pub(super) use capture::CaptureConnection;
+pub(crate) use control::VncDesktop;
 
 use super::{Request, native};
 use crate::{
@@ -57,7 +58,7 @@ pub(super) struct Guests {
 
 #[derive(Default)]
 struct Registry {
-    groups: HashMap<String, Weak<Group>>,
+    groups: HashMap<String, Arc<Group>>,
     jobs: JoinSet<()>,
     closed: bool,
 }
@@ -223,7 +224,7 @@ impl Guests {
             let groups = registry
                 .groups
                 .drain()
-                .filter_map(|(_, group)| group.upgrade())
+                .map(|(_, group)| group)
                 .collect::<Vec<_>>();
             (std::mem::take(&mut registry.jobs), groups)
         };
@@ -257,8 +258,11 @@ impl Registry {
             scope["instanceId"].clone(),
             scope["workspaceId"].clone(),
         ]));
-        self.groups.retain(|_, group| group.strong_count() > 0);
-        Ok(match self.groups.get(&key).and_then(Weak::upgrade) {
+        // A VNC close without a guest receipt continues to exclude fresh
+        // input even after the WorkerLink attachment releases its reference.
+        self.groups
+            .retain(|_, group| Arc::strong_count(group) > 1 || group.control.has_unconfirmed_vnc());
+        Ok(match self.groups.get(&key).cloned() {
             Some(group) => {
                 ensure!(
                     group.transport == transport
@@ -280,7 +284,7 @@ impl Registry {
                     state: AsyncMutex::default(),
                     control: control::Control::default(),
                 });
-                self.groups.insert(key, Arc::downgrade(&group));
+                self.groups.insert(key, group.clone());
                 group
             }
         })

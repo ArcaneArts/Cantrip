@@ -64,6 +64,7 @@ export async function verifySources({
   guestTerminal,
   guestTunnel,
   guestSsh,
+  guestVnc,
   origin,
   crashWorker,
   stopWorker,
@@ -76,7 +77,7 @@ export async function verifySources({
     data,
     runRuntime,
     productFiles || guestTerminal,
-    guestTunnel || guestSsh,
+    guestTunnel || guestSsh || guestVnc,
   );
   const componentKey = keys.get("repository-content");
   const serverId = bootstrap.server.id;
@@ -183,8 +184,8 @@ export async function verifySources({
   assert.equal(made.source.head, null);
   await guest("test", "-d", folder.guestPath);
   assert.equal((await call("POST", route(folder) + "/verify")).state, "ready");
-  if (guestTunnel || guestSsh) {
-    const { verifyCantripOsTunnel, verifyCantripOsSsh } =
+  if (guestTunnel || guestSsh || guestVnc) {
+    const { verifyCantripOsTunnel, verifyCantripOsSsh, verifyCantripOsVnc } =
       await import("./cantrip-os-tunnel-cases.mjs");
     const tunnelOptions = {
       origin,
@@ -200,6 +201,7 @@ export async function verifySources({
     };
     if (guestTunnel) await verifyCantripOsTunnel(tunnelOptions);
     if (guestSsh) await verifyCantripOsSsh(tunnelOptions);
+    if (guestVnc) await verifyCantripOsVnc(tunnelOptions);
   }
 
   // Retain a target that predates dispatch and observe the actual atomic

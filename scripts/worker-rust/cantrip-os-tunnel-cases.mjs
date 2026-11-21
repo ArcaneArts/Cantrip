@@ -8,6 +8,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Duplex } from "node:stream";
 import { promisify } from "node:util";
 import { encryptEndpointContentPayload } from "../../packages/crypto/dist/index.js";
 import { openTunnelDataFrame } from "../../tests/reference-node-worker/src/tunnel-data-protection.ts";
@@ -254,6 +255,132 @@ export async function verifyCantripOsSsh(options) {
     if (idle?.exitCode === null) idle.kill();
     await exited;
     await rm(directory, { recursive: true, force: true });
+  }
+}
+
+export async function verifyCantripOsVnc(options) {
+  const { call, os, docker, container, actual, eventually } = options;
+  const { probeX11 } =
+    await import("../../tests/reference-node-worker/test/fixtures/os-x11-probe.ts");
+  const { RfbClient } =
+    await import("../../tests/reference-node-worker/test/fixtures/rfb-client.ts");
+  const workspaces = `/api/cantrip-os/${os.id}/workspaces`;
+  const workspace = (await call("GET", workspaces)).find(
+    (item) => item.guestWorkspaceId === actual.id,
+  );
+  const base = `${workspaces}/${workspace.id}`;
+  const { target } = await call("GET", base + "/desktop");
+  const started = await call("POST", base + "/desktop-operations", {
+    action: "start",
+    operationId: randomUUID(),
+    runtimeGeneration: os.runtimeGeneration,
+    attachmentGeneration: os.attachmentGeneration,
+    targetGeneration: target.generation,
+  });
+  assert.equal(started.state, "ready", JSON.stringify(started));
+  const descriptor = JSON.parse(
+    await docker(
+      "exec",
+      "--user",
+      "0",
+      container,
+      "/usr/bin/cantrip-remote",
+      "service-info",
+      actual.id,
+      "--service",
+      '{"kind":"vnc"}',
+    ),
+  );
+  const probe = () =>
+    probeX11({ kind: "docker", container }, descriptor.display);
+  const destination = { kind: "worker-os-vnc" };
+  const forward = await attachTunnel(options, "vnc", destination);
+  const stream = forward.connection.stream(
+    forward.route,
+    undefined,
+    256 * 1024,
+  );
+  const client = new Duplex({
+    read() {},
+    write(bytes, _encoding, done) {
+      stream.send(
+        { kind: "data", direction: "source-to-destination" },
+        bytes,
+        forward.configuration,
+      );
+      done();
+    },
+  });
+  const closed = new Promise((resolve) =>
+    client.once("close", () => resolve(null)),
+  );
+  let pumping;
+  try {
+    assert.equal(
+      (await stream.next("accepted", "rejected")).header.kind,
+      "accepted",
+    );
+    const rfb = new RfbClient(client);
+    pumping = (async () => {
+      try {
+        while (!client.destroyed) {
+          const frame = await Promise.race([
+            stream.next("data", "half-close", "close", "error"),
+            closed,
+          ]);
+          if (!frame || frame.header.kind !== "data") break;
+          client.push(
+            openTunnelDataFrame(
+              forward.configuration,
+              frame.header,
+              frame.payload,
+            ),
+          );
+        }
+        client.push(null);
+      } catch (error) {
+        client.destroy(error);
+      }
+    })();
+    const display = await rfb.initialize();
+    assert.ok(display.width >= 800 && display.height >= 600);
+    assert.ok((await rfb.rawFrame(64, 64, display.bitsPerPixel)) >= 64 * 64);
+    const contender = forward.connection.stream(forward.route);
+    assert.equal(
+      (await contender.next("accepted", "rejected")).header.kind,
+      "rejected",
+    );
+    rfb.key(65505, true);
+    rfb.pointer(100, 100, 1);
+    await eventually(async () => {
+      const held = await probe();
+      assert.equal(held.shift, true);
+      assert.equal(held.mask & 256, 256);
+    });
+    await forward.revoke();
+    await forward.connection.nextControl("close");
+    await eventually(async () => {
+      const released = await probe();
+      assert.equal(released.shift, false);
+      assert.equal(released.mask & 256, 0);
+    });
+  } finally {
+    client.destroy();
+    forward.connection.socket.terminate();
+    await pumping;
+  }
+  const next = await attachTunnel(options, "vnc", destination);
+  try {
+    await eventually(async () => {
+      const stream = next.connection.stream(next.route);
+      assert.equal(
+        (await stream.next("accepted", "rejected")).header.kind,
+        "accepted",
+      );
+    });
+    await next.revoke();
+  } finally {
+    next.connection.socket.terminate();
   }
 }
 
