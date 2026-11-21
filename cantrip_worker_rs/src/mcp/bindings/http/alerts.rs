@@ -1,7 +1,6 @@
 use super::{Authorized, Inner};
 use crate::http::checked;
-use anyhow::{Context, Result, anyhow, ensure};
-use cantrip_crypto::{Zeroizing, content::encrypt_endpoint};
+use anyhow::{Result, ensure};
 use cantrip_protocol::{mcp_host, response::response_error};
 use cantrip_wire::{Value, value::json};
 
@@ -12,10 +11,6 @@ impl Inner {
         call: &Value,
         operation: &str,
     ) -> Result<Value> {
-        let encryption = self
-            .encryption
-            .as_deref()
-            .context("Endpoint content encryption is unavailable.")?;
         let binding = &authorization.active.binding;
         ensure!(
             binding["contextKind"] == "project",
@@ -42,25 +37,12 @@ impl Inner {
                 json!({"title":input["title"],"message":input["message"],"nextStep":input["nextStep"]}),
             )
         };
-        let grant = encryption
-            .bound_component("alert-content", None)
-            .map_err(|_| anyhow!("Endpoint content encryption is unavailable."))?;
-        ensure!(
-            grant.owner_id == authorization.identity.0
-                && grant.server_id.as_js_string() == Some(&authorization.identity.1),
-            "Alerts require the current project’s authorized worker."
-        );
         let context = json!({
-            "domain":"alert-content","serverId":grant.server_id,"workerId":binding["workerId"],
+            "domain":"alert-content","serverId":authorization.identity.1,"workerId":binding["workerId"],
             "scopeId":binding["chatId"],"operationId":input["key"],"operation":"agent-alert",
             "direction":"stored","sequence":input["revision"],
         });
-        let plaintext = Zeroizing::new(detail.stringify().into_bytes());
-        let content = encrypt_endpoint(
-            &grant.component.key,
-            &json!({"ownerId":grant.owner_id,"keyRevision":grant.component.key_revision,"context":context}),
-            &plaintext,
-        )?;
+        let content = self.protect_endpoint(authorization, &context, &detail)?;
         let wire = checked(
             "agentAlertMutationWireSchema",
             &json!({

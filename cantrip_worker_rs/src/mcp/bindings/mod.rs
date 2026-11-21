@@ -30,6 +30,12 @@ use tokio::{
 pub type Identity = Arc<dyn Fn() -> Result<(JsString, JsString)> + Send + Sync>;
 const DEFAULT_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 const MAXIMUM_OPERATIONS: usize = 4;
+pub(crate) const CLIENT_TOOLS: [(&str, &str); 4] = [
+    ("client.notify", "client_notify"),
+    ("client.focus-project", "client_focus_project"),
+    ("client.focus-surface", "client_focus_surface"),
+    ("client.show-interaction", "client_show_interaction"),
+];
 pub(crate) const TARGET_TOOLS: [(&str, &str); 2] = [
     ("target.list", "target_list"),
     ("target.inspect", "target_inspect"),
@@ -351,6 +357,10 @@ impl Broker {
             && requested.iter().any(|operation| operation == "task.status");
         let chat_read = capabilities.supports("chat.read")
             && requested.iter().any(|operation| operation == "chat.read");
+        let target_inspect = capabilities.supports("target.inspect")
+            && requested
+                .iter()
+                .any(|operation| operation == "target.inspect");
         let (operations, tools): (Vec<_>, Vec<JsString>) = [
             (
                 "context.get",
@@ -375,6 +385,17 @@ impl Broker {
             ("web.search", "web_search", self.inner.web.has_search()),
         ]
         .into_iter()
+        .chain(CLIENT_TOOLS.into_iter().map(|(operation, tool)| {
+            let supported = !standalone
+                && claims["permissionProfileId"] != ":read-only"
+                && capabilities.supports(operation)
+                && match operation {
+                    "client.notify" => project_encryption,
+                    "client.focus-surface" => target_inspect,
+                    _ => true,
+                };
+            (operation, tool, supported)
+        }))
         .chain(TARGET_TOOLS.into_iter().map(|(operation, tool)| {
             let supported = !standalone
                 && capabilities.supports(operation)

@@ -1,5 +1,6 @@
 mod alerts;
 mod chats;
+mod client;
 mod computer_use;
 mod policy;
 mod streamable;
@@ -9,6 +10,7 @@ mod tasks;
 use super::{Active, Entry, Inner, MAXIMUM_OPERATIONS, now, server::Rejected, store};
 use anyhow::{Result, anyhow, ensure};
 use bytes::Bytes;
+use cantrip_crypto::{Zeroizing, content::encrypt_endpoint};
 use cantrip_protocol::mcp_host;
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use http_body_util::{BodyExt, Full, Limited};
@@ -324,6 +326,12 @@ impl Inner {
             "policy.list" | "policy.read" => self.policy(authorization, &call, operation).await,
             "alert.raise" | "alert.resolve" => self.alert(authorization, &call, operation).await,
             "target.list" | "target.inspect" => self.target(authorization, &call, operation).await,
+            "client.notify"
+            | "client.focus-project"
+            | "client.focus-surface"
+            | "client.show-interaction" => {
+                self.client_control(authorization, &call, operation).await
+            }
             "task.list" | "task.status" | "task.wait" | "task.create" => {
                 self.task(authorization, &call, operation).await
             }
@@ -354,6 +362,32 @@ impl Inner {
                 request_id,
             )
             .await
+    }
+
+    fn protect_endpoint(
+        &self,
+        authorization: &Authorized,
+        context: &Value,
+        detail: &Value,
+    ) -> Result<Value> {
+        let unavailable = || anyhow!("Endpoint content encryption is unavailable.");
+        let service = self.encryption.as_deref().ok_or_else(unavailable)?;
+        let domain = context["domain"].as_str().ok_or_else(unavailable)?;
+        let grant = service
+            .bound_component(domain, None)
+            .map_err(|_| unavailable())?;
+        ensure!(
+            grant.owner_id == authorization.identity.0
+                && grant.server_id.as_js_string() == Some(&authorization.identity.1)
+                && context["serverId"] == grant.server_id,
+            "The worker binding changed during protected MCP processing."
+        );
+        let plaintext = Zeroizing::new(detail.stringify().into_bytes());
+        encrypt_endpoint(
+            &grant.component.key,
+            &json!({"ownerId":grant.owner_id,"keyRevision":grant.component.key_revision,"context":context}),
+            &plaintext,
+        )
     }
 
     fn revoke_current(&self, id: &JsString, active: &Arc<Active>) -> Result<()> {
