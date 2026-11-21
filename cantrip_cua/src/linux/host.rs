@@ -4,7 +4,7 @@ pub(super) mod window;
 
 use super::{capture, failure, gestures, input, lock};
 use crate::{
-    backend::{Capture, CaptureBackend, CaptureWork},
+    backend::{Capture, CaptureBackend, CaptureWork, RemoteMonitorInput},
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
     gesture::InputCommand,
@@ -19,13 +19,22 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use x11rb::{
+    NONE,
     connection::Connection,
-    protocol::{randr::ConnectionExt as _, xproto::ConnectionExt},
+    protocol::{
+        randr::ConnectionExt as _,
+        xproto::{ConnectionExt, InputFocus},
+    },
     rust_connection::RustConnection,
 };
 
 const INVENTORY_LIMIT: usize = 2_000;
 type Windows = HashMap<u32, (window::Identity, u64)>;
+
+struct DisplayLayout {
+    generation: u64,
+    monitors: Vec<(String, Bounds)>,
+}
 
 pub(super) struct Host {
     display: String,
@@ -36,7 +45,7 @@ pub(super) struct Host {
     input: Arc<Mutex<input::Host>>,
     participants: HashMap<String, Arc<Mutex<input::Session>>>,
     generation: u64,
-    display_generation: u64,
+    display_layout: Mutex<DisplayLayout>,
     truncated: bool,
 }
 
@@ -64,7 +73,10 @@ impl Host {
             windows: Arc::default(),
             participants: HashMap::new(),
             generation,
-            display_generation: generation,
+            display_layout: Mutex::new(DisplayLayout {
+                generation,
+                monitors: Vec::new(),
+            }),
             truncated: false,
         })
     }
@@ -74,6 +86,29 @@ impl Host {
     }
 
     pub(super) fn monitors(&self, cancel: &Cancellation) -> Result<Vec<Target>> {
+        let mut layout = lock(&self.display_layout);
+        let mut targets = self.read_monitors(layout.generation, cancel)?;
+        let monitors = targets
+            .iter()
+            .map(|target| (target.id.clone(), target.bounds))
+            .collect();
+        if layout.monitors != monitors {
+            layout.generation = layout
+                .generation
+                .checked_add(1)
+                .filter(|generation| *generation <= MAX_SEQUENCE)
+                .ok_or_else(|| {
+                    CuaError::new(ErrorCode::Capacity, "X11 display generations exhausted.")
+                })?;
+            layout.monitors = monitors;
+        }
+        for target in &mut targets {
+            target.generation = layout.generation;
+        }
+        Ok(targets)
+    }
+
+    fn read_monitors(&self, generation: u64, cancel: &Cancellation) -> Result<Vec<Target>> {
         cancel.check()?;
         let root = self.root();
         let displays = self
@@ -103,6 +138,7 @@ impl Host {
                         name,
                         (monitor.x, monitor.y),
                         (monitor.width, monitor.height),
+                        generation,
                     )
                 })
                 .collect();
@@ -118,6 +154,7 @@ impl Host {
             Some("X11 display".into()),
             (0, 0),
             (geometry.width, geometry.height),
+            generation,
         )
         .map(|target| vec![target])
     }
@@ -128,11 +165,12 @@ impl Host {
         title: Option<String>,
         origin: (i16, i16),
         size: (u16, u16),
+        generation: u64,
     ) -> Result<Target> {
         let target = Target {
             access: None,
             id: format!("x11-display-{id}"),
-            generation: self.display_generation,
+            generation,
             kind: TargetKind::Monitor,
             title,
             application: None,
@@ -220,6 +258,90 @@ impl Host {
             participant
         };
         Ok((window.target, participant))
+    }
+
+    fn monitor_participant(
+        &mut self,
+        session: &str,
+        target: &Target,
+    ) -> Result<Arc<Mutex<input::Session>>> {
+        if let Some(participant) = self.participants.get(session) {
+            lock(participant).refresh(target);
+            return Ok(participant.clone());
+        }
+        let participant = Arc::new(Mutex::new(input::Session::open(
+            self.input.clone(),
+            target,
+        )?));
+        self.participants
+            .insert(session.into(), participant.clone());
+        Ok(participant)
+    }
+
+    fn monitor_focus(&self, target: &Target) -> Result<u32> {
+        let root = self.root();
+        let bounds = target.bounds;
+        let outside = || {
+            CuaError::new(
+                ErrorCode::PermissionDenied,
+                "Keyboard focus is outside the selected display.",
+            )
+        };
+        let focus = self
+            .connection
+            .get_input_focus()
+            .map_err(failure)?
+            .reply()
+            .map_err(failure)?
+            .focus;
+        if focus == u32::from(InputFocus::POINTER_ROOT) || focus == root {
+            let pointer = self
+                .connection
+                .query_pointer(root)
+                .map_err(failure)?
+                .reply()
+                .map_err(failure)?;
+            if !pointer.same_screen
+                || !bounds.contains_local(Point {
+                    x: f64::from(pointer.root_x) - bounds.x,
+                    y: f64::from(pointer.root_y) - bounds.y,
+                })
+            {
+                return Err(outside());
+            }
+            return Ok(if pointer.child == NONE {
+                root
+            } else {
+                pointer.child
+            });
+        }
+        if focus == NONE {
+            return Err(outside());
+        }
+        let geometry = self
+            .connection
+            .get_geometry(focus)
+            .map_err(failure)?
+            .reply()
+            .map_err(failure)?;
+        let position = self
+            .connection
+            .translate_coordinates(focus, root, 0, 0)
+            .map_err(failure)?
+            .reply()
+            .map_err(failure)?;
+        let x = f64::from(position.dst_x);
+        let y = f64::from(position.dst_y);
+        if geometry.root != root
+            || !position.same_screen
+            || x >= bounds.x + bounds.width
+            || y >= bounds.y + bounds.height
+            || x + f64::from(geometry.width) <= bounds.x
+            || y + f64::from(geometry.height) <= bounds.y
+        {
+            return Err(outside());
+        }
+        Ok(focus)
     }
 
     pub(super) fn window_targets(&mut self, cancel: &Cancellation) -> Result<Vec<Target>> {
@@ -331,7 +453,11 @@ impl CaptureBackend for Host {
         true
     }
 
-    fn copy_window_text(
+    fn remote_monitor_input(&self) -> RemoteMonitorInput {
+        RemoteMonitorInput::ExclusiveHost
+    }
+
+    fn copy_selection_text(
         &mut self,
         session: &str,
         target: &Target,
@@ -339,7 +465,13 @@ impl CaptureBackend for Host {
         sequence: u64,
         cancel: &Cancellation,
     ) -> Result<Option<String>> {
-        let window = self.current_window(target, cancel)?;
+        let recipient = match target.kind {
+            TargetKind::Window => self.current_window(target, cancel)?.id,
+            TargetKind::Monitor => self.monitor_focus(target)?,
+        };
+        if recipient == self.root() {
+            return Ok(None);
+        }
         let clipboard = clipboard::Selection::subscribe(&self.display)?;
         self.interaction_input(
             session,
@@ -364,8 +496,11 @@ impl CaptureBackend for Host {
             let _ = self.close_input(session);
             return Err(error);
         }
-        let text = clipboard.read(window.id, cancel)?;
-        self.current_window(target, cancel)?;
+        let text = clipboard.read(recipient, cancel)?;
+        let refreshed = self.resolve_interaction_target(target, cancel)?;
+        if target.kind == TargetKind::Monitor && self.monitor_focus(&refreshed)? != recipient {
+            return Ok(None);
+        }
         Ok(text)
     }
 
@@ -378,7 +513,15 @@ impl CaptureBackend for Host {
         event: InputEvent,
         cancel: &Cancellation,
     ) -> Result<()> {
-        let (_, participant) = self.participant(session, target, cancel)?;
+        let participant = match target.kind {
+            TargetKind::Window => self.participant(session, target, cancel)?.1,
+            TargetKind::Monitor => {
+                if matches!(event, InputEvent::KeyDown { .. } | InputEvent::Text(_)) {
+                    self.monitor_focus(target)?;
+                }
+                self.monitor_participant(session, target)?
+            }
+        };
         let result = lock(&participant).submit(sequence, &event, cancel);
         if result.is_err() {
             let _ = self.close_input(session);

@@ -124,6 +124,7 @@ pub(super) struct Key {
     binding: Value,
     handle: u64,
     target: Value,
+    host_monitor_input: bool,
 }
 
 pub(crate) struct Capture {
@@ -141,8 +142,9 @@ pub(crate) struct Frame {
 }
 
 impl Capture {
-    pub(crate) fn is_window(&self) -> bool {
-        self.key.as_ref().unwrap().target["kind"] == "window"
+    pub(crate) fn supports_host_input(&self) -> bool {
+        let key = self.key.as_ref().unwrap();
+        key.target["kind"] == "window" || key.host_monitor_input
     }
 
     pub(crate) fn control_state(&self) -> Option<ControlState> {
@@ -263,18 +265,36 @@ pub(crate) struct Participant {
 impl Participant {
     pub(crate) async fn open(&mut self) -> Result<Value> {
         ensure!(
-            self.key.target["kind"] == "window" || self.control.is_some(),
+            self.key.target["kind"] == "window"
+                || self.key.host_monitor_input
+                || self.control.is_some(),
             "Host displays are view-only."
         );
-        let result = self
-            .request(
-                "open",
-                [
-                    ("targetId", self.key.target["id"].clone()),
-                    ("targetGeneration", self.key.target["generation"].clone()),
-                ],
-            )
-            .await?;
+        let result = loop {
+            let result = self
+                .request(
+                    "open",
+                    [
+                        ("targetId", self.key.target["id"].clone()),
+                        ("targetGeneration", self.key.target["generation"].clone()),
+                    ],
+                )
+                .await;
+            if self.key.host_monitor_input
+                && self.key.target["kind"] == "monitor"
+                && result.as_ref().is_err_and(|error| {
+                    error
+                        .downcast_ref::<NativeError>()
+                        .is_some_and(|error| error.code() == "ownership-mismatch")
+                })
+            {
+                // The helper owns the physical input across all Host surfaces.
+                // Retry only while this viewer remains attached and authorized.
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+            break result?;
+        };
         ensure!(
             same_target(&self.key.target, &result["target"]),
             "The desktop participant opened another target."
@@ -324,7 +344,7 @@ impl Participant {
             .context("Invalid desktop clipboard response.")
     }
 
-    pub(crate) async fn copy_window_text(&self, sequence: u64) -> Result<Option<JsString>> {
+    pub(crate) async fn copy_selection_text(&self, sequence: u64) -> Result<Option<JsString>> {
         let response = match self
             .request("clipboardCopy", [("sequence", json!(sequence))])
             .await
@@ -649,6 +669,7 @@ async fn open(
         binding,
         handle,
         target: target.clone(),
+        host_monitor_input: helper.process.host_monitor_input(),
     })
 }
 

@@ -10178,3 +10178,34 @@ Live runtime checks for macOS and Windows clipboard copy remain open.
 Apps with custom copy handlers that do not export selected accessibility
 text on macOS or respond to native copy messages on Windows still need
 coverage. Host full-display input and clipboard behavior remain in scope.
+
+## 303. Restore full-display viewer input on Linux X11
+
+Reference commit `64e4aaa9f72fb0a0cd56537b23527c0b0f20698c` (#3466).
+
+The Linux X11 helper advertises full-display input to the worker through
+its existing capabilities handshake. A viewer with a live encrypted route
+can open a participant on the selected display. The helper grants one
+physical-input participant at a time across Host displays. Other viewers
+can keep watching and become eligible for input after the owner closes.
+
+XTEST moves the pointer in the selected monitor's coordinates. Keyboard
+input follows focus on that monitor. Copy returns a fresh X11 clipboard
+selection from the focused client. A layout change retires old monitor
+generations, and closing a binding releases held physical input.
+
+The Linux ARM64 Xvfb process check used two RandR monitors and verified
+pointer placement, rejection of keyboard focus on the other monitor,
+exclusive control, Unicode copy with a held modifier, and physical key
+and button releases on close and layout change. The existing scoped window
+input, clipboard, assigned guest input, and participant unit tests passed.
+The macOS ARM64 worker built successfully. macOS ARM64 and Windows x64
+helper compile checks passed.
+
+A local Core in PGlite mode and the macOS ARM64 worker exercised the
+public WorkerLink relay with that Linux ARM64 helper. Both viewers received
+encrypted display frames. The first moved the actual X11 pointer. The
+waiting viewer received a new input epoch after the first detached and
+then moved the pointer on the same display.
+
+The Windows and Wayland full-display input paths remain in scope.

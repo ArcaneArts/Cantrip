@@ -347,7 +347,7 @@ impl CaptureBackend for MacOsBackend {
         }
         refreshed
     }
-    fn copy_window_text(
+    fn copy_selection_text(
         &mut self,
         _: &str,
         target: &Target,

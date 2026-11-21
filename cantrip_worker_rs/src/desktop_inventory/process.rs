@@ -29,6 +29,7 @@ pub(crate) struct Process {
     event_sequence: u64,
     backend: String,
     capture_available: bool,
+    host_monitor_input: bool,
 }
 
 #[derive(Debug)]
@@ -79,6 +80,7 @@ impl Process {
             event_sequence: 0,
             backend: String::new(),
             capture_available: false,
+            host_monitor_input: false,
         })
     }
 
@@ -103,11 +105,16 @@ impl Process {
         );
         self.backend = data["backend"].as_str().unwrap_or_default().to_owned();
         self.capture_available = data["capture"] == true;
+        self.host_monitor_input = data["hostMonitorInput"] == true;
         Ok(())
     }
 
     pub(super) fn capture_available(&self) -> bool {
         self.capture_available
+    }
+
+    pub(super) fn host_monitor_input(&self) -> bool {
+        self.host_monitor_input
     }
 
     pub(super) fn backend(&self) -> &str {

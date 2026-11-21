@@ -8,7 +8,7 @@ mod keys;
 mod wayland;
 
 use crate::{
-    backend::{Capture, CaptureBackend, CaptureWork},
+    backend::{Capture, CaptureBackend, CaptureWork, RemoteMonitorInput},
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
     gesture::InputCommand,
@@ -142,8 +142,8 @@ impl X11Backend {
     }
 }
 impl CaptureBackend for X11Backend {
-    fn remote_monitor_input(&self) -> bool {
-        true
+    fn remote_monitor_input(&self) -> RemoteMonitorInput {
+        RemoteMonitorInput::AssignedGuest
     }
     fn desktop_io(&self) -> bool {
         true

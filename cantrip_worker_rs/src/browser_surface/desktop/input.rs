@@ -129,7 +129,7 @@ impl Viewer {
                         }
                         state.native_sequence += 2;
                         participant
-                            .copy_window_text(state.native_sequence)
+                            .copy_selection_text(state.native_sequence)
                             .await
                             .map_err(|_| FAILED.to_owned())?
                     } else {

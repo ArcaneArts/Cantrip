@@ -248,7 +248,7 @@ impl CaptureBackend for Host {
         self.xwayland.is_some()
     }
 
-    fn copy_window_text(
+    fn copy_selection_text(
         &mut self,
         participant: &str,
         target: &Target,
@@ -257,7 +257,7 @@ impl CaptureBackend for Host {
         cancel: &Cancellation,
     ) -> Result<Option<String>> {
         self.windows()?
-            .copy_window_text(participant, target, position, sequence, cancel)
+            .copy_selection_text(participant, target, position, sequence, cancel)
     }
 
     fn interaction_input(
