@@ -67,71 +67,24 @@ impl Replay {
         if !self.resized && !self.truncated {
             return JsString::new(self.raw.clone());
         }
-        let (rows, cols) = screen.size();
-        let mut history = vt100::Parser::default();
-        *history.screen_mut() = screen.clone();
-        let mut viewport = screen.state_formatted();
-        if screen.alternate_screen() {
-            // Inspect the inactive screen without disturbing live parser state
-            // or restoring a saved cursor over the normal screen's position.
-            history.process(b"\x1b[?47l");
-            let mut normal = history.screen().contents_formatted();
-            history.process(b"\x1b8");
-            normal.extend(history.screen().attributes_formatted());
-            let enter_alternate = b"\x1b[?1049h";
-            if normal.len() + enter_alternate.len() + viewport.len() > CHAR_LIMIT {
-                // Keep the active display usable if both viewports exceed the
-                // snapshot limit, even after dropping scrollback.
-                normal.clear();
-            }
-            let include_history = !normal.is_empty();
-            normal.extend(enter_alternate);
-            normal.extend(viewport);
-            viewport = normal;
-            if !include_history {
-                return self.bounded_snapshot(viewport);
-            }
-        }
-        if viewport.len() > CHAR_LIMIT {
+        let mut bytes = b"\x1b[?1049l".to_vec();
+        let tail = if screen.alternate_screen() {
+            let mut alternate = b"\x1b[?1049h".to_vec();
+            alternate.extend(screen.state_formatted());
+            alternate
+        } else {
+            screen.input_mode_formatted()
+        };
+        let Some(limit) = CHAR_LIMIT.checked_sub(bytes.len() + tail.len()) else {
+            return JsString::new(self.raw.clone());
+        };
+        if let Some(contents) = screen.normal_contents_formatted_with_scrollback(limit) {
+            bytes.extend(contents);
+        } else if !screen.alternate_screen() {
             return JsString::new(self.raw.clone());
         }
-        let padding = usize::from(rows.saturating_sub(1)) * 2;
-        let remaining = (CHAR_LIMIT - viewport.len()).saturating_sub(padding);
-        let history = history.screen_mut();
-        history.set_scrollback(SCROLLBACK_ROWS);
-        let mut lines = Vec::new();
-        let mut length = 0;
-        for offset in 1..=history.scrollback() {
-            history.set_scrollback(offset);
-            let Some(row) = history.rows_formatted(0, cols).next() else {
-                break;
-            };
-            length += row.len() + 6;
-            if length > remaining {
-                break;
-            }
-            lines.push(row);
-        }
-        let mut bytes = Vec::new();
-        if !lines.is_empty() {
-            for row in lines.into_iter().rev() {
-                bytes.extend(b"\x1b[0m");
-                bytes.extend(row);
-                bytes.extend(b"\r\n");
-            }
-            // Move the last history row above the viewport before clearing it.
-            for _ in 1..rows {
-                bytes.extend(b"\r\n");
-            }
-        }
-        bytes.extend(viewport);
-        self.bounded_snapshot(bytes)
-    }
-
-    fn bounded_snapshot(&self, bytes: Vec<u8>) -> JsString {
-        if bytes.len() > CHAR_LIMIT {
-            return JsString::new(self.raw.clone());
-        }
+        // Keep the active alternate viewport if both screens cannot fit.
+        bytes.extend(tail);
         JsString::from(String::from_utf8_lossy(&bytes).as_ref())
     }
 }

@@ -10564,3 +10564,29 @@ xterm escape-sequence and scrollback hydration parity remains open.
 
 [Pinned Rust terminal parser](https://github.com/doy/vt100-rust/tree/eb66ffaf7d771c13303ef73b29f6f2a56fdacecf)
 [xterm.js 6.0 resize behavior](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/buffer/Buffer.ts)
+
+## 319. Preserve terminal soft wraps across the scrollback boundary
+
+Reference commit `c9ed5a68599b176bb783b19bf24b4f2d4d06c45f` (#3482).
+
+Native replay renders the normal screen and retained history as one ANSI
+stream. It emits real line breaks only for hard breaks and restores the
+cursor after drawing the viewport. When a wide glyph can trigger a soft
+wrap naturally, it supplies the glyph at the right margin. For an edited
+wrap it writes and erases temporary cells. Replay restores the normal
+screen's saved pen before entering an active alternate screen, and owns
+its existing byte budget by dropping older history before the viewport.
+The same stream replaces stale scrollback instead of appending duplicates.
+Both the encrypted terminal format and the full original-size raw path
+are retained.
+
+Four local parser tests passed for scrollback/viewport wraps, bounded
+history, resizing, and height recovery. The macOS ARM64 Host terminal
+smoke used the production Rust worker and Core and an actual shell PTY.
+The previous worker delivered hard breaks for a soft-wrapped line
+spanning scrollback and the viewport. The updated worker matched xterm.js
+on both resizes for the text, wrap flags, colors, and cursor. The same
+run passed the alternate-screen, signal, relay, and service recovery
+cases. Broader xterm escape-mode coverage remains open.
+
+[xterm.js 6.0 snapshot serializer](https://github.com/xtermjs/xterm.js/blob/6.0.0/addons/addon-serialize/src/SerializeAddon.ts)

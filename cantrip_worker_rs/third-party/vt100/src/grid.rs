@@ -1,6 +1,7 @@
 use crate::term::BufWrite as _;
 
 mod reflow;
+mod snapshot;
 
 #[derive(Clone, Debug)]
 pub struct Grid {
@@ -199,6 +200,11 @@ impl Grid {
 
     pub fn set_scrollback(&mut self, rows: usize) {
         self.scrollback_offset = rows.min(self.scrollback.len());
+    }
+
+    pub fn clear_scrollback(&mut self) {
+        self.scrollback.clear();
+        self.scrollback_offset = 0;
     }
 
     pub fn write_contents(&self, contents: &mut String) {

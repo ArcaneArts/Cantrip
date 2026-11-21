@@ -252,6 +252,39 @@ impl Screen {
         contents
     }
 
+    /// Serialize the normal viewport and cursor, including the newest
+    /// scrollback rows that fit in the byte budget. While the alternate
+    /// screen is active, restore the normal screen's saved drawing style.
+    #[must_use]
+    pub fn normal_contents_formatted_with_scrollback(
+        &self,
+        max_bytes: usize,
+    ) -> Option<Vec<u8>> {
+        let mut history = self.grid.history_rows();
+        let pen = if self.alternate_screen() {
+            &self.saved_attrs
+        } else {
+            &self.attrs
+        };
+        loop {
+            let mut contents = Vec::new();
+            crate::term::HideCursor::new(self.hide_cursor())
+                .write_buf(&mut contents);
+            if let Some(attrs) =
+                self.grid.write_snapshot(&mut contents, history, max_bytes)
+            {
+                pen.write_escape_code_diff(&mut contents, &attrs);
+                if contents.len() <= max_bytes {
+                    return Some(contents);
+                }
+            }
+            if history == 0 {
+                return None;
+            }
+            history /= 2;
+        }
+    }
+
     fn write_contents_formatted(&self, contents: &mut Vec<u8>) {
         crate::term::HideCursor::new(self.hide_cursor()).write_buf(contents);
         let prev_attrs = self.grid().write_contents_formatted(contents);
@@ -1059,6 +1092,7 @@ impl Screen {
             0 => self.grid_mut().erase_all_forward(attrs),
             1 => self.grid_mut().erase_all_backward(attrs),
             2 => self.grid_mut().erase_all(attrs),
+            3 => self.grid_mut().clear_scrollback(),
             _ => unhandled(self),
         }
     }
