@@ -5,6 +5,7 @@ mod gestures;
 mod host;
 mod input;
 mod keys;
+mod wayland;
 
 use crate::{
     backend::{Capture, CaptureBackend, CaptureWork},
@@ -319,6 +320,9 @@ pub fn run(display: &str, generation: &str) -> std::io::Result<()> {
 }
 
 pub fn run_host() -> std::io::Result<()> {
+    if wayland::selected() {
+        return wayland::run();
+    }
     match host::Host::connect() {
         Ok(backend) => crate::runtime::run(backend, std::io::stdin(), std::io::stdout()),
         Err(_) => crate::runtime::run(

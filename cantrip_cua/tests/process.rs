@@ -29,7 +29,11 @@ impl Process {
     fn start(fake: bool) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_cantrip-cua"));
         #[cfg(target_os = "linux")]
-        command.env_remove("DISPLAY");
+        command
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .env_remove("WAYLAND_SOCKET")
+            .env_remove("XDG_SESSION_TYPE");
         if fake {
             command.args(["--backend", "fake"]);
         }
@@ -983,3 +987,7 @@ fn full_worst_escaped_inventory_page_returns_through_unchanged_javascript_output
 #[cfg(windows)]
 #[path = "fixtures/windows_host.rs"]
 mod windows_host;
+
+#[cfg(target_os = "linux")]
+#[path = "fixtures/wayland_host.rs"]
+mod wayland_host;
