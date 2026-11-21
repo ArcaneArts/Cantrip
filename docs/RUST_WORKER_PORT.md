@@ -11061,3 +11061,23 @@ The prior worker left the same native thread in `default` mode. The
 rebuilt worker switched it to `plan`, settled the queue item, and made
 no additional model request. The focused guest thread-sync smoke, worker
 build, and format checks passed.
+
+## 341. Restore suspended Cantrip OS Chat turns
+
+Reference commit `7c8b13dab66c97e255809a556ece93c857df7c0e` (#3504).
+
+The worker opens the committed native suspension for the captured Linux
+placement during thread preparation, Resume, and Stop. Core's admitted
+workspace must match the guest path. When the saved home is the current
+guest home, recovery uses its existing runtime identity so later turns
+share the original Codex writer.
+
+The local smoke used production Rust Core in PGlite mode, the macOS ARM64
+worker and bundled Codex, and a disposable Linux ARM64 Cantrip OS guest.
+The baseline saved its Pause checkpoint and rejected cold Resume. The
+rebuilt worker resumed the exact native thread and turn after restart.
+A tool in the resumed turn ran in the original Linux checkout, and Core
+retained one encrypted prompt and reply. The same Chat accepted a second
+turn, saved it, and stopped that exact turn after another restart without
+an additional model request. The Host cold Resume and protected approval
+smoke, offline worker build, and format checks passed.

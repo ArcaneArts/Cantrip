@@ -450,7 +450,13 @@ impl Ensurer {
         let chat = field(session, "chatId")?;
         let project = session["projectId"].as_js_string().cloned();
         let change_plan = incoming["type"] == PLAN_SET;
-        let guest_allowed = match incoming["type"].as_str() {
+        let command_type = incoming["type"].as_str();
+        let suspension_control = matches!(
+            command_type,
+            Some(crate::codex::turn::RESUME | crate::codex::turn::STOP_SUSPENSION)
+        );
+        let can_attach_held = suspension_control || command_type == Some(COMMAND);
+        let guest_allowed = match command_type {
             Some(
                 COMMAND
                 | PLAN_SET
@@ -472,7 +478,7 @@ impl Ensurer {
                 )
             ),
             Some(crate::codex::turn::RUN) => session.get("osExecution").is_some(),
-            _ => false,
+            _ => suspension_control,
         };
         if !guest_allowed && session.get("osExecution").is_some() {
             bail!(
@@ -486,9 +492,9 @@ impl Ensurer {
         let guest = environment.is_some();
         if guest
             && (!guest_allowed
-                || stopping
+                || (stopping && !suspension_control)
+                || (session.get("heldSuspension").is_some() && !can_attach_held)
                 || restored_task.is_some()
-                || session.get("heldSuspension").is_some()
                 || command["taskOwned"] == true)
         {
             bail!(

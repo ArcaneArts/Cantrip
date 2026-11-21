@@ -84,6 +84,7 @@ const { values } = parseArgs({
     "os-desktop-view": { type: "boolean" },
     "guest-thread-sync": { type: "boolean" },
     "guest-goal-controls": { type: "boolean" },
+    "guest-suspension": { type: "boolean" },
     "guest-image": { type: "string" },
     "cua-console": { type: "string" },
     "cua-recovered": { type: "string" },
@@ -140,6 +141,7 @@ const prepareGuestDesktop =
   values["os-desktop-prepare"] || values["os-desktop-view"];
 const guestThreadSync = values["guest-thread-sync"];
 const guestGoalControls = values["guest-goal-controls"];
+const guestSuspension = values["guest-suspension"];
 const guestClaimRecovery =
   values["goal-claim-recovery"] && values["guest-image"];
 const repositoryKey =
@@ -147,6 +149,7 @@ const repositoryKey =
   prepareGuestDesktop ||
   guestThreadSync ||
   guestGoalControls ||
+  guestSuspension ||
   guestClaimRecovery
     ? key("repository-content")
     : null;
@@ -219,6 +222,7 @@ const consoleStateKey =
   prepareGuestDesktop ||
   guestThreadSync ||
   guestGoalControls ||
+  guestSuspension ||
   autonomousCua ||
   values["host-skills"] ||
   values["scratch-files"] ||
@@ -3090,13 +3094,16 @@ try {
       : values.interactions ||
           consoleInteractions ||
           restoredInteractions ||
+          guestSuspension ||
           recoveredCua
         ? await fixtureCodex(root, values.codex, {
             scenario: recoveredCua
               ? "resume-cua"
               : restoredInteractions
                 ? "resume-approval"
-                : "approval",
+                : guestSuspension
+                  ? "resume-guest"
+                  : "approval",
             marker: approvalMarker,
             input: approvalPrompt,
             ...(consoleInteractions ? { socketFile: consoleSocket } : {}),
@@ -3115,6 +3122,7 @@ try {
     prepareGuestDesktop ||
     guestThreadSync ||
     guestGoalControls ||
+    guestSuspension ||
     guestClaimRecovery
   ) {
     assert.ok(
@@ -3140,7 +3148,26 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (guestGoalControls) {
+  if (guestSuspension) {
+    const { verifyGuestSuspension } =
+      await import("./guest-suspension-cases.mjs");
+    await verifyGuestSuspension({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      openMessage,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      repositoryKey,
+      guest: guestDesktop,
+      marker: approvalMarker,
+      startWorker,
+      stopWorker,
+    });
+  } else if (guestGoalControls) {
     const { verifyGuestGoalControls } =
       await import("./guest-goal-control-cases.mjs");
     await verifyGuestGoalControls({

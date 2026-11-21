@@ -107,7 +107,9 @@ impl Turns {
         let thread = selected.thread.clone();
         let turn = selected.turn.clone();
         selected.confirm_held(checkpoint).await?;
-        let (receipt, grant) = self.admit_saved_turn(command, &selected, scope).await?;
+        let (receipt, grant) = self
+            .admit_saved_turn(command, &prepared, &selected, scope)
+            .await?;
         let root = receipt.operation();
         let (abort, signal) = Abort::new();
         let binding = Binding::new(
@@ -359,6 +361,7 @@ impl Turns {
     pub(super) async fn admit_saved_turn(
         &self,
         command: &Value,
+        prepared: &Prepared,
         selected: &Selection,
         scope: Scope,
     ) -> Result<(receipt::Receipt<'_>, Value)> {
@@ -380,11 +383,17 @@ impl Turns {
             .preparation
             .resolve_routing(&grant["execution"])
             .await?;
-        autonomous::same_workspace(
-            &id(&command["cwd"], "suspended workspace")?,
-            &execution["cwd"],
-        )
-        .await?;
+        if let Some(environment) = &prepared.environment {
+            if execution["cwd"] != environment.selection["cwd"] {
+                bail!("The suspended execution belongs to a different Linux workspace.");
+            }
+        } else {
+            autonomous::same_workspace(
+                &id(&command["cwd"], "suspended workspace")?,
+                &execution["cwd"],
+            )
+            .await?;
+        }
         if !selected.transport_current() {
             bail!("The native runtime changed during suspension admission.");
         }

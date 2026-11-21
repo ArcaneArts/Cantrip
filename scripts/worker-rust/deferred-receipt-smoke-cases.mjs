@@ -54,15 +54,12 @@ export async function fixtureCodex(
   return executable;
 }
 
-export async function recoverHeldTurn({
+export async function pauseHeldTurn({
   call,
   eventually,
   chatUrl,
   beforePause,
-  afterResume,
   marker,
-  stopWorker,
-  startWorker,
 }) {
   await eventually(
     () => beforePause.entered,
@@ -90,10 +87,20 @@ export async function recoverHeldTurn({
     }),
   ]).finally(() => beforePause.release());
   assert.equal((await pause).paused, true);
+  return heldTurn;
+}
+
+export async function recoverHeldTurn({
+  afterResume,
+  stopWorker,
+  startWorker,
+  ...fixture
+}) {
+  const heldTurn = await pauseHeldTurn(fixture);
   assert.equal(afterResume.entered, false);
   assert.deepEqual(await stopWorker(), { code: 0, signal: null });
   await startWorker();
-  const resumed = await call("PATCH", `${chatUrl}/pause`, 200, {
+  const resumed = await fixture.call("PATCH", `${fixture.chatUrl}/pause`, 200, {
     paused: false,
   });
   assert.equal(resumed.paused, false);

@@ -86,7 +86,9 @@ impl Turns {
         }
 
         let (prepared, selected, scope) = self.attach_saved_turn(command, key).await?;
-        let (receipt, grant) = self.admit_saved_turn(command, &selected, scope).await?;
+        let (receipt, grant) = self
+            .admit_saved_turn(command, &prepared, &selected, scope)
+            .await?;
         receipt.dispatch().await?;
         let checkpoint = &command["checkpoint"]["suspension"];
         let runtime = &prepared.runtime;
