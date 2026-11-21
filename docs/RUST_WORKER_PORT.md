@@ -49,12 +49,6 @@ record the transition. The
 [hosted Linux ARM64 image check](#332-bound-hosted-worker-release-build-memory)
 covers the current Docker build, enrollment, and volume reuse.
 
-### Open MCP compatibility
-
-Bundled Codex still needs to handle MCP results that contain an unpaired UTF-16
-surrogate. The [Explorer fixture](#352-restore-managed-mcp-explorer-tools)
-reproduced the issue when a preview ended inside a surrogate pair.
-
 ### Open platform checks
 
 - macOS shared-window copy requires a readable Accessibility selection. Apps
@@ -11393,3 +11387,21 @@ with encrypted history in each destination lane, dirty release rejection,
 branch retention after removal, and read-only admission. The focused Core
 worktree fixture also passed 102 HTTP calls with controlled Git replies.
 The managed Run regression and offline builds of Core and the worker passed.
+
+## 357. Keep bundled Codex MCP replies valid Unicode
+
+Reference commit `d62da32b983da6009b5a0071a164ad992291bc30` (#3520).
+
+Managed Codex bindings request Unicode scalar JSON on host stdio and guest
+HTTP. The worker replaces each isolated UTF-16 surrogate with U+FFFD when
+encoding those MCP replies. Explorer still measures preview length in UTF-16
+code units. Other MCP clients keep the original slice by default, and the
+shared wire and canonical history encodings retain the original code units.
+
+The baseline worker read a preview ending halfway through an emoji, but
+bundled Codex sent no follow-up model request. On macOS ARM64, the rebuilt
+worker completed the Explorer workflow through bundled Codex and Rust Core
+in PGlite mode with an empty worker PATH. Direct HTTP requests verified both
+the default UTF-16 slice and the opted-in Unicode scalar response. The
+managed Terminal regression, all five wire unit tests, and offline builds
+of Core and the worker passed.

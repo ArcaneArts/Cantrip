@@ -57,22 +57,32 @@ impl Value {
         output
     }
     pub fn stringify(&self) -> String {
-        self.stringify_with_entries(crate::coercion::entries)
+        self.stringify_with_entries(crate::coercion::entries, false)
+    }
+
+    /// Serialize for JSON receivers that require Unicode scalar values.
+    /// Each unpaired UTF-16 surrogate becomes U+FFFD.
+    pub fn stringify_unicode_scalars(&self) -> String {
+        self.stringify_with_entries(crate::coercion::entries, true)
     }
 
     /// Serialize with keys sorted by UTF-16 code units, including array-index
     /// keys. Native history uses this ordering for digests persisted by Node.
     pub fn stringify_canonical(&self) -> String {
-        self.stringify_with_entries(|object| {
-            let mut entries: Vec<_> = object.iter().collect();
-            entries.sort_unstable_by(|(a, _), (b, _)| a.units().cmp(b.units()));
-            entries
-        })
+        self.stringify_with_entries(
+            |object| {
+                let mut entries: Vec<_> = object.iter().collect();
+                entries.sort_unstable_by(|(a, _), (b, _)| a.units().cmp(b.units()));
+                entries
+            },
+            false,
+        )
     }
 
     fn stringify_with_entries(
         &self,
         entries: impl Fn(&Object) -> Vec<(&JsString, &Value)>,
+        unicode_scalars: bool,
     ) -> String {
         enum Part<'a> {
             Value(&'a Value),
@@ -84,7 +94,7 @@ impl Value {
         while let Some(part) = stack.pop() {
             match part {
                 Part::Text(text) => output.push_str(text),
-                Part::Key(key) => key.write_json(&mut output),
+                Part::Key(key) => key.write_json_with_scalars(&mut output, unicode_scalars),
                 Part::Value(value) => match value {
                     Self::Null => output.push_str("null"),
                     Self::Bool(v) => output.push_str(if *v { "true" } else { "false" }),
@@ -95,7 +105,7 @@ impl Value {
                             output.push_str("null");
                         }
                     }
-                    Self::String(v) => v.write_json(&mut output),
+                    Self::String(v) => v.write_json_with_scalars(&mut output, unicode_scalars),
                     Self::Array(values) => {
                         output.push('[');
                         stack.push(Part::Text("]"));
@@ -258,6 +268,20 @@ impl fmt::Debug for Value {
 #[cfg(test)]
 mod json_round_trip_tests {
     use super::Value;
+
+    #[test]
+    fn scalar_json_replaces_only_unpaired_surrogates() {
+        let raw = r#"{"\ud800":[0,"A\ud83d","🛠","\\ud800","\udc00"]}"#;
+        let value = crate::parse_json_text(raw).unwrap();
+        assert_eq!(value.stringify(), raw);
+        assert_eq!(value.stringify_canonical(), raw);
+        let encoded = value.stringify_unicode_scalars();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&encoded).unwrap(),
+            serde_json::json!({"�":[0,"A�","🛠",r"\ud800","�"]}),
+        );
+        assert_eq!(value.stringify(), raw);
+    }
 
     #[test]
     fn normalization_changes_keep_the_encoding_path() {

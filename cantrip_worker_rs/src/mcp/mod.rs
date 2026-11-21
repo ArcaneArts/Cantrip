@@ -13,6 +13,9 @@ use std::{
     path::PathBuf,
 };
 
+const UNICODE_SCALARS_ENV: &str = "CANTRIP_MCP_UNICODE_SCALARS";
+const UNICODE_SCALARS_HEADER: &str = "cantrip-mcp-unicode-scalars";
+
 pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
     run_stdio(arguments, false)
 }
@@ -42,16 +45,26 @@ fn run_stdio(arguments: impl IntoIterator<Item = OsString>, cua: bool) -> Result
     let result = runtime.block_on(async {
         let service = async {
             let broker = broker::Broker::connect(&path).await?;
-            if cua {
-                return stdio::serve(broker, "cua", tokio::io::stdin(), tokio::io::stdout()).await;
-            }
             let profile = std::env::var_os("CANTRIP_MCP_PROFILE");
-            let profile = match profile.as_deref().and_then(OsStr::to_str) {
-                None if profile.is_none() => "ide",
-                Some(profile @ ("ide" | "standalone-web")) => profile,
-                _ => bail!("Cantrip MCP profile is invalid."),
+            let profile = if cua {
+                "cua"
+            } else {
+                match profile.as_deref().and_then(OsStr::to_str) {
+                    None if profile.is_none() => "ide",
+                    Some(profile @ ("ide" | "standalone-web")) => profile,
+                    _ => bail!("Cantrip MCP profile is invalid."),
+                }
             };
-            stdio::serve(broker, profile, tokio::io::stdin(), tokio::io::stdout()).await
+            let unicode_scalars =
+                std::env::var_os(UNICODE_SCALARS_ENV).as_deref() == Some(OsStr::new("1"));
+            stdio::serve(
+                broker,
+                profile,
+                unicode_scalars,
+                tokio::io::stdin(),
+                tokio::io::stdout(),
+            )
+            .await
         };
         tokio::select! {
             result = service => result,

@@ -20,6 +20,7 @@ const MAXIMUM_LINE: usize = 8 * 1024 * 1024;
 pub(super) async fn serve(
     broker: Broker,
     profile: &str,
+    unicode_scalars: bool,
     input: impl AsyncRead + Unpin + Send + 'static,
     mut output: impl AsyncWrite + Unpin,
 ) -> Result<()> {
@@ -52,7 +53,7 @@ pub(super) async fn serve(
                     };
                     let key = id.stringify();
                     if pending.contains_key(&key) {
-                        write_frame(&mut output, rpc_error(id, -32600, "Duplicate pending request ID")).await?;
+                        write_frame(&mut output, rpc_error(id, -32600, "Duplicate pending request ID"), unicode_scalars).await?;
                         continue;
                     }
                     let reply = match method {
@@ -61,7 +62,7 @@ pub(super) async fn serve(
                         "tools/list" => result(id, json!({"tools":profile["tools"]})),
                         "tools/call" => {
                             let Some(name) = params["name"].as_str() else {
-                                write_frame(&mut output, rpc_error(id, -32602, "Invalid tool call parameters")).await?;
+                                write_frame(&mut output, rpc_error(id, -32602, "Invalid tool call parameters"), unicode_scalars).await?;
                                 continue;
                             };
                             let name = name.to_owned();
@@ -88,14 +89,14 @@ pub(super) async fn serve(
                         }
                         _ => rpc_error(id, -32601, "Method not found"),
                     };
-                    write_frame(&mut output, reply).await?;
+                    write_frame(&mut output, reply, unicode_scalars).await?;
                 }
                 completed = calls.join_next_with_id(), if !calls.is_empty() => {
                     match completed {
                         Some(Ok((task, (key, reply)))) => {
                             if pending.get(&key).is_some_and(|handle| handle.id() == task) {
                                 pending.remove(&key);
-                                write_frame(&mut output, reply).await?;
+                                write_frame(&mut output, reply, unicode_scalars).await?;
                             }
                         }
                         Some(Err(error)) if !error.is_cancelled() => return Err(error.into()),
@@ -146,8 +147,16 @@ async fn read_frames(
     }
 }
 
-async fn write_frame(output: &mut (impl AsyncWrite + Unpin), frame: Value) -> Result<()> {
-    let mut frame = frame.stringify();
+async fn write_frame(
+    output: &mut (impl AsyncWrite + Unpin),
+    frame: Value,
+    unicode_scalars: bool,
+) -> Result<()> {
+    let mut frame = if unicode_scalars {
+        frame.stringify_unicode_scalars()
+    } else {
+        frame.stringify()
+    };
     frame.push('\n');
     output.write_all(frame.as_bytes()).await?;
     output.flush().await?;

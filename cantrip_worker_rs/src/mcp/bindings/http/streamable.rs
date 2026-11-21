@@ -1,5 +1,5 @@
 use super::{Inner, MAXIMUM_RESPONSE, Reply, json_response};
-use crate::mcp::{broker::operation_timeout, rpc};
+use crate::mcp::{UNICODE_SCALARS_HEADER, broker::operation_timeout, rpc};
 use cantrip_protocol::mcp_host;
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
 use http_body_util::{BodyExt, Limited};
@@ -136,16 +136,22 @@ impl Inner {
                 .map(|frame| self.mcp_reply(id, credential, frame, profile, &allowed)),
         )
         .await;
+        let maximum_response = if cua {
+            crate::mcp::cua::MAXIMUM_RESPONSE
+        } else {
+            MAXIMUM_RESPONSE
+        };
+        let unicode_scalars = parts
+            .headers
+            .get(UNICODE_SCALARS_HEADER)
+            .is_some_and(|value| value == "1");
         let response = |payload| {
-            if cua {
-                super::json_response_with_limit(
-                    StatusCode::OK,
-                    payload,
-                    crate::mcp::cua::MAXIMUM_RESPONSE,
-                )
-            } else {
-                json_response(StatusCode::OK, payload)
-            }
+            super::json_response_with_limit(
+                StatusCode::OK,
+                payload,
+                maximum_response,
+                unicode_scalars,
+            )
         };
         match responses.len() {
             0 => empty(StatusCode::ACCEPTED),

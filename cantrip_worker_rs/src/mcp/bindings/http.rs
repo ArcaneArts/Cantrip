@@ -545,11 +545,20 @@ fn unauthorized() -> Failure {
 }
 
 fn json_response(status: StatusCode, payload: Value) -> Reply {
-    json_response_with_limit(status, payload, MAXIMUM_RESPONSE)
+    json_response_with_limit(status, payload, MAXIMUM_RESPONSE, false)
 }
 
-fn json_response_with_limit(mut status: StatusCode, payload: Value, maximum: usize) -> Reply {
-    let mut body = payload.stringify();
+fn json_response_with_limit(
+    mut status: StatusCode,
+    payload: Value,
+    maximum: usize,
+    unicode_scalars: bool,
+) -> Reply {
+    let mut body = if unicode_scalars {
+        payload.stringify_unicode_scalars()
+    } else {
+        payload.stringify()
+    };
     body.push('\n');
     if body.len() > maximum {
         status = StatusCode::PAYLOAD_TOO_LARGE;

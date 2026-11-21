@@ -148,6 +148,10 @@ impl JsString {
         Self::new(units)
     }
     fn write_json(&self, output: &mut String) {
+        self.write_json_with_scalars(output, false);
+    }
+
+    fn write_json_with_scalars(&self, output: &mut String, unicode_scalars: bool) {
         if let StringStorage::Utf8(value) = &self.0 {
             let text = &value.text;
             if value.base64url.get() == Some(&true)
@@ -186,6 +190,7 @@ impl JsString {
                         0x10000 + ((u32::from(unit) - 0xd800) << 10) + (u32::from(low) - 0xdc00);
                     output.push(char::from_u32(scalar).unwrap());
                 }
+                0xd800..=0xdfff if unicode_scalars => output.push(char::REPLACEMENT_CHARACTER),
                 0xd800..=0xdfff => output.push_str(&format!("\\u{unit:04x}")),
                 _ => output.push(char::from_u32(u32::from(unit)).unwrap()),
             }
