@@ -5,6 +5,7 @@ mod presentation;
 mod private_state;
 mod replay;
 mod service;
+pub(crate) use private_state::open_host as host_private_state;
 use crate::{encryption::Service, filesystem::Scope, logging::Logs, routing::Registry};
 use anyhow::{Context, Result, anyhow, bail};
 use cantrip_wire::{JsString, Value, value::json};

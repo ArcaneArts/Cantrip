@@ -1131,6 +1131,7 @@ export const projectInsightContractRoots = [
   "projectTaskWorkloadOpaqueSchema",
   "repositoryOperationOpaqueSchema",
   "scriptCommandOperationIdSchema",
+  "scriptCommandListSchema",
 ];
 
 export const gitObservationContractRoots = [
@@ -1301,6 +1302,13 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.scriptCommandSchema.shape.name, "script-command-text"],
+  [protocol.scriptCommandSchema.shape.command, "script-command-text"],
+  [
+    protocol.scriptCommandSchema.shape.description.unwrap(),
+    "script-command-text",
+  ],
+  [protocol.scriptCommandSchema.shape.source, "script-command-text"],
   [protocol.codexExternalImportApplySchema, "external-import-selection"],
   [protocol.projectTaskWorkloadOpaqueItemSchema, "task-workload-chat-binding"],
   [protocol.cantripVersionSchema, "worker-operation-version"],
