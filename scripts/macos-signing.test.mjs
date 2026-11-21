@@ -93,7 +93,7 @@ test("recognizes thin and universal Mach-O headers", () => {
 test("signs every embedded Mach-O and applies runtime JIT entitlements", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-sign-runtime-"));
   try {
-    const node = path.join(root, "node");
+    const worker = path.join(root, "worker", "bin", "cantrip-worker");
     const codex = path.join(root, "worker", "bin", "codex");
     const cua = path.join(root, "worker", "bin", "cantrip-cua");
     const codeModeHost = path.join(
@@ -103,25 +103,20 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
       "codex-code-mode-host",
     );
     await mkdir(path.dirname(codex), { recursive: true });
-    await writeFile(node, thinMachO);
+    await writeFile(worker, thinMachO);
     await writeFile(codex, thinMachO);
     await writeFile(cua, thinMachO);
     await writeFile(codeModeHost, thinMachO);
-    await chmod(node, 0o755);
+    await chmod(worker, 0o755);
     await chmod(codex, 0o644);
     await writeFile(path.join(root, "README.txt"), "not native\n");
-    const nativeModuleRoot = path.join(
-      root,
-      "worker",
-      "node_modules",
-      "native-module",
-    );
+    const nativeModuleRoot = path.join(root, "server", "lib");
     await mkdir(nativeModuleRoot, { recursive: true });
     await writeFile(path.join(nativeModuleRoot, "native.dylib"), thinMachO);
     assert.deepEqual(
       new Set(await findMachOBinaries(root)),
       new Set([
-        node,
+        worker,
         codex,
         cua,
         codeModeHost,
@@ -132,7 +127,7 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
     const calls = [];
     await signMacosRuntime({
       directory: root,
-      entitlements: "/tmp/node-entitlements.plist",
+      entitlements: "/tmp/runtime-entitlements.plist",
       identity: "Developer ID Application: Cantrip Test (TEAMID)",
       run: (arguments_) => calls.push(arguments_),
     });
@@ -141,12 +136,12 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
     assert.ok(cuaCall.includes("--identifier"));
     assert.ok(cuaCall.includes("art.cantrip.cua"));
     assert.equal(cuaCall.includes("--entitlements"), false);
-    const nodeCall = calls.find((call) => call.at(-1) === node);
+    const workerCall = calls.find((call) => call.at(-1) === worker);
     const codexCall = calls.find((call) => call.at(-1) === codex);
     const codeModeHostCall = calls.find((call) => call.at(-1) === codeModeHost);
-    assert.ok(nodeCall.includes("--timestamp"));
-    assert.ok(nodeCall.includes("--options"));
-    assert.ok(nodeCall.includes("--entitlements"));
+    assert.ok(workerCall.includes("--timestamp"));
+    assert.ok(workerCall.includes("--options"));
+    assert.equal(workerCall.includes("--entitlements"), false);
     assert.ok(codexCall.includes("--timestamp"));
     assert.ok(codexCall.includes("--options"));
     assert.equal(codexCall.includes("--entitlements"), false);
@@ -156,7 +151,7 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
     const adhocCalls = [];
     await signMacosRuntime({
       directory: root,
-      entitlements: "/tmp/node-entitlements.plist",
+      entitlements: "/tmp/runtime-entitlements.plist",
       identity: "-",
       run: (arguments_) => adhocCalls.push(arguments_),
     });
@@ -165,10 +160,11 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
       adhocCalls.some((call) => call.includes("--timestamp")),
       false,
     );
-    assert.ok(
+    assert.equal(
       adhocCalls
-        .find((call) => call.at(-1) === node)
+        .find((call) => call.at(-1) === worker)
         .includes("--entitlements"),
+      false,
     );
     assert.ok(
       adhocCalls
@@ -291,11 +287,19 @@ test("verifies the outer app, embedded runtime, and DMG signatures", async () =>
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-verify-macos-"));
   try {
     const app = path.join(root, "macos", "Cantrip.app");
-    const node = path.join(app, "Contents", "Resources", "runtime", "node");
+    const codeModeHost = path.join(
+      app,
+      "Contents",
+      "Resources",
+      "runtime",
+      "worker",
+      "bin",
+      "codex-code-mode-host",
+    );
     const dmg = path.join(root, "dmg", "Cantrip.dmg");
-    await mkdir(path.dirname(node), { recursive: true });
+    await mkdir(path.dirname(codeModeHost), { recursive: true });
     await mkdir(path.dirname(dmg), { recursive: true });
-    await writeFile(node, thinMachO);
+    await writeFile(codeModeHost, thinMachO);
     await writeFile(dmg, "dmg");
 
     const calls = [];
@@ -310,12 +314,15 @@ test("verifies the outer app, embedded runtime, and DMG signatures", async () =>
           "TeamIdentifier=TEAMID",
         ].join("\n");
       }
-      if (target === node && arguments_.includes("--entitlements")) {
+      if (target === codeModeHost && arguments_.includes("--entitlements")) {
         return "com.apple.security.cs.allow-jit";
       }
-      if ((target === node || target === dmg) && arguments_[0] === "-dvvv") {
+      if (
+        (target === codeModeHost || target === dmg) &&
+        arguments_[0] === "-dvvv"
+      ) {
         return [
-          ...(target === node ? ["flags=0x10000(runtime)"] : []),
+          ...(target === codeModeHost ? ["flags=0x10000(runtime)"] : []),
           "Authority=Developer ID Application: Cantrip Test (TEAMID)",
           "TeamIdentifier=TEAMID",
         ].join("\n");
@@ -359,11 +366,19 @@ test("accepts a certificate-signed distribution without notarization", async () 
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-verify-signed-"));
   try {
     const app = path.join(root, "macos", "Cantrip.app");
-    const node = path.join(app, "Contents", "Resources", "runtime", "node");
+    const codeModeHost = path.join(
+      app,
+      "Contents",
+      "Resources",
+      "runtime",
+      "worker",
+      "bin",
+      "codex-code-mode-host",
+    );
     const dmg = path.join(root, "dmg", "Cantrip.dmg");
-    await mkdir(path.dirname(node), { recursive: true });
+    await mkdir(path.dirname(codeModeHost), { recursive: true });
     await mkdir(path.dirname(dmg), { recursive: true });
-    await writeFile(node, thinMachO);
+    await writeFile(codeModeHost, thinMachO);
     await writeFile(dmg, "dmg");
 
     const calls = [];
@@ -386,12 +401,15 @@ test("accepts a certificate-signed distribution without notarization", async () 
             "TeamIdentifier=TEAMID",
           ].join("\n");
         }
-        if (target === node && arguments_.includes("--entitlements")) {
+        if (target === codeModeHost && arguments_.includes("--entitlements")) {
           return "com.apple.security.cs.allow-jit";
         }
-        if ((target === node || target === dmg) && arguments_[0] === "-dvvv") {
+        if (
+          (target === codeModeHost || target === dmg) &&
+          arguments_[0] === "-dvvv"
+        ) {
           return [
-            ...(target === node ? ["flags=0x10000(runtime)"] : []),
+            ...(target === codeModeHost ? ["flags=0x10000(runtime)"] : []),
             "Authority=Apple Development: Cantrip Test (TEAMID)",
             "TeamIdentifier=TEAMID",
           ].join("\n");
@@ -485,11 +503,19 @@ test("accepts a sealed ad-hoc app in an unsigned DMG when allowed", async () => 
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-verify-adhoc-"));
   try {
     const app = path.join(root, "macos", "Cantrip.app");
-    const node = path.join(app, "Contents", "Resources", "runtime", "node");
+    const codeModeHost = path.join(
+      app,
+      "Contents",
+      "Resources",
+      "runtime",
+      "worker",
+      "bin",
+      "codex-code-mode-host",
+    );
     const dmg = path.join(root, "dmg", "Cantrip.dmg");
-    await mkdir(path.dirname(node), { recursive: true });
+    await mkdir(path.dirname(codeModeHost), { recursive: true });
     await mkdir(path.dirname(dmg), { recursive: true });
-    await writeFile(node, thinMachO);
+    await writeFile(codeModeHost, thinMachO);
     await writeFile(dmg, "dmg");
 
     const calls = [];
@@ -513,12 +539,15 @@ test("accepts a sealed ad-hoc app in an unsigned DMG when allowed", async () => 
             "TeamIdentifier=not set",
           ].join("\n");
         }
-        if (target === node && arguments_.includes("--entitlements")) {
+        if (target === codeModeHost && arguments_.includes("--entitlements")) {
           return "com.apple.security.cs.allow-jit";
         }
-        if ((target === node || target === dmg) && arguments_[0] === "-dvvv") {
+        if (
+          (target === codeModeHost || target === dmg) &&
+          arguments_[0] === "-dvvv"
+        ) {
           return [
-            ...(target === node ? ["flags=0x10000(runtime)"] : []),
+            ...(target === codeModeHost ? ["flags=0x10000(runtime)"] : []),
             "Signature=adhoc",
             "TeamIdentifier=not set",
           ].join("\n");
@@ -645,11 +674,19 @@ test("rejects an ad-hoc outer app signature", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-reject-adhoc-"));
   try {
     const app = path.join(root, "macos", "Cantrip.app");
-    const node = path.join(app, "Contents", "Resources", "runtime", "node");
+    const codeModeHost = path.join(
+      app,
+      "Contents",
+      "Resources",
+      "runtime",
+      "worker",
+      "bin",
+      "codex-code-mode-host",
+    );
     const dmg = path.join(root, "dmg", "Cantrip.dmg");
-    await mkdir(path.dirname(node), { recursive: true });
+    await mkdir(path.dirname(codeModeHost), { recursive: true });
     await mkdir(path.dirname(dmg), { recursive: true });
-    await writeFile(node, thinMachO);
+    await writeFile(codeModeHost, thinMachO);
     await writeFile(dmg, "dmg");
     await assert.rejects(
       verifyMacosDistribution({

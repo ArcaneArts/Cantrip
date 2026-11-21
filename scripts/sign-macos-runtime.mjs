@@ -13,13 +13,9 @@ const machoMagics = new Set([
   0xfeedface, 0xcefaedfe, 0xfeedfacf, 0xcffaedfe, 0xcafebabe, 0xbebafeca,
   0xcafebabf, 0xbfbafeca,
 ]);
-// Node and Codex's code-mode host both embed runtimes that generate executable
-// code. Hardened Runtime terminates either process unless these are signed with
-// the JIT entitlements used by the packaged desktop app.
-const jitRuntimeBinaryNames = new Set(["node", "codex-code-mode-host"]);
-
 export function requiresJitEntitlements(binary) {
-  return jitRuntimeBinaryNames.has(path.basename(binary));
+  // Codex's code-mode host embeds a runtime that generates executable code.
+  return path.basename(binary) === "codex-code-mode-host";
 }
 
 export function isMachOHeader(header) {

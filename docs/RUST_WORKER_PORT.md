@@ -9762,3 +9762,25 @@ ARM64 executor's C compile stage and the existing boundary checks passed.
 
 The current release packagers already use Rust. The historical Node
 artifact verification helpers and final release audit remain open.
+
+## 287. Verify only native worker release artifacts
+
+Reference commit `053d0fb5e680aa4f20fb4fbc836a8dd37257d194` (#3450).
+
+The release MCP verifier launches `mcp` and `cua-mcp` from the packaged
+Rust executable with an empty PATH. The CUA verifier runs the signed or
+unsigned native helper from its final layout with the fake backend. There
+are no Node, Sharp, or JavaScript MCP fallback paths in those verifiers.
+The standalone Node packager and runtime dependency checks are retired.
+The Sharp layout smoke lives with the other Node reference fixtures.
+Codex's code-mode host retains its existing macOS JIT entitlements.
+
+Local macOS ARM64 packaging used prebuilt debug worker, CLI, and CUA
+executables with the verified pinned Codex bundle. The standalone launch
+reported its version with an empty PATH. The actual artifact contained no
+Node executable, Node dependency tree, or retired MCP entry. Both native
+verifiers passed. The bundled worker completed a managed Codex turn and
+called its bundled CLI against the Rust server with an empty worker PATH.
+Thirty-four focused verification and reference tests passed. Windows
+paths were covered by fixtures. No Windows artifact or certificate signing
+was run during this cycle.

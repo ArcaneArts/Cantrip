@@ -75,7 +75,7 @@ if (
 ) {
   if (process.argv.length !== 3)
     throw new Error(
-      "Usage: node scripts/cantrip-cua/model-image-smoke.mjs <worker-directory>",
+      "Usage: node tests/reference-node-worker/packaging/model-image-smoke.mjs <worker-directory>",
     );
   console.log(
     JSON.stringify(await smokeCuaModelImageEncoder(process.argv[2]), null, 2),
