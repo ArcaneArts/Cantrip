@@ -111,6 +111,10 @@ dbus-run-session -- python3 cantrip_cua/tests/fixtures/wayland_local_control.py 
   /path/to/cantrip-cua --kernel-keyboard /path/to/event-device /path/to/ydotool-socket
 ```
 
+Add `--verify-focus` when the fixture's virtual keyboard is available to
+libinput on the isolated seat. Sway then delivers the events to the focused
+XWayland test window, where `xev` verifies the Ctrl+C press and release.
+
 ## Assigned Linux X11 backend
 
 The Linux helper has an explicit X11 backend for a selected desktop:

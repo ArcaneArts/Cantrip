@@ -57,8 +57,9 @@ covers the current Docker build, enrollment, and volume reuse.
 - The Windows interactive input and clipboard fixtures still need a live run.
   [Windows input evidence](#307-send-foreground-input-to-shared-windows-windows)
 - GNOME and KDE portal approval remains unverified. The local Wayland
-  fallback passed keyboard delivery through Linux uinput.
-  [Wayland input evidence](#337-verify-wayland-keyboard-delivery-through-linux-uinput)
+  fallback delivered keyboard input through Linux uinput to a focused
+  XWayland window.
+  [Wayland input evidence](#338-verify-keyboard-delivery-to-a-focused-wayland-client)
 
 ## Implementation record
 
@@ -11011,3 +11012,18 @@ delivery, attachment ownership, and the clipboard with a test selection
 source. Live desktop keyboard focus and GNOME and KDE consent dialogs
 were outside this run.
 [Upstream ydotool v1.0.4](https://github.com/ReimuNotMoe/ydotool/releases/tag/v1.0.4)
+
+## 338. Verify keyboard delivery to a focused Wayland client
+
+Reference commit `186966b21aa1c3b4161fffb4ee1371d83059b56c` (#3501).
+
+The Linux fixture waits for Sway to manage its XWayland window, then places
+and focuses it on the output under test. Its opt-in focus check uses
+libinput on the fixture's own seat.
+
+In an isolated Debian 13 ARM64 container, the Rust helper dispatched a
+real Ctrl+C press and release through `ydotoold`, Linux uinput, libinput,
+Sway, and XWayland. The focused `xev` window received both events with
+Control held. The kernel and datagram modes passed separately. The
+clipboard selection still comes from the fixture, and GNOME and KDE
+portal consent remains unverified.
