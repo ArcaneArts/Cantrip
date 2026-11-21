@@ -16,11 +16,13 @@ async function verifyNormalReflow(view, reattach, eventually, checkout) {
     new URL("../../tests/reference-node-worker/package.json", import.meta.url),
   )("@xterm/headless");
   const token = randomUUID();
-  const line = "abc".repeat(47) + "界" + "e\u0301".repeat(12);
+  const anchor = "log-" + token.slice(0, 8);
+  const line = anchor + "abc".repeat(47) + "界" + "e\u0301".repeat(12);
+  const filler = Array.from({ length: 40 }, (_, i) => "scroll-" + i).join(" ");
   const cleared = "\x1b[H\x1b[2J";
   const ready = "reflow-ready-" + token;
   await view.input(
-    `/bin/stty -echo; printf '\\033[H\\033[2J\\033[31m%s\\033[m\\n%s%s\\n' '${line}' reflow-ready- '${token}'; for step in narrow wide; do IFS= read -r line; /bin/stty size > "native-reflow-$step"; done; IFS= read -r line; /bin/stty echo\r`,
+    `/bin/stty -echo; printf '\\033[H\\033[2J\\033[3J\\033[31m%s\\033[m\\n' '${line}'; printf '%s\\n' ${filler}; printf '%s%s\\n' reflow-ready- '${token}'; for step in narrow wide; do IFS= read -r line; /bin/stty size > "native-reflow-$step"; done; IFS= read -r line; /bin/stty echo\r`,
   );
   const raw = await view.read(new RegExp(ready + "\\r?\\n"));
   const start = raw.lastIndexOf(cleared);
@@ -32,15 +34,29 @@ async function verifyNormalReflow(view, reattach, eventually, checkout) {
   });
   const write = (term, output) =>
     new Promise((resolve) => term.write(output, resolve));
-  const viewport = (term) => {
+  const scrollback = (term) => {
     const buffer = term.buffer.active;
-    return Array.from({ length: term.rows }, (_, row) => {
-      const line = buffer.getLine(buffer.baseY + row);
-      return [line.translateToString(true), line.isWrapped];
-    });
+    const all = Array.from({ length: buffer.length }, (_, row) =>
+      buffer.getLine(row),
+    );
+    const first = all.findIndex((row) =>
+      row.translateToString(true).startsWith(anchor),
+    );
+    assert.ok(first >= 0 && first < buffer.baseY, "anchor is in scrollback");
+    return all
+      .slice(first)
+      .map((row) => [
+        row.translateToString(true),
+        row.isWrapped,
+        row.getCell(0).getFgColor(),
+      ]);
   };
   try {
     await write(reference, raw.slice(start));
+    assert.ok(
+      reference.buffer.active.getLine(reference.buffer.active.baseY).isWrapped,
+      "the initial line crosses from scrollback into the viewport",
+    );
     for (const [phase, cols] of [
       ["narrow", 24],
       ["wide", 113],
@@ -60,8 +76,8 @@ async function verifyNormalReflow(view, reattach, eventually, checkout) {
       const replay = new Terminal({ cols, rows: 43, allowProposedApi: true });
       try {
         await write(replay, attached.replay);
-        assert.ok(viewport(reference).some(([text]) => text.includes("界")));
-        assert.deepEqual(viewport(replay), viewport(reference));
+        assert.ok(scrollback(reference).some(([text]) => text.includes("界")));
+        assert.deepEqual(scrollback(replay), scrollback(reference));
         assert.equal(
           replay.buffer.active.cursorY,
           reference.buffer.active.cursorY,
@@ -70,8 +86,6 @@ async function verifyNormalReflow(view, reattach, eventually, checkout) {
           replay.buffer.active.cursorX,
           reference.buffer.active.cursorX,
         );
-        const first = replay.buffer.active.getLine(replay.buffer.active.baseY);
-        assert.equal(first.getCell(0).getFgColor(), 1);
       } finally {
         replay.dispose();
         await attached.close();
