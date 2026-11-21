@@ -563,7 +563,7 @@ impl Shells {
             };
             Some(
                 json!({"type":"terminal.snapshot","terminalId":key.terminal,"status":status,
-                    "data":data,"truncated":truncated,"exitCode":state.exit,
+                    "data":data,"truncated":truncated,"exitCode":state.exit.map(|exit| exit.code),
                 }),
             )
         } else {

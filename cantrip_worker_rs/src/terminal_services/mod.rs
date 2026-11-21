@@ -5,13 +5,13 @@ mod presentation;
 mod private_state;
 mod replay;
 mod service;
-pub(crate) use private_state::open_host as host_private_state;
 use crate::{encryption::Service, filesystem::Scope, logging::Logs, routing::Registry};
 use anyhow::{Context, Result, anyhow, bail};
 use cantrip_wire::{JsString, Value, value::json};
-use codex_utils_pty::TerminalSize;
+use codex_utils_pty::{ProcessHandle, TerminalSize};
 use indexmap::IndexMap;
 use presentation::Display;
+pub(crate) use private_state::open_host as host_private_state;
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -53,6 +53,38 @@ struct Desired {
     restart: u64,
     closing: bool,
 }
+
+#[derive(Clone, Copy, Default)]
+struct ProcessExit {
+    code: i32,
+    signal: Option<i32>,
+}
+
+impl ProcessExit {
+    fn observed(process: &ProcessHandle, code: Option<i32>) -> Option<Self> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            if let Some(signal) = process
+                .native_exit_status()
+                .and_then(|status| status.signal())
+            {
+                // The terminal wire reports a signal separately from its exit code.
+                return Some(Self {
+                    code: 0,
+                    signal: Some(signal),
+                });
+            }
+        }
+        code.or_else(|| process.exit_code())
+            .map(|code| Self { code, signal: None })
+    }
+
+    fn result(self) -> Value {
+        json!({"status":"exited","exitCode":self.code,"signal":self.signal})
+    }
+}
+
 struct State {
     display: Arc<Mutex<Display>>,
     size: TerminalSize,
@@ -61,7 +93,7 @@ struct State {
     generation: u64,
     restarts: u64,
     phase: &'static str,
-    exit: Option<i32>,
+    exit: Option<ProcessExit>,
 }
 
 struct ServiceIo {
@@ -114,7 +146,7 @@ impl State {
     }
     fn value(&self) -> Value {
         let (buffer, truncated) = self.display.lock().unwrap().replay.raw();
-        json!({"buffer":buffer,"truncated":truncated,"outputBoundary":self.boundary,"processGeneration":self.generation,"restartCount":self.restarts,"phase":self.phase,"exitCode":self.exit})
+        json!({"buffer":buffer,"truncated":truncated,"outputBoundary":self.boundary,"processGeneration":self.generation,"restartCount":self.restarts,"phase":self.phase,"exitCode":self.exit.map(|exit| exit.code)})
     }
     fn resize(&mut self, size: TerminalSize) {
         self.size = size;
@@ -139,13 +171,14 @@ impl State {
             .try_send(data)
             .map_err(|_| anyhow!("Terminal input could not be written."))
     }
-    fn finish(&mut self, exit: Option<i32>) {
+    fn finish(&mut self, exit: Option<ProcessExit>) {
         self.phase = "exited";
         self.exit = exit.or(self.exit);
         self.io = None;
-        self.display.lock().unwrap().finish(json!({
-            "status":"exited","exitCode":self.exit.unwrap_or(0),"signal":Value::Null,
-        }));
+        self.display
+            .lock()
+            .unwrap()
+            .finish(self.exit.unwrap_or_default().result());
     }
 }
 struct Entry {

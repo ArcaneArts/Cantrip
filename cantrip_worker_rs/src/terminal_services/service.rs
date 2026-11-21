@@ -1,4 +1,4 @@
-use super::{Desired, Resize, ServiceIo, State, output::Utf8};
+use super::{Desired, ProcessExit, Resize, ServiceIo, State, output::Utf8};
 use crate::logging::Logs;
 use cantrip_wire::{JsString, value::json};
 use codex_utils_pty::{ChildFds, spawn_pty_process_strict};
@@ -121,11 +121,7 @@ pub(super) async fn run(
                 drop(process.stdout_rx);
                 drop(process.stderr_rx);
                 process.session.terminate_and_wait().await;
-                if exit.is_none() {
-                    exit = process.session.exit_code();
-                }
-                state.lock().unwrap().exit = exit;
-                exit
+                ProcessExit::observed(&process.session, exit)
             }
         };
         let next = control.borrow().clone();
@@ -144,9 +140,10 @@ pub(super) async fn run(
             let mut state = state.lock().unwrap();
             state.phase = "restarting";
             state.exit = exited;
-            if let Some(code) = exited {
+            if let Some(exit) = exited {
+                let code = exit.code;
                 state.restarts += 1;
-                logs.event(if code==0 {"info"} else {"warn"},"Terminal service process exited; restart scheduled",json!({"event":"terminal.service.restart-scheduled","subsystem":"terminal","operation":"restart-service","reasonCode":if code==0 {"process-exited"}else{"process-failed"},"status":"retrying","terminalId":id,"exitCode":code,"durationMs":started.elapsed().as_millis() as u64,"reconnectDelayMs":restart_delay.as_millis() as u64,"attempt":state.restarts}));
+                logs.event(if code==0 {"info"} else {"warn"},"Terminal service process exited; restart scheduled",json!({"event":"terminal.service.restart-scheduled","subsystem":"terminal","operation":"restart-service","reasonCode":if code==0 {"process-exited"}else{"process-failed"},"status":"retrying","terminalId":id,"exitCode":code,"signal":exit.signal,"durationMs":started.elapsed().as_millis() as u64,"reconnectDelayMs":restart_delay.as_millis() as u64,"attempt":state.restarts}));
                 let timing = if immediate {
                     "now".to_owned()
                 } else {

@@ -10515,3 +10515,25 @@ case at the new size. Actual PTY output exited the alternate screen and
 continued at the original cursor position. The same run also exercised the
 Host relay and terminal service restart and recovery. Full xterm reflow
 and exact signal exit metadata remain open.
+
+## 317. Report Host terminal exit signals
+
+Reference commit `0f978e2a288c23ccbe4172f04e3bc3e6207853b7` (#3480).
+
+Host shell, managed console and service PTYs use their owned child's reaped
+status to report Unix signals. Signal termination uses exit code zero and
+the actual signal number, as in the archived terminal worker. An explicit
+numeric exit, including 143, stays numeric with a null signal. Service
+shutdown and restart logs carry the same status. Numeric-only backends
+continue using the process code they report.
+
+The pinned Node PTY on macOS ARM64 reported code 0 and signal 15 for
+SIGTERM and code 143 and signal 0 for an ordinary `exit 143`. The prior
+Rust worker sent code 1 and null signal for SIGTERM. The updated worker
+matched the archived wire format through both the encrypted Host relay
+and WorkerLink. The same local production Rust Core and worker smoke
+verified the service restart after SIGTERM and service recovery after a
+worker restart. The worker PATH contained no Node executable. Runtime
+validation in this cycle used macOS ARM64.
+
+[Archived Node PTY Unix exit handling](https://github.com/microsoft/node-pty/blob/v1.2.0-beta.15/src/unix/pty.cc#L224-L231)

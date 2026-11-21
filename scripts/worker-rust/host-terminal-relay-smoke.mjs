@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { constants } from "node:os";
 import path from "node:path";
 import * as crypto from "../../packages/crypto/dist/index.js";
 import { verifyLegacyDirectTerminal } from "./terminal-direct-smoke.mjs";
@@ -302,10 +303,10 @@ export async function verifyHostTerminal({
       eventually,
       checkout,
     );
-    await linkExit.input("exit 7\r");
+    await linkExit.input("exit 143\r");
     assert.deepEqual(await linkExit.relay.next(({ type }) => type === "exit"), {
       type: "exit",
-      exitCode: 7,
+      exitCode: 143,
       signal: null,
     });
     assert.equal(
@@ -317,7 +318,7 @@ export async function verifyHostTerminal({
     const exited = await second.relay.next((frame) =>
       ["exit", "error"].includes(frame.type),
     );
-    assert.deepEqual(exited, { type: "exit", exitCode: 7, signal: null });
+    assert.deepEqual(exited, { type: "exit", exitCode: 143, signal: null });
     await second.relay.close();
 
     const third = await attach();
@@ -333,10 +334,31 @@ export async function verifyHostTerminal({
       },
       "a new shell opens after an exit",
     );
+    const linkSignal = await attachWorkerLink();
+    try {
+      await linkSignal.input("exec /bin/sh -c 'kill -TERM \"$$\"'\r");
+      const signalExit = {
+        type: "exit",
+        exitCode: 0,
+        signal: constants.signals.SIGTERM,
+      };
+      assert.deepEqual(
+        await linkSignal.relay.next(({ type }) => type === "exit"),
+        signalExit,
+      );
+      assert.deepEqual(
+        await third.relay.next(({ type }) => type === "exit"),
+        signalExit,
+      );
+    } finally {
+      await linkSignal.close();
+      await third.relay.close();
+    }
+    const fourth = await attach();
     const removed = await call("DELETE", terminalPath);
     assert.equal(removed.status, 204, JSON.stringify(removed));
     deleted = true;
-    const closed = await third.relay.next((frame) =>
+    const closed = await fourth.relay.next((frame) =>
       ["exit", "error"].includes(frame.type),
     );
     assert.equal(closed.type, "exit", JSON.stringify(closed));

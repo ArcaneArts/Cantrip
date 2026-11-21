@@ -25,7 +25,7 @@ export async function verifyTerminalServices({
     "printf 'started\\n' >> native-terminal-starts; trap 'printf h >> native-terminal-hup; exit 0' HUP;";
   const command = origin
     ? setup +
-      ' printf \'%s\' "$$" > native-service-pid; printf \'private-service-%s\\n\' "$$"; while IFS= read -r line; do case "$line" in probe) /bin/stty size > native-service-size; printf \'private-service-input-%s\\n\' "$$";; finish) exit 7;; esac; done'
+      ' printf \'%s\' "$$" > native-service-pid; printf \'private-service-%s\\n\' "$$"; while IFS= read -r line; do case "$line" in probe) /bin/stty size > native-service-size; printf \'private-service-input-%s\\n\' "$$";; finish) exec /bin/sh -c \'kill -TERM "$$"\';; esac; done'
     : setup + " while :; do /bin/sleep 0.05; done";
   const stateProtection = await c.encryptSurfacePrivateState({
     ownerId,
@@ -173,9 +173,9 @@ export async function verifyTerminalServices({
       }
       await first.relay.close();
       await second.input("finish\r");
-      await second.read(/Service exited 7; restarting in 5 seconds/);
+      await second.read(/Service exited 0; restarting in 5 seconds/);
       const waiting = await attach();
-      assert.ok(waiting.replay.includes("Service exited 7"));
+      assert.ok(waiting.replay.includes("Service exited 0"));
       waiting.relay.send({ type: "resize", cols: 107, rows: 37 });
       await waitCount(3);
       startsBeforeWorkerRestart = 3;
