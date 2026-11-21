@@ -15,6 +15,27 @@ tests the helper without capturing a real desktop or requesting capture permissi
 For the short product walkthrough, sample MCP calls and native fixture commands,
 see [first-tranche acceptance](../docs/COMPUTER_USE_ACCEPTANCE.md).
 
+## macOS Host window clipboard
+
+Remote copy reads the selection that the attached window's focused control
+exports through Accessibility. The helper accepts selected text and text
+returned for a selection range or browser text-marker range. Secure fields
+and other windows are excluded. Copy leaves host focus and the system
+pasteboard in place.
+
+The framed fixture uses two background AppKit windows and requires a local
+session with Screen Recording and Accessibility access.
+
+```sh
+fixture_dir="$(mktemp -d)"
+swiftc -parse-as-library cantrip_cua/tests/fixtures/macos_clipboard.swift -o "$fixture_dir/fixture"
+CANTRIP_CUA_MACOS_CLIPBOARD_FIXTURE="$fixture_dir/fixture" \
+  cargo test --locked --manifest-path cantrip_cua/Cargo.toml --test process \
+  copies_only_the_bound_macos_selection_without_a_focus_or_clipboard_change -- --ignored
+rm "$fixture_dir/fixture"
+rmdir "$fixture_dir"
+```
+
 ## Windows Host backend
 
 Remote viewers of a shared Windows display or window use one input owner

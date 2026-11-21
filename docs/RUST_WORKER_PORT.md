@@ -10314,3 +10314,26 @@ directed agent clicks, activation, Unicode input, blocked pointer input
 under a topmost window, and clipboard copy after display-to-window handoff.
 Those fixture assertions still need an interactive Windows run.
 [Archived Windows activation implementation](https://raw.githubusercontent.com/zavora-ai/computer-use-mcp/v7.0.0/native/src/windows.rs).
+
+## 308. Read macOS window selections exposed as text ranges
+
+Reference commit `eed73bb558e1bd84b0897bb5c4146ee373c1f03b` (#3471).
+
+The selected window's focused control can supply text directly, report an
+Accessibility text range, or export an opaque text-marker range. The
+helper asks the same control to return text for that selection. It fences
+the result to the original window and focus and excludes secure controls.
+Copy leaves the system pasteboard and foreground application in place.
+Custom copy handlers that supply no readable Accessibility selection
+remain a compatibility gap.
+
+The macOS ARM64 helper build, two native Core Foundation selection tests,
+eight participant tests, and framed smoke passed. The opt-in fixture
+discovered and attached to its AppKit window without a focus or pasteboard
+change. Reading the selection remains unverified. On the local macOS
+27.0.1 system, the fixture and an independent native probe received
+application-level Accessibility references for the requested window and
+focused element. The same probe saw application-level references for
+all reported windows of the frontmost app.
+[Apple text-specific parameterized attributes](https://developer.apple.com/documentation/appkit/text-specific-parameterized-attributes)
+[WebKit selection marker implementation](https://github.com/WebKit/webkit/blob/main/Source/WebCore/accessibility/mac/WebAccessibilityObjectWrapperMac.mm).
