@@ -9519,3 +9519,27 @@ finished on its original thread and epoch, ran the setter once, consumed its
 queued claim, and retained one copy of the original input. The second
 scenario verified the fence for the replaced worker generation. The
 existing `--goal-handoff-recovery` fixture also passed with the same binaries.
+
+## 277. Run and control Chat Goals in Cantrip OS
+
+Reference commit `a0ca82654931362043dccdd1d0778da5ee81b0e5` (#3440).
+
+Prepared Cantrip OS Project Chats use the native Goal producer and the
+canonical command receipt. The producer checks Core's current execution
+placement against the captured Linux scope and uses its prepared Codex
+environment. A cold Goal read reopens the same guest home. Create, pause,
+edit, resume, clear, and queued Goal recovery use the existing managed
+thread and admission paths.
+
+The macOS ARM64 public smoke used production Rust Core in PGlite mode,
+the Rust worker, bundled Codex, an isolated Linux guest from an existing
+Docker image, and a local model fixture. It ran a native shell command in
+the Linux checkout, verified the encrypted Objective after worker restart,
+then paused, edited, resumed, completed, and cleared the Goal. The direct
+worker smoke read a cold guest Goal before preparation and rejected a
+mismatched binding generation. The guest claim recovery smoke lost an
+accepted admission reply, fenced the replaced process, and finished on
+the original thread with one copy of the queued input. Host claim recovery
+and guest Chat sync also passed.
+
+Encrypted Task Goal execution in Cantrip OS still needs native support.

@@ -1,9 +1,11 @@
 //! Execute a Core-requested Goal attempt through the canonical operation lane.
 use super::*;
 use crate::codex::{
-    managed::WeakRuntime, preparation::native::LoadedThread, private_inference::GoalAttempt,
+    guest_environment::Environment, managed::WeakRuntime, preparation::native::LoadedThread,
+    private_inference::GoalAttempt,
 };
 use crate::{mcp::bindings::Activation, metadata::Guard, native_items::concat, routing::Registry};
+use anyhow::ensure;
 use cantrip_history::projection::Work;
 use std::path::Path;
 
@@ -16,6 +18,7 @@ pub(in crate::codex) struct Runner {
     pub session: Value,
     pub bound: (JsString, Value),
     pub cwd: JsString,
+    pub environment: Option<Arc<Environment>>,
     pub model: Value,
     pub provider: Value,
     pub permission: Arc<Mutex<Value>>,
@@ -197,9 +200,14 @@ impl Autonomous {
             }
             let placement = self
                 .routing
-                .resolve(&json!({"cwd":execution["cwd"]}))
+                .resolve(&json!({
+                    "cwd":execution["cwd"],"osExecution":execution["osExecution"],
+                }))
                 .await?;
-            same_workspace(&runner.cwd, &placement["cwd"]).await?;
+            if let Some(environment) = &runner.environment {
+                environment.assert_execution(&placement["osExecution"])?;
+            }
+            runner.assert_workspace(&placement["cwd"]).await?;
             signal.check()
         }
         .await;
@@ -451,26 +459,47 @@ async fn authorize_settings(runner: &Runner, profile: &Value, settings: &Value) 
     }
     let environments = &settings["environments"];
     if !environments.is_null() {
-        if environments["environments"]
+        let selected = environments["environments"]
             .as_array()
-            .is_none_or(|list| !list.is_empty())
-        {
+            .context("Invalid native Goal environment selection.")?;
+        let matches = match (runner.environment.as_deref(), selected.as_slice()) {
+            (None, []) => true,
+            (Some(environment), [selection]) => selection == &environment.selection,
+            _ => false,
+        };
+        if !matches {
             bail!("The native Goal changes its managed placement.");
         }
-        same_workspace(&runner.cwd, &environments["legacyFallbackCwd"]).await?;
+        runner
+            .assert_workspace(&environments["legacyFallbackCwd"])
+            .await?;
     }
     if !settings["cwd"].is_null() {
-        same_workspace(&runner.cwd, &settings["cwd"]).await?;
+        runner.assert_workspace(&settings["cwd"]).await?;
     }
     for key in ["runtimeWorkspaceRoots", "profileWorkspaceRoots"] {
         if !settings[key].is_null() {
             let Some([root]) = settings[key].as_array().map(Vec::as_slice) else {
                 bail!("The native Goal changes the managed workspace roots.");
             };
-            same_workspace(&runner.cwd, root).await?;
+            runner.assert_workspace(root).await?;
         }
     }
     Ok(())
+}
+
+impl Runner {
+    async fn assert_workspace(&self, actual: &Value) -> Result<()> {
+        if self.environment.is_some() {
+            ensure!(
+                actual.as_js_string() == Some(&self.cwd),
+                "The native Goal belongs to a different Linux workspace."
+            );
+            Ok(())
+        } else {
+            same_workspace(&self.cwd, actual).await
+        }
+    }
 }
 
 pub(super) async fn same_workspace(expected: &JsString, actual: &Value) -> Result<()> {

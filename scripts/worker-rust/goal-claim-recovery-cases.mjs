@@ -61,6 +61,8 @@ export function goalClaimRecoveryCases() {
     workerId,
     keyRevision,
     labelKey,
+    repositoryKey,
+    guest,
     startWorker,
     stopWorker,
     workerDiagnostics,
@@ -73,7 +75,7 @@ export function goalClaimRecoveryCases() {
     const modelCalls = () =>
       model.requests.filter(({ method }) => method === "POST").length;
     let workspaceId;
-    for (const commitAdmission of [false, true]) {
+    for (const commitAdmission of guest ? [true] : [false, true]) {
       const title = commitAdmission
         ? "Goal with accepted child"
         : "Goal with no child";
@@ -90,6 +92,17 @@ export function goalClaimRecoveryCases() {
         labelKey,
         title,
         workspaceId,
+        beforeChat: guest
+          ? ({ projectId }) =>
+              guest.placeProject({
+                call,
+                ownerId,
+                workerId,
+                keyRevision,
+                repositoryKey,
+                projectId,
+              })
+          : undefined,
       });
       workspaceId = selectedWorkspace;
       const example = {
@@ -230,6 +243,7 @@ export function goalClaimRecoveryCases() {
           JSON.stringify({
             suite: "native-goal-claim-recovery",
             acceptedBeforeRestart: commitAdmission,
+            guest: Boolean(guest),
             passed: true,
           }),
         );

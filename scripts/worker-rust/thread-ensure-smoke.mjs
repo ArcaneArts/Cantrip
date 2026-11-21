@@ -3414,6 +3414,28 @@ async function verifyGuestThread() {
     const wrongCwd = await ensure({ ...observation, cwd: root });
     assert.equal(wrongCwd.ok, false);
     assert.match(wrongCwd.error.message, /captured Linux placement/);
+    const goal = {
+      ...observation,
+      type: "chat.goal.get",
+      permissionProfileId: ":workspace",
+      protectObjective: true,
+    };
+    const wrongPlacement = await ensure({
+      ...goal,
+      osExecution: {
+        ...osExecution,
+        scope: { ...scope, bindingGeneration: randomUUID() },
+      },
+    });
+    assert.equal(wrongPlacement.ok, false);
+    assert.match(
+      wrongPlacement.error.message,
+      /captured a different OS placement/,
+    );
+    assert.deepEqual(await expectSuccess(goal), {
+      kind: "chat-encrypted",
+      goal: null,
+    });
     assert.deepEqual(await expectSuccess(observation), {
       threadId,
       status: "idle",

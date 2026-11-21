@@ -3,15 +3,13 @@ use crate::{chat_content::Scope, codex::preparation::command::LiveThread, http::
 
 impl Goals {
     pub(crate) async fn get(&self, command: &Value) -> Result<Value> {
-        if command["osExecution"].is_object() {
-            bail!("Native observation of an OS-hosted Goal is unavailable.");
+        if command["taskContext"].is_object() && command["osExecution"].is_object() {
+            bail!("Native observation of an OS-hosted Task Goal is unavailable.");
         }
         let bound = self.encryption.bound_identity()?;
         let thread = target_thread(command)?;
         let LiveThread { runtime, .. } = self.metadata_thread(command, &bound, thread).await?;
-        if command["taskContext"].is_object() {
-            self.watch_project(command, &bound, thread, &runtime);
-        }
+        self.watch_project(command, &bound, thread, &runtime);
         let goal = verify_goal(
             thread,
             &rpc(&runtime, "thread/goal/get", json!({"threadId":thread})).await?,
@@ -39,7 +37,11 @@ impl Goals {
         let chat = command["chatId"]
             .as_js_string()
             .context("Missing Goal chat.")?;
-        match self.preparation.live_thread(chat, thread, bound) {
+        let live = self
+            .preparation
+            .live_thread(chat, thread, bound)
+            .filter(|_| !command["osExecution"].is_object());
+        match live {
             Some(live) => Ok(live),
             None => Ok(LiveThread {
                 runtime: self.observation.open_runtime(command, bound).await?,

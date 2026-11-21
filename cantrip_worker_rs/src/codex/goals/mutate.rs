@@ -12,8 +12,10 @@ use cantrip_history::{canonical::open_message, content::Encryption};
 
 impl Goals {
     pub(crate) async fn update(&self, command: &Value, turns: &Turns) -> Result<Value> {
-        if command["osExecution"].is_object() || command["session"]["osExecution"].is_object() {
-            bail!("Native control of an OS-hosted Goal is unavailable.");
+        if command["taskContext"].is_object()
+            && (command["osExecution"].is_object() || command["session"]["osExecution"].is_object())
+        {
+            bail!("Native control of an OS-hosted Task Goal is unavailable.");
         }
         let bound = self.encryption.bound_identity()?;
         let thread = target_thread(command)?;
@@ -32,9 +34,6 @@ impl Goals {
     }
 
     pub(crate) async fn clear(&self, command: &Value, turns: &Turns) -> Result<Value> {
-        if command["session"]["osExecution"].is_object() {
-            bail!("Native control of an OS-hosted Goal is unavailable.");
-        }
         let bound = self.encryption.bound_identity()?;
         let thread = target_thread(command)?;
         let value = self
@@ -62,6 +61,9 @@ impl Goals {
         if managed && command["session"]["chatId"] != command["chatId"] {
             bail!("The Goal mutation belongs to another managed conversation.");
         }
+        if !managed && command["osExecution"].is_object() {
+            bail!("An OS-hosted Goal requires its managed session.");
+        }
         let LiveThread { runtime, session } = if command["status"] == "active"
             && command["taskContext"].is_object()
             && command["taskRuntime"].is_object()
@@ -71,10 +73,10 @@ impl Goals {
                 session: managed.then(|| native_session(command, &prepared.runtime, thread)),
                 runtime: prepared.runtime,
             }
-        } else if managed && command["status"] == "active" {
+        } else if managed && (command["taskContext"].is_null() || command["status"] == "active") {
             let (prepared, owner) = self.chat_goal_thread(command, bound).await?;
             if &prepared != thread {
-                bail!("The native Goal resume belongs to a different thread.");
+                bail!("The native Goal mutation belongs to a different thread.");
             }
             owner
         } else {
