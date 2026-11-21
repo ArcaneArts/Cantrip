@@ -778,8 +778,6 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     fs::create_dir_all(&logs)
         .map_err(|error| format!("Could not create {}: {error}", logs.display()))?;
 
-    let node_name = if cfg!(windows) { "node.exe" } else { "node" };
-    let node = resources.join(node_name);
     let server_reservation = reserve_local_listener("server")?;
     let port = reserved_port(&server_reservation, "server")?;
     drop(server_reservation);
@@ -793,38 +791,24 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     let server_directory = resources.join("server");
     let worker_directory = resources.join("worker");
     let worker = worker_command(&worker_directory);
-    let launch = server_command(&node, &server_directory)?;
-    if let Some(command) = launch.preparation {
-        let mut preparation = spawn_service(
-            command,
-            &server_environment(data.as_path(), &logs, port, &worker_token),
-            true,
-            true,
-        )?;
-        capture_server_output(app.handle().clone(), &mut preparation);
-        let completed = desktop_services::wait_for_preparation(&mut preparation, || {
-            app.state::<DesktopExitState>()
-                .approved
-                .load(Ordering::SeqCst)
-        })?;
-        if !completed {
-            return Ok(ManagedRuntime {
-                children: Mutex::new(Vec::new()),
-                local_worker: None,
-                server_url,
-            });
-        }
+    let launch = server_command(&server_directory)?;
+    let server_env = server_environment(data.as_path(), &logs, port, &worker_token);
+    let mut preparation = spawn_service(launch.preparation, &server_env, true, true)?;
+    capture_server_output(app.handle().clone(), &mut preparation);
+    let completed = desktop_services::wait_for_preparation(&mut preparation, || {
+        app.state::<DesktopExitState>()
+            .approved
+            .load(Ordering::SeqCst)
+    })?;
+    if !completed {
+        return Ok(ManagedRuntime {
+            children: Mutex::new(Vec::new()),
+            local_worker: None,
+            server_url,
+        });
     }
-    let native_server = launch.native;
-    let mut server = spawn_service(
-        launch.command,
-        &server_environment(data.as_path(), &logs, port, &worker_token),
-        native_server,
-        native_server,
-    )?;
-    if native_server {
-        capture_server_output(app.handle().clone(), &mut server);
-    }
+    let mut server = spawn_service(launch.command, &server_env, true, true)?;
+    capture_server_output(app.handle().clone(), &mut server);
     service_logs.runtime_event(
         "info",
         "Bundled Cantrip Server process started",

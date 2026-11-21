@@ -21,22 +21,16 @@ export async function makeDesktopServerFilesWritable(directory) {
 
 // This is launcher configuration, not a runtime capability probe. The desktop
 // attempts the configured executable and reports the actual spawn/start error.
-export async function configureDesktopServer(
-  directory,
-  { nativeLegacyUpgrade = false } = {},
-) {
-  const configuration = { runtime: "rust" };
+export async function configureDesktopServer(directory) {
   const manifest = JSON.parse(
     await readFile(path.join(directory, "native-server.json"), "utf8"),
   );
-  configuration.postgresBin = manifest.postgres.bin;
-  if (manifest.legacyPostgresBin) {
-    configuration.legacyPostgresBin = manifest.legacyPostgresBin;
-  } else if (nativeLegacyUpgrade) {
-    configuration.legacyPostgresBin = buildLegacyPostgres(directory);
-  } else {
-    configuration.profileConverter = "../profile-converter/dist/index.mjs";
-  }
+  const configuration = {
+    runtime: "rust",
+    postgresBin: manifest.postgres.bin,
+    legacyPostgresBin:
+      manifest.legacyPostgresBin ?? buildLegacyPostgres(directory),
+  };
   await makeDesktopServerFilesWritable(directory);
   await writeFile(
     path.join(directory, "desktop-server.json"),

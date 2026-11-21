@@ -1,5 +1,5 @@
-//! Commands used by the packaged desktop supervisor. Runtime selection is
-//! explicit package configuration; spawning reports actual executable errors.
+//! Commands used by the packaged desktop supervisor. Package configuration
+//! supplies database asset paths. Spawning reports actual executable errors.
 use std::{
     fs,
     net::{SocketAddr, TcpStream},
@@ -21,8 +21,6 @@ enum ServerRuntime {
         postgres_bin: Option<std::path::PathBuf>,
         #[serde(rename = "legacyPostgresBin")]
         legacy_postgres_bin: Option<std::path::PathBuf>,
-        #[serde(rename = "profileConverter")]
-        profile_converter: Option<std::path::PathBuf>,
     },
 }
 
@@ -41,89 +39,71 @@ pub fn worker_command(directory: &Path) -> Command {
 
 pub struct ServerLaunch {
     pub command: Command,
-    pub preparation: Option<Command>,
-    pub native: bool,
+    pub preparation: Command,
 }
 
-pub fn server_command(node: &Path, directory: &Path) -> Result<ServerLaunch, String> {
+pub fn server_command(directory: &Path) -> Result<ServerLaunch, String> {
     let file = directory.join("desktop-server.json");
-    let configuration = match fs::read(&file) {
+    let ServerRuntime::Rust {
+        postgres_bin,
+        legacy_postgres_bin,
+    } = match fs::read(&file) {
         Ok(bytes) => serde_json::from_slice(&bytes)
             .map_err(|error| format!("Could not read {}: {error}", file.display()))?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => ServerRuntime::Rust {
             postgres_bin: None,
             legacy_postgres_bin: None,
-            profile_converter: Some("../profile-converter/dist/index.mjs".into()),
         },
         Err(error) => return Err(format!("Could not read {}: {error}", file.display())),
     };
-    let mut preparation = None;
-    let mut command = match configuration {
-        ServerRuntime::Rust {
-            postgres_bin,
-            legacy_postgres_bin,
-            profile_converter,
-        } => {
-            let native_command = || -> Result<Command, String> {
-                let mut command = Command::new(directory.join("bin").join(if cfg!(windows) {
-                    "cantrip-server.exe"
-                } else {
-                    "cantrip-server"
-                }));
-                command
-                    .current_dir(directory)
-                    .arg("--env-file-if-exists=.env")
-                    .arg("--bundled-pglite-runtime-dir")
-                    .arg(directory.join("pglite"))
-                    .arg("--shutdown-on-stdin-close")
-                    .stdin(Stdio::piped());
-                if let Some(bin) = &postgres_bin {
-                    command
-                        .arg("--bundled-postgres-bin-dir")
-                        .arg(directory.join(bin));
-                }
-                #[cfg(target_os = "linux")]
-                {
-                    let mut paths = vec![directory.join("lib")];
-                    if let Some(current) = std::env::var_os("LD_LIBRARY_PATH") {
-                        paths.extend(std::env::split_paths(&current));
-                    }
-                    command.env(
-                        "LD_LIBRARY_PATH",
-                        std::env::join_paths(paths).map_err(|error| error.to_string())?,
-                    );
-                }
-                Ok(command)
-            };
-            if let Some(bin) = legacy_postgres_bin {
-                let mut command = native_command()?;
-                command
-                    .args([
-                        "--migrate-only",
-                        "--upgrade-profile",
-                        "--legacy-postgres-bin-dir",
-                    ])
-                    .arg(directory.join(bin));
-                configure_desktop_child(&mut command);
-                preparation = Some(command);
-            } else if let Some(converter) = profile_converter {
-                let mut command = native_command()?;
-                command
-                    .args(["--migrate-only", "--upgrade-profile", "--legacy-node"])
-                    .arg(node)
-                    .arg("--legacy-profile-converter")
-                    .arg(directory.join(converter));
-                configure_desktop_child(&mut command);
-                preparation = Some(command);
-            }
-            native_command()?
+    let native_command = || -> Result<Command, String> {
+        let mut command = Command::new(directory.join("bin").join(if cfg!(windows) {
+            "cantrip-server.exe"
+        } else {
+            "cantrip-server"
+        }));
+        command
+            .current_dir(directory)
+            .arg("--env-file-if-exists=.env")
+            .arg("--bundled-pglite-runtime-dir")
+            .arg(directory.join("pglite"))
+            .arg("--shutdown-on-stdin-close")
+            .stdin(Stdio::piped());
+        if let Some(bin) = &postgres_bin {
+            command
+                .arg("--bundled-postgres-bin-dir")
+                .arg(directory.join(bin));
         }
+        #[cfg(target_os = "linux")]
+        {
+            let mut paths = vec![directory.join("lib")];
+            if let Some(current) = std::env::var_os("LD_LIBRARY_PATH") {
+                paths.extend(std::env::split_paths(&current));
+            }
+            command.env(
+                "LD_LIBRARY_PATH",
+                std::env::join_paths(paths).map_err(|error| error.to_string())?,
+            );
+        }
+        Ok(command)
     };
-    configure_desktop_child(&mut command);
+    let mut preparation = native_command()?;
+    preparation
+        .args([
+            "--migrate-only",
+            "--upgrade-profile",
+            "--legacy-postgres-bin-dir",
+        ])
+        .arg(
+            directory.join(
+                legacy_postgres_bin
+                    .as_deref()
+                    .unwrap_or(Path::new("legacy-postgres/bin")),
+            ),
+        );
     Ok(ServerLaunch {
-        command,
+        command: native_command()?,
         preparation,
-        native: true,
     })
 }
 
@@ -407,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_native_server_attempts_the_executable_without_node_fallback() {
+    fn configured_server_prepares_with_native_compatibility_tools() {
         let directory = std::env::temp_dir().join(format!(
             "cantrip-desktop-command-{}-{}",
             std::process::id(),
@@ -419,14 +399,26 @@ mod tests {
         fs::create_dir(&directory).unwrap();
         fs::write(
             directory.join("desktop-server.json"),
-            r#"{"runtime":"rust","postgresBin":"postgres/bin"}"#,
+            r#"{"runtime":"rust","postgresBin":"postgres/bin","legacyPostgresBin":"tools/bin"}"#,
         )
         .unwrap();
-        let launch = server_command(Path::new("unused-node"), &directory).unwrap();
-        assert!(launch.native);
-        let error = spawn_service(launch.command, &[], false, false).unwrap_err();
+        let launch = server_command(&directory).unwrap();
+        assert_eq!(
+            launch.preparation.get_program(),
+            launch.command.get_program()
+        );
+        let args: Vec<_> = launch.preparation.get_args().collect();
+        assert_eq!(
+            &args[args.len() - 4..],
+            &[
+                std::ffi::OsStr::new("--migrate-only"),
+                std::ffi::OsStr::new("--upgrade-profile"),
+                std::ffi::OsStr::new("--legacy-postgres-bin-dir"),
+                directory.join("tools/bin").as_os_str(),
+            ]
+        );
+        let error = spawn_service(launch.preparation, &[], false, false).unwrap_err();
         assert!(error.contains("cantrip-server"), "{error}");
-        assert!(!error.contains("unused-node"), "{error}");
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -463,10 +455,14 @@ mod tests {
                 .as_nanos()
         ));
         fs::create_dir(&directory).unwrap();
-        let launch = server_command(Path::new("unused-node"), &directory).unwrap();
+        let launch = server_command(&directory).unwrap();
+        let default_legacy_bin = directory.join("legacy-postgres/bin");
+        assert_eq!(
+            launch.preparation.get_args().last(),
+            Some(default_legacy_bin.as_os_str())
+        );
         let error = spawn_service(launch.command, &[], false, false).unwrap_err();
         assert!(error.contains("cantrip-server"), "{error}");
-        assert!(!error.contains("unused-node"), "{error}");
         fs::remove_dir_all(directory).unwrap();
     }
 }
