@@ -206,8 +206,13 @@ impl Participants {
                         CuaError::new(ErrorCode::Capacity, "Interaction handles exhausted.")
                     })?;
                 let native_id = format!("remote\0{handle}");
-                if target.kind == TargetKind::Monitor {
-                    backend.open_remote_monitor(&binding, &native_id, &target, cancel)?;
+                match target.kind {
+                    TargetKind::Monitor => {
+                        backend.open_remote_monitor(&binding, &native_id, &target, cancel)?;
+                    }
+                    TargetKind::Window => {
+                        backend.open_remote_window(&native_id, &target, cancel)?
+                    }
                 }
                 self.next_handle = handle;
                 let cursor = CursorState {

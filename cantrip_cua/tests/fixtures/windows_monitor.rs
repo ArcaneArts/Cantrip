@@ -144,6 +144,14 @@ fn full_display_routes_input_copies_text_and_releases_control() {
     let origin_x = monitor["bounds"]["x"].as_f64().unwrap() as i32;
     let origin_y = monitor["bounds"]["y"].as_f64().unwrap() as i32;
     let fixture = Fixture::start(origin_x + 50, origin_y + 50);
+    let (inventory, _) = child.call(json!({"operation":"targets.list"}));
+    let window_id = format!("windows-window-{}", fixture.window as u32);
+    let window = inventory["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|target| target["id"] == window_id)
+        .unwrap();
     let mut editor = RECT::default();
     assert_ne!(
         unsafe { GetWindowRect(fixture.editor as HWND, &mut editor) },
@@ -164,6 +172,13 @@ fn full_display_routes_input_copies_text_and_releases_control() {
     };
     let active = child.call(open(&owner)).0["handle"].clone();
     let request = child.send(open(&waiting));
+    assert!(
+        matches!(child.response(request).0, Outcome::Error { error } if error.code == ErrorCode::OwnershipMismatch)
+    );
+    let open_window = operation(json!({
+        "type":"open","binding":waiting,"targetId":window["id"],"targetGeneration":window["generation"]
+    }));
+    let request = child.send(open_window.clone());
     assert!(
         matches!(child.response(request).0, Outcome::Error { error } if error.code == ErrorCode::OwnershipMismatch)
     );
@@ -229,5 +244,17 @@ fn full_display_routes_input_copies_text_and_releases_control() {
         };
         String::from_utf16_lossy(&text[..written as usize]) == "typed 🌙"
     });
+    child.call(operation(json!({"type":"closeBinding","binding":waiting})));
+    let window_participant = child.call(open_window).0["handle"].clone();
+    let request = child.send(open(&owner));
+    assert!(
+        matches!(child.response(request).0, Outcome::Error { error } if error.code == ErrorCode::OwnershipMismatch)
+    );
+    unsafe { SendMessageW(fixture.editor as HWND, EM_SETSEL, 0, -1) };
+    let (copy, _) = child.call(operation(json!({
+        "type":"clipboardCopy","binding":waiting,"handle":window_participant,"sequence":2
+    })));
+    assert_eq!(copy["text"], "typed 🌙");
+    child.call(operation(json!({"type":"closeBinding","binding":waiting})));
     child.stop(true);
 }

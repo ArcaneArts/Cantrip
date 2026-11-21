@@ -1,20 +1,27 @@
 use super::{
     failure,
     input::{Control, Packet as InputPacket, modifier_key, virtual_key},
+    lifetime::{Shared, verify_window},
     stale,
-    targets::{Monitor, PixelCoordinates},
+    targets::{Monitor, PixelCoordinates, Window},
 };
 use crate::{
+    cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
-    target::Point,
+    target::{Bounds, Point},
 };
 use cantrip_interaction::{
     host::{Delivery, PostFailure, Prepared},
     input::{InputEvent, Modifier, MouseButton, TextInput},
 };
-use std::mem::size_of;
+use std::{
+    mem::size_of,
+    time::{Duration, Instant},
+};
 use windows_sys::Win32::{
+    Foundation::{HWND, POINT},
     Graphics::Gdi::{HMONITOR, MONITOR_DEFAULTTONULL, MonitorFromWindow},
+    System::Threading::AttachThreadInput,
     UI::{Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
 };
 
@@ -36,10 +43,11 @@ pub(super) struct Packet {
     point: Option<Point>,
     events: Vec<Event>,
     dispatch: Dispatch,
+    may_activate: bool,
 }
 
 pub(super) fn prepare<'a>(
-    monitor: &Monitor,
+    bounds: &Bounds,
     event: &InputEvent,
     held: impl Iterator<Item = (&'a Control, &'a InputPacket)>,
 ) -> Result<Prepared<Control, InputPacket>> {
@@ -58,7 +66,7 @@ pub(super) fn prepare<'a>(
             .collect()
     };
     let point = |point: Point| -> Result<Option<Point>> {
-        monitor.target.bounds.to_global(point)?;
+        bounds.to_global(point)?;
         Ok(Some(point))
     };
     let packet = |point, events, dispatch| {
@@ -66,6 +74,7 @@ pub(super) fn prepare<'a>(
             point,
             events,
             dispatch,
+            may_activate: holds.is_empty(),
         })
     };
     let action = |point, events| Prepared::Action {
@@ -170,35 +179,89 @@ pub(super) fn prepare<'a>(
         ),
         _ => {
             return Err(failure(
-                "This Windows display input operation is unavailable.",
+                "This Windows desktop input operation is unavailable.",
             ));
         }
     })
 }
 
-pub(super) fn post(
+pub(super) fn post_monitor(
     monitor: &Monitor,
     packet: &Packet,
 ) -> std::result::Result<Delivery, PostFailure<CuaError>> {
+    let _coordinates = PixelCoordinates::enter();
+    if packet.point.is_none() && !packet.events.is_empty() && packet.dispatch != Dispatch::Release {
+        monitor.verify().map_err(PostFailure::NotDispatched)?;
+        monitor_focus(monitor).map_err(PostFailure::NotDispatched)?;
+    }
+    let motion = packet
+        .point
+        .map(|point| {
+            monitor.verify()?;
+            absolute_motion(monitor.target.bounds.to_global(point)?)
+        })
+        .transpose();
+    dispatch_input(packet, motion)
+}
+
+pub(super) fn post_window(
+    registry: &Shared,
+    window: &Window,
+    packet: &Packet,
+    cancel: &Cancellation,
+) -> std::result::Result<Delivery, PostFailure<CuaError>> {
+    let _coordinates = PixelCoordinates::enter();
+    if packet.dispatch == Dispatch::Release {
+        // Release recorded holds after focus loss without reactivating the
+        // window or moving the pointer into another application.
+        let motion = packet
+            .point
+            .map(|point| {
+                verify_window(registry, window)?;
+                let info = focused_window_info(window)?;
+                window_motion(window, point, &info)
+            })
+            .transpose();
+        return dispatch_input(packet, motion);
+    }
     if packet.point.is_none() && packet.events.is_empty() {
         return Ok(Delivery::DispatchedUnverified);
     }
-    let _coordinates = PixelCoordinates::enter();
+
+    let post = || {
+        cancel.check()?;
+        verify_window(registry, window)?;
+        let info = match focused_window_info(window) {
+            Ok(info) => info,
+            Err(_) if packet.may_activate => {
+                let info = focus_window(window, cancel)?;
+                verify_window(registry, window)?;
+                info
+            }
+            Err(error) => return Err(error),
+        };
+        let motion = packet
+            .point
+            .map(|point| window_motion(window, point, &info))
+            .transpose()?;
+        cancel.check()?;
+        if !window_is_focused(window) {
+            return Err(window_focus_denied());
+        }
+        Ok(motion)
+    };
+    let motion = post().map_err(PostFailure::NotDispatched)?;
+    dispatch_input(packet, Ok(motion))
+}
+
+fn dispatch_input(
+    packet: &Packet,
+    motion: Result<Option<INPUT>>,
+) -> std::result::Result<Delivery, PostFailure<CuaError>> {
     let mut inputs = Vec::with_capacity(packet.events.len() + usize::from(packet.point.is_some()));
-    let releasing = packet.dispatch == Dispatch::Release;
-    let motion = packet
-        .point
-        .map(|point| move_input(monitor, point))
-        .transpose();
-    if releasing {
-        // The button still needs to go up if the old coordinates no longer
-        // describe a current display. Cleanup owns only the recorded releases.
+    if packet.dispatch == Dispatch::Release {
         inputs.extend(motion.ok().flatten());
     } else {
-        if packet.point.is_none() {
-            monitor.verify().map_err(PostFailure::NotDispatched)?;
-            monitor_focus(monitor).map_err(PostFailure::NotDispatched)?;
-        }
         inputs.extend(motion.map_err(PostFailure::NotDispatched)?);
     }
     let motion_count = inputs.len();
@@ -210,7 +273,7 @@ pub(super) fn post(
     if sent == 0 {
         return Err(PostFailure::NotDispatched(CuaError::new(
             ErrorCode::InputFailed,
-            "Windows declined display input.",
+            "Windows declined desktop input.",
         )));
     }
 
@@ -233,8 +296,131 @@ pub(super) fn post(
     }
     Err(PostFailure::Uncertain(CuaError::new(
         ErrorCode::InputUnknown,
-        "Windows accepted only part of the display input.",
+        "Windows accepted only part of the desktop input.",
     )))
+}
+
+pub(super) fn window_is_focused(window: &Window) -> bool {
+    let hwnd = window.identity.hwnd as HWND;
+    unsafe { GetForegroundWindow() == hwnd && IsIconic(hwnd) == 0 }
+}
+
+fn focus_window(window: &Window, cancel: &Cancellation) -> Result<GUITHREADINFO> {
+    let hwnd = window.identity.hwnd as HWND;
+    if unsafe { IsIconic(hwnd) } != 0 && unsafe { ShowWindowAsync(hwnd, SW_RESTORE) } == 0 {
+        return Err(window_focus_denied());
+    }
+    if !window_is_focused(window)
+        && unsafe { SetForegroundWindow(hwnd) } == 0
+        && !window_is_focused(window)
+    {
+        let foreground = unsafe { GetForegroundWindow() };
+        let thread = unsafe { GetWindowThreadProcessId(foreground, std::ptr::null_mut()) };
+        let joined = (thread != 0 && thread != window.identity.thread)
+            .then(|| InputThreads::join(thread, window.identity.thread))
+            .transpose()?;
+        if unsafe { GetForegroundWindow() } == foreground {
+            cancel.check()?;
+            window.verify_identity()?;
+            unsafe {
+                SetForegroundWindow(hwnd);
+                BringWindowToTop(hwnd);
+            }
+        }
+        drop(joined);
+    }
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        cancel.check()?;
+        if let Ok(info) = focused_window_info(window) {
+            return Ok(info);
+        }
+        if Instant::now() >= deadline {
+            return Err(window_focus_denied());
+        }
+        cancel.wait_cancelled(Duration::from_millis(15));
+    }
+}
+
+struct InputThreads {
+    foreground: u32,
+    target: u32,
+}
+
+impl InputThreads {
+    fn join(foreground: u32, target: u32) -> Result<Self> {
+        if unsafe { AttachThreadInput(foreground, target, 1) } == 0 {
+            return Err(window_focus_denied());
+        }
+        Ok(Self { foreground, target })
+    }
+}
+
+impl Drop for InputThreads {
+    fn drop(&mut self) {
+        unsafe { AttachThreadInput(self.foreground, self.target, 0) };
+    }
+}
+
+fn focused_window_info(window: &Window) -> Result<GUITHREADINFO> {
+    let mut info = GUITHREADINFO {
+        cbSize: size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetGUIThreadInfo(0, &mut info) } == 0
+        || info.hwndActive != window.identity.hwnd as HWND
+        || (!info.hwndFocus.is_null() && window.recipient_thread(info.hwndFocus).is_none())
+        || !window_is_focused(window)
+    {
+        return Err(window_focus_denied());
+    }
+    Ok(info)
+}
+
+fn window_motion(window: &Window, local: Point, focused: &GUITHREADINFO) -> Result<INPUT> {
+    let mut info = WINDOWINFO {
+        cbSize: size_of::<WINDOWINFO>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetWindowInfo(window.identity.hwnd as HWND, &mut info) } == 0 {
+        return Err(stale());
+    }
+    let rect = info.rcClient;
+    let bounds = &window.target.bounds;
+    if bounds.width != f64::from(rect.right - rect.left)
+        || bounds.height != f64::from(rect.bottom - rect.top)
+    {
+        return Err(stale());
+    }
+    let current = Bounds {
+        x: f64::from(rect.left),
+        y: f64::from(rect.top),
+        ..*bounds
+    };
+    let global = current.to_global(local)?;
+    let point = POINT {
+        x: global.x.floor() as i32,
+        y: global.y.floor() as i32,
+    };
+    if window
+        .recipient_thread(unsafe { WindowFromPoint(point) })
+        .is_none()
+        || (!focused.hwndCapture.is_null()
+            && window.recipient_thread(focused.hwndCapture).is_none())
+    {
+        return Err(CuaError::new(
+            ErrorCode::PermissionDenied,
+            "The pointer point is covered by another Windows application.",
+        ));
+    }
+    absolute_motion(global)
+}
+
+fn window_focus_denied() -> CuaError {
+    CuaError::new(
+        ErrorCode::PermissionDenied,
+        "Windows did not grant foreground input to the selected window.",
+    )
 }
 
 pub(super) fn monitor_focus(monitor: &Monitor) -> Result<usize> {
@@ -262,9 +448,7 @@ pub(super) fn monitor_focus(monitor: &Monitor) -> Result<usize> {
     Ok(foreground as usize)
 }
 
-fn move_input(monitor: &Monitor, point: Point) -> Result<INPUT> {
-    monitor.verify()?;
-    let global = monitor.target.bounds.to_global(point)?;
+fn absolute_motion(global: Point) -> Result<INPUT> {
     let x = normalized(
         global.x.floor() as i32,
         unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) },

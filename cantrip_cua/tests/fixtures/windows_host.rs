@@ -1,4 +1,4 @@
-use super::Process;
+use super::{Process, binding};
 use cantrip_cua::{error::ErrorCode, protocol::Outcome};
 use serde_json::{Value, json};
 use std::{process::Command, ptr::null_mut, sync::mpsc, time::Duration};
@@ -11,6 +11,7 @@ use windows_sys::Win32::{
     System::LibraryLoader::GetModuleHandleW,
     UI::{
         HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext},
+        Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_PACKET},
         WindowsAndMessaging::*,
     },
 };
@@ -23,7 +24,7 @@ thread_local! {
 
 #[test]
 #[ignore = "requires a disposable interactive Windows desktop"]
-fn selected_window_pixels_and_input_are_isolated() {
+fn selected_window_pixels_and_foreground_input_are_isolated() {
     let (events, received) = mpsc::channel();
     let (windows, handles) = mpsc::sync_channel(1);
     let desktop = std::thread::spawn(move || unsafe {
@@ -65,14 +66,16 @@ fn selected_window_pixels_and_input_are_isolated() {
             SetWindowPos(second, HWND_TOP, 80, 55, 160, 120, SWP_NOACTIVATE),
             0
         );
+        assert_ne!(SetForegroundWindow(second), 0);
         windows.send((first as usize, second as usize)).unwrap();
         let mut message = MSG::default();
         while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {
+            TranslateMessage(&message);
             DispatchMessageW(&message);
         }
     });
     let (first, second) = handles.recv_timeout(Duration::from_secs(8)).unwrap();
-    let focus = unsafe { GetForegroundWindow() };
+    assert_eq!(unsafe { GetForegroundWindow() }, second as HWND);
     let cursor = cursor_position();
     let binary = std::env::var_os("CANTRIP_CUA_WINDOWS_TEST_BINARY")
         .unwrap_or_else(|| env!("CARGO_BIN_EXE_cantrip-cua").into());
@@ -108,46 +111,105 @@ fn selected_window_pixels_and_input_are_isolated() {
     let overlap = (70 * 160 + 90) * 4;
     assert_eq!(&raster[overlap..overlap + 4], &[0, 0, 255, 255]);
 
+    let agent = binding();
+    child.call(json!({"operation":"target.attach","binding":agent,"targetId":selected["id"],"targetGeneration":selected["generation"]}));
+    child.call(json!({"operation":"input.click","binding":agent,"targetId":selected["id"],"targetGeneration":selected["generation"],"position":{"x":90,"y":70}}));
+    for message in [WM_LBUTTONDOWN, WM_LBUTTONUP] {
+        assert_eq!(
+            received.recv_timeout(Duration::from_secs(4)).unwrap(),
+            (
+                first,
+                message,
+                if message == WM_LBUTTONDOWN { 1 } else { 0 },
+                90 | (70 << 16)
+            )
+        );
+    }
+    child.call(json!({"operation":"session.close","binding":agent}));
+    assert_eq!(unsafe { GetForegroundWindow() }, second as HWND);
+    assert_eq!(cursor_position(), cursor);
+
+    assert_ne!(unsafe { AllowSetForegroundWindow(child.child.id()) }, 0);
     let (participant, _) = child.call(open("interaction.request", selected));
+    assert_eq!(unsafe { GetForegroundWindow() }, second as HWND);
     let send = |child: &mut Process, sequence, event| {
         child.call(json!({"operation":"interaction.request","request":{"type":"input","binding":scope,"handle":participant["handle"],"sequence":sequence,"event":event}}));
     };
     send(
         &mut child,
         1,
+        json!({"type":"pointerMove","data":{"point":{"x":90,"y":70},"modifiers":[]}}),
+    );
+    assert_eq!(unsafe { GetForegroundWindow() }, second as HWND);
+    assert_eq!(cursor_position(), cursor);
+    send(
+        &mut child,
+        2,
         json!({"type":"pointerDown","data":{"point":{"x":90,"y":70},"button":"left","modifiers":[]}}),
     );
     send(
         &mut child,
-        2,
+        3,
         json!({"type":"keyDown","data":{"key":"a","modifiers":[],"repeat":false}}),
     );
     send(
         &mut child,
-        3,
+        4,
         json!({"type":"text","data":{"type":"commit","data":"λ"}}),
     );
     child.call(json!({"operation":"interaction.request","request":{"type":"close","binding":scope,"handle":participant["handle"]}}));
 
     let mut delivered = Vec::new();
-    for _ in 0..5 {
+    for _ in 0..7 {
         let (hwnd, kind, word, long) = received.recv_timeout(Duration::from_secs(4)).unwrap();
         assert_eq!(hwnd, first);
         match kind {
             WM_LBUTTONDOWN | WM_LBUTTONUP => assert_eq!(long, 90 | (70 << 16)),
-            WM_KEYDOWN | WM_KEYUP => assert_eq!(word, usize::from(b'A')),
+            WM_KEYDOWN | WM_KEYUP => {
+                assert!(word == usize::from(b'A') || word == usize::from(VK_PACKET));
+            }
             WM_CHAR => assert_eq!(word, 'λ' as usize),
             _ => unreachable!(),
         }
-        delivered.push(kind);
+        if word != usize::from(VK_PACKET) {
+            delivered.push(kind);
+            if delivered.len() == 5 {
+                break;
+            }
+        }
     }
     delivered.sort_unstable();
     assert_eq!(
         delivered,
         [WM_KEYDOWN, WM_KEYUP, WM_CHAR, WM_LBUTTONDOWN, WM_LBUTTONUP]
     );
-    assert_eq!(unsafe { GetForegroundWindow() }, focus);
-    assert_eq!(cursor_position(), cursor);
+    assert_eq!(unsafe { GetForegroundWindow() }, first as HWND);
+    assert_eq!(cursor_position(), (110, 100));
+
+    assert_ne!(
+        unsafe {
+            SetWindowPos(
+                second as HWND,
+                HWND_TOPMOST,
+                80,
+                55,
+                160,
+                120,
+                SWP_NOACTIVATE,
+            )
+        },
+        0
+    );
+    let (participant, _) = child.call(open("interaction.request", selected));
+    let denied = child.send(json!({"operation":"interaction.request","request":{
+        "type":"input","binding":scope,"handle":participant["handle"],"sequence":1,
+        "event":{"type":"pointerDown","data":{"point":{"x":100,"y":80},"button":"left","modifiers":[]}}
+    }}));
+    assert!(
+        matches!(child.response(denied).0, Outcome::Error { error } if error.code == ErrorCode::PermissionDenied)
+    );
+    assert_eq!(cursor_position(), (110, 100));
+    assert!(unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON)) } >= 0);
 
     unsafe { SendMessageW(first as HWND, WM_CLOSE, 0, 0) };
     let id = child.send(frame);
@@ -196,7 +258,9 @@ unsafe extern "system" fn fixture_window(
                 fill(dc);
                 EndPaint(hwnd, &paint);
             }
-            WM_LBUTTONDOWN | WM_LBUTTONUP | WM_KEYDOWN | WM_KEYUP | WM_CHAR => {
+            WM_LBUTTONDOWN | WM_LBUTTONUP | WM_KEYDOWN | WM_KEYUP | WM_CHAR
+                if kind != WM_CHAR || word == 'λ' as usize =>
+            {
                 EVENTS.with(|events| {
                     if let Some(events) = events.get() {
                         let _ = events.send((hwnd as usize, kind, word, long));

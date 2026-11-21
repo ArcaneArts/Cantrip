@@ -15,6 +15,16 @@ tests the helper without capturing a real desktop or requesting capture permissi
 For the short product walkthrough, sample MCP calls and native fixture commands,
 see [first-tranche acceptance](../docs/COMPUTER_USE_ACCEPTANCE.md).
 
+## Windows Host backend
+
+Remote viewers of a shared Windows display or window use one input owner
+per worker desktop. Windows can bring the selected window forward when a
+viewer clicks, scrolls, types, or requests copy. Clicking and scrolling
+require the point to belong to the selected window. Attaching and hovering
+leave the host's focus and pointer in place. Ending the viewer's input
+releases its held keys and buttons. Agent input to individual windows uses
+window-directed messages.
+
 ## Linux Host X11 backend
 
 The default Linux helper uses the worker's local X11 session from `DISPLAY`

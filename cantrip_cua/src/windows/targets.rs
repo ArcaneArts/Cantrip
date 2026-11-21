@@ -24,7 +24,8 @@ use windows_sys::Win32::{
         },
         WindowsAndMessaging::{
             EnumWindows, GA_ROOT, GetAncestor, GetForegroundWindow, GetWindowInfo, GetWindowTextW,
-            GetWindowThreadProcessId, IsIconic, IsWindowVisible, MONITORINFOF_PRIMARY, WINDOWINFO,
+            GetWindowThreadProcessId, IsChild, IsIconic, IsWindowVisible, MONITORINFOF_PRIMARY,
+            WINDOWINFO,
         },
     },
 };
@@ -237,6 +238,16 @@ impl Window {
             return Err(stale());
         }
         Ok(())
+    }
+
+    pub(super) fn recipient_thread(&self, hwnd: HWND) -> Option<u32> {
+        let root = self.identity.hwnd as HWND;
+        if hwnd.is_null() || (hwnd != root && unsafe { IsChild(root, hwnd) } == 0) {
+            return None;
+        }
+        let mut process = 0;
+        let thread = unsafe { GetWindowThreadProcessId(hwnd, &mut process) };
+        (thread != 0 && process == self.identity.process).then_some(thread)
     }
 }
 

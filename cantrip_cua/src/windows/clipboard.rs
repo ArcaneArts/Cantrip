@@ -1,4 +1,4 @@
-use super::{input, targets::Window};
+use super::targets::Window;
 use crate::{
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
@@ -19,37 +19,10 @@ use windows_sys::Win32::{
         },
         Memory::{GlobalLock, GlobalSize, GlobalUnlock},
     },
-    UI::WindowsAndMessaging::{
-        GA_ROOT, GetAncestor, GetWindowThreadProcessId, SMTO_ABORTIFHUNG, SMTO_ERRORONEXIT,
-        SendMessageTimeoutW, WM_COPY,
-    },
+    UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, GetWindowThreadProcessId, IsWindowVisible},
 };
 
 const UNICODE_TEXT: u32 = 13; // CF_UNICODETEXT
-
-pub(super) fn copy(window: &Window, cancel: &Cancellation) -> Result<Option<String>> {
-    let recipient = input::copy_recipient(window)?;
-    let original = sequence();
-    cancel.check()?;
-    if unsafe {
-        SendMessageTimeoutW(
-            recipient,
-            WM_COPY,
-            0,
-            0,
-            SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT,
-            250,
-            null_mut(),
-        )
-    } == 0
-    {
-        return Err(CuaError::new(
-            ErrorCode::InputFailed,
-            "The selected Windows control did not confirm copy.",
-        ));
-    }
-    read_fresh(window, original, true, cancel)
-}
 
 pub(super) fn sequence() -> u32 {
     unsafe { GetClipboardSequenceNumber() }
@@ -61,23 +34,14 @@ pub(super) fn read_focused(
     cancel: &Cancellation,
 ) -> Result<Option<String>> {
     // A foreground program can use a hidden same-process clipboard window.
-    read_fresh(window, original, false, cancel)
-}
-
-fn read_fresh(
-    window: &Window,
-    original: u32,
-    require_window_root: bool,
-    cancel: &Cancellation,
-) -> Result<Option<String>> {
     let deadline = Instant::now() + Duration::from_millis(300);
     loop {
         cancel.check()?;
         if sequence() != original
-            && owns_clipboard(window, require_window_root)
+            && owns_clipboard(window)
             && let Some(clipboard) = Clipboard::open()
         {
-            if sequence() != original && owns_clipboard(window, require_window_root) {
+            if sequence() != original && owns_clipboard(window) {
                 let text = clipboard.text()?;
                 cancel.check()?;
                 return Ok(text);
@@ -90,14 +54,18 @@ fn read_fresh(
     }
 }
 
-fn owns_clipboard(window: &Window, require_window_root: bool) -> bool {
+fn owns_clipboard(window: &Window) -> bool {
     let owner = unsafe { GetClipboardOwner() };
     let mut pid = 0;
-    !owner.is_null()
-        && unsafe { GetWindowThreadProcessId(owner, &mut pid) } != 0
-        && pid == window.identity.process
-        && (!require_window_root
-            || unsafe { GetAncestor(owner, GA_ROOT) } == window.identity.hwnd as HWND)
+    if owner.is_null()
+        || unsafe { GetWindowThreadProcessId(owner, &mut pid) } == 0
+        || pid != window.identity.process
+    {
+        return false;
+    }
+    let root = unsafe { GetAncestor(owner, GA_ROOT) };
+    root == window.identity.hwnd as HWND
+        || (!root.is_null() && unsafe { IsWindowVisible(root) == 0 })
 }
 
 struct Clipboard;

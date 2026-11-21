@@ -32,6 +32,7 @@ use windows_sys::Win32::{
 
 struct Host {
     participants: HashMap<String, Arc<Mutex<input::Session>>>,
+    physical_owner: Option<String>,
     input: input::Shared,
     observations: Hook,
     truncated: bool,
@@ -65,6 +66,7 @@ impl Host {
             observations,
             input,
             participants: HashMap::new(),
+            physical_owner: None,
             truncated: false,
         })
     }
@@ -144,6 +146,41 @@ impl Host {
             return Err(stale());
         }
         Ok(monitor)
+    }
+
+    fn open_physical(
+        &mut self,
+        participant: &str,
+        target: &Target,
+        cancel: &Cancellation,
+    ) -> Result<()> {
+        if self.physical_owner.is_some() {
+            return Err(CuaError::new(
+                ErrorCode::OwnershipMismatch,
+                "Another viewer controls the Windows desktop.",
+            ));
+        }
+        let destination = self.physical_destination(target, cancel)?;
+        self.input_participant(participant, destination)?;
+        self.physical_owner = Some(participant.to_owned());
+        Ok(())
+    }
+
+    fn physical_destination(
+        &mut self,
+        target: &Target,
+        cancel: &Cancellation,
+    ) -> Result<input::Destination> {
+        cancel.check()?;
+        Ok(match target.kind {
+            TargetKind::Window => input::Destination::ForegroundWindow(
+                Arc::new(self.select_window(&target.id, target.generation, cancel)?),
+                cancel.clone(),
+            ),
+            TargetKind::Monitor => {
+                input::Destination::Monitor(self.select_monitor(&target.id, target.generation)?)
+            }
+        })
     }
 }
 
@@ -248,6 +285,25 @@ impl CaptureBackend for Host {
         RemoteMonitorInput::ExclusiveHost
     }
 
+    fn open_remote_monitor(
+        &mut self,
+        _: &crate::interaction::Binding,
+        participant: &str,
+        target: &Target,
+        cancel: &Cancellation,
+    ) -> Result<()> {
+        self.open_physical(participant, target, cancel)
+    }
+
+    fn open_remote_window(
+        &mut self,
+        participant: &str,
+        target: &Target,
+        cancel: &Cancellation,
+    ) -> Result<()> {
+        self.open_physical(participant, target, cancel)
+    }
+
     fn copy_selection_text(
         &mut self,
         session: &str,
@@ -256,48 +312,48 @@ impl CaptureBackend for Host {
         sequence: u64,
         cancel: &Cancellation,
     ) -> Result<Option<String>> {
-        if target.kind == TargetKind::Monitor {
+        let window = if target.kind == TargetKind::Monitor {
             let monitor = self.select_monitor(&target.id, target.generation)?;
             let foreground = physical::monitor_focus(&monitor)?;
-            let window = match self.window(foreground, cancel) {
+            match self.window(foreground, cancel) {
                 Ok(window) => window,
                 Err(error) if error.code == ErrorCode::TargetNotFound => return Ok(None),
                 Err(error) => return Err(error),
-            };
-            let original = clipboard::sequence();
-            self.interaction_input(
-                session,
-                target,
-                position,
-                sequence - 1,
-                InputEvent::KeyDown {
-                    key: "C".into(),
-                    modifiers: vec![Modifier::Control],
-                    repeat: false,
-                },
-                cancel,
-            )?;
-            self.interaction_input(
-                session,
-                target,
-                position,
-                sequence,
-                InputEvent::KeyUp { key: "C".into() },
-                cancel,
-            )?;
-            let text = clipboard::read_focused(&window, original, cancel)?;
-            lifetime::verify_window(&self.observations.registered, &window)?;
-            let monitor = self.select_monitor(&target.id, target.generation)?;
-            return if physical::monitor_focus(&monitor)? == foreground {
-                Ok(text)
-            } else {
-                Ok(None)
-            };
-        }
-        let window = self.select_window(&target.id, target.generation, cancel)?;
-        let text = clipboard::copy(&window, cancel)?;
+            }
+        } else {
+            self.select_window(&target.id, target.generation, cancel)?
+        };
+        let original = clipboard::sequence();
+        self.interaction_input(
+            session,
+            target,
+            position,
+            sequence - 1,
+            InputEvent::KeyDown {
+                key: "C".into(),
+                modifiers: vec![Modifier::Control],
+                repeat: false,
+            },
+            cancel,
+        )?;
+        self.interaction_input(
+            session,
+            target,
+            position,
+            sequence,
+            InputEvent::KeyUp { key: "C".into() },
+            cancel,
+        )?;
+        let text = clipboard::read_focused(&window, original, cancel)?;
         lifetime::verify_window(&self.observations.registered, &window)?;
-        Ok(text)
+        if target.kind == TargetKind::Monitor {
+            let monitor = self.select_monitor(&target.id, target.generation)?;
+            Ok(text.filter(|_| {
+                physical::monitor_focus(&monitor).is_ok_and(|focus| focus == window.identity.hwnd)
+            }))
+        } else {
+            Ok(text.filter(|_| physical::window_is_focused(&window)))
+        }
     }
 
     fn interaction_input(
@@ -310,16 +366,10 @@ impl CaptureBackend for Host {
         cancel: &Cancellation,
     ) -> Result<()> {
         let result = (|| {
-            cancel.check()?;
-            let destination =
-                match target.kind {
-                    TargetKind::Window => input::Destination::Window(Arc::new(
-                        self.select_window(&target.id, target.generation, cancel)?,
-                    )),
-                    TargetKind::Monitor => input::Destination::Monitor(
-                        self.select_monitor(&target.id, target.generation)?,
-                    ),
-                };
+            if self.physical_owner.as_deref() != Some(session) {
+                return Err(stale());
+            }
+            let destination = self.physical_destination(target, cancel)?;
             let participant = self.input_participant(session, destination)?;
             lock(&participant).submit(sequence, &event, cancel)
         })();
@@ -330,6 +380,9 @@ impl CaptureBackend for Host {
     }
 
     fn close_input(&mut self, session: &str) -> Result<()> {
+        if self.physical_owner.as_deref() == Some(session) {
+            self.physical_owner = None;
+        }
         if let Some(participant) = self.participants.remove(session) {
             lock(&participant).close()?;
         }
