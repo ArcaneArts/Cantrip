@@ -101,7 +101,10 @@ async fn serve_socket(
             Ok(content) => content,
             Err(_) => return End::Rejected("protected-record-unavailable"),
         };
-        let guest = match gateway.open_guest_stream(guest).await {
+        let public_key = content["destination"]["publicKey"]
+            .as_str()
+            .map(str::to_owned);
+        let guest = match gateway.open_guest_stream(guest, public_key).await {
             Ok(stream) => stream,
             Err(_) => return End::Rejected("target-unavailable"),
         };

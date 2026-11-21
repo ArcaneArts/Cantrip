@@ -9920,3 +9920,23 @@ existing Host tunnel smoke also passed for relay, direct, and legacy
 connections.
 
 Guest SSH and VNC forwarding and reverse listeners remain in scope.
+
+## 294. Forward captured Cantrip OS guest SSH and SFTP sessions
+
+Reference commit `1d210ced64087effa9516beb9137d4c066cdc0aa` (#3457).
+
+The native worker prepares SSH forwards through the installed WorkerLink
+grant and includes the observed workspace user, host alias and host key in
+the existing grant response. The descriptor digest includes the SSH host
+key in the original field order, preserving recorded service identity pins.
+Each stream reads the client public key from the exact protected record
+and gives it to the guest broker for the lifetime of that connection.
+
+On macOS ARM64, Core in PGlite mode and the native worker passed the
+Cantrip OS smoke with `--guest-ssh --guest-tunnel` against a disposable
+Docker guest. OpenSSH pinned the real host key, rejected a different
+client key and opened the expected workspace account and home. SFTP
+round-tripped a file, and attachment revocation retired the live guest
+SSH command. The TCP regression passed in the same run.
+
+Guest VNC forwarding and reverse listeners remain in scope.

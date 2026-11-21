@@ -5,7 +5,7 @@ use crate::{
     cantrip_os::carrier::Transport, filesystem::Scope, http::checked,
     protected_content::open_tunnel_record,
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{Value, value::json};
 use chrono::Utc;
 use sha2::{Digest, Sha256};
@@ -177,7 +177,15 @@ impl Coordinator {
             command["expectedIdentity"].is_null() || command["expectedIdentity"] == identity,
             "The captured guest service is retired. Stop and explicitly start a new forward."
         );
-        let result = checked("tunnelOsPrepareResultSchema", &json!({"identity":identity}))?;
+        let mut result = json!({"identity":identity});
+        if descriptor["service"]["kind"] == "ssh" {
+            result["ssh"] = json!({
+                "user": descriptor["user"],
+                "hostAlias": format!("cantrip-os-{}", descriptor["instance_id"].as_str().unwrap()),
+                "hostKey": descriptor["ssh_host_key"],
+            });
+        }
+        let result = checked("tunnelOsPrepareResultSchema", &result)?;
         state.retire_guest_tunnels(Some(&command["attachmentId"]), "route-replaced");
         grants(&mut state)
             .find(|grant| matching(grant, command, now))
@@ -225,12 +233,15 @@ impl Coordinator {
             "The encrypted tunnel differs from its canonical OS capture."
         );
         ensure!(
-            command["mode"] != "listen"
-                && content["source"]["kind"] == "desktop-loopback"
-                && destination["kind"] == "worker-os-tcp",
+            command["mode"] != "listen" && content["source"]["kind"] == "desktop-loopback",
             "The incoming guest service does not match its canonical direction."
         );
-        let service = json!({"kind":"tcp","port":destination["port"]});
+        let service = match destination["kind"].as_str() {
+            Some("worker-os-tcp") => json!({"kind":"tcp","port":destination["port"]}),
+            Some("worker-os-ssh") => json!({"kind":"ssh"}),
+            _ => bail!("The guest tunnel has no supported captured OS destination."),
+        };
+        let ssh = service["kind"] == "ssh";
         let transport = Transport::from_value(&command["osExecution"]["transport"])?;
         let placement = Value::object([
             ("instance_id", scope_value["guestInstanceId"].clone()),
@@ -273,7 +284,7 @@ impl Coordinator {
         ensure!(
             response
                 .as_object()
-                .is_some_and(|fields| fields.len() == 11)
+                .is_some_and(|fields| fields.len() == if ssh { 12 } else { 11 })
                 && response["user"]
                     .as_str()
                     .is_some_and(|user| !user.is_empty())
@@ -287,10 +298,17 @@ impl Coordinator {
         descriptor["user"] = response["user"].clone();
         descriptor["remote_generation"] = response["remote_generation"].clone();
         descriptor["service"] = service;
+        if ssh {
+            descriptor["ssh_host_key"] = response["ssh_host_key"].clone();
+        }
         Ok((transport, descriptor))
     }
 
-    pub(super) async fn open_guest_stream(&self, preparation: Arc<Preparation>) -> Result<Stream> {
+    pub(super) async fn open_guest_stream(
+        &self,
+        preparation: Arc<Preparation>,
+        public_key: Option<String>,
+    ) -> Result<Stream> {
         ensure!(
             preparation.current(self),
             "The OS tunnel preparation was retired."
@@ -310,7 +328,7 @@ impl Coordinator {
                 "Guest service carrier capacity exhausted."
             );
             jobs.spawn(async move {
-                if service_stream(preparation, guest, ready, retired, fail)
+                if service_stream(preparation, public_key, guest, ready, retired, fail)
                     .await
                     .is_err()
                 {
@@ -339,6 +357,7 @@ impl Coordinator {
 
 async fn service_stream(
     preparation: Arc<Preparation>,
+    public_key: Option<String>,
     guest: DuplexStream,
     ready: oneshot::Sender<bool>,
     mut close: oneshot::Receiver<()>,
@@ -347,7 +366,7 @@ async fn service_stream(
     let connection = Uuid::new_v4().to_string();
     let descriptor = preparation.descriptor.stringify();
     let workspace = preparation.descriptor["workspace_id"].as_str().unwrap();
-    let (program, args) = preparation.transport.tunnel_service(&[
+    let mut arguments = vec![
         "service-connect",
         workspace,
         "--expect",
@@ -355,7 +374,11 @@ async fn service_stream(
         "--connection-id",
         &connection,
         "--notify-ready",
-    ]);
+    ];
+    if let Some(key) = public_key.as_deref() {
+        arguments.extend(["--public-key", key]);
+    }
+    let (program, args) = preparation.transport.tunnel_service(&arguments);
     if preparation.scope.check().is_err() {
         return Ok(());
     }
