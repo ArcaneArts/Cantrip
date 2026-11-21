@@ -1,7 +1,8 @@
 FROM node:24-bookworm AS build
 
 ARG RUST_TOOLCHAIN=1.95.0
-ENV CARGO_BUILD_JOBS=2 \
+# Avoid overlapping the native Codex TUI and app-server release compiles.
+ENV CARGO_BUILD_JOBS=1 \
     CARGO_INCREMENTAL=0 \
     CARGO_PROFILE_RELEASE_DEBUG=0 \
     CARGO_TARGET_DIR=/native-target \
@@ -38,14 +39,14 @@ RUN test -n "$CANTRIP_VERSION_PATCH" \
 RUN --mount=type=cache,id=cantrip-worker-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cantrip-worker-cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=cantrip-worker-target-${TARGETARCH},target=/native-target,sharing=locked \
+    --mount=type=cache,id=cantrip-worker-codex-${TARGETARCH}-${RUST_TOOLCHAIN},target=/workspace/cantrip_codex/.build,sharing=locked \
     case "$TARGETARCH" in \
       amd64) cantrip_target=linux-x64 ;; \
       arm64) cantrip_target=linux-arm64 ;; \
       *) echo "Unsupported worker architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac \
     && node scripts/package-distributions.mjs worker --target "$cantrip_target" \
-    && mv "artifacts/cantrip-worker-$cantrip_target" /out \
-    && rm -rf cantrip_codex/.build
+    && mv "artifacts/cantrip-worker-$cantrip_target" /out
 
 FROM debian:bookworm-slim AS runtime
 
