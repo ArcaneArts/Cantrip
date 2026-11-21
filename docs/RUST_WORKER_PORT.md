@@ -45,8 +45,9 @@ Browser JavaScript and the CUA scripting interface remain available.
 The [packaging cutover](#278-ship-the-rust-worker-in-cantrip-packages), the
 [Node worker archive](#286-archive-the-node-worker-as-a-compatibility-reference),
 and the [desktop and upgrade checks](#288-verify-the-native-desktop-runtime-and-legacy-profile-round-trip)
-record the transition. See also the
-[local Linux ARM64 image check](#295-verify-the-node-free-linux-arm64-worker-image).
+record the transition. The
+[hosted Linux ARM64 image check](#332-bound-hosted-worker-release-build-memory)
+covers the current Docker build, enrollment, and volume reuse.
 
 ### Open platform checks
 
@@ -10884,3 +10885,28 @@ worker identity, orderly exit, and recovery after supervisor loss. This run
 exercised the staged desktop resources with an existing supervisor probe.
 The worker's normal Cargo dependency tree contained no server, PostgreSQL,
 PGlite, or Redis package. Documentation links and `git diff --check` passed.
+
+## 332. Bound hosted worker release build memory
+
+Reference commit `2065d1356f884a3b2f4c968209bc8e32c152a975` (#3495).
+
+The local Linux ARM64 build exhausted the Docker VM's memory when Cargo
+compiled the native Codex TUI and app server concurrently. The hosted
+worker Dockerfile now uses one Cargo job. A BuildKit cache for each target
+architecture and Rust toolchain retains the Codex bundle. The packager
+verifies the source fingerprints and artifact digests before reusing it.
+
+The updated Dockerfile built the Linux ARM64 worker `1.1.3482` locally.
+The container ran as UID 10001 with a read-only root filesystem and
+enrolled against the Linux ARM64 Rust Core `1.1.3059` fixture in PGlite
+mode. After Core reported that the first worker was offline, a replacement
+container answered a live `worker.version` command with the same identity,
+credential, and encryption key files on the original volume. Both workers
+exited zero on SIGTERM.
+The container ran the native launcher. The worker, CLI, CUA helper, and
+Codex executables resolved their shared libraries. The image contained
+no Node executable, Node package, or `node_modules`. The CLI and Codex
+reported their versions with an empty PATH.
+
+A separate BuildKit run exercised verified Codex bundle reuse. The
+Dockerfile check, 16 deployment tests, and seven Codex bundle tests passed.
