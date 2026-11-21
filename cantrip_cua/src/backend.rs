@@ -51,6 +51,10 @@ pub trait CaptureBackend: Send {
         Ok(())
     }
     fn cancel_remote_monitor_open(&mut self, _binding: &crate::interaction::Binding) {}
+    /// The native owner has ended this viewer's input session.
+    fn remote_input_closed(&self, _participant: &str) -> bool {
+        false
+    }
     fn open_remote_window(
         &mut self,
         _participant: &str,

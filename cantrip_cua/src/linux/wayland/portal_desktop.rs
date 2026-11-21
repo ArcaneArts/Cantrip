@@ -11,9 +11,18 @@ use crate::{
 use async_io::Timer;
 use futures_lite::{StreamExt, future};
 use serde::Serialize;
-use std::{collections::HashMap, fs::File, io::Read, time::Duration};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::Read,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 use zbus::{
-    MatchRule, MessageStream,
+    MatchRule, MessageStream, Task,
     message::Type,
     zvariant::{DynamicType, OwnedFd, OwnedObjectPath, OwnedValue, Value},
 };
@@ -55,9 +64,73 @@ struct Handle {
     portal: Portal,
     owner: String,
     path: OwnedObjectPath,
+    closure: Option<SessionClosure>,
+}
+
+struct SessionClosure {
+    closed: Arc<AtomicBool>,
+    _watch: Task<()>,
 }
 
 impl Handle {
+    async fn watch_closed(&mut self, cancel: &Cancellation) -> Result<()> {
+        let rule = MatchRule::builder()
+            .msg_type(Type::Signal)
+            .sender(self.owner.as_str())
+            .map_err(|_| unavailable())?
+            .path(self.path.as_str())
+            .map_err(|_| unavailable())?
+            .interface(SESSION)
+            .map_err(|_| unavailable())?
+            .member("Closed")
+            .map_err(|_| unavailable())?
+            .build();
+        let bus = &self.portal.bus;
+        let mut signals = bounded(
+            async {
+                MessageStream::for_match_rule(rule, bus, Some(1))
+                    .await
+                    .map_err(|_| unavailable())
+            },
+            Duration::from_secs(2),
+            cancel,
+        )
+        .await?;
+        let closed = Arc::new(AtomicBool::new(false));
+        let ended = closed.clone();
+        let watch = bus.executor().spawn(
+            async move {
+                // A closure from the exact portal session, or loss of its bus
+                // stream, ends the input owner's lifetime.
+                let _ = signals.next().await;
+                ended.store(true, Ordering::Release);
+            },
+            "cantrip-portal-session-closed",
+        );
+        self.closure = Some(SessionClosure {
+            closed,
+            _watch: watch,
+        });
+        Ok(())
+    }
+
+    fn is_closed(&self) -> bool {
+        self.closure
+            .as_ref()
+            .is_some_and(|closure| closure.closed.load(Ordering::Acquire))
+    }
+
+    fn check_open(&self) -> Result<()> {
+        if self.is_closed() {
+            Err(CuaError::new(
+                ErrorCode::PermissionDenied,
+                "The Wayland portal closed desktop control.",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
     async fn call<B: Serialize + DynamicType>(
         &self,
         interface: &str,
@@ -65,6 +138,7 @@ impl Handle {
         body: &B,
         cancel: &Cancellation,
     ) -> Result<zbus::Message> {
+        self.check_open()?;
         bounded(
             async {
                 self.portal
@@ -91,6 +165,9 @@ impl Handle {
     }
 
     async fn close(&self) {
+        if self.is_closed() {
+            return;
+        }
         let _ = future::race(
             self.portal.bus.call_method(
                 Some(self.owner.as_str()),
@@ -128,6 +205,7 @@ impl DesktopSession {
                 portal,
                 owner: PORTAL_NAME.to_owned(),
                 path: OwnedObjectPath::try_from(expected).map_err(|_| unavailable())?,
+                closure: None,
             };
             let create = handle
                 .portal
@@ -166,7 +244,14 @@ impl DesktopSession {
                     "The Wayland portal returned an invalid session.",
                 ));
             }
-            match activate(&handle, target, layout, cancel).await {
+            let activation = async {
+                handle.watch_closed(cancel).await?;
+                let active = activate(&handle, target, layout, cancel).await?;
+                handle.check_open()?;
+                Ok(active)
+            }
+            .await;
+            match activation {
                 Ok((stream, clipboard)) => Ok(Self {
                     handle,
                     stream,
@@ -178,6 +263,10 @@ impl DesktopSession {
                 }
             }
         })
+    }
+
+    pub(super) fn is_closed(&self) -> bool {
+        self.handle.is_closed()
     }
 
     pub(super) fn notify(&self, event: &Event, cancel: &Cancellation) -> Result<()> {
@@ -248,6 +337,7 @@ impl DesktopSession {
     }
 
     pub(super) fn watch_clipboard(&self, cancel: &Cancellation) -> Result<Option<MessageStream>> {
+        self.handle.check_open()?;
         if !self.clipboard {
             return Ok(None);
         }
@@ -318,6 +408,7 @@ impl DesktopSession {
             Duration::from_millis(900),
             cancel,
         ));
+        self.handle.check_open()?;
         match result {
             Err(error) if error.code == ErrorCode::CaptureImageTimeout => Ok(None),
             other => other,

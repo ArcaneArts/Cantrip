@@ -62,7 +62,8 @@ covers the current Docker build, enrollment, and volume reuse.
 - GNOME and KDE portal approval remains unverified. The local Wayland
   fallback delivered keyboard input through Linux uinput to a focused
   XWayland window.
-  [Wayland input evidence](#338-verify-keyboard-delivery-to-a-focused-wayland-client)
+  [Wayland input evidence](#338-verify-keyboard-delivery-to-a-focused-wayland-client),
+  [portal closure evidence](#360-release-wayland-input-when-the-portal-closes)
 
 ## Implementation record
 
@@ -11444,3 +11445,23 @@ The window test failed at its initial `SetForegroundWindow(second)` call,
 before launching the helper or exercising native input. The monitor test
 started and produced no terminal result before shutdown. Both Windows
 runtime checks remain open.
+
+## 360. Release Wayland input when the portal closes
+
+Reference commit `134acaa3b89c497e900955ced62f8cc4d0d30268` (#3523).
+
+The helper subscribes to the approved Wayland portal session's closure signal
+using the portal's unique D-Bus sender and the exact session path. A subsequent
+interaction releases the closed input participant. A waiting viewer can then
+request fresh approval, and the retired handle can no longer post input.
+Capture has an independent lease.
+
+The baseline helper kept reporting an ownership conflict after the local portal
+closed the active session. The rebuilt Linux ARM64 helper passed the framed
+fixture with a headless Weston output and controlled D-Bus portal. It ignored
+another session's closure, rejected the retired handle, kept capture active,
+and admitted a replacement after fresh approval. It issued no further held-key
+release to the closed session. The existing approval, denial, cancellation,
+clipboard, and ordinary input cleanup checks passed. Eight shared interaction
+unit tests passed on macOS ARM64.
+[XDG portal session interface](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Session.html#org-freedesktop-portal-session-closed).

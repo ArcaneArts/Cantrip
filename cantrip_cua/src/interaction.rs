@@ -152,6 +152,18 @@ impl Participants {
         cancel: &Cancellation,
         now: u64,
     ) -> Result<Value> {
+        let closed: Vec<_> = self
+            .live
+            .iter()
+            .filter_map(|(&handle, state)| {
+                backend
+                    .remote_input_closed(&state.native_id)
+                    .then_some(handle)
+            })
+            .collect();
+        for handle in closed {
+            self.close(backend, handle)?;
+        }
         match request {
             Request::Open {
                 binding,
