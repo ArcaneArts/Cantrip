@@ -7,7 +7,7 @@ pub(crate) mod preview;
 pub(crate) mod process;
 pub(crate) use capture::{
     Capture, Captures, ControlState, Frame, GuestControl, InputAuthority, MissingCaptureTarget,
-    PortalCaptureConsent, Scope,
+    OpenCapture, PortalCaptureConsent, Scope,
 };
 pub(crate) use effects::Updates as EffectUpdates;
 
@@ -474,14 +474,7 @@ fn probe_result(message: Option<&str>) -> Result<Value> {
 
 async fn targets(current: &mut Option<Helper>, binary: &Path) -> Result<Inventory> {
     let (targets, truncated) = read_targets(&mut helper(current, binary).await?.process).await?;
-    let mut inventory = Inventory {
-        truncated,
-        ..Inventory::default()
-    };
-    for target in &targets {
-        inventory.add(target_id(target)?, target)?;
-    }
-    Ok(inventory)
+    Inventory::from_targets(&targets, truncated)
 }
 
 async fn retire(process: &mut Option<Helper>) {
@@ -586,10 +579,19 @@ fn public_target_id(id: &JsString) -> &str {
 }
 
 impl Inventory {
-    pub(super) fn from_target(target: &Value) -> Result<Self> {
-        let mut inventory = Self::default();
-        inventory.add(target_id(target)?, target)?;
+    pub(super) fn from_targets(targets: &[Value], truncated: bool) -> Result<Self> {
+        let mut inventory = Self {
+            truncated,
+            ..Self::default()
+        };
+        for target in targets {
+            inventory.add(target_id(target)?, target)?;
+        }
         Ok(inventory)
+    }
+
+    pub(super) fn from_target(target: &Value) -> Result<Self> {
+        Self::from_targets(std::slice::from_ref(target), false)
     }
 
     pub(crate) fn content(&self) -> Value {

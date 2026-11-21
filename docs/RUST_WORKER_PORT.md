@@ -10452,3 +10452,23 @@ icon isolation. The production Linux resolver decoded SVG and XPM in a
 disposable local ARM64 container. The Windows x64 worker compile check
 and all 524 protocol tests passed. Full Linux worker and Windows icon
 runtime checks were outside this fixture.
+
+## 314. Publish Remote Desktop inventory when the viewer connects
+
+Reference commit `d61a2e663b3619a626439037ab8eac1fe572e8c9` (#3477).
+
+The worker reuses the native inventory from opening a capture to publish
+the requested and active targets. It queues the first frame before encoding
+the inventory, then resends the current view when an attachment connects
+or binds its transport. Target changes and capture failures publish
+the current requested and active state. Explicit viewer refresh still
+enumerates the current Host inventory. Guest publication uses only
+the captured monitor.
+
+The macOS ARM64 desktop inventory smoke verified automatic initial
+delivery, viewport resynchronization, failure, a window-to-monitor
+switch, and explicit refresh. It also exercised launch and icon
+regressions and the assigned Linux viewer. A separate local Rust Core
+and Rust worker smoke verified that two WorkerLink viewers in a
+disposable Cantrip OS guest each received their own encrypted monitor
+inventory before either viewer sent a viewport or refresh request.

@@ -4,8 +4,8 @@ mod input;
 use super::{Callback, Endpoint, FrameSource, Route, Shared, Work, accepted, id};
 use crate::{
     desktop_inventory::{
-        Capture, ControlState, GuestControl, Inventory, MissingCaptureTarget, PortalCaptureConsent,
-        Scope, seal_inventory,
+        Capture, ControlState, GuestControl, Inventory, MissingCaptureTarget, OpenCapture,
+        PortalCaptureConsent, Scope, seal_inventory,
     },
     http::checked,
     protected_content::{open_private_state, open_remote_surface, protect_remote_surface},
@@ -193,7 +193,7 @@ pub(super) async fn run(
     };
     let mut capture = if active.guest.is_some() {
         match active.open_capture(epoch).await {
-            Ok(capture) => Some(Arc::new(capture)),
+            Ok(opened) => Some(active.accept_guest_open(opened)),
             Err(error) => {
                 let _ = done.send(Err(error));
                 return Ok(());
@@ -242,12 +242,15 @@ pub(super) async fn run(
                         {
                             drop(work.take());
                             match active.open_capture(epoch).await {
-                                Ok(opened) => capture = Some(Arc::new(opened)),
+                                Ok(opened) => capture = Some(active.accept_guest_open(opened)),
                                 Err(error) => {
                                     active.attachments.remove(id(&value, "attachmentId"));
                                     result = Err(error);
                                 }
                             }
+                        }
+                        if result.is_ok() && attaching {
+                            active.publish_available_inventory(id(&value, "attachmentId"), capture.as_deref());
                         }
                         let end = result.as_ref().is_ok_and(|effect| *effect == Effect::Close);
                         let response = result.map(|_| if attaching { attached() } else { accepted() });
@@ -263,8 +266,7 @@ pub(super) async fn run(
                         }
                     }
                     Some(Work::Refresh(attachment)) => {
-                        active.publish(Some(&attachment));
-                        active.publish_control(Some(&attachment));
+                        active.resync(&attachment, capture.as_deref());
                     }
                     Some(Work::AgentBorrow { done, .. }) => {
                         let _ = done.send(Err(anyhow!("This surface is a desktop.")));
@@ -292,8 +294,10 @@ pub(super) async fn run(
                 let restoring = std::mem::take(&mut active.restoring);
                 match result {
                     Ok((lease, image, inventory)) if active.visible() => {
-                        if let Some(inventory) = inventory {
+                        if restoring {
                             active.restored_window = Some(lease.selected_target()?);
+                        }
+                        if let Some(inventory) = inventory {
                             active.last_inventory = inventory;
                         }
                         active.restore_failure = None;
@@ -308,15 +312,16 @@ pub(super) async fn run(
                             }
                         }
                         let dimensions = (image.width, image.height, image.encoded_width);
-                        if active.status != "ready" || active.dimensions != dimensions {
+                        let newly_ready = active.status != "ready";
+                        if newly_ready || active.dimensions != dimensions {
                             active.dimensions = dimensions;
                             active.status = "ready";
                             active.publish(None);
                         }
-                        if restoring {
+                        let accepted = active.send(None, "frame", &image.jpeg);
+                        if newly_ready || opening {
                             let _ = active.publish_inventory_state(None, capture.as_deref(), None);
                         }
-                        let accepted = active.send(None, "frame", &image.jpeg);
                         active.tuner.record(image.jpeg.len(), active.fps, accepted);
                         observations += 1;
                         let elapsed = window.elapsed();
@@ -362,12 +367,12 @@ pub(super) async fn run(
                         };
                         if restoring {
                             active.restore_failure = Some(failure.clone());
-                            let _ = active.publish_inventory_state(None, None, Some(&failure));
                         }
                         if active.status != "error" || active.failure.as_ref() != Some(&failure) {
                             active.status = "error";
-                            active.failure = Some(failure);
+                            active.failure = Some(failure.clone());
                             active.publish(None);
+                            let _ = active.publish_inventory_state(None, None, Some(&failure));
                         }
                         due = Instant::now() + Duration::from_millis((250 * (1 << (losses-1).min(5))).min(5000));
                     }
@@ -633,7 +638,14 @@ impl<'a> Session<'a> {
         self.publish(None);
     }
 
-    fn open_capture(&self, epoch: u64) -> cantrip_history::projection::Work<Capture> {
+    fn accept_guest_open(&mut self, opened: OpenCapture) -> Arc<Capture> {
+        if let Some(inventory) = opened.inventory {
+            self.last_inventory = inventory;
+        }
+        Arc::new(opened.capture)
+    }
+
+    fn open_capture(&self, epoch: u64) -> cantrip_history::projection::Work<OpenCapture> {
         let scope = Scope::new(
             epoch,
             self.owner.clone(),
@@ -664,10 +676,7 @@ impl<'a> Session<'a> {
         }
     }
 
-    fn restore_capture(
-        &self,
-        epoch: u64,
-    ) -> cantrip_history::projection::Work<(Capture, Inventory)> {
+    fn restore_capture(&self, epoch: u64) -> cantrip_history::projection::Work<OpenCapture> {
         let scope = Scope::new(
             epoch,
             self.owner.clone(),
@@ -703,8 +712,11 @@ impl<'a> Session<'a> {
     }
 
     fn sample(&self, epoch: u64, capture: Option<Arc<Capture>>, restoring: bool) -> WorkFrame {
-        let restore = restoring.then(|| self.restore_capture(epoch));
-        let opening = (capture.is_none() && restore.is_none()).then(|| self.open_capture(epoch));
+        let opening = if restoring {
+            Some(self.restore_capture(epoch))
+        } else {
+            capture.is_none().then(|| self.open_capture(epoch))
+        };
         let width = self
             .attachments
             .values()
@@ -719,11 +731,9 @@ impl<'a> Session<'a> {
         let width = (f64::from(width) * self.tuner.scale).round().max(480.0) as u32;
         let quality = self.tuner.quality;
         Box::pin(async move {
-            let (capture, inventory) = if let Some(restore) = restore {
-                let (capture, inventory) = restore.await?;
-                (Arc::new(capture), Some(inventory))
-            } else if let Some(opening) = opening {
-                (Arc::new(opening.await?), None)
+            let (capture, inventory) = if let Some(opening) = opening {
+                let OpenCapture { capture, inventory } = opening.await?;
+                (Arc::new(capture), inventory)
             } else {
                 (capture.expect("retained desktop capture"), None)
             };
@@ -802,8 +812,7 @@ impl<'a> Session<'a> {
                     member.stop_input();
                     member.source = Some(source.clone());
                     self.release_controller(attachment);
-                    self.publish(Some(attachment));
-                    self.publish_control(Some(attachment));
+                    self.resync(attachment, capture.map(Arc::as_ref));
                     if let Some(capture) = capture {
                         self.start_input(attachment, capture);
                     }
@@ -1042,6 +1051,21 @@ impl<'a> Session<'a> {
             }),
         );
         Ok(())
+    }
+
+    fn resync(&mut self, attachment: &JsString, capture: Option<&Capture>) {
+        self.publish(Some(attachment));
+        self.publish_control(Some(attachment));
+        self.publish_available_inventory(attachment, capture);
+    }
+
+    fn publish_available_inventory(&mut self, attachment: &JsString, capture: Option<&Capture>) {
+        if self.status != "launching" || self.restoring {
+            let failure = (self.status == "error")
+                .then(|| self.failure.clone())
+                .flatten();
+            let _ = self.publish_inventory_state(Some(attachment), capture, failure.as_deref());
+        }
     }
 
     fn guest_control(

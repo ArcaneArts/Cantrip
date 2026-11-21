@@ -1,4 +1,4 @@
-use super::{Capture, Captures, Inventory, Scope};
+use super::{Captures, OpenCapture, Scope};
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{JsString, Value, value::json};
 use std::{process::Stdio, time::Duration};
@@ -16,14 +16,13 @@ impl Captures {
         scope: Scope,
         requested: Value,
         authorize_launch: impl Fn() -> Result<()>,
-    ) -> Result<(Capture, Inventory)> {
+    ) -> Result<OpenCapture> {
         let application = requested["application"]
             .as_js_string()
             .context("Missing desktop application name.")?;
         let inventory = self.inventory(scope.clone()).await?;
         if let Some(target) = application_window(&inventory.windows, &requested, application) {
-            let capture = self.open_restored(scope, target, application).await?;
-            return Ok((capture, inventory));
+            return self.open_restored(scope, target, application).await;
         }
 
         // There is no await between checking the original request's authority
@@ -38,8 +37,7 @@ impl Captures {
                 if let Some(target) =
                     application_window(&inventory.windows, &requested, application)
                 {
-                    let capture = self.open_restored(scope, target, application).await?;
-                    return Ok((capture, inventory));
+                    return self.open_restored(scope, target, application).await;
                 }
                 sleep(WINDOW_POLL).await;
             }
@@ -54,13 +52,16 @@ impl Captures {
         scope: Scope,
         target: Value,
         application: &JsString,
-    ) -> Result<Capture> {
-        let capture = self.open(scope, target).await?;
+    ) -> Result<OpenCapture> {
+        let opened = self.open(scope, target).await?;
         ensure!(
-            same_label(&capture.selected_target()?["application"], application),
+            same_label(
+                &opened.capture.selected_target()?["application"],
+                application
+            ),
             "The desktop window changed applications before capture."
         );
-        Ok(capture)
+        Ok(opened)
     }
 }
 
