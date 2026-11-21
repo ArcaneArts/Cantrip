@@ -9856,3 +9856,21 @@ different operation ID failed. Two focused Rust tests covered manifest
 discovery, the Windows Gradle wrapper, and internal and external links.
 Regenerating the Rust contract preserved the previous project insights
 schema nodes.
+
+## 291. Remove retained managed project repositories
+
+Reference commit `e48f35d615842378d6befa24558d1cb835c70eae` (#3454).
+
+The native worker handles the retained `project.files.delete` command
+from the project removal route. It resolves the saved routing handle,
+opens the checkout beneath the worker's repositories directory without
+following linked path components, and retires matching Run processes
+before removing files through the opened directory. An already-absent
+checkout reports `deleted: false`.
+
+On macOS ARM64, the production Rust worker and Rust Core in PGlite mode
+removed a retained project and its managed checkout, accepted an already
+missing checkout, preserved a user-owned source and a sibling checkout,
+and rejected an escaped path through a linked parent. The response kept
+the rejected project record. Two focused worker tests covered removal
+ordering, retry, and linked path rejection.
