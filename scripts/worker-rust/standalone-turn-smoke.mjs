@@ -75,6 +75,7 @@ const { values } = parseArgs({
     "mcp-chats": { type: "boolean" },
     "mcp-alerts": { type: "boolean" },
     "mcp-targets": { type: "boolean" },
+    "mcp-explorer": { type: "boolean" },
     "mcp-client-controls": { type: "boolean" },
     "provider-connection-test": { type: "boolean" },
     "skill-settings": { type: "boolean" },
@@ -221,6 +222,7 @@ const interactionKey =
   subagentInteractions ||
   planQuestion ||
   values["mcp-client-controls"] ||
+  values["mcp-explorer"] ||
   values["cua-preview"] ||
   cuaAgent
     ? key("interaction-content")
@@ -244,6 +246,7 @@ const consoleStateKey =
   values["mcp-chats"] ||
   values["mcp-alerts"] ||
   values["mcp-targets"] ||
+  values["mcp-explorer"] ||
   values["mcp-client-controls"] ||
   values.policies ||
   values.codegraph ||
@@ -3535,6 +3538,22 @@ try {
       workerId,
       keyRevision,
       labelKey,
+    });
+  } else if (values["mcp-explorer"]) {
+    const { verifyManagedMcpExplorer } =
+      await import("./mcp-explorer-cases.mjs");
+    await verifyManagedMcpExplorer({
+      call,
+      eventually,
+      createModel,
+      encryptedTurn,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      surfaceKey: consoleStateKey,
+      interactionKey,
+      data,
     });
   } else if (values["mcp-client-controls"]) {
     const { verifyManagedMcpClientControls } =

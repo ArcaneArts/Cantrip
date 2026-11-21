@@ -51,10 +51,13 @@ covers the current Docker build, enrollment, and volume reuse.
 
 ### Open managed MCP operations
 
-The remaining managed Cantrip MCP work covers worktree, Explorer,
-terminal, browser, and Run tools. Their
-catalog entries and Core routes are in place. The worker still needs
-negotiated admission and endpoint handling for these families.
+The remaining managed Cantrip MCP work covers worktree, terminal, browser, and
+Run tools. Their catalog entries and Core routes are in place. The worker still
+needs negotiated admission and endpoint handling for these families.
+
+Bundled Codex still needs to handle MCP results that contain an unpaired UTF-16
+surrogate. The [Explorer fixture](#352-restore-managed-mcp-explorer-tools)
+reproduced the issue when a preview ended inside a surrogate pair.
 
 ### Open platform checks
 
@@ -11294,3 +11297,26 @@ protected notification decoding, and cross-project and invalid interaction
 denial. The authenticated MCP HTTP route showed a real pending Codex
 question, which remained pending until the existing encrypted response
 API settled it. The Alert smoke and offline worker build also passed.
+
+## 352. Restore managed MCP Explorer tools
+
+Reference commit `46fd5de974b84a63d2d6542c609423b13ca885be` (#3515).
+
+Managed Project Chat bindings advertise Explorer list, read, and write when
+Core can inspect the target and route the requested operation. The worker
+seals paths, file contents, and versions for the exact Explorer surface.
+Core routes the request to the authorized placement and the file-owning
+worker compares the supplied version before publishing an edit. Read-only
+bindings expose list and read. Explorer and the native CLI share directory
+pagination and file previews.
+
+The baseline worker omitted Explorer from native Codex tool discovery.
+On macOS ARM64, native Codex with production Rust Core in PGlite mode and
+the rebuilt worker with an empty PATH exercised pagination, bounded reads,
+an encrypted approval and successful edit, an approved stale write that
+left the file unchanged, cross-project denial, and read-only access. The
+direct MCP response preserved the legacy UTF-16 slice, including a split
+surrogate pair. Bundled Codex stopped on a response with a split pair, so
+its read fixture ends on a complete character. The host Run and CLI smoke,
+including the Node reference comparison for Explorer, and the offline
+worker build passed.

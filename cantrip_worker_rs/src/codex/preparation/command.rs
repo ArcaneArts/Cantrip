@@ -729,6 +729,11 @@ impl Ensurer {
                                         .map(|(operation, _)| operation),
                                 );
                                 operations.extend(
+                                    crate::mcp::bindings::EXPLORER_TOOLS
+                                        .into_iter()
+                                        .map(|(operation, _)| operation),
+                                );
+                                operations.extend(
                                     crate::mcp::bindings::ALERT_TOOLS
                                         .into_iter()
                                         .map(|(operation, _)| operation),

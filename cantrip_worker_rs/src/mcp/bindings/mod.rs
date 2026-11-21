@@ -40,6 +40,11 @@ pub(crate) const TARGET_TOOLS: [(&str, &str); 2] = [
     ("target.list", "target_list"),
     ("target.inspect", "target_inspect"),
 ];
+pub(crate) const EXPLORER_TOOLS: [(&str, &str); 3] = [
+    ("explorer.list", "explorer_list"),
+    ("explorer.read", "explorer_read"),
+    ("explorer.write", "explorer_write"),
+];
 pub(crate) const ALERT_TOOLS: [(&str, &str); 2] = [
     ("alert.raise", "alert_raise"),
     ("alert.resolve", "alert_resolve"),
@@ -400,6 +405,13 @@ impl Broker {
             let supported = !standalone
                 && capabilities.supports(operation)
                 && (operation != "target.list" || project_encryption);
+            (operation, tool, supported)
+        }))
+        .chain(EXPLORER_TOOLS.into_iter().map(|(operation, tool)| {
+            let supported = project_encryption
+                && target_inspect
+                && capabilities.supports(operation)
+                && (operation != "explorer.write" || claims["permissionProfileId"] != ":read-only");
             (operation, tool, supported)
         }))
         .chain(ALERT_TOOLS.into_iter().map(|(operation, tool)| {
