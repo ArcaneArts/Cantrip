@@ -100,11 +100,7 @@ try {
     Object.assign(environment, {
       CANTRIP_DESKTOP_DATA_DIR: data,
       CANTRIP_DATABASE_MODE: mode,
-      CANTRIP_TEST_WORKER_HOME: path.join(data, "worker-home"),
-      NODE_OPTIONS:
-        "--import=" + new URL("./worker-test-home.mjs", import.meta.url).href,
     });
-    await mkdir(environment.CANTRIP_TEST_WORKER_HOME, { recursive: true });
     if (mode === "postgres") environment.DATABASE_URL = values["external-url"];
     const since = Date.now();
     const app = spawn(binary, [], {
@@ -256,7 +252,10 @@ try {
       assert.ok(
         children.some((c) => c.command.endsWith("/bin/cantrip-server")),
       );
-      assert.ok(children.some((c) => c.command.endsWith("/runtime/node")));
+      assert.ok(
+        children.some((c) => c.command.endsWith("/bin/cantrip-worker")),
+      );
+      assert.ok(!children.some((c) => path.basename(c.command) === "node"));
       report.modes.push({
         mode,
         origin,

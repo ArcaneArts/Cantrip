@@ -423,14 +423,16 @@ try {
     Object.assign(environment, {
       CANTRIP_DESKTOP_DATA_DIR: data,
       CANTRIP_DATABASE_MODE: mode,
-      CANTRIP_TEST_WORKER_HOME: path.join(data, "worker-home"),
-      NODE_OPTIONS:
-        "--import=" + new URL("./worker-test-home.mjs", import.meta.url).href,
       NO_PROXY: [environment.NO_PROXY, "127.0.0.1", "localhost"]
         .filter(Boolean)
         .join(","),
     });
-    await mkdir(environment.CANTRIP_TEST_WORKER_HOME, { recursive: true });
+    if (historical) {
+      environment.CANTRIP_TEST_WORKER_HOME = path.join(data, "worker-home");
+      environment.NODE_OPTIONS =
+        "--import=" + new URL("./worker-test-home.mjs", import.meta.url).href;
+      await mkdir(environment.CANTRIP_TEST_WORKER_HOME, { recursive: true });
+    }
     if (mode === "postgres")
       environment.DATABASE_URL = `postgresql://cantrip@127.0.0.1:${pgPort}/postgres`;
     const since = Date.now();
@@ -569,9 +571,14 @@ try {
     assert.ok(
       before.some((child) => child.executable.endsWith("/bin/cantrip-server")),
     );
-    assert.ok(
-      before.some((child) => child.executable.endsWith("/runtime/node")),
+    const nativeBaseline = before.some((child) =>
+      child.executable.endsWith("/bin/cantrip-worker"),
     );
+    const legacyBaseline =
+      historical &&
+      before.some((child) => child.executable.endsWith("/runtime/node"));
+    assert.ok(nativeBaseline || legacyBaseline);
+    entry.baselineWorkerRuntime = nativeBaseline ? "rust" : "node";
     const check = () =>
       bridge.evaluate("main", () =>
         window.__qaUpdaterInvoke("check_desktop_update"),
@@ -688,6 +695,14 @@ try {
       "One updated application remains running",
     );
     const newChildren = await shutdown(currentApps[0]);
+    assert.ok(
+      newChildren.some((child) =>
+        child.executable.endsWith("/bin/cantrip-worker"),
+      ),
+    );
+    assert.ok(
+      !newChildren.some((child) => path.basename(child.executable) === "node"),
+    );
     Object.assign(entry, {
       passed: true,
       identity: bootstrap.server.id,

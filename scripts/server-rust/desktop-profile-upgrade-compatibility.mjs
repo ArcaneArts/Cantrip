@@ -182,7 +182,13 @@ try {
     ),
   );
   const serverAssets = path.join(runtime, "server");
-  const config = await configureDesktopServer(serverAssets);
+  const config = await readFile(
+    path.join(serverAssets, "desktop-server.json"),
+    "utf8",
+  ).then(JSON.parse, (error) => {
+    if (error.code !== "ENOENT") throw error;
+    return configureDesktopServer(serverAssets);
+  });
   const legacy = path.join(serverAssets, config.legacyPostgresBin);
   const dump = path.join(
     legacy,
@@ -194,6 +200,7 @@ try {
   const launchEnvironment = environment(desktop);
   delete launchEnvironment.CANTRIP_DATA_DIR;
   delete launchEnvironment.PGLITE_RUNTIME_DIR;
+  launchEnvironment.PATH = "";
   let server = await startServer(
     probe,
     [runtime, desktop, "--without-worker"],
