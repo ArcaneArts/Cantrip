@@ -10,10 +10,12 @@ import {
   decryptEndpointContentPayload,
   encryptEndpointContentPayload,
   encryptRepositoryOperationPayload,
+  encryptSurfacePrivateState,
   openComputerUseResult,
   protectComputerUseRequest,
 } from "../../packages/crypto/dist/index.js";
 import { cantripOsDesktopPlacement } from "../../packages/protocol/dist/index.js";
+import { createPreparedProject } from "./console-interaction-cases.mjs";
 
 const run = promisify(execFile);
 async function docker(...args) {
@@ -68,6 +70,11 @@ export async function startManagedGuestDesktop(image) {
   return {
     connections: async () =>
       JSON.parse(await guest("cantrip-remote", "status")).connections,
+    desktopTarget: async () =>
+      JSON.parse(
+        await guest("cantrip-workspaces", "desktop-target", guestWorkspaceId),
+      ),
+    disableRemote: () => guest("cantrip-remote", "disable"),
     async placeProject({
       call,
       projectId,
@@ -150,12 +157,113 @@ export async function startManagedGuestDesktop(image) {
       assert.equal(ready.state, "ready", JSON.stringify(ready));
       return {
         bindingId: binding.id,
+        bindingGeneration: binding.bindingGeneration,
+        worktreeId: binding.worktreeId,
+        attachmentGeneration: instance.attachmentGeneration,
+        runtimeGeneration: instance.runtimeGeneration,
         workspaceId: workspace.id,
         guestWorkspaceId,
       };
     },
     close: () => docker("rm", "-f", container),
   };
+}
+
+export async function verifyManagedGuestDesktopPreparation({
+  desktop,
+  call,
+  eventually,
+  ownerId,
+  workerId,
+  keyRevision,
+  labelKey,
+  repositoryKey,
+  surfaceKey,
+}) {
+  const { projectId, projectUrl, label } = await createPreparedProject({
+    call,
+    eventually,
+    ownerId,
+    workerId,
+    keyRevision,
+    labelKey,
+    projectName: "Guest desktop fixture",
+  });
+  const placement = await desktop.placeProject({
+    call,
+    projectId,
+    ownerId,
+    workerId,
+    keyRevision,
+    repositoryKey,
+  });
+  const { server } = await call("GET", "/api/bootstrap", 200);
+  const create = async (id, runtimeGeneration, status) =>
+    call("POST", `${projectUrl}/remote-desktops`, status, {
+      id,
+      titleProtection: await label(
+        "project-view",
+        id,
+        "Assigned Linux desktop",
+      ),
+      stateProtection: await encryptSurfacePrivateState({
+        ownerId,
+        context: {
+          serverId: server.id,
+          resource: "remote-desktop-row",
+          recordKind: "remote-desktop-state",
+          resourceId: id,
+          operationId: null,
+        },
+        keyRevision,
+        componentKey: surfaceKey,
+        content: {
+          version: 1,
+          classification: { recordKind: "remote-desktop-state" },
+          revision: 1,
+          target: { kind: "monitor", id: null, name: null },
+        },
+      }),
+      cantripOsBindingId: placement.bindingId,
+      cantripOsRuntimeGeneration: runtimeGeneration,
+    });
+  const before = await desktop.desktopTarget();
+  await create(randomUUID(), randomUUID(), 409);
+  assert.deepEqual(await desktop.desktopTarget(), before);
+
+  const id = randomUUID();
+  const created = await create(id, placement.runtimeGeneration, 201);
+  const observed = await desktop.desktopTarget();
+  assert.equal(observed.status, "running");
+  assert.match(observed.desktop_generation, /^[a-f0-9]{64}$/);
+  assert.deepEqual(created.osSource, {
+    bindingId: placement.bindingId,
+    bindingGeneration: placement.bindingGeneration,
+    worktreeId: placement.worktreeId,
+    attachmentGeneration: placement.attachmentGeneration,
+    runtimeGeneration: placement.runtimeGeneration,
+    desktopGeneration: observed.desktop_generation,
+  });
+  assert.deepEqual(
+    await call("GET", `/api/remote-desktops/${id}`, 200),
+    created,
+  );
+  assert.equal(
+    (await desktop.connections())[placement.guestWorkspaceId],
+    undefined,
+  );
+
+  await desktop.disableRemote();
+  const unavailableId = randomUUID();
+  const failure = await create(unavailableId, placement.runtimeGeneration, 502);
+  assert.match(
+    failure.error,
+    /assigned Cantrip OS desktop could not be opened/,
+  );
+  await call("GET", `/api/remote-desktops/${unavailableId}`, 404);
+  console.log(
+    JSON.stringify({ suite: "native-guest-desktop-preparation", passed: true }),
+  );
 }
 
 export async function verifyCantripOsPreview({
@@ -378,6 +486,22 @@ export async function verifyCantripOsPreview({
       otherId && otherId !== sessionId,
       JSON.stringify(otherOpened.result),
     );
+    const prepare = {
+      type: "surface.desktop.os-prepare",
+      serverId,
+      projectId: execution.scope.projectId,
+      osExecution: execution,
+    };
+    const foreign = await send({ ...prepare, serverId: randomUUID() });
+    assert.equal(foreign.ok, false);
+    assert.match(foreign.error.message, /belongs to another owner/);
+    const observed = JSON.parse(
+      await guest("cantrip-workspaces", "desktop-target", workspaceName),
+    );
+    assert.deepEqual(await request(prepare), {
+      desktopGeneration: observed.desktop_generation,
+    });
+    assert.equal((await connections())[workspaceName]?.running, true);
     const snapshot = await operation(first, lease, {
       operation: "observation.snapshot",
       sessionId,

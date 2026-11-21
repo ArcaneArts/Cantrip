@@ -3,7 +3,7 @@ use super::{Request, native};
 use crate::{
     cantrip_os::carrier::Transport,
     codex::guest_environment::{record_path, stored},
-    desktop_inventory::{Helper, process::Process, retire},
+    desktop_inventory::{DEADLINE, Helper, process::Process, read_targets, retire},
     filesystem::Scope,
     metadata::Signal,
 };
@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{Mutex as AsyncMutex, Semaphore},
+    sync::{Mutex as AsyncMutex, OwnedSemaphorePermit, Semaphore, oneshot},
     task::JoinSet,
     time::{Instant, timeout},
 };
@@ -136,48 +136,8 @@ impl Guests {
     ) -> Result<()> {
         let mut lease = slot.lock().unwrap();
         request.signal.check()?;
-        let scope = &execution["scope"];
-        let transport = Transport::from_value(&execution["transport"])?;
-        let placement = Value::object(
-            DESKTOP_FIELDS
-                .iter()
-                .map(|(guest, field)| (*guest, scope[*field].clone())),
-        );
-        let key = payload_digest(&json!([
-            authority["serverId"].clone(),
-            scope["ownerId"].clone(),
-            scope["workerId"].clone(),
-            scope["instanceId"].clone(),
-            scope["workspaceId"].clone(),
-        ]));
         let mut registry = self.registry.lock().unwrap();
-        ensure!(!registry.closed, native::cancelled("not-sent"));
-        registry.groups.retain(|_, group| group.strong_count() > 0);
-        let group = match registry.groups.get(&key).and_then(Weak::upgrade) {
-            Some(group) => {
-                ensure!(
-                    group.transport == transport
-                        && group.placement == placement
-                        && group.attachment == scope["attachmentGeneration"],
-                    native::reject(
-                        "ownership-mismatch",
-                        "The captured Cantrip OS desktop changed."
-                    )
-                );
-                group
-            }
-            None => {
-                let group = Arc::new(Group {
-                    transport,
-                    placement,
-                    attachment: scope["attachmentGeneration"].clone(),
-                    pending: Arc::new(Semaphore::new(4)),
-                    state: AsyncMutex::default(),
-                });
-                registry.groups.insert(key, Arc::downgrade(&group));
-                group
-            }
-        };
+        let group = registry.group(&authority["serverId"], execution)?;
         ensure!(
             lease
                 .as_ref()
@@ -187,11 +147,7 @@ impl Guests {
                 "The captured Cantrip OS desktop changed."
             )
         );
-        let permit = group
-            .pending
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| native::reject("capacity", "Computer-use guest requests are busy."))?;
+        let permit = group.admit()?;
         let lease = lease
             .get_or_insert_with(|| GuestLease {
                 id: uuid::Uuid::new_v4(),
@@ -206,6 +162,24 @@ impl Guests {
             lease.dispatch(request).await;
         });
         Ok(())
+    }
+
+    pub(super) fn prepare(
+        &self,
+        server: &Value,
+        execution: &Value,
+        signal: Signal,
+    ) -> Result<oneshot::Receiver<Result<Value>>> {
+        let mut registry = self.registry.lock().unwrap();
+        let group = registry.group(server, execution)?;
+        let permit = group.admit()?;
+        let (reply, result) = oneshot::channel();
+        while registry.jobs.try_join_next().is_some() {}
+        registry.jobs.spawn(async move {
+            let _permit = permit;
+            let _ = reply.send(group.prepare(&signal).await);
+        });
+        Ok(result)
     }
 
     pub(super) fn release(
@@ -255,6 +229,52 @@ impl Guests {
             });
         }
         while jobs.join_next().await.is_some() {}
+    }
+}
+
+impl Registry {
+    fn group(&mut self, server: &Value, execution: &Value) -> Result<Arc<Group>> {
+        ensure!(!self.closed, native::cancelled("not-sent"));
+        let scope = &execution["scope"];
+        let transport = Transport::from_value(&execution["transport"])?;
+        let placement = Value::object(
+            DESKTOP_FIELDS
+                .iter()
+                .map(|(guest, field)| (*guest, scope[*field].clone())),
+        );
+        let key = payload_digest(&json!([
+            server.clone(),
+            scope["ownerId"].clone(),
+            scope["workerId"].clone(),
+            scope["instanceId"].clone(),
+            scope["workspaceId"].clone(),
+        ]));
+        self.groups.retain(|_, group| group.strong_count() > 0);
+        Ok(match self.groups.get(&key).and_then(Weak::upgrade) {
+            Some(group) => {
+                ensure!(
+                    group.transport == transport
+                        && group.placement == placement
+                        && group.attachment == scope["attachmentGeneration"],
+                    native::reject(
+                        "ownership-mismatch",
+                        "The captured Cantrip OS desktop changed."
+                    )
+                );
+                group
+            }
+            None => {
+                let group = Arc::new(Group {
+                    transport,
+                    placement,
+                    attachment: scope["attachmentGeneration"].clone(),
+                    pending: Arc::new(Semaphore::new(4)),
+                    state: AsyncMutex::default(),
+                });
+                self.groups.insert(key, Arc::downgrade(&group));
+                group
+            }
+        })
     }
 }
 
@@ -308,7 +328,67 @@ impl GuestLease {
 }
 
 impl Group {
+    fn admit(&self) -> Result<OwnedSemaphorePermit> {
+        self.pending
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| native::reject("capacity", "Computer-use guest requests are busy."))
+    }
+
+    async fn prepare(&self, signal: &Signal) -> Result<Value> {
+        let mut state = tokio::select! {
+            biased;
+            reason = signal.cancelled() => return Err(reason.into()),
+            state = self.state.lock() => state,
+        };
+        let context = self.open_context(signal).await?;
+        if state.carrier.as_mut().is_some_and(|carrier| {
+            carrier.context != context
+                || carrier
+                    .helper
+                    .as_mut()
+                    .is_none_or(|helper| helper.process.exited())
+        }) && let Some(carrier) = state.carrier.take()
+        {
+            carrier.close(&self.transport).await;
+        }
+        if state.carrier.is_none() {
+            state.carrier = Some(self.connect_context(context.clone(), signal).await?);
+        }
+        let process = &mut state
+            .carrier
+            .as_mut()
+            .unwrap()
+            .helper
+            .as_mut()
+            .unwrap()
+            .process;
+        let inventory = tokio::select! {
+            biased;
+            reason = signal.cancelled() => Err(reason.into()),
+            result = timeout(DEADLINE, read_targets(process)) =>
+                result.context("The assigned Linux display did not respond.").and_then(|result| result),
+        };
+        // An interrupted inventory can leave a partial frame in the pipe.
+        if (state.owners.is_empty() || inventory.is_err())
+            && let Some(carrier) = state.carrier.take()
+        {
+            carrier.close(&self.transport).await;
+        }
+        let (targets, _) = inventory?;
+        ensure!(
+            targets.iter().any(|target| target["kind"] == "monitor"),
+            "The assigned Linux display is unavailable."
+        );
+        Ok(json!({"desktopGeneration":context["desktop_generation"]}))
+    }
+
     async fn connect(&self, signal: &Signal) -> Result<Carrier> {
+        let context = self.open_context(signal).await?;
+        self.connect_context(context, signal).await
+    }
+
+    async fn open_context(&self, signal: &Signal) -> Result<Value> {
         let workspace = self.placement["workspace_id"]
             .as_str()
             .context("Missing guest workspace.")?;
@@ -322,6 +402,10 @@ impl Group {
             receipt = control => receipt.map_err(|_| native::reject("unavailable", "The assigned Cantrip OS desktop could not be opened."))?,
         };
         validate_context(&self.placement, &context)?;
+        Ok(context)
+    }
+
+    async fn connect_context(&self, context: Value, signal: &Signal) -> Result<Carrier> {
         signal.check()?;
         let id = uuid::Uuid::new_v4().to_string();
         let (program, args) = self.transport.remote_connection(&context, &id)?;

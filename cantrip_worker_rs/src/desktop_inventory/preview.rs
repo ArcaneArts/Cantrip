@@ -35,12 +35,16 @@ const STOP: &str = "computer-use.preview.stop";
 const REVOKE: &str = "computer-use.preview.revoke";
 const OPERATION: &str = "computer-use.operation";
 const ANSWER: &str = "computer-use.approval.respond";
+pub(crate) const PREPARE_OS_DESKTOP: &str = "surface.desktop.os-prepare";
 pub use agent::{DesktopTurn, HostAction, HostActivity, HostEvaluation, HostSnapshot};
 pub(super) use native::{release, run};
 pub(crate) use observations::{ModelImage, ObservedTurn};
 
 pub(crate) fn supports(method: &str) -> bool {
-    matches!(method, OPEN | STOP | REVOKE | OPERATION | ANSWER)
+    matches!(
+        method,
+        OPEN | STOP | REVOKE | OPERATION | ANSWER | PREPARE_OS_DESKTOP
+    )
 }
 
 #[derive(Clone)]
@@ -187,8 +191,39 @@ impl Previews {
             Some(REVOKE) => self.revoke(command, epoch),
             Some(ANSWER) => self.answer(command, epoch),
             Some(OPERATION) => self.operation(command, epoch, emit).await,
+            Some(PREPARE_OS_DESKTOP) => self.prepare_os_desktop(command, epoch).await,
             _ => bail!("Unknown computer-use preview command."),
         }
+    }
+
+    async fn prepare_os_desktop(&self, command: &Value, epoch: u64) -> Result<Value> {
+        let (owner, server) = self.0.encryption.bound_identity()?;
+        let execution = &command["osExecution"];
+        let scope = &execution["scope"];
+        ensure!(
+            command["serverId"] == server
+                && scope["ownerId"].as_js_string() == Some(&owner)
+                && scope["workerId"].as_js_string() == Some(self.0.encryption.worker_id())
+                && scope["projectId"] == command["projectId"],
+            "Linux desktop execution belongs to another owner, project or Worker."
+        );
+        let (abort, signal) = Abort::new();
+        let signal = Signal::any(vec![signal, self.0.running.clone()]);
+        let mut socket = self.0.outgoing.stream_epoch();
+        let result = self.0.guests.prepare(&server, execution, signal)?;
+        let prepared = tokio::select! {
+            biased;
+            _ = socket.wait_for(|current| *current != epoch) => {
+                abort.abort(anyhow::anyhow!("Linux desktop preparation authority expired."));
+                bail!("Linux desktop preparation authority expired.");
+            }
+            result = result => result.context("Linux desktop preparation stopped.")??,
+        };
+        ensure!(
+            self.0.encryption.bound_identity()? == (owner, server),
+            "Linux desktop preparation authority expired."
+        );
+        checked("remoteDesktopPreparedGenerationSchema", &prepared)
     }
 
     fn open(&self, authority: &Value, domain: &Value, epoch: u64) -> Result<Value> {

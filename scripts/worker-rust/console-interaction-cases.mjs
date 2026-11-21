@@ -7,17 +7,15 @@ import * as crypto from "../../packages/crypto/dist/index.js";
 import { discoveryWireFixtures } from "../server-rust/discovery-wire-fixtures.mjs";
 import { projectLabel } from "../server-rust/security-fixtures.mjs";
 
-export async function createPreparedProjectChat({
+export async function createPreparedProject({
   call,
   eventually,
   ownerId,
   workerId,
   keyRevision,
   labelKey,
-  title,
   workspaceId: existingWorkspaceId,
   projectName = "Interaction fixture",
-  beforeChat,
 }) {
   const workspaceId = existingWorkspaceId ?? randomUUID();
   if (!existingWorkspaceId) {
@@ -51,6 +49,17 @@ export async function createPreparedProjectChat({
     () => call("GET", `${projectUrl}/folder-setup`, 200),
     (row) => assert.equal(row.state, "succeeded", JSON.stringify(row)),
   );
+  return { projectId, projectUrl, workspaceId, label };
+}
+
+export async function createPreparedProjectChat({
+  title,
+  beforeChat,
+  ...project
+}) {
+  const { projectId, projectUrl, workspaceId, label } =
+    await createPreparedProject(project);
+  const { call, eventually } = project;
   const placement = await beforeChat?.({ projectId, workspaceId });
   const chatId = randomUUID();
   await call("POST", `${projectUrl}/chats`, 201, {

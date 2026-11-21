@@ -1609,7 +1609,10 @@ fn finish(
         }
     };
     let outcome = crate::outcomes::chat(&request["command"], &response);
-    let sent = if kind == "surface.desktop.targets" {
+    let sent = if matches!(
+        kind,
+        "surface.desktop.targets" | crate::desktop_inventory::preview::PREPARE_OS_DESKTOP
+    ) {
         if let Some(epoch) = request["socketEpoch"].as_u64() {
             outgoing.send_for_epoch(epoch, response)
         } else {

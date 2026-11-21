@@ -42,6 +42,7 @@ import { verifyComputerUsePreview } from "./computer-use-preview-cases.mjs";
 import {
   guestDockerEnvironment,
   startManagedGuestDesktop,
+  verifyManagedGuestDesktopPreparation,
 } from "./cantrip-os-preview-cases.mjs";
 import { verifyManagedComputerUse } from "./managed-computer-use-cases.mjs";
 import { LiveProbe } from "../server-rust/live-sockets.mjs";
@@ -79,6 +80,7 @@ const { values } = parseArgs({
     "cua-preview": { type: "string" },
     "cua-agent": { type: "string" },
     "cua-guest": { type: "string" },
+    "os-desktop-prepare": { type: "boolean" },
     "guest-image": { type: "string" },
     "cua-console": { type: "string" },
     "cua-recovered": { type: "string" },
@@ -130,7 +132,9 @@ const taskKey = key("task-content");
 const providerKey = key("provider-credential");
 const cuaConsole = values["cua-console"];
 const guestCua = values["cua-guest"];
-const repositoryKey = guestCua ? key("repository-content") : null;
+const prepareGuestDesktop = values["os-desktop-prepare"];
+const repositoryKey =
+  guestCua || prepareGuestDesktop ? key("repository-content") : null;
 const recoveredTaskGoalCua = values["cua-task-goal-recovered"];
 const recoveredTaskCua = values["cua-task-recovered"] || recoveredTaskGoalCua;
 const recoveredCua = values["cua-recovered"] || recoveredTaskCua;
@@ -195,6 +199,7 @@ const consoleStateKey =
   values["console-steer"] ||
   cuaConsole ||
   guestCua ||
+  prepareGuestDesktop ||
   autonomousCua ||
   values["host-skills"] ||
   values["scratch-files"] ||
@@ -3074,10 +3079,10 @@ try {
     if (values.cli)
       workerEnvironment.CANTRIP_CLI_BIN = path.resolve(values.cli);
   }
-  if (guestCua) {
+  if (guestCua || prepareGuestDesktop) {
     assert.ok(
       values["guest-image"],
-      "Managed guest computer use requires an existing guest image.",
+      "Managed guest desktop verification requires an existing guest image.",
     );
     const environment = await guestDockerEnvironment(root);
     Object.assign(workerEnvironment, environment, {
@@ -3098,7 +3103,19 @@ try {
   }
   await startWorker(enrollment.code);
   await setupEncryption();
-  if (values["scratch-files"]) {
+  if (prepareGuestDesktop) {
+    await verifyManagedGuestDesktopPreparation({
+      desktop: guestDesktop,
+      call,
+      eventually,
+      ownerId,
+      workerId,
+      keyRevision,
+      labelKey,
+      repositoryKey,
+      surfaceKey: consoleStateKey,
+    });
+  } else if (values["scratch-files"]) {
     const { verifyStandaloneChatFiles } =
       await import("./standalone-chat-files-cases.mjs");
     await verifyStandaloneChatFiles({
