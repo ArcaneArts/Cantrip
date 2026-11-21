@@ -1,6 +1,11 @@
+FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS viewer-assets
+COPY packages/workspaces/prepare-viewer.sh /tmp/prepare-viewer.sh
+RUN sh /tmp/prepare-viewer.sh /viewer
+
 FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS workspace-package
 COPY packages/workspaces/ /package/
-RUN /package/build.sh /out
+COPY --from=viewer-assets /viewer/ /viewer/
+RUN /package/build.sh /out /viewer
 
 FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS recovery-package
 COPY packages/recovery/ /package/
@@ -11,7 +16,7 @@ FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1de
 ENV DEBIAN_FRONTEND=noninteractive LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 COPY manifests/desktop.packages /tmp/desktop.packages
 RUN apt-get update && xargs -r apt-get install -y --no-install-recommends < /tmp/desktop.packages \
-    && apt-get install -y --no-install-recommends tigervnc-standalone-server novnc websockify tini \
+    && apt-get install -y --no-install-recommends tigervnc-standalone-server websockify tini \
     && rm -rf /var/lib/apt/lists/* /tmp/desktop.packages /usr/share/icewm/themes/*
 COPY overlays/ /
 ARG CANTRIP_OS_WORKSPACES=1
@@ -40,7 +45,10 @@ RUN if [ "$CANTRIP_OS_RECOVERY" = 1 ]; then \
     && rm -rf /tmp/cantrip-recovery /var/lib/apt/lists/*
 COPY scripts/configure-system.sh /tmp/configure-system.sh
 RUN sh /tmp/configure-system.sh && rm /tmp/configure-system.sh
-COPY viewer/ /usr/share/novnc/
+COPY --from=viewer-assets /viewer/www/ /usr/share/cantrip-os-viewer/
+COPY --from=viewer-assets /viewer/doc/ /usr/share/doc/cantrip-os-viewer/
+COPY --from=viewer-assets /viewer/novnc-version /usr/share/doc/cantrip-os-viewer/novnc-version
+COPY viewer/ /usr/share/cantrip-os-viewer/
 COPY images/oci/start.sh /usr/local/sbin/cantrip-os-start
 RUN chmod 0755 /usr/local/sbin/cantrip-os-start
 ENV CANTRIP_OS_CONTAINER=1 DISPLAY=:0

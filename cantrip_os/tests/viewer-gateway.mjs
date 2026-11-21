@@ -2,6 +2,13 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 const root = process.env.CANTRIP_OS_TEST_URL ?? "http://127.0.0.1:6081";
+for (const asset of ["/core/rfb.js", "/vendor/pako/lib/zlib/inflate.js"]) {
+  const response = await fetch(root + asset);
+  assert.equal(response.status, 200, asset);
+  assert.match(response.headers.get("content-type") ?? "", /javascript/u);
+  assert.ok((await response.text()).length > 0, asset);
+}
+
 async function api(command, id) {
   const response = await fetch(
     `${root}/api/${command}${command === "show" ? `?id=${encodeURIComponent(id)}` : ""}`,

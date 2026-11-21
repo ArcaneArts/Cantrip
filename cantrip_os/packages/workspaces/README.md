@@ -1,6 +1,6 @@
 # Optional workspace package
 
-`cantrip-os-workspaces` is an additive Debian package. Version 0.4.0 provides
+`cantrip-os-workspaces` is an additive Debian package. It provides
 its service, local administrative CLI, versioned state, persistent accounts,
 independent desktop sessions, and a local browser workspace selector. The existing personal desktop works independently.
 
@@ -14,12 +14,13 @@ Build a portable, architecture-independent package from the repository root:
 node cantrip_os/scripts/package.mjs
 ```
 
-Output: `cantrip_os/artifacts/packages/cantrip-os-workspaces_0.4.0_all.deb`.
-The package uses Python, Debian's noVNC/websockify, and Debian service helpers. Its build
-runs in the pinned Debian image, fixes file timestamps/ownership, and uses a
-fixed default `SOURCE_DATE_EPOCH`. Rebuilding identical sources with the same
-build tools produces identical package bytes. OS apt dependencies still follow
-the Debian repositories.
+Output: `cantrip_os/artifacts/packages/cantrip-os-workspaces_0.5.0_all.deb`.
+Version 0.5.0 bundles the browser assets from Debian's noVNC package with its
+version and copyright. It uses Debian's Python websockify and service helpers.
+The build runs in the pinned Debian image and uses a fixed default
+`SOURCE_DATE_EPOCH`. Identical sources, noVNC assets, and build tools produce
+identical package bytes. The build resolves noVNC and apt dependencies from the
+Debian repositories.
 
 Docker and ISO recipes install this same package through apt. Set
 `CANTRIP_OS_WORKSPACES=0` when running `pnpm os`, `os.mjs build/rebuild`, or
@@ -29,7 +30,7 @@ owned by the package. The Docker source watcher includes `packages/`.
 On a running OS, using the built package at its actual location:
 
 ```sh
-sudo apt install ./cantrip-os-workspaces_0.4.0_all.deb
+sudo apt install ./cantrip-os-workspaces_0.5.0_all.deb
 sudo cantrip-workspaces enable
 sudo cantrip-workspaces status
 sudo cantrip-workspaces service restart
@@ -219,11 +220,12 @@ Host/Origin checks and JSON-only mutations reject cross-site requests. GUI
 operations support create/start/stop/restart/view; package enable/disable remains
 an explicit root CLI operation.
 
-Viewer code and assets are package-owned under `root/usr/share/cantrip-os-workspaces/www/`.
-The gateway reuses Debian's noVNC/websockify packages; it does not implement a new
-WebSocket protocol. `viewer_bind` and `viewer_port` are configurable in the Debian
-conffile. The CLI remains usable if the optional gateway cannot bind its port;
-service status reports the gateway as starting/running/failed and logs its error.
+Viewer code and assets are owned by the package under
+`/usr/share/cantrip-os-workspaces/`. The gateway uses Python websockify, and
+the browser runs the included noVNC modules. `viewer_bind` and `viewer_port`
+are configurable in the Debian conffile. The CLI remains usable if the optional
+gateway cannot bind its port. Service status reports the gateway as
+starting/running/failed and logs its error.
 
 `CANTRIP_OS_WORKSPACE_PORT` selects the Docker host port (default 6081).
 `CANTRIP_OS_MEMORY=4g pnpm os` creates a desktop limited to 4 GiB with no additional

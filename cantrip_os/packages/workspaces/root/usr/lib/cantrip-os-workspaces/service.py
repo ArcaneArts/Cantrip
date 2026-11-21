@@ -16,7 +16,7 @@ import time
 from sessions import Sessions
 from desktop_operations import DesktopOperations
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 DEFAULT_CONFIG = "/etc/cantrip-os/workspaces.json"
 
 

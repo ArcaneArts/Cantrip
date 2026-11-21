@@ -54,6 +54,6 @@ if [ -r /home/cantrip/.Xresources ]; then
 fi
 runuser -u cantrip -- env HOME=/home/cantrip dbus-run-session -- icewm-session &
 pids+=("$!")
-websockify --web=/usr/share/novnc 0.0.0.0:6080 127.0.0.1:5900 &
+websockify --web=/usr/share/cantrip-os-viewer 0.0.0.0:6080 127.0.0.1:5900 &
 pids+=("$!")
 wait -n "${pids[@]}"
