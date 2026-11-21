@@ -28,6 +28,7 @@ pub(crate) struct Process {
     sequence: u64,
     event_sequence: u64,
     backend: String,
+    capture_available: bool,
 }
 
 #[derive(Debug)]
@@ -77,6 +78,7 @@ impl Process {
             sequence: 0,
             event_sequence: 0,
             backend: String::new(),
+            capture_available: false,
         })
     }
 
@@ -100,7 +102,12 @@ impl Process {
             "Unsupported Cantrip capture helper protocol."
         );
         self.backend = data["backend"].as_str().unwrap_or_default().to_owned();
+        self.capture_available = data["capture"] == true;
         Ok(())
+    }
+
+    pub(super) fn capture_available(&self) -> bool {
+        self.capture_available
     }
 
     pub(super) fn backend(&self) -> &str {

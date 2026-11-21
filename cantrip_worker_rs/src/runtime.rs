@@ -1183,13 +1183,13 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind, "surface.desktop.targets" | "computer-use.effects.sync") {
+                if matches!(kind, "surface.desktop.targets" | "computer-use.effects.sync" | crate::desktop_inventory::PROBE) {
                     let pending = request["socketEpoch"].as_u64()
                         .ok_or_else(|| anyhow!("The desktop helper command has no connected socket."))
-                        .and_then(|epoch| if kind == "computer-use.effects.sync" {
-                            desktop_inventory.submit_effects(&command["preferences"], epoch)
-                        } else {
-                            desktop_inventory.submit(command.clone(), epoch)
+                        .and_then(|epoch| match kind {
+                            "computer-use.effects.sync" => desktop_inventory.submit_effects(&command["preferences"], epoch),
+                            crate::desktop_inventory::PROBE => desktop_inventory.submit_probe(epoch),
+                            _ => desktop_inventory.submit(command.clone(), epoch),
                         });
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
@@ -1663,7 +1663,7 @@ fn finish(
     let outcome = crate::outcomes::chat(&request["command"], &response);
     let sent = if matches!(
         kind,
-        "surface.desktop.targets" | crate::desktop_inventory::preview::PREPARE_OS_DESKTOP
+        "surface.desktop.targets" | crate::desktop_inventory::preview::PREPARE_OS_DESKTOP | crate::desktop_inventory::PROBE
     ) {
         if let Some(epoch) = request["socketEpoch"].as_u64() {
             outgoing.send_for_epoch(epoch, response)

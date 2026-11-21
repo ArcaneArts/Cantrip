@@ -30,6 +30,8 @@ use tokio::{
     time::{Instant, timeout_at},
 };
 
+pub(crate) const PROBE: &str = "surface.desktop.probe";
+
 const DEADLINE: Duration = Duration::from_secs(15);
 const REPLAY_LIMIT: usize = 1_000;
 const HELPER_INVENTORY_LIMIT: usize = 4_096;
@@ -73,6 +75,7 @@ impl Helper {
 
 enum Request {
     Scan(Scan),
+    Probe(Probe),
     ComputerUse(preview::Request),
     Effects {
         preferences: Value,
@@ -83,6 +86,12 @@ enum Request {
 
 struct Scan {
     command: Value,
+    epoch: u64,
+    deadline: Instant,
+    reply: oneshot::Sender<Result<Value>>,
+}
+
+struct Probe {
     epoch: u64,
     deadline: Instant,
     reply: oneshot::Sender<Result<Value>>,
@@ -148,6 +157,18 @@ impl DesktopInventory {
 
     pub(crate) fn helper_binary(&self) -> PathBuf {
         self.binary.clone()
+    }
+
+    pub(crate) fn submit_probe(&self, epoch: u64) -> Result<oneshot::Receiver<Result<Value>>> {
+        let (reply, result) = oneshot::channel();
+        self.queue
+            .try_send(Request::Probe(Probe {
+                epoch,
+                deadline: Instant::now() + DEADLINE,
+                reply,
+            }))
+            .map_err(|_| anyhow::anyhow!("Desktop helper is busy."))?;
+        Ok(result)
     }
 
     pub(crate) fn submit_effects(
@@ -249,6 +270,34 @@ async fn run(
                 let Some(request) = request else { break };
                 let scan = match request {
                     Request::Scan(scan) => scan,
+                    Request::Probe(Probe { epoch: current, deadline, reply }) => {
+                        let result = if outgoing.stream_current(current) {
+                            tokio::select! {
+                                biased;
+                                _ = stopped(&mut stop) => {
+                                    let _ = reply.send(Err(anyhow::anyhow!("Desktop helper stopped.")));
+                                    break;
+                                }
+                                _ = connection_changed(&mut epoch, current) => {
+                                    retire(&mut process).await;
+                                    Err(anyhow::anyhow!("Desktop probe authority expired."))
+                                }
+                                result = timeout_at(deadline, probe(&mut process, &binary)) => {
+                                    match result {
+                                        Ok(result) => result,
+                                        Err(_) => {
+                                            retire(&mut process).await;
+                                            probe_result(Some("Desktop helper initialization timed out."))
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Err(anyhow::anyhow!("Desktop probe authority expired."))
+                        };
+                        let _ = reply.send(result);
+                        continue;
+                    }
                     Request::ComputerUse(request) => {
                         let current = request.epoch();
                         if !outgoing.stream_current(current) {
@@ -397,6 +446,24 @@ async fn helper<'a>(current: &'a mut Option<Helper>, binary: &Path) -> Result<&'
         }
     }
     Ok(current.as_mut().unwrap())
+}
+
+async fn probe(current: &mut Option<Helper>, binary: &Path) -> Result<Value> {
+    // The helper reports whether it implements a capture backend. A display
+    // attachment owns the first capture and any platform permission result.
+    let message = match helper(current, binary).await {
+        Ok(helper) if helper.process.capture_available() => None,
+        Ok(_) => Some("Managed desktop capture is unavailable."),
+        Err(_) => Some("Could not initialize the Cantrip capture helper."),
+    };
+    probe_result(message)
+}
+
+fn probe_result(message: Option<&str>) -> Result<Value> {
+    checked(
+        "remoteDesktopProbeResultSchema",
+        &json!({"available":message.is_none(),"message":message}),
+    )
 }
 
 async fn targets(current: &mut Option<Helper>, binary: &Path) -> Result<Inventory> {
