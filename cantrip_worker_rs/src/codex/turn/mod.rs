@@ -34,6 +34,7 @@ pub(in crate::codex) mod shell;
 pub(in crate::codex) mod task;
 pub(crate) use task::recovery::COMMAND as TASK_GOAL_RECOVERY;
 pub(crate) mod task_route;
+pub(in crate::codex) mod thread_changes;
 
 use super::{
     admission::Acquire,
@@ -112,6 +113,7 @@ pub(crate) struct Turns {
     handoffs: handoff::Coordinator,
     goal_recoveries: goal_recovery::Observations,
     computer_use: computer_use::Desktop,
+    thread_changes: Arc<thread_changes::Publisher>,
 }
 
 struct TaskTurn {
@@ -252,6 +254,7 @@ impl Turns {
         task_outcomes: Arc<TaskDelivery>,
         guest_files: Arc<ProductFiles>,
         desktop: &crate::desktop_inventory::DesktopInventory,
+        outgoing: Arc<crate::connection::Outbound>,
     ) -> Result<Self> {
         let (data, worker) = {
             let config = configuration.lock().unwrap();
@@ -284,6 +287,7 @@ impl Turns {
             guest_files,
             task_inputs,
             task_outcomes,
+            thread_changes: Arc::new(thread_changes::Publisher::new(outgoing)),
         })
     }
 

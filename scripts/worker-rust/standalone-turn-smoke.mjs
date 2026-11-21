@@ -3312,6 +3312,7 @@ try {
     });
   } else if (values["console-steer"]) {
     await verifyConsoleSteering({
+      server,
       call,
       eventually,
       createModel,

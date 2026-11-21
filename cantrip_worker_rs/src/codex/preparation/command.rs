@@ -26,6 +26,7 @@ use crate::{
             autonomous::{Autonomous, Runner},
             console::import,
             settings::snapshot,
+            thread_changes::Observation,
         },
     },
     config::Config,
@@ -93,6 +94,7 @@ struct ThreadOwner {
     task_settings: Option<Arc<snapshot::Source>>,
     queue: Option<Arc<import::Binding>>,
     settings: Option<Arc<snapshot::Publisher>>,
+    external_changes: Option<Observation>,
 }
 
 #[derive(Clone)]
@@ -1017,6 +1019,14 @@ impl Ensurer {
                             } else {
                                 None
                             };
+                            let external_changes = if context_kind == "project" && task.is_none() {
+                                owners
+                                    .get_mut(&chat)
+                                    .filter(|owner| owner.bound == bound && owner.thread == loaded)
+                                    .and_then(|owner| owner.external_changes.take())
+                            } else {
+                                None
+                            };
                             let owner = ThreadOwner {
                                 runtime: runtime.downgrade(),
                                 thread: loaded.clone(),
@@ -1028,6 +1038,7 @@ impl Ensurer {
                                 task_settings,
                                 queue,
                                 settings,
+                                external_changes,
                                 model_route: command["model"]["routeId"].clone(),
                                 provider_id: command["provider"]["id"].clone(),
                                 provider_account: command["provider"]["accountId"].clone(),
@@ -1246,6 +1257,32 @@ impl Ensurer {
             .is_none_or(|selected| selected.runtime.generation() != prepared.runtime.generation())
         {
             bail!("The managed console belongs to a replaced native runtime.");
+        }
+        Ok(())
+    }
+
+    pub(in crate::codex) fn watch_external_changes(
+        &self,
+        chat: &JsString,
+        prepared: &Prepared,
+        start: impl FnOnce() -> Result<Observation>,
+    ) -> Result<()> {
+        self.assert_bound(&prepared.bound)?;
+        let mut owners = self.0.live_threads.lock().unwrap();
+        let owner = owners.get_mut(chat).filter(|owner| {
+            owner.task.is_none()
+                && owner.bound == prepared.bound
+                && owner.thread == prepared.thread
+                && owner
+                    .session
+                    .as_ref()
+                    .is_some_and(|session| session["contextKind"] == "project")
+        });
+        if let Some(owner) = owner
+            && owner.external_changes.is_none()
+        {
+            prepared.thread.assert_current(&prepared.runtime)?;
+            owner.external_changes = Some(start()?);
         }
         Ok(())
     }

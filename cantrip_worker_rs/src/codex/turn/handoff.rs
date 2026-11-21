@@ -466,6 +466,8 @@ impl Transfer {
             selected.runtime.generation() == staged.runtime.generation(),
             "The published handoff did not adopt the staged runtime."
         );
+        self.turns
+            .watch_external_changes(&id(&state["chatId"], "handoff chat")?, &selected)?;
         self.settle_local(&state, false).await?;
         let task = self
             .queue_destination_task_goal(&state, &config, &selected)
