@@ -41,6 +41,16 @@ pub trait CaptureBackend: Send {
     fn remote_monitor_input(&self) -> RemoteMonitorInput {
         RemoteMonitorInput::Unsupported
     }
+    fn open_remote_monitor(
+        &mut self,
+        _binding: &crate::interaction::Binding,
+        _participant: &str,
+        _target: &Target,
+        _cancel: &Cancellation,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn cancel_remote_monitor_open(&mut self, _binding: &crate::interaction::Binding) {}
     fn desktop_io(&self) -> bool {
         false
     }

@@ -283,13 +283,13 @@ impl Participant {
             if self.key.host_monitor_input
                 && self.key.target["kind"] == "monitor"
                 && result.as_ref().is_err_and(|error| {
-                    error
-                        .downcast_ref::<NativeError>()
-                        .is_some_and(|error| error.code() == "ownership-mismatch")
+                    error.downcast_ref::<NativeError>().is_some_and(|error| {
+                        matches!(error.code(), "ownership-mismatch" | "input-pending")
+                    })
                 })
             {
-                // The helper owns the physical input across all Host surfaces.
-                // Retry only while this viewer remains attached and authorized.
+                // Wait for the helper's physical input owner or the desktop
+                // approval. Keep frame requests flowing between attempts.
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 continue;
             }

@@ -3,16 +3,19 @@ mod capture;
 mod drive;
 mod inventory;
 mod portal;
+mod portal_control;
+mod portal_desktop;
 mod screenshot;
 
 use super::{host, lock};
 use crate::{
-    backend::{Capture, CaptureBackend, CaptureWork, UnavailableBackend},
+    backend::{Capture, CaptureBackend, CaptureWork, RemoteMonitorInput, UnavailableBackend},
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
     gesture::InputCommand,
     input::InputReceipt,
     input_job::{InputProgress, InputWork},
+    interaction::Binding,
     target::{Point, Target, TargetKind},
 };
 use cantrip_interaction::input::InputEvent;
@@ -23,14 +26,21 @@ struct Host {
     wayland: Arc<Mutex<Desktop>>,
     xwayland: Option<host::Host>,
     portal: Option<portal::Portal>,
+    control: Option<portal_control::Control>,
 }
 
 impl Host {
     fn open() -> Result<Self> {
         let wayland = Desktop::open(&Cancellation::default())?;
         let xwayland = host::Host::connect().ok();
+        let session = portal::Portal::connect().ok();
+        let control = session
+            .as_ref()
+            .filter(|portal| portal_desktop::available(portal))
+            .cloned()
+            .map(portal_control::Control::new);
         let portal = if wayland.capture_protocol().is_none() {
-            portal::Portal::connect().ok()
+            session
         } else {
             None
         };
@@ -41,6 +51,7 @@ impl Host {
             wayland: Arc::new(Mutex::new(wayland)),
             xwayland,
             portal,
+            control,
         })
     }
 
@@ -248,6 +259,41 @@ impl CaptureBackend for Host {
         self.xwayland.is_some()
     }
 
+    fn remote_monitor_input(&self) -> RemoteMonitorInput {
+        if self.control.is_some() {
+            RemoteMonitorInput::ExclusiveHost
+        } else {
+            RemoteMonitorInput::Unsupported
+        }
+    }
+
+    fn open_remote_monitor(
+        &mut self,
+        binding: &Binding,
+        participant: &str,
+        target: &Target,
+        cancel: &Cancellation,
+    ) -> Result<()> {
+        let layout = self
+            .monitors(cancel)?
+            .into_iter()
+            .map(|(display, _)| display.bounds)
+            .collect();
+        self.control.as_mut().ok_or_else(unavailable)?.open(
+            binding,
+            participant,
+            target,
+            layout,
+            cancel,
+        )
+    }
+
+    fn cancel_remote_monitor_open(&mut self, binding: &Binding) {
+        if let Some(control) = &mut self.control {
+            control.cancel_open(binding);
+        }
+    }
+
     fn copy_selection_text(
         &mut self,
         participant: &str,
@@ -256,6 +302,19 @@ impl CaptureBackend for Host {
         sequence: u64,
         cancel: &Cancellation,
     ) -> Result<Option<String>> {
+        if target.kind == TargetKind::Monitor {
+            let text = self.control.as_mut().ok_or_else(unavailable)?.copy(
+                participant,
+                target,
+                sequence,
+                cancel,
+            )?;
+            let (_, current) = self.monitor(&target.id, target.generation, cancel)?;
+            if current.bounds != target.bounds {
+                return Err(stale());
+            }
+            return Ok(text);
+        }
         self.windows()?
             .copy_selection_text(participant, target, position, sequence, cancel)
     }
@@ -269,11 +328,27 @@ impl CaptureBackend for Host {
         event: InputEvent,
         cancel: &Cancellation,
     ) -> Result<()> {
+        if target.kind == TargetKind::Monitor {
+            return self.control.as_mut().ok_or_else(unavailable)?.submit(
+                participant,
+                target,
+                sequence,
+                &event,
+                cancel,
+            );
+        }
         self.windows()?
             .interaction_input(participant, target, position, sequence, event, cancel)
     }
 
     fn close_input(&mut self, participant: &str) -> Result<()> {
+        if self
+            .control
+            .as_mut()
+            .is_some_and(|control| control.close(participant))
+        {
+            return Ok(());
+        }
         match &mut self.xwayland {
             Some(server) => server.close_input(participant),
             None => Ok(()),
