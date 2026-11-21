@@ -82,6 +82,30 @@ export async function startManagedGuestDesktop(image) {
         await guest("cantrip-workspaces", "desktop-target", guestWorkspaceId),
       ),
     disableRemote: () => guest("cantrip-remote", "disable"),
+    clearClipboard: (display) =>
+      guest(
+        "/usr/bin/python3",
+        "-c",
+        `import ctypes as c, sys
+x11 = c.CDLL('libX11.so.6')
+x11.XOpenDisplay.argtypes = [c.c_char_p]
+x11.XOpenDisplay.restype = c.c_void_p
+x11.XInternAtom.argtypes = [c.c_void_p, c.c_char_p, c.c_int]
+x11.XInternAtom.restype = c.c_ulong
+x11.XSetSelectionOwner.argtypes = [c.c_void_p, c.c_ulong, c.c_ulong, c.c_ulong]
+x11.XGetSelectionOwner.argtypes = [c.c_void_p, c.c_ulong]
+x11.XGetSelectionOwner.restype = c.c_ulong
+x11.XCloseDisplay.argtypes = [c.c_void_p]
+display = x11.XOpenDisplay((':' + sys.argv[1]).encode())
+assert display
+try:
+    clipboard = x11.XInternAtom(display, b'CLIPBOARD', 0)
+    x11.XSetSelectionOwner(display, clipboard, 0, 0)
+    assert x11.XGetSelectionOwner(display, clipboard) == 0
+finally:
+    x11.XCloseDisplay(display)`,
+        String(display),
+      ),
     seedClipboard: (display, text) =>
       guest(
         "/usr/bin/python3",
@@ -533,14 +557,35 @@ async function verifyGuestViewerControl({
     assert.equal(state?.mode, "human");
     assert.equal(state.isController, false);
   });
+  const copy = (inputSequence) =>
+    one.send({
+      type: "clipboard",
+      operation: "copy",
+      inputEpoch: epoch,
+      inputSequence,
+    });
+  await desktop.clearClipboard(observed.display);
+  await copy(1);
+  await one.send({
+    type: "pointer",
+    event: "move",
+    x: 120,
+    y: 85,
+    inputEpoch: epoch,
+    inputSequence: 2,
+  });
+  await eventually(
+    () => probeX11(transport, observed.display),
+    (state) =>
+      assert.equal(
+        state.x,
+        120,
+        "Empty copy leaves the same input epoch active",
+      ),
+  );
   const clipboard = "Cantrip guest clipboard 日本語";
   await desktop.seedClipboard(observed.display, clipboard);
-  await one.send({
-    type: "clipboard",
-    operation: "copy",
-    inputEpoch: epoch,
-    inputSequence: 1,
-  });
+  await copy(3);
   await one.message("desktop-clipboard", (state) =>
     assert.equal(state?.text, clipboard),
   );
@@ -550,9 +595,9 @@ async function verifyGuestViewerControl({
     code: "ShiftLeft",
     key: "Shift",
     inputEpoch: epoch,
-    inputSequence: 2,
+    inputSequence: 4,
   });
-  await one.send(pressed(epoch, 3, 321, 234));
+  await one.send(pressed(epoch, 5, 321, 234));
   const held = await pointer(true);
   assert.equal(held.shift, true);
   assert.equal(held.x, 321);
@@ -562,7 +607,7 @@ async function verifyGuestViewerControl({
   const renewed = await input(one, epoch);
   assert.equal((await pointer(false)).shift, false);
   assert.equal((await active(one)).leaseId, lease.leaseId);
-  await one.send(pressed(epoch, 4, 900, 500));
+  await one.send(pressed(epoch, 6, 900, 500));
   await one.send(control("return", randomUUID()));
   await one.message("desktop-input", (state) =>
     assert.match(state?.message ?? "", /lease changed/),

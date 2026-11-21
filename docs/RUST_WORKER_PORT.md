@@ -10803,3 +10803,23 @@ page. The updated worker restored 704 pixels on both WorkerLink relay and
 the legacy WebSocket against Rust Core with PGlite and an empty worker PATH.
 The relay run also passed Chromium process and renderer recovery. Worker
 compilation, Rust and JavaScript formatting, and `git diff --check` passed.
+
+## 329. Keep Cantrip OS viewer control after an empty clipboard read
+
+Reference commit `513edca0cab10831f11cc923aae8f7e856963e02` (#3492).
+
+After the assigned guest acknowledges the copy keystrokes, an `input-failed`
+clipboard reply leaves the viewer’s existing input epoch and human
+control lease usable. An explicit null text reply still maps to an empty
+string as in the archived worker. Transport, authority, and input dispatch
+errors take the existing retirement path.
+
+The local regression set the selection owner to none in a disposable Linux
+ARM64 guest. The previous macOS ARM64 worker failed to deliver the next
+pointer move. The updated worker delivered that move under the same epoch,
+then sent a subsequent Unicode clipboard reply. The public WorkerLink
+smoke also passed exclusive control, held-key and button cancellation,
+handoff, and guest desktop recovery. It used Rust Core with PGlite and the
+existing guest image with `cantrip-os-remote` 0.11.0. Worker compilation,
+Rust and JavaScript formatting, script syntax, and `git diff --check` passed.
+[X11 selection ownership](https://www.x.org/releases/X11R7.6/doc/libX11/specs/libX11/libX11.html)
