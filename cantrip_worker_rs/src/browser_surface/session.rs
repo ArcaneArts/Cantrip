@@ -10,6 +10,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use cantrip_browser::{Event, Page, Subscription};
 use cantrip_framing::remote_surface::{self, Frame};
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
+use indexmap::IndexMap;
 use std::{
     collections::{HashMap, VecDeque},
     future::{Future, pending},
@@ -29,7 +30,7 @@ pub(super) struct Session {
     project: Value,
     stored: Location,
     current_url: JsString,
-    attachments: HashMap<JsString, Attachment>,
+    attachments: IndexMap<JsString, Attachment>,
     viewport: Value,
     viewport_pending: bool,
     loading: bool,
@@ -89,7 +90,7 @@ impl Session {
             stored,
             current_url,
             project: command["projectId"].clone(),
-            attachments: HashMap::new(),
+            attachments: IndexMap::new(),
             viewport: command["viewport"].clone(),
             viewport_pending: false,
             loading: true,
@@ -334,7 +335,7 @@ impl Session {
                     .get(attachment)
                     .is_some_and(|member| member.route.closes_on(epoch))
                 {
-                    self.attachments.remove(attachment);
+                    self.attachments.shift_remove(attachment);
                 }
             }
             "surface.configure" => self.configure_location(value).await?,
@@ -349,7 +350,7 @@ impl Session {
                 if let Some(viewport) = self
                     .attachments
                     .values()
-                    .next()
+                    .find(|member| member.route.alive(&self.shared.outgoing))
                     .map(|member| member.viewport.clone())
                 {
                     self.configure_viewport(&viewport, true).await?;

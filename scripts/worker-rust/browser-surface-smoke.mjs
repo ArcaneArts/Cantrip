@@ -129,6 +129,10 @@ const target = createServer((request, response) => {
     request.socket.destroy();
     return;
   }
+  if (request.url.startsWith("/viewport-report/")) {
+    response.writeHead(204).end();
+    return;
+  }
   const title =
     {
       "/second": "Native second page",
@@ -140,6 +144,9 @@ const target = createServer((request, response) => {
       title +
       '</title><canvas width="640" height="480" style="position:absolute;inset:0"></canvas><input autofocus style="position:absolute;left:8px;top:8px" oninput="document.title=this.value">' +
       `<script>
+        if (location.pathname === '/second') {
+          addEventListener('resize', () => fetch('/viewport-report/' + innerWidth).catch(() => {}));
+        }
         if (${Boolean(values.recover)} && location.pathname === '/second') {
           const input = document.querySelector('input');
           const retained = localStorage.getItem('fixture-input');
@@ -644,6 +651,33 @@ async function verifyStoppedNavigation(view) {
     5_000,
   );
   assert.equal(await view.title("Native first page"), origin + "/first");
+}
+
+async function verifyResumedViewport(first, second) {
+  async function expectViewport(width, after) {
+    await eventually(
+      () => visits.slice(after).includes("/viewport-report/" + width),
+      (observed) => assert.ok(observed, `Chromium viewport reached ${width}px`),
+      5_000,
+    );
+  }
+  const firstWidth = viewport.width + 64;
+  const secondWidth = viewport.width + 128;
+  await first.send({
+    type: "viewport",
+    viewport: { ...viewport, width: firstWidth },
+  });
+  await expectViewport(firstWidth, 0);
+  await second.send({
+    type: "viewport",
+    viewport: { ...viewport, width: secondWidth },
+  });
+  await expectViewport(secondWidth, 0);
+  const beforeResume = visits.length;
+  const surface = "/api/remote-surfaces/" + surfaceId;
+  await call("POST", surface + "/suspend", 200, {});
+  await call("POST", surface + "/resume", 200, {});
+  await expectViewport(firstWidth, beforeResume);
 }
 
 async function desktopState(
@@ -1245,6 +1279,7 @@ exec "$CANTRIP_FIXTURE_CHROMIUM" "$@"
       "Replayed operation did not navigate",
     );
     assert.notEqual(first.attachment, second.attachment);
+    await verifyResumedViewport(first, second);
     await first.close();
 
     await second.send({
