@@ -13,7 +13,7 @@ use cantrip_interaction::{
     ownership::{Participant, TargetIdentity},
 };
 use std::{
-    sync::{Arc, mpsc},
+    sync::{Arc, atomic::AtomicBool, mpsc},
     thread,
 };
 
@@ -24,7 +24,7 @@ pub(super) struct Control {
 }
 
 enum Backend {
-    Portal(Portal),
+    Portal(Portal, Arc<AtomicBool>),
     Legacy(legacy_input::Setup),
 }
 
@@ -72,8 +72,13 @@ struct Active {
 
 impl Control {
     pub(super) fn new(portal: Portal) -> Self {
+        let kde = std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|desktop| {
+            desktop
+                .split(':')
+                .any(|name| name.eq_ignore_ascii_case("KDE"))
+        });
         Self {
-            backend: Backend::Portal(portal),
+            backend: Backend::Portal(portal, Arc::new(AtomicBool::new(kde))),
             pending: None,
             active: None,
         }
@@ -100,8 +105,8 @@ impl Control {
         if self.active.is_some() {
             return Err(busy());
         }
-        let portal = match &self.backend {
-            Backend::Portal(portal) => portal.clone(),
+        let (portal, prefer_emulated) = match &self.backend {
+            Backend::Portal(portal, prefer_emulated) => (portal.clone(), prefer_emulated.clone()),
             Backend::Legacy(setup) => {
                 let session = Session::Legacy(setup.open(display, cancel)?);
                 return self.activate(participant, target, session, cancel);
@@ -144,6 +149,7 @@ impl Control {
                     portal,
                     bounds,
                     &output_layout,
+                    &prefer_emulated,
                     &work_cancel,
                 ));
             })

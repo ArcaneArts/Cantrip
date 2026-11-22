@@ -1,6 +1,7 @@
 //! Capture compositor outputs and keep XWayland windows scoped to X11.
 mod capture;
 mod drive;
+mod emulated_input;
 mod inventory;
 mod legacy_clipboard;
 mod legacy_input;

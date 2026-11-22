@@ -1,4 +1,5 @@
 use super::{
+    emulated_input::{EmulatedInput, SelectedOutput},
     monitor_control::Event,
     portal::{PORTAL_NAME, PORTAL_PATH, Portal, Results, bounded, token},
 };
@@ -180,6 +181,62 @@ impl Handle {
         .await
     }
 
+    async fn connect_to_eis(&self, cancel: &Cancellation) -> Result<Option<OwnedFd>> {
+        self.check_open()?;
+        bounded(
+            async {
+                let reply = self
+                    .portal
+                    .bus
+                    .call_method(
+                        Some(self.owner.as_str()),
+                        PORTAL_PATH,
+                        Some(REMOTE),
+                        "ConnectToEIS",
+                        &(&self.path, Options::new()),
+                    )
+                    .await;
+                match reply {
+                    Ok(reply) => reply
+                        .body()
+                        .deserialize()
+                        .map(Some)
+                        .map_err(|_| unavailable()),
+                    Err(zbus::Error::MethodError(name, _, _))
+                        if matches!(
+                            name.as_str(),
+                            "org.freedesktop.DBus.Error.UnknownMethod"
+                                | "org.freedesktop.DBus.Error.UnknownInterface"
+                                | "org.freedesktop.portal.Error.NotSupported"
+                                | "org.freedesktop.portal.Error.Failed"
+                        ) =>
+                    {
+                        Ok(None)
+                    }
+                    Err(zbus::Error::MethodError(name, _, _))
+                        if matches!(
+                            name.as_str(),
+                            "org.freedesktop.portal.Error.NotAllowed"
+                                | "org.freedesktop.DBus.Error.AccessDenied"
+                        ) =>
+                    {
+                        Err(CuaError::new(
+                            ErrorCode::PermissionDenied,
+                            "The Wayland portal denied emulated input.",
+                        ))
+                    }
+                    Err(_) => Err(CuaError::new(
+                        ErrorCode::InputFailed,
+                        "The Wayland portal did not establish emulated input.",
+                    )),
+                }
+            },
+            Duration::from_secs(2),
+            cancel,
+        )
+        .await
+    }
+
     async fn close(&self) {
         if self.is_closed() {
             return;
@@ -205,6 +262,7 @@ pub(super) struct DesktopSession {
     handle: Handle,
     stream: u32,
     clipboard: bool,
+    emulated: Option<EmulatedInput>,
 }
 
 impl DesktopSession {
@@ -212,80 +270,135 @@ impl DesktopSession {
         portal: Portal,
         target: Bounds,
         layout: &[Bounds],
+        prefer_emulated: &AtomicBool,
         cancel: &Cancellation,
     ) -> Result<Self> {
         async_io::block_on(async {
-            let session_token = token();
-            let expected = format!("{PORTAL_PATH}/session/{}/{session_token}", portal.sender()?);
-            let mut handle = Handle {
-                portal,
-                owner: PORTAL_NAME.to_owned(),
-                path: OwnedObjectPath::try_from(expected).map_err(|_| unavailable())?,
-                closure: None,
-            };
-            let create = handle
-                .portal
-                .request(
-                    PORTAL_NAME,
-                    REMOTE,
-                    "CreateSession",
-                    |request| {
-                        (HashMap::from([
-                            ("handle_token", Value::from(request)),
-                            ("session_handle_token", Value::from(session_token)),
-                        ]),)
-                    },
-                    cancel,
-                )
-                .await;
-            let create = match create {
-                Ok(create) => create,
-                Err(error) => {
-                    handle.close().await;
-                    return Err(error);
+            let (mut handle, mut stream, mut clipboard) =
+                Self::approve(portal.clone(), target, layout, cancel).await?;
+            let mut emulated = None;
+            if prefer_emulated.load(Ordering::Relaxed) {
+                match handle.connect_to_eis(cancel).await {
+                    Ok(Some(fd)) => {
+                        let output = SelectedOutput {
+                            bounds: target,
+                            mapping_id: stream.mapping_id.take(),
+                        };
+                        match EmulatedInput::start(fd, output, cancel).await {
+                            Ok(input) => emulated = Some(input),
+                            Err(error) => {
+                                handle.close().await;
+                                cancel.check()?;
+                                if !matches!(
+                                    error.code,
+                                    ErrorCode::Unsupported | ErrorCode::CaptureImageTimeout
+                                ) {
+                                    return Err(error);
+                                }
+                                // A connected EIS session exclusively owns input.
+                                // Reopen the legacy path with fresh consent.
+                                prefer_emulated.store(false, Ordering::Relaxed);
+                                (handle, stream, clipboard) =
+                                    Self::approve(portal, target, layout, cancel).await?;
+                            }
+                        }
+                    }
+                    Ok(None) => prefer_emulated.store(false, Ordering::Relaxed),
+                    Err(error) => {
+                        handle.close().await;
+                        return Err(error);
+                    }
                 }
-            };
-            handle.owner = create.owner;
-            let path = create.results.get("session_handle").and_then(|value| {
-                <&str>::try_from(value).ok().or_else(|| {
-                    <&zbus::zvariant::ObjectPath<'_>>::try_from(value)
-                        .ok()
-                        .map(|path| path.as_str())
-                })
-            });
-            if path != Some(handle.path.as_str()) {
+            }
+            if let Err(error) = handle.check_open() {
                 handle.close().await;
-                return Err(CuaError::new(
-                    ErrorCode::InputFailed,
-                    "The Wayland portal returned an invalid session.",
-                ));
+                return Err(error);
             }
-            let activation = async {
-                handle.watch_closed(cancel).await?;
-                let active = activate(&handle, target, layout, cancel).await?;
-                handle.check_open()?;
-                Ok(active)
-            }
-            .await;
-            match activation {
-                Ok((stream, clipboard)) => Ok(Self {
-                    handle,
-                    stream,
-                    clipboard,
-                }),
-                Err(error) => {
-                    handle.close().await;
-                    Err(error)
-                }
-            }
+            Ok(Self {
+                handle,
+                stream: stream.id,
+                clipboard,
+                emulated,
+            })
         })
     }
 
+    async fn approve(
+        portal: Portal,
+        target: Bounds,
+        layout: &[Bounds],
+        cancel: &Cancellation,
+    ) -> Result<(Handle, SelectedStream, bool)> {
+        let session_token = token();
+        let expected = format!("{PORTAL_PATH}/session/{}/{session_token}", portal.sender()?);
+        let mut handle = Handle {
+            portal,
+            owner: PORTAL_NAME.to_owned(),
+            path: OwnedObjectPath::try_from(expected).map_err(|_| unavailable())?,
+            closure: None,
+        };
+        let create = handle
+            .portal
+            .request(
+                PORTAL_NAME,
+                REMOTE,
+                "CreateSession",
+                |request| {
+                    (HashMap::from([
+                        ("handle_token", Value::from(request)),
+                        ("session_handle_token", Value::from(session_token)),
+                    ]),)
+                },
+                cancel,
+            )
+            .await;
+        let create = match create {
+            Ok(create) => create,
+            Err(error) => {
+                handle.close().await;
+                return Err(error);
+            }
+        };
+        handle.owner = create.owner;
+        let path = create.results.get("session_handle").and_then(|value| {
+            <&str>::try_from(value).ok().or_else(|| {
+                <&zbus::zvariant::ObjectPath<'_>>::try_from(value)
+                    .ok()
+                    .map(|path| path.as_str())
+            })
+        });
+        if path != Some(handle.path.as_str()) {
+            handle.close().await;
+            return Err(CuaError::new(
+                ErrorCode::InputFailed,
+                "The Wayland portal returned an invalid session.",
+            ));
+        }
+        let activation = async {
+            handle.watch_closed(cancel).await?;
+            let active = activate(&handle, target, layout, cancel).await?;
+            handle.check_open()?;
+            Ok(active)
+        }
+        .await;
+        match activation {
+            Ok((stream, clipboard)) => Ok((handle, stream, clipboard)),
+            Err(error) => {
+                handle.close().await;
+                Err(error)
+            }
+        }
+    }
+
     pub(super) fn is_closed(&self) -> bool {
-        self.handle.is_closed()
+        self.handle.is_closed() || self.emulated.as_ref().is_some_and(EmulatedInput::is_closed)
     }
 
     pub(super) fn notify(&self, event: &Event, cancel: &Cancellation) -> Result<()> {
+        if let Some(input) = &self.emulated {
+            self.handle.check_open()?;
+            return input.send(event, cancel);
+        }
         let path = &self.handle.path;
         let options = Options::new;
         let call = &self.handle;
@@ -434,6 +547,7 @@ impl DesktopSession {
 
 impl Drop for DesktopSession {
     fn drop(&mut self) {
+        self.emulated.take();
         async_io::block_on(self.handle.close());
     }
 }
@@ -443,7 +557,7 @@ async fn activate(
     target: Bounds,
     layout: &[Bounds],
     cancel: &Cancellation,
-) -> Result<(u32, bool)> {
+) -> Result<(SelectedStream, bool)> {
     let path = &handle.path;
     let portal = &handle.portal;
     let owner = &handle.owner;
@@ -532,7 +646,16 @@ async fn activate(
     Ok((stream, clipboard))
 }
 
-fn select_stream(streams: Vec<(u32, Results)>, target: Bounds, layout: &[Bounds]) -> Result<u32> {
+struct SelectedStream {
+    id: u32,
+    mapping_id: Option<String>,
+}
+
+fn select_stream(
+    streams: Vec<(u32, Results)>,
+    target: Bounds,
+    layout: &[Bounds],
+) -> Result<SelectedStream> {
     let [(id, properties)] = streams.as_slice() else {
         return Err(unmatched());
     };
@@ -566,7 +689,13 @@ fn select_stream(streams: Vec<(u32, Results)>, target: Bounds, layout: &[Bounds]
     if !matches(target) || layout.iter().filter(|&&bounds| matches(bounds)).count() != 1 {
         return Err(unmatched());
     }
-    Ok(*id)
+    Ok(SelectedStream {
+        id: *id,
+        mapping_id: properties
+            .get("mapping_id")
+            .and_then(|value| <&str>::try_from(value).ok())
+            .map(str::to_owned),
+    })
 }
 
 fn clipboard_mime(mut options: Results) -> Option<&'static str> {
@@ -621,6 +750,63 @@ fn unmatched() -> CuaError {
 mod tests {
     use super::*;
     use zbus::Connection;
+
+    #[derive(Debug, zbus::DBusError)]
+    #[zbus(prefix = "org.freedesktop.portal.Error")]
+    enum PortalFailure {
+        NotSupported,
+        NotAllowed,
+    }
+
+    struct LegacyPortal;
+
+    #[zbus::interface(name = "org.freedesktop.portal.RemoteDesktop")]
+    impl LegacyPortal {
+        #[zbus(name = "ConnectToEIS")]
+        fn connect_to_eis(
+            &self,
+            path: OwnedObjectPath,
+            _options: Results,
+        ) -> std::result::Result<OwnedFd, PortalFailure> {
+            if path.as_str().ends_with("/denied") {
+                Err(PortalFailure::NotAllowed)
+            } else {
+                Err(PortalFailure::NotSupported)
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "requires an isolated D-Bus session"]
+    fn emulated_input_fallback_distinguishes_unavailable_from_denied() {
+        async_io::block_on(async {
+            let server = zbus::connection::Builder::session()
+                .unwrap()
+                .serve_at(PORTAL_PATH, LegacyPortal)
+                .unwrap()
+                .build()
+                .await
+                .unwrap();
+            let mut session = Handle {
+                portal: Portal {
+                    bus: Connection::session().await.unwrap(),
+                },
+                owner: server.unique_name().unwrap().to_string(),
+                path: OwnedObjectPath::try_from("/org/freedesktop/portal/desktop/session/test")
+                    .unwrap(),
+                closure: None,
+            };
+            let cancel = Cancellation::default();
+            assert!(session.connect_to_eis(&cancel).await.unwrap().is_none());
+            session.path =
+                OwnedObjectPath::try_from("/org/freedesktop/portal/desktop/session/denied")
+                    .unwrap();
+            assert_eq!(
+                session.connect_to_eis(&cancel).await.unwrap_err().code,
+                ErrorCode::PermissionDenied
+            );
+        });
+    }
 
     #[test]
     #[ignore = "requires an isolated D-Bus session"]

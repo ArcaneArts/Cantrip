@@ -104,7 +104,7 @@ test("build arguments reject missing values and unknown options", () => {
   }
 });
 
-test("bundling copies the executable and includes the xkeysym license on Linux", async () => {
+test("bundling copies the executable and the Linux input licenses", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-cua-bundle-"));
   try {
     const source = path.join(root, "source");
@@ -119,24 +119,24 @@ test("bundling copies the executable and includes the xkeysym license on Linux",
       assert.equal(await readFile(binary, "utf8"), "fixture binary");
       if (platform !== "win32" && process.platform !== "win32")
         assert.equal((await stat(binary)).mode & 0o111, 0o111);
-      const license = path.join(
-        path.dirname(binary),
-        "licenses",
-        "xkeysym",
-        "LICENSE-MIT",
-      );
-      if (platform === "linux") {
-        assert.deepEqual(
-          await readFile(license),
-          await readFile(
-            new URL(
-              "../../cantrip_cua/licenses/xkeysym/LICENSE-MIT",
-              import.meta.url,
-            ),
-          ),
+      for (const crate of ["xkeysym", "reis"]) {
+        const license = path.join(
+          path.dirname(binary),
+          "licenses",
+          crate,
+          "LICENSE-MIT",
         );
-      } else {
-        await assert.rejects(readFile(license), { code: "ENOENT" });
+        if (platform === "linux") {
+          assert.deepEqual(
+            await readFile(license),
+            await readFile(new URL(
+              `../../cantrip_cua/licenses/${crate}/LICENSE-MIT`,
+              import.meta.url,
+            )),
+          );
+        } else {
+          await assert.rejects(readFile(license), { code: "ENOENT" });
+        }
       }
     }
     await assert.rejects(

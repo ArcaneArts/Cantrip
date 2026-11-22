@@ -66,16 +66,16 @@ through Linux uinput to a focused XWayland window.
 [portal closure evidence](#360-release-wayland-input-when-the-portal-closes),
 [portal disconnect evidence](#368-release-wayland-input-when-the-portal-disconnects)
 
+KDE Plasma uses the approved portal's emulated input connection when
+it offers text input and pointer control for the shared output.
+[KDE text input evidence](#372-send-kde-wayland-text-through-emulated-input)
+
 ### Open platform checks
 
 - macOS shared-window copy supports text and multiple selection ranges
   exposed through Accessibility. Custom Copy handlers that only publish to
   the shared system pasteboard remain a compatibility gap.
   [macOS selection evidence](#367-copy-noncontiguous-macos-text-selections)
-- KDE Plasma 6.8.1 passed live consent, plain lowercase input, clipboard
-  copy, and capture. Its Remote Desktop portal keysym path produced
-  incorrect modifier behavior for mixed-case text.
-  [KDE test evidence](#371-test-live-gnome-and-kde-portal-consent)
 
 ## Implementation record
 
@@ -11687,7 +11687,37 @@ session delivered `cantrip45`, copied that exact text, closed the binding,
 and returned a PNG after separate screenshot permission. A mixed-case
 commit of `Cantrip45` returned `cAntrip45` in the focused GTK entry. In an
 earlier trial it returned `cANTRIP$%` and the shifted state affected the
-next keystrokes in Konsole. This is a remaining text-input failure on the
-tested portal and compositor versions.
+next keystrokes in Konsole. The
+[emulated input change](#372-send-kde-wayland-text-through-emulated-input)
+addresses this failure.
 [KDE portal keyboard dispatch](https://github.com/KDE/xdg-desktop-portal-kde/blob/v6.8.1/src/waylandintegration.cpp#L335-L355) ·
 [KWin keysym modifier handling](https://github.com/KDE/kwin/blob/v6.8.1/src/backends/fakeinput/fakeinputbackend.cpp#L282-L335)
+
+## 372. Send KDE Wayland text through emulated input
+
+Reference commit `6824aa62c914401dbabf50f911cd21c9ea1acb80` (#3535).
+
+After the remote desktop portal grants keyboard and pointer control,
+the helper requests an emulated input connection on KDE. It binds text,
+pointer, and scroll on the seat whose pointer region matches the approved
+monitor. Text uses UTF-8 frames and explicit keysyms for named keys and
+shortcuts. Clipboard access still requires the existing clipboard grant.
+An explicit portal denial closes the session. If the portal reports that
+emulated input is unavailable, the existing approved D-Bus session stays in use.
+If a connected portal lacks the necessary devices, the helper closes the
+session and asks for fresh approval before using D-Bus input.
+[Remote Desktop portal interface](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html) ·
+[Emulated input text interface](https://libinput.pages.freedesktop.org/libei/interfaces/ei_text/index.html)
+
+On the same local Fedora 45 ARM64 guest as the baseline, Plasma 6.8.1
+waited for approval. The helper delivered mixed-case Unicode, including
+emoji, exactly across multiple frames. The fixture observed a left
+mouse press, scrolling, and exact clipboard copy. The screenshot portal
+returned a PNG, and the next unshifted Konsole command worked after the
+binding closed with Shift held.
+
+The 89 regular helper tests, two isolated D-Bus tests, and eight packaging
+script tests passed locally. The D-Bus tests covered unavailable emulated
+input, explicit denial, and owner disconnect. An older KDE compositor
+that accepts the connection without offering the required devices was
+unavailable for a live test.
