@@ -11501,3 +11501,26 @@ input, click rejection under a topmost window, and stale target rejection.
 The display fixture passed physical input, Unicode text and clipboard copy,
 held-key and button release, and handoff from display to window control.
 Both fixture processes exited successfully.
+
+## 363. Preserve the previous standalone worker when publication fails
+
+Reference commit `953d5860b953e8e68c6bbc5d391b77870ac7dc7a` (#3526).
+
+Standalone worker and desktop packaging use the same staged directory
+replacement. If publication fails after moving the existing runtime aside,
+the packager restores it. If restoration also fails, the error identifies
+the retained copy.
+
+On macOS ARM64, an injected final rename error in the standalone packaging
+command reproduced loss of the previous output directory. After the fix, the
+same error preserved its `.env` and profile fixture and removed the failed
+stage. The next package attempt succeeded. Seven desktop and helper
+packaging tests passed.
+
+The successful artifact used prebuilt debug services and the verified native
+Codex bundle with the matching patch set from before #3499. Its launcher ran
+with an empty PATH from an artifact path containing spaces and Unicode.
+The artifact contained no Node executable or modules. The packaged worker passed
+enrollment, heartbeat, credential rotation and revocation, restart, grant
+handling and SIGTERM shutdown against Rust Core in PGlite mode. A build with
+the newer Codex patch set remains to be exercised.
