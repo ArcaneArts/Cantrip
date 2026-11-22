@@ -874,7 +874,7 @@ impl Screen {
         self.hyperlink = active;
     }
 
-    pub(crate) fn text(&mut self, c: char) {
+    pub(crate) fn text(&mut self, c: char) -> u16 {
         let pos = self.grid().pos();
         let size = self.grid().size();
         let attrs = self.attrs;
@@ -886,7 +886,7 @@ impl Screen {
         let width = c.width();
         if width.is_none() && (u32::from(c)) < 256 {
             // don't even try to draw control characters
-            return;
+            return 0;
         }
         let width = width
             .unwrap_or(1)
@@ -895,7 +895,7 @@ impl Screen {
             .unwrap();
 
         if width > size.cols {
-            return;
+            return 0;
         }
         // Keep the soft wrap when a wide character leaves one blank cell
         // at the right edge. Reflow removes that padding before packing.
@@ -919,7 +919,8 @@ impl Screen {
             if width != 0 && pos.col > size.cols - width {
                 self.grid_mut().col_set(size.cols - 1);
                 if width == 2 {
-                    return;
+                    // Xterm keeps the width when no-wrap drops the graphic.
+                    return width;
                 }
             }
         } else {
@@ -1122,6 +1123,26 @@ impl Screen {
                 next_cell.clear(crate::attrs::Attrs::default());
                 next_cell.set_wide_continuation(true);
                 self.grid_mut().col_inc(1);
+            }
+        }
+        width
+    }
+
+    pub(crate) fn repeat_preceding_graphic(&mut self, width: u16, count: u16) {
+        let pos = self.grid().pos();
+        let Some(col) = pos.col.checked_sub(width) else {
+            return;
+        };
+        let Some(cell) = self
+            .grid()
+            .drawing_cell(crate::grid::Pos { col, ..pos })
+            .cloned()
+        else {
+            return;
+        };
+        for _ in 0..count {
+            for character in cell.contents().chars() {
+                self.text(character);
             }
         }
     }

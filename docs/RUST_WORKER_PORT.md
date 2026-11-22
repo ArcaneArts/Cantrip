@@ -11744,3 +11744,22 @@ binding returned empty, preserved foreground focus, and left both
 pasteboard change counts unchanged. The fixture retained coverage of
 positive selection reads, secure fields, a sibling window, and replay
 rejection. All 22 regular helper process tests also passed.
+
+## 374. Preserve repeated terminal characters when reconnecting
+
+Reference commit `726021b50af3b99747976b6b30c973921027c581` (#3537).
+
+The Rust parser handles the terminal repeat-preceding-character sequence
+(`CSI Ps b`). It draws the stored glyph through the existing text renderer,
+including line-drawing characters and combining marks, and consumes the
+preceding character when it handles a control sequence. The repeated
+cells become part of the snapshot sent to a reconnecting viewer.
+[xterm sequence reference](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) ·
+[xterm.js 6.0 repeat behavior](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/InputHandler.ts#L1488-L1538)
+
+On macOS ARM64, the previous parser omitted the repeated cells. The
+updated Rust snapshot matched xterm.js across ten cases for rendered
+cells, widths, colors, cursor position, and wrap flags. All 30 parser
+tests and the documentation test passed. The production Rust worker
+passed its offline Cargo check. The comparison ran directly against the
+snapshot renderer.

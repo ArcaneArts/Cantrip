@@ -5,6 +5,7 @@ const CLIPBOARD_SELECTOR: &[u8] = b"cpqs01234567";
 pub struct WrappedScreen<CB: crate::callbacks::Callbacks = ()> {
     pub screen: crate::screen::Screen,
     pub callbacks: CB,
+    preceding_width: u16,
 }
 
 impl WrappedScreen<()> {
@@ -26,6 +27,7 @@ impl<CB: crate::callbacks::Callbacks> WrappedScreen<CB> {
                 scrollback_len,
             ),
             callbacks,
+            preceding_width: 0,
         }
     }
 }
@@ -33,13 +35,18 @@ impl<CB: crate::callbacks::Callbacks> WrappedScreen<CB> {
 impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
     fn print(&mut self, c: char) {
         if c == '\u{fffd}' || ('\u{80}'..'\u{a0}').contains(&c) {
+            self.preceding_width = 0;
             self.callbacks.unhandled_char(&mut self.screen, c);
         } else {
-            self.screen.text(self.screen.charsets.translate(c));
+            let width = self.screen.text(self.screen.charsets.translate(c));
+            if width != 0 {
+                self.preceding_width = width;
+            }
         }
     }
 
     fn execute(&mut self, b: u8) {
+        self.preceding_width = 0;
         match b {
             7 => self.callbacks.audible_bell(&mut self.screen),
             8 => self.screen.bs(),
@@ -54,7 +61,12 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
         }
     }
 
+    fn hook(&mut self, _: &vte::Params, _: &[u8], _: bool, _: char) {
+        self.preceding_width = 0;
+    }
+
     fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, b: u8) {
+        self.preceding_width = 0;
         if !ignore && self.screen.charsets.escape(intermediates, b) {
             return;
         }
@@ -96,9 +108,10 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
         &mut self,
         params: &vte::Params,
         intermediates: &[u8],
-        _ignore: bool,
+        ignore: bool,
         c: char,
     ) {
+        let preceding_width = std::mem::take(&mut self.preceding_width);
         let unhandled = |screen: &mut crate::screen::Screen| {
             self.callbacks.unhandled_csi(
                 screen,
@@ -133,6 +146,14 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                 'T' => self.screen.sd(canonicalize_params_1(params, 1)),
                 'X' => self.screen.ech(canonicalize_params_1(params, 1)),
                 'Z' => self.screen.tab(canonicalize_params_1(params, 1), true),
+                'b' => {
+                    if !ignore && preceding_width != 0 {
+                        self.screen.repeat_preceding_graphic(
+                            preceding_width,
+                            canonicalize_params_1(params, 1),
+                        );
+                    }
+                }
                 'd' => self.screen.vpa(canonicalize_params_1(params, 1)),
                 'e' => self.screen.vpr(canonicalize_params_1(params, 1)),
                 'g' => self
@@ -216,6 +237,7 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], _bel_terminated: bool) {
+        self.preceding_width = 0;
         match params {
             [b"0", s] => {
                 self.callbacks.set_window_icon_name(&mut self.screen, s);
