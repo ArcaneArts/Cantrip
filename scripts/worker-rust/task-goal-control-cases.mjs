@@ -135,6 +135,7 @@ export async function verifyManagedGoalClear({
   let admitted;
   let receipt;
   const phases = [];
+  const clearResults = [];
   const stamp = new Date().toISOString();
   const crypto = (direction) => ({
     service: oracle,
@@ -162,6 +163,10 @@ export async function verifyManagedGoalClear({
       }
       assert.equal(request.method, "thread/goal/clear");
       assert.equal(request.intent.resumeAutonomy, undefined);
+      if (admitted) {
+        assert.notEqual(request.operationId, receipt.operationId);
+        assert.deepEqual(request.session, admitted.session);
+      }
       admitted = request;
       receipt = nativeCommandReceiptSchema.parse({
         operationId: request.operationId,
@@ -213,7 +218,8 @@ export async function verifyManagedGoalClear({
         ...crypto("result"),
         envelope: result.protectedResult,
       });
-      assert.deepEqual(content, { cleared: true });
+      assert.deepEqual(content, { cleared: clearResults.length === 0 });
+      clearResults.push(content.cleared);
       assert.equal(
         (await protectNativeCommandContent({ ...crypto("result"), content }))
           .digest,
@@ -241,12 +247,23 @@ export async function verifyManagedGoalClear({
     const repeated = await invoke({ ...base, type: "chat.goal.clear" });
     assert.equal(repeated.ok, true, JSON.stringify(repeated));
     assert.deepEqual(repeated.result, { cleared: false });
+    assert.deepEqual(clearResults, [true, false]);
+    assert.deepEqual(phases, [
+      "admit",
+      "admit",
+      "dispatch",
+      "receipt",
+      "admit",
+      "dispatch",
+      "receipt",
+    ]);
     const absent = await invoke({ ...base, type: "chat.goal.get" });
+    assert.equal(absent.ok, true, JSON.stringify(absent));
     assert.deepEqual(absent.result, { goal: null });
   } finally {
     attachMutation(undefined);
   }
   console.log(
-    "Fenced managed Goal mutations at admission and settled native clear with an encrypted receipt.",
+    "Fenced managed Goal mutations at admission and settled both native clear results with distinct encrypted receipts.",
   );
 }

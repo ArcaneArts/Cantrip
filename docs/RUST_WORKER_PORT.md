@@ -11852,8 +11852,23 @@ The focused fixture used the native worker and Codex 0.166.0 with an isolated
 profile and a loopback fixture for Core and model responses. Both worker
 binaries were built offline from their respective sources.
 
-The broader Task Goal fixture reached its managed Goal-clear case on both
-builds. The case expected `cleared: true` and received `cleared: false` in
-the native receipt. This separate discrepancy remains open.
+The broader Task Goal fixture stopped while settling a repeated Clear.
+The [managed Goal-clear fixture](#379-verify-repeated-managed-goal-clear)
+records both native results and the corrected expectation.
 
 Run `node --import tsx scripts/worker-rust/thread-ensure-smoke.mjs --taskPauseObservation --worker /absolute/path/to/cantrip-worker --codex /absolute/path/to/codex`.
+
+## 379. Verify repeated managed Goal clear
+
+Reference commit `df34f642b7196b25c5ab336c61901c8a3ce3ded6` (#3542).
+
+On macOS ARM64, an RPC trace from the bundled Codex 0.166.0 process showed
+the first Clear returning `cleared: true` and emitting a clear event for the
+saved Goal. The repeated request used the same managed session and returned
+`cleared: false` in a separate encrypted receipt. The archived Node worker
+also keeps the managed mutation dispatcher attached to the current thread.
+
+The smoke fixture now expects both native results and verifies that each
+request has its own admission, dispatch, and encrypted settlement.
+Its `--taskGoal` and `--taskPause` runs passed with the production Rust
+worker, the bundled Codex binary, and local Core and model fixtures.
