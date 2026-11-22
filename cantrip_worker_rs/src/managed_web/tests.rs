@@ -271,6 +271,23 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                               closed.innerHTML = '<button>Closed control</button>';
                                               </script>
                                             "#),
+                                            "/session-native-values" => ("text/html", r#"<title>Native form controls</title><body>
+                                              <script>
+                                              for (const kind of ['date','time','datetime-local','month','week','range','color','number']) {
+                                                const field = document.createElement('input');
+                                                field.type = kind;
+                                                field.setAttribute('aria-label', kind + ' field');
+                                                if (kind === 'range') field.max = '10';
+                                                field.addEventListener('input', event => {
+                                                  document.title = kind + ' [' + field.value + '] input ' + event.composed;
+                                                });
+                                                field.addEventListener('change', event => {
+                                                  document.title += ' change ' + event.composed + ' ' + (document.activeElement === field);
+                                                });
+                                                document.body.append(field);
+                                              }
+                                              </script>
+                                            "#),
                                             "/streams" => ("text/html", r#"<title>Private streams</title>
                                               <h1>Waiting for streams</h1><script>
                                               const seen = new Set();
@@ -625,6 +642,67 @@ async fn interactive_session(
         .await?;
         assert_eq!(typed["data"]["title"], title);
     }
+
+    call(
+        "web.session.open",
+        json!({"sessionId":id,"url":"http://page.example/session-native-values"}),
+    )
+    .await?;
+    let type_control = |kind: &str, text: &str| {
+        let description = format!("{kind} field");
+        let text = text.to_owned();
+        let call = &call;
+        async move {
+            let snapshot = call("web.session.snapshot", json!({"sessionId":id})).await?;
+            let control = snapshot["data"]["elements"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|element| {
+                    element["description"]
+                        .as_str()
+                        .is_some_and(|label| label.contains(&description))
+                })
+                .with_context(|| format!("Missing accessible reference to {description}."))?;
+            call(
+                "web.session.type",
+                json!({"sessionId":id,"elementRef":control["ref"],"text":text}),
+            )
+            .await
+        }
+    };
+    for (kind, text, value) in [
+        ("date", " 2026-11-22 ", "2026-11-22"),
+        ("date", "", ""),
+        ("time", "13:15", "13:15"),
+        ("datetime-local", "2026-11-22T13:15", "2026-11-22T13:15"),
+        ("month", "2026-11", "2026-11"),
+        ("week", "2026-W47", "2026-W47"),
+        ("range", "7", "7"),
+        ("color", " #AABBCC ", "#aabbcc"),
+    ] {
+        let typed = type_control(kind, text)
+            .await
+            .with_context(|| format!("Could not fill the {kind} control."))?;
+        assert_eq!(
+            typed["data"]["title"],
+            format!("{kind} [{value}] input true change false true")
+        );
+    }
+    for (kind, text, expected) in [
+        ("date", "invalid", "Malformed value"),
+        ("range", "11", "Malformed value"),
+        (
+            "number",
+            "invalid",
+            "Cannot type text into input[type=number]",
+        ),
+    ] {
+        let error = type_control(kind, text).await.expect_err(expected);
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+    let typed = type_control("number", "-2.5").await?;
+    assert_eq!(typed["data"]["title"], "number [-2.5] input true");
 
     let waiting = call(
         "web.session.open",

@@ -357,7 +357,7 @@ fn describe_tree(nodes: &[Value]) -> JsString {
     JsString::new(result)
 }
 
-async fn call_dom(page: &Page, node: u64, function: &str) -> Result<Value> {
+async fn call_dom(page: &Page, node: u64, function: &str, arguments: &[Value]) -> Result<Value> {
     let world = render::isolated_world(page).await?;
     let resolved = page
         .request(
@@ -373,7 +373,8 @@ async fn call_dom(page: &Page, node: u64, function: &str) -> Result<Value> {
         .request(
             "Runtime.callFunctionOn",
             json!({
-                "objectId":object,"functionDeclaration":function,"returnByValue":true,
+                "objectId":object,"functionDeclaration":function,"arguments":arguments,
+                "returnByValue":true,
             }),
         )
         .await;
@@ -413,6 +414,7 @@ async fn click(page: &Page, node: u64) -> Result<()> {
         }
         return null;
     }"#,
+        &[],
     )
     .await?;
     ensure!(
@@ -434,14 +436,30 @@ async fn click(page: &Page, node: u64) -> Result<()> {
 }
 
 async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
-    let prepared = call_dom(page, node, r#"function () {
-        if (!this.isConnected || this.matches(':disabled,[aria-disabled="true"]') || this.readOnly) return false;
-        const input = this instanceof HTMLInputElement && ['text','search','url','tel','email','password','number'].includes(this.type);
-        if (!(input || this instanceof HTMLTextAreaElement || this.isContentEditable) || !this.getClientRects().length) return false;
+    let prepared = call_dom(
+        page,
+        node,
+        r#"function (text) {
+        if (!this.isConnected || !this.getClientRects().length || this.readOnly ||
+            this.matches(':disabled,[aria-disabled="true"]')) return null;
+        const type = this instanceof HTMLInputElement ? this.type : null;
+        const nativeValue = ['color','date','time','datetime-local','month','range','week'].includes(type);
+        const textInput = ['text','search','url','tel','email','password','number'].includes(type);
+        const textarea = this instanceof HTMLTextAreaElement;
+        if (!(nativeValue || textInput || textarea || (type === null && this.isContentEditable))) return null;
+        if (type === 'number' && Number.isNaN(Number(text.trim()))) return 'invalid-number';
         this.focus();
         const active = this.getRootNode().activeElement;
-        if (active !== this && !this.contains(active)) return false;
-        if (input || this instanceof HTMLTextAreaElement) this.select();
+        if (active !== this && !this.contains(active)) return null;
+        if (nativeValue) {
+            const value = type === 'color' ? text.trim().toLowerCase() : text.trim();
+            this.value = value;
+            if (this.value !== value) return 'malformed';
+            this.dispatchEvent(new Event('input', {bubbles:true,composed:true}));
+            this.dispatchEvent(new Event('change', {bubbles:true}));
+            return 'set';
+        }
+        if (textInput || textarea) this.select();
         else {
             const range = document.createRange();
             range.selectNodeContents(this);
@@ -449,14 +467,24 @@ async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
             selection.removeAllRanges();
             selection.addRange(range);
         }
-        return true;
-    }"#).await?;
-    ensure!(prepared == true, "The web element is no longer editable.");
-    if text.as_js_string().is_some_and(JsString::is_empty) {
-        key(page, "Backspace", 8).await?;
-    } else {
-        page.request("Input.insertText", json!({"text":text}))
-            .await?;
+        return 'keyboard';
+    }"#,
+        &[json!({"value":text})],
+    )
+    .await?;
+    match prepared.as_str() {
+        Some("set") => {}
+        Some("keyboard") => {
+            if text.as_js_string().is_some_and(JsString::is_empty) {
+                key(page, "Backspace", 8).await?;
+            } else {
+                page.request("Input.insertText", json!({"text":text}))
+                    .await?;
+            }
+        }
+        Some("invalid-number") => bail!("Cannot type text into input[type=number]"),
+        Some("malformed") => bail!("Malformed value"),
+        _ => bail!("The web element is no longer editable."),
     }
     if submit {
         key(page, "Enter", 13).await?;
