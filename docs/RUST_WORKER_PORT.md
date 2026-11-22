@@ -12026,3 +12026,19 @@ same history and viewport as xterm.js 6.0.0. With one fewer unit, the
 renderer reduced history and preserved the visible rows. All 35 parser
 tests, the parser documentation test, and the offline production worker
 check passed locally.
+
+## 396. Restore canonical snapshots on the terminal command relay
+
+Reference commit `2fff181594b3c0d4d778b808bece4900b17739f0` (#3559).
+
+Terminal reattachment over Core's command relay sends a reconstructed
+screen when the snapshot fits. It keeps the existing encrypted output
+envelope and sends readiness after the replay. The bounded raw buffer
+remains available as a fallback.
+
+In the local macOS ARM64 fixture, the previous replay included an
+overwritten prompt and a cursor-position query. The updated relay
+replay and the archived worker's xterm serializer produced the same
+screen and cursor position in xterm.js 6.0.0, with both sequences
+omitted. All four replay unit tests and the offline production worker
+check passed.
