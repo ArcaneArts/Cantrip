@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import path from "node:path";
 
 const runtime = path.resolve(process.argv[2]);
+const playwright = path.resolve(process.argv[3]);
 process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(runtime, "browsers");
 process.env.HOME = path.join(runtime, ".smoke-home");
 process.env.XDG_CACHE_HOME = path.join(runtime, ".smoke-cache");
@@ -12,9 +13,7 @@ if (process.platform === "linux") {
 }
 
 const { chromium } = await import(
-  pathToFileURL(
-    path.join(runtime, "node_modules", "playwright-core", "index.mjs"),
-  ).href
+  pathToFileURL(path.join(playwright, "index.mjs")).href
 );
 const server = createServer((_request, response) => {
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
