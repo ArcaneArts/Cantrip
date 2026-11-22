@@ -7,7 +7,6 @@ const SCROLLBACK_ROWS: usize = 10_000;
 pub(super) struct Replay {
     raw: Vec<u16>,
     truncated: bool,
-    resized: bool,
     process_generation: u64,
     output_boundary: u64,
     parser: vt100::Parser,
@@ -37,7 +36,6 @@ impl Replay {
         Self {
             raw: Vec::new(),
             truncated: false,
-            resized: false,
             process_generation,
             output_boundary: 0,
             parser: vt100::Parser::new(size.rows, size.cols, SCROLLBACK_ROWS),
@@ -57,7 +55,6 @@ impl Replay {
     pub fn resize(&mut self, size: TerminalSize) {
         let current = self.parser.screen().size();
         if current != (size.rows, size.cols) {
-            self.resized = true;
             self.parser.screen_mut().set_size(size.rows, size.cols);
         }
     }
@@ -117,15 +114,12 @@ impl Replay {
     }
 
     pub fn attachment(&self, with_metadata: bool) -> Snapshot {
-        if with_metadata || self.resized || self.truncated {
-            if let Some((snapshot, history_rows)) = self.formatted(!with_metadata) {
-                let metadata = with_metadata.then(|| self.hydration(Some(history_rows)));
-                return Snapshot {
-                    data: snapshot,
-                    metadata,
-                    needs_redraw: false,
-                };
-            }
+        if let Some((snapshot, history_rows)) = self.formatted(!with_metadata) {
+            return Snapshot {
+                data: snapshot,
+                metadata: with_metadata.then(|| self.hydration(Some(history_rows))),
+                needs_redraw: false,
+            };
         }
         Snapshot {
             data: JsString::new(self.raw.clone()),
@@ -171,6 +165,27 @@ impl Replay {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn command_relay_reattaches_with_a_canonical_snapshot() {
+        let size = TerminalSize { rows: 3, cols: 24 };
+        let mut replay = Replay::new(size, 1);
+        let history = "old prompt\x1b[6n\r\x1b[2Knew prompt";
+        replay.write(history);
+
+        let attachment = replay.attachment(false);
+        let snapshot = attachment.data.as_str().unwrap();
+        assert!(attachment.metadata.is_none());
+        assert!(!attachment.needs_redraw);
+        assert!(!snapshot.contains("old prompt"));
+        assert!(!snapshot.contains("\x1b[6n"));
+        assert_eq!(replay.raw().0.as_str(), Some(history));
+
+        let mut viewer = vt100::Parser::new(size.rows, size.cols, 0);
+        viewer.process(snapshot.as_bytes());
+        assert_eq!(viewer.screen().contents(), "new prompt");
+        assert_eq!(viewer.screen().cursor_position(), (0, 10));
+    }
 
     #[test]
     fn resize_replays_screen_state_at_new_dimensions_and_retains_plain_tail() {
