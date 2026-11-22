@@ -107,6 +107,7 @@ const { values } = parseArgs({
     taskRawStop: { type: "boolean" },
     structuredTasks: { type: "boolean" },
     taskGoal: { type: "boolean" },
+    taskGoalChildModel: { type: "boolean" },
     taskGoalTransferSource: { type: "boolean" },
     taskGoalCycleWithdrawal: { type: "boolean" },
     taskGoalInputWithdrawal: { type: "boolean" },
@@ -135,6 +136,7 @@ const taskGoalProviderHandoff =
   values.taskGoalProviderHandoff || values.taskGoalHandoffLostFinish;
 const taskGoals =
   values.taskGoal ||
+  values.taskGoalChildModel ||
   values.taskGoalTransferSource ||
   values.taskGoalCycleWithdrawal ||
   values.taskGoalInputWithdrawal ||
@@ -4061,6 +4063,7 @@ try {
               ...input,
               verifyPause: values.taskPause,
               pauseObservationOnly: values.taskPauseObservation,
+              verifyChildModel: values.taskGoalChildModel,
               verifyTransferSource:
                 values.taskGoalTransferSource ||
                 values.taskGoalCycleWithdrawal ||

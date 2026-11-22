@@ -29,6 +29,7 @@ import {
 export async function verifyTaskGoalActivation({
   verifyPause,
   pauseObservationOnly,
+  verifyChildModel,
   verifyTransferSource,
   verifyProviderHandoff,
   interruptProviderHandoff,
@@ -88,7 +89,19 @@ export async function verifyTaskGoalActivation({
     idempotencyKey: "goal-start-fixture",
     kind: "start",
   };
+  const subagentDefaults = verifyChildModel
+    ? {
+        model: {
+          id: "fixture-child-model",
+          routeId: "fixture-child-route",
+          name: "gpt-5-mini",
+          reasoningEffort: "low",
+        },
+        provider,
+      }
+    : undefined;
   const activation = {
+    subagentDefaults,
     type: "chat.goal.create",
     chatId,
     threadId,
@@ -169,6 +182,21 @@ export async function verifyTaskGoalActivation({
       "Observed the exact native idle pause revision and withheld proof for a different epoch, after Resume, and after restart.",
     );
     return;
+  }
+  if (subagentDefaults) {
+    const rejected = await invoke({
+      ...activation,
+      subagentDefaults: {
+        ...subagentDefaults,
+        provider: { ...provider, id: "unselected-provider" },
+      },
+    });
+    assert.equal(rejected.ok, true, JSON.stringify(rejected));
+    const failure = taskGoalWorkerResultSchema.parse(rejected.result);
+    assert.equal(failure.goal, null);
+    assert.equal(failure.task.classification.state, "failed");
+    await observer.beforeActivation();
+    assert.equal(modelCalls(), calls);
   }
   const reply = await invoke(activation);
   assert.equal(reply.ok, true, JSON.stringify(reply));
@@ -306,6 +334,7 @@ export async function verifyTaskGoalActivation({
   let restoration;
   const inputCommand = {
     ...base,
+    subagentDefaults,
     threadId,
     clientMessageId,
     planMode: "default",

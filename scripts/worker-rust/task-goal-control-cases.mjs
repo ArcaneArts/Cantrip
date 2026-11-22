@@ -88,6 +88,7 @@ export async function editAndResumeTaskGoal({
   const resumed = await update({
     status: "active",
     taskRuntime,
+    subagentDefaults: activation.subagentDefaults,
     taskContext: { ...context, task: edited.task, message: control },
   });
   assert.equal(resumed.goal.status, "active");

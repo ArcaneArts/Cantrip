@@ -11872,3 +11872,22 @@ The smoke fixture now expects both native results and verifies that each
 request has its own admission, dispatch, and encrypted settlement.
 Its `--taskGoal` and `--taskPause` runs passed with the production Rust
 worker, the bundled Codex binary, and local Core and model fixtures.
+
+## 380. Preserve the configured child model when activating a Task Goal
+
+Reference commit `2f896a77fecc0c85fb46e8d1d251892be037a172` (#3543).
+
+Host Task Goal activation passes the selected child model and reasoning
+effort to the existing native preparation path. The worker checks that
+the child and root use the same provider and account. Both Core versions
+reserve Cantrip OS placement for Agent chats.
+
+On macOS ARM64, the baseline rejected activation with a same-provider
+custom child model. The rebuilt worker started the Goal, resumed it after
+restart, and completed the encrypted execution and outcome checks with
+bundled Codex 0.166.0. A local RPC trace confirmed that Codex acknowledged
+`gpt-5-mini` with `low` reasoning on the same Task thread before and after
+restart. The different-provider request failed before activation. The
+ordinary Task Goal smoke and the offline worker build passed.
+
+Run `node --import tsx scripts/worker-rust/thread-ensure-smoke.mjs --taskGoalChildModel --worker /absolute/path/to/cantrip-worker --codex /absolute/path/to/codex`.
