@@ -3,19 +3,28 @@ use anyhow::{Result, anyhow};
 use cantrip_wire::{Value, parse_json_text, value::json};
 use cantrip_worker::{
     filesystem::{Scope, paths},
-    replicas,
+    replicas, routing,
 };
 use std::{
     io::{self, BufRead},
     sync::{Arc, Mutex},
 };
-async fn command(manager: &replicas::Manager, command: &Value) -> Value {
+async fn command(
+    manager: &replicas::Manager,
+    command: &Value,
+    registry: Option<&routing::Registry>,
+) -> Value {
     let progress = Mutex::new(Vec::new());
-    let result = manager
-        .execute(command, &Scope::default(), &|event| {
-            progress.lock().unwrap().push(event)
-        })
-        .await;
+    let report = |event| progress.lock().unwrap().push(event);
+    let scope = Scope::default();
+    let result = match registry {
+        Some(registry) => {
+            manager
+                .execute_routed(command, registry, &scope, &report)
+                .await
+        }
+        None => manager.execute(command, &scope, &report).await,
+    };
     let progress = progress.into_inner().unwrap();
     match result {
         Ok(value) => json!({"ok":true,"value":value,"progress":progress}),
@@ -77,12 +86,14 @@ async fn main() -> Result<()> {
                             .as_array()
                             .unwrap()
                             .iter()
-                            .map(|item| command(manager, item))
+                            .map(|item| command(manager, item, None))
                     )
                     .await
                 )
             } else {
-                command(manager, &input["command"]).await
+                let registry =
+                    (input["method"] == "routed").then(|| routing::Registry::new(&directory));
+                command(manager, &input["command"], registry.as_ref()).await
             }
         };
         println!(

@@ -1323,7 +1323,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind,"project.replica.provision"|"project.replica.link.repair"|"project.replica.synchronize"|"project.replica.remove") {
+                if matches!(kind,"project.clone"|"project.replica.provision"|"project.replica.link.repair"|"project.replica.synchronize"|"project.replica.remove") {
                     let replicas=replicas.clone();let routing=routing.clone();let logs=logs.clone();let outgoing=outgoing.clone();let worker=worker.clone();let scope=crate::filesystem::Scope::with_stop(stop_rx.clone());
                     commands.spawn(async move {
                         let command=&request["command"];
