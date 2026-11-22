@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "component": "playwright",
-  "bundleVersion": "2026.08.22.1",
+  "bundleVersion": "2026.11.22.1",
   "playwright": {
     "version": "1.62.1",
     "packageUrl": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.62.1.tgz",

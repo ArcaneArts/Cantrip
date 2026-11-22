@@ -353,28 +353,26 @@ caller selected automatic rendering, the adapter escalates to the managed
 Playwright runtime. It does not use rendering merely because a page contains
 JavaScript.
 
-## 10. Portable Playwright and Chromium runtime
+## 10. Portable Chromium runtime
 
 ### 10.1 Bundle contents and compatibility
 
-The Playwright artifact contains:
+The Chromium release archive contains:
 
-- exact pinned `playwright-core` code;
-- its matching Chromium and headless Chromium revisions as needed;
+- pinned Chromium and headless Chromium builds;
 - the Linux shared-library closure used by those binaries;
 - a portable fontconfig configuration and baseline font set;
-- CA certificates and platform launch wrappers; and
+- CA certificates; and
 - license, notice, source, and SBOM records.
 
-The worker launches this package with Cantrip's own bundled Node runtime. It
-never invokes a system `node`, `npx`, npm cache, Playwright cache, Chrome, Edge,
-or Chromium installation. `PLAYWRIGHT_BROWSERS_PATH` and all cache/profile
-variables point exclusively into worker storage.
+The Rust worker launches headless Chromium directly from worker storage and
+controls it over CDP. Profiles and caches also live in worker storage.
+Playwright downloads the pinned browser builds and runs the build smoke.
+The archive and wire component keep the `playwright` name for existing profiles.
 
-Playwright and browser revisions are promoted as a single unit. No component
-can update itself. Candidate health includes launching the packaged browser,
-loading a deterministic local page, reading an accessibility snapshot, and
-closing the complete process tree.
+Release locks pin the build tool and browser revisions together. Candidate
+health includes launching the packaged browser, loading a deterministic local
+page, reading an accessibility snapshot, and closing the complete process tree.
 
 ### 10.2 Linux dependency closure
 
@@ -387,8 +385,7 @@ The launcher sets child-only paths such as:
 
 ```text
 LD_LIBRARY_PATH=<runtime>/libraries
-FONTCONFIG_PATH=<runtime>/fonts
-PLAYWRIGHT_BROWSERS_PATH=<runtime>/browsers
+FONTCONFIG_PATH=<runtime>/fontconfig
 HOME=<worker-runtime-state>
 XDG_CACHE_HOME=<worker-runtime-cache>
 ```

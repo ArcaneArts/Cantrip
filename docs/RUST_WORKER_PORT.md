@@ -45,6 +45,11 @@ Choose **Install CodeGraph** in worker settings to enable it on a fresh profile.
 Browser JavaScript and the CUA scripting interface remain available.
 [CodeGraph installation evidence](#366-verify-the-runtime-dependency-boundary)
 
+The next managed Chromium archive keeps Playwright in build staging.
+The default still points to the available signed release until the
+replacement is published.
+[Managed browser packaging](#398-keep-the-playwright-driver-out-of-new-managed-browser-archives)
+
 The [packaging cutover](#278-ship-the-rust-worker-in-cantrip-packages), the
 [Node worker archive](#286-archive-the-node-worker-as-a-compatibility-reference),
 and the [desktop and upgrade checks](#288-verify-the-native-desktop-runtime-and-legacy-profile-round-trip)
@@ -12061,3 +12066,26 @@ and 22 noninteractive helper process tests passed. The locked desktop
 returned application-level Accessibility references even for the baseline
 ordinary selection, so the expanded live helper fixture could not reach
 the new case.
+
+## 398. Keep the Playwright driver out of new managed browser archives
+
+Reference commit `4577669f6df07a48176016b39625ae7f088a078e` (#3561).
+
+The managed browser builder uses the pinned Playwright package in build
+staging to fetch Chromium and smoke-test it. The archive contains the browser
+builds and platform support files. Its source manifest identifies the build
+tool, and its runtime SBOM lists Chromium. The native worker discovers and
+launches the packaged headless executable through CDP.
+
+The next combined managed web release is `2026.11.22.1` with the existing
+Chromium and SearXNG pins. The worker's default manifest still selects the
+available signed `2026.08.22.1` release. Old profiles can reopen that release.
+The new archive can become the default once its signed manifest is published.
+
+The macOS ARM64 build passed its browser smoke and produced the real ZIP.
+Local verification checked the ZIP's recorded hash, byte counts, the license
+and source inventories, and the absence of the Playwright driver, downloader
+cache pointers, and Node launcher. The native worker probe launched the
+extracted Chromium 151.0.7922.34 with an empty PATH, checked accessibility
+and isolated browser contexts, and exited cleanly. All nine managed-runtime
+tooling tests passed locally.

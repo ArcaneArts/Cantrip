@@ -1,8 +1,9 @@
 # Native Winterhold deployment
 
-The production deployer can build and install the Rust distribution using the
-existing SSH, systemd and Caddy path. It never needs a Node runtime on the host
-to run the Rust server. The worker retains its own Node runtime.
+The production deployer builds and installs the Rust server distribution using
+SSH, systemd and Caddy. Workers paired with Winterhold run separately from that
+systemd service. Use the [native worker distribution](../deploy/worker.README.md)
+to enroll or reopen a retained worker profile.
 
 ## Select the server
 
