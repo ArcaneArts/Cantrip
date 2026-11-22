@@ -237,11 +237,11 @@ impl Handle {
         .await
     }
 
-    async fn close(&self) {
+    async fn close(&self) -> Result<()> {
         if self.is_closed() {
-            return;
+            return Ok(());
         }
-        let _ = future::race(
+        let result = future::race(
             self.portal.bus.call_method(
                 Some(self.owner.as_str()),
                 self.path.as_str(),
@@ -255,6 +255,19 @@ impl Handle {
             },
         )
         .await;
+        match result {
+            Ok(_) => Ok(()),
+            Err(_) if self.is_closed() => Ok(()),
+            Err(zbus::Error::MethodError(name, _, _))
+                if name.as_str() == "org.freedesktop.DBus.Error.UnknownObject" =>
+            {
+                Ok(())
+            }
+            Err(_) => Err(CuaError::new(
+                ErrorCode::InputFailed,
+                "The Wayland portal did not close the previous desktop control session.",
+            )),
+        }
     }
 }
 
@@ -287,7 +300,7 @@ impl DesktopSession {
                         match EmulatedInput::start(fd, output, cancel).await {
                             Ok(input) => emulated = Some(input),
                             Err(error) => {
-                                handle.close().await;
+                                let retired = handle.close().await;
                                 cancel.check()?;
                                 if !matches!(
                                     error.code,
@@ -297,6 +310,7 @@ impl DesktopSession {
                                 }
                                 // A connected EIS session exclusively owns input.
                                 // Reopen the legacy path with fresh consent.
+                                retired?;
                                 prefer_emulated.store(false, Ordering::Relaxed);
                                 (handle, stream, clipboard) =
                                     Self::approve(portal, target, layout, cancel).await?;
@@ -305,13 +319,13 @@ impl DesktopSession {
                     }
                     Ok(None) => prefer_emulated.store(false, Ordering::Relaxed),
                     Err(error) => {
-                        handle.close().await;
+                        let _ = handle.close().await;
                         return Err(error);
                     }
                 }
             }
             if let Err(error) = handle.check_open() {
-                handle.close().await;
+                let _ = handle.close().await;
                 return Err(error);
             }
             Ok(Self {
@@ -355,7 +369,7 @@ impl DesktopSession {
         let create = match create {
             Ok(create) => create,
             Err(error) => {
-                handle.close().await;
+                let _ = handle.close().await;
                 return Err(error);
             }
         };
@@ -368,7 +382,7 @@ impl DesktopSession {
             })
         });
         if path != Some(handle.path.as_str()) {
-            handle.close().await;
+            let _ = handle.close().await;
             return Err(CuaError::new(
                 ErrorCode::InputFailed,
                 "The Wayland portal returned an invalid session.",
@@ -384,7 +398,7 @@ impl DesktopSession {
         match activation {
             Ok((stream, clipboard)) => Ok((handle, stream, clipboard)),
             Err(error) => {
-                handle.close().await;
+                let _ = handle.close().await;
                 Err(error)
             }
         }
@@ -548,7 +562,7 @@ impl DesktopSession {
 impl Drop for DesktopSession {
     fn drop(&mut self) {
         self.emulated.take();
-        async_io::block_on(self.handle.close());
+        let _ = async_io::block_on(self.handle.close());
     }
 }
 
@@ -850,3 +864,7 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "portal_desktop_fallback_tests.rs"]
+mod fallback_tests;
