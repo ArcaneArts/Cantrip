@@ -72,7 +72,7 @@ fn safe(path: &Path) -> Result<()> {
         };
         let name = name.to_str().context("Profile file path must be UTF-8")?;
         ensure!(
-            !name.contains(['\\', ':']),
+            !name.contains('\\') && (!cfg!(windows) || !name.contains(':')),
             "Profile file path contains a separator alias"
         );
     }

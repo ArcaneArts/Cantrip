@@ -240,3 +240,24 @@ fn stopped_chromium_profile_keeps_data_without_process_links() -> Result<()> {
     );
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn retains_unix_asset_names_with_colons_through_logical_restore() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("source");
+    let template = Path::new("worker/managed-runtimes/searxng/app/templates/searxng:example");
+    fs::create_dir_all(source.join(template).parent().unwrap())?;
+    fs::write(source.join(template), b"retained search runtime template")?;
+    let sql = temp.path().join("trusted.sql");
+    fs::write(&sql, b"SELECT 1")?;
+    let bundle = temp.path().join("bundle");
+    pack_profile(&source, &sql, DatabaseMode::Pglite, &bundle)?;
+    let destination = temp.path().join("restored");
+    Bundle::open(&bundle)?.stage(&destination)?.materialize()?;
+    assert_eq!(
+        fs::read(destination.join(template))?,
+        b"retained search runtime template"
+    );
+    Ok(())
+}
