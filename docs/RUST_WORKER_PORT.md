@@ -11909,3 +11909,19 @@ PGlite and bundled PostgreSQL 18.6. Both modes preserved identity and
 settings across restart and reaped the native children after orderly
 shutdown and supervisor loss. The staged desktop resources also passed
 the Node-free contents check.
+
+## 389. Respect disabled groups in private browser sessions
+
+Reference commit `1b0cd4919f98477326f00c12307162cc97a7d4d0` (#3552).
+
+Private browser click and fill honor inherited `aria-disabled` on
+interactive elements, including across an open shadow root. The nearest
+explicit ARIA state governs inheritance. Native disabled controls retain
+their browser-defined behavior.
+[Playwright actionability](https://playwright.dev/docs/actionability)
+
+The baseline clicked the fixture's button while its enclosing group
+was disabled. On macOS ARM64 with Chromium 153.0.8010.12, the updated
+worker and Playwright 1.62.1 allowed an explicit override and waited
+for the other button and input to become enabled. The managed Chromium
+smoke and offline production worker check passed locally.
