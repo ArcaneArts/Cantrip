@@ -330,6 +330,32 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                               };
                                               </script>
                                             "#),
+                                            "/session-disabled-group" => ("text/html", r#"<title>Disabled groups</title>
+                                              <div id="actions" aria-disabled="true"><div id="host"></div></div>
+                                              <div id="editor" aria-disabled="true"><input aria-label="aria waiting field"></div>
+                                              <script>
+                                              const actions = document.getElementById('actions');
+                                              const editor = document.getElementById('editor');
+                                              const shadow = document.getElementById('host').attachShadow({mode:'open'});
+                                              shadow.innerHTML = '<button aria-disabled="false">Allow override</button>'
+                                                + '<button>Action in disabled group</button>';
+                                              const [override, button] = shadow.querySelectorAll('button');
+                                              override.onclick = () => {
+                                                document.title = 'Override clicked';
+                                                setTimeout(() => actions.setAttribute('aria-disabled', 'false'), 1000);
+                                              };
+                                              button.onclick = () => {
+                                                document.title = actions.getAttribute('aria-disabled') === 'true'
+                                                  ? 'Clicked while disabled' : 'Action enabled';
+                                                setTimeout(() => editor.setAttribute('aria-disabled', 'false'), 1000);
+                                              };
+                                              const input = editor.querySelector('input');
+                                              input.oninput = () => {
+                                                document.title = editor.getAttribute('aria-disabled') === 'true'
+                                                  ? 'Filled while disabled' : 'Editor enabled [' + input.value + ']';
+                                              };
+                                              </script>
+                                            "#),
                                             "/streams" => ("text/html", r#"<title>Private streams</title>
                                               <h1>Waiting for streams</h1><script>
                                               const seen = new Set();
@@ -786,6 +812,23 @@ async fn interactive_session(
     assert!(error.to_string().contains("stale"), "{error:?}");
     let action_snapshot = call("web.session.snapshot", json!({"sessionId":id})).await?;
     assert_eq!(action_snapshot["data"]["title"], "Editable [Ready]");
+
+    call(
+        "web.session.open",
+        json!({"sessionId":id,"url":"http://page.example/session-disabled-group"}),
+    )
+    .await?;
+    for (index, expected) in [(0, "Override clicked"), (1, "Action enabled")] {
+        let snapshot = call("web.session.snapshot", json!({"sessionId":id})).await?;
+        let clicked = call(
+            "web.session.click",
+            json!({"sessionId":id,"elementRef":reference(&snapshot,index)}),
+        )
+        .await?;
+        assert_eq!(clicked["data"]["title"], expected);
+    }
+    let aria_typed = type_control("aria waiting", "Ready", false).await?;
+    assert_eq!(aria_typed["data"]["title"], "Editor enabled [Ready]");
 
     let waiting = call(
         "web.session.open",

@@ -16,6 +16,24 @@ const MAX_ACTION_RETRY: Duration = Duration::from_millis(250);
 const CLICK_UNAVAILABLE: &str = "The web element is no longer visible or enabled.";
 const FILL_UNAVAILABLE: &str = "The web element is no longer editable.";
 const STALE_ELEMENT: &str = "The web element reference is stale; take a fresh session snapshot.";
+const IS_DISABLED: &str = r#"function (element) {
+    if (element.matches(':disabled')) return true;
+    const role = element.getAttribute('role')?.trim().split(/\s+/)[0]?.toLowerCase();
+    const inherit = element.matches('a[href],button,input,option,optgroup,select,textarea') || [
+        'application', 'button', 'checkbox', 'columnheader', 'combobox', 'composite',
+        'grid', 'gridcell', 'group', 'input', 'link', 'listbox', 'menu', 'menubar',
+        'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'radio', 'radiogroup',
+        'row', 'rowheader', 'scrollbar', 'searchbox', 'select', 'separator', 'slider',
+        'spinbutton', 'switch', 'tab', 'tablist', 'textbox', 'toolbar', 'tree',
+        'treegrid', 'treeitem'
+    ].includes(role);
+    for (let node = element; node; node = node.parentElement ?? node.getRootNode().host) {
+        const state = node.getAttribute('aria-disabled')?.toLowerCase();
+        if (state === 'true' || state === 'false') return state === 'true';
+        if (!inherit) break;
+    }
+    return false;
+}"#;
 
 pub(super) struct State {
     generation: u64,
@@ -403,12 +421,15 @@ async fn wait_for_action(
     require_stability: bool,
     unavailable: &str,
 ) -> Result<Value> {
+    let function = format!(
+        "function (...args) {{ const isDisabled = {IS_DISABLED}; return ({function}).apply(this, args); }}"
+    );
     let deadline = Instant::now() + ACTION_TIMEOUT;
     let mut retry = ACTION_RETRY;
     let mut previous = Value::Null;
     while Instant::now() < deadline {
         // A null result reports a temporary condition before any input is dispatched.
-        let result = call_dom(page, node, function, arguments).await?;
+        let result = call_dom(page, node, &function, arguments).await?;
         ensure!(result != "stale", "{STALE_ELEMENT}");
         if !result.is_null() && (!require_stability || result == previous) {
             return Ok(result);
@@ -426,8 +447,7 @@ async fn click(page: &Page, node: u64) -> Result<()> {
         node,
         r#"function () {
         if (!this.isConnected || this.ownerDocument !== document) return 'stale';
-        if (this.matches(':disabled,[aria-disabled="true"]') ||
-            getComputedStyle(this).visibility !== 'visible') return null;
+        if (isDisabled(this) || getComputedStyle(this).visibility !== 'visible') return null;
         this.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
         const rect = this.getBoundingClientRect();
         const left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
@@ -488,7 +508,7 @@ async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
         if (!(nativeValue || textInput || textarea || (type === null && target.isContentEditable))) return 'unsupported';
         if (!this.getClientRects().length || getComputedStyle(this).visibility !== 'visible' ||
             !target.getClientRects().length || getComputedStyle(target).visibility !== 'visible' ||
-            target.readOnly || target.matches(':disabled,[aria-disabled="true"]')) return null;
+            target.readOnly || isDisabled(target)) return null;
         if (type === 'number' && Number.isNaN(Number(text.trim()))) return 'invalid-number';
         target.focus();
         const active = target.getRootNode().activeElement;
