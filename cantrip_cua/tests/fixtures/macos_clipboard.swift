@@ -6,6 +6,7 @@ final class SelectionEditor: NSTextView {
     var attributedSelectionOnly = false
     var rangeAndValueOnly = false
     var moveSelectionOnValueRead = false
+    var hideValue = false
     var secure = false
 
     override func accessibilitySelectedText() -> String? {
@@ -21,6 +22,7 @@ final class SelectionEditor: NSTextView {
     }
 
     override func accessibilityValue() -> String? {
+        if hideValue { return nil }
         let value = super.accessibilityValue()
         if moveSelectionOnValueRead {
             moveSelectionOnValueRead = false
@@ -45,6 +47,7 @@ final class ClipboardFixtureApp: NSApplication {
 @main
 struct ClipboardFixture {
     static let selection = "selected λ🚋\n\t"
+    static let secondSelection = "β \t"
 
     @MainActor
     static func main() {
@@ -65,7 +68,7 @@ struct ClipboardFixture {
             )
             window.title = title
             let editor = SelectionEditor(frame: NSRect(origin: .zero, size: rect.size))
-            editor.string = "outside " + selection + "outside"
+            editor.string = "outside " + selection + "unselected gap " + secondSelection + "outside"
             editor.setAccessibilityElement(true)
             let content = NSView(frame: NSRect(origin: .zero, size: rect.size))
             content.addSubview(editor)
@@ -106,7 +109,21 @@ struct ClipboardFixture {
                     case "range-and-value":
                         editor.rangeAndValueOnly = true
                     case "selection-moves":
+                        editor.hideValue = false
                         editor.moveSelectionOnValueRead = true
+                    case "multiple":
+                        editor.hideDirectSelection = false
+                        editor.attributedSelectionOnly = false
+                        editor.rangeAndValueOnly = false
+                        editor.selectedRanges = [selection, secondSelection].map {
+                            NSValue(range: (editor.string as NSString).range(of: $0))
+                        }
+                        let pasteboard = NSPasteboard.withUniqueName()
+                        defer { pasteboard.releaseGlobally() }
+                        precondition(editor.writeSelection(to: pasteboard, types: editor.writablePasteboardTypes))
+                        precondition(pasteboard.string(forType: .string) == selection + secondSelection)
+                    case "multiple-parameterized":
+                        editor.hideValue = true
                     case "secure":
                         editor.secure = true
                         editor.hideDirectSelection = false

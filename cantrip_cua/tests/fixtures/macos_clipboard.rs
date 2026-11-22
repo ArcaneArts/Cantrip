@@ -94,13 +94,19 @@ fn copies_only_the_bound_macos_selection_without_a_focus_or_clipboard_change() {
     assert_eq!(helper.call(copy(8)).0["text"], "selected λ🚋\n\t");
     fixture.command("selection-moves");
     assert!(helper.call(copy(10)).0["text"].is_null());
-    fixture.command("secure");
-    assert!(helper.call(copy(12)).0["text"].is_null());
-    fixture.command("sibling");
-    assert!(helper.call(copy(14)).0["text"].is_null());
-    fixture.command("empty");
+    fixture.command("multiple");
+    assert_eq!(helper.call(copy(12)).0["text"], "selected λ🚋\n\tβ \t");
+    fixture.command("multiple-parameterized");
+    assert_eq!(helper.call(copy(14)).0["text"], "selected λ🚋\n\tβ \t");
+    fixture.command("selection-moves");
     assert!(helper.call(copy(16)).0["text"].is_null());
-    let replay = helper.send(copy(16));
+    fixture.command("secure");
+    assert!(helper.call(copy(18)).0["text"].is_null());
+    fixture.command("sibling");
+    assert!(helper.call(copy(20)).0["text"].is_null());
+    fixture.command("empty");
+    assert!(helper.call(copy(22)).0["text"].is_null());
+    let replay = helper.send(copy(22));
     assert!(
         matches!(helper.response(replay).0, Outcome::Error { error } if error.code == ErrorCode::InvalidRequest)
     );

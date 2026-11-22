@@ -58,10 +58,10 @@ fixtures in a local Windows 11 guest.
 
 ### Open platform checks
 
-- macOS shared-window copy supports text and selection ranges exposed through
-  Accessibility. Custom Copy handlers that only publish to the shared system
-  pasteboard remain a compatibility gap.
-  [macOS selection evidence](#358-copy-macos-text-from-a-selection-range-and-value)
+- macOS shared-window copy supports text and multiple selection ranges
+  exposed through Accessibility. Custom Copy handlers that only publish to
+  the shared system pasteboard remain a compatibility gap.
+  [macOS selection evidence](#367-copy-noncontiguous-macos-text-selections)
 - GNOME and KDE portal approval remains unverified. The local Wayland
   fallback delivered keyboard input through Linux uinput to a focused
   XWayland window.
@@ -11578,3 +11578,21 @@ off. The same fixture passed enrollment, heartbeat, credential rotation
 and revocation, restart, and SIGTERM shutdown. The disposable profile was
 removed after the run.
 [Upstream CodeGraph 1.6.4 release](https://github.com/colbymchenry/codegraph/releases/tag/v1.6.4)
+
+## 367. Copy noncontiguous macOS text selections
+
+Reference commit `96661f0eaa0dc23a2f57338b4e2b07eae7f5c990` (#3530).
+
+The native helper joins the selected editor's ordered Accessibility ranges
+as AppKit does for plain-text Copy. It reads the editor's text value or
+requests text for each range, applies the combined clipboard size limit,
+and confirms the ranges still match before returning the text.
+
+On macOS ARM64, the scoped process fixture reproduced a copy that returned
+only the first range. The rebuilt helper matched AppKit's output on a
+private pasteboard, including Unicode and whitespace. It passed the same
+check with parameterized range reads and rejected a change during the
+copy. The fixture verified window scope, secure-field exclusion, and
+stable focus and shared clipboard. Three selection unit tests and 22
+noninteractive helper process tests passed.
+[Apple Accessibility selection ranges](https://developer.apple.com/documentation/applicationservices/kaxselectedtextrangesattribute)
