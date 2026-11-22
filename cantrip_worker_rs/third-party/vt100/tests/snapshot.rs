@@ -80,3 +80,36 @@ fn line_feed_at_top_anchored_region_retains_history_and_scroll_up_does_not() {
     parser.screen_mut().set_scrollback(1);
     assert_eq!(parser.screen().cell(0, 0).unwrap().contents(), "t");
 }
+
+#[test]
+fn snapshot_budget_counts_utf16_units_for_scrollback() {
+    let mut parser = vt100::Parser::new(3, 18, 20);
+    for row in 0..10 {
+        parser.process(format!("{row}:界面🙂履歴\r\n").as_bytes());
+    }
+    let screen = parser.screen();
+    let (full, history) = screen
+        .normal_contents_formatted_with_scrollback(4096)
+        .unwrap();
+    assert!(history > 0);
+    let budget = std::str::from_utf8(&full).unwrap().encode_utf16().count();
+    assert!(budget < full.len());
+
+    let (exact, kept) = screen
+        .normal_contents_formatted_with_scrollback(budget)
+        .unwrap();
+    assert_eq!(kept, history);
+    assert_eq!(exact, full);
+    let (bounded, kept) = screen
+        .normal_contents_formatted_with_scrollback(budget - 1)
+        .unwrap();
+    assert!(kept < history);
+    let used = std::str::from_utf8(&bounded)
+        .unwrap()
+        .encode_utf16()
+        .count();
+    assert!(used < budget);
+    let mut viewer = vt100::Parser::new(3, 18, 20);
+    viewer.process(&bounded);
+    assert_eq!(viewer.screen().contents(), screen.contents());
+}

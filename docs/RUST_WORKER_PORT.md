@@ -12010,3 +12010,19 @@ line contents, wraps, cursor position, and a later edit after replay.
 All 34 parser tests, the parser documentation test, and 14 existing
 packaging verification tests passed locally. The offline production
 worker check passed.
+
+## 395. Preserve multilingual terminal scrollback within the snapshot limit
+
+Reference commit `64d21dafa2f449f8dfca3484ab1ad0470cc4d73e` (#3558).
+
+Terminal reattachment measures the normal buffer, alternate buffer, and
+restore sequences in UTF-16 code units. This uses the same accounting
+as the archived xterm serializer and the existing terminal transport.
+
+In the macOS ARM64 fixture, a budget of 156 UTF-16 units fit eight rows
+of history alongside the visible screen. The previous renderer kept
+two history rows at that budget. The updated snapshot replayed the
+same history and viewport as xterm.js 6.0.0. With one fewer unit, the
+renderer reduced history and preserved the visible rows. All 35 parser
+tests, the parser documentation test, and the offline production worker
+check passed locally.

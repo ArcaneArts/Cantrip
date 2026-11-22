@@ -4,6 +4,14 @@ pub trait BufWrite {
     fn write_buf(&self, buf: &mut Vec<u8>);
 }
 
+pub(crate) fn utf16_len(bytes: &[u8]) -> Option<usize> {
+    if bytes.is_ascii() {
+        Some(bytes.len())
+    } else {
+        Some(std::str::from_utf8(bytes).ok()?.encode_utf16().count())
+    }
+}
+
 #[derive(Default, Debug)]
 #[must_use = "this struct does nothing unless you call write_buf"]
 pub struct ClearScreen;
