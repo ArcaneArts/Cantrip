@@ -51,6 +51,8 @@ and the [desktop and upgrade checks](#288-verify-the-native-desktop-runtime-and-
 record the transition. The
 [hosted Linux ARM64 image check](#332-bound-hosted-worker-release-build-memory)
 covers the current Docker build, enrollment, and volume reuse.
+The [current Codex package check](#370-verify-the-current-pinned-codex-in-macos-packages)
+covers the macOS standalone worker and desktop service bundle.
 
 The native Windows x64 helper passed the interactive window and display input
 fixtures in a local Windows 11 guest.
@@ -11526,8 +11528,8 @@ Codex bundle with the matching patch set from before #3499. Its launcher ran
 with an empty PATH from an artifact path containing spaces and Unicode.
 The artifact contained no Node executable or modules. The packaged worker passed
 enrollment, heartbeat, credential rotation and revocation, restart, grant
-handling and SIGTERM shutdown against Rust Core in PGlite mode. A build with
-the newer Codex patch set remains to be exercised.
+handling and SIGTERM shutdown against Rust Core in PGlite mode. The newer
+patch set was exercised in [cycle 370](#370-verify-the-current-pinned-codex-in-macos-packages).
 
 ## 364. Include the Wayland keysym license in Linux worker packages
 
@@ -11630,3 +11632,28 @@ returned no text in that case and passed the existing ordinary range,
 attributed text, multiple selection, secure editor, and sibling window
 checks. The fixture observed stable foreground focus and a stable general
 pasteboard. All 22 regular helper process tests passed.
+
+## 370. Verify the current pinned Codex in macOS packages
+
+Reference commit `0e616e961d43fb211e5f4639fda2ecedfeb1f627` (#3533).
+
+On macOS ARM64, the ordinary Codex release build applied all 96 patches
+and produced the four native binaries for Codex 0.166.0. The build used
+a temporary RAM disk to avoid expanding the existing local build caches.
+The standalone packager and desktop resource packager assembled the same
+verified Codex release with prebuilt debug versions of the Rust services
+and native helpers. The artifact hashes, executable versions, and
+generated app-server protocol passed the package verifier. Both package
+trees were inspected for Node executables and modules.
+
+The standalone launcher ran from a path with spaces and Unicode. With
+an empty PATH, it enrolled against Rust Core in PGlite mode and passed
+credential rotation, reconnect, grant revocation, restart, and SIGTERM
+shutdown. A separate fixture used the bundled Codex and CLI through
+the real worker and server with a loopback model provider. It completed
+the managed CLI workflow and Core rejected its retired lane.
+
+The headless desktop supervisor launched the packaged Rust services
+with an empty PATH in PGlite and bundled PostgreSQL modes. Both preserved
+settings and identity across restart, reaped both children on orderly
+shutdown, and recovered from supervisor loss.
