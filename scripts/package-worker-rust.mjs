@@ -1,14 +1,5 @@
 import { execFile } from "node:child_process";
-import {
-  chmod,
-  cp,
-  mkdir,
-  mkdtemp,
-  realpath,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, cp, mkdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -16,6 +7,7 @@ import { bundleCantripCli } from "./cantrip-cli/build.mjs";
 import { bundleCantripCua } from "./cantrip-cua/build.mjs";
 import { smokeCantripCua } from "./cantrip-cua/smoke.mjs";
 import { verifyBuiltRuntime } from "./cantrip-codex/verify-built-runtime.mjs";
+import { replaceRuntimeDirectory } from "./replace-runtime-directory.mjs";
 import { verifyPackagedWorkerMcp } from "./verify-packaged-worker-mcp.mjs";
 import { buildRustWorker } from "./worker-rust/cargo.mjs";
 
@@ -59,11 +51,10 @@ export async function packageNativeWorker({
 }) {
   const { platform } = target;
   const worker = inputs.worker ?? (await buildRustWorker({ release: true }));
-  await mkdir(path.dirname(destination), { recursive: true });
-  const stage = await mkdtemp(
-    path.join(path.dirname(destination), ".cantrip-worker-rust-"),
-  );
-  try {
+  await replaceRuntimeDirectory(destination, ".cantrip-worker-rust-", assemble);
+  console.log(`Packaged Rust worker: ${path.relative(root, destination)}`);
+
+  async function assemble(stage) {
     const bin = path.join(stage, "bin");
     await cp(inputs.codex, bin, { recursive: true, dereference: true });
     const executable = path.join(
@@ -117,11 +108,5 @@ export async function packageNativeWorker({
     await verifyNativeWorkerBin(bin, platform);
     await verifyPackagedWorkerMcp(stage, { platform });
     if (platform !== "win32") await chmod(stage, 0o755);
-
-    await rm(destination, { force: true, recursive: true });
-    await rename(stage, destination);
-    console.log(`Packaged Rust worker: ${path.relative(root, destination)}`);
-  } finally {
-    await rm(stage, { force: true, recursive: true });
   }
 }
