@@ -11976,3 +11976,19 @@ request. The fixture decrypted the title and both saved URLs with the
 TypeScript client codec, checked persisted revision 2, and verified that
 an invalid scheme and an unknown explicit target did not create a tab.
 The CLI ran with an empty PATH. Both native builds passed offline.
+
+## 393. Preserve protected cells in terminal replay
+
+Reference commit `7664d3d153d760ead91e550887a96ef480b1aab7` (#3556).
+
+The terminal parser tracks the DEC character protection attribute.
+Selective line and screen erases keep protected cells, including both
+columns of a wide character. Ordinary erases still clear those cells.
+Canonical replay restores protection for the existing cells and for
+later output that uses the current attribute.
+
+On macOS ARM64, the original parser lost protected cells. The updated
+snapshot matched the archived xterm.js 6.0 renderer for seven erases.
+A fresh xterm viewer also matched uninterrupted output after a later
+selective erase. All 32 parser tests, the parser documentation test,
+and the offline production worker check passed locally.

@@ -28,9 +28,11 @@ impl Row {
             .unwrap()
     }
 
-    pub fn clear(&mut self, attrs: crate::attrs::Attrs) {
+    pub fn clear(&mut self, attrs: crate::attrs::Attrs, selective: bool) {
         for cell in &mut self.cells {
-            cell.clear(attrs);
+            if !selective || !cell.attrs().protected() {
+                cell.clear(attrs);
+            }
         }
         self.wrapped = false;
     }
@@ -91,8 +93,17 @@ impl Row {
         }
     }
 
-    pub fn erase(&mut self, i: u16, attrs: crate::attrs::Attrs) {
-        let wide = self.cells[usize::from(i)].is_wide();
+    pub fn erase(
+        &mut self,
+        i: u16,
+        attrs: crate::attrs::Attrs,
+        selective: bool,
+    ) {
+        let cell = &self.cells[usize::from(i)];
+        if selective && cell.attrs().protected() {
+            return;
+        }
+        let wide = cell.is_wide();
         self.clear_wide(i, attrs);
         self.cells[usize::from(i)].clear(attrs);
         if i == self.cols() - if wide { 2 } else { 1 } {

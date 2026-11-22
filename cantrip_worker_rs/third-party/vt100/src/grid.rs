@@ -60,7 +60,7 @@ impl Grid {
         self.saved_col = 0;
         self.tab_stops = (0..self.size.cols).step_by(8).collect();
         for row in self.drawing_rows_mut() {
-            row.clear(attrs);
+            row.clear(attrs, false);
         }
         self.scroll_top = 0;
         self.scroll_bottom = self.size.rows - 1;
@@ -478,49 +478,65 @@ impl Grid {
         }
     }
 
-    pub fn erase_all(&mut self, attrs: crate::attrs::Attrs) {
+    pub fn erase_all(&mut self, attrs: crate::attrs::Attrs, selective: bool) {
         for row in self.drawing_rows_mut() {
-            row.clear(attrs);
+            row.clear(attrs, selective);
         }
     }
 
-    pub fn erase_all_forward(&mut self, attrs: crate::attrs::Attrs) {
+    pub fn erase_all_forward(
+        &mut self,
+        attrs: crate::attrs::Attrs,
+        selective: bool,
+    ) {
         let pos = self.pos;
         for row in self.drawing_rows_mut().skip(usize::from(pos.row) + 1) {
-            row.clear(attrs);
+            row.clear(attrs, selective);
         }
 
-        self.erase_row_forward(attrs);
+        self.erase_row_forward(attrs, selective);
     }
 
-    pub fn erase_all_backward(&mut self, attrs: crate::attrs::Attrs) {
+    pub fn erase_all_backward(
+        &mut self,
+        attrs: crate::attrs::Attrs,
+        selective: bool,
+    ) {
         let pos = self.pos;
         for row in self.drawing_rows_mut().take(usize::from(pos.row)) {
-            row.clear(attrs);
+            row.clear(attrs, selective);
         }
 
-        self.erase_row_backward(attrs);
+        self.erase_row_backward(attrs, selective);
     }
 
-    pub fn erase_row(&mut self, attrs: crate::attrs::Attrs) {
-        self.current_row_mut().clear(attrs);
+    pub fn erase_row(&mut self, attrs: crate::attrs::Attrs, selective: bool) {
+        self.current_row_mut().clear(attrs, selective);
     }
 
-    pub fn erase_row_forward(&mut self, attrs: crate::attrs::Attrs) {
+    pub fn erase_row_forward(
+        &mut self,
+        attrs: crate::attrs::Attrs,
+        selective: bool,
+    ) {
         let size = self.size;
         let pos = self.pos;
         let row = self.current_row_mut();
         for col in pos.col..size.cols {
-            row.erase(col, attrs);
+            row.erase(col, attrs, selective);
         }
     }
 
-    pub fn erase_row_backward(&mut self, attrs: crate::attrs::Attrs) {
+    pub fn erase_row_backward(
+        &mut self,
+        attrs: crate::attrs::Attrs,
+        selective: bool,
+    ) {
         let size = self.size;
         let pos = self.pos;
         let row = self.current_row_mut();
         for col in 0..=pos.col.min(size.cols - 1) {
-            row.erase(col, attrs);
+            row.erase(col, attrs, selective);
         }
     }
 
@@ -549,7 +565,7 @@ impl Grid {
         let pos = self.pos;
         let row = self.current_row_mut();
         for col in pos.col..((pos.col.saturating_add(count)).min(size.cols)) {
-            row.erase(col, attrs);
+            row.erase(col, attrs, false);
         }
     }
 
@@ -577,7 +593,7 @@ impl Grid {
             lines.len() - count
         };
         for line in &mut lines[first_blank..first_blank + count] {
-            line.clear(attrs);
+            line.clear(attrs, false);
         }
     }
 
