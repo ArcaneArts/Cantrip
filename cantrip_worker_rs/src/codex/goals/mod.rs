@@ -133,10 +133,7 @@ impl Goals {
         let command = self.preparation.resolve_routing(input).await?;
         let goal = &command["objective"];
         let target = &command["taskRuntime"];
-        if command["osExecution"].is_object()
-            || !target.is_object()
-            || command["subagentDefaults"].is_object()
-        {
+        if command["osExecution"].is_object() || !target.is_object() {
             bail!("This managed Goal requires a native execution environment that is unavailable.");
         }
         let classification = &goal["classification"];
