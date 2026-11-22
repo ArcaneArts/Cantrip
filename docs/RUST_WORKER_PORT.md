@@ -11614,3 +11614,19 @@ ignored an unrelated connection's exit and rejected the old input session
 after the exact portal owner disconnected. The new regression and 88
 other helper unit tests passed. The test exercised the real bus, with no
 GNOME or KDE consent dialog.
+
+## 369. Recheck macOS selections after a parameterized text read
+
+Reference commit `41f071546d3f7790dfe04591380ca6690d03352d` (#3532).
+
+When an editor exports a single selection range and provides its text
+through a parameterized Accessibility query, the helper checks that the
+range still matches after reading the text. A selection change produces an
+empty copy result.
+
+The macOS ARM64 AppKit fixture changed the selection during the query.
+The baseline returned text for the retired range. The rebuilt helper
+returned no text in that case and passed the existing ordinary range,
+attributed text, multiple selection, secure editor, and sibling window
+checks. The fixture observed stable foreground focus and a stable general
+pasteboard. All 22 regular helper process tests passed.

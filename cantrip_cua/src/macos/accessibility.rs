@@ -812,7 +812,11 @@ fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String
             return Err(selection_too_large());
         }
         if let Some(text) = text_for_range(element, range, cancel)? {
-            return Ok(Some(text));
+            let current = element
+                .attr("AXSelectedTextRange")
+                .ok()
+                .and_then(|range| selection_range(&range));
+            return Ok((current == Some(selection)).then_some(text));
         }
     }
 
