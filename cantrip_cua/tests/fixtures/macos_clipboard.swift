@@ -43,8 +43,19 @@ final class SelectionEditor: NSTextView {
     }
 }
 
+final class ClipboardOnlyView: NSView {
+    // Let the real Copy action run without replacing the host clipboard.
+    let pasteboard = NSPasteboard.withUniqueName()
+    static let contents = "custom copy λ🚋"
+
+    @objc func copy(_ sender: Any?) {
+        pasteboard.clearContents()
+        precondition(pasteboard.setString(Self.contents, forType: .string))
+    }
+}
+
 final class ClipboardFixtureApp: NSApplication {
-    var editor: SelectionEditor?
+    var editor: NSView?
 
     override var accessibilityFocusedUIElement: Any? {
         editor
@@ -89,6 +100,10 @@ struct ClipboardFixture {
         let (selected, editor) = makeWindow(title: "Cantrip selection fixture")
         let (sibling, otherEditor) = makeWindow(title: "Cantrip selection sibling")
         app.editor = editor
+        let customCopy = ClipboardOnlyView(frame: .zero)
+        customCopy.setAccessibilityElement(true)
+        customCopy.setAccessibilityRole(.group)
+        var customClipboard = customCopy.pasteboard.changeCount
 
         func receipt() -> [String: Any] {
             [
@@ -96,6 +111,7 @@ struct ClipboardFixture {
                 "sibling": sibling.windowNumber,
                 "foregroundUnchanged": foreground == NSWorkspace.shared.frontmostApplication?.processIdentifier,
                 "clipboardUnchanged": clipboard == NSPasteboard.general.changeCount,
+                "customClipboardUnchanged": customClipboard == customCopy.pasteboard.changeCount,
             ]
         }
         func report() {
@@ -146,9 +162,18 @@ struct ClipboardFixture {
                     case "empty":
                         app.editor = editor
                         editor.setSelectedRange(NSRange(location: 0, length: 0))
+                    case "custom-copy":
+                        let content = selected.contentView!
+                        customCopy.frame = content.bounds
+                        content.addSubview(customCopy)
+                        app.editor = customCopy
+                        precondition(app.sendAction(#selector(ClipboardOnlyView.copy(_:)), to: customCopy, from: nil))
+                        precondition(customCopy.pasteboard.string(forType: .string) == ClipboardOnlyView.contents)
+                        customClipboard = customCopy.pasteboard.changeCount
                     case "state":
                         break
                     case "quit":
+                        customCopy.pasteboard.releaseGlobally()
                         selected.close()
                         sibling.close()
                         exit(0)

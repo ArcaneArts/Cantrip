@@ -75,7 +75,8 @@ it offers text input and pointer control for the shared output.
 - macOS shared-window copy supports text and multiple selection ranges
   exposed through Accessibility. Custom Copy handlers that only publish to
   the shared system pasteboard remain a compatibility gap.
-  [macOS selection evidence](#367-copy-noncontiguous-macos-text-selections)
+  [macOS selection evidence](#367-copy-noncontiguous-macos-text-selections) ·
+  [Legacy clipboard comparison](#373-verify-the-macos-window-clipboard-boundary)
 
 ## Implementation record
 
@@ -11721,3 +11722,25 @@ script tests passed locally. The D-Bus tests covered unavailable emulated
 input, explicit denial, and owner disconnect. An older KDE compositor
 that accepts the connection without offering the required devices was
 unavailable for a live test.
+
+## 373. Verify the macOS window clipboard boundary
+
+Reference commit `876dff740e8c35e0b99ca4710140786afc078006` (#3536).
+
+Before the packaging cutover, the Node worker sent the selected window Command-C and
+then used the desktop automation client's clipboard reader. Its macOS
+implementation ran `pbpaste` with no destination parameter. The result
+could include an earlier copy or text supplied by another app. AppKit's
+pasteboard change count reports an ownership change. The public API
+provides no originating window for that change.
+[Node participant copy](https://github.com/ArcaneArts/Cantrip/blob/872d343ecc100fc6154f0580d0e88f48baeb2bd2/cantrip_worker/src/desktop/participant-input.ts#L363-L375) ·
+[Node macOS clipboard reader](https://github.com/zavora-ai/computer-use-mcp/blob/v7.0.0/src/session.ts#L1882-L1889) ·
+[AppKit pasteboard change count](https://developer.apple.com/documentation/appkit/nspasteboard/changecount)
+
+On macOS ARM64, the live fixture invoked a custom Copy action to verify
+it produced text on a fixture-owned pasteboard. The same control exposed
+no Accessibility selection. A copy request through the Rust window
+binding returned empty, preserved foreground focus, and left both
+pasteboard change counts unchanged. The fixture retained coverage of
+positive selection reads, secure fields, a sibling window, and replay
+rejection. All 22 regular helper process tests also passed.
