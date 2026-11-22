@@ -11811,3 +11811,25 @@ session closing before approval of a different session, followed by a
 D-Bus key event on the replacement session. All three isolated D-Bus
 tests and all 89 regular helper tests passed. This fixture uses a
 controlled portal service.
+
+## 377. Preserve automatic newline mode during terminal reattachment
+
+Reference commit `0fae34535856fcff5633efd20901ae22cadce9aa` (#3540).
+
+The native terminal tracks automatic newline mode (`CSI 20 h` and
+`CSI 20 l`), including when applications set it together with insert
+mode. LF, VT, and FF return to the first column while the mode is active.
+Index retains its column. Soft and hard resets preserve the last newline
+setting, matching the xterm.js renderer. Reattachment clears any viewer
+setting left from its previous attachment before drawing the snapshot
+and restores the process's mode before later output.
+[xterm.js 6.0 automatic newline and line feed](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/InputHandler.ts#L654-L689) ·
+[xterm.js 6.0 mode setting](https://github.com/xtermjs/xterm.js/blob/6.0.0/src/common/InputHandler.ts#L1627-L1655)
+
+On macOS ARM64, the previous worker replay differed from xterm.js 6.0
+in nine controlled cases. The updated production replay code matched
+xterm.js on initial attachment and after later output, including active
+and disabled modes, alternate screens, resets, scrollback, and a
+retained viewer with an earlier newline setting. All 30 parser tests,
+the parser documentation test, and all three replay unit tests passed
+locally. The production Rust worker passed its offline Cargo check.

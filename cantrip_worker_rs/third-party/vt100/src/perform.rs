@@ -51,9 +51,7 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
             7 => self.callbacks.audible_bell(&mut self.screen),
             8 => self.screen.bs(),
             9 => self.screen.tab(1, false),
-            10 => self.screen.lf(),
-            11 => self.screen.vt(),
-            12 => self.screen.ff(),
+            10..=12 => self.screen.lf(),
             13 => self.screen.cr(),
             14 => self.screen.charsets.shift(1),
             15 => self.screen.charsets.shift(0),
@@ -83,10 +81,10 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                 b'8' => self.screen.decrc(),
                 b'=' => self.screen.deckpam(),
                 b'>' => self.screen.deckpnm(),
-                b'D' => self.screen.lf(),
+                b'D' => self.screen.index(),
                 b'E' => {
                     self.screen.cr();
-                    self.screen.lf();
+                    self.screen.index();
                 }
                 b'H' => self.screen.set_tab_stop(),
                 b'M' => self.screen.ri(),
@@ -112,7 +110,7 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
         c: char,
     ) {
         let preceding_width = std::mem::take(&mut self.preceding_width);
-        let unhandled = |screen: &mut crate::screen::Screen| {
+        let mut unhandled = |screen: &mut crate::screen::Screen| {
             self.callbacks.unhandled_csi(
                 screen,
                 intermediates.first().copied(),
@@ -159,8 +157,16 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                 'g' => self
                     .screen
                     .clear_tab_stops(canonicalize_params_1(params, 0)),
-                'h' | 'l' if params.iter().any(|param| param == [4]) => {
-                    self.screen.set_insert_mode(c == 'h');
+                'h' | 'l' if !ignore => {
+                    let mut handled = false;
+                    for param in params {
+                        if let Some(&mode) = param.first() {
+                            handled |= self.screen.set_ansi_mode(mode, c == 'h');
+                        }
+                    }
+                    if !handled {
+                        unhandled(&mut self.screen);
+                    }
                 }
                 'm' => self.screen.sgr(params, unhandled),
                 's' => self.screen.decsc(),

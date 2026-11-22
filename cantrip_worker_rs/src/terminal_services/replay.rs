@@ -139,7 +139,7 @@ impl Replay {
         // A retained viewer can still have modes from the previous attachment.
         // Draw with absolute positions and ordinary overwrite and wrap first.
         let mut bytes =
-            b"\x1b[?1049l\x0f\x1b(B\x1b)B\x1b*B\x1b+B\x1b[4l\x1b[?6l\x1b[?7h\x1b[?45;1004;9;1000;1002;1003;1005;1006l\x1b[r"
+            b"\x1b[?1049l\x0f\x1b(B\x1b)B\x1b*B\x1b+B\x1b[4;20l\x1b[?6l\x1b[?7h\x1b[?45;1004;9;1000;1002;1003;1005;1006l\x1b[r"
                 .to_vec();
         let mut tail = if screen.alternate_screen() {
             screen.alternate_attachment_formatted()
@@ -191,6 +191,32 @@ mod tests {
             replay.tail(40).0.as_str(),
             Some("first\r\n\x1b[31mproof\x1b[0m\x1b[?2004h")
         );
+    }
+
+    #[test]
+    fn reattachment_restores_automatic_newline_and_clears_stale_viewer_mode() {
+        let size = TerminalSize { rows: 8, cols: 20 };
+        for (history, live, expected) in [
+            ("first", "\nsecond", "first\n     second"),
+            (
+                "\x1b[4;20hfirst\nsecond\x0bthird\x0cfourth",
+                "\nfifth\x1b[20;4l\nsixth",
+                "first\nsecond\nthird\nfourth\nfifth\n     sixth",
+            ),
+        ] {
+            let mut replay = Replay::new(size, 1);
+            replay.write(history);
+            let snapshot = replay.attachment(true);
+            assert_eq!(snapshot.metadata.unwrap()["format"], "canonical-xterm");
+
+            let mut client = vt100::Parser::new(size.rows, size.cols, 0);
+            client.process(b"\x1b[20h\x1bc");
+            client.process(snapshot.data.as_str().unwrap().as_bytes());
+            client.process(live.as_bytes());
+
+            assert_eq!(client.screen().contents(), expected);
+            assert!(!client.screen().insert_mode());
+        }
     }
 
     #[test]

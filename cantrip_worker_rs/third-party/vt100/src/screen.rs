@@ -11,6 +11,7 @@ const MODE_NO_WRAP: u16 = 1 << 6;
 const MODE_REVERSE_WRAP: u16 = 1 << 7;
 const MODE_REPORT_FOCUS: u16 = 1 << 8;
 const MODE_SYNCHRONIZED_OUTPUT: u16 = 1 << 9;
+const MODE_NEWLINE: u16 = 1 << 10;
 
 /// The xterm mouse handling mode currently in use.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
@@ -466,7 +467,7 @@ impl Screen {
     /// * application cursor
     /// * bracketed paste
     /// * xterm mouse and focus reporting
-    /// * insertion, autowrap, and reverse wrap
+    /// * insertion, automatic newline, autowrap, and reverse wrap
     /// * scrolling margins and origin
     #[must_use]
     pub fn input_mode_formatted(&self) -> Vec<u8> {
@@ -548,6 +549,7 @@ impl Screen {
     fn write_edit_modes(&self, contents: &mut Vec<u8>, prev: Option<&Self>) {
         for (mode, enable, disable) in [
             (MODE_INSERT, &b"\x1b[4h"[..], &b"\x1b[4l"[..]),
+            (MODE_NEWLINE, &b"\x1b[20h"[..], &b"\x1b[20l"[..]),
             (MODE_NO_WRAP, &b"\x1b[?7l"[..], &b"\x1b[?7h"[..]),
             (MODE_REVERSE_WRAP, &b"\x1b[?45h"[..], &b"\x1b[?45l"[..]),
             (MODE_REPORT_FOCUS, &b"\x1b[?1004h"[..], &b"\x1b[?1004l"[..]),
@@ -1167,18 +1169,17 @@ impl Screen {
     }
 
     pub(crate) fn lf(&mut self) {
+        if self.mode(MODE_NEWLINE) {
+            self.cr();
+        }
+        self.index();
+    }
+
+    pub(crate) fn index(&mut self) {
         let attrs = self.attrs.for_erase();
         let grid = self.grid_mut();
         grid.row_inc_scroll(1, attrs);
         grid.col_inc_clamp(0);
-    }
-
-    pub(crate) fn vt(&mut self) {
-        self.lf();
-    }
-
-    pub(crate) fn ff(&mut self) {
-        self.lf();
     }
 
     pub(crate) fn cr(&mut self) {
@@ -1215,13 +1216,16 @@ impl Screen {
 
     // ESC c
     pub(crate) fn ris(&mut self) {
+        // xterm.js stores automatic newline as a terminal option across resets.
+        let newline = self.modes & MODE_NEWLINE;
         *self = Self::new(self.grid.size(), self.grid.scrollback_len());
+        self.modes = newline;
     }
 
     pub(crate) fn soft_reset(&mut self) {
         self.hyperlink = false;
         self.charsets = crate::charset::Charsets::default();
-        self.modes &= MODE_ALTERNATE_SCREEN;
+        self.modes &= MODE_ALTERNATE_SCREEN | MODE_NEWLINE;
         self.attrs = crate::attrs::Attrs::default();
         self.saved_attrs[usize::from(self.alternate_screen())] = self.attrs;
         self.grid_mut().soft_reset();
@@ -1376,12 +1380,22 @@ impl Screen {
         self.grid_mut().move_cursor(i32::from(offset), 0);
     }
 
-    pub(crate) fn set_insert_mode(&mut self, enable: bool) {
+    pub(crate) fn set_ansi_mode(
+        &mut self,
+        parameter: u16,
+        enable: bool,
+    ) -> bool {
+        let mode = match parameter {
+            4 => MODE_INSERT,
+            20 => MODE_NEWLINE,
+            _ => return false,
+        };
         if enable {
-            self.set_mode(MODE_INSERT);
+            self.set_mode(mode);
         } else {
-            self.clear_mode(MODE_INSERT);
+            self.clear_mode(mode);
         }
+        true
     }
 
     // CSI ? h
