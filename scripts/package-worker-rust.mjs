@@ -78,6 +78,18 @@ export async function packageNativeWorker({
         path.join(ptyNotices, name),
       );
     }
+    const xtermNotices = path.join(bin, "licenses", "xterm");
+    await mkdir(xtermNotices, { recursive: true });
+    await cp(
+      path.join(
+        root,
+        "cantrip_worker_rs",
+        "third-party",
+        "vt100",
+        "LICENSE.xterm",
+      ),
+      path.join(xtermNotices, "LICENSE"),
+    );
     if (target.id === "win32-x64") {
       await execute("powershell.exe", [
         "-NoProfile",
