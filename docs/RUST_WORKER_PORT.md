@@ -37,11 +37,13 @@ uses the platform WebView.
 
 Node remains in source builds, client and protocol tooling, and the compatibility
 references under `tests/reference-node-worker` and `tests/reference-node-server`.
-Project tooling and user-configured MCP servers may bring their own runtimes.
+Desktop synthetic builds and the repository's `pnpm os` tooling use Node.
+Project Run configurations and user-configured MCP servers may use their own
+runtime.
 Optional CodeGraph indexing uses an upstream distribution with its own runtime.
 Choose **Install CodeGraph** in worker settings to enable it on a fresh profile.
 Browser JavaScript and the CUA scripting interface remain available.
-[CodeGraph installation record](#222-install-and-update-codegraph-from-the-rust-worker)
+[CodeGraph installation evidence](#366-verify-the-runtime-dependency-boundary)
 
 The [packaging cutover](#278-ship-the-rust-worker-in-cantrip-packages), the
 [Node worker archive](#286-archive-the-node-worker-as-a-compatibility-reference),
@@ -11556,3 +11558,23 @@ install action was accepted. A profile with an existing installation
 reported its saved version and issued the startup update check. The proxy
 captured the release requests locally. The offline worker build and the
 focused worker-settings typecheck passed.
+
+## 366. Verify the runtime dependency boundary
+
+Reference commit `b9029685ec463430d6ebd3a474e469cb96e7a9a5` (#3529).
+
+The hosted worker and server final image stages copy the native distribution
+directories. Their Node tooling runs in build stages. The Cantrip OS executor
+uses the native file and Run helpers, the C process owner, and the Python
+service bridge. The host's repository and development CLI remains under
+`cantrip_os/scripts`. Desktop synthetic builds provision a private Node
+toolchain when a user prepares a selected source revision.
+
+The macOS ARM64 control fixture ran the Rust worker and Rust Core in PGlite
+mode with the worker PATH set to `/usr/bin:/bin`. Neither directory supplied
+a Node executable. A fresh worker accepted the explicit CodeGraph action,
+installed upstream 1.6.4, and reported the v1 installation with telemetry
+off. The same fixture passed enrollment, heartbeat, credential rotation
+and revocation, restart, and SIGTERM shutdown. The disposable profile was
+removed after the run.
+[Upstream CodeGraph 1.6.4 release](https://github.com/colbymchenry/codegraph/releases/tag/v1.6.4)
