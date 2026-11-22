@@ -170,7 +170,12 @@ pub(super) async fn execute(
         .into());
     }
     let arguments = &call["arguments"];
-    let selector = optional(arguments, "target")?;
+    // Browser creation carries the resolved execution target object.
+    let selector = if command == "browser.create" {
+        None
+    } else {
+        optional(arguments, "target")?
+    };
     if command.starts_with("run.") {
         return super::cli_runs::execute(service, owner, &context, call).await;
     }

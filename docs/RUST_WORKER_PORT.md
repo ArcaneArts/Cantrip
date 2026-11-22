@@ -11956,3 +11956,23 @@ Playwright 1.62.1 included the native form values in the page snapshot
 and individual control descriptions. The updated worker matched those
 values in the local managed Chromium smoke, including decimal and zero
 readback. The offline production worker check passed.
+
+## 392. Restore protected Browser navigation through the native CLI
+
+Reference commit `2dbdb11cbff011822e95f15fe6f313a6278b1bdd` (#3555).
+
+`cantrip browser open` resolves its target through the authorized CLI
+context. The native worker encrypts the URL and the new tab's title when
+needed. Core creates the Browser and requests client focus when the
+resolved target is a project root. An existing Browser is updated against
+its current state revision. Core accepts the structured execution target
+on creation and keeps using a string selector when opening an existing tab.
+
+The `workspace-smoke.mjs --cli-browser-only` fixture ran the native CLI,
+production worker and PGlite Core on macOS ARM64. It reproduced the old
+worker's unavailable response, then created and updated the same Browser
+through the new broker. A headless Live client acknowledged the focus
+request. The fixture decrypted the title and both saved URLs with the
+TypeScript client codec, checked persisted revision 2, and verified that
+an invalid scheme and an unknown explicit target did not create a tab.
+The CLI ran with an empty PATH. Both native builds passed offline.
