@@ -11816,3 +11816,20 @@ with an empty PATH and Core in PGlite mode. It verified enrollment,
 heartbeat, credential rotation and reconnect, scoped grant rotation and
 revocation, same-process restart, standalone Chat scratch storage,
 live log replay and delivery, and clean stdin shutdown.
+
+## 384. Fill native form controls in private browser sessions
+
+Reference commit `07a0cfce0e7fc6e5a9adf3ee09acef71035d138a` (#3547).
+
+The private browser applies values to focused date, time, local datetime,
+month, week, range, and color fields. Chromium validates the value and
+the worker dispatches input and change events in order. Number fields
+reject nonnumeric text before sending keyboard input.
+[Playwright form actions](https://playwright.dev/docs/input)
+
+On macOS ARM64, the previous Rust worker rejected the date field in
+Chromium 153.0.8010.12. The updated worker and Playwright 1.62.1 passed
+the same nine valid inputs and three error cases. The fixture checked
+date clearing, color normalization, focus, ordered events, malformed
+dates, range clamping, and numeric input. The managed Chromium smoke
+and six focused web unit tests passed.
