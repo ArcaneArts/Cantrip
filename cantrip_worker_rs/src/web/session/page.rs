@@ -413,6 +413,12 @@ async fn call_dom(page: &Page, node: u64, function: &str, arguments: &[Value]) -
     Ok(result["result"]["value"].clone())
 }
 
+fn action_function(function: &str) -> String {
+    format!(
+        "function (...args) {{ const isDisabled = {IS_DISABLED}; return ({function}).apply(this, args); }}"
+    )
+}
+
 async fn wait_for_action(
     page: &Page,
     node: u64,
@@ -420,16 +426,13 @@ async fn wait_for_action(
     arguments: &[Value],
     require_stability: bool,
     unavailable: &str,
+    deadline: Instant,
 ) -> Result<Value> {
-    let function = format!(
-        "function (...args) {{ const isDisabled = {IS_DISABLED}; return ({function}).apply(this, args); }}"
-    );
-    let deadline = Instant::now() + ACTION_TIMEOUT;
     let mut retry = ACTION_RETRY;
     let mut previous = Value::Null;
     while Instant::now() < deadline {
-        // A null result reports a temporary condition before any input is dispatched.
-        let result = call_dom(page, node, &function, arguments).await?;
+        // A null result reports a temporary condition before the action can proceed.
+        let result = call_dom(page, node, function, arguments).await?;
         ensure!(result != "stale", "{STALE_ELEMENT}");
         if !result.is_null() && (!require_stability || result == previous) {
             return Ok(result);
@@ -442,18 +445,17 @@ async fn wait_for_action(
 }
 
 async fn click(page: &Page, node: u64) -> Result<()> {
-    let point = wait_for_action(
-        page,
-        node,
-        r#"function () {
+    let locate = action_function(
+        r#"function (point) {
         if (!this.isConnected || this.ownerDocument !== document) return 'stale';
         if (isDisabled(this) || getComputedStyle(this).visibility !== 'visible') return null;
-        this.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
+        if (!point) this.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
         const rect = this.getBoundingClientRect();
         const left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
         const top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
         if (left >= right || top >= bottom) return null;
-        const x = (left + right) / 2, y = (top + bottom) / 2;
+        const x = point?.x ?? (left + right) / 2, y = point?.y ?? (top + bottom) / 2;
+        if (x < left || x >= right || y < top || y >= bottom) return null;
         let hit = document.elementFromPoint(x,y);
         while (hit?.shadowRoot) {
             const root = hit.shadowRoot;
@@ -467,26 +469,38 @@ async fn click(page: &Page, node: u64) -> Result<()> {
         }
         return null;
     }"#,
-        &[],
-        true,
-        CLICK_UNAVAILABLE,
+    );
+    let deadline = Instant::now() + ACTION_TIMEOUT;
+    let point = loop {
+        let point =
+            wait_for_action(page, node, &locate, &[], true, CLICK_UNAVAILABLE, deadline).await?;
+        ensure!(
+            point["x"].as_f64().is_some() && point["y"].as_f64().is_some(),
+            "{CLICK_UNAVAILABLE}"
+        );
+        mouse_event(page, "mouseMoved", &point).await?;
+        // Hover handlers can move or cover the target before the press.
+        let hit = call_dom(page, node, &locate, &[json!({"value":point})]).await?;
+        ensure!(hit != "stale", "{STALE_ELEMENT}");
+        if hit == point {
+            break point;
+        }
+    };
+    mouse_event(page, "mousePressed", &point).await?;
+    mouse_event(page, "mouseReleased", &point).await
+}
+
+async fn mouse_event(page: &Page, kind: &str, point: &Value) -> Result<()> {
+    let moving = kind == "mouseMoved";
+    page.request(
+        "Input.dispatchMouseEvent",
+        json!({
+            "type":kind,"x":point["x"],"y":point["y"],
+            "button":if moving { "none" } else { "left" },
+            "clickCount":if moving { 0 } else { 1 },
+        }),
     )
     .await?;
-    ensure!(
-        point["x"].as_f64().is_some() && point["y"].as_f64().is_some(),
-        "{CLICK_UNAVAILABLE}"
-    );
-    for kind in ["mouseMoved", "mousePressed", "mouseReleased"] {
-        page.request(
-            "Input.dispatchMouseEvent",
-            json!({
-                "type":kind,"x":point["x"],"y":point["y"],
-                "button":if kind == "mouseMoved" { "none" } else { "left" },
-                "clickCount":if kind == "mouseMoved" { 0 } else { 1 },
-            }),
-        )
-        .await?;
-    }
     Ok(())
 }
 
@@ -494,7 +508,7 @@ async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
     let prepared = wait_for_action(
         page,
         node,
-        r#"function (text) {
+        &action_function(r#"function (text) {
         if (!this.isConnected || this.ownerDocument !== document) return 'stale';
         // A focusable label child can represent its associated form control.
         const interactive = this.isContentEditable || this.matches('a,[role=link],input,textarea,select') ||
@@ -530,10 +544,11 @@ async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
             selection.addRange(range);
         }
         return 'keyboard';
-    }"#,
+    }"#),
         &[json!({"value":text})],
         false,
         FILL_UNAVAILABLE,
+        Instant::now() + ACTION_TIMEOUT,
     )
     .await?;
     match prepared.as_str() {

@@ -11925,3 +11925,18 @@ was disabled. On macOS ARM64 with Chromium 153.0.8010.12, the updated
 worker and Playwright 1.62.1 allowed an explicit override and waited
 for the other button and input to become enabled. The managed Chromium
 smoke and offline production worker check passed locally.
+
+## 390. Recheck private browser clicks after pointer movement
+
+Reference commit `80caab3c4bde1079cb2762c99586f8434560d425` (#3553).
+
+Private browser clicks recheck the original element and pointer position
+after moving the pointer. If a hover handler covers or moves the element,
+the worker retries within the original action deadline before sending a
+press. A detached element still requires a fresh snapshot.
+
+On macOS ARM64 with Chromium 153.0.8010.12, the baseline worker clicked
+the overlay that appeared on pointer entry. Playwright 1.62.1 waited for
+the overlay to clear and clicked the intended button. The updated worker
+matched Playwright. The local managed Chromium smoke and the offline
+production worker check passed.
