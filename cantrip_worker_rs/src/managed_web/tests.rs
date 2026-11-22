@@ -253,6 +253,24 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                             "/session-next" => ("text/html", r#"<title>Second page</title><h1 id="status">Fresh</h1>
                                               <script>if(sessionStorage.getItem('changed')) document.querySelector('h1').textContent = 'Resumed'</script>
                                             "#),
+                                            "/session-shadow" => ("text/html", r#"<title>Shadow controls</title>
+                                              <button>Document control</button>
+                                              <div id="open-host"></div><div id="closed-host"></div>
+                                              <iframe srcdoc="<button>Frame control</button>"></iframe>
+                                              <script>
+                                              const outer = document.querySelector('#open-host').attachShadow({mode:'open'});
+                                              outer.innerHTML = '<div id="inner-host"><span>Shadow click</span></div><button>Outer control</button>';
+                                              const inner = outer.querySelector('#inner-host').attachShadow({mode:'open'});
+                                              inner.innerHTML = '<button id="click"><slot></slot></button>'
+                                                + '<div style="position:relative;display:inline-block"><button>Covered control</button>'
+                                                + '<span style="position:absolute;inset:0"></span></div>'
+                                                + '<input aria-label="Shadow edit" value="Replace me">';
+                                              inner.querySelector('#click').onclick = () => { document.title = 'Shadow clicked'; };
+                                              inner.querySelector('input').oninput = ({target}) => { document.title = 'Input [' + target.value + ']'; };
+                                              const closed = document.querySelector('#closed-host').attachShadow({mode:'closed'});
+                                              closed.innerHTML = '<button>Closed control</button>';
+                                              </script>
+                                            "#),
                                             "/streams" => ("text/html", r#"<title>Private streams</title>
                                               <h1>Waiting for streams</h1><script>
                                               const seen = new Set();
@@ -549,6 +567,64 @@ async fn interactive_session(
             .unwrap()
             .contains("Form received")
     );
+
+    call(
+        "web.session.open",
+        json!({"sessionId":id,"url":"http://page.example/session-shadow"}),
+    )
+    .await?;
+    let shadow = call("web.session.snapshot", json!({"sessionId":id})).await?;
+    let elements = shadow["data"]["elements"].as_array().unwrap();
+    let descriptions: Vec<_> = elements
+        .iter()
+        .map(|item| item["description"].as_str().unwrap())
+        .collect();
+    let expected = [
+        "Document control",
+        "Shadow click",
+        "Covered control",
+        "Shadow edit",
+        "Outer control",
+    ];
+    assert_eq!(
+        descriptions.len(),
+        expected.len(),
+        "Shadow snapshot references: {descriptions:?}"
+    );
+    for (description, expected) in descriptions.iter().zip(expected) {
+        assert!(description.contains(expected), "{description}");
+    }
+    let covered = call(
+        "web.session.click",
+        json!({"sessionId":id,"elementRef":elements[2]["ref"]}),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        covered.to_string().contains("no longer visible"),
+        "{covered:?}"
+    );
+
+    let reference = |snapshot: &Value, index: usize| {
+        snapshot["data"]["elements"].as_array().unwrap()[index]["ref"].clone()
+    };
+    let shadow = call("web.session.snapshot", json!({"sessionId":id})).await?;
+    let clicked = call(
+        "web.session.click",
+        json!({"sessionId":id,"elementRef":reference(&shadow,1)}),
+    )
+    .await?;
+    assert_eq!(clicked["data"]["title"], "Shadow clicked");
+
+    for (text, title) in [("Rust browser", "Input [Rust browser]"), ("", "Input []")] {
+        let shadow = call("web.session.snapshot", json!({"sessionId":id})).await?;
+        let typed = call(
+            "web.session.type",
+            json!({"sessionId":id,"elementRef":reference(&shadow,3),"text":text}),
+        )
+        .await?;
+        assert_eq!(typed["data"]["title"], title);
+    }
 
     let waiting = call(
         "web.session.open",
