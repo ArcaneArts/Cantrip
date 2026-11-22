@@ -1,11 +1,20 @@
 // Enroll a production Node worker, stop it, and reopen its data with Rust.
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { eventually, launchActualWorker } from "../server-rust/full-worker.mjs";
 import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
+import { projectLabel } from "../server-rust/security-fixtures.mjs";
 import {
   initializeGrantProfile,
   verifyGrantFlow,
@@ -35,6 +44,7 @@ try {
   await mkdir(homeDirectory);
   const env = fixtureEnvironment(path.join(root, "server"));
   env.CANTRIP_BOOTSTRAP_MODE = "standalone";
+  env.PATH = "";
   delete env.CANTRIP_WORKER_TOKEN;
   server = await startServer(
     path.resolve(values.server),
@@ -51,7 +61,8 @@ try {
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),
     });
-    return { status: response.status, body: await response.json() };
+    const text = await response.text();
+    return { status: response.status, body: text ? JSON.parse(text) : null };
   };
   const launch = ({ workerBinary, enrollmentCode }) =>
     launchActualWorker({ server }, data, {
@@ -61,9 +72,12 @@ try {
       workerId: "",
       homeDirectory,
       cliBinary: values.cli ? path.resolve(values.cli) : undefined,
-      environment: values.codex
-        ? { CANTRIP_CODEX_BIN: path.resolve(values.codex) }
-        : {},
+      environment: {
+        ...(workerBinary ? { PATH: "" } : {}),
+        ...(values.codex
+          ? { CANTRIP_CODEX_BIN: path.resolve(values.codex) }
+          : {}),
+      },
     });
 
   accountMasterKey = await initializeGrantProfile(call);
@@ -95,6 +109,55 @@ try {
   await readVersion();
   const endpoint = await readRecord("worker-encryption-key.json");
   assert.equal(endpoint.acceptedRevisions["task-content"], 2);
+
+  const chatId = randomUUID();
+  const chatUrl = "/api/chats/" + chatId;
+  const created = await call("POST", "/api/chats", {
+    id: chatId,
+    titleProtection: {
+      ...projectLabel,
+      classification: { recordKind: "chat" },
+    },
+    autoTitle: false,
+  });
+  assert.equal(created.status, 202, JSON.stringify(created.body));
+  assert.equal(created.body.activeWorkerId, workerId);
+  const rootId = created.body.activeScratchRootId;
+  assert.ok(rootId);
+  await eventually(
+    () =>
+      server.events.find(
+        (event) =>
+          event.event === "standalone-chat.scratch.transitioned" &&
+          event.chatId === chatId &&
+          event.operation === "provision" &&
+          event.status === "succeeded",
+      ),
+    assert.ok,
+  );
+  const scratch = await realpath(path.join(data, "chat-scratch", chatId));
+  const scratchRecord = async () =>
+    (await readRecord("chat-scratch-registry.json")).roots.find(
+      (record) => record.rootId === rootId,
+    );
+  const routingRecord = async () =>
+    (await readRecord("repository-routing.json")).records.find(
+      ({ field, value }) => field === "path" && value === scratch,
+    );
+  const route = await routingRecord();
+  assert.match(route?.token ?? "", /^ctrr_/);
+  const markerDirectory = path.join(scratch, "nested files");
+  const marker = path.join(markerDirectory, "notes.txt");
+  const content = "Retained in the Node profile 🌱\n";
+  await mkdir(markerDirectory);
+  await writeFile(marker, content);
+  assert.equal((await call("DELETE", chatUrl)).status, 204);
+  const archived = await eventually(scratchRecord, (record) =>
+    assert.ok(
+      Date.parse(record?.archiveExpiresAt) > Date.parse(record?.archivedAt),
+    ),
+  );
+  assert.equal(archived.chatId, chatId);
   await worker.close();
 
   worker = launch({ workerBinary: values.worker });
@@ -113,6 +176,18 @@ try {
   assert.deepEqual(reopened.body.status.grants, [
     { component: "task-content", keyRevision: 2 },
   ]);
+  assert.deepEqual(await scratchRecord(), archived);
+  assert.equal((await call("POST", chatUrl + "/restore", {})).status, 200);
+  await eventually(scratchRecord, (record) => {
+    assert.deepEqual(record, {
+      rootId,
+      chatId,
+      archivedAt: null,
+      archiveExpiresAt: null,
+    });
+  });
+  assert.equal(await readFile(marker, "utf8"), content);
+  assert.deepEqual(await routingRecord(), route);
   await worker.close();
   worker = undefined;
 
@@ -142,6 +217,10 @@ try {
       enrollmentRetained: true,
       scopedGrantReopened: true,
       acceptedRevisionRetained: true,
+      archivedScratchRestored: true,
+      routingHandleRetained: true,
+      scratchContentRetained: true,
+      rustPathEmpty: true,
       bothWorkersStopped: true,
     }),
   );
