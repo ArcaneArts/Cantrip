@@ -872,6 +872,42 @@ export async function verifyHostTerminal({
     );
     assert.ok(!first.relay.history.some(({ raw }) => raw.includes(marker)));
 
+    const replayToken = randomUUID();
+    const overwritten = "overwritten-" + replayToken;
+    const visible = "relay-visible-" + replayToken;
+    const query = "\x1b[6n";
+    await first.input(
+      "/bin/stty -echo; printf '\\r\\033[2K%s%s\\033[6n\\r\\033[2K%s%s\\n' overwritten- '" +
+        replayToken +
+        "' relay-visible- '" +
+        replayToken +
+        "'; /bin/stty echo\r",
+    );
+    const live = await first.read(new RegExp(visible));
+    assert.ok(live.includes(overwritten + query), "the live PTY sent both");
+    const restored = await attach();
+    try {
+      assert.ok(
+        restored.replay.includes(visible),
+        "screen replay precedes ready",
+      );
+      assert.ok(
+        !restored.replay.includes(overwritten),
+        "erased text stays erased",
+      );
+      assert.ok(
+        !restored.replay.includes(query),
+        "a cursor query stays live-only",
+      );
+      assert.equal(
+        restored.hydration,
+        undefined,
+        "the relay envelope is unchanged",
+      );
+    } finally {
+      await restored.relay.close();
+    }
+
     if (bootstrap) {
       assert.equal(pid, bootstrap.pid);
       await verifyDirect({ marker, pid });
