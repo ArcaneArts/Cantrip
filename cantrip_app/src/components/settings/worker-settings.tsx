@@ -244,6 +244,10 @@ function WorkerRow({
   onManageWebRuntimes(): void;
   onUnlink(): void;
 }) {
+  const codeGraphAction = worker.codegraph.installedVersion
+    ? "Check for a CodeGraph update"
+    : "Install CodeGraph";
+
   return (
     <div
       data-high-contrast-row
@@ -344,7 +348,7 @@ function WorkerRow({
             !worker.online ||
             !worker.codegraph.supported
           }
-          title="Check for a CodeGraph update"
+          title={codeGraphAction}
           onClick={onCheckCodeGraphUpdate}
         >
           {checkingCodeGraphUpdate ? (
@@ -352,7 +356,9 @@ function WorkerRow({
           ) : (
             <Braces className="size-3.5" />
           )}
-          <span className="sr-only">Check CodeGraph on {worker.name}</span>
+          <span className="sr-only">
+            {codeGraphAction} on {worker.name}
+          </span>
         </Button>
         <Button
           size="icon"

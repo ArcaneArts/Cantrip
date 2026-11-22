@@ -110,7 +110,7 @@ impl Supervisor {
             manager,
             projects: Mutex::default(),
             transitions: Queue::new(Vec::new()),
-            update_requested: AtomicBool::new(true),
+            update_requested: AtomicBool::new(false),
             update: Notify::new(),
             updater: Queue::new(None),
         });
@@ -127,12 +127,22 @@ impl Supervisor {
 
     async fn run_updates(&self, stop: watch::Receiver<bool>) {
         match self.inner.runtime.reopen(&self.inner.scope).await {
-            Ok(true) => self.refresh().await,
+            Ok(true) => {
+                self.refresh().await;
+                self.schedule_update();
+            }
             Ok(false) => {}
-            Err(error) => self.inner.runtime.failed(&error),
+            Err(error) => {
+                self.inner.runtime.failed(&error);
+                self.schedule_update();
+            }
         }
         let source = release::Source::github();
         loop {
+            tokio::select! {
+                _ = self.inner.scope.stopped() => return,
+                _ = self.update.notified() => {},
+            }
             if self.inner.scope.check().is_err() {
                 return;
             }
@@ -176,19 +186,19 @@ impl Supervisor {
                 }
             }
             self.update_requested.store(false, Ordering::Release);
-            tokio::select! {
-                _ = self.inner.scope.stopped() => return,
-                _ = self.update.notified() => {},
-            }
+        }
+    }
+
+    fn schedule_update(&self) {
+        if !self.update_requested.swap(true, Ordering::AcqRel) {
+            self.update.notify_one();
         }
     }
 
     fn request_update(&self) -> Result<Value> {
         ensure!(Runtime::supported(), "CodeGraph is unavailable.");
         self.inner.scope.check()?;
-        if !self.update_requested.swap(true, Ordering::AcqRel) {
-            self.update.notify_one();
-        }
+        self.schedule_update();
         checked(
             "codeGraphActionAcknowledgementSchema",
             &json!({

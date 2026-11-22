@@ -145,6 +145,21 @@ try {
   assert.equal(publishedVersion.status, 0, publishedVersion.stderr);
   assert.equal(JSON.parse(publishedVersion.stdout).version, first.body.version);
   if (values["codegraph-install"]) {
+    await eventually(
+      () => call("GET", "/api/workers"),
+      (response) => {
+        assert.equal(response.status, 200);
+        const graph = response.body.find(
+          (worker) => worker.workerId === "native-control-worker",
+        )?.codegraph;
+        assert.equal(graph?.supported, true);
+        assert.equal(graph.runtimeState, "unavailable");
+        assert.equal(graph.installedVersion, null);
+        assert.equal(graph.lastCheckedAt, null);
+        assert.equal(graph.statusMessage, null);
+      },
+      "fresh worker is ready for an explicit CodeGraph installation",
+    );
     const accepted = await call(
       "POST",
       "/api/workers/native-control-worker/codegraph/update-check",
