@@ -297,6 +297,39 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                               }
                                               </script>
                                             "#),
+                                            "/session-action-wait" => ("text/html", r#"<title>Controls loading</title>
+                                              <button id="later" disabled>After loading</button>
+                                              <input id="waiting" aria-label="waiting field" readonly>
+                                              <button id="replaced" disabled>Replacement test</button>
+                                              <script>
+                                              const button = document.getElementById('later');
+                                              const field = document.getElementById('waiting');
+                                              const replaced = document.getElementById('replaced');
+                                              let stable = false;
+                                              const start = performance.now();
+                                              function move(now) {
+                                                const elapsed = now - start;
+                                                button.disabled = elapsed < 350;
+                                                button.style.transform = 'translateY(' + Math.min(elapsed / 12, 100) + 'px)';
+                                                stable = elapsed >= 1200;
+                                                if (!stable) requestAnimationFrame(move);
+                                              }
+                                              requestAnimationFrame(move);
+                                              button.onclick = () => {
+                                                document.title = stable ? 'Button clicked after motion' : 'Clicked while moving';
+                                                setTimeout(() => { field.readOnly = false; }, 850);
+                                              };
+                                              field.oninput = () => {
+                                                document.title = 'Editable [' + field.value + ']';
+                                                setTimeout(() => {
+                                                  const replacement = replaced.cloneNode(true);
+                                                  replacement.disabled = false;
+                                                  replacement.onclick = () => { document.title = 'Replacement clicked'; };
+                                                  replaced.replaceWith(replacement);
+                                                }, 850);
+                                              };
+                                              </script>
+                                            "#),
                                             "/streams" => ("text/html", r#"<title>Private streams</title>
                                               <h1>Waiting for streams</h1><script>
                                               const seen = new Set();
@@ -726,6 +759,33 @@ async fn interactive_session(
     }
     let typed = type_control("number", "-2.5", false).await?;
     assert_eq!(typed["data"]["title"], "number [-2.5] input true");
+
+    call(
+        "web.session.open",
+        json!({"sessionId":id,"url":"http://page.example/session-action-wait"}),
+    )
+    .await?;
+    let action_snapshot = call("web.session.snapshot", json!({"sessionId":id})).await?;
+    let clicked = call(
+        "web.session.click",
+        json!({"sessionId":id,"elementRef":reference(&action_snapshot,0)}),
+    )
+    .await
+    .context("Could not click the control after it became ready.")?;
+    assert_eq!(clicked["data"]["title"], "Button clicked after motion");
+    let typed = type_control("waiting", "Ready", false).await?;
+    assert_eq!(typed["data"]["title"], "Editable [Ready]");
+
+    let action_snapshot = call("web.session.snapshot", json!({"sessionId":id})).await?;
+    let error = call(
+        "web.session.click",
+        json!({"sessionId":id,"elementRef":reference(&action_snapshot,2)}),
+    )
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("stale"), "{error:?}");
+    let action_snapshot = call("web.session.snapshot", json!({"sessionId":id})).await?;
+    assert_eq!(action_snapshot["data"]["title"], "Editable [Ready]");
 
     let waiting = call(
         "web.session.open",

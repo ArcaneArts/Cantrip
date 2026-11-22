@@ -3,13 +3,19 @@ use anyhow::{Context, Result, bail, ensure};
 use cantrip_browser::{Page, Subscription};
 use cantrip_wire::{JsString, Value, value::json};
 use std::{collections::HashMap, time::Duration};
-use tokio::time::{Instant, timeout_at};
+use tokio::time::{Instant, sleep_until, timeout_at};
 use url::Url;
 
 const SELECTOR: &str = "a,button,input,textarea,select,[role=button],[tabindex]";
 const MAX_ELEMENTS: usize = 100;
 const MAX_SNAPSHOT: usize = 50_000;
 const ELEMENT_OBJECTS: &str = "cantrip-web-session-elements";
+const ACTION_TIMEOUT: Duration = Duration::from_secs(15);
+const ACTION_RETRY: Duration = Duration::from_millis(20);
+const MAX_ACTION_RETRY: Duration = Duration::from_millis(250);
+const CLICK_UNAVAILABLE: &str = "The web element is no longer visible or enabled.";
+const FILL_UNAVAILABLE: &str = "The web element is no longer editable.";
+const STALE_ELEMENT: &str = "The web element reference is stale; take a fresh session snapshot.";
 
 pub(super) struct State {
     generation: u64,
@@ -110,7 +116,7 @@ impl State {
             .as_ref()
             .and_then(|snapshot| snapshot.nodes.get(reference))
             .copied()
-            .context("The web element reference is stale; take a fresh session snapshot.")
+            .context(STALE_ELEMENT)
     }
 }
 
@@ -365,7 +371,7 @@ async fn call_dom(page: &Page, node: u64, function: &str, arguments: &[Value]) -
             json!({"backendNodeId":node,"executionContextId":world}),
         )
         .await
-        .context("The web element reference is stale; take a fresh session snapshot.")?;
+        .context(STALE_ELEMENT)?;
     let object = resolved["object"]["objectId"]
         .as_js_string()
         .context("Chromium could not resolve the interactive element.")?;
@@ -389,12 +395,39 @@ async fn call_dom(page: &Page, node: u64, function: &str, arguments: &[Value]) -
     Ok(result["result"]["value"].clone())
 }
 
+async fn wait_for_action(
+    page: &Page,
+    node: u64,
+    function: &str,
+    arguments: &[Value],
+    require_stability: bool,
+    unavailable: &str,
+) -> Result<Value> {
+    let deadline = Instant::now() + ACTION_TIMEOUT;
+    let mut retry = ACTION_RETRY;
+    let mut previous = Value::Null;
+    while Instant::now() < deadline {
+        // A null result reports a temporary condition before any input is dispatched.
+        let result = call_dom(page, node, function, arguments).await?;
+        ensure!(result != "stale", "{STALE_ELEMENT}");
+        if !result.is_null() && (!require_stability || result == previous) {
+            return Ok(result);
+        }
+        previous = result;
+        sleep_until((Instant::now() + retry).min(deadline)).await;
+        retry = (retry * 2).min(MAX_ACTION_RETRY);
+    }
+    bail!("{unavailable}");
+}
+
 async fn click(page: &Page, node: u64) -> Result<()> {
-    let point = call_dom(
+    let point = wait_for_action(
         page,
         node,
         r#"function () {
-        if (!this.isConnected || this.matches(':disabled,[aria-disabled="true"]')) return null;
+        if (!this.isConnected || this.ownerDocument !== document) return 'stale';
+        if (this.matches(':disabled,[aria-disabled="true"]') ||
+            getComputedStyle(this).visibility !== 'visible') return null;
         this.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
         const rect = this.getBoundingClientRect();
         const left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
@@ -409,17 +442,19 @@ async fn click(page: &Page, node: u64) -> Result<()> {
             hit = inner;
         }
         while (hit) {
-            if (hit === this) return {x,y};
+            if (hit === this) return {x,y,bounds:[rect.left,rect.top,rect.width,rect.height]};
             hit = hit.assignedSlot ?? hit.parentElement ?? hit.getRootNode().host;
         }
         return null;
     }"#,
         &[],
+        true,
+        CLICK_UNAVAILABLE,
     )
     .await?;
     ensure!(
         point["x"].as_f64().is_some() && point["y"].as_f64().is_some(),
-        "The web element is no longer visible or enabled."
+        "{CLICK_UNAVAILABLE}"
     );
     for kind in ["mouseMoved", "mousePressed", "mouseReleased"] {
         page.request(
@@ -436,26 +471,28 @@ async fn click(page: &Page, node: u64) -> Result<()> {
 }
 
 async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
-    let prepared = call_dom(
+    let prepared = wait_for_action(
         page,
         node,
         r#"function (text) {
-        if (!this.isConnected || !this.getClientRects().length) return null;
+        if (!this.isConnected || this.ownerDocument !== document) return 'stale';
         // A focusable label child can represent its associated form control.
         const interactive = this.isContentEditable || this.matches('a,[role=link],input,textarea,select') ||
             this.closest('button,[role=button],[role=checkbox],[role=radio]');
         const target = interactive ? this : (this.closest('label')?.control ?? this);
-        if (!target.isConnected || !target.getClientRects().length || target.readOnly ||
-            target.matches(':disabled,[aria-disabled="true"]')) return null;
+        if (!target.isConnected || target.ownerDocument !== document) return 'stale';
         const type = target instanceof HTMLInputElement ? target.type : null;
         const nativeValue = ['color','date','time','datetime-local','month','range','week'].includes(type);
         const textInput = ['text','search','url','tel','email','password','number'].includes(type);
         const textarea = target instanceof HTMLTextAreaElement;
-        if (!(nativeValue || textInput || textarea || (type === null && target.isContentEditable))) return null;
+        if (!(nativeValue || textInput || textarea || (type === null && target.isContentEditable))) return 'unsupported';
+        if (!this.getClientRects().length || getComputedStyle(this).visibility !== 'visible' ||
+            !target.getClientRects().length || getComputedStyle(target).visibility !== 'visible' ||
+            target.readOnly || target.matches(':disabled,[aria-disabled="true"]')) return null;
         if (type === 'number' && Number.isNaN(Number(text.trim()))) return 'invalid-number';
         target.focus();
         const active = target.getRootNode().activeElement;
-        if (active !== target && !target.contains(active)) return null;
+        if (active !== target && !target.contains(active)) return 'unfocused';
         if (nativeValue) {
             const value = type === 'color' ? text.trim().toLowerCase() : text.trim();
             target.value = value;
@@ -475,6 +512,8 @@ async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
         return 'keyboard';
     }"#,
         &[json!({"value":text})],
+        false,
+        FILL_UNAVAILABLE,
     )
     .await?;
     match prepared.as_str() {
@@ -489,7 +528,7 @@ async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
         }
         Some("invalid-number") => bail!("Cannot type text into input[type=number]"),
         Some("malformed") => bail!("Malformed value"),
-        _ => bail!("The web element is no longer editable."),
+        _ => bail!("{FILL_UNAVAILABLE}"),
     }
     if submit {
         let focused = call_dom(
