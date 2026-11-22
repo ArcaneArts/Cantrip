@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { modelFunctions } from "../server-rust/task-model-provider.mjs";
 import { goalCycles } from "./task-goal-cycle-cases.mjs";
 import { taskGoalHandoff } from "./task-goal-handoff-cases.mjs";
 import {
@@ -30,6 +31,7 @@ export async function verifyTaskGoalActivation({
   verifyPause,
   pauseObservationOnly,
   verifyChildModel,
+  observeProvider,
   verifyTransferSource,
   verifyProviderHandoff,
   interruptProviderHandoff,
@@ -96,6 +98,24 @@ export async function verifyTaskGoalActivation({
           routeId: "fixture-child-route",
           name: "gpt-5-mini",
           reasoningEffort: "low",
+          catalog: {
+            nativeModelId: "gpt-5-mini",
+            displayName: "Fixture child model",
+            description: null,
+            contextWindow: null,
+            maxOutputTokens: null,
+            inputModalities: ["text"],
+            outputModalities: ["text"],
+            supportsTools: true,
+            supportsParallelTools: null,
+            supportsStructuredOutput: null,
+            supportsVision: false,
+            supportsReasoning: true,
+            supportedReasoningEfforts: [{ effort: "low", description: null }],
+            defaultReasoningEffort: null,
+            reasoningMandatory: null,
+            metadataSource: "compatible-api",
+          },
         },
         provider,
       }
@@ -326,6 +346,28 @@ export async function verifyTaskGoalActivation({
     orderEpoch: resumeEpoch,
   });
   const answer = "Native first Goal result.";
+  let delegated = false;
+  const delegate = (body) => {
+    if (body.client_metadata?.thread_id !== threadId)
+      return "The fixture child completed its check.";
+    if (delegated) return answer;
+    const spawn = modelFunctions(body.tools).find(
+      ({ name }) => name === "spawn_agent" || name.endsWith("__spawn_agent"),
+    );
+    assert.ok(spawn, "Codex must advertise the native delegation tool");
+    delegated = true;
+    return {
+      ...spawn,
+      call_id: "fixture-task-child",
+      arguments: JSON.stringify({
+        message: "Return a short fixture-only confirmation.",
+        ...(spawn.namespace === "multi_agent_v1" ||
+        spawn.name === "multi_agent_v1__spawn_agent"
+          ? {}
+          : { task_name: "fixture" }),
+      }),
+    };
+  };
   const phases = [];
   const admissions = Promise.withResolvers();
   const attempted = Promise.withResolvers();
@@ -348,7 +390,7 @@ export async function verifyTaskGoalActivation({
     },
   };
   attach({
-    answer,
+    answer: subagentDefaults ? delegate : answer,
     cycle: cycles.authorize,
     dispatch: (body, send) => {
       const request = taskInferenceInputDispatchSchema.parse(body);
@@ -597,6 +639,7 @@ export async function verifyTaskGoalActivation({
     );
     assert.equal(pool.maxConcurrentInference, limit);
   };
+  if (subagentDefaults) await setCapacity(2, 1);
   let release;
   if (verifyTransferSource) {
     await setCapacity(1, 1);
@@ -730,9 +773,49 @@ export async function verifyTaskGoalActivation({
     release = await holdProvider();
     await setCapacity(1, 3);
   }
-  model.finish();
-
-  await available(Promise.race([attempted.promise, earlyReply]));
+  let stopChildReplies;
+  if (subagentDefaults) {
+    const child = untilProvider(
+      ({ body }) => body.client_metadata?.thread_id !== threadId,
+    );
+    const parent = untilProvider(
+      ({ body }) => body.client_metadata?.thread_id === threadId,
+    );
+    model.finish();
+    const [childRequest, parentRequest] = await Promise.race([
+      Promise.all([child, parent]),
+      earlyReply,
+    ]);
+    const metadata = childRequest.body.client_metadata;
+    assert.equal(metadata.root_turn_id, native.turnId);
+    assert.notEqual(metadata.turn_id, native.turnId);
+    assert.equal(childRequest.body.model, subagentDefaults.model.name);
+    assert.equal(
+      childRequest.body.reasoning?.effort,
+      subagentDefaults.model.reasoningEffort,
+    );
+    assert.equal(parentRequest.body.model, "gpt-5");
+    setAnswer(answer);
+    // A completed child can wake the same root turn for its notification.
+    stopChildReplies = observeProvider((request) => {
+      const owner = request.body.client_metadata;
+      if (owner?.thread_id === threadId && owner?.turn_id === native.turnId)
+        request.finish();
+    });
+    childRequest.finish();
+    parentRequest.finish();
+    console.log(
+      `The native Task Goal child used ${childRequest.body.model} with ${childRequest.body.reasoning.effort} reasoning on its own turn.`,
+    );
+  } else {
+    model.finish();
+  }
+  await available(Promise.race([attempted.promise, earlyReply])).finally(() =>
+    stopChildReplies?.(),
+  );
+  const firstInputCalls = modelCalls();
+  if (subagentDefaults) assert.ok(firstInputCalls >= calls + 3);
+  else assert.equal(firstInputCalls, calls + 1);
   const namespace = createHash("sha256")
     .update(JSON.stringify([serverId, ownerId, workerId]))
     .digest("hex");
@@ -746,7 +829,7 @@ export async function verifyTaskGoalActivation({
   assert.deepEqual(JSON.parse(bytes), delivery);
   const commit = await available(Promise.race([replayed.promise, earlyReply]));
   assert.equal(await readFile(pending, "utf8"), bytes);
-  assert.equal(modelCalls(), calls + 1);
+  assert.equal(modelCalls(), firstInputCalls);
   cycles.commitParent();
   commit();
 
@@ -783,7 +866,7 @@ export async function verifyTaskGoalActivation({
     delivery.notification,
   );
   await assert.rejects(stat(pending), { code: "ENOENT" });
-  assert.equal(modelCalls(), calls + 1);
+  assert.equal(modelCalls(), firstInputCalls);
   console.log(
     "Ran the first native Goal input and waited for its exact encrypted outcome commit.",
   );
