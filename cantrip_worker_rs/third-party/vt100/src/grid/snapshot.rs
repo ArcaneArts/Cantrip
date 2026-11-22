@@ -2,7 +2,9 @@ use super::{Grid, Pos};
 use crate::{
     attrs::Attrs,
     row::Row,
-    term::{BufWrite as _, ClearAttrs, ClearScreen, EraseChar, MoveTo},
+    term::{
+        utf16_len, BufWrite as _, ClearAttrs, ClearScreen, EraseChar, MoveTo,
+    },
 };
 
 impl Grid {
@@ -23,8 +25,8 @@ impl Grid {
         &self,
         bytes: &mut Vec<u8>,
         history: usize,
-        limit: usize,
-    ) -> Option<Attrs> {
+        mut remaining: usize,
+    ) -> Option<(Attrs, usize)> {
         ClearAttrs.write_buf(bytes);
         ClearScreen.write_buf(bytes);
         if self.scrollback_len > 0 {
@@ -34,6 +36,7 @@ impl Grid {
         let mut attrs = Attrs::default();
         let mut cursor = Pos::default();
         let mut previous: Option<&Row> = None;
+        let mut counted = 0;
         let rows = self
             .scrollback
             .iter()
@@ -70,13 +73,13 @@ impl Grid {
                     Some(attrs),
                 );
             }
-            if bytes.len() > limit {
-                return None;
-            }
+            remaining =
+                remaining.checked_sub(utf16_len(&bytes[counted..])?)?;
+            counted = bytes.len();
             previous = Some(row);
         }
         self.write_cursor_position_formatted(bytes, Some(cursor), Some(attrs));
-        (bytes.len() <= limit).then_some(attrs)
+        Some((attrs, remaining.checked_sub(utf16_len(&bytes[counted..])?)?))
     }
 }
 

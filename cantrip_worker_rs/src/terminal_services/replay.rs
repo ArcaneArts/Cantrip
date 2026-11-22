@@ -147,7 +147,8 @@ impl Replay {
             screen.input_mode_formatted()
         };
         tail.extend(screen.character_sets_formatted());
-        let limit = CHAR_LIMIT.checked_sub(bytes.len() + tail.len())?;
+        let tail_units = std::str::from_utf8(&tail).ok()?.encode_utf16().count();
+        let limit = CHAR_LIMIT.checked_sub(bytes.len() + tail_units)?;
         let history_rows = if let Some((contents, rows)) =
             screen.normal_contents_formatted_with_scrollback(limit)
         {
