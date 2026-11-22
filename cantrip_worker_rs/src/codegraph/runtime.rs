@@ -284,11 +284,7 @@ impl Runtime {
         Self {
             storage: Storage::new(data),
             snapshot: Mutex::new(Snapshot {
-                state: if Self::supported() {
-                    "checking"
-                } else {
-                    "unavailable"
-                },
+                state: "unavailable",
                 active: None,
                 previous: None,
                 latest: None,

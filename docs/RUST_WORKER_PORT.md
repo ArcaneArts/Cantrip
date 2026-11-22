@@ -39,6 +39,7 @@ Node remains in source builds, client and protocol tooling, and the compatibilit
 references under `tests/reference-node-worker` and `tests/reference-node-server`.
 Project tooling and user-configured MCP servers may bring their own runtimes.
 Optional CodeGraph indexing uses an upstream distribution with its own runtime.
+Choose **Install CodeGraph** in worker settings to enable it on a fresh profile.
 Browser JavaScript and the CUA scripting interface remain available.
 [CodeGraph installation record](#222-install-and-update-codegraph-from-the-rust-worker)
 
@@ -11538,3 +11539,20 @@ The focused fixture reproduced the missing notice and then compared the
 Linux package's executable and license files with the inputs. It also
 checked the macOS and Windows package layouts. Seven helper build and
 desktop staging tests passed on macOS ARM64.
+
+## 365. Make the first CodeGraph installation explicit
+
+Reference commit `1351a5d7eb51b168959cea50faac4eac2af78530` (#3528).
+
+A fresh worker waits for the install action in worker settings before
+contacting the CodeGraph release service. Existing installations reopen
+from the v1 pointer and retain the startup update check. The install and
+update actions share the existing command and coalesce overlapping requests.
+
+Against local Rust Core on macOS ARM64, a loopback proxy observed the
+baseline release request during a fresh startup. The rebuilt worker
+enrolled with an empty PATH and made its first release request after the
+install action was accepted. A profile with an existing installation
+reported its saved version and issued the startup update check. The proxy
+captured the release requests locally. The offline worker build and the
+focused worker-settings typecheck passed.
