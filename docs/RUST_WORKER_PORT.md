@@ -11849,3 +11849,21 @@ The native worker and Playwright 1.62.1 both filled a matching field,
 cleared it with the same event type, delivered Enter to the
 focusable label, and rejected a read-only associated field. The
 managed Chromium smoke passed, including the existing form submission.
+
+## 386. Wait for private browser controls to become ready
+
+Reference commit `68aa5c31155a25c0344958d8a20e38ea4d7d23fd` (#3549).
+
+Click and fill retry transient element states within the existing
+Playwright action budget. Click checks that the same Chromium node
+receives the pointer and has matching geometry on consecutive attempts.
+Fill waits for the control to become editable. A detached reference ends
+the operation and requires a fresh snapshot.
+[Playwright actionability](https://playwright.dev/docs/actionability)
+
+On macOS ARM64 with Chromium 153.0.8010.12, the previous worker rejected
+the disabled button immediately. The updated worker and Playwright
+1.62.1 both waited for the button to enable and finish moving, then
+waited for the field to become editable. The local managed Chromium
+smoke also verified covered and read-only controls and a replaced
+element reference. The offline production worker check passed.
