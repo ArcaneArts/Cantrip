@@ -35,6 +35,10 @@ impl Fixture {
         let receipt: Value = serde_json::from_str(&line).expect("AppKit fixture reply");
         assert_eq!(receipt["foregroundUnchanged"], true, "{step}: {receipt}");
         assert_eq!(receipt["clipboardUnchanged"], true, "{step}: {receipt}");
+        assert_eq!(
+            receipt["customClipboardUnchanged"], true,
+            "{step}: {receipt}"
+        );
         receipt
     }
 
@@ -108,7 +112,9 @@ fn copies_only_the_bound_macos_selection_without_a_focus_or_clipboard_change() {
     assert!(helper.call(copy(22)).0["text"].is_null());
     fixture.command("empty");
     assert!(helper.call(copy(24)).0["text"].is_null());
-    let replay = helper.send(copy(24));
+    fixture.command("custom-copy");
+    assert!(helper.call(copy(26)).0["text"].is_null());
+    let replay = helper.send(copy(26));
     assert!(
         matches!(helper.response(replay).0, Outcome::Error { error } if error.code == ErrorCode::InvalidRequest)
     );
