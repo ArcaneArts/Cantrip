@@ -76,13 +76,17 @@ KDE Plasma uses the approved portal's emulated input connection when
 it offers text input and pointer control for the shared output.
 [KDE text input evidence](#372-send-kde-wayland-text-through-emulated-input)
 
-### Open platform checks
+### Platform behavior and release checks
 
-- macOS shared-window copy supports text and multiple selection ranges
-  exposed through Accessibility. Custom Copy handlers that only publish to
-  the shared system pasteboard remain a compatibility gap.
-  [macOS selection evidence](#367-copy-noncontiguous-macos-text-selections) ·
+- macOS shared-window Copy reads selected text exposed through Accessibility,
+  including multiple ranges. The shared-window authorization covers the
+  selected window. Applications that expose their Copy result only through
+  the system pasteboard return an empty result in that mode.
+  [Live macOS verification](#397-read-a-single-selection-exposed-in-the-macos-range-list) ·
   [Legacy clipboard comparison](#373-verify-the-macos-window-clipboard-boundary)
+- Runtime and package results apply to the platform and artifact named in each
+  receipt. Full signed installer and updater qualification on all release
+  targets belongs to release validation.
 
 ## Implementation record
 
@@ -121,7 +125,9 @@ on its assigned host or guest.
 
 ## Coverage ledger
 
-Reviewed against `66deb60ad` (#3546). The [baseline source
+Reviewed against `0e5f935c2` (#3565) and the Git inspection fix recorded below.
+The [production command map](rust-worker/command-handlers.md) traces the
+current protocol to the native worker dispatchers. The [baseline source
 index](rust-worker/source-index.jsonl) records legacy files, literal command
 cases, startup construction, and publication sites at the port's starting
 revision. The index can be regenerated deliberately with
@@ -153,9 +159,8 @@ captured guest route before executing guest commands. The ledger links
 representative runtime checks. Individual commands and compatibility
 limits are recorded in the corresponding milestones below.
 
-The [open platform checks](#open-platform-checks) track known remaining
-behavior differences. Package verification applies to the named artifact and
-platform in each milestone.
+The [platform notes](#platform-behavior-and-release-checks) describe the scope
+of the live runtime and package verification.
 
 ## Persistent state and lifecycle inventory
 
@@ -12133,3 +12138,26 @@ same run passed encrypted WorkerLink replay, real PTY resize, shell
 reattachment, and terminal-service recovery across worker restarts. The
 worker's executable search path contained only the fixture's native tools.
 The production worker build passed offline.
+
+## 401. Inspect retained Git operations through the worker connection
+
+Reference commit `0e5f935c263de45574ef99fe3e3b0e106fed9eec` (#3565).
+
+Core's observation reconciler sends `git.operation.inspect` for a retained
+nonterminal operation after checking the observed worktree, checkout, and
+worker. The Rust worker resolves the repository handle and runs the existing
+native Git inspector. Git mutations and the current repository operation
+interface continue through the protected request. The
+[command map](rust-worker/command-handlers.md) records both callers and their
+dispatch paths.
+
+A local authenticated command-socket fixture drove a real merge conflict in
+an owned Git checkout on macOS ARM64. The baseline production worker returned
+an unsupported-command error. The rebuilt production worker returned the
+same conflict and HEAD through the checkout path and its saved routing handle.
+An unknown routing handle and a direct abort command were rejected. The
+fixture verified that the merge marker remained intact. A separate run
+paired the rebuilt worker with the Rust server to check enrollment, grant and
+credential lifecycle, reconnect, standalone scratch transitions, and shutdown
+with an empty worker PATH. The offline worker build and 25 focused local
+packaging and deployment tests passed.
