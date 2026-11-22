@@ -356,6 +356,23 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                               };
                                               </script>
                                             "#),
+                                            "/session-hover-overlay" => ("text/html", r#"<title>Click waiting</title>
+                                              <div style="position:relative;display:inline-block;margin:250px 0 0 320px">
+                                                <button id="intended">Intended action</button>
+                                                <button id="overlay" style="position:absolute;inset:0;width:100%;display:none">Overlay</button>
+                                              </div>
+                                              <script>
+                                              const intended = document.getElementById('intended');
+                                              const overlay = document.getElementById('overlay');
+                                              intended.addEventListener('pointerenter', () => {
+                                                document.title = 'Hover';
+                                                overlay.style.display = 'block';
+                                                setTimeout(() => { overlay.style.display = 'none'; }, 900);
+                                              }, {once:true});
+                                              intended.onclick = () => { document.title += ' | intended'; };
+                                              overlay.onclick = () => { document.title += ' | overlay'; };
+                                              </script>
+                                            "#),
                                             "/streams" => ("text/html", r#"<title>Private streams</title>
                                               <h1>Waiting for streams</h1><script>
                                               const seen = new Set();
@@ -829,6 +846,19 @@ async fn interactive_session(
     }
     let aria_typed = type_control("aria waiting", "Ready", false).await?;
     assert_eq!(aria_typed["data"]["title"], "Editor enabled [Ready]");
+
+    call(
+        "web.session.open",
+        json!({"sessionId":id,"url":"http://page.example/session-hover-overlay"}),
+    )
+    .await?;
+    let snapshot = call("web.session.snapshot", json!({"sessionId":id})).await?;
+    let clicked = call(
+        "web.session.click",
+        json!({"sessionId":id,"elementRef":reference(&snapshot,0)}),
+    )
+    .await?;
+    assert_eq!(clicked["data"]["title"], "Hover | intended");
 
     let waiting = call(
         "web.session.open",
