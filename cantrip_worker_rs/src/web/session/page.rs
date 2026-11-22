@@ -292,30 +292,35 @@ fn description(node: &Value) -> String {
         );
         text.push_str(&json!(name).stringify());
     }
+    let value = &node["value"]["value"];
+    let mut display_value = value.as_js_string();
     if let Some(properties) = node["properties"].as_array() {
         for property in properties {
             let attribute = property["name"].as_str().unwrap_or("");
-            let value = &property["value"]["value"];
+            let property_value = &property["value"]["value"];
             if attribute == "level"
-                && let Some(level) = value.as_u64()
+                && let Some(level) = property_value.as_u64()
             {
                 text.push_str(&format!(" [level={level}]"));
             } else if matches!(
                 attribute,
                 "checked" | "disabled" | "expanded" | "selected" | "pressed"
             ) {
-                if *value == true || *value == "true" {
+                if *property_value == true || *property_value == "true" {
                     text.push_str(&format!(" [{attribute}]"));
-                } else if *value == "mixed" {
+                } else if *property_value == "mixed" {
                     text.push_str(&format!(" [{attribute}=mixed]"));
                 }
+            } else if attribute == "valuetext"
+                && value.is_number()
+                && matches!(role, "slider" | "spinbutton")
+            {
+                // Chromium reports native numeric inputs as numbers and supplies their text separately.
+                display_value = property_value.as_js_string();
             }
         }
     }
-    if let Some(value) = node["value"]["value"]
-        .as_js_string()
-        .filter(|value| !value.is_empty())
-    {
+    if let Some(value) = display_value.filter(|value| !value.is_empty()) {
         text.push_str(": ");
         let value = JsString::new(
             value

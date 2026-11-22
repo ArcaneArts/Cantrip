@@ -276,6 +276,8 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                               <input id="city" aria-label="City value" value="Original city">
                                               <label for="fixed"><span role="group" tabindex="0" aria-label="readonly field">Fixed value</span></label>
                                               <input id="fixed" value="Fixed" readonly>
+                                              <div role="slider" aria-label="custom slider" aria-valuenow="3"
+                                                aria-valuetext="Three" tabindex="0"></div>
                                               <script>
                                               const city = document.getElementById('city');
                                               city.oninput = event => { document.title = 'City [' + city.value + '] ' + event.inputType; };
@@ -788,6 +790,35 @@ async fn interactive_session(
             format!("{kind} [{value}] input true change false true")
         );
     }
+    for number in ["-2.5", "0"] {
+        let typed = type_control("number", number, false).await?;
+        assert_eq!(
+            typed["data"]["title"],
+            format!("number [{number}] input true")
+        );
+        let snapshot = call("web.session.snapshot", json!({"sessionId":id})).await?;
+        let data = &snapshot["data"];
+        let text = data["snapshot"].as_str().unwrap();
+        for description in [
+            r#"slider "range field": "7""#.to_owned(),
+            format!(r#"spinbutton "number field": "{number}""#),
+        ] {
+            assert!(text.contains(&description), "{text}");
+            assert!(
+                data["elements"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|element| element["description"] == description),
+                "Missing {description} in the element list."
+            );
+        }
+        assert!(
+            text.lines()
+                .any(|line| line.trim() == r#"- slider "custom slider""#),
+            "{text}"
+        );
+    }
     for (kind, text, expected) in [
         ("date", "invalid", "Malformed value"),
         ("range", "11", "Malformed value"),
@@ -800,8 +831,6 @@ async fn interactive_session(
         let error = type_control(kind, text, false).await.expect_err(expected);
         assert!(error.to_string().contains(expected), "{error}");
     }
-    let typed = type_control("number", "-2.5", false).await?;
-    assert_eq!(typed["data"]["title"], "number [-2.5] input true");
 
     call(
         "web.session.open",
