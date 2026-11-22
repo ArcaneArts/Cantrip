@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::{Component, Path, PathBuf},
     time::{Duration, UNIX_EPOCH},
 };
@@ -51,6 +51,15 @@ pub(super) use cantrip_host::files::{private_directory, write_private};
 fn reserved(path: &Path) -> bool {
     matches!(path.components().next(),Some(Component::Normal(name)) if ["server-db","postgres","server-database.json","server-profile-receipt.json"].iter().any(|value| name==*value))
 }
+
+fn chromium_process_marker(path: &Path) -> bool {
+    path.parent().and_then(Path::parent) == Some(Path::new("worker/browser/profiles"))
+        && matches!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("RunningChromeVersion" | "SingletonCookie" | "SingletonLock" | "SingletonSocket")
+        )
+}
+
 fn safe(path: &Path) -> Result<()> {
     ensure!(
         !path.as_os_str().is_empty()
@@ -87,32 +96,17 @@ fn mode(file: &File, executable: bool) -> Result<()> {
     let _ = (file, executable);
     Ok(())
 }
-fn copy_file(source: &Path, destination: &Path, expected: Option<&Entry>) -> Result<Entry> {
+fn copy_file<T>(
+    source: &Path,
+    destination: &Path,
+    expected: Option<&Entry>,
+    transfer: impl FnOnce(&mut File, &mut File) -> Result<T>,
+) -> Result<(T, bool, Option<u64>)> {
     let mut input = File::open(source)?;
     let metadata = input.metadata()?;
     ensure!(metadata.is_file(), "Profile asset is not a regular file");
     let mut output = cantrip_host::files::open_private(destination)?;
-    let mut digest = Sha256::new();
-    let mut bytes = 0u64;
-    let mut buffer = [0; 65536];
-    loop {
-        let count = input.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        output.write_all(&buffer[..count])?;
-        digest.update(&buffer[..count]);
-        bytes = bytes
-            .checked_add(count as u64)
-            .context("Profile file is too large")?;
-    }
-    let sha256 = format!("{:x}", digest.finalize());
-    if let Some(entry) = expected {
-        ensure!(
-            bytes == entry.bytes && sha256 == entry.sha256,
-            "Profile asset checksum does not match its manifest"
-        );
-    }
+    let transferred = transfer(&mut input, &mut output)?;
     #[cfg(unix)]
     let executable = {
         use std::os::unix::fs::PermissionsExt;
@@ -134,13 +128,42 @@ fn copy_file(source: &Path, destination: &Path, expected: Option<&Entry>) -> Res
         )?;
     }
     output.sync_all()?;
+    Ok((transferred, executable, modified))
+}
+
+fn copy_hashed_file(source: &Path, destination: &Path, expected: Option<&Entry>) -> Result<Entry> {
+    let ((bytes, sha256), executable, modified_nanos) =
+        copy_file(source, destination, expected, |input, output| {
+            let mut digest = Sha256::new();
+            let mut bytes = 0u64;
+            let mut buffer = [0; 65536];
+            loop {
+                let count = input.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                output.write_all(&buffer[..count])?;
+                digest.update(&buffer[..count]);
+                bytes = bytes
+                    .checked_add(count as u64)
+                    .context("Profile file is too large")?;
+            }
+            let sha256 = format!("{:x}", digest.finalize());
+            if let Some(entry) = expected {
+                ensure!(
+                    bytes == entry.bytes && sha256 == entry.sha256,
+                    "Profile asset checksum does not match its manifest"
+                );
+            }
+            Ok((bytes, sha256))
+        })?;
     Ok(Entry {
         path: PathBuf::new(),
         directory: false,
         bytes,
         sha256,
         executable,
-        modified_nanos: modified,
+        modified_nanos,
     })
 }
 
@@ -179,6 +202,11 @@ fn snapshot_inner(
             if !physical && reserved(&path) {
                 continue;
             }
+            // Chromium stores process identity and socket rendezvous in these
+            // links. It recreates them when the copied browser profile opens.
+            if chromium_process_marker(&path) && item.file_type()?.is_symlink() {
+                continue;
+            }
             if !physical {
                 safe(&path)?;
             }
@@ -205,8 +233,17 @@ fn snapshot_inner(
                 let mut next = ancestors.clone();
                 next.push(canonical);
                 pending.push((location, path, next));
+            } else if metadata.is_file() && physical {
+                // The native-open attempt uses the private physical copy
+                // directly. It has no manifest that consumes a checksum.
+                copy_file(
+                    &location,
+                    &destination.join(&path),
+                    None,
+                    |input, output| Ok(io::copy(input, output)?),
+                )?;
             } else if metadata.is_file() {
-                let mut entry = copy_file(&location, &destination.join(&path), None)?;
+                let mut entry = copy_hashed_file(&location, &destination.join(&path), None)?;
                 entry.path = path;
                 entries.push(entry);
             } else {
@@ -233,7 +270,7 @@ pub(super) fn restore(source: &Path, destination: &Path, entries: &[Entry]) -> R
             private_directory(&target)?;
         } else {
             private_directory(target.parent().context("Profile asset parent")?)?;
-            copy_file(&source.join(&entry.path), &target, Some(entry))?;
+            copy_hashed_file(&source.join(&entry.path), &target, Some(entry))?;
         }
     }
     // Directory entries and each file are durable before the profile is exposed.
@@ -244,6 +281,6 @@ pub(super) fn restore(source: &Path, destination: &Path, entries: &[Entry]) -> R
     Ok(())
 }
 pub(super) fn digest_copy(source: &Path, destination: &Path) -> Result<(u64, String)> {
-    let entry = copy_file(source, destination, None)?;
+    let entry = copy_hashed_file(source, destination, None)?;
     Ok((entry.bytes, entry.sha256))
 }

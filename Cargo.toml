@@ -26,6 +26,10 @@ publish = false
 hyper = { path = "cantrip_server_rs/third-party/hyper" }
 matchit = { path = "cantrip_server_rs/third-party/matchit" }
 
+[profile.dev.package.sha2]
+# Logical profile export and restore hash all retained data in development too.
+opt-level = 3
+
 [profile.release]
 strip = "debuginfo"
 lto = "thin"

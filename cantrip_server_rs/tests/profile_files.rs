@@ -200,3 +200,43 @@ fn file_links_are_materialized_and_directory_cycles_fail_without_publication() -
     assert!(!output.exists());
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn stopped_chromium_profile_keeps_data_without_process_links() -> Result<()> {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("source");
+    fixture(&source)?;
+    let browser = "worker/browser/profiles/captured";
+    let profile = source.join(browser);
+    fs::create_dir_all(&profile)?;
+    fs::write(profile.join("Preferences"), b"saved browser state")?;
+    for name in [
+        "RunningChromeVersion",
+        "SingletonCookie",
+        "SingletonLock",
+        "SingletonSocket",
+    ] {
+        symlink("stopped-process", profile.join(name))?;
+    }
+    // The same name outside Chromium's profile still describes user data.
+    let unrelated = source.join("SingletonLock");
+    symlink("secret-encryption-key.json", &unrelated)?;
+    let sql = temp.path().join("trusted.sql");
+    fs::write(&sql, b"SELECT 1")?;
+    let bundle = temp.path().join("bundle");
+    pack_profile(&source, &sql, DatabaseMode::Pglite, &bundle)?;
+    let staged = bundle.join("files").join(browser);
+    assert_eq!(
+        fs::read(staged.join("Preferences"))?,
+        b"saved browser state"
+    );
+    assert_eq!(fs::read_dir(&staged)?.count(), 1);
+    assert_eq!(
+        fs::read(bundle.join("files/SingletonLock"))?,
+        fs::read(unrelated)?
+    );
+    Ok(())
+}

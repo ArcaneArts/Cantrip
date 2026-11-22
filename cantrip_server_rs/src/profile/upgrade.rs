@@ -92,7 +92,21 @@ pub fn prepare(options: Options<'_>) -> Result<Option<ActivationReceipt>> {
             .prefix(".cantrip-profile-upgrade-")
             .tempdir_in(parent)?;
         let copy = owner.path().join("native-copy");
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "event":"profile.upgrade.copy.started",
+                "message":"Copying the existing profile for the Rust database upgrade."
+            })
+        );
         files::copy_profile(&destination, &copy, owner.path())?;
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "event":"profile.upgrade.native-open.started",
+                "message":"Opening the profile copy with the Rust database."
+            })
+        );
         let status = invoke(
             native(&options, &copy).args(["--remember-database", "--upgrade-source-probe"]),
             &options,
