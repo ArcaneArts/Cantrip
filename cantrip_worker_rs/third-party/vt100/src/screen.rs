@@ -1111,6 +1111,8 @@ impl Screen {
                             .wrap(false);
                     }
                 }
+                let mut continuation = crate::attrs::Attrs::default();
+                continuation.set_protected(self.attrs.protected());
                 let next_cell = self
                     .grid_mut()
                     .drawing_cell_mut(pos)
@@ -1122,7 +1124,7 @@ impl Screen {
                     // only happens if width > 1, and col_wrap takes width
                     // into account.
                     .unwrap();
-                next_cell.clear(crate::attrs::Attrs::default());
+                next_cell.clear(continuation);
                 next_cell.set_wide_continuation(true);
                 self.grid_mut().col_inc(1);
             }
@@ -1285,53 +1287,44 @@ impl Screen {
         });
     }
 
-    // CSI J
+    // CSI Ps " q
+    pub(crate) fn select_character_protection(&mut self, mode: u16) {
+        if mode <= 2 {
+            self.attrs.set_protected(mode == 1);
+        }
+    }
+
+    // CSI J and CSI ? J
     pub(crate) fn ed(
         &mut self,
         mode: u16,
+        selective: bool,
         mut unhandled: impl FnMut(&mut Self),
     ) {
         let attrs = self.attrs.for_erase();
         match mode {
-            0 => self.grid_mut().erase_all_forward(attrs),
-            1 => self.grid_mut().erase_all_backward(attrs),
-            2 => self.grid_mut().erase_all(attrs),
+            0 => self.grid_mut().erase_all_forward(attrs, selective),
+            1 => self.grid_mut().erase_all_backward(attrs, selective),
+            2 => self.grid_mut().erase_all(attrs, selective),
             3 => self.grid_mut().clear_scrollback(),
             _ => unhandled(self),
         }
     }
 
-    // CSI ? J
-    pub(crate) fn decsed(
-        &mut self,
-        mode: u16,
-        unhandled: impl FnMut(&mut Self),
-    ) {
-        self.ed(mode, unhandled);
-    }
-
-    // CSI K
+    // CSI K and CSI ? K
     pub(crate) fn el(
         &mut self,
         mode: u16,
+        selective: bool,
         mut unhandled: impl FnMut(&mut Self),
     ) {
         let attrs = self.attrs.for_erase();
         match mode {
-            0 => self.grid_mut().erase_row_forward(attrs),
-            1 => self.grid_mut().erase_row_backward(attrs),
-            2 => self.grid_mut().erase_row(attrs),
+            0 => self.grid_mut().erase_row_forward(attrs, selective),
+            1 => self.grid_mut().erase_row_backward(attrs, selective),
+            2 => self.grid_mut().erase_row(attrs, selective),
             _ => unhandled(self),
         }
-    }
-
-    // CSI ? K
-    pub(crate) fn decsel(
-        &mut self,
-        mode: u16,
-        unhandled: impl FnMut(&mut Self),
-    ) {
-        self.el(mode, unhandled);
     }
 
     // CSI L

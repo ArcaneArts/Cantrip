@@ -23,6 +23,7 @@ const BLINK: u16 = 1 << 5;
 const INVISIBLE: u16 = 1 << 6;
 const STRIKETHROUGH: u16 = 1 << 7;
 const OVERLINE: u16 = 1 << 8;
+const PROTECTED: u16 = 1 << 9;
 const INTENSITY: u16 = BOLD | DIM;
 const RESET_INTENSITY: u8 = 22;
 
@@ -114,6 +115,14 @@ impl Attrs {
         self.set_style(UNDERLINE, enabled);
     }
 
+    pub fn protected(&self) -> bool {
+        self.mode() & PROTECTED != 0
+    }
+
+    pub fn set_protected(&mut self, protected: bool) {
+        self.set_style(PROTECTED, protected);
+    }
+
     fn set_style(&mut self, style: u16, enabled: bool) {
         let old = self.mode();
         self.mode =
@@ -166,12 +175,28 @@ impl Attrs {
             .then_some(RESET_INTENSITY)
             .into_iter()
             .chain(changes);
-        crate::term::write_attrs(
-            contents,
-            (self.fgcolor() != other.fgcolor()).then(|| self.fgcolor()),
-            (self.bgcolor() != other.bgcolor()).then(|| self.bgcolor()),
-            style_params,
-        );
+        let foreground =
+            (self.fgcolor() != other.fgcolor()).then(|| self.fgcolor());
+        let background =
+            (self.bgcolor() != other.bgcolor()).then(|| self.bgcolor());
+        if (mode ^ previous_mode) & !PROTECTED != 0
+            || foreground.is_some()
+            || background.is_some()
+        {
+            crate::term::write_attrs(
+                contents,
+                foreground,
+                background,
+                style_params,
+            );
+        }
+        if self.protected() != other.protected() {
+            contents.extend_from_slice(if self.protected() {
+                b"\x1b[1\"q"
+            } else {
+                b"\x1b[0\"q"
+            });
+        }
     }
 }
 

@@ -131,12 +131,16 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                 'G' | '`' => self.screen.cha(canonicalize_params_1(params, 1)),
                 'H' | 'f' => self.screen.cup(canonicalize_params_2(params, 1, 1)),
                 'I' => self.screen.tab(canonicalize_params_1(params, 1), false),
-                'J' => self
-                    .screen
-                    .ed(canonicalize_params_1(params, 0), unhandled),
-                'K' => self
-                    .screen
-                    .el(canonicalize_params_1(params, 0), unhandled),
+                'J' => self.screen.ed(
+                    canonicalize_params_1(params, 0),
+                    false,
+                    unhandled,
+                ),
+                'K' => self.screen.el(
+                    canonicalize_params_1(params, 0),
+                    false,
+                    unhandled,
+                ),
                 'L' => self.screen.il(canonicalize_params_1(params, 1)),
                 'M' => self.screen.dl(canonicalize_params_1(params, 1)),
                 'P' => self.screen.dch(canonicalize_params_1(params, 1)),
@@ -211,13 +215,20 @@ impl<CB: crate::callbacks::Callbacks> vte::Perform for WrappedScreen<CB> {
                 }
             },
             Some(b'!') if c == 'p' => self.screen.soft_reset(),
+            Some(b'"') if c == 'q' && !ignore => self
+                .screen
+                .select_character_protection(canonicalize_params_1(params, 0)),
             Some(b'?') => match c {
-                'J' => self
-                    .screen
-                    .decsed(canonicalize_params_1(params, 0), unhandled),
-                'K' => self
-                    .screen
-                    .decsel(canonicalize_params_1(params, 0), unhandled),
+                'J' => self.screen.ed(
+                    canonicalize_params_1(params, 0),
+                    true,
+                    unhandled,
+                ),
+                'K' => self.screen.el(
+                    canonicalize_params_1(params, 0),
+                    true,
+                    unhandled,
+                ),
                 'h' => self.screen.decset(params, unhandled),
                 'l' => self.screen.decrst(params, unhandled),
                 _ => {
