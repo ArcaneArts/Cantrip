@@ -23,6 +23,7 @@ use std::{
 };
 use zbus::{
     MatchRule, MessageStream, Task,
+    fdo::DBusProxy,
     message::Type,
     zvariant::{DynamicType, OwnedFd, OwnedObjectPath, OwnedValue, Value},
 };
@@ -86,11 +87,18 @@ impl Handle {
             .map_err(|_| unavailable())?
             .build();
         let bus = &self.portal.bus;
-        let mut signals = bounded(
+        let (mut signals, mut owner_changes) = bounded(
             async {
-                MessageStream::for_match_rule(rule, bus, Some(1))
+                let signals = MessageStream::for_match_rule(rule, bus, Some(1))
                     .await
-                    .map_err(|_| unavailable())
+                    .map_err(|_| unavailable())?;
+                let owner_changes = DBusProxy::new(bus)
+                    .await
+                    .map_err(|_| unavailable())?
+                    .receive_name_owner_changed_with_args(&[(0, self.owner.as_str())])
+                    .await
+                    .map_err(|_| unavailable())?;
+                Ok((signals, owner_changes))
             },
             Duration::from_secs(2),
             cancel,
@@ -100,9 +108,17 @@ impl Handle {
         let ended = closed.clone();
         let watch = bus.executor().spawn(
             async move {
-                // A closure from the exact portal session, or loss of its bus
-                // stream, ends the input owner's lifetime.
-                let _ = signals.next().await;
+                // A unique bus name cannot be reassigned. Its disappearance
+                // also ends the session when the portal cannot emit Closed.
+                future::race(
+                    async {
+                        let _ = signals.next().await;
+                    },
+                    async {
+                        let _ = owner_changes.next().await;
+                    },
+                )
+                .await;
                 ended.store(true, Ordering::Release);
             },
             "cantrip-portal-session-closed",
@@ -599,4 +615,52 @@ fn unmatched() -> CuaError {
         ErrorCode::PermissionDenied,
         "The Wayland portal did not share the selected monitor.",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zbus::Connection;
+
+    #[test]
+    #[ignore = "requires an isolated D-Bus session"]
+    fn portal_disconnect_closes_only_its_session() {
+        async_io::block_on(async {
+            let portal = Connection::session().await.unwrap();
+            let unrelated = Connection::session().await.unwrap();
+            let cancel = Cancellation::default();
+            let mut handle = Handle {
+                portal: Portal {
+                    bus: Connection::session().await.unwrap(),
+                },
+                owner: portal.unique_name().unwrap().to_string(),
+                path: OwnedObjectPath::try_from("/org/freedesktop/portal/desktop/session/test")
+                    .unwrap(),
+                closure: None,
+            };
+            handle.watch_closed(&cancel).await.unwrap();
+
+            unrelated.close().await.unwrap();
+            Timer::after(Duration::from_millis(50)).await;
+            assert!(!handle.is_closed());
+
+            portal.close().await.unwrap();
+            bounded(
+                async {
+                    while !handle.is_closed() {
+                        Timer::after(Duration::from_millis(5)).await;
+                    }
+                    Ok(())
+                },
+                Duration::from_secs(2),
+                &cancel,
+            )
+            .await
+            .expect("the portal disconnected without closing its session");
+            assert_eq!(
+                handle.check_open().unwrap_err().code,
+                ErrorCode::PermissionDenied
+            );
+        });
+    }
 }

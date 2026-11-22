@@ -66,7 +66,8 @@ fixtures in a local Windows 11 guest.
   fallback delivered keyboard input through Linux uinput to a focused
   XWayland window.
   [Wayland input evidence](#338-verify-keyboard-delivery-to-a-focused-wayland-client),
-  [portal closure evidence](#360-release-wayland-input-when-the-portal-closes)
+  [portal closure evidence](#360-release-wayland-input-when-the-portal-closes),
+  [portal disconnect evidence](#368-release-wayland-input-when-the-portal-disconnects)
 
 ## Implementation record
 
@@ -11596,3 +11597,20 @@ copy. The fixture verified window scope, secure-field exclusion, and
 stable focus and shared clipboard. Three selection unit tests and 22
 noninteractive helper process tests passed.
 [Apple Accessibility selection ranges](https://developer.apple.com/documentation/applicationservices/kaxselectedtextrangesattribute)
+
+## 368. Release Wayland input when the portal disconnects
+
+Reference commit `54d97a59953e4c9850126a248531c321c04b558a` (#3531).
+
+The input session also watches for the disappearance of the approving
+portal's unique D-Bus name. The helper can release the retired input
+participant even when the portal exits without sending its session's
+`Closed` signal. A replacement still needs a newly approved portal session.
+[D-Bus name ownership](https://dbus.freedesktop.org/doc/dbus-specification.html#bus-messages-name-owner-changed)
+
+On a local Linux ARM64 guest with a private D-Bus daemon, the baseline left
+the session open after the portal connection disappeared. The rebuilt helper
+ignored an unrelated connection's exit and rejected the old input session
+after the exact portal owner disconnected. The new regression and 88
+other helper unit tests passed. The test exercised the real bus, with no
+GNOME or KDE consent dialog.
