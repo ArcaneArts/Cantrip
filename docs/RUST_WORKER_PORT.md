@@ -12068,6 +12068,13 @@ returned application-level Accessibility references even for the baseline
 ordinary selection, so the expanded live helper fixture could not reach
 the new case.
 
+The live framed helper fixture passed on macOS ARM64 at `8c3fea0e9`
+(#3564). It copied a single range exposed through the list attribute and
+discarded the text when that range moved during the read. The same run
+passed the secure-field, sibling-window, empty-selection, and replay
+checks, with stable foreground focus and pasteboards. The fixture's
+clipboard-only Copy action still produced an empty window-scoped result.
+
 ## 398. Keep the Playwright driver out of new managed browser archives
 
 Reference commit `4577669f6df07a48176016b39625ae7f088a078e` (#3561).
