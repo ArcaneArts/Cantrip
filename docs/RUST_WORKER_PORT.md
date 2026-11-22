@@ -12042,3 +12042,22 @@ replay and the archived worker's xterm serializer produced the same
 screen and cursor position in xterm.js 6.0.0, with both sequences
 omitted. All four replay unit tests and the offline production worker
 check passed.
+
+## 397. Read a single selection exposed in the macOS range list
+
+Reference commit `5e8e8a963e7a9dddef83199e7407ab311f9cc7e4` (#3560).
+
+A focused control can expose one selected range through
+`AXSelectedTextRanges` alone. The helper reads that range with the existing
+size limit and checks the range list again before returning text. The copy
+still runs against the attached window's focused control.
+
+On macOS ARM64, a focused harness using the production selection logic and
+real Core Foundation values reproduced the missing text. The updated logic
+returned the selected Unicode and whitespace, rejected a changed range,
+and returned no text for an empty array. The AppKit fixture's Copy wrote
+the same text to its private pasteboard. Three native selection unit tests
+and 22 noninteractive helper process tests passed. The locked desktop
+returned application-level Accessibility references even for the baseline
+ordinary selection, so the expanded live helper fixture could not reach
+the new case.

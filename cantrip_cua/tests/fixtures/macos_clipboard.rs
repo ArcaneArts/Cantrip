@@ -112,9 +112,13 @@ fn copies_only_the_bound_macos_selection_without_a_focus_or_clipboard_change() {
     assert!(helper.call(copy(22)).0["text"].is_null());
     fixture.command("empty");
     assert!(helper.call(copy(24)).0["text"].is_null());
+    fixture.command("one-range-array");
+    assert_eq!(helper.call(copy(26)).0["text"], "selected λ🚋\n\t");
+    fixture.command("selection-moves");
+    assert!(helper.call(copy(28)).0["text"].is_null());
     fixture.command("custom-copy");
-    assert!(helper.call(copy(26)).0["text"].is_null());
-    let replay = helper.send(copy(26));
+    assert!(helper.call(copy(30)).0["text"].is_null());
+    let replay = helper.send(copy(30));
     assert!(
         matches!(helper.response(replay).0, Outcome::Error { error } if error.code == ErrorCode::InvalidRequest)
     );
