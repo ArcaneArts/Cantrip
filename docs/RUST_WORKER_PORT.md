@@ -11721,7 +11721,9 @@ The 89 regular helper tests, two isolated D-Bus tests, and eight packaging
 script tests passed locally. The D-Bus tests covered unavailable emulated
 input, explicit denial, and owner disconnect. An older KDE compositor
 that accepts the connection without offering the required devices was
-unavailable for a live test.
+unavailable for a live test. The
+[fallback fixture](#376-confirm-portal-closure-before-falling-back-to-d-bus-input)
+exercises that transition on an isolated D-Bus session.
 
 ## 373. Verify the macOS window clipboard boundary
 
@@ -11787,3 +11789,25 @@ and its version command ran with an empty PATH.
 
 Run the focused differential with
 `node --import tsx scripts/worker-rust/replica-provision-compatibility.mjs --legacy-clone --binary /absolute/path/to/replica-provision-fixture`.
+
+## 376. Confirm portal closure before falling back to D-Bus input
+
+Reference commit `23b2a2b36bfa142d0a2a7250e961288a68a57a7f` (#3539).
+
+When the Wayland portal accepts an emulated input connection without
+providing usable devices, the helper now confirms that the original
+session closed before requesting fresh consent for D-Bus input. A
+failed Close call ends that attempt and returns an input error. If the
+portal confirms closure, the replacement session gets its own approval
+and input goes to that session.
+[XDG Desktop Portal session lifecycle](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Session.html)
+
+In a local Debian 13 ARM64 guest the fixture transferred an input socket
+over the real D-Bus transport and supplied no devices. The previous
+helper opened a replacement session after the fixture rejected Close.
+The fixed helper reported the failure and retained its emulated input
+preference. With a successful Close, the fixture recorded the original
+session closing before approval of a different session, followed by a
+D-Bus key event on the replacement session. All three isolated D-Bus
+tests and all 89 regular helper tests passed. This fixture uses a
+controlled portal service.
