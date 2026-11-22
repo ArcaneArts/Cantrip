@@ -790,6 +790,14 @@ fn is_secure_input(element: &Owned) -> bool {
 
 fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String>> {
     cancel.check()?;
+    if let Ok(ranges) = element.attr("AXSelectedTextRanges")
+        && ranges.is(unsafe { CFArrayGetTypeID() })
+    {
+        let count = unsafe { CFArrayGetCount(ranges.0) };
+        if count > 1 {
+            return selected_ranges_text(element, &ranges, count as usize, cancel);
+        }
+    }
     if let Ok(value) = element.attr("AXSelectedText")
         && let Some(text) = decode_selection(&value)?
     {
@@ -803,20 +811,8 @@ fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String
         if selection.length as usize > MAX_HOST_CLIPBOARD_UNITS {
             return Err(selection_too_large());
         }
-        if let Ok(value) = element.parameterized_attr("AXStringForRange", range)
-            && let Some(text) = decode_selection(&value)?
-        {
+        if let Some(text) = text_for_range(element, range, cancel)? {
             return Ok(Some(text));
-        }
-        cancel.check()?;
-        if let Ok(value) = element.parameterized_attr("AXAttributedStringForRange", range)
-            && value.is(unsafe { CFAttributedStringGetTypeID() })
-        {
-            // The attributed value owns the plain string for the duration of the read.
-            let text = unsafe { CFAttributedStringGetString(value.0) };
-            if let Some(text) = decode_selection_text(text, None)? {
-                return Ok(Some(text));
-            }
         }
     }
 
@@ -844,6 +840,72 @@ fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String
             == Some(selection)
     {
         return decode_selection_text(value.0, Some(selection));
+    }
+    Ok(None)
+}
+
+fn selected_ranges_text(
+    element: &Owned,
+    ranges: &Owned,
+    count: usize,
+    cancel: &Cancellation,
+) -> Result<Option<String>> {
+    if count > MAX_HOST_CLIPBOARD_UNITS {
+        return Err(selection_too_large());
+    }
+    cancel.check()?;
+    let value = element
+        .attr("AXValue")
+        .ok()
+        .filter(|value| value.is(unsafe { CFStringGetTypeID() }));
+    let mut selection = String::new();
+    let mut remaining = MAX_HOST_CLIPBOARD_UNITS;
+    let mut end = 0;
+    for range in ranges.array(count)? {
+        cancel.check()?;
+        let Some(slice) = selection_range(&range) else {
+            return Ok(None);
+        };
+        if slice.location < end {
+            return Ok(None);
+        }
+        end = slice.location + slice.length;
+        if slice.length as usize > remaining {
+            return Err(selection_too_large());
+        }
+        let part = match &value {
+            Some(value) => decode_selection_text(value.0, Some(slice)),
+            None => text_for_range(element, &range, cancel),
+        }?;
+        let Some(part) = part else {
+            return Ok(None);
+        };
+        remaining = remaining
+            .checked_sub(part.encode_utf16().count())
+            .ok_or_else(selection_too_large)?;
+        // AppKit's plain-text Copy joins the ordered selections directly.
+        selection.push_str(&part);
+    }
+    cancel.check()?;
+    Ok(element
+        .attr("AXSelectedTextRanges")
+        .is_ok_and(|current| ranges.same(&current))
+        .then_some(selection))
+}
+
+fn text_for_range(element: &Owned, range: &Owned, cancel: &Cancellation) -> Result<Option<String>> {
+    cancel.check()?;
+    if let Ok(value) = element.parameterized_attr("AXStringForRange", range)
+        && let Some(text) = decode_selection(&value)?
+    {
+        return Ok(Some(text));
+    }
+    cancel.check()?;
+    if let Ok(value) = element.parameterized_attr("AXAttributedStringForRange", range)
+        && value.is(unsafe { CFAttributedStringGetTypeID() })
+    {
+        // The attributed value owns the plain string for the duration of the read.
+        return decode_selection_text(unsafe { CFAttributedStringGetString(value.0) }, None);
     }
     Ok(None)
 }
