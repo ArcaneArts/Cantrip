@@ -96,224 +96,98 @@ locating changes but are not behavioral proof or a runtime gate.
 
 ## Architecture and shared ownership
 
-`cantrip_worker_rs` now builds the native `cantrip-worker` executable. It includes
-configuration/profile identity, worker logging/archive lifetimes, enrollment and
-heartbeat HTTP, a reconnecting WebSocket control connection and authenticated
-encryption-grant lifecycle, encrypted root attachment and workspace discovery/import
-validation, managed folders, encrypted host Explorer/file-document operations,
-host terminal-service supervision, encrypted Git working-tree queries/basic actions,
-Git history/inspection, repository graphs/progressive metrics, reviewed branch/remote/tag/submodule/LFS management, partial-patch editing, stash selection/recovery, reviewed commit mutations/conflict
-resolution, managed-operation creation/recovery, native physical worktree management and
-control-channel worktree observations, reviewed cross-worktree dirty changes and
-checkpointed reflog/lost-commit recovery, worker-scoped GitHub catalog operations,
-and repository-scoped issue detail/mutations, issue/PR search, PR inspection, creation, reviews, lifecycle, checkout preparation and agent context,
-GitHub inbox, Actions and releases, plus native replica provisioning and
-managed-link repair, synchronization and guarded removal over the existing
-placement/ownership records. Eighty-two outer command types have native handlers:
-`worker.version`, `worker.credential.rotate`, `worker.restart`,
-`diagnostics.logs.read`, `worker.encryption.refresh`, `chat.sync` (cold host observation),
-`chat.thread.ensure` (managed host attachment), `chat.turn` and `chat.interrupt`
-(host text turns, including protected input, managed GUI receipts and
-canonical History for admitted project turns, plus protected Task rounds),
-`chat.message.protect`,
-`chat.messages.protect`, `chat.messages.reprotect`, `chat.turn.protect`,
-`task.message.protect` and `task.operation.prepare` (encrypted Task input),
-`chat.goal.create` (activation from an encrypted Task finalization),
-`chat.native-logical.cancel`, `chat.native-logical.complete` and
-`chat.native-control` (interrupt for active managed host text turns),
-`model.chatgpt.catalog`,
-`model.grok.catalog` and `provider.quota.read` (Grok),
-`provider.auth.legacy.capture`, `provider.auth.legacy.purge`, `provider.auth.account.clear`,
-`codex.auth.status`, `codex.auth.login.start` and `codex.auth.logout` (ChatGPT and Grok),
-`workspace.repositories.discover`, `workspace.repository-import.validate`,
-`repository.operation` (root attachment, metadata, host Git status/file diffs and
-eleven basic Git actions, nine history/inspection queries, stash creation/diffs/mutations
-and reviewed previews/starts plus current/control/amend recovery and four conflict
-inspection/resolution operations, plus reviewed cherry-pick/revert/amend/fixup and
-partial stage/unstage/discard, plus branch inventory/eight reviewed branch actions
-and remote inventory/five reviewed remote actions, plus tag inventory/detail and
-four reviewed tag actions, plus recursive submodule inventory and four reviewed
-submodule actions, plus LFS status and nine reviewed LFS actions, plus graph snapshots,
-metrics/blame and commit overlays, two cross-worktree change-transfer operations,
-and recovery candidate/preview/apply operations),
-`project.folder.materialize`, `project.folder.delete`, `explorer.operation`
-(nine host operations), `file-document.operation` (text read/write),
-`terminal.services.reconcile` and `terminal.service.restart` (host services), plus
-`worktree.list`, `worktree.reconcile`, `worktree.create`, `worktree.remove`,
-`worktree.lock`, `worktree.unlock`, `worktree.prune`, `worktree.status` and
-`worktree.observation.configure`, `github.auth.status`, `github.repositories.cached`,
-`github.repositories.list`, `github.repository-owners.list` and
-`github.repositories.create`, `github.issues.list`, `github.pull-requests.list`,
-`github.issue.get`, `github.issue.create`, `github.issue.comment` and
-`github.issue.close`, `github.pull-request.get` (all/overview/files/commits/checks),
-`github.pull-request.create`, `github.pull-request.comment`,
-`github.pull-request.review.submit`, `github.pull-request.review.comment`,
-`github.pull-request.review.reply`, `github.pull-request.review.mutate`,
-`github.pull-request.lifecycle.preview`, `github.pull-request.lifecycle.apply`,
-`github.pull-request.checkout.prepare`, `github.pull-request.agent-context`,
-`github.inbox.list`, `github.actions.overview`, `github.actions.run.get`,
-`github.actions.run.logs`, `github.actions.workflow.dispatch`,
-`github.actions.run.action`, `github.actions.run.checkout.prepare`,
-`github.releases.list`, `github.release.get`, `github.release.create`,
-`project.replica.provision`, `project.replica.link.repair`,
-`project.replica.synchronize` and `project.replica.remove`.
-Encrypted repository operations also serve worktree status.
-Explorer implements navigation, search, Git commit lookup and text/entry editing.
-Paged reads, transfers, watches, media/tail and delegated OS execution are pending.
-Other commands fail explicitly;
-unimplemented capabilities are reported unavailable. Production packaging still
-selects Node. Nothing invokes the Node worker as a native fallback.
+The source of the shipped worker is [cantrip_worker_rs](../cantrip_worker_rs).
+[The runtime](../cantrip_worker_rs/src/runtime.rs) constructs its service
+owners and dispatches validated commands from [the worker
+connection](../cantrip_worker_rs/src/connection.rs). The connection also
+routes binary WorkerLink, tunnel, and surface frames. The public TypeScript
+[worker command schema](../packages/protocol/src/worker-commands.ts)
+remains the source for Rust protocol validation.
 
-The root Cargo workspace now includes the native worker; the default remains the
-Rust server. The worker has no dependency on the server application or database
-stack. Direct worker Cargo builds run no server build script, generate no server
-version/migration assets, and discover/link no PGlite runtime. The worker embeds
-its own version at build time using the authoritative development version resolver;
-no Node process is required by the compiled executable.
-
-Reuse the foundations documented in [RUST_SHARED_CRATES.md](RUST_SHARED_CRATES.md):
-
-- `cantrip-config`, `cantrip-wire` and `cantrip-host` already supply parsing,
-  UTF-16-compatible JSON, lexical paths and exclusive private-file creation.
-- Protocol validation and framing belong in `cantrip-protocol`/`cantrip-framing`.
-- Queues, correlation, deadlines and owned lifetimes use `cantrip-transport`;
-  worker connection/reconnect remains worker policy.
-- Worker logging adapts `cantrip-logging`; automation calculations can reuse
-  `cantrip-scheduling`.
-- Keep `cantrip-interaction`, `cantrip-cua`, `cantrip-cli` and vendored native
-  Codex separately owned. Integrate their existing capabilities instead of
-  duplicating their implementations.
-
-`cantrip-crypto` now supplies worker-side endpoint primitives; additional cohesive
-history libraries may be appropriate as those subsystems are implemented. No
-placeholder libraries are needed.
-
-The server retains accounts, durable application state, routing, scheduling
-and execution authority. Worker code owns repositories/files, PTYs, browser and
-native execution, local journals and endpoint secrets. Protocol/frame helpers
-do not grant authority or introduce a new app-to-worker path.
+The worker uses the [shared Rust foundations](RUST_SHARED_CRATES.md) for
+wire values, protocols, framing, transport, configuration, logging,
+scheduling, and host primitives. Worker-side cryptography, History, PTYs,
+and browser transport live in their respective crates. The worker builds
+independently of the server application and database infrastructure.
+Core owns durable application state, authorization, placement, and routing.
+The worker owns execution, endpoint secrets, local journals, and resources
+on its assigned host or guest.
 
 ## Coverage ledger
 
-[The source index](rust-worker/source-index.jsonl) records the reference commit,
-per-file hashes/imports, every literal `switch (command.type)` case location,
-direct calls and imported handlers, startup constructions/event names and
-publication call sites. It currently identifies 323 distinct command names across
-546 primary/delegated switch sites. These counts earn no implementation credit.
-Follow constructors, nested handlers, callbacks and dynamic routing manually.
-The native handlers and suboperations listed above are implemented with the
-subsystem evidence below. Other indexed commands remain pending; the source
-index itself grants no implementation credit.
+Reviewed against `66deb60ad` (#3546). The [baseline source
+index](rust-worker/source-index.jsonl) records legacy files, literal command
+cases, startup construction, and publication sites at the port's starting
+revision. The index can be regenerated deliberately with
+`node scripts/worker-rust/inventory.mjs`.
 
-Regenerate deliberately with `node scripts/worker-rust/inventory.mjs`. It uses
-existing Babel development dependencies. Review source changes and update this
-ledger rather than treating regeneration as proof of parity. The index is never
-loaded by a production service.
+| Domain | Production owners | Behavioral evidence |
+| --- | --- | --- |
+| Enrollment, credentials, and lifecycle | [Runtime](../cantrip_worker_rs/src/runtime.rs), [configuration](../cantrip_worker_rs/src/config.rs), [credentials](../cantrip_worker_rs/src/credentials.rs), [connection](../cantrip_worker_rs/src/connection.rs), [log streams](../cantrip_worker_rs/src/log_stream.rs) | [Control fixture](../scripts/worker-rust/control-smoke.mjs) for enrollment, heartbeat, credential rotation, grant revocation, reconnect, restart, and shutdown. [Live log replay and subscriptions](#219-stream-live-worker-diagnostics-from-rust). |
+| Endpoint encryption and private routing | [Encryption grants](../cantrip_worker_rs/src/encryption), [endpoint crypto](../crates/cantrip-crypto), [routing registry](../cantrip_worker_rs/src/routing.rs) | [Wire and key-record comparison](../scripts/worker-rust/crypto-compatibility.mjs), [grant comparison](../scripts/worker-rust/grant-compatibility.mjs), and [mounted encrypted WebDAV](#330-verify-the-native-macos-webdav-mount). |
+| Files, workspaces, and attachments | [Workspace handlers](../cantrip_worker_rs/src/workspace), [Explorer](../cantrip_worker_rs/src/explorer_operations.rs), [attachments](../cantrip_worker_rs/src/attachments), [file sharing](../cantrip_worker_rs/src/project_shares) | [Guest file documents](#165-serve-guest-explorer-and-text-documents-from-the-rust-worker), [binary paging and previews](#166-read-binary-pages-text-previews-logs-and-media-in-rust), [guest attachments](#173-materialize-chat-attachments-in-the-admitted-cantrip-os-guest), and [project and standalone WebDAV](#132-serve-protected-project-and-standalone-chat-webdav-shares). |
+| Git, GitHub, and project replicas | [Repository operations](../cantrip_worker_rs/src/repository_operations.rs), [Git and worktrees](../cantrip_worker_rs/src/git), [GitHub](../cantrip_worker_rs/src/github), [replicas](../cantrip_worker_rs/src/replicas), [exports](../cantrip_worker_rs/src/project_exports) | [Rust Core and worker project fixtures](../scripts/server-rust/actual-folder-client.mjs), [reviewed force push](#310-restore-reviewed-git-force-push), and [legacy project clone comparison](#375-handle-the-legacy-project-clone-command-in-rust). |
+| Inference and provider access | [Admission](../cantrip_worker_rs/src/inference), [provider access](../cantrip_worker_rs/src/provider_access), [Codex](../cantrip_worker_rs/src/codex), [model operations](../cantrip_worker_rs/src/model_operations) | [Grok discovery and quotas](#63-grok-model-discovery-and-quota-reads), [Core provider limits](#107-apply-core-provider-limits-and-publish-the-rust-inference-queue), [provider connection tests](#270-run-settings-provider-connection-tests-with-the-rust-worker), and [delegated child inference](#381-verify-inference-uses-the-configured-task-goal-child-model). |
+| History and recovery | [History](../cantrip_worker_rs/src/history), [shared History engine](../crates/cantrip-history), [inference journals](../cantrip_worker_rs/src/inference), [outcomes](../cantrip_worker_rs/src/outcomes.rs) | [canonical managed History](#75-connect-managed-project-turns-to-canonical-history), [deferred input reopened after restart](#188-recover-permission-deferred-native-input-after-worker-restart), [external transcript and attachment import](#227-import-local-codex-transcripts-and-attachments-through-the-rust-worker), and [single writer after checkpoint recovery](#342-keep-one-native-writer-after-checkpoint-recovery). |
+| Chat, Tasks, Goals, and settings | [Native commands and preparation](../cantrip_worker_rs/src/codex), [Task input](../cantrip_worker_rs/src/task_content.rs), [automation actor](../cantrip_worker_rs/src/automations) | [automation schedules through both services](#240-run-project-automation-schedules-through-both-rust-services), [retained guest Chat sync](#275-observe-saved-cantrip-os-chat-threads-in-the-rust-worker), [Task pause proof](#378-return-the-acknowledged-idle-task-pause-revision), and [Goal-clear receipts](#379-verify-repeated-managed-goal-clear). |
+| Terminals and Run | [PTY](../crates/cantrip-pty), [terminal services](../cantrip_worker_rs/src/terminal_services), [Run definitions](../cantrip_worker_rs/src/run_definitions), [Host and guest Run runtime](../cantrip_worker_rs/src/run_runtime) | [Host processes](#117-launch-and-supervise-host-shell-run-configurations), [guest process supervision](#164-supervise-configured-guest-runs-in-the-rust-worker), [encrypted terminal hydration](#321-send-canonical-terminal-hydration-over-workerlink-and-direct), and [terminal replay comparison](#377-preserve-automatic-newline-mode-during-terminal-reattachment). |
+| WorkerLink, direct transports, and tunnels | [WorkerLink](../cantrip_worker_rs/src/worker_link), [socket dispatch](../cantrip_worker_rs/src/connection.rs), [framing](../crates/cantrip-framing) | [protected TCP](#130-serve-encrypted-host-tcp-tunnels-over-workerlink), [LAN peers](#136-serve-workerlink-lan-peers-in-the-rust-worker), [WAN peers](#138-serve-wan-workerlink-peers-in-the-rust-worker), and [browser attachments](#142-serve-browser-attachments-over-workerlink). |
+| Browser, managed web, and computer use | [Browser surfaces](../cantrip_worker_rs/src/browser_surface), [managed runtimes](../cantrip_worker_rs/src/managed_web), [research web](../cantrip_worker_rs/src/web), [computer use](../cantrip_worker_rs/src/computer_use.rs), [native helper](../cantrip_cua) | [managed search](#147-run-managed-search-and-open-search-results-in-the-rust-worker), [replay after approval](#255-resume-agent-computer-use-actions-after-protected-approval), [Windows window and display input](#362-verify-windows-window-and-display-input-in-the-local-guest), [GNOME and KDE consent](#371-test-live-gnome-and-kde-portal-consent), and [private browser controls](#382-restore-open-shadow-controls-in-private-browser-sessions). |
+| MCP, CLI, and CodeGraph | [Native MCP](../cantrip_worker_rs/src/mcp), [CLI broker](../cantrip_worker_rs/src/cli), [CLI executable](../cantrip_cli), [CodeGraph supervisor](../cantrip_worker_rs/src/codegraph) | [scoped MCP authentication](#251-authenticate-computer-use-mcp-calls-in-the-rust-broker), [managed tools and continuation](#356-restore-managed-mcp-worktree-tools-and-continuation), [optional CodeGraph installation](#366-verify-the-runtime-dependency-boundary), and [bundled CLI and Codex workflow](#370-verify-the-current-pinned-codex-in-macos-packages). |
+| Cantrip OS | [Host and guest operations](../cantrip_worker_rs/src/cantrip_os), [guest Run](../cantrip_worker_rs/src/run_runtime/guest), [guest execution packages](../cantrip_os) | [guest package operations](#212-manage-cantrip-os-packages-through-the-rust-worker), [backup, restore, and reset](#214-restore-roll-back-and-reset-guest-workspaces-in-rust), [system replacement and rollback](#217-replace-and-roll-back-retained-cantrip-os-systems-in-rust), and [guest helper upgrade without Node](#283-retire-the-javascript-helpers-from-the-cantrip-os-executor-package). |
+| Profiles and shipping | [Native profile preparation](../deploy/server.README.md#existing-desktop-profiles), [desktop supervisor](../cantrip_app/src-tauri/src/desktop_services.rs), [worker packager](../scripts/package-worker-rust.mjs), [hosted worker image](../deploy/docker/worker.Dockerfile) | [native profile round trip](#288-verify-the-native-desktop-runtime-and-legacy-profile-round-trip), [Linux ARM64 hosted worker](#332-bound-hosted-worker-release-build-memory), [macOS desktop and standalone service packages](#370-verify-the-current-pinned-codex-in-macos-packages), and [deployment paths](#331-reconcile-the-build-and-deployment-guides-with-native-packaging). |
 
-| Area                               | Reference implementations and behavior                                                                                                    | Rust implementation                                                                                                                                                                                                                                                                                                                                                                                     | Validation / remaining work                                                                                                                                                                                                                                                                                                      |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Configuration and profile identity | `config.ts`, `credential-store.ts`, `codex/bundled-runtime.ts`                                                                            | `config`, `credentials`, `installation` modules                                                                                                                                                                                                                                                                                                                                                         | Local Node differential checks, private file/rotation tests. Bundled manifest verification and native version/capability discovery now run during actual startup; focused Node/native and real bundled Codex checks pass                                                                                                                                                                                                  |
-| Logging and process lifetime       | `logger.ts`, `log-stream.ts`, `runtime-loop.ts`, `process-guard.ts`, `index.ts` startup/stop                                              | Native logging adapter and owned runtime cycles                                                                                                                                                                                                                                                                                                                                                         | Archive/options/privacy buffer, subscriptions, retained restart cursors, signal/stdin shutdown and actor teardown tested. Remote log-stream leases, full command log context and native child/execution retirement remain pending                                                                                                |
-| Enrollment/control transport       | `enrollment.ts`, `heartbeat.ts`, `transport.ts`, routing/observation adapters                                                             | Native enrollment/replacement, heartbeat, readiness/reconnect and credential lifecycle                                                                                                                                                                                                                                                                                                                  | Actual Rust-server round trip, rotation/reconnect, restart/revocation and HTTP oracles pass. Execution lifetime/admission fencing, reconnect-grace resource callbacks, notifications/events/task acknowledgments, data-plane adapters, congestion fidelity and deployment TLS/proxy configuration remain pending                 |
-| Endpoint encryption                | `packages/crypto`, `worker-encryption.ts`, `*-encryption.ts`, protected secrets                                                           | Native endpoint/surface/repository formats, all private surface records and scoped grant helpers                                                                                                                                                                                                                                                                                                        | Private-state interop covers 12 resource contexts and six content kinds. Remaining protected domains and serving resource lifetimes are pending. Initial surface-grant refresh now completes real host terminal-service reconciliation; delegated OS services remain pending.                                                    |
-| Files/workspaces                   | `commands/{workspace,project,explorer}.ts`, managed folders, roots, scratch/files, file documents, attachments/imports                    | Workspace/folders/routing, nine protected host Explorer operations and bound file-document text read/write                                                                                                                                                                                                                                                                                              | Actual Rust worker/server persists encrypted resources, resolves opaque roots, saves files, rejects replay/mismatched document paths and reopens after restart. Paged readers, media/tail, transfers, activity/watches and delegated OS execution remain pending.                                                                |
-| Git/projects/GitHub                | Git/worktree/GitHub handlers, git.ts, git-graph.ts, worktrees.ts, replicas, repository operations, exports/shares                         | Native queries, graphs/metrics/blame/overlays, reviewed Git actions/recovery, physical worktree management, observations, dirty-change transfer, checkpointed recovery and GitHub catalog, issue detail/mutations, issue/PR search, inspection, creation, reviews, lifecycle, checkout preparation, agent context, inbox, Actions/releases and replica provisioning/synchronization/removal/link repair | Independent actual Node comparisons cover delivered operations. Runtime evidence is corrected in the physical-worktree subcycle below; control observation delivery is validated below. CodeGraph/WorkerLink observation integration, direct legacy Git dispatch/protection, exports/sharing and delegated OS Git remain pending |
-| History/durable delivery           | `native-history-*`, `managed-native-history*`, inference journals, operation stores, suspension and outcome stores                        | `cantrip-history` implements encrypted source journals, cursor recovery, complete pure reduction, complete outbox/baseline/mutation/receipt storage and projection/checkpoint/rebase transactions; worker encryption adapter, authenticated HTTP client, canonical content preparation, coherent archive recovery, native item rendering and canonical projector/bootstrap/rebase orchestration                                                                                                                                                                                                                       | Journal/outbox/projection, native protected preparation and coherent HTTP archive recovery pass focused checks; verified retained-context/child-scope and durable media/attachment adapters are native; live output identity, observation/capture and managed source/projection retry/recovery are native; verified child discovery and the top-level coordinator are native, including production worker startup recovery; live Codex/provider capture integration remains pending                                                                                                                                                    |
-| Inference/providers/models         | `commands/model-operations.ts`, admission/preparation/task input, model modules, Ollama, Grok, provider credentials/auth                  | Native provider-error policy plus worker-wide provider pools, canonical lifetimes, direct HTTP/preparation admission, durable recovery, portable provider credential access, ChatGPT and Grok catalogs and device sign-in, Grok quota reads and subscription proxy, legacy credential migration and scoped account clearing | Keeper-backed recovery, sealed credential migration, both device authentication lifecycles and Grok discovery against the Node oracle pass locally. Bundled Codex uses the native Grok proxy with a local provider peer. Additional catalog/quota commands and server-dispatched execution adapters remain pending |
-| Native Codex execution             | `codex/*`, native command/settings/queue clients and delivery, handoff/suspension/continuation                                            | Native discovery, managed sessions/RPC, keeper/journal, worker-wide admission manager, Codex admission adapter, private RPC routing and worker-scoped runtime owner and cold host thread observation; command-source execution adapters still pending | Real keeper grants, no-start withdrawal, cold FIFO recovery and prior registered app-server retirement; integrated execution, queue/settings and task/goal orchestration remain pending |
-| Tasks/goals/automation/settings    | task/goal controls and durable publishers, automation scheduler/conditions, customization/skills/permissions                              | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Pause/resume, outcome retry/ack, scheduling, protected configuration and source-specific task/runtime tests                                                                                                                                                                                                                      |
-| Terminals/run supervision          | Terminal manager/canonical/private state, run-configuration providers and supervisors                                                     | Native host service reconciliation/restart and owned PTY supervision                                                                                                                                                                                                                                                                                                                                    | Actual encrypted server/worker service enable, idempotence, restart, recovery and disable pass. Interactive commands, canonical terminal/replay, attachment/input/resize, CLI broker environments, run providers and delegated OS services remain pending.                                                                       |
-| WorkerLink/direct/tunnels | Gateways, peer/WebRTC, direct broker, tunnel protection and routing | Native installed authority, live observations, encrypted Host terminals and TCP, WebDAV shares, direct tickets, and LAN and WAN peer carriage | Continue managed console and guest/surface adapters. Local peer fixtures cover authenticated negotiation, encrypted TCP, credit, renewal, and revocation. |
-| Browsers/surfaces/computer use | Browser discovery, browser/desktop adapters, remote surfaces, computer use, and managed web runtimes | Native browser discovery, Chromium and CDP, encrypted surfaces with recovery, and signed managed Chromium installation | Public browser transport and Chromium recovery fixtures pass locally. The native installer verifies signed releases and probes Chromium. Legacy browser WebRTC, desktop capture, computer use, managed web sessions and search remain open. |
-| MCP/CLI/CodeGraph                  | `mcp/*`, CLI broker, computer-use MCP, codegraph/runtime/supervisor                                                                       | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Native stdio/HTTP helpers, generated/persisted launch commands, binding/generation scopes, CLI and managed-runtime fixtures                                                                                                                                                                                                      |
-| Cantrip OS | `cantrip_os/host`, `os-executor/*`, native MCP/run execution | Native guest inspection, attachment, workspace listing and creation, operation inspection, Linux-owned source provisioning and verification, linked Host mounts, guest Run definitions and process supervision, and guest Explorer navigation, text documents, paged reads, and streamed binary saves | Continue guest file imports, chat files, lifecycle, PTYs, tunnels, packages, backups, system operations and checkpoints. |
-| Upgrade and packaging              | profile converter/database-transfer, server profile preparation, desktop services/worker, distribution/runtime scripts, worker Dockerfile | Pending                                                                                                                                                                                                                                                                                                                                                                                                 | Node-free legacy conversion/export/restore, desktop/standalone artifacts, existing-profile reopen and actual child-process/runtime audit                                                                                                                                                                                         |
+The command schema includes three prefix-dispatched Run families.
+`project.run-configuration-definitions.*` goes to
+[Definitions](../cantrip_worker_rs/src/run_definitions/mod.rs).
+`project.run-configuration-runtime.*` and
+`cantrip-os.run-runtime.*` go to the [Run
+manager](../cantrip_worker_rs/src/run_runtime/mod.rs), which resolves the
+captured guest route before executing guest commands. The ledger links
+representative runtime checks. Individual commands and compatibility
+limits are recorded in the corresponding milestones below.
 
-The source index includes existing tests with their source hashes. Each port must
-choose relevant behavioral tests, not merely make dispatch registration compile.
-Later deliveries should record exact native paths and executed tests for their
-commands and background services before retiring the associated Node module.
+The [open platform checks](#open-platform-checks) track known remaining
+behavior differences. Package verification applies to the named artifact and
+platform in each milestone.
 
 ## Persistent state and lifecycle inventory
 
-The first modules retain `worker-identity.json` and `worker-credential.json`
-version 1, their existing property order/pretty JSON/newline, immutable identity,
-server-URL binding, explicit credential precedence and owner-only file modes.
-Malformed identity files are never silently replaced. A stored credential
-suppresses a pending enrollment code, as in the existing worker. No secrets are
-included in a derived Rust `Debug` implementation.
+The worker reopens the version-1 identity and credential records, including
+credential precedence, server binding, and owner-only Unix permissions.
+It preserves endpoint keys, routing handles, repository operation journals,
+inference admissions, History journals and receipts, deferred input, task and
+goal outcomes, managed runtime installations, and guest operation records.
+The respective owners above define how these records reopen or recover.
 
-The endpoint key record and authenticated grant/binding lifecycle now reopen and
-publish compatibly. The routing registry and scoped repository-operation journal reader/writer are
-native. Current-operation refresh, inspection, control and interactive amend recover
-existing operations. Reviewed merge/rebase/interactive-rebase/bisect previews and
-starts now publish new records, as do cherry-pick/revert and conflict-producing
-stash mutations. Operation creation from worktree mutations remains pending.
-Other state includes inference keeper
-journals, native history
-sources/archives/outboxes/cursors, native settings and goal deliveries,
-suspension/handoff journals, chat scratch/relocation and attachment stores,
-terminal/private canonical state, managed runtime installations and Cantrip OS
-operation/checkpoint/recovery journals. Inspect each owning constructor and its
-read/write/recovery call paths when porting; filenames alone are not a schema.
-No migration or cleanup of real profiles is authorized for test convenience.
-
-Startup currently initializes logs, reads configuration, verifies/probes Codex,
-prepares managed runtimes, constructs routing/history/execution/MCP/PTY/native
-services, enrolls/publishes heartbeat and connects command transport. It starts
-automation and periodic heartbeat only after the initial publication. Shutdown
-stops producers, closes services, retires native inference authority and drains
-logs before a fresh runtime can claim the same durable identity. Port ordering
-from the current `index.ts`, not from this abbreviated description.
+The runtime starts service owners and durable delivery actors, publishes the
+heartbeat, and opens the command connection after registration. Each cycle
+retires native execution authority, closes services, and drains logs on
+shutdown before it hands off durable state. See [startup and
+shutdown](../cantrip_worker_rs/src/runtime.rs) and the
+[control fixture](../scripts/worker-rust/control-smoke.mjs).
 
 ## Node runtime removal inventory
 
-| Current required component                                                | Replacement obligation                                                                                                                                                      |
-| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node worker with workspace dependencies                                   | Native worker executable; retire Node production launch/default/dependencies after parity                                                                                   |
-| Managed Cantrip/CUA MCP `.js` entry points                                | Native subcommands/helpers preserving stdio and authenticated HTTP tools and persisted command compatibility                                                                |
-| `node-pty`, headless xterm/serialization                                  | Native PTY and compatible canonical terminal model/replay                                                                                                                   |
-| `werift`, `ws` and Node transport adapters                                | Native WebRTC/WebSocket/ICE/TURN and existing framing/authority                                                                                                             |
-| Node screenshots/image/computer-use modules                               | Existing native CUA/interaction where applicable, plus native missing adapters                                                                                              |
-| Managed Playwright Node driver, browser HTML/readability helpers          | Native implementation of existing browser actions/snapshots/content semantics; Chromium remains a legitimate browser executable                                             |
-| Node MCP SDK and first-party broker/helper code                           | Native MCP implementation; user-configured external MCP remains supported                                                                                                   |
-| `@cantrip/os-host` Node orchestration                                     | Port worker-required host behavior; independent Python/guest/native tools retain their existing boundaries                                                                  |
-| Desktop profile converter using JS PGlite                                 | Verified native conversion of actual supported legacy formats, preserving export/restore and protected active-profile recovery; do not assume physical format compatibility |
-| `bundleNodeRuntime`, worker Docker launch, desktop `node_service_command` | Native artifact assembly, supervision, updater and launch integration; remove bundled Node after all first-party requirements are covered                                   |
+| Retired production dependency | Native replacement |
+| --- | --- |
+| Node worker, workspace dependencies, and desktop service launchers | Native worker binary, standalone and hosted distribution, and desktop supervision |
+| Cantrip MCP, CUA MCP, and the Node MCP SDK | Native worker subcommands and scoped stdio and HTTP brokers |
+| node-pty and headless xterm serialization | Native PTY, terminal state, and canonical replay |
+| ws and werift | Native WebSocket, WorkerLink, WebRTC, and direct transport |
+| Node capture and computer-use helpers | Native CUA, browser/desktop input, and native capture |
+| Playwright's Node driver and HTML helpers | Chromium controlled through CDP, native HTTP and document extraction |
+| Node Cantrip OS host and executor helpers | Rust host orchestration and native guest file and Run helpers, with the existing C process owner and Python bridge |
+| JavaScript PGlite desktop profile converter | Native legacy profile preparation, PostgreSQL compatibility tools, conversion, and rollback |
 
-Development Node tooling, client TypeScript, schema exporters/oracles and user
-projects/tools may remain. The native CUA QuickJS interface and JavaScript
-executed inside browsers are product scripting features, not a Node worker
-fallback. Audit managed-runtime manifests and actual spawned process trees before
-claiming runtime independence; do not relabel mandatory first-party code as a
-user-supplied dependency.
+See [current runtime dependencies](#current-runtime) and [execution evidence for the runtime dependency boundary](#366-verify-the-runtime-dependency-boundary).
 
 ## Delivery plan and progress
 
-Each coherent cycle starts from current origin/main and gets its own isolated
-worktree, branch, local checks, PR, observed squash auto-merge, Primary sync when
-clean and owned worktree/artifact cleanup. Do not stack dependent unmerged work.
-
-1. Configuration/identity foundation and baseline ledger — merged [#3164](https://github.com/ArcaneArts/Cantrip/pull/3164).
-2. Worker logging/lifecycle, native executable and initial control transport — merged [#3165](https://github.com/ArcaneArts/Cantrip/pull/3165); transport/execution adapters continue with their owning domains.
-3. Endpoint cryptography and protected persistence — primitives/key records merged in [#3166](https://github.com/ArcaneArts/Cantrip/pull/3166); authenticated grants in the current subcycle; protected domain/stream adapters follow.
-4. Files/workspace/project and repository foundations.
-5. Git/GitHub, sharing, attachments and related commands.
-6. Durable journals/history/projection and recovery.
-7. Providers/native runtime execution, queues/settings/tasks/goals.
-8. PTYs/terminals/run configurations/process supervision.
-9. WorkerLink/direct/tunnels/WebRTC.
-10. Browsers/surfaces/computer use/web runtimes.
-11. MCP/CLI/CodeGraph and remaining integrations.
-12. Cantrip OS host/executor behavior.
-13. Node-free profile conversion and upgrade integration.
-14. Native packaging/default cutover, runtime retirement and final acceptance.
-
-Split substantial areas into reviewable subcycles as implementation requires.
-No command or background subsystem is complete merely because a dependency was
-shared. The native executable now serves its implemented control commands;
-execution/history/crypto and other command domains, full logging/transport
-adapters, packaging/cutover and Node retirement remain unfinished.
+Each implementation cycle uses an isolated worktree and its own pull
+request with squash auto-merge. The chronological record below captures
+production behavior and validation at each milestone. The current ledger
+links to the relevant source and later evidence.
 
 The foundation cycle used branch `agent/manual/rust-worker-foundation` and merged
 in [#3164](https://github.com/ArcaneArts/Cantrip/pull/3164), commit `cce03f466`. Local
@@ -11925,3 +11799,20 @@ same order. The fixture verified a slotted button click, text replacement
 and clearing, and rejection of a covered button. Closed shadow controls
 and iframe controls received no references. The managed Chromium smoke
 and six focused web unit tests passed.
+
+## 383. Reconcile the runtime coverage ledger
+
+Reference commit `66deb60ad4d45025db2aa6c3b9109ab5e5c2bb7c` (#3546).
+
+The ledger now links current production owners to the underlying
+behavioral evidence. The command review matched all nine Run definition
+variants and six variants each for the Host and guest Run runtimes to their
+prefix dispatch and native handlers. The Cargo dependency tree confirmed
+that the worker builds independently of Core and the database stack.
+
+On macOS ARM64, both production binaries built offline. The
+[control fixture](../scripts/worker-rust/control-smoke.mjs) ran them
+with an empty PATH and Core in PGlite mode. It verified enrollment,
+heartbeat, credential rotation and reconnect, scoped grant rotation and
+revocation, same-process restart, standalone Chat scratch storage,
+live log replay and delivery, and clean stdin shutdown.
