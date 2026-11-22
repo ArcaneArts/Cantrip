@@ -57,6 +57,7 @@ mod perform;
 mod row;
 mod screen;
 mod term;
+mod width;
 
 pub use attrs::Color;
 pub use callbacks::Callbacks;

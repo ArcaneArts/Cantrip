@@ -11992,3 +11992,21 @@ snapshot matched the archived xterm.js 6.0 renderer for seven erases.
 A fresh xterm viewer also matched uninterrupted output after a later
 selective erase. All 32 parser tests, the parser documentation test,
 and the offline production worker check passed locally.
+
+## 394. Match xterm character widths during terminal reattachment
+
+Reference commit `020d726d6ceedffaaf4ed29ea9ff6f5a9e10c113` (#3557).
+
+The Rust parser uses the default xterm.js 6.0.0 width table used by
+the client and the archived Node worker. The parser and the stored
+cells use the same width, including single-column emoji, combining
+characters, and wide CJK characters. The native worker packager
+includes the xterm.js license for the width data.
+
+On macOS ARM64, the previous parser placed emoji one column too far
+in the tested lines. The new table matched every Unicode scalar width
+reported by the pinned xterm provider. Four xterm comparisons matched
+line contents, wraps, cursor position, and a later edit after replay.
+All 34 parser tests, the parser documentation test, and 14 existing
+packaging verification tests passed locally. The offline production
+worker check passed.

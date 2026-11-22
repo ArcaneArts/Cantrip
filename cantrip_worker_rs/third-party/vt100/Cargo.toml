@@ -12,9 +12,8 @@ readme = "README.md"
 keywords = ["terminal", "vt100"]
 categories = ["command-line-interface", "encoding"]
 license = "MIT"
-include = ["src/**/*", "LICENSE", "README.md", "CHANGELOG.md"]
+include = ["src/**/*", "LICENSE", "LICENSE.xterm", "README.md", "CHANGELOG.md"]
 
 [dependencies]
 itoa = "1.0.15"
-unicode-width = "0.2.1"
 vte = "0.15.0"

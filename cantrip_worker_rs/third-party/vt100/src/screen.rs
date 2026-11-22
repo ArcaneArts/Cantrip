@@ -1,5 +1,4 @@
 use crate::term::BufWrite as _;
-use unicode_width::UnicodeWidthChar as _;
 
 const MODE_APPLICATION_KEYPAD: u16 = 1 << 0;
 const MODE_APPLICATION_CURSOR: u16 = 1 << 1;
@@ -885,16 +884,10 @@ impl Screen {
             text_attrs.set_underline(true);
         }
 
-        let width = c.width();
-        if width.is_none() && (u32::from(c)) < 256 {
-            // don't even try to draw control characters
+        if c.is_control() {
             return 0;
         }
-        let width = width
-            .unwrap_or(1)
-            .try_into()
-            // width() can only return 0, 1, or 2
-            .unwrap();
+        let width = crate::width::columns(c);
 
         if width > size.cols {
             return 0;
@@ -1056,7 +1049,7 @@ impl Screen {
                     // wide character, so it must have the second half of the
                     // wide character after it.
                     .unwrap();
-                next_cell.set(' ', attrs);
+                next_cell.set(' ', attrs, false);
             }
 
             let cell = self
@@ -1067,7 +1060,7 @@ impl Screen {
                 // called col_wrap() immediately before this, which ensures
                 // that self.grid().pos().col has a valid value.
                 .unwrap();
-            cell.set(c, text_attrs);
+            cell.set(c, text_attrs, width == 2);
             self.grid_mut().col_inc(1);
             if width > 1 {
                 let pos = self.grid().pos();
