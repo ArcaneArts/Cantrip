@@ -11940,3 +11940,19 @@ the overlay that appeared on pointer entry. Playwright 1.62.1 waited for
 the overlay to clear and clicked the intended button. The updated worker
 matched Playwright. The local managed Chromium smoke and the offline
 production worker check passed.
+
+## 391. Report numeric form values in private browser snapshots
+
+Reference commit `126b88edc44e55fc20ea4c3716bc4e149b363bc7` (#3554).
+
+Chromium's accessibility tree reports native range and number inputs
+with numeric values and provides their formatted text separately.
+Private snapshots and element descriptions use that text so an agent
+can read back what it entered, including decimals and zero.
+
+On macOS ARM64 with Chromium 153.0.8010.12, the previous worker left
+the edited range and number values out of the control descriptions.
+Playwright 1.62.1 included the native form values in the page snapshot
+and individual control descriptions. The updated worker matched those
+values in the local managed Chromium smoke, including decimal and zero
+readback. The offline production worker check passed.
