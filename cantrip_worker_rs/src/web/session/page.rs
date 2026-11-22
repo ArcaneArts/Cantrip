@@ -9,6 +9,7 @@ use url::Url;
 const SELECTOR: &str = "a,button,input,textarea,select,[role=button],[tabindex]";
 const MAX_ELEMENTS: usize = 100;
 const MAX_SNAPSHOT: usize = 50_000;
+const ELEMENT_OBJECTS: &str = "cantrip-web-session-elements";
 
 pub(super) struct State {
     generation: u64,
@@ -153,31 +154,20 @@ async fn capture(page: &Page, loader: JsString) -> Result<Snapshot> {
             Some((node["backendDOMNodeId"].as_u64()?, node))
         })
         .collect();
-    let doc = page.request("DOM.getDocument", json!({"depth":0})).await?;
-    let nodes = page
-        .request(
-            "DOM.querySelectorAll",
-            json!({"nodeId":doc["root"]["nodeId"],"selector":SELECTOR}),
-        )
-        .await?;
     let mut snapshot = Snapshot {
         text: describe_tree(entries),
         elements: Vec::new(),
         nodes: HashMap::new(),
         loader,
     };
-    for node in nodes["nodeIds"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .take(MAX_ELEMENTS)
-    {
-        let element = page
-            .request("DOM.describeNode", json!({"nodeId":node}))
-            .await?;
-        let backend = element["node"]["backendNodeId"]
-            .as_u64()
-            .context("Chromium could not identify the interactive element.")?;
+    let nodes = interactive_nodes(page).await;
+    let _ = page
+        .request(
+            "Runtime.releaseObjectGroup",
+            json!({"objectGroup":ELEMENT_OBJECTS}),
+        )
+        .await;
+    for backend in nodes? {
         let description = labels.get(&backend).map_or_else(
             || JsString::from("interactive element"),
             |node| super::super::compact(&description(node), 500),
@@ -193,6 +183,67 @@ async fn capture(page: &Page, loader: JsString) -> Result<Snapshot> {
         "The page changed during its snapshot; take a fresh session snapshot."
     );
     Ok(snapshot)
+}
+
+async fn interactive_nodes(page: &Page) -> Result<Vec<u64>> {
+    let context = render::isolated_world(page).await?;
+    let expression = format!(
+        r#"(() => {{
+        const elements = [];
+        const pending = document.documentElement ? [document.documentElement] : [];
+        while (pending.length && elements.length < {MAX_ELEMENTS}) {{
+            const element = pending.pop();
+            if (element.matches({selector})) elements.push(element);
+            // Visit each host's light children before its open shadow children.
+            if (element.nextElementSibling) pending.push(element.nextElementSibling);
+            const shadowChild = element.shadowRoot?.firstElementChild;
+            if (shadowChild) pending.push(shadowChild);
+            if (element.firstElementChild) pending.push(element.firstElementChild);
+        }}
+        return elements;
+    }})()"#,
+        selector = json!(SELECTOR).stringify()
+    );
+    let result = page
+        .request(
+            "Runtime.evaluate",
+            json!({
+                "expression":expression,"contextId":context,"objectGroup":ELEMENT_OBJECTS,
+                "returnByValue":false,
+            }),
+        )
+        .await?;
+    let array = result["result"]["objectId"]
+        .as_js_string()
+        .context("Chromium did not return the interactive elements.")?;
+    let properties = page
+        .request(
+            "Runtime.getProperties",
+            json!({"objectId":array,"ownProperties":true}),
+        )
+        .await?;
+    let elements = properties["result"]
+        .as_array()
+        .context("Chromium did not report the interactive elements.")?;
+    let mut nodes = Vec::new();
+    for element in elements
+        .iter()
+        .filter(|property| property["name"] != "length")
+        .take(MAX_ELEMENTS)
+    {
+        let object = element["value"]["objectId"]
+            .as_js_string()
+            .context("Chromium could not resolve the interactive element.")?;
+        let described = page
+            .request("DOM.describeNode", json!({"objectId":object,"depth":0}))
+            .await?;
+        nodes.push(
+            described["node"]["backendNodeId"]
+                .as_u64()
+                .context("Chromium could not identify the interactive element.")?,
+        );
+    }
+    Ok(nodes)
 }
 
 fn description(node: &Value) -> String {
@@ -349,8 +400,18 @@ async fn click(page: &Page, node: u64) -> Result<()> {
         const top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
         if (left >= right || top >= bottom) return null;
         const x = (left + right) / 2, y = (top + bottom) / 2;
-        const hit = document.elementFromPoint(x,y);
-        return hit && this.contains(hit) ? {x,y} : null;
+        let hit = document.elementFromPoint(x,y);
+        while (hit?.shadowRoot) {
+            const root = hit.shadowRoot;
+            const inner = root.elementFromPoint(x,y);
+            if (!inner || !(root.contains(inner) || root.contains(inner.assignedSlot))) break;
+            hit = inner;
+        }
+        while (hit) {
+            if (hit === this) return {x,y};
+            hit = hit.assignedSlot ?? hit.parentElement ?? hit.getRootNode().host;
+        }
+        return null;
     }"#,
     )
     .await?;
@@ -378,7 +439,8 @@ async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
         const input = this instanceof HTMLInputElement && ['text','search','url','tel','email','password','number'].includes(this.type);
         if (!(input || this instanceof HTMLTextAreaElement || this.isContentEditable) || !this.getClientRects().length) return false;
         this.focus();
-        if (document.activeElement !== this && !this.contains(document.activeElement)) return false;
+        const active = this.getRootNode().activeElement;
+        if (active !== this && !this.contains(active)) return false;
         if (input || this instanceof HTMLTextAreaElement) this.select();
         else {
             const range = document.createRange();

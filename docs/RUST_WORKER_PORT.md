@@ -11906,3 +11906,22 @@ outcome and commit-retry boundary.
 Two macOS ARM64 `--taskGoalChildModel` runs passed with the production Rust
 worker and bundled Codex 0.166.0. The ordinary `--taskGoal` and
 `--taskPause` smokes passed with the same worker and runtime.
+
+## 382. Restore open shadow controls in private browser sessions
+
+Reference commit `e68b0e52bc2d71f5503be0b351afa4de0100531a` (#3545).
+
+The worker issues references for controls in the document and its nested
+open shadow roots in the order used by the previous Playwright selector.
+It retains the limit of 100 references and binds each reference to a
+Chromium node and the current document loader. Clicks check the target
+through open roots and slots. Fill verifies focus in the control's own
+document or shadow root.
+
+On macOS ARM64, Chromium 153.0.8010.12 exposed only the document button
+through the previous Rust worker. The updated service and the archived
+worker's Playwright 1.62.1 selector found the same five controls in the
+same order. The fixture verified a slotted button click, text replacement
+and clearing, and rejection of a covered button. Closed shadow controls
+and iframe controls received no references. The managed Chromium smoke
+and six focused web unit tests passed.
