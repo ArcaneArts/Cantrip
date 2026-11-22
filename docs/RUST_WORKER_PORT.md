@@ -11833,3 +11833,19 @@ the same nine valid inputs and three error cases. The fixture checked
 date clearing, color normalization, focus, ordered events, malformed
 dates, range clamping, and numeric input. The managed Chromium smoke
 and six focused web unit tests passed.
+
+## 385. Fill private browser fields through their labels
+
+Reference commit `db12d1975d4c5e5cbb2cb3213af908d234917109` (#3548).
+
+A focusable label reference fills the associated editable control.
+Clearing the field sends Delete and produces the browser's forward
+deletion event. With `submit`, Enter goes to the original reference,
+matching Playwright's fill followed by press.
+[Playwright fill and press](https://playwright.dev/docs/api/class-locator#locator-fill)
+
+On macOS ARM64, the previous worker rejected the focusable label.
+The native worker and Playwright 1.62.1 both filled a matching field,
+cleared it with the same event type, delivered Enter to the
+focusable label, and rejected a read-only associated field. The
+managed Chromium smoke passed, including the existing form submission.

@@ -440,29 +440,34 @@ async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
         page,
         node,
         r#"function (text) {
-        if (!this.isConnected || !this.getClientRects().length || this.readOnly ||
-            this.matches(':disabled,[aria-disabled="true"]')) return null;
-        const type = this instanceof HTMLInputElement ? this.type : null;
+        if (!this.isConnected || !this.getClientRects().length) return null;
+        // A focusable label child can represent its associated form control.
+        const interactive = this.isContentEditable || this.matches('a,[role=link],input,textarea,select') ||
+            this.closest('button,[role=button],[role=checkbox],[role=radio]');
+        const target = interactive ? this : (this.closest('label')?.control ?? this);
+        if (!target.isConnected || !target.getClientRects().length || target.readOnly ||
+            target.matches(':disabled,[aria-disabled="true"]')) return null;
+        const type = target instanceof HTMLInputElement ? target.type : null;
         const nativeValue = ['color','date','time','datetime-local','month','range','week'].includes(type);
         const textInput = ['text','search','url','tel','email','password','number'].includes(type);
-        const textarea = this instanceof HTMLTextAreaElement;
-        if (!(nativeValue || textInput || textarea || (type === null && this.isContentEditable))) return null;
+        const textarea = target instanceof HTMLTextAreaElement;
+        if (!(nativeValue || textInput || textarea || (type === null && target.isContentEditable))) return null;
         if (type === 'number' && Number.isNaN(Number(text.trim()))) return 'invalid-number';
-        this.focus();
-        const active = this.getRootNode().activeElement;
-        if (active !== this && !this.contains(active)) return null;
+        target.focus();
+        const active = target.getRootNode().activeElement;
+        if (active !== target && !target.contains(active)) return null;
         if (nativeValue) {
             const value = type === 'color' ? text.trim().toLowerCase() : text.trim();
-            this.value = value;
-            if (this.value !== value) return 'malformed';
-            this.dispatchEvent(new Event('input', {bubbles:true,composed:true}));
-            this.dispatchEvent(new Event('change', {bubbles:true}));
+            target.value = value;
+            if (target.value !== value) return 'malformed';
+            target.dispatchEvent(new Event('input', {bubbles:true,composed:true}));
+            target.dispatchEvent(new Event('change', {bubbles:true}));
             return 'set';
         }
-        if (textInput || textarea) this.select();
+        if (textInput || textarea) target.select();
         else {
             const range = document.createRange();
-            range.selectNodeContents(this);
+            range.selectNodeContents(target);
             const selection = getSelection();
             selection.removeAllRanges();
             selection.addRange(range);
@@ -476,7 +481,7 @@ async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
         Some("set") => {}
         Some("keyboard") => {
             if text.as_js_string().is_some_and(JsString::is_empty) {
-                key(page, "Backspace", 8).await?;
+                key(page, "Delete", 46).await?;
             } else {
                 page.request("Input.insertText", json!({"text":text}))
                     .await?;
@@ -487,6 +492,14 @@ async fn fill(page: &Page, node: u64, text: Value, submit: bool) -> Result<()> {
         _ => bail!("The web element is no longer editable."),
     }
     if submit {
+        let focused = call_dom(
+            page,
+            node,
+            "function () { if (!this.isConnected) return false; this.focus(); return true; }",
+            &[],
+        )
+        .await?;
+        ensure!(focused == true, "The web element is no longer available.");
         key(page, "Enter", 13).await?;
     }
     Ok(())

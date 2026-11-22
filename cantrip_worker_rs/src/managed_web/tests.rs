@@ -272,7 +272,16 @@ async fn rendered_read(manager: Arc<Manager>, data: &Path) -> Result<()> {
                                               </script>
                                             "#),
                                             "/session-native-values" => ("text/html", r#"<title>Native form controls</title><body>
+                                              <label for="city"><span role="group" tabindex="0" aria-label="linked field">Edit city</span></label>
+                                              <input id="city" aria-label="City value" value="Original city">
+                                              <label for="fixed"><span role="group" tabindex="0" aria-label="readonly field">Fixed value</span></label>
+                                              <input id="fixed" value="Fixed" readonly>
                                               <script>
+                                              const city = document.getElementById('city');
+                                              city.oninput = event => { document.title = 'City [' + city.value + '] ' + event.inputType; };
+                                              document.querySelector('[aria-label="linked field"]').onkeydown = event => {
+                                                if (event.key === 'Enter') document.title = 'Label Enter [' + city.value + ']';
+                                              };
                                               for (const kind of ['date','time','datetime-local','month','week','range','color','number']) {
                                                 const field = document.createElement('input');
                                                 field.type = kind;
@@ -648,7 +657,7 @@ async fn interactive_session(
         json!({"sessionId":id,"url":"http://page.example/session-native-values"}),
     )
     .await?;
-    let type_control = |kind: &str, text: &str| {
+    let type_control = |kind: &str, text: &str, submit: bool| {
         let description = format!("{kind} field");
         let text = text.to_owned();
         let call = &call;
@@ -666,11 +675,25 @@ async fn interactive_session(
                 .with_context(|| format!("Missing accessible reference to {description}."))?;
             call(
                 "web.session.type",
-                json!({"sessionId":id,"elementRef":control["ref"],"text":text}),
+                json!({"sessionId":id,"elementRef":control["ref"],"text":text,"submit":submit}),
             )
             .await
         }
     };
+    let linked = type_control("linked", "Montréal", false).await?;
+    assert_eq!(linked["data"]["title"], "City [Montréal] insertText");
+    let cleared = type_control("linked", "", false).await?;
+    assert_eq!(cleared["data"]["title"], "City [] deleteContentForward");
+    let submitted = type_control("linked", "Québec", true).await?;
+    assert_eq!(submitted["data"]["title"], "Label Enter [Québec]");
+    assert!(
+        type_control("readonly", "Replacement", false)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("no longer editable")
+    );
+
     for (kind, text, value) in [
         ("date", " 2026-11-22 ", "2026-11-22"),
         ("date", "", ""),
@@ -681,7 +704,7 @@ async fn interactive_session(
         ("range", "7", "7"),
         ("color", " #AABBCC ", "#aabbcc"),
     ] {
-        let typed = type_control(kind, text)
+        let typed = type_control(kind, text, false)
             .await
             .with_context(|| format!("Could not fill the {kind} control."))?;
         assert_eq!(
@@ -698,10 +721,10 @@ async fn interactive_session(
             "Cannot type text into input[type=number]",
         ),
     ] {
-        let error = type_control(kind, text).await.expect_err(expected);
+        let error = type_control(kind, text, false).await.expect_err(expected);
         assert!(error.to_string().contains(expected), "{error}");
     }
-    let typed = type_control("number", "-2.5").await?;
+    let typed = type_control("number", "-2.5", false).await?;
     assert_eq!(typed["data"]["title"], "number [-2.5] input true");
 
     let waiting = call(
