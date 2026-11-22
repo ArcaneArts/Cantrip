@@ -12110,3 +12110,19 @@ browser ready. The rebuilt worker activated a native tree with the Playwright
 driver and launcher removed. The local check verified the retained native
 executable and license references, staging cleanup, and orderly shutdown.
 The production worker build passed offline.
+
+## 400. Verify terminal command relay replay through Rust Core
+
+Reference commit `4dd9184305a3f467fbeb7a7c5d3ded098cdddbbc` (#3563).
+
+The Host terminal fixture now reconnects to the same PTY over Core's encrypted
+command relay before any resize. Live output contains a cursor query and text
+the shell overwrites. The reattached client receives the visible text before
+readiness, in the existing command relay envelope.
+
+The pre-fix worker reproduced the erased text in relay replay on macOS ARM64.
+The current production worker omitted the erased text and cursor query. The
+same run passed encrypted WorkerLink replay, real PTY resize, shell
+reattachment, and terminal-service recovery across worker restarts. The
+worker's executable search path contained only the fixture's native tools.
+The production worker build passed offline.
