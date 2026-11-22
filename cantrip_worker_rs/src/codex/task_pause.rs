@@ -3,6 +3,7 @@ use super::preparation::native::LoadedThread;
 use crate::metadata::Signal;
 use anyhow::{Result, bail};
 use cantrip_wire::{JsString, Value};
+use std::sync::Arc;
 use tokio::sync::{Mutex as AsyncMutex, watch};
 
 #[derive(Clone, Default)]
@@ -14,7 +15,7 @@ pub(in crate::codex) struct Desired {
 
 pub(in crate::codex) struct Latch {
     desired: watch::Sender<Desired>,
-    pub applied: AsyncMutex<Option<Applied>>,
+    pub applied: AsyncMutex<Option<Arc<Applied>>>,
 }
 
 pub(super) struct Applied {
@@ -133,7 +134,7 @@ fn same_placement(left: &Value, right: &Value) -> bool {
 pub(super) struct Root {
     pub runner: JsString,
     pub binding: Value,
-    pub latch: std::sync::Arc<Latch>,
+    pub latch: Arc<Latch>,
 }
 
 impl Root {

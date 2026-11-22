@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   decryptChatMessageProtectedContent,
   decryptTaskGoalObjective,
@@ -135,6 +136,27 @@ export function observeTaskGoal({
       const { runtimeFailure, ...rest } = context;
       await compare(projected, active.goal, { ...rest, chatStatus: "running" });
       assert.equal(modelCalls(), before);
+    },
+    async pausedExecution(nativeCycle, pausedAndIdleRevision) {
+      let projected;
+      const deadline = Date.now() + 5_000;
+      do {
+        projected = taskGoalWorkerResultSchema.parse(
+          await read({
+            observeExecution: true,
+            taskContext: { ...context, automationPaused: true, nativeCycle },
+          }),
+        );
+        if (projected.execution?.status === "idle") break;
+        await delay(25);
+      } while (Date.now() < deadline);
+      assert.deepEqual(projected.execution, {
+        threadId,
+        status: "idle",
+        ...(pausedAndIdleRevision === undefined
+          ? {}
+          : { pausedAndIdleRevision }),
+      });
     },
     async afterRestart() {
       const before = modelCalls();

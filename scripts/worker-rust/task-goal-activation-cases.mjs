@@ -28,6 +28,7 @@ import {
 
 export async function verifyTaskGoalActivation({
   verifyPause,
+  pauseObservationOnly,
   verifyTransferSource,
   verifyProviderHandoff,
   interruptProviderHandoff,
@@ -121,6 +122,54 @@ export async function verifyTaskGoalActivation({
   });
   let calls = modelCalls();
   await observer.beforeActivation();
+  if (pauseObservationOnly) {
+    const pausedCycle = {
+      cycleId: command.taskInferenceInput.dispatch.cycleId,
+      orderEpoch: command.taskInferenceInput.queueOrderEpoch ?? 0,
+    };
+    const pause = async (paused, revision) => {
+      const reply = await invoke({
+        type: "chat.pause.set",
+        chatId,
+        paused,
+        waitForBoundary: false,
+        task: {
+          workerId,
+          projectId: command.policyProjectId,
+          worktreeId,
+          threadId,
+          modelRouteId: command.taskInferenceInput.modelRouteId,
+          providerAccountId: command.taskInferenceInput.providerAccountId,
+          ...pausedCycle,
+          revision,
+        },
+      });
+      assert.equal(
+        reply.ok,
+        true,
+        JSON.stringify(reply) + "\n" + diagnostics(),
+      );
+      assert.deepEqual(reply.result, { paused, active: null });
+    };
+    await pause(true, 1);
+    await observer.pausedExecution(pausedCycle, 1);
+    await observer.pausedExecution({
+      ...pausedCycle,
+      orderEpoch: pausedCycle.orderEpoch + 1,
+    });
+    await pause(false, 2);
+    await observer.pausedExecution(pausedCycle);
+    await pause(true, 3);
+    await observer.pausedExecution(pausedCycle, 3);
+    await stop();
+    await start();
+    await observer.pausedExecution(pausedCycle);
+    assert.equal(modelCalls(), calls);
+    console.log(
+      "Observed the exact native idle pause revision and withheld proof for a different epoch, after Resume, and after restart.",
+    );
+    return;
+  }
   const reply = await invoke(activation);
   assert.equal(reply.ok, true, JSON.stringify(reply));
   const started = taskGoalWorkerResultSchema.parse(reply.result);

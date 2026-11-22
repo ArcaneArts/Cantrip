@@ -15,7 +15,26 @@ impl Goals {
             &rpc(&runtime, "thread/goal/get", json!({"threadId":thread})).await?,
         )?;
         let execution = if command["observeExecution"] == true {
-            Some(execution_status(&runtime, thread).await?)
+            let task = &command["taskContext"];
+            let paused = if task["automationPaused"] == true {
+                self.preparation.capture_task_pause(
+                    &bound,
+                    command["chatId"]
+                        .as_js_string()
+                        .context("Missing Goal chat.")?,
+                    thread,
+                    &runtime,
+                    &task["nativeCycle"],
+                )
+            } else {
+                None
+            };
+            let (status, native_idle) = execution_status(&runtime, thread).await?;
+            let mut observed = json!({"threadId":thread,"status":status});
+            if native_idle && let Some(revision) = paused.and_then(|current| current()) {
+                observed["pausedAndIdleRevision"] = json!(revision);
+            }
+            Some(observed)
         } else {
             None
         };
@@ -55,7 +74,7 @@ impl Goals {
         command: &Value,
         bound: &(JsString, Value),
         goal: Value,
-        execution: Option<&str>,
+        execution: Option<Value>,
     ) -> Result<Value> {
         if &self.encryption.bound_identity()? != bound {
             bail!("The worker binding changed during Goal observation.");
@@ -66,16 +85,16 @@ impl Goals {
                 bail!("The worker binding changed during Goal observation.");
             }
             let mut context = command["taskContext"].clone();
-            if let Some(status) = execution {
-                context["chatStatus"] = json!(status);
-                if status == "running" {
+            if let Some(observed) = &execution {
+                context["chatStatus"] = observed["status"].clone();
+                if observed["status"] == "running" {
                     context["runtimeFailure"] = Value::Null;
                 }
             }
             let mut projected =
                 projection::started(&binding.component.key, &scope, &current, &context, &goal)?;
-            if let Some(status) = execution {
-                projected["execution"] = json!({"threadId":command["threadId"],"status":status});
+            if let Some(observed) = execution {
+                projected["execution"] = observed;
             }
             self.assert_bound(&binding)?;
             checked("taskGoalWorkerResultSchema", &projected)
@@ -115,7 +134,7 @@ pub(super) fn target_thread(command: &Value) -> Result<&JsString> {
         .context("Missing Goal thread.")
 }
 
-async fn execution_status(runtime: &Runtime, thread: &JsString) -> Result<&'static str> {
+async fn execution_status(runtime: &Runtime, thread: &JsString) -> Result<(&'static str, bool)> {
     let snapshot = rpc(
         runtime,
         "thread/read",
@@ -127,9 +146,10 @@ async fn execution_status(runtime: &Runtime, thread: &JsString) -> Result<&'stat
         bail!("Native execution observation belongs to another thread.");
     }
     match observed["status"]["type"].as_str() {
-        Some("active") => Ok("running"),
-        Some("idle" | "notLoaded") => Ok("idle"),
-        Some("systemError") => Ok("failed"),
+        Some("active") => Ok(("running", false)),
+        Some("idle") => Ok(("idle", true)),
+        Some("notLoaded") => Ok(("idle", false)),
+        Some("systemError") => Ok(("failed", false)),
         _ => bail!("Native execution status could not be observed."),
     }
 }
