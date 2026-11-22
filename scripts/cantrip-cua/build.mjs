@@ -84,15 +84,14 @@ export async function bundleCantripCua(
   await cp(source, bundled);
   if (platform !== "win32") await chmod(bundled, 0o755);
   if (platform === "linux") {
-    const notices = path.join(destination, "licenses", "xkeysym");
-    await mkdir(notices, { recursive: true });
-    await cp(
-      new URL(
-        "../../cantrip_cua/licenses/xkeysym/LICENSE-MIT",
-        import.meta.url,
-      ),
-      path.join(notices, "LICENSE-MIT"),
-    );
+    for (const crate of ["xkeysym", "reis"]) {
+      const notices = path.join(destination, "licenses", crate);
+      await mkdir(notices, { recursive: true });
+      await cp(
+        new URL(`../../cantrip_cua/licenses/${crate}/LICENSE-MIT`, import.meta.url),
+        path.join(notices, "LICENSE-MIT"),
+      );
+    }
   }
   return bundled;
 }
