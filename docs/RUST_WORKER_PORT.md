@@ -11885,3 +11885,27 @@ ran with an empty PATH. The offline worker build and the upgrade smoke
 passed. This run used the native executable. The standalone packager
 rejected the cached Codex bundle because its patch digest differed from
 the pin. [Package verification for the current pin](#370-verify-the-current-pinned-codex-in-macos-packages)
+
+## 388. Verify the retained worker profile through the macOS package
+
+Reference commit `c85aa2bce079e196d10a888ede2f256d99a18112` (#3551).
+
+The native release build applied all 96 reviewed Codex patches and
+produced the four pinned Codex 0.166.0 executables on a temporary RAM disk.
+The canonical standalone and desktop resource packagers used that bundle
+and prebuilt debug versions of the Rust services and native helpers.
+The runtime hashes, versions, protocol, CUA helper, and first-party MCP
+startup checks passed during packaging.
+
+On macOS ARM64, the profile upgrade fixture launched the packaged worker
+through `start.sh` from a path with spaces and Unicode. Packaged Rust Core
+ran in PGlite mode. With empty executable search paths, the native services
+retained the legacy worker identity and credentials, reopened the scoped
+grant, and restored the archived scratch root, routing record, and exact
+file contents. The standalone service trees passed a Node-free contents check.
+
+The headless desktop supervisor launched the same native worker with
+PGlite and bundled PostgreSQL 18.6. Both modes preserved identity and
+settings across restart and reaped the native children after orderly
+shutdown and supervisor loss. The staged desktop resources also passed
+the Node-free contents check.
