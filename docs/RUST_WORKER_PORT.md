@@ -49,16 +49,16 @@ record the transition. The
 [hosted Linux ARM64 image check](#332-bound-hosted-worker-release-build-memory)
 covers the current Docker build, enrollment, and volume reuse.
 
+The native Windows x64 helper passed the interactive window and display input
+fixtures in a local Windows 11 guest.
+[Windows input and clipboard evidence](#362-verify-windows-window-and-display-input-in-the-local-guest)
+
 ### Open platform checks
 
 - macOS shared-window copy supports text and selection ranges exposed through
   Accessibility. Custom Copy handlers that only publish to the shared system
   pasteboard remain a compatibility gap.
   [macOS selection evidence](#358-copy-macos-text-from-a-selection-range-and-value)
-- The Windows interactive input and clipboard fixtures still need a passing
-  live run. The latest guest run reached the interactive fixtures and exposed
-  a foreground activation failure in the window fixture's setup.
-  [Windows fixture evidence](#359-run-the-windows-input-fixtures-in-the-local-qa-guest)
 - GNOME and KDE portal approval remains unverified. The local Wayland
   fallback delivered keyboard input through Linux uinput to a focused
   XWayland window.
@@ -11486,3 +11486,18 @@ rebuilt helper passed the framed Weston and controlled D-Bus fixture,
 including Greek key down/up, emoji, Latin-1, Return, and Tab. The fixture
 also passed its existing input, clipboard, approval, and revocation checks.
 Eight shared interaction tests passed on macOS ARM64.
+
+## 362. Verify Windows window and display input in the local guest
+
+Reference commit `122173ae0c7619a5309891db1d42e0e10a56b512` (#3525).
+
+The statically linked Windows x64 helper and process fixtures built offline.
+Both interactive fixtures ran from the signed-in Windows 11 x64 QA desktop
+in a headless QEMU guest. The real helper ran with an empty PATH.
+
+The window fixture passed selected-window capture beneath an overlapping
+window, directed agent clicks, viewer foreground activation and Unicode
+input, click rejection under a topmost window, and stale target rejection.
+The display fixture passed physical input, Unicode text and clipboard copy,
+held-key and button release, and handoff from display to window control.
+Both fixture processes exited successfully.
