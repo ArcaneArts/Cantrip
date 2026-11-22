@@ -453,9 +453,16 @@ impl Manager {
         let format = artifact["archiveFormat"].as_str().unwrap().to_owned();
         self.progress("extract", 0, expanded);
         let stop = self.stop.subscribe();
+        let component = self.component;
         tokio::task::spawn_blocking({
             let unpacked = unpacked.clone();
-            move || archive::unpack(&archive, &format, &unpacked, expanded, 4_000_000_000, stop)
+            move || {
+                archive::unpack(&archive, &format, &unpacked, expanded, 4_000_000_000, stop)?;
+                if component == Component::Chromium {
+                    launch::discard_playwright_tooling(&unpacked)?;
+                }
+                Ok::<(), anyhow::Error>(())
+            }
         })
         .await
         .map_err(|error| {

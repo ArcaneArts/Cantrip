@@ -16,7 +16,8 @@ The managed web runtime uses its own installed browser and worker-owned profile.
 User-created Browser tabs use a separate runtime path. The release and wire
 component retain the name `playwright` for existing profiles.
 
-The Rust worker can reopen the existing signed release. Once a Chromium-only
+The Rust worker verifies the existing signed release and drops the archived
+Playwright driver from newly installed runtime trees. Once a Chromium-only
 release is signed and published, operators can select it through
 `CANTRIP_MANAGED_RUNTIME_MANIFEST_URL`. Change the worker's default manifest URL
 after the new signed manifest is available.

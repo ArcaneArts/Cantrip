@@ -46,9 +46,10 @@ Browser JavaScript and the CUA scripting interface remain available.
 [CodeGraph installation evidence](#366-verify-the-runtime-dependency-boundary)
 
 The next managed Chromium archive keeps Playwright in build staging.
-The default still points to the available signed release until the
-replacement is published.
-[Managed browser packaging](#398-keep-the-playwright-driver-out-of-new-managed-browser-archives)
+New installs from the available signed release discard its archived
+Playwright tooling before activation.
+[Managed browser packaging](#398-keep-the-playwright-driver-out-of-new-managed-browser-archives) ·
+[Signed release installation](#399-install-the-current-signed-chromium-release-without-playwright-tooling)
 
 The [packaging cutover](#278-ship-the-rust-worker-in-cantrip-packages), the
 [Node worker archive](#286-archive-the-node-worker-as-a-compatibility-reference),
@@ -12089,3 +12090,23 @@ cache pointers, and Node launcher. The native worker probe launched the
 extracted Chromium 151.0.7922.34 with an empty PATH, checked accessibility
 and isolated browser contexts, and exited cleanly. All nine managed-runtime
 tooling tests passed locally.
+
+## 399. Install the current signed Chromium release without Playwright tooling
+
+Reference commit `bdf2d5ba5d288817cbc98c097717bf3b8829c537` (#3562).
+
+The installer verifies the release signature and archive digest, then
+extracts the archive into private staging. It drops the archived Playwright
+driver, smoke launcher, and downloader pointers before the Chromium health
+check. The staged license inventory and SBOM describe the installed payload,
+and the source manifest records the build provenance. Existing installed
+versions reopen through their current digest pointers. A reinstall uses
+the same staged installation path.
+
+A macOS ARM64 production Rust Core and worker ran locally against the default
+signed manifest with an empty worker PATH. The baseline and rebuilt workers
+installed version `2026.08.22.1` from the same archive digest and reported the
+browser ready. The rebuilt worker activated a native tree with the Playwright
+driver and launcher removed. The local check verified the retained native
+executable and license references, staging cleanup, and orderly shutdown.
+The production worker build passed offline.
