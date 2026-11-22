@@ -26,6 +26,7 @@ import {
   summarizeGithubCloneFailure,
   githubCloneFailureDetails,
 } from "../../tests/reference-node-worker/src/github.ts";
+import { WorkerRoutingRegistry } from "../../tests/reference-node-worker/src/routing-registry.ts";
 import { workerEventSchema } from "../../packages/protocol/dist/index.js";
 import { replicaProvisionFixture } from "./replica-provision-fixture.mjs";
 import { verifyReplicaLifecycle } from "./replica-lifecycle-compatibility-cases.mjs";
@@ -34,6 +35,7 @@ const { values } = parseArgs({
   options: {
     binary: { type: "string" },
     lifecycle: { type: "boolean", default: false },
+    "legacy-clone": { type: "boolean", default: false },
   },
 });
 assert.ok(values.binary, "Pass --binary replica-provision-fixture");
@@ -105,6 +107,12 @@ async function native(method, payload) {
 async function node(command) {
   const progress = [];
   try {
+    if (command.type === "project.clone") {
+      const value = await source().cloneRepository(
+        command.repository.nameWithOwner,
+      );
+      return { ok: true, value, progress };
+    }
     if (
       ["project.replica.synchronize", "project.replica.remove"].includes(
         command.type,
@@ -301,9 +309,18 @@ async function compare(
     normalizedProgress(expected, command),
     label,
   );
+  const trace = (buffer) =>
+    command.type === "project.clone"
+      ? buffer
+          .toString("utf8")
+          .replace(
+            /(?<=\.cantrip-provision-)[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/gu,
+            "<job-id>",
+          )
+      : buffer;
   assert.deepEqual(
-    actualTrace,
-    expectedTrace,
+    trace(actualTrace),
+    trace(expectedTrace),
     "exact gh/Git arguments/order " + label,
   );
   assert.deepEqual(
@@ -313,7 +330,7 @@ async function compare(
   );
   if (!batch) {
     assert.equal(actual.ok, ok, label);
-    if (ok)
+    if (ok && status !== null)
       assert.equal(
         actual.value.status,
         status,
@@ -350,7 +367,54 @@ async function checkout(target) {
   );
 }
 try {
-  if (values.lifecycle) {
+  if (values["legacy-clone"]) {
+    const legacy = {
+      type: "project.clone",
+      repository: { nameWithOwner: "fixture/repository" },
+    };
+    const fresh = await compare(legacy, { status: null });
+    assert.equal(fresh.value.reused, false);
+    const reused = await compare(legacy, { status: null });
+    assert.equal(reused.value.reused, true);
+    assert.equal(reused.value.path, fresh.value.path);
+    assert.equal(reused.value.updated, false);
+    assert.equal(reused.value.warning, null);
+    assert.equal(reused.value.worktreePolicy, "agent-managed");
+
+    const routed = await native("routed", { command: legacy });
+    assert.equal(routed.ok, true);
+    assert.deepEqual(routed.progress, []);
+    assert.match(routed.value.path, /^ctrr_[A-Za-z0-9_-]{43}$/u);
+    const registry = new WorkerRoutingRegistry(directory);
+    assert.deepEqual(
+      routed.value,
+      await registry.protectResult(legacy.type, reused.value),
+    );
+    assert.equal(
+      await registry.resolveToken(routed.value.path),
+      reused.value.path,
+    );
+
+    await writeFile(fixture.behavior, "fail");
+    const denied = {
+      ...legacy,
+      repository: { nameWithOwner: "fixture/direct" },
+    };
+    await compare(denied, { ok: false });
+    const rejected = await native("routed", { command: denied });
+    assert.deepEqual(rejected, {
+      ok: false,
+      error: "Protected repository operation failed on the worker.",
+      progress: [],
+    });
+    console.log(
+      JSON.stringify({
+        suite: "legacy-project-clone",
+        comparisons,
+        routed: true,
+      }),
+    );
+  } else if (values.lifecycle) {
     const coverage = await verifyReplicaLifecycle({
       root,
       fixture,

@@ -11763,3 +11763,27 @@ cells, widths, colors, cursor position, and wrap flags. All 30 parser
 tests and the documentation test passed. The production Rust worker
 passed its offline Cargo check. The comparison ran directly against the
 snapshot renderer.
+
+## 375. Handle the legacy project clone command in Rust
+
+Reference commit `1149f33acc2e5646d905528ae5724d1fbad46458` (#3538).
+
+`project.clone` remains in the shared worker command schema. Current Core
+uses `project.replica.provision` for its project setup operations. The
+Rust worker now also handles the older command through the same managed
+checkout queue, with system workspace storage and a worker-generated job ID.
+It returns the legacy clone fields, applies the existing routing privacy
+rules, and keeps the internal replica progress private.
+
+The previous Rust fixture rejected the command. On macOS ARM64, the
+updated fixture matched the archived Node worker for a fresh clone, reuse,
+and a failed clone against owned local Git repositories. The worker kept
+both the path and the error protected. The archived Node routing registry
+reopened the Rust-generated handle. The comparison matched Git arguments
+and order after normalizing the generated staging job ID, along with
+result fields and checkout state. The existing 46 provisioning cases and
+32 helper comparisons also passed. The production worker built offline
+and its version command ran with an empty PATH.
+
+Run the focused differential with
+`node --import tsx scripts/worker-rust/replica-provision-compatibility.mjs --legacy-clone --binary /absolute/path/to/replica-provision-fixture`.

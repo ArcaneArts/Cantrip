@@ -52,6 +52,33 @@ impl Manager {
         scope: &Scope,
         progress: &Progress<'_>,
     ) -> Result<Value> {
+        if command["type"] == "project.clone" {
+            let job = uuid::Uuid::new_v4().to_string();
+            let input = json!({
+                "jobId": job,
+                "attempt": 1,
+                "projectId": job,
+                "nameWithOwner": command["repository"]["nameWithOwner"],
+                "placement": json!({"mode": "managed"}),
+                "workspaceStorage": json!({"kind": "system"}),
+                "expectedRevision": Value::Null,
+            });
+            let provisioned = self.provision_queued(&input, scope, &|_| {}).await?;
+            if provisioned["status"] == "blocked" {
+                anyhow::bail!(
+                    "Repository provisioning failed with code {}.",
+                    provisioned["error"]["code"].as_str().unwrap()
+                );
+            }
+            return Ok(json!({
+                "path": provisioned["path"],
+                "displayPath": provisioned["displayPath"],
+                "reused": provisioned["reused"],
+                "updated": false,
+                "warning": Value::Null,
+                "worktreePolicy": provisioned["worktreePolicy"],
+            }));
+        }
         if matches!(
             command["type"].as_str(),
             Some("project.replica.synchronize" | "project.replica.remove")
@@ -130,6 +157,14 @@ impl Manager {
             "workspaceStorage":command.get("workspaceStorage").cloned().unwrap_or_else(||json!({"kind":"system"})),
             "expectedRevision":command["expectedRevision"],
         });
+        self.provision_queued(&input, scope, progress).await
+    }
+    async fn provision_queued(
+        &self,
+        input: &Value,
+        scope: &Scope,
+        progress: &Progress<'_>,
+    ) -> Result<Value> {
         let identity = input["nameWithOwner"]
             .as_js_string()
             .map(crate::github::repository_parts)
@@ -147,7 +182,7 @@ impl Manager {
         self.queued(
             queue_target,
             scope,
-            self.provision(&input, identity.as_deref(), scope, progress),
+            self.provision(input, identity.as_deref(), scope, progress),
         )
         .await
     }
