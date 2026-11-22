@@ -5,9 +5,36 @@ use cantrip_wire::{Value, parse_json_text, value::json};
 use std::{
     ffi::OsString,
     fs,
+    io::ErrorKind,
     path::{Path, PathBuf},
     time::Duration,
 };
+
+pub(super) fn discard_playwright_tooling(directory: &Path) -> Result<()> {
+    // The original signed release contains the JavaScript driver and build smoke.
+    if directory.join("node_modules").is_dir() {
+        for (file, field) in [
+            ("licenses/manifest.json", "packages"),
+            ("sbom.cdx.json", "components"),
+        ] {
+            let path = directory.join(file);
+            let mut manifest = parse_json_text(&storage::read_small(&path)?)
+                .map_err(|_| anyhow::anyhow!("Managed Chromium inventory is invalid."))?;
+            if let Value::Array(entries) = &mut manifest[field] {
+                entries.retain(|entry| entry["name"] != "playwright-core");
+                fs::write(path, manifest.stringify())?;
+            }
+        }
+    }
+    for path in ["node_modules", "launcher", "browsers/.links"] {
+        match fs::remove_dir_all(directory.join(path)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
 
 pub(super) fn inventory(
     directory: &Path,
