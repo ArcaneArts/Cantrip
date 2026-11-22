@@ -58,18 +58,24 @@ The native Windows x64 helper passed the interactive window and display input
 fixtures in a local Windows 11 guest.
 [Windows input and clipboard evidence](#362-verify-windows-window-and-display-input-in-the-local-guest)
 
+The native Wayland helper passed live GNOME remote-control consent, typing,
+clipboard copy, and capture. The local fallback delivered keyboard input
+through Linux uinput to a focused XWayland window.
+[Live portal evidence](#371-test-live-gnome-and-kde-portal-consent),
+[fallback input evidence](#338-verify-keyboard-delivery-to-a-focused-wayland-client),
+[portal closure evidence](#360-release-wayland-input-when-the-portal-closes),
+[portal disconnect evidence](#368-release-wayland-input-when-the-portal-disconnects)
+
 ### Open platform checks
 
 - macOS shared-window copy supports text and multiple selection ranges
   exposed through Accessibility. Custom Copy handlers that only publish to
   the shared system pasteboard remain a compatibility gap.
   [macOS selection evidence](#367-copy-noncontiguous-macos-text-selections)
-- GNOME and KDE portal approval remains unverified. The local Wayland
-  fallback delivered keyboard input through Linux uinput to a focused
-  XWayland window.
-  [Wayland input evidence](#338-verify-keyboard-delivery-to-a-focused-wayland-client),
-  [portal closure evidence](#360-release-wayland-input-when-the-portal-closes),
-  [portal disconnect evidence](#368-release-wayland-input-when-the-portal-disconnects)
+- KDE Plasma 6.8.1 passed live consent, plain lowercase input, clipboard
+  copy, and capture. Its Remote Desktop portal keysym path produced
+  incorrect modifier behavior for mixed-case text.
+  [KDE test evidence](#371-test-live-gnome-and-kde-portal-consent)
 
 ## Implementation record
 
@@ -10291,8 +10297,8 @@ input release, denial, a mismatched monitor, and cancellation. The eight
 participant tests and the screenshot crop test passed. The macOS ARM64
 worker and Windows x64 helper compile checks passed.
 
-Actual GNOME and KDE consent and input still need local runtime coverage.
-Wayland sessions that rely on the legacy system input tools remain in scope.
+See [cycle 371](#371-test-live-gnome-and-kde-portal-consent) for the live
+GNOME and KDE results.
 [Remote Desktop portal interface](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html).
 
 ## 306. Control a Wayland display through the host input tools
@@ -11657,3 +11663,31 @@ The headless desktop supervisor launched the packaged Rust services
 with an empty PATH in PGlite and bundled PostgreSQL modes. Both preserved
 settings and identity across restart, reaped both children on orderly
 shutdown, and recovered from supervisor loss.
+
+## 371. Test live GNOME and KDE portal consent
+
+Reference commit `48a01faee24647a0200119df1b5855351ec68565` (#3534).
+
+The current Linux ARM64 helper ran with an empty PATH in two local Fedora
+45 live guests. Both had one 1280 × 800 Wayland output and the stock
+Remote Desktop and Screenshot portals. The two guests used verified
+Fedora live images and temporary storage in memory.
+[Fedora Workstation](https://fedoraproject.org/workstation/download/) ·
+[Fedora KDE Plasma Desktop](https://fedoraproject.org/kde/download/)
+
+GNOME 51 waited for remote-control consent, then delivered `Cantrip45` to
+a GTK entry and copied the selected text back through the granted clipboard
+portal. The helper closed the input binding and returned a PNG after
+separate screenshot permission. A second input attempt shared the screen
+without granting keyboard and pointer control. The helper refused it
+with `permission-denied`.
+
+On KDE Plasma 6.8.1, the helper also waited for consent. The approved
+session delivered `cantrip45`, copied that exact text, closed the binding,
+and returned a PNG after separate screenshot permission. A mixed-case
+commit of `Cantrip45` returned `cAntrip45` in the focused GTK entry. In an
+earlier trial it returned `cANTRIP$%` and the shifted state affected the
+next keystrokes in Konsole. This is a remaining text-input failure on the
+tested portal and compositor versions.
+[KDE portal keyboard dispatch](https://github.com/KDE/xdg-desktop-portal-kde/blob/v6.8.1/src/waylandintegration.cpp#L335-L355) ·
+[KWin keysym modifier handling](https://github.com/KDE/kwin/blob/v6.8.1/src/backends/fakeinput/fakeinputbackend.cpp#L282-L335)
