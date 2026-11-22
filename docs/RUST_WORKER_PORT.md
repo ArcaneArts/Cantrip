@@ -11524,3 +11524,17 @@ The artifact contained no Node executable or modules. The packaged worker passed
 enrollment, heartbeat, credential rotation and revocation, restart, grant
 handling and SIGTERM shutdown against Rust Core in PGlite mode. A build with
 the newer Codex patch set remains to be exercised.
+
+## 364. Include the Wayland keysym license in Linux worker packages
+
+Reference commit `b44f1308c94c6eeb2a4b2bb6dc890df7dd3a69c1` (#3527).
+
+Linux packages carry the `xkeysym` MIT license alongside the native helper
+at `bin/licenses/xkeysym/LICENSE-MIT`. Hosted worker images copy this same
+standalone package. The file matches the `xkeysym` 0.2.1 crate archive
+verified against the helper's Cargo lockfile.
+
+The focused fixture reproduced the missing notice and then compared the
+Linux package's executable and license files with the inputs. It also
+checked the macOS and Windows package layouts. Seven helper build and
+desktop staging tests passed on macOS ARM64.
