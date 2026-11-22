@@ -790,12 +790,16 @@ fn is_secure_input(element: &Owned) -> bool {
 
 fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String>> {
     cancel.check()?;
+    let mut single_range_array = None;
     if let Ok(ranges) = element.attr("AXSelectedTextRanges")
         && ranges.is(unsafe { CFArrayGetTypeID() })
     {
         let count = unsafe { CFArrayGetCount(ranges.0) };
         if count > 1 {
             return selected_ranges_text(element, &ranges, count as usize, cancel);
+        }
+        if count == 1 {
+            single_range_array = Some(ranges);
         }
     }
     if let Ok(value) = element.attr("AXSelectedText")
@@ -830,11 +834,14 @@ fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String
         return Ok(Some(text));
     }
 
-    // Some controls only export a selection range and their text value.
-    // Confirm that the same range still applies after reading the value.
     let Some(selection) = selection else {
-        return Ok(None);
+        // The list attribute can be the only way to read a single selected range.
+        return match single_range_array {
+            Some(ranges) => selected_ranges_text(element, &ranges, 1, cancel),
+            None => Ok(None),
+        };
     };
+    // Confirm that the same range still applies after reading the text value.
     cancel.check()?;
     if let Ok(value) = element.attr("AXValue")
         && element

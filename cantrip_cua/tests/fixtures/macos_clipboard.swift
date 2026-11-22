@@ -3,6 +3,7 @@ import Foundation
 
 final class SelectionEditor: NSTextView {
     var hideDirectSelection = false
+    var selectionArrayOnly = false
     var attributedSelectionOnly = false
     var rangeAndValueOnly = false
     var moveSelectionOnValueRead = false
@@ -12,6 +13,14 @@ final class SelectionEditor: NSTextView {
 
     override func accessibilitySelectedText() -> String? {
         hideDirectSelection || rangeAndValueOnly ? nil : super.accessibilitySelectedText()
+    }
+
+    override func accessibilitySelectedTextRange() -> NSRange {
+        selectionArrayOnly ? NSRange(location: NSNotFound, length: 0) : super.accessibilitySelectedTextRange()
+    }
+
+    override func accessibilitySelectedTextRanges() -> [NSValue]? {
+        selectionArrayOnly ? selectedRanges : super.accessibilitySelectedTextRanges()
     }
 
     override func accessibilityString(for range: NSRange) -> String? {
@@ -162,6 +171,14 @@ struct ClipboardFixture {
                     case "empty":
                         app.editor = editor
                         editor.setSelectedRange(NSRange(location: 0, length: 0))
+                    case "one-range-array":
+                        editor.hideDirectSelection = true
+                        editor.selectionArrayOnly = true
+                        editor.setSelectedRange((editor.string as NSString).range(of: selection))
+                        let pasteboard = NSPasteboard.withUniqueName()
+                        defer { pasteboard.releaseGlobally() }
+                        precondition(editor.writeSelection(to: pasteboard, types: editor.writablePasteboardTypes))
+                        precondition(pasteboard.string(forType: .string) == selection)
                     case "custom-copy":
                         let content = selected.contentView!
                         customCopy.frame = content.bounds
