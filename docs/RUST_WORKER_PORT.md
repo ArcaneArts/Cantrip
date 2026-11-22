@@ -7798,8 +7798,8 @@ supplied by the fixture. It answers a Core command and reopens the existing
 grant. The fixture checks the exact persisted worker and principal identities,
 credential, endpoint keypair and accepted grant revisions.
 
-On macOS ARM64 the upgrade fixture passed in PGlite mode. Build the legacy
-worker with `pnpm --filter @cantrip/worker... build`, then run
+On macOS ARM64 the upgrade fixture passed in PGlite mode. Build the archived
+worker with `pnpm --filter @cantrip/worker-reference reference:build`, then run
 `node --import tsx scripts/worker-rust/profile-upgrade-smoke.mjs` with `--server`
 and `--worker` pointing to the Rust executables. Use `--cli` and `--codex` to
 select local helper binaries when they are outside the worker's normal layout.
@@ -11867,3 +11867,21 @@ the disabled button immediately. The updated worker and Playwright
 waited for the field to become editable. The local managed Chromium
 smoke also verified covered and read-only controls and a replaced
 element reference. The offline production worker check passed.
+
+## 387. Restore archived Chat scratch data through the worker upgrade
+
+Reference commit `c5e164cb358e357c863157502d89b7a4677152c7` (#3550).
+
+The [profile upgrade fixture](../scripts/worker-rust/profile-upgrade-smoke.mjs)
+now creates a standalone Chat through Core with the archived Node worker
+connected. It writes a Unicode marker under the provisioned scratch root,
+archives the Chat, and stops Node. The native worker reopens that profile
+and restores the Chat through Core. The fixture checks the original root
+identity, file contents, routing record, enrollment, and endpoint key.
+
+On macOS ARM64, the archived worker and the current Rust worker ran
+sequentially against Rust Core in PGlite mode. Core and the native worker
+ran with an empty PATH. The offline worker build and the upgrade smoke
+passed. This run used the native executable. The standalone packager
+rejected the cached Codex bundle because its patch digest differed from
+the pin. [Package verification for the current pin](#370-verify-the-current-pinned-codex-in-macos-packages)
