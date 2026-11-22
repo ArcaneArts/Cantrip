@@ -11833,3 +11833,27 @@ and disabled modes, alternate screens, resets, scrollback, and a
 retained viewer with an earlier newline setting. All 30 parser tests,
 the parser documentation test, and all three replay unit tests passed
 locally. The production Rust worker passed its offline Cargo check.
+
+## 378. Return the acknowledged idle Task pause revision
+
+Reference commit `c5dbe1b76b9f574af16624caf3fa92fb0709ba00` (#3541).
+
+When Core observes a paused Task Goal, the worker captures the acknowledged
+pause for the current cycle, order epoch, thread, and native runner before
+reading Codex lifecycle. The response carries `pausedAndIdleRevision` only
+if the loaded thread reports idle and the same acknowledged control still
+owns it. Core can then reconcile the pending result against its current
+managed input revision.
+
+On macOS ARM64, the baseline observed the real loaded Codex thread as idle
+and omitted the proof. The patched worker reported revisions 1 and 3 and
+withheld the proof for a changed epoch, after Resume, and after restart.
+The focused fixture used the native worker and Codex 0.166.0 with an isolated
+profile and a loopback fixture for Core and model responses. Both worker
+binaries were built offline from their respective sources.
+
+The broader Task Goal fixture reached its managed Goal-clear case on both
+builds. The case expected `cleared: true` and received `cleared: false` in
+the native receipt. This separate discrepancy remains open.
+
+Run `node --import tsx scripts/worker-rust/thread-ensure-smoke.mjs --taskPauseObservation --worker /absolute/path/to/cantrip-worker --codex /absolute/path/to/codex`.

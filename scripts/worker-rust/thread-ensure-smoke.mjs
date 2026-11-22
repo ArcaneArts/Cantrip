@@ -116,6 +116,7 @@ const { values } = parseArgs({
     taskGoalRestart: { type: "boolean" },
     taskGoalStop: { type: "boolean" },
     taskPause: { type: "boolean" },
+    taskPauseObservation: { type: "boolean" },
     chatGoal: { type: "boolean" },
     projectGoals: { type: "boolean" },
     autonomousGoal: { type: "boolean" },
@@ -139,6 +140,7 @@ const taskGoals =
   values.taskGoalInputWithdrawal ||
   taskGoalProviderHandoff ||
   values.taskPause ||
+  values.taskPauseObservation ||
   values.taskGoalCheckpoint ||
   values.taskGoalRestart ||
   values.taskGoalStop;
@@ -4058,6 +4060,7 @@ try {
             return verifyTaskGoalActivation({
               ...input,
               verifyPause: values.taskPause,
+              pauseObservationOnly: values.taskPauseObservation,
               verifyTransferSource:
                 values.taskGoalTransferSource ||
                 values.taskGoalCycleWithdrawal ||

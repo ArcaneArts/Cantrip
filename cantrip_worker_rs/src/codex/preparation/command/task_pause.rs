@@ -43,6 +43,13 @@ impl PauseTarget {
         Ok(())
     }
 
+    fn matches_applied(&self, applied: &Applied, intent: &Value) -> bool {
+        applied.intent == *intent
+            && applied.thread == self.thread
+            && applied.runner == self.root.runner
+            && applied.binding == self.root.binding
+    }
+
     pub(in crate::codex) fn same(&self, other: &Self) -> bool {
         self.thread == other.thread
             && self.root.runner == other.root.runner
@@ -144,6 +151,59 @@ impl Ensurer {
         Ok(())
     }
 
+    /// Capture the acknowledged control before reading native lifecycle.
+    /// A latch without a live, acknowledged native target proves no pause.
+    pub(in crate::codex) fn capture_task_pause<'a>(
+        &'a self,
+        bound: &'a (JsString, Value),
+        chat: &'a JsString,
+        thread: &JsString,
+        runtime: &Runtime,
+        cycle: &Value,
+    ) -> Option<impl FnOnce() -> Option<u64> + 'a> {
+        let key = (
+            bound.0.clone(),
+            bound.1.as_js_string()?.clone(),
+            chat.clone(),
+        );
+        let latch = self.0.task_pauses.lock().unwrap().get(&key)?.clone();
+        let intent = latch.current().intent?;
+        let scope = &intent["scope"];
+        if intent["paused"] != true
+            || !cycle.is_object()
+            || scope["cycleId"] != cycle["cycleId"]
+            || scope["orderEpoch"] != cycle["orderEpoch"]
+        {
+            return None;
+        }
+        let target = self.task_pause_target(bound, chat, scope)?;
+        if target.thread.id() != thread || target.runtime.generation() != runtime.generation() {
+            return None;
+        }
+        let revision = scope["revision"].as_u64()?;
+        let acknowledged = latch
+            .applied
+            .try_lock()
+            .ok()?
+            .as_ref()
+            .filter(|control| target.matches_applied(control, &intent))?
+            .clone();
+        let still_applied = move || {
+            let applied = latch.applied.try_lock().ok()?;
+            if !Arc::ptr_eq(applied.as_ref()?, &acknowledged) {
+                return None;
+            }
+            self.assert_bound(bound).ok()?;
+            let current = self.task_pause_target(bound, chat, &intent["scope"])?;
+            (current.same(&target)
+                && Arc::ptr_eq(&current.root.latch, &latch)
+                && latch.current().intent.as_ref() == Some(&intent))
+            .then_some(revision)
+        };
+        still_applied()?;
+        Some(still_applied)
+    }
+
     pub(super) async fn sync_task_pause(
         &self,
         bound: &(JsString, Value),
@@ -170,12 +230,10 @@ impl Ensurer {
                 thread,
                 root,
             } = &target;
-            if applied.as_ref().is_some_and(|last| {
-                last.intent == intent
-                    && last.thread == *thread
-                    && last.runner == root.runner
-                    && last.binding == root.binding
-            }) {
+            if applied
+                .as_ref()
+                .is_some_and(|last| target.matches_applied(last, &intent))
+            {
                 if latch.applied(&intent) {
                     return Ok(());
                 }
@@ -206,12 +264,12 @@ impl Ensurer {
                 adapter.set_chat_paused(chat, false)?;
             }
             current_root()?;
-            *applied = Some(Applied {
+            *applied = Some(Arc::new(Applied {
                 intent: intent.clone(),
                 thread: thread.clone(),
                 runner: root.runner.clone(),
                 binding: root.binding.clone(),
-            });
+            }));
             if latch.applied(&intent) {
                 return Ok(());
             }
