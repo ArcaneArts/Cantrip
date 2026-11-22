@@ -11891,3 +11891,18 @@ restart. The different-provider request failed before activation. The
 ordinary Task Goal smoke and the offline worker build passed.
 
 Run `node --import tsx scripts/worker-rust/thread-ensure-smoke.mjs --taskGoalChildModel --worker /absolute/path/to/cantrip-worker --codex /absolute/path/to/codex`.
+
+## 381. Verify inference uses the configured Task Goal child model
+
+Reference commit `99ede0842c78afe94cc8f1b82eb26c701c3327eb` (#3544).
+
+The local Task Goal fixture now has the parent delegate a turn to a real
+Codex child. The loopback provider verifies that the child sends
+`gpt-5-mini` with `low` reasoning, carries the parent turn ID, and has a
+distinct turn ID. The parent continues on `gpt-5`. The fixture services the
+parent's completion notification before checking the existing encrypted
+outcome and commit-retry boundary.
+
+Two macOS ARM64 `--taskGoalChildModel` runs passed with the production Rust
+worker and bundled Codex 0.166.0. The ordinary `--taskGoal` and
+`--taskPause` smokes passed with the same worker and runtime.

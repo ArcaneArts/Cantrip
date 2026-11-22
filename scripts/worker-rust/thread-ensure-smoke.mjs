@@ -242,7 +242,8 @@ async function responses(request, response, endpoint) {
   const body = await requestBody(request);
   assert.ok(
     body.model === "gpt-5" ||
-      (taskGoalProviderHandoff && body.model === "gpt-5-mini"),
+      ((taskGoalProviderHandoff || values.taskGoalChildModel) &&
+        body.model === "gpt-5-mini"),
     `Unexpected fixture model: ${body.model}`,
   );
   const number = ++providerCalls;
@@ -1029,17 +1030,25 @@ async function assertIdle(file) {
     await client.close();
   }
 }
-function untilProvider() {
+function untilProvider(matches = () => true) {
   const wait = new AbortController();
   const options = { signal: wait.signal };
+  const request = Promise.withResolvers();
+  const observe = (candidate) => {
+    if (matches(candidate)) request.resolve(candidate);
+  };
+  upstream.on("request", observe);
   return available(
     Promise.race([
-      once(upstream, "request", options).then(([request]) => request),
+      request.promise,
       once(upstream, "failure", options).then(([error]) => {
         throw error;
       }),
     ]),
-  ).finally(() => wait.abort());
+  ).finally(() => {
+    upstream.off("request", observe);
+    wait.abort();
+  });
 }
 
 function waitForFrame(predicate) {
@@ -4064,6 +4073,10 @@ try {
               verifyPause: values.taskPause,
               pauseObservationOnly: values.taskPauseObservation,
               verifyChildModel: values.taskGoalChildModel,
+              observeProvider: (listener) => {
+                upstream.on("request", listener);
+                return () => upstream.off("request", listener);
+              },
               verifyTransferSource:
                 values.taskGoalTransferSource ||
                 values.taskGoalCycleWithdrawal ||
