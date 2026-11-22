@@ -1,4 +1,5 @@
 //! Authenticated loopback relay for the shipped Cantrip CLI.
+mod browser;
 mod policy;
 mod run;
 mod server;
@@ -360,9 +361,7 @@ impl Handler {
             }
             "explorer.list" | "explorer.read" | "explorer.write" | "terminal.read"
             | "terminal.send" => surface::execute(&relay, &self.encryption, &request, id).await,
-            "browser.open" => {
-                anyhow::bail!("This protected CLI command is unavailable on the native worker.")
-            }
+            "browser.open" => browser::open(&relay, &self.encryption, &request, id).await,
             _ => relay.execute(request, id).await,
         }
     }

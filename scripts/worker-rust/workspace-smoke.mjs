@@ -91,6 +91,7 @@ const { values } = parseArgs({
     "binary-writes-only": { type: "boolean", default: false },
     "file-imports-only": { type: "boolean", default: false },
     "run-runtime-only": { type: "boolean", default: false },
+    "cli-browser-only": { type: "boolean", default: false },
   },
 });
 assert.ok(
@@ -780,6 +781,24 @@ try {
       "actual native checkout validation and durable import",
     );
     assert.equal(await readFile(sentinel, "utf8"), "private dirty content\n");
+    if (values["cli-browser-only"]) {
+      const { verifyHostCliBrowser } =
+        await import("./host-cli-browser-smoke.mjs");
+      await verifyHostCliBrowser({
+        cli: values.cli && path.resolve(values.cli),
+        call,
+        server,
+        projectId,
+        workerId,
+        workerDirectory,
+        checkout,
+        ownerId: repository.ownerId,
+        serverId: repository.serverId,
+        master,
+        surfaceKey,
+      });
+      break exercise;
+    }
     if (values["project-export-only"]) {
       await enableFixtureWorktrees();
       await verifyProjectExport({
@@ -1231,6 +1250,13 @@ try {
         editedLatestNativeChatTurn: true,
         compactedNativeChatAfterEdit: true,
         agentScheduledNativeCompaction: true,
+      }),
+    );
+  else if (values["cli-browser-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-native-cli-browser-worker-server",
+        passed: true,
       }),
     );
   else if (values["run-runtime-only"])
