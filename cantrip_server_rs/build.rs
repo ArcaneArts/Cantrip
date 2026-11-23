@@ -11,9 +11,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "windows" => {
             println!("cargo:rerun-if-changed=windows.rc");
             println!("cargo:rerun-if-changed=windows.manifest");
-            embed_resource::compile_for_everything("windows.rc", embed_resource::NONE)
-                .manifest_required()
-                .expect("embed Windows UTF-8 process manifest");
+            if env::var("TARGET")? == "x86_64-pc-windows-gnu" {
+                // embed-resource selects its backend from the build host.
+                // An MSVC host emits a .res file that MinGW cannot link.
+                let output = PathBuf::from(env::var_os("OUT_DIR").ok_or("missing OUT_DIR")?)
+                    .join("windows-manifest.o");
+                let compiler = if cfg!(windows) {
+                    "windres"
+                } else {
+                    "x86_64-w64-mingw32-windres"
+                };
+                let status = Command::new(compiler)
+                    .args([
+                        "--output-format=coff",
+                        "--target=pe-x86-64",
+                        "--input=windows.rc",
+                        "--output",
+                    ])
+                    .arg(&output)
+                    .status()?;
+                if !status.success() {
+                    return Err(format!("compile Windows UTF-8 process manifest: {status}").into());
+                }
+                println!("cargo:rustc-link-arg={}", output.display());
+            } else {
+                embed_resource::compile_for_everything("windows.rc", embed_resource::NONE)
+                    .manifest_required()
+                    .expect("embed Windows UTF-8 process manifest");
+            }
         }
         _ => {}
     }
