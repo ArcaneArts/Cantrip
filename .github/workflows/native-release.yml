@@ -134,6 +134,8 @@ jobs:
             cantrip-codex-rusty-v8-${{ matrix.target }}-
       - run: pnpm install --frozen-lockfile
       - name: Build Codex runtime
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
         run: pnpm codex:build
       - name: Save verified Codex runtime
         if: steps.codex-runtime-cache.outputs.cache-hit != 'true'
