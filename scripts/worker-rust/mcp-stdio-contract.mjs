@@ -182,10 +182,7 @@ async function generate() {
       ),
     ],
     [
-      new URL(
-        "../../cantrip_worker_rs/src/mcp/catalog.json.gz",
-        import.meta.url,
-      ),
+      new URL("../../cantrip_worker/src/mcp/catalog.json.gz", import.meta.url),
       {
         protocol: {
           latest: LATEST_PROTOCOL_VERSION,

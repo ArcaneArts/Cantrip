@@ -87,7 +87,7 @@ for (const [kind, scope] of [
       );
     }
 const destination = new URL(
-  "../../cantrip_server_rs/contracts/cli-target-queries.json",
+  "../../cantrip_server/contracts/cli-target-queries.json",
   import.meta.url,
 );
 const output = await format(JSON.stringify(entries), {

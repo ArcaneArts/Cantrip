@@ -83,7 +83,7 @@ export async function packageNativeWorker({
     await cp(
       path.join(
         root,
-        "cantrip_worker_rs",
+        "cantrip_worker",
         "third-party",
         "vt100",
         "LICENSE.xterm",

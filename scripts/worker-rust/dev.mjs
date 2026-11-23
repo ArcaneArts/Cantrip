@@ -106,15 +106,15 @@ for (const [signal, code] of [
 
 if (values.watch) {
   for (const [relative, recursive, filenames] of [
-    ["cantrip_worker_rs/src", true],
-    ["cantrip_worker_rs/third-party", true],
+    ["cantrip_worker/src", true],
+    ["cantrip_worker/third-party", true],
     [
-      "cantrip_worker_rs",
+      "cantrip_worker",
       false,
       new Set(["Cargo.toml", "build.rs", "windows.manifest", "windows.rc"]),
     ],
     ["crates", true],
-    ["cantrip_server_rs/third-party", true],
+    ["cantrip_server/third-party", true],
     ["cantrip_interaction/src", true],
     ["cantrip_interaction", false, new Set(["Cargo.toml"])],
     [".", false, new Set(["Cargo.toml", "Cargo.lock", "version.json"])],

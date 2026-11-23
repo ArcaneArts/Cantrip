@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import captureQuery from "../../cantrip_server_rs/contracts/run-capture-query.json" with { type: "json" };
+import captureQuery from "../../cantrip_server/contracts/run-capture-query.json" with { type: "json" };
 import {
   runConfigurationRuntimeStatusQuerySchema,
   runConfigurationRuntimeOutputQuerySchema,

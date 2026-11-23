@@ -27,7 +27,7 @@ const output =
   JSON.stringify({ list: captured[0].sql, get: captured[1].sql }, null, 2) +
   "\n";
 const target = new URL(
-  "../../cantrip_server_rs/contracts/task-read-queries.json",
+  "../../cantrip_server/contracts/task-read-queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write")) await writeFile(target, output);

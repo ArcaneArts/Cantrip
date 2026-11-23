@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import queries from "../../cantrip_server_rs/contracts/mcp-worktree-queries.json" with { type: "json" };
+import queries from "../../cantrip_server/contracts/mcp-worktree-queries.json" with { type: "json" };
 import {
   label,
   state as protectedState,

@@ -388,7 +388,7 @@ await prefix(
   ],
 );
 const destination = new URL(
-  "../../cantrip_server_rs/src/pane_layouts/queries.json",
+  "../../cantrip_server/src/pane_layouts/queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write"))

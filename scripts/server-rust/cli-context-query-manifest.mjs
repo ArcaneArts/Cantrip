@@ -36,7 +36,7 @@ await new ChatRuntimeContextRepository(
 );
 assert.equal(calls.length, 2);
 const destination = new URL(
-  "../../cantrip_server_rs/contracts/cli-context-queries.json",
+  "../../cantrip_server/contracts/cli-context-queries.json",
   import.meta.url,
 );
 const output = await format(

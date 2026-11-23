@@ -60,7 +60,7 @@ const build = spawn(
     "build",
     "--locked",
     "--manifest-path",
-    "cantrip_server_rs/Cargo.toml",
+    "cantrip_server/Cargo.toml",
     "--example",
     "coordinated-bridge-fixture",
   ],
@@ -75,7 +75,7 @@ await new Promise((resolve, reject) => {
   );
 });
 const executable = path.join(
-  env.CARGO_TARGET_DIR ?? path.join(repositoryRoot, "cantrip_server_rs/target"),
+  env.CARGO_TARGET_DIR ?? path.join(repositoryRoot, "cantrip_server/target"),
   env.CARGO_BUILD_TARGET,
   "debug/examples/coordinated-bridge-fixture" +
     (process.platform === "win32" ? ".exe" : ""),

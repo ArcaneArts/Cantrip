@@ -36,7 +36,7 @@ const reportPath =
 const queries = JSON.parse(
   await readFile(
     new URL(
-      "../../cantrip_server_rs/contracts/mcp-policy-queries.json",
+      "../../cantrip_server/contracts/mcp-policy-queries.json",
       import.meta.url,
     ),
     "utf8",

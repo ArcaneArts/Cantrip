@@ -44,7 +44,7 @@ assert.equal(
 assert.equal(typeof queries.replace, "string");
 const output = JSON.stringify(queries, null, 2) + "\n";
 const target = new URL(
-  "../../cantrip_server_rs/contracts/queued-prompt-queries.json",
+  "../../cantrip_server/contracts/queued-prompt-queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write")) await writeFile(target, output);

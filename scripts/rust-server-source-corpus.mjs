@@ -26,7 +26,7 @@ export async function readRustServerSources(root) {
     withFileTypes: true,
   });
   const roots = [
-    "cantrip_server_rs/src",
+    "cantrip_server/src",
     ...crates
       .filter((entry) => entry.isDirectory())
       .map((entry) => `crates/${entry.name}/src`),

@@ -27,7 +27,7 @@ const databaseMode = option("--database") ?? "pglite";
 const taskReadQueries = JSON.parse(
   await readFile(
     new URL(
-      "../../cantrip_server_rs/contracts/task-read-queries.json",
+      "../../cantrip_server/contracts/task-read-queries.json",
       import.meta.url,
     ),
     "utf8",

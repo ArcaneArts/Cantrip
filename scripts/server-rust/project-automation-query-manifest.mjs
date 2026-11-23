@@ -245,7 +245,7 @@ const queries = Object.fromEntries(
 globalThis.Date = realDate;
 const output = JSON.stringify({ queries }, null, 2) + "\n";
 const destination = new URL(
-  "../../cantrip_server_rs/src/project_automations/queries.json",
+  "../../cantrip_server/src/project_automations/queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write")) await writeFile(destination, output);

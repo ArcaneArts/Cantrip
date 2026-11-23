@@ -69,7 +69,7 @@ await writeFile(
 
 await writeFile(
   new URL(
-    "../../cantrip_worker_rs/src/codex/turn/task/model-output.json",
+    "../../cantrip_worker/src/codex/turn/task/model-output.json",
     import.meta.url,
   ),
   await format(

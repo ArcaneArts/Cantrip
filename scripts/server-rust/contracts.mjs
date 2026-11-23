@@ -2222,7 +2222,7 @@ if (
   const manifest = buildContractManifest();
   await writeFile(
     new URL(
-      "../../cantrip_server_rs/contracts/endpoint-providers.json",
+      "../../cantrip_server/contracts/endpoint-providers.json",
       import.meta.url,
     ),
     await format(
@@ -2454,7 +2454,7 @@ if (
   const bufferKeys = [];
   for (const key in Buffer.alloc(0)) bufferKeys.push(key);
   const bufferDestination = new URL(
-    "../../cantrip_server_rs/contracts/js-buffer-keys.json",
+    "../../cantrip_server/contracts/js-buffer-keys.json",
     import.meta.url,
   );
   await writeFile(

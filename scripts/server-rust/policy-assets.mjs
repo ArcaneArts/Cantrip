@@ -31,7 +31,7 @@ export const assets = {
 };
 if (process.argv.includes("--write")) {
   const target = new URL(
-    "../../cantrip_server_rs/contracts/policies.json",
+    "../../cantrip_server/contracts/policies.json",
     import.meta.url,
   );
   await writeFile(

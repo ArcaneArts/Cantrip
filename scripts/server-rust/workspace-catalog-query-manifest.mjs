@@ -75,7 +75,7 @@ for (const [key, input, method] of [
   );
 }
 const destination = new URL(
-  "../../cantrip_server_rs/src/projects/workspaces/queries.json",
+  "../../cantrip_server/src/projects/workspaces/queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write"))

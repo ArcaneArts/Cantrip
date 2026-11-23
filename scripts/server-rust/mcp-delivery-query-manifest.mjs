@@ -67,7 +67,7 @@ assert.equal(parameters.length, insert.params.length);
 const output =
   JSON.stringify({ insert: { sql: insert.sql, parameters } }, null, 2) + "\n";
 const target = new URL(
-  "../../cantrip_server_rs/contracts/mcp-delivery-queries.json",
+  "../../cantrip_server/contracts/mcp-delivery-queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write")) await writeFile(target, output);

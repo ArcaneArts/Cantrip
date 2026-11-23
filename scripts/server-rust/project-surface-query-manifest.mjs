@@ -226,7 +226,7 @@ await capture(
   [["view_source", [["replica", "worker", ".", "tree"]]]],
 );
 const destination = new URL(
-  "../../cantrip_server_rs/src/project_surfaces/queries.json",
+  "../../cantrip_server/src/project_surfaces/queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write"))
