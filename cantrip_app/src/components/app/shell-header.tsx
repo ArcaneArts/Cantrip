@@ -272,7 +272,7 @@ export function ShellHeader({
             navigateMobileSettingsBack(
               mobileSettingsSectionOpen,
               () => setMobileSettingsSectionOpen(false),
-              closeCompactProject,
+              () => setShowSettings(false),
             )
           }
           onSwitchAppMode={switchAppMode ?? undefined}

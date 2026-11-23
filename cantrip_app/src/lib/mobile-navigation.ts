@@ -20,19 +20,18 @@ export function projectSelectionAction({
 }): ProjectSelectionAction | null {
   if (preserveCurrentDestination) return null;
 
+  // The workspace filter only guides fallback, since the selected project
+  // belongs to this window and may still exist in another workspace.
+  if (projects.some(({ id }) => id === selectedProjectId)) return null;
+
   if (compact) {
-    if (
-      selectedProjectId === null ||
-      projects.some(({ id }) => id === selectedProjectId)
-    ) {
-      return null;
-    }
-    return { projectId: null, showImporter: false };
+    return selectedProjectId === null
+      ? null
+      : { projectId: null, showImporter: false };
   }
 
   if (projects.length === 0) {
     return { projectId: null, showImporter: true };
   }
-  if (visibleProjects.some(({ id }) => id === selectedProjectId)) return null;
   return { projectId: visibleProjects[0]?.id ?? null };
 }
