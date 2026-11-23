@@ -880,6 +880,18 @@ const modelAndGoalExports = [
   "usesWorkerModelCatalog",
 ].sort();
 
+const nativeWorkerExports = [
+  "codexExternalImportStatusRequestSchema",
+  "computerUseNativePreviewActionSchema",
+  "computerUseNativePreviewResultSchema",
+  "managedQueueNativeActionSchema",
+  "managedQueueNativeInputSchema",
+  "nativeQueueUserInputSchema",
+  "osRunCommandSchema",
+  "osRunPlanInputSchema",
+  "osRunPlanResponseSchema",
+];
+
 describe("protocol public surface compatibility", () => {
   it("advertises Task continuation contracts independently of legacy snapshots", () => {
     expect(
@@ -915,19 +927,24 @@ describe("protocol public surface compatibility", () => {
     expect(
       currentExportNames.filter((name) => modelAndGoalExports.includes(name)),
     ).toEqual(modelAndGoalExports);
+    expect(
+      currentExportNames.filter((name) => nativeWorkerExports.includes(name)),
+    ).toEqual(nativeWorkerExports);
     const allExportNames = currentExportNames.filter(
       (name) =>
         !modelAndGoalExports.includes(name) &&
         !endpointProviderExports.includes(name) &&
         !desktopIoExports.includes(name) &&
-        !taskSuspensionExports.includes(name),
+        !taskSuspensionExports.includes(name) &&
+        !nativeWorkerExports.includes(name),
     );
     expect(currentExportNames).toHaveLength(
       allExportNames.length +
         modelAndGoalExports.length +
         endpointProviderExports.length +
         desktopIoExports.length +
-        taskSuspensionExports.length,
+        taskSuspensionExports.length +
+        nativeWorkerExports.length,
     );
     expect(
       allExportNames.filter((name) => agentTaskExports.includes(name)),

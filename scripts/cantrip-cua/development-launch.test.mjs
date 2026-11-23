@@ -60,12 +60,6 @@ test("explicit development executable overrides remain exact", () => {
 
 test("browser, direct-worker, and desktop development use the shared projection", async () => {
   const root = fileURLToPath(new URL("../../", import.meta.url));
-  const worker = JSON.parse(
-    await readFile(
-      path.join(root, "tests/reference-node-worker/package.json"),
-      "utf8",
-    ),
-  );
   const repository = JSON.parse(
     await readFile(path.join(root, "package.json"), "utf8"),
   );
@@ -74,11 +68,6 @@ test("browser, direct-worker, and desktop development use the shared projection"
     path.join(root, "scripts/worker-rust/dev.mjs"),
     "utf8",
   );
-  assert.equal(
-    worker.scripts.dev,
-    "node ../scripts/worker-rust/dev.mjs --watch",
-  );
-  assert.equal(worker.scripts.start, "node ../scripts/worker-rust/dev.mjs");
   assert.equal(
     repository.scripts["worker:dev"],
     "node scripts/worker-rust/dev.mjs --watch",
