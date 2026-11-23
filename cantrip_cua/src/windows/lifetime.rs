@@ -189,10 +189,10 @@ impl Hook {
 
 impl Drop for Hook {
     fn drop(&mut self) {
-        if unsafe { PostThreadMessageW(self.thread_id, WM_QUIT, 0, 0) } != 0 {
-            if let Some(thread) = self.thread.take() {
-                let _ = thread.join();
-            }
+        if unsafe { PostThreadMessageW(self.thread_id, WM_QUIT, 0, 0) } != 0
+            && let Some(thread) = self.thread.take()
+        {
+            let _ = thread.join();
         }
     }
 }
