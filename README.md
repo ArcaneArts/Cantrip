@@ -466,7 +466,7 @@ development stacks and artifacts in more detail.
 | `pnpm package:app`             | Native Tauri installer or application bundle.                                                    |
 | `pnpm bundle`                  | Current-platform server, worker, and embedded desktop release artifacts.                         |
 | `pnpm package:all`             | Alias for `pnpm bundle`.                                                                         |
-| `pnpm release`                 | Promote `release`, trigger native/App Platform releases, and deploy the production Linux Server. |
+| `pnpm release`                 | Promote `release` and start native publication and production deployments. |
 
 ## Browser development with `pnpm dev`
 
@@ -719,10 +719,10 @@ the TestFlight upload, and the static `latest.json` manifest have completed.
 Release packaging runs only when that branch advances, uses
 content-addressed caches for the pinned Codex runtime, and
 tags releases with the repository's `major.minor.commit-count` version. The
-command never force-pushes a divergent release branch. The same invocation
-validates and reapplies the DigitalOcean App Platform specification without
-waiting for activation, then cross-builds and deploys the same commit's Linux
-x64 Server to the production host. See
+command never force-pushes a divergent release branch. The release workflow
+also builds and publishes a Linux x64 Rust Server archive and installs that
+same archive on Winterhold. DigitalOcean App Platform builds both browser
+sites from the promoted branch, and the workflow checks both live revisions. See
 [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for the artifact flow, environment
 contract, desktop lifecycle, and current security boundary.
 

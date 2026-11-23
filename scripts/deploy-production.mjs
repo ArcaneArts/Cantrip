@@ -1,5 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -377,7 +384,9 @@ function sshOptions(keyPath) {
     "-o",
     "IdentitiesOnly=yes",
     "-o",
-    "StrictHostKeyChecking=accept-new",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    `UserKnownHostsFile=${path.join(scriptRoot, "deploy", "production", "known_hosts")}`,
     "-o",
     "ConnectTimeout=15",
   ];
@@ -449,9 +458,14 @@ export function productionServerBuildArguments(
   ];
 }
 
-function buildServerBundle(config, temporaryDirectory, versionPatch, root) {
+function buildServerBundle(
+  config,
+  temporaryDirectory,
+  artifactPath,
+  versionPatch,
+  root,
+) {
   const outputDirectory = path.join(temporaryDirectory, "server");
-  const artifactPath = path.join(temporaryDirectory, "cantrip-server.tar.gz");
   console.log(`Building the production server bundle for ${config.platform}…`);
   command(
     "docker",
@@ -459,7 +473,19 @@ function buildServerBundle(config, temporaryDirectory, versionPatch, root) {
     { cwd: root, inherit: true },
   );
   createProductionServerArchive(outputDirectory, artifactPath);
-  return artifactPath;
+}
+
+export async function buildProductionArchive(root, artifactPath) {
+  const config = await loadDeploymentConfig(root);
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-production-build-"),
+  );
+  try {
+    const versionPatch = git(root, ["rev-list", "--count", "HEAD"]);
+    buildServerBundle(config, directory, artifactPath, versionPatch, root);
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
 }
 
 export function createProductionServerArchive(outputDirectory, artifactPath) {
@@ -521,7 +547,7 @@ function uploadAndInstall(
   }
 }
 
-async function waitForPublicEndpoint(url, label) {
+async function waitForPublicEndpoint(url, label, accepts = () => true) {
   let lastStatus = "no response";
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
@@ -530,7 +556,10 @@ async function waitForPublicEndpoint(url, label) {
         signal: AbortSignal.timeout(5_000),
       });
       lastStatus = `HTTP ${response.status}`;
-      if (response.ok) return;
+      if (response.ok) {
+        if (await accepts(response)) return;
+        lastStatus += " with an unexpected response";
+      }
     } catch (error) {
       lastStatus = error instanceof Error ? error.message : String(error);
     }
@@ -576,9 +605,10 @@ export async function deployProduction({
   commit,
   preparedSecrets,
   serverRuntime,
+  artifact,
 } = {}) {
   return withProductionSource({ root, commit }, (source) =>
-    deployProductionSource(source, preparedSecrets, serverRuntime),
+    deployProductionSource(source, preparedSecrets, serverRuntime, artifact),
   );
 }
 
@@ -586,6 +616,7 @@ async function deployProductionSource(
   { root, commit, versionPatch },
   preparedSecrets,
   serverRuntime,
+  artifact,
 ) {
   const config = validateDeploymentConfig({
     ...(await loadDeploymentConfig(root)),
@@ -606,12 +637,16 @@ async function deployProductionSource(
       { mode: 0o600 },
     );
     await chmod(keyPath, 0o600);
-    const artifactPath = buildServerBundle(
-      config,
-      temporaryDirectory,
-      versionPatch,
-      root,
-    );
+    const artifactPath = path.join(temporaryDirectory, "cantrip-server.tar.gz");
+    if (artifact) await copyFile(artifact, artifactPath);
+    else
+      buildServerBundle(
+        config,
+        temporaryDirectory,
+        artifactPath,
+        versionPatch,
+        root,
+      );
     uploadAndInstall(
       config,
       keyPath,
@@ -623,6 +658,19 @@ async function deployProductionSource(
     await waitForPublicEndpoint(
       `https://${config.apiDomain}/readyz`,
       "Cantrip API",
+    );
+    runSsh(
+      config,
+      keyPath,
+      `set -eu; pid=$(systemctl show --property=MainPID --value cantrip-server.service); test "$(readlink -f "/proc/$pid/exe")" = /opt/cantrip/releases/${commit}/bin/cantrip-server`,
+    );
+    await waitForPublicEndpoint(
+      `https://${config.apiDomain}/api/bootstrap`,
+      "Cantrip release version",
+      async (response) => {
+        const { server } = await response.json();
+        return String(server?.version?.patch) === versionPatch;
+      },
     );
   } finally {
     await rm(temporaryDirectory, { force: true, recursive: true });
@@ -639,12 +687,22 @@ const isMain =
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const { values } = parseArgs({
-    options: { "server-runtime": { type: "string" } },
-  });
-  deployProduction({ serverRuntime: values["server-runtime"] }).catch(
-    (error) => {
-      console.error(error instanceof Error ? error.message : error);
-      process.exitCode = 1;
+    options: {
+      "server-runtime": { type: "string" },
+      "build-archive": { type: "string" },
+      artifact: { type: "string" },
+      commit: { type: "string" },
     },
-  );
+  });
+  const operation = values["build-archive"]
+    ? buildProductionArchive(scriptRoot, path.resolve(values["build-archive"]))
+    : deployProduction({
+        serverRuntime: values["server-runtime"],
+        artifact: values.artifact ? path.resolve(values.artifact) : undefined,
+        commit: values.commit,
+      });
+  operation.catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
 }

@@ -73,6 +73,45 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  linux_server:
+    name: Server (linux-x64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and smoke-test the Winterhold distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/deploy-production.mjs --build-archive "$RUNNER_TEMP/cantrip-server-linux-x64.tar.gz"
+          smoke="$(mktemp -d)"
+          trap 'rm -rf -- "$smoke"' EXIT
+          tar -xzf "$RUNNER_TEMP/cantrip-server-linux-x64.tar.gz" -C "$smoke"
+          "$smoke/migrate.sh" --database pglite --data-dir "$smoke/profile"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-server-linux-x64
+          path: ${{ runner.temp }}/cantrip-server-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  web:
+    name: Verify DigitalOcean browser deployment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/verify-hosted-web-release.mjs "$GITHUB_SHA"
+
   worker:
     name: Worker (${{ matrix.target }})
     timeout-minutes: 240
@@ -660,7 +699,7 @@ jobs:
 
   release:
     name: Publish GitHub release
-    needs: [server, worker, client, android, ios]
+    needs: [server, linux_server, worker, client, android, ios]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
@@ -728,3 +767,35 @@ jobs:
           if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true" ]; then
             gh release edit "$tag" --draft=false
           fi
+
+  winterhold:
+    name: Deploy Rust server to Winterhold
+    needs: [release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --global @infisical/cli@0.43.109
+      - uses: actions/download-artifact@v4
+        with:
+          name: cantrip-server-linux-x64
+          path: ${{ runner.temp }}/winterhold
+      - name: Install and verify the exact release on Winterhold
+        shell: bash
+        env:
+          INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
+        run: |
+          set -euo pipefail
+          release_head="$(git ls-remote origin refs/heads/release | cut -f1)"
+          if [ "$GITHUB_SHA" != "$release_head" ]; then
+            echo "A newer commit is on release. Skipping this Winterhold installation."
+            exit 0
+          fi
+          node scripts/deploy-production.mjs --commit "$GITHUB_SHA" --artifact "$RUNNER_TEMP/winterhold/cantrip-server-linux-x64.tar.gz"

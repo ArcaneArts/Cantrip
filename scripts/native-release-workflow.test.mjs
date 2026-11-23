@@ -24,6 +24,26 @@ test("publishes native releases only when the release branch advances", async ()
   assert.match(workflow, /blacksmith-8vcpu-windows-2025/u);
 });
 
+test("deploys the published Linux archive and verifies both browser origins", async () => {
+  const workflow = await readWorkflow();
+  assert.match(
+    workflow,
+    /--build-archive "\$RUNNER_TEMP\/cantrip-server-linux-x64\.tar\.gz"/u,
+  );
+  assert.match(
+    workflow,
+    /--commit "\$GITHUB_SHA" --artifact "\$RUNNER_TEMP\/winterhold\/cantrip-server-linux-x64\.tar\.gz"/u,
+  );
+  assert.match(
+    workflow,
+    /^ {2}winterhold:\n[\s\S]*?needs: \[release\][\s\S]*?environment: production/mu,
+  );
+  assert.match(
+    workflow,
+    /node scripts\/verify-hosted-web-release\.mjs "\$GITHUB_SHA"/u,
+  );
+});
+
 test("shortens oversized release notes and preserves the full comparison", async (t) => {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "cantrip-release-notes-"),
@@ -135,7 +155,10 @@ test("builds mobile releases in parallel and gates publication on them", async (
   );
   assert.doesNotMatch(androidJob, /^ {4}needs:/mu);
   assert.doesNotMatch(iosJob, /^ {4}needs:/mu);
-  assert.match(workflow, /needs: \[server, worker, client, android, ios\]/u);
+  assert.match(
+    workflow,
+    /needs: \[server, linux_server, worker, client, android, ios\]/u,
+  );
 });
 
 test("publishes signed Android artifacts and uploads iOS to TestFlight", async () => {
