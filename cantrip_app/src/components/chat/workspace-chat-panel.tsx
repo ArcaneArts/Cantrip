@@ -33,7 +33,7 @@ export function WorkspaceChatPanel({
         incomingChatView={incoming}
         capabilities={IDE_CHAT_SURFACE_CAPABILITIES}
         chat={chat}
-        onConfigureModels={() => bindings.openCompactRootSettings("models")}
+        onConfigureModels={() => bindings.openRootSettings("models")}
         githubEnabled={bindings.selectedProject?.capabilities.github ?? false}
         inspectOnly={chat.experience === "task"}
         inspectOpen={bindings.agentInspectOpenChats?.has(chat.id) ?? false}

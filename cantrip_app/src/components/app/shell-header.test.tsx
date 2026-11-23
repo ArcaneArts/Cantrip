@@ -279,6 +279,24 @@ describe("mobile settings back navigation", () => {
     expect(exitSettings).not.toHaveBeenCalled();
   });
 
+  it("closes compact Settings at the root without closing the active project", () => {
+    const setShowSettings = vi.fn();
+    const closeCompactProject = vi.fn();
+    const header = ShellHeader({
+      bindings: {
+        appMode: "ide",
+        compactShell: true,
+        showSettings: true,
+        mobileSettingsSectionOpen: false,
+        setShowSettings,
+        closeCompactProject,
+      },
+    });
+    header.props.children[0].props.onBack();
+    expect(setShowSettings).toHaveBeenCalledExactlyOnceWith(false);
+    expect(closeCompactProject).not.toHaveBeenCalled();
+  });
+
   it("exits normally from the settings root", () => {
     const returnToRoot = vi.fn();
     const exitSettings = vi.fn();

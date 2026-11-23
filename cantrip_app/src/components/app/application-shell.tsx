@@ -1928,7 +1928,7 @@ export function App() {
 
   const {
     closeCompactProject,
-    openCompactRootSettings,
+    openRootSettings,
     openServerAdmin,
     returnToCompactProjectOverview: returnToLegacyCompactProjectOverview,
     revealWorkspace,
@@ -2242,7 +2242,7 @@ export function App() {
     narrowViewport, newBrowser, newChat, newCodeTab, newExplorer,
     newRemoteDesktop, newStandaloneChat, newTask, newTerminal,
     onlineWorker, onlineWorkerIds, openChatConsole, openChatExplorerHere, openChatFileLink,
-    openChatHistoryHere, openChatTerminalHere, openCompactRootSettings, openCreatedProject, openCreatedTab,
+    openChatHistoryHere, openChatTerminalHere, openRootSettings, openCreatedProject, openCreatedTab,
     openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, openProjectNavigatorSurface, openProjectToolSection, openRunTerminal, ownedTerminals,
     openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFileAs, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarRootNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,

@@ -1074,12 +1074,7 @@ export function createShellNavigationCommands({
     setShowServerAdmin(false);
     setShowProjectSettings(false);
   };
-  const openCompactRootSettings = (section: SettingsSection = "general") => {
-    if (compactShell) {
-      setSelectedProjectId(null);
-      setWorkspaceSelection(emptyWorkspaceSelection());
-      setPendingSurfaceSelection(null);
-    }
+  const openRootSettings = (section: SettingsSection = "general") => {
     setSettingsSection(section);
     setShowSettings(true);
     setShowArchivedStandaloneChats(false);
@@ -1104,7 +1099,7 @@ export function createShellNavigationCommands({
 
   return {
     closeCompactProject,
-    openCompactRootSettings,
+    openRootSettings,
     openServerAdmin,
     returnToCompactProjectOverview,
     revealWorkspace,
