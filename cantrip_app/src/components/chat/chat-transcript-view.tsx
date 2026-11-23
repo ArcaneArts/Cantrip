@@ -616,7 +616,7 @@ export function ChatTranscriptView({
           {chat.automationPaused && !suspensionView ? (
             <div
               role="status"
-              className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
+              className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-50/90 px-3 py-2 text-xs text-amber-800 backdrop-blur-md dark:bg-amber-950/90 dark:text-amber-200"
             >
               <Pause className="size-3.5 shrink-0" />
               <span>
