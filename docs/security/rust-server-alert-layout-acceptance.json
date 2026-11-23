@@ -1,0 +1,1282 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "f09d444c8b35d72fa33f7dd09f3177881f2ab011",
+  "scope": "Current macOS arm64 domain qualification. Alerts: actual HTTP, real worker enrollment/credentials, real App Live, and production repositories with SQL-seeded resources; controlled fixture envelopes, not full worker/UI/client decryption. Layouts: actual paired repositories with preserved transaction/failure assertions. Final supported-platform and full replacement acceptance remain separate.",
+  "artifact": {
+    "version": "1.1.2789",
+    "runtime": "rust",
+    "serverRequiresNode": false,
+    "binarySha256": "e8cb667505b1c5b4833cd702862bd0f56afc62682fbb0d7e9a51a1a10e79677f",
+    "binaryBytes": 93622544,
+    "databaseAssets": "qa/database-assets-v2",
+    "postgresBin": "qa/database-assets-v2/postgres/Cellar/postgresql@18/18.6/bin",
+    "metadataCorrection": "The fixed-package-v3.json build receipt recorded database-assets-v1 before complete runtime asset staging; successful bundled/external v7 and production source v2 drivers use the full database-assets-v2 distribution."
+  },
+  "alerts": {
+    "pairedHttp": 399,
+    "pairedAlertInvalidations": 54,
+    "cleanServerExits": 36,
+    "reports": [
+      {
+        "databaseMode": "pglite",
+        "report": "qa/alerts-v5/pglite.json",
+        "sha256": "e93f5734112d2da35d88d307fea66ae33fed40f523b9bac502bbf48094481362",
+        "profiles": [
+          {
+            "profile": "none",
+            "pairedHttp": 43,
+            "pairedAlertInvalidations": 6,
+            "retainedSourceState": true,
+            "cleanServerExits": 4
+          },
+          {
+            "profile": "password",
+            "pairedHttp": 43,
+            "pairedAlertInvalidations": 6,
+            "retainedSourceState": true,
+            "cleanServerExits": 4
+          },
+          {
+            "profile": "accounts",
+            "pairedHttp": 47,
+            "pairedAlertInvalidations": 6,
+            "retainedSourceState": true,
+            "cleanServerExits": 4
+          }
+        ]
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "report": "qa/alerts-v7/bundled-postgres.json",
+        "sha256": "e2d8b43a4839a2ad24b1be563b7e845c170092e4bb5ab1a8b073cf6fc7a4f2a4",
+        "profiles": [
+          {
+            "profile": "none",
+            "pairedHttp": 43,
+            "pairedAlertInvalidations": 6,
+            "retainedSourceState": true,
+            "cleanServerExits": 4
+          },
+          {
+            "profile": "password",
+            "pairedHttp": 43,
+            "pairedAlertInvalidations": 6,
+            "retainedSourceState": true,
+            "cleanServerExits": 4
+          },
+          {
+            "profile": "accounts",
+            "pairedHttp": 47,
+            "pairedAlertInvalidations": 6,
+            "retainedSourceState": true,
+            "cleanServerExits": 4
+          }
+        ]
+      },
+      {
+        "databaseMode": "postgres",
+        "report": "qa/alerts-v7/postgres.json",
+        "sha256": "a6ff0d319ee5afd0eb4f6f0880d83b55ad5051675b657a8e04a1e91e6ed78df2",
+        "profiles": [
+          {
+            "profile": "none",
+            "pairedHttp": 43,
+            "pairedAlertInvalidations": 6,
+            "retainedSourceState": true,
+            "cleanServerExits": 4
+          },
+          {
+            "profile": "password",
+            "pairedHttp": 43,
+            "pairedAlertInvalidations": 6,
+            "retainedSourceState": true,
+            "cleanServerExits": 4
+          },
+          {
+            "profile": "accounts",
+            "pairedHttp": 47,
+            "pairedAlertInvalidations": 6,
+            "retainedSourceState": true,
+            "cleanServerExits": 4
+          }
+        ]
+      }
+    ],
+    "connectedWorkerGeneration": {
+      "report": "qa/goal-generation-order-v3.json",
+      "sha256": "571c17fee03a33ac3ffafead1169616928279c706294217cd1cfc301d84236ab",
+      "pairedCases": 3,
+      "passed": true
+    },
+    "productionQueries": {
+      "report": "qa/production-alert-query-fixed-v1.log",
+      "sha256": "378c45d0cb36c2ec852c56706f31fed5eaeafc68e902a8f3f5be6d9dad0acd6a",
+      "scope": "Packaged release executable; PGlite, none/password/accounts, existing GET/header/error assertions plus duplicate limit/cursor regressions."
+    },
+    "productionSources": {
+      "report": "qa/production-alert-source-fixed-v2.log",
+      "sha256": "cc584aa47e53f5860e3fc94a341ab276fb541a053f0ea44fb0fa622505db8d9a",
+      "scope": "Packaged release executable; external PostgreSQL, real worker-authenticated Goal/AI Alert requests, source transitions and replay fences."
+    }
+  },
+  "layouts": {
+    "schemaVersion": 1,
+    "completeReplacement": false,
+    "scope": "Current production legacy layout repositories on real stores. All original ownership/revision/topology/trigger-rollback assertions retained. SQL-seeded resources do not qualify their separate creation APIs or full desktop UI.",
+    "reports": [
+      {
+        "databaseMode": "pglite",
+        "report": "qa/layouts-v1/pglite.json",
+        "sha256": "f850375f90192f0ab634402c6442d51ed0df4cbf4d14b6491f213f99ec538363",
+        "cases": 107,
+        "snapshots": 10
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "report": "qa/layouts-v1/bundled-postgres.json",
+        "sha256": "324ec3b3cb6750a0598b6949e5d785e694b0fdcf0a1ee516f282518320a25e55",
+        "cases": 107,
+        "snapshots": 10
+      },
+      {
+        "databaseMode": "postgres",
+        "report": "qa/layouts-v1/postgres.json",
+        "sha256": "03ddeb8173480477cbde793b3307566107f485c5c69c9869c5392c5a411f767e",
+        "cases": 107,
+        "snapshots": 10
+      }
+    ],
+    "repositoryMethods": [
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "get",
+        "operation": "layout-get",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "get",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 2,
+              "name": "empty project"
+            },
+            {
+              "caseIndex": 3,
+              "name": "standalone pane/resource read"
+            },
+            {
+              "caseIndex": 5,
+              "name": "standalone cleanup commits once and rereads"
+            },
+            {
+              "caseIndex": 6,
+              "name": "ordinary read does not bump legacy revision"
+            },
+            {
+              "caseIndex": 87,
+              "name": "read all open surface placements"
+            },
+            {
+              "caseIndex": 104,
+              "name": "last closed center pane clears root"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 2,
+              "name": "empty project"
+            },
+            {
+              "caseIndex": 3,
+              "name": "standalone pane/resource read"
+            },
+            {
+              "caseIndex": 5,
+              "name": "standalone cleanup commits once and rereads"
+            },
+            {
+              "caseIndex": 6,
+              "name": "ordinary read does not bump legacy revision"
+            },
+            {
+              "caseIndex": 87,
+              "name": "read all open surface placements"
+            },
+            {
+              "caseIndex": 104,
+              "name": "last closed center pane clears root"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 2,
+              "name": "empty project"
+            },
+            {
+              "caseIndex": 3,
+              "name": "standalone pane/resource read"
+            },
+            {
+              "caseIndex": 5,
+              "name": "standalone cleanup commits once and rereads"
+            },
+            {
+              "caseIndex": 6,
+              "name": "ordinary read does not bump legacy revision"
+            },
+            {
+              "caseIndex": 87,
+              "name": "read all open surface placements"
+            },
+            {
+              "caseIndex": 104,
+              "name": "last closed center pane clears root"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "updatePane",
+        "operation": "layout-title",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "mutate:title",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 11,
+              "name": "rename multi-member pane"
+            },
+            {
+              "caseIndex": 38,
+              "name": "title write succeeds after trigger removal"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 11,
+              "name": "rename multi-member pane"
+            },
+            {
+              "caseIndex": 38,
+              "name": "title write succeeds after trigger removal"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 11,
+              "name": "rename multi-member pane"
+            },
+            {
+              "caseIndex": 38,
+              "name": "title write succeeds after trigger removal"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "reorderPanes",
+        "operation": "layout-pane-order",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "mutate:pane-order",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 15,
+              "name": "center pane order retains topology"
+            },
+            {
+              "caseIndex": 20,
+              "name": "two center panes reorder leaves and positions"
+            },
+            {
+              "caseIndex": 21,
+              "name": "dock region order uses one pane"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 15,
+              "name": "center pane order retains topology"
+            },
+            {
+              "caseIndex": 20,
+              "name": "two center panes reorder leaves and positions"
+            },
+            {
+              "caseIndex": 21,
+              "name": "dock region order uses one pane"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 15,
+              "name": "center pane order retains topology"
+            },
+            {
+              "caseIndex": 20,
+              "name": "two center panes reorder leaves and positions"
+            },
+            {
+              "caseIndex": 21,
+              "name": "dock region order uses one pane"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "reorderLegacyPanes",
+        "operation": "layout-legacy-order",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "mutate:legacy-order",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 17,
+              "name": "legacy order retains region subsequences"
+            },
+            {
+              "caseIndex": 22,
+              "name": "legacy mixed order preserves each region"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 17,
+              "name": "legacy order retains region subsequences"
+            },
+            {
+              "caseIndex": 22,
+              "name": "legacy mixed order preserves each region"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 17,
+              "name": "legacy order retains region subsequences"
+            },
+            {
+              "caseIndex": 22,
+              "name": "legacy mixed order preserves each region"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "reorderMembers",
+        "operation": "layout-member-order",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "mutate:member-order",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 13,
+              "name": "member order updates all positions"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 13,
+              "name": "member order updates all positions"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 13,
+              "name": "member order updates all positions"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "updateDockPresentation",
+        "operation": "layout-dock",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "mutate:dock",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 25,
+              "name": "write dock presentation"
+            },
+            {
+              "caseIndex": 26,
+              "name": "upsert dock presentation retains original creation"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 25,
+              "name": "write dock presentation"
+            },
+            {
+              "caseIndex": 26,
+              "name": "upsert dock presentation retains original creation"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 25,
+              "name": "write dock presentation"
+            },
+            {
+              "caseIndex": 26,
+              "name": "upsert dock presentation retains original creation"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "resizeCenterSplit",
+        "operation": "layout-resize",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "mutate:resize",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 24,
+              "name": "resize preserves split identity and leaves"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 24,
+              "name": "resize preserves split identity and leaves"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 24,
+              "name": "resize preserves split identity and leaves"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "moveMember",
+        "operation": "layout-move",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "mutate:move",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 42,
+              "name": "move within same pane clamps position"
+            },
+            {
+              "caseIndex": 43,
+              "name": "final dock member relocates its existing pane"
+            },
+            {
+              "caseIndex": 47,
+              "name": "move final center pane reorders existing leaves"
+            },
+            {
+              "caseIndex": 48,
+              "name": "move final tab into another pane collapses source"
+            },
+            {
+              "caseIndex": 49,
+              "name": "move one grouped tab creates and orders a center pane"
+            },
+            {
+              "caseIndex": 50,
+              "name": "move final dock member into existing center group"
+            },
+            {
+              "caseIndex": 52,
+              "name": "move grouped member creates a single-pane right dock"
+            },
+            {
+              "caseIndex": 53,
+              "name": "move final right member removes source dock"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 42,
+              "name": "move within same pane clamps position"
+            },
+            {
+              "caseIndex": 43,
+              "name": "final dock member relocates its existing pane"
+            },
+            {
+              "caseIndex": 47,
+              "name": "move final center pane reorders existing leaves"
+            },
+            {
+              "caseIndex": 48,
+              "name": "move final tab into another pane collapses source"
+            },
+            {
+              "caseIndex": 49,
+              "name": "move one grouped tab creates and orders a center pane"
+            },
+            {
+              "caseIndex": 50,
+              "name": "move final dock member into existing center group"
+            },
+            {
+              "caseIndex": 52,
+              "name": "move grouped member creates a single-pane right dock"
+            },
+            {
+              "caseIndex": 53,
+              "name": "move final right member removes source dock"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 42,
+              "name": "move within same pane clamps position"
+            },
+            {
+              "caseIndex": 43,
+              "name": "final dock member relocates its existing pane"
+            },
+            {
+              "caseIndex": 47,
+              "name": "move final center pane reorders existing leaves"
+            },
+            {
+              "caseIndex": 48,
+              "name": "move final tab into another pane collapses source"
+            },
+            {
+              "caseIndex": 49,
+              "name": "move one grouped tab creates and orders a center pane"
+            },
+            {
+              "caseIndex": 50,
+              "name": "move final dock member into existing center group"
+            },
+            {
+              "caseIndex": 52,
+              "name": "move grouped member creates a single-pane right dock"
+            },
+            {
+              "caseIndex": 53,
+              "name": "move final right member removes source dock"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "splitMember",
+        "operation": "layout-split",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "mutate:split",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 45,
+              "name": "split tab into new horizontal center pane"
+            },
+            {
+              "caseIndex": 46,
+              "name": "split final source tab and collapse old branch"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 45,
+              "name": "split tab into new horizontal center pane"
+            },
+            {
+              "caseIndex": 46,
+              "name": "split final source tab and collapse old branch"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 45,
+              "name": "split tab into new horizontal center pane"
+            },
+            {
+              "caseIndex": 46,
+              "name": "split final source tab and collapse old branch"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "listSurfaceLaunchers",
+        "operation": "layout-launchers",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "launchers",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 27,
+              "name": "all definition launcher defaults"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 27,
+              "name": "all definition launcher defaults"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 27,
+              "name": "all definition launcher defaults"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "setSurfaceLauncherPin",
+        "operation": "layout-pin",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "pin",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 29,
+              "name": "pin supported built-in launcher"
+            },
+            {
+              "caseIndex": 30,
+              "name": "pin upsert returns requested value"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 29,
+              "name": "pin supported built-in launcher"
+            },
+            {
+              "caseIndex": 30,
+              "name": "pin upsert returns requested value"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 29,
+              "name": "pin supported built-in launcher"
+            },
+            {
+              "caseIndex": 30,
+              "name": "pin upsert returns requested value"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "openSurfaceView",
+        "operation": "layout-open",
+        "implementation": "cantrip_server_rs/src/pane_layouts/surfaces.rs",
+        "nativeSymbol": "open",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 58,
+              "name": "Explorer opens in supported left region"
+            },
+            {
+              "caseIndex": 59,
+              "name": "existing view ignores stale revision and placement"
+            },
+            {
+              "caseIndex": 60,
+              "name": "legacy file fallback resolves existing Explorer placement"
+            },
+            {
+              "caseIndex": 63,
+              "name": "focused builtin ignores stale revision"
+            },
+            {
+              "caseIndex": 64,
+              "name": "open built-in preserves existing worktree binding"
+            },
+            {
+              "caseIndex": 68,
+              "name": "reopen existing chat through default placement"
+            },
+            {
+              "caseIndex": 70,
+              "name": "retired IDE profile still opens agent in center"
+            },
+            {
+              "caseIndex": 72,
+              "name": "open builtin git.graph"
+            },
+            {
+              "caseIndex": 73,
+              "name": "open builtin github.issues"
+            },
+            {
+              "caseIndex": 74,
+              "name": "open builtin github.pull-requests"
+            },
+            {
+              "caseIndex": 75,
+              "name": "open builtin github.actions"
+            },
+            {
+              "caseIndex": 76,
+              "name": "open or focus entity project.agent"
+            },
+            {
+              "caseIndex": 77,
+              "name": "open or focus entity project.terminal"
+            },
+            {
+              "caseIndex": 78,
+              "name": "open or focus entity project.explorer"
+            },
+            {
+              "caseIndex": 79,
+              "name": "open or focus entity project.browser"
+            },
+            {
+              "caseIndex": 80,
+              "name": "open or focus entity project.code"
+            },
+            {
+              "caseIndex": 81,
+              "name": "open or focus entity project.remote-desktop"
+            },
+            {
+              "caseIndex": 82,
+              "name": "open or focus entity project.git-history"
+            },
+            {
+              "caseIndex": 83,
+              "name": "open or focus entity project.git-graph"
+            },
+            {
+              "caseIndex": 84,
+              "name": "open or focus entity project.github-issues"
+            },
+            {
+              "caseIndex": 85,
+              "name": "open or focus entity project.github-pull-requests"
+            },
+            {
+              "caseIndex": 86,
+              "name": "open or focus entity project.github-actions"
+            },
+            {
+              "caseIndex": 105,
+              "name": "reopen task before invariant failure"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 58,
+              "name": "Explorer opens in supported left region"
+            },
+            {
+              "caseIndex": 59,
+              "name": "existing view ignores stale revision and placement"
+            },
+            {
+              "caseIndex": 60,
+              "name": "legacy file fallback resolves existing Explorer placement"
+            },
+            {
+              "caseIndex": 63,
+              "name": "focused builtin ignores stale revision"
+            },
+            {
+              "caseIndex": 64,
+              "name": "open built-in preserves existing worktree binding"
+            },
+            {
+              "caseIndex": 68,
+              "name": "reopen existing chat through default placement"
+            },
+            {
+              "caseIndex": 70,
+              "name": "retired IDE profile still opens agent in center"
+            },
+            {
+              "caseIndex": 72,
+              "name": "open builtin git.graph"
+            },
+            {
+              "caseIndex": 73,
+              "name": "open builtin github.issues"
+            },
+            {
+              "caseIndex": 74,
+              "name": "open builtin github.pull-requests"
+            },
+            {
+              "caseIndex": 75,
+              "name": "open builtin github.actions"
+            },
+            {
+              "caseIndex": 76,
+              "name": "open or focus entity project.agent"
+            },
+            {
+              "caseIndex": 77,
+              "name": "open or focus entity project.terminal"
+            },
+            {
+              "caseIndex": 78,
+              "name": "open or focus entity project.explorer"
+            },
+            {
+              "caseIndex": 79,
+              "name": "open or focus entity project.browser"
+            },
+            {
+              "caseIndex": 80,
+              "name": "open or focus entity project.code"
+            },
+            {
+              "caseIndex": 81,
+              "name": "open or focus entity project.remote-desktop"
+            },
+            {
+              "caseIndex": 82,
+              "name": "open or focus entity project.git-history"
+            },
+            {
+              "caseIndex": 83,
+              "name": "open or focus entity project.git-graph"
+            },
+            {
+              "caseIndex": 84,
+              "name": "open or focus entity project.github-issues"
+            },
+            {
+              "caseIndex": 85,
+              "name": "open or focus entity project.github-pull-requests"
+            },
+            {
+              "caseIndex": 86,
+              "name": "open or focus entity project.github-actions"
+            },
+            {
+              "caseIndex": 105,
+              "name": "reopen task before invariant failure"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 58,
+              "name": "Explorer opens in supported left region"
+            },
+            {
+              "caseIndex": 59,
+              "name": "existing view ignores stale revision and placement"
+            },
+            {
+              "caseIndex": 60,
+              "name": "legacy file fallback resolves existing Explorer placement"
+            },
+            {
+              "caseIndex": 63,
+              "name": "focused builtin ignores stale revision"
+            },
+            {
+              "caseIndex": 64,
+              "name": "open built-in preserves existing worktree binding"
+            },
+            {
+              "caseIndex": 68,
+              "name": "reopen existing chat through default placement"
+            },
+            {
+              "caseIndex": 70,
+              "name": "retired IDE profile still opens agent in center"
+            },
+            {
+              "caseIndex": 72,
+              "name": "open builtin git.graph"
+            },
+            {
+              "caseIndex": 73,
+              "name": "open builtin github.issues"
+            },
+            {
+              "caseIndex": 74,
+              "name": "open builtin github.pull-requests"
+            },
+            {
+              "caseIndex": 75,
+              "name": "open builtin github.actions"
+            },
+            {
+              "caseIndex": 76,
+              "name": "open or focus entity project.agent"
+            },
+            {
+              "caseIndex": 77,
+              "name": "open or focus entity project.terminal"
+            },
+            {
+              "caseIndex": 78,
+              "name": "open or focus entity project.explorer"
+            },
+            {
+              "caseIndex": 79,
+              "name": "open or focus entity project.browser"
+            },
+            {
+              "caseIndex": 80,
+              "name": "open or focus entity project.code"
+            },
+            {
+              "caseIndex": 81,
+              "name": "open or focus entity project.remote-desktop"
+            },
+            {
+              "caseIndex": 82,
+              "name": "open or focus entity project.git-history"
+            },
+            {
+              "caseIndex": 83,
+              "name": "open or focus entity project.git-graph"
+            },
+            {
+              "caseIndex": 84,
+              "name": "open or focus entity project.github-issues"
+            },
+            {
+              "caseIndex": 85,
+              "name": "open or focus entity project.github-pull-requests"
+            },
+            {
+              "caseIndex": 86,
+              "name": "open or focus entity project.github-actions"
+            },
+            {
+              "caseIndex": 105,
+              "name": "reopen task before invariant failure"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "closeSurfaceView",
+        "operation": "layout-close",
+        "implementation": "cantrip_server_rs/src/pane_layouts/surfaces.rs",
+        "nativeSymbol": "close",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 61,
+              "name": "close final left placement retains resource"
+            },
+            {
+              "caseIndex": 62,
+              "name": "already closed ignores stale revision"
+            },
+            {
+              "caseIndex": 65,
+              "name": "close built-in retains its persistent state"
+            },
+            {
+              "caseIndex": 67,
+              "name": "close grouped chat repairs remaining title"
+            },
+            {
+              "caseIndex": 69,
+              "name": "close final center chat collapses branch"
+            },
+            {
+              "caseIndex": 71,
+              "name": "close default center placement"
+            },
+            {
+              "caseIndex": 88,
+              "name": "close surface browser:browser"
+            },
+            {
+              "caseIndex": 89,
+              "name": "close surface builtin:github:project.tasks"
+            },
+            {
+              "caseIndex": 90,
+              "name": "close surface terminal:terminal"
+            },
+            {
+              "caseIndex": 91,
+              "name": "close surface chat:chat"
+            },
+            {
+              "caseIndex": 92,
+              "name": "close surface explorer:explorer"
+            },
+            {
+              "caseIndex": 93,
+              "name": "close surface code:code"
+            },
+            {
+              "caseIndex": 94,
+              "name": "close surface view:desktop"
+            },
+            {
+              "caseIndex": 95,
+              "name": "close surface view:history"
+            },
+            {
+              "caseIndex": 96,
+              "name": "close surface view:graph"
+            },
+            {
+              "caseIndex": 97,
+              "name": "close surface view:issues"
+            },
+            {
+              "caseIndex": 98,
+              "name": "close surface view:prs"
+            },
+            {
+              "caseIndex": 99,
+              "name": "close surface view:actions"
+            },
+            {
+              "caseIndex": 100,
+              "name": "close surface builtin:github:git.graph"
+            },
+            {
+              "caseIndex": 101,
+              "name": "close surface builtin:github:github.issues"
+            },
+            {
+              "caseIndex": 102,
+              "name": "close surface builtin:github:github.pull-requests"
+            },
+            {
+              "caseIndex": 103,
+              "name": "close surface builtin:github:github.actions"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 61,
+              "name": "close final left placement retains resource"
+            },
+            {
+              "caseIndex": 62,
+              "name": "already closed ignores stale revision"
+            },
+            {
+              "caseIndex": 65,
+              "name": "close built-in retains its persistent state"
+            },
+            {
+              "caseIndex": 67,
+              "name": "close grouped chat repairs remaining title"
+            },
+            {
+              "caseIndex": 69,
+              "name": "close final center chat collapses branch"
+            },
+            {
+              "caseIndex": 71,
+              "name": "close default center placement"
+            },
+            {
+              "caseIndex": 88,
+              "name": "close surface browser:browser"
+            },
+            {
+              "caseIndex": 89,
+              "name": "close surface builtin:github:project.tasks"
+            },
+            {
+              "caseIndex": 90,
+              "name": "close surface terminal:terminal"
+            },
+            {
+              "caseIndex": 91,
+              "name": "close surface chat:chat"
+            },
+            {
+              "caseIndex": 92,
+              "name": "close surface explorer:explorer"
+            },
+            {
+              "caseIndex": 93,
+              "name": "close surface code:code"
+            },
+            {
+              "caseIndex": 94,
+              "name": "close surface view:desktop"
+            },
+            {
+              "caseIndex": 95,
+              "name": "close surface view:history"
+            },
+            {
+              "caseIndex": 96,
+              "name": "close surface view:graph"
+            },
+            {
+              "caseIndex": 97,
+              "name": "close surface view:issues"
+            },
+            {
+              "caseIndex": 98,
+              "name": "close surface view:prs"
+            },
+            {
+              "caseIndex": 99,
+              "name": "close surface view:actions"
+            },
+            {
+              "caseIndex": 100,
+              "name": "close surface builtin:github:git.graph"
+            },
+            {
+              "caseIndex": 101,
+              "name": "close surface builtin:github:github.issues"
+            },
+            {
+              "caseIndex": 102,
+              "name": "close surface builtin:github:github.pull-requests"
+            },
+            {
+              "caseIndex": 103,
+              "name": "close surface builtin:github:github.actions"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 61,
+              "name": "close final left placement retains resource"
+            },
+            {
+              "caseIndex": 62,
+              "name": "already closed ignores stale revision"
+            },
+            {
+              "caseIndex": 65,
+              "name": "close built-in retains its persistent state"
+            },
+            {
+              "caseIndex": 67,
+              "name": "close grouped chat repairs remaining title"
+            },
+            {
+              "caseIndex": 69,
+              "name": "close final center chat collapses branch"
+            },
+            {
+              "caseIndex": 71,
+              "name": "close default center placement"
+            },
+            {
+              "caseIndex": 88,
+              "name": "close surface browser:browser"
+            },
+            {
+              "caseIndex": 89,
+              "name": "close surface builtin:github:project.tasks"
+            },
+            {
+              "caseIndex": 90,
+              "name": "close surface terminal:terminal"
+            },
+            {
+              "caseIndex": 91,
+              "name": "close surface chat:chat"
+            },
+            {
+              "caseIndex": 92,
+              "name": "close surface explorer:explorer"
+            },
+            {
+              "caseIndex": 93,
+              "name": "close surface code:code"
+            },
+            {
+              "caseIndex": 94,
+              "name": "close surface view:desktop"
+            },
+            {
+              "caseIndex": 95,
+              "name": "close surface view:history"
+            },
+            {
+              "caseIndex": 96,
+              "name": "close surface view:graph"
+            },
+            {
+              "caseIndex": 97,
+              "name": "close surface view:issues"
+            },
+            {
+              "caseIndex": 98,
+              "name": "close surface view:prs"
+            },
+            {
+              "caseIndex": 99,
+              "name": "close surface view:actions"
+            },
+            {
+              "caseIndex": 100,
+              "name": "close surface builtin:github:git.graph"
+            },
+            {
+              "caseIndex": 101,
+              "name": "close surface builtin:github:github.issues"
+            },
+            {
+              "caseIndex": 102,
+              "name": "close surface builtin:github:github.pull-requests"
+            },
+            {
+              "caseIndex": 103,
+              "name": "close surface builtin:github:github.actions"
+            }
+          ]
+        }
+      },
+      {
+        "file": "tests/reference-node-server/src/db/tab-layouts.ts",
+        "method": "updateBuiltInSurfaceWorktree",
+        "operation": "layout-builtin-worktree",
+        "implementation": "cantrip_server_rs/src/pane_layouts/mod.rs",
+        "nativeSymbol": "builtin-worktree",
+        "cases": {
+          "pglite": [
+            {
+              "caseIndex": 35,
+              "name": "bind ready owned built-in worktree"
+            }
+          ],
+          "bundled-postgres": [
+            {
+              "caseIndex": 35,
+              "name": "bind ready owned built-in worktree"
+            }
+          ],
+          "postgres": [
+            {
+              "caseIndex": 35,
+              "name": "bind ready owned built-in worktree"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "archiveDirectory": "rust-server-alert-layout-delivery-20261109-v1",
+  "productionQueryRegression": {
+    "baseline": "qa/alert-query-baseline-v1.log",
+    "failure": "Rust discarded repeated query names and returned404 rather than validation400.",
+    "implementation": "cantrip_server_rs/src/http/project_alerts.rs",
+    "repair": "Use existing account::query parser so schema validation receives duplicate arrays."
+  }
+}

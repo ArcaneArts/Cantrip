@@ -9,7 +9,7 @@ import { SocketProbe } from "./worker-sockets.mjs";
 import { workerAuthenticationShutdown } from "./worker-authentication-shutdown.mjs";
 
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 function deferred() {

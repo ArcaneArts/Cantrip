@@ -34,22 +34,29 @@ beforeEach(() =>
 );
 afterEach(() => clearClientSession());
 
-it.each([
-  { returning: false, single: false, reject: false },
-  { returning: true, single: false, reject: false },
-  { returning: false, single: true, reject: false },
-  { returning: true, single: true, reject: false },
-  { returning: false, single: false, reject: true },
-])(
-  "moves Tasks alone or with History, Run output, and a dirty editor (return=$returning, single=$single, rejected=$reject)",
-  async ({ returning, single, reject }) => {
+it.each(
+  [
+    { returning: false, single: false, reject: false },
+    { returning: true, single: false, reject: false },
+    { returning: false, single: true, reject: false },
+    { returning: true, single: true, reject: false },
+    { returning: false, single: false, reject: true },
+  ].flatMap((test) =>
+    ["project.tasks", "project.alerts"].map((definitionId) => ({
+      ...test,
+      definitionId,
+    })),
+  ),
+)(
+  "moves $definitionId alone or with History, Run output, and a dirty editor (return=$returning, single=$single, rejected=$reject)",
+  async ({ returning, single, reject, definitionId }) => {
     const source = returning ? "popout" : "main";
     const tasks = {
       id: "tasks",
       preview: false,
       titleProtection: null,
-      resource: { kind: "builtin", definitionId: "project.tasks" },
-      builtInState: { definitionId: "project.tasks", worktreeId: null },
+      resource: { kind: "builtin", definitionId },
+      builtInState: { definitionId, worktreeId: null },
       dockPresentation: null,
     };
     const history = {

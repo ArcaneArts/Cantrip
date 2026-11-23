@@ -10,10 +10,11 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fixtureEnvironment, startServer } from "./process.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
+import { ownershipHandoff } from "./postgres-lifecycle-handoff.mjs";
 
 const execute = promisify(execFile);
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 const quote = (s) => `'${s.replaceAll("'", "'\"'\"'")}'`;
@@ -157,6 +158,17 @@ export async function unixLifecycle({
       }
     }
   }
+
+  await ownershipHandoff({
+    executable,
+    bin,
+    root,
+    privateRoot,
+    cases,
+    launch,
+    finished,
+    stop,
+  });
 
   // The wrapper records its PID and immediately execs the real initdb. Wait for
   // the actual executable before killing only the server handle we launched.

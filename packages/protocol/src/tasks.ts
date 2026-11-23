@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  EMPTY_MODEL_CONFIGURATION,
+  modelConfigurationSchema,
+} from "./model-configuration.js";
+import {
   taskAutomaticRetrySchema,
   taskFailureKindSchema,
 } from "./task-retry.js";
@@ -183,6 +187,9 @@ export const taskDetailSchema = z.object({
   automaticRetry: taskAutomaticRetrySchema.nullable().optional(),
   chatId: z.string().min(1),
   planGoalEnabled: z.boolean(),
+  modelConfiguration: modelConfigurationSchema.default(
+    EMPTY_MODEL_CONFIGURATION,
+  ),
   priority: taskPrioritySchema.default(0),
   requestedTaskWorkerId: z.string().uuid().nullable().default(null),
   continuityFamily: taskWorkerContinuityFamilySchema.nullable().default(null),
@@ -323,7 +330,7 @@ export const taskDraftUpdateSchema = z
       )
       .optional(),
     priority: taskPrioritySchema.optional(),
-    requestedTaskWorkerId: z.string().uuid().nullable().optional(),
+    modelConfiguration: modelConfigurationSchema.optional(),
   })
   .refine(
     (value) =>
@@ -331,7 +338,7 @@ export const taskDraftUpdateSchema = z
       value.briefMarkdown !== undefined ||
       value.draftAttachmentIds !== undefined ||
       value.priority !== undefined ||
-      value.requestedTaskWorkerId !== undefined,
+      value.modelConfiguration !== undefined,
     { message: "At least one Task draft field is required." },
   );
 
@@ -916,6 +923,13 @@ export const taskMessageRelayResultSchema = z
 
 export const taskGoalSyncContextSchema = z
   .object({
+    nativeCycle: z
+      .object({
+        cycleId: z.string().uuid(),
+        orderEpoch: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      })
+      .strict()
+      .optional(),
     runtimeFailure: z
       .object({ kind: taskFailureKindSchema, occurredAt: z.iso.datetime() })
       .strict()
@@ -954,7 +968,7 @@ export const taskOpaqueMutationSchema = z
       })
       .optional(),
     priority: taskPrioritySchema.optional(),
-    requestedTaskWorkerId: z.string().uuid().nullable().optional(),
+    modelConfiguration: modelConfigurationSchema.optional(),
   })
   .strict();
 
@@ -1030,6 +1044,9 @@ export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
     automaticRetry: taskAutomaticRetrySchema.nullable().optional(),
     chatId: z.string().min(1).max(200),
     planGoalEnabled: z.boolean(),
+    modelConfiguration: modelConfigurationSchema.default(
+      EMPTY_MODEL_CONFIGURATION,
+    ),
     priority: taskPrioritySchema.default(0),
     requestedTaskWorkerId: z.string().uuid().nullable().default(null),
     continuityFamily: taskWorkerContinuityFamilySchema.nullable().default(null),
@@ -1118,6 +1135,9 @@ export const taskGoalWorkerResultSchema = z
       .object({
         threadId: z.string().min(1),
         status: z.enum(["running", "idle", "failed"]),
+        /** The exact Task native pause was acknowledged and its loaded Core
+         * observed idle under that same control/transport. Never a ticket release. */
+        pausedAndIdleRevision: z.number().int().positive().optional(),
       })
       .strict()
       .optional(),

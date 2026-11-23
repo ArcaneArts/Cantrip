@@ -62,6 +62,21 @@ pub struct PlacementRepository {
     collator: CollatorBorrowed<'static>,
 }
 impl PlacementRepository {
+    async fn read(
+        &self,
+        key: &str,
+        sql: &str,
+        params: crate::database::Parameters<'_>,
+        owner: &str,
+        project: &str,
+    ) -> Result<Vec<crate::database::Row>> {
+        super::placement_queries::context(
+            self.database.query(sql, params).await,
+            key,
+            owner,
+            project,
+        )
+    }
     pub fn new(database: Arc<Database>) -> Result<Self> {
         Ok(Self {
             database,
@@ -78,10 +93,12 @@ impl PlacementRepository {
         allow_offline_explicit: bool,
     ) -> Result<Value> {
         let rows = self
-            .database
-            .query(
+            .read(
+                "project",
                 "SELECT to_jsonb(p)::text FROM projects p WHERE id=$1 AND owner_id=$2 LIMIT 1",
                 &[&project_id, &owner],
+                owner,
+                project_id,
             )
             .await?;
         let Some(row) = rows.first() else {
@@ -104,9 +121,9 @@ impl PlacementRepository {
         let owner_params: [&(dyn tokio_postgres::types::ToSql + Sync); 1] = [&owner];
         let project_params: [&(dyn tokio_postgres::types::ToSql + Sync); 1] = [&project_id];
         let (settings, workers, replicas) = tokio::try_join!(
-            self.database.query("SELECT default_worker_id FROM user_settings WHERE user_id=$1 LIMIT 1", &owner_params),
-            self.database.query("SELECT to_jsonb(w)::text FROM workers w WHERE owner_id=$1 AND unlinked_at IS NULL ORDER BY id ASC", &owner_params),
-            self.database.query("SELECT to_jsonb(s)::text,to_jsonb(w)::text FROM project_sources s LEFT JOIN project_worktrees w ON w.project_source_id=s.id WHERE s.project_id=$1 AND s.removed_at IS NULL", &project_params),
+            self.read("settings","SELECT default_worker_id FROM user_settings WHERE user_id=$1 LIMIT 1", &owner_params,owner,project_id),
+            self.read("workers","SELECT to_jsonb(w)::text FROM workers w WHERE owner_id=$1 AND unlinked_at IS NULL ORDER BY id ASC", &owner_params,owner,project_id),
+            self.read("replicas","SELECT to_jsonb(s)::text,to_jsonb(w)::text FROM project_sources s LEFT JOIN project_worktrees w ON w.project_source_id=s.id WHERE s.project_id=$1 AND s.removed_at IS NULL", &project_params,owner,project_id),
         )?;
         let snapshot = Snapshot {
             project,

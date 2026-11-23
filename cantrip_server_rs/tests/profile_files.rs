@@ -200,3 +200,64 @@ fn file_links_are_materialized_and_directory_cycles_fail_without_publication() -
     assert!(!output.exists());
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn stopped_chromium_profile_keeps_data_without_process_links() -> Result<()> {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("source");
+    fixture(&source)?;
+    let browser = "worker/browser/profiles/captured";
+    let profile = source.join(browser);
+    fs::create_dir_all(&profile)?;
+    fs::write(profile.join("Preferences"), b"saved browser state")?;
+    for name in [
+        "RunningChromeVersion",
+        "SingletonCookie",
+        "SingletonLock",
+        "SingletonSocket",
+    ] {
+        symlink("stopped-process", profile.join(name))?;
+    }
+    // The same name outside Chromium's profile still describes user data.
+    let unrelated = source.join("SingletonLock");
+    symlink("secret-encryption-key.json", &unrelated)?;
+    let sql = temp.path().join("trusted.sql");
+    fs::write(&sql, b"SELECT 1")?;
+    let bundle = temp.path().join("bundle");
+    pack_profile(&source, &sql, DatabaseMode::Pglite, &bundle)?;
+    let staged = bundle.join("files").join(browser);
+    assert_eq!(
+        fs::read(staged.join("Preferences"))?,
+        b"saved browser state"
+    );
+    assert_eq!(fs::read_dir(&staged)?.count(), 1);
+    assert_eq!(
+        fs::read(bundle.join("files/SingletonLock"))?,
+        fs::read(unrelated)?
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn retains_unix_asset_names_with_colons_through_logical_restore() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("source");
+    let template = Path::new("worker/managed-runtimes/searxng/app/templates/searxng:example");
+    fs::create_dir_all(source.join(template).parent().unwrap())?;
+    fs::write(source.join(template), b"retained search runtime template")?;
+    let sql = temp.path().join("trusted.sql");
+    fs::write(&sql, b"SELECT 1")?;
+    let bundle = temp.path().join("bundle");
+    pack_profile(&source, &sql, DatabaseMode::Pglite, &bundle)?;
+    let destination = temp.path().join("restored");
+    Bundle::open(&bundle)?.stage(&destination)?.materialize()?;
+    assert_eq!(
+        fs::read(destination.join(template))?,
+        b"retained search runtime template"
+    );
+    Ok(())
+}

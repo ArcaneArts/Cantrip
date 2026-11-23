@@ -1,0 +1,447 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "348b161e52d0d3f6478640bc984e9f541f5fb66a",
+  "completeReplacement": false,
+  "scope": "Local macOS arm64 actual repositories and HTTP against current development Node reference. Controlled worker replies. Optimized package tested separately. No new full-worker/UI, Linux/Windows or production Winterhold qualification.",
+  "baselineDefect": {
+    "report": "qa/repository-v4.json",
+    "sha256": "ca91ed1089c2bdb203a1c32a990b9523dd1b7b9e872118193dc19ccf48845e41",
+    "case": "final receipt clears obsolete chat attribution",
+    "observedNativeTurn": "previous-turn",
+    "repair": "Accepted model-operation usage clears provider_account_id,turn_id,reasoning_effort. Immutable terminal receipt behavior is retained."
+  },
+  "reports": [
+    {
+      "report": "qa/matrix-v3/pglite/repository.json",
+      "sha256": "e404c002aac9660d96e1d2b4af51c6f3004ce4c15f231e3a169e382aea46a069",
+      "suite": "repository",
+      "mode": "pglite",
+      "pairedCases": 44,
+      "retainedPeers": 2,
+      "retainedDomains": [
+        "grants",
+        "mcp",
+        "mobile",
+        "principals",
+        "providerAccounts",
+        "providers",
+        "sessions",
+        "usage",
+        "whitelist"
+      ],
+      "noopDisposition": {
+        "sourceFile": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "sourceSha256": "d319bbd49f0837ade874dd75478bf0f4d97a125bdc0e79e75f013a2f56c88726",
+        "emptyMethods": [
+          "migrateProviderSecrets",
+          "migrateProviderAccountCredentialSecrets",
+          "migrateMcpServerSecrets"
+        ],
+        "migration": "cantrip_server/drizzle/0120_protected_provider_mcp_secrets.sql",
+        "migrationSha256": "811818ca4f61667f8695e819942d22f3485bd024c052288c86f05b2332b69836"
+      }
+    },
+    {
+      "report": "qa/matrix-v3/bundled-postgres/repository.json",
+      "sha256": "797b5d66aec973835f82ce857818429add3c0784489497c86cae0017a8b9c19f",
+      "suite": "repository",
+      "mode": "bundled-postgres",
+      "pairedCases": 44,
+      "retainedPeers": 2,
+      "retainedDomains": [
+        "grants",
+        "mcp",
+        "mobile",
+        "principals",
+        "providerAccounts",
+        "providers",
+        "sessions",
+        "usage",
+        "whitelist"
+      ],
+      "noopDisposition": {
+        "sourceFile": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "sourceSha256": "d319bbd49f0837ade874dd75478bf0f4d97a125bdc0e79e75f013a2f56c88726",
+        "emptyMethods": [
+          "migrateProviderSecrets",
+          "migrateProviderAccountCredentialSecrets",
+          "migrateMcpServerSecrets"
+        ],
+        "migration": "cantrip_server/drizzle/0120_protected_provider_mcp_secrets.sql",
+        "migrationSha256": "811818ca4f61667f8695e819942d22f3485bd024c052288c86f05b2332b69836"
+      }
+    },
+    {
+      "report": "qa/matrix-v3/postgres/repository.json",
+      "sha256": "17cb961715cbf6ea160117d5cf12d17e164a5d1d7cab0c7f72391d03cd771dcc",
+      "suite": "repository",
+      "mode": "postgres",
+      "pairedCases": 44,
+      "retainedPeers": 2,
+      "retainedDomains": [
+        "grants",
+        "mcp",
+        "mobile",
+        "principals",
+        "providerAccounts",
+        "providers",
+        "sessions",
+        "usage",
+        "whitelist"
+      ],
+      "noopDisposition": {
+        "sourceFile": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+        "sourceSha256": "d319bbd49f0837ade874dd75478bf0f4d97a125bdc0e79e75f013a2f56c88726",
+        "emptyMethods": [
+          "migrateProviderSecrets",
+          "migrateProviderAccountCredentialSecrets",
+          "migrateMcpServerSecrets"
+        ],
+        "migration": "cantrip_server/drizzle/0120_protected_provider_mcp_secrets.sql",
+        "migrationSha256": "811818ca4f61667f8695e819942d22f3485bd024c052288c86f05b2332b69836"
+      }
+    },
+    {
+      "report": "qa/desktop-final-v4/pglite.json",
+      "sha256": "c883e33b8090111f05ce7c546ee21d7a4c0797e85ab310410a04b9460d05f46e",
+      "suite": "desktop-session-http",
+      "mode": "pglite",
+      "productionRuntime": false,
+      "usesSqlHttpFixture": true,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 80,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 0
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 82,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 2
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 82,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 2
+        }
+      ]
+    },
+    {
+      "report": "qa/desktop-final-v4/bundled-postgres.json",
+      "sha256": "ea1c976ee7f8dede8f0d622831058762d442fa86c7b64497e52254f90ea0c621",
+      "suite": "desktop-session-http",
+      "mode": "bundled-postgres",
+      "productionRuntime": false,
+      "usesSqlHttpFixture": true,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 80,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 0
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 82,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 2
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 82,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 2
+        }
+      ]
+    },
+    {
+      "report": "qa/desktop-final-v4/postgres.json",
+      "sha256": "c5565df8f68bfc68e7d857e8d960d3430e33074f3529af2e02c0e9f4669271b0",
+      "suite": "desktop-session-http",
+      "mode": "postgres",
+      "productionRuntime": false,
+      "usesSqlHttpFixture": true,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 80,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 0
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 82,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 2
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 82,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 2
+        }
+      ]
+    },
+    {
+      "report": "qa/production-desktop-v5.json",
+      "sha256": "8b73e855b21877c634b5568063145fd94e9c7e63fc9086d18fc88f4d76bf6a22",
+      "suite": "desktop-session-http",
+      "mode": "postgres",
+      "productionRuntime": true,
+      "usesSqlHttpFixture": false,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 80,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 0
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 82,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 2
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 82,
+          "pairedRelationFailures": 9,
+          "cleanServerExits": 2,
+          "sessionProofsPerPeer": 2
+        }
+      ]
+    },
+    {
+      "report": "qa/production-auth-pglite-v1.json",
+      "sha256": "88ddeacbdc1674fdaf34c62b10bb3379491af38859bcde69fb00bb99cc0e126a",
+      "suite": "production-auth-http",
+      "mode": "pglite",
+      "profiles": 8,
+      "pairedCases": 361,
+      "retainedFixtureRoot": false
+    },
+    {
+      "report": "qa/production-auth-bundled-postgres-v1.json",
+      "sha256": "1e51b16177564430efc1c1e41e5103a04b2f4ff366a5a457233e57e42db1798f",
+      "suite": "production-auth-http",
+      "mode": "bundled-postgres",
+      "profiles": 8,
+      "pairedCases": 361,
+      "retainedFixtureRoot": true
+    },
+    {
+      "report": "qa/production-auth-postgres-v1.json",
+      "sha256": "4bea6166e6697416e7a3fd62c614cd776f1249ff2a75f6ca0d31b502afd08500",
+      "suite": "production-auth-http",
+      "mode": "postgres",
+      "profiles": 8,
+      "pairedCases": 361,
+      "retainedFixtureRoot": true,
+      "crossRuntimeState": true
+    },
+    {
+      "report": "qa/relocated-package-v1.json",
+      "sha256": "bbb26cfe69f55db4cbcaef3f04d1025ca4e894b5522edabc494d2277d061df19",
+      "suite": "relocated-native-package",
+      "modes": ["pglite", "bundled-postgres", "postgres"],
+      "verifiedFiles": 1762,
+      "serverRuntimePathHasNoNode": true,
+      "homebrewAccessDenied": true,
+      "artifactWritesDenied": true
+    }
+  ],
+  "bindings": [
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "findActiveWorkerPrincipal",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "positiveCase": "find active worker principal",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "findWorkerPrincipalById",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "positiveCase": "find worker principal by ID",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "replaceActiveWorkerPrincipal",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "positiveCase": "replace principal and revoke opaque grants",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "accountEmailIsWhitelisted",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "positiveCase": "exact whitelist membership alice@example.invalid",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "pruneMobileSignInGrants",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "positiveCase": "strict mobile expiry boundary",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "rotateSessionCsrfToken",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "positiveCase": "CSRF rotation valid-session",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "recordModelOperationUsage",
+      "implementation": "cantrip_server_rs/src/settings/model_operation_usage.rs",
+      "positiveCase": "final receipt clears obsolete chat attribution",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "onlineWorkerCount",
+      "implementation": "cantrip_server_rs/src/workers/repository.rs",
+      "positiveCase": "online workers owner 00000000-0000-0000-0000-000000000001",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ],
+      "disposition": "Existing list_workers plus the Source online-status filter; no separate production counter API."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "migrateProviderSecrets",
+      "implementation": "cantrip_server_rs/src/migrations.rs",
+      "positiveCase": "legacy no-ops and native migration replay retain current state",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ],
+      "disposition": "Current Source method is intentionally empty. Canonical SQL0120 is already embedded in the native migration chain. Source no-op invocation and native migration replay preserve current protected rows; no new runtime reset or deletion."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "migrateProviderAccountCredentialSecrets",
+      "implementation": "cantrip_server_rs/src/migrations.rs",
+      "positiveCase": "legacy no-ops and native migration replay retain current state",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ],
+      "disposition": "Current Source method is intentionally empty. Canonical SQL0120 is already embedded in the native migration chain. Source no-op invocation and native migration replay preserve current protected rows; no new runtime reset or deletion."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "migrateMcpServerSecrets",
+      "implementation": "cantrip_server_rs/src/migrations.rs",
+      "positiveCase": "legacy no-ops and native migration replay retain current state",
+      "evidence": [
+        "scripts/server-rust/identity-state-repository-compatibility.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ],
+      "disposition": "Current Source method is intentionally empty. Canonical SQL0120 is already embedded in the native migration chain. Source no-op invocation and native migration replay preserve current protected rows; no new runtime reset or deletion."
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "desktopUpdateActiveWork",
+      "implementation": "cantrip_server_rs/src/http/settings_operations.rs",
+      "additionalImplementation": "cantrip_server_rs/src/settings/desktop_update.rs",
+      "evidence": [
+        "scripts/server-rust/desktop-update-state-http-compatibility.mjs",
+        "scripts/server-rust/settings-active-work-http-cases.mjs",
+        "docs/security/rust-server-identity-state-acceptance.json"
+      ],
+      "disposition": "Real public HTTP owner-scoped nine-count summary, lifecycle filters, SQL failure/recovery and public session callers across all9store/authcells; optimized externalPG repeats all3authmodes."
+    }
+  ],
+  "artifact": {
+    "path": "qa/production-package-v1",
+    "version": "1.1.2794",
+    "target": "darwin-arm64",
+    "bytes": 93639024,
+    "sha256": "d568bd7bd16ace4464a904b4b7611c2f72d4a2b05244fae6f5169a89b061efef",
+    "verifiedFiles": 1762,
+    "serverRequiresNode": false
+  },
+  "checks": [
+    {
+      "path": "qa/clippy-v1.log",
+      "sha256": "22b8d54e323c15383576124c515c0c0894dd1c339d9c8667cffabf2670030cb0"
+    },
+    {
+      "path": "qa/library-v1.log",
+      "sha256": "93b4752774fd99977a43e666881ae74cb6b891481017f23ca08eb58951ae1ed3"
+    },
+    {
+      "path": "qa/script-tests-v1.log",
+      "sha256": "3f9bb91e722e498d738c3a40c2b51474294d4ed062482adbd10265de8b2b062d"
+    },
+    {
+      "path": "qa/native-authority-v1.log",
+      "sha256": "7739faf6858e759315af16ebe70db876ae3df63b625c993195cd330f2c4cd030"
+    },
+    {
+      "path": "qa/source-drift-v1.json",
+      "sha256": "fe8f8b03f50f9f589c2b72dc683a968be014e29428c9feaa772bac8ea9f07dc7"
+    },
+    {
+      "path": "qa/large-files-v1.log",
+      "sha256": "a94c4b8119f7fd3d1e4be7e1f901996c262025d3500172c926b67ffff9f05fb7"
+    },
+    {
+      "path": "qa/decomposition-v1.log",
+      "sha256": "e96a0d5864b586f16347b5afb37748f639ebb0dcb74c44b9b56e97deff0d3aec"
+    }
+  ],
+  "coverage": {
+    "repositoryMethods": [331, 370],
+    "durableTables": [110, 135],
+    "routes": [523, 584],
+    "workerCommands": [117, 323],
+    "liveResources": [29, 47]
+  },
+  "remaining": [
+    "39 repository identities remain unmapped, plus other category gaps and historical partial entries.",
+    "Final supported shipping artifacts and complete original-goal audit remain open.",
+    "The PGlite auth run used the earlier cleanup behavior and removed its temporary fixture root; its report is retained. Other recorded existing owned roots are preserved for delivery archive.",
+    "Worker rewrite and shared crate extraction are separate future work."
+  ]
+}

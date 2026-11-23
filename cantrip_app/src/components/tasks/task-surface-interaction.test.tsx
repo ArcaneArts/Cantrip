@@ -1,3 +1,7 @@
+import {
+  EMPTY_MODEL_CONFIGURATION,
+  settingsBundleSchema,
+} from "@cantrip/protocol";
 import type { ChatSummary, TaskDetail } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, createRef, type ComponentProps } from "react";
@@ -48,6 +52,7 @@ vi.mock("./task-markdown-editor", () => ({
     createElement("textarea", { ...props, "aria-label": props.ariaLabel }),
 }));
 
+import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { TaskSurface, type TaskSurfaceHandle } from "./task-surface";
 
 (
@@ -70,6 +75,7 @@ const failedTask = (): TaskDetail => ({
   briefMarkdown: "Support Forge",
   planGoalEnabled: false,
   priority: -1,
+  modelConfiguration: EMPTY_MODEL_CONFIGURATION,
   requestedTaskWorkerId: null,
   continuityFamily: null,
   lastTaskWorkerId: null,
@@ -106,7 +112,11 @@ const retryButton = () =>
         .some((span) => span.children.includes("Retry Task")),
     )!;
 const editor = () => renderer!.root.findByType("textarea");
-async function mount(status: ChatSummary["status"] = "idle", visible = true) {
+async function mount(
+  status: ChatSummary["status"] = "idle",
+  visible = true,
+  options?: Pick<ComponentProps<typeof TaskSurface>, "settings" | "worker">,
+) {
   client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity },
@@ -125,6 +135,7 @@ async function mount(status: ChatSummary["status"] = "idle", visible = true) {
           onRename: vi.fn(),
           settings: undefined,
           surfaceRef,
+          ...options,
         }),
       ),
     );
@@ -150,6 +161,38 @@ beforeEach(() => {
   }));
   api.startTaskDirectly.mockImplementation(async () => current);
 });
+it("saves a model and Plan + Goal directly without fetching presets", async () => {
+  await mount();
+  await act(async () =>
+    renderer!.root.findByType(ModelReasoningPicker).props.onSave({
+      ...EMPTY_MODEL_CONFIGURATION,
+      modelId: "any-model",
+      reasoningEffort: "high",
+    }),
+  );
+  const toggle = renderer!.root
+    .findAllByType("button")
+    .find(
+      (button) =>
+        button.props["aria-label"] === "Plan + Goal" ||
+        button.children.some((child) => child === "Plan + Goal"),
+    )!;
+  await act(async () => toggle.props.onClick());
+  await act(async () => surfaceRef.current!.prepareClose());
+  expect(api.updateTaskDraft).toHaveBeenLastCalledWith(
+    "task",
+    expect.objectContaining({
+      modelConfiguration: {
+        ...EMPTY_MODEL_CONFIGURATION,
+        modelId: "any-model",
+        reasoningEffort: "high",
+      },
+      planGoalEnabled: true,
+    }),
+  );
+  expect(api.getTaskWorkers).not.toHaveBeenCalled();
+});
+
 afterEach(async () => {
   if (renderer) await act(async () => renderer!.unmount());
   renderer = undefined;
@@ -185,7 +228,7 @@ describe("failed Task recovery", () => {
     await settle();
     expect(api.getTask).toHaveBeenCalledTimes(1);
     expect(api.getTaskAttachments).toHaveBeenCalledTimes(1);
-    expect(api.getTaskWorkers).toHaveBeenCalledTimes(1);
+    expect(api.getTaskWorkers).not.toHaveBeenCalled();
     expect(editor().props.value).toBe("Support Forge");
   });
 
@@ -254,10 +297,40 @@ describe("failed Task recovery", () => {
       retryButton().props.onClick();
     });
     await settle();
-    expect(api.startTaskDirectly).toHaveBeenCalledWith("task", {
-      operationId: expect.any(String),
-      rowVersion: 10,
+    expect(api.startTaskDirectly).toHaveBeenCalledWith(
+      "task",
+      { operationId: expect.any(String), rowVersion: 10 },
+      undefined,
+    );
+  });
+
+  it("passes the online Task worker to admission when automatic titles are enabled", async () => {
+    const worker = { workerId: "task-worker", online: true } as NonNullable<
+      ComponentProps<typeof TaskSurface>["worker"]
+    >;
+    const settings = settingsBundleSchema.parse({
+      preferences: {
+        autoNameTasks: true,
+        theme: "system",
+        highContrast: false,
+        proMode: false,
+        proModeOpacity: 80,
+        sidebarWidth: 288,
+        desktopFrameRate: 30,
+        desktopStreamQuality: "adaptive",
+        defaultModelId: null,
+      },
+      models: [],
+      providers: [],
     });
+    await mount("idle", true, { settings, worker });
+    await act(async () => retryButton().props.onClick());
+    await settle();
+    expect(api.startTaskDirectly).toHaveBeenCalledWith(
+      "task",
+      { operationId: expect.any(String), rowVersion: 10 },
+      worker,
+    );
   });
 
   it("copies the current failed-task brief, including unsaved edits", async () => {
@@ -297,10 +370,11 @@ describe("failed Task recovery", () => {
         rowVersion: 10,
       }),
     );
-    expect(api.startTaskDirectly).toHaveBeenCalledWith("task", {
-      operationId: expect.any(String),
-      rowVersion: 11,
-    });
+    expect(api.startTaskDirectly).toHaveBeenCalledWith(
+      "task",
+      { operationId: expect.any(String), rowVersion: 11 },
+      undefined,
+    );
   });
 
   it("autosaves edits to failed drafts", async () => {

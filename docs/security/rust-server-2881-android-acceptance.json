@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "completeReplacement": false,
+  "client": {
+    "platform": "Android API 36 ARM64 emulator",
+    "signing": "debug"
+  },
+  "serverPlatform": "darwin-arm64",
+  "scope": "Installed Capacitor APK against the packaged Rust server in hosted account mode over a disposable loopback TLS fixture. The app signed in on all three stores, switched servers, and retained native account access after app relaunch and Rust process restarts.",
+  "rustStores": ["pglite", "bundled-postgres", "postgres"],
+  "artifacts": {
+    "androidApk": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-android/cantrip-android-1.1.2881.apk",
+      "bytes": 38973609,
+      "sha256": "2f941fec7f224e962dc96d543aabd776d419bee88a35d4305e73971e887a0543"
+    },
+    "instrumentationApk": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-android/cantrip-android-keystore-test-1.1.2881.apk",
+      "bytes": 562563,
+      "sha256": "c43699d417267a3f6e246c06d9b25c2f06a186b2ab6f53c958661a55f03a44e7"
+    },
+    "packagedRustExecutable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198976,
+      "sha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+    },
+    "embeddedWebDistribution": {
+      "fileCount": 195,
+      "treeSha256": "36181f80d745f2197eca6420ee5d1819c4b24fd42324bd621eee5bb45387ee97"
+    },
+    "apkSignatureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-android/apk-signature-verification.log",
+      "bytes": 955,
+      "sha256": "ed7084890b788f154015c1048730b231928924dd0be4a4e9dd3745ca6c5b41a3"
+    },
+    "installedApkDigest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-android/installed-apk-sha256.log",
+      "bytes": 149,
+      "sha256": "28d92d2a8dad59b02b2c796bb357f3e21b5ba149b6da444c369ae74da8be38aa"
+    }
+  },
+  "nativeCatalog": {
+    "keyCount": 1,
+    "bindingCount": 3,
+    "sha256": "224684900af2658fe47e6d88caa820d7939b49c381d100212d483c4e9e32c79b"
+  },
+  "realKeystoreTestsPassed": 1,
+  "cleanRustRestarts": 3,
+  "cleanRustExits": 6,
+  "transportAfterRustRestart": {
+    "pglite": {
+      "authenticatedSessionResponses": 4,
+      "appLiveWebSocketUpgrades": 2
+    },
+    "bundled-postgres": {
+      "authenticatedSessionResponses": 4,
+      "appLiveWebSocketUpgrades": 2
+    },
+    "postgres": {
+      "authenticatedSessionResponses": 7,
+      "appLiveWebSocketUpgrades": 4
+    }
+  },
+  "nativeQr": {
+    "mode": "postgres",
+    "source": "Cantrip browser-issued QR displayed through the Android emulator camera and scanned by the installed app",
+    "grantStatus": 201,
+    "exchangeStatus": 200,
+    "setCookies": [
+      {
+        "httpOnly": true,
+        "secure": true,
+        "partitioned": false,
+        "sameSite": "None"
+      },
+      {
+        "httpOnly": true,
+        "secure": true,
+        "partitioned": true,
+        "sameSite": "None"
+      }
+    ],
+    "returnedToAuthenticatedApp": true,
+    "status": 200,
+    "nativeKeys": 1,
+    "bindings": 3,
+    "installationProvider": "android-keystore"
+  },
+  "evidence": {
+    "signIn": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-android/installed-sign-in.json",
+      "bytes": 741,
+      "sha256": "98fb9a7c33262c24bf6d493316ff868fe4c53f99c09861566569278922fd4757"
+    },
+    "relaunch": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-android/installed-retained.json",
+      "bytes": 726,
+      "sha256": "b612d5e1b9dd3715ff835a2ec1e7e4fdc7019d8fa289c313cafbfb3856948db6"
+    },
+    "keystoreInstrumentation": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-android/keystore-instrumentation.log",
+      "bytes": 82,
+      "sha256": "37af9b02b92b09bf64f243e741345076543138e3231fdc209cc4339166fd7317"
+    },
+    "nativeQr": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-android/native-qr-verified.json",
+      "bytes": 574,
+      "sha256": "9baa1981443c88726a586a24d22758b21fc09f7b88eda571700b6ba8e993211e"
+    },
+    "nativeCatalogAfterQr": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-android/catalog-after-native-qr.sqlite3",
+      "bytes": 49152,
+      "sha256": "d0e6b2059caa7da0e762a4edaf2287226657f64d4ccbdf1f734c7419543236f4"
+    },
+    "transportWitness": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-android/http-witness.jsonl",
+      "bytes": 85174,
+      "sha256": "fd13d3dde8dc3c8eb8b50ef3b0d7f6ce576f9a9f797713f21de5cea88a47ec52"
+    }
+  },
+  "remaining": [
+    "Physical-device and store-signed mobile packages",
+    "Installed iOS QR camera flow"
+  ]
+}

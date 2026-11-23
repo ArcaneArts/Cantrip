@@ -1,3 +1,4 @@
+import { AgentChatMessage, messageCommunication } from "./agent-chat-message";
 import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
 import { Bot, Check, Copy, GitFork, Loader2, Pencil, User } from "lucide-react";
 import { memo, useMemo, type FormEvent, type RefObject } from "react";
@@ -236,6 +237,16 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
       );
     }
     const message = entry.message;
+    const communication = messageCommunication(message);
+    if (communication)
+      return (
+        <AgentChatMessage
+          key={message.id}
+          message={message}
+          communication={communication}
+          onOpenFile={onOpenFile}
+        />
+      );
     const turnMetadata = formatTurnMetadata(entry.turnMetadata);
     const user = message.role === "user";
     const system = message.role === "system";

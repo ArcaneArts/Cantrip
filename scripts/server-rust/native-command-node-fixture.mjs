@@ -1,20 +1,153 @@
+import { threadChangeReconcilerFixture } from "./thread-change-reconciler-fixture.mjs";
+import { canonicalMessagesFromThreadSync } from "../../tests/reference-node-server/src/chats/thread-sync.ts";
+import { agentThreadSyncSchema } from "../../packages/protocol/dist/index.js";
+import { taskEligibilityFixture } from "./task-eligibility-node-fixture.mjs";
+import { taskWorkersFixture } from "./task-workers-node-fixture.mjs";
 import {
   nativeCommandContext,
   readNativeCommand,
-} from "../../cantrip_server/src/db/repository/native-command-context.ts";
+} from "../../tests/reference-node-server/src/db/repository/native-command-context.ts";
 import {
   findObservedNativeCommandTurn,
   findObservedNativeInputTurn,
-} from "../../cantrip_server/src/db/repository/native-command-turns.ts";
-import { lockNativeCommandChat } from "../../cantrip_server/src/db/repository/native-command-lock.ts";
+} from "../../tests/reference-node-server/src/db/repository/native-command-turns.ts";
+import { lockNativeCommandChat } from "../../tests/reference-node-server/src/db/repository/native-command-lock.ts";
 import { nativeSettingsFixture } from "./native-settings-node-fixture.mjs";
 import { executionLaneFixture } from "./execution-lane-node-fixture.mjs";
 import { queuedPromptFixture } from "./queued-prompt-node-fixture.mjs";
 import { managedQueueFixture } from "./managed-queue-node-fixture.mjs";
 import { nativeEventFixture } from "./native-event-node-fixture.mjs";
 import { interactionFixture } from "./agent-interaction-node-fixture.mjs";
+import { managedGuiFinishFixture } from "./managed-gui-finish-node-fixture.mjs";
+import { acquireChatTurnExecution } from "../../tests/reference-node-server/src/app/runtime/chat-turn-admission.ts";
+import {
+  validateChatTurnInput,
+  chatTurnModelConfiguration,
+} from "../../tests/reference-node-server/src/app/runtime/chat-turn-configuration.ts";
+import { receiptHandlerFixture } from "./receipt-handler-node-fixture.mjs";
+import { protectChatInput } from "../../tests/reference-node-server/src/app/runtime/protect-chat-input.ts";
+import { turnPlacementFixture } from "./turn-placement-node-fixture.mjs";
+import { turnBehaviorFixture } from "./turn-behavior-node-fixture.mjs";
+import { guiTelemetryFixture } from "./gui-telemetry-node-fixture.mjs";
+import { runtimeQuotaFixture } from "./gui-runtime-quota-node-fixture.mjs";
+import { turnLiveFixture } from "./turn-live-node-fixture.mjs";
+import { taskDispatchLeaseFixture } from "./task-dispatch-lease-node-fixture.mjs";
+import { turnBootstrapFixture } from "./turn-bootstrap-node-fixture.mjs";
+import { turnExecutionFixture } from "./turn-execution-node-fixture.mjs";
+import { automaticTitleFixture } from "./automatic-title-node-fixture.mjs";
+import { recoveryFixture } from "./recovery-node-fixture.mjs";
+import { nativeHandoffFixture } from "./native-handoff-node-fixture.mjs";
+import { accountFailoverFixture } from "./account-failover-node-fixture.mjs";
+import { taskFixture } from "./task-node-fixture.mjs";
+import { taskSchedulerFixture } from "./task-scheduler-node-fixture.mjs";
+import { taskGoalFixture } from "./task-goal-node-fixture.mjs";
+import { taskRetryFixture } from "./task-retry-node-fixture.mjs";
 
 export async function nativeCommandFixture(repository, input) {
+  if (input.op === "native-command-task-queue")
+    return automaticTitleFixture(repository, input);
+  if (input.op === "native-command-task-eligibility")
+    return taskEligibilityFixture(repository, input);
+  if (input.op === "native-command-task-workers")
+    return taskWorkersFixture(repository, input);
+  if (
+    [
+      "native-command-task-goal",
+      "native-command-task-automatic",
+      "native-command-automation-pause",
+    ].includes(input.op)
+  )
+    return taskGoalFixture(repository, input);
+  if (input.op === "native-command-task-retry")
+    return taskRetryFixture(repository, input);
+  if (input.op === "native-command-task-scheduler")
+    return taskSchedulerFixture(repository, input);
+  if (input.op === "native-command-task") return taskFixture(repository, input);
+  if (input.op === "native-command-account-prepare")
+    return accountFailoverFixture(repository, input);
+  if (input.op === "native-command-runtime-handoff")
+    return nativeHandoffFixture(repository, input);
+  if (input.op === "native-command-recovery")
+    return recoveryFixture(repository, input);
+  if (input.op === "native-command-automatic-title")
+    return automaticTitleFixture(repository, input);
+  if (
+    [
+      "native-command-turn-execution",
+      "native-command-task-claimed",
+      "native-command-task-background",
+      "native-command-turn-outcome",
+    ].includes(input.op)
+  )
+    return turnExecutionFixture(repository, input);
+  if (input.op === "native-command-turn-bootstrap")
+    return turnBootstrapFixture(repository, input);
+  if (input.op === "native-command-turn-live")
+    return turnLiveFixture(repository, input);
+  if (input.op === "native-command-task-lease")
+    return taskDispatchLeaseFixture(repository, input);
+  if (input.op === "native-command-gui-quota")
+    return runtimeQuotaFixture(repository, input);
+  if (input.op === "native-command-gui-telemetry")
+    return guiTelemetryFixture(repository, input);
+  if (input.op === "native-command-gui-behavior")
+    return turnBehaviorFixture(input);
+  if (
+    ["native-command-gui-placement", "native-command-gui-worktree"].includes(
+      input.op,
+    )
+  )
+    return turnPlacementFixture(repository, input);
+  if (input.op === "native-command-gui-protect") {
+    let command;
+    const result = await protectChatInput(
+      {
+        request: async (worker, request) => {
+          command = { worker, command: request };
+          if (input.failRequest)
+            throw new Error("Controlled protection failure");
+          return input.response;
+        },
+      },
+      input.worker,
+      input.input ?? {},
+      input.attachments ?? [],
+      input.reasoningEffort,
+      input.role,
+    );
+    return { result, ...command };
+  }
+  if (input.op === "native-command-receipt-handler")
+    return receiptHandlerFixture(repository, input);
+  if (input.op === "native-command-gui-validate") {
+    validateChatTurnInput(
+      input.context,
+      input.input ?? {},
+      input.options ?? {},
+    );
+    return null;
+  }
+  if (input.op === "native-command-gui-configuration")
+    return chatTurnModelConfiguration(
+      input.context,
+      input.input ?? {},
+      input.model,
+    );
+  if (input.op === "native-command-gui-acquire") {
+    const context =
+      input.context ??
+      (await repository.getChatExecutionContext(input.owner, input.chat));
+    return acquireChatTurnExecution({
+      repository,
+      ownerId: input.owner,
+      context,
+      options: input.options ?? {},
+      protectedAdmissionInput: input.protectedInput,
+      observeTaskTurnBootstrapStage: (_stage, run) => run(),
+    });
+  }
+  if (input.op === "native-command-logical-managed-finish")
+    return managedGuiFinishFixture(repository, input);
   if (input.op === "native-command-interaction")
     return interactionFixture(repository, input);
   const { owner, worker, operation, generation, chat } = input;
@@ -59,6 +192,14 @@ export async function nativeCommandFixture(repository, input) {
       operation,
       generation,
       input.status,
+      input.transportEnded ?? false,
+    );
+  if (input.op === "native-command-logical-transport-pending")
+    return repository.nativeCommands.pendingLogicalGuiAfterTransportLoss(
+      owner,
+      worker,
+      operation,
+      generation,
     );
   if (input.op === "native-command-logical-deferred")
     return repository.nativeCommands.hasDeferredLogicalGui(
@@ -133,8 +274,38 @@ export async function nativeCommandFixture(repository, input) {
       generation,
       input.status,
     );
+  if (input.op === "native-command-suspension-execution")
+    return repository.nativeCommands.admitSuspendedExecution(
+      owner,
+      input.input,
+    );
+  if (input.op === "native-command-suspended-execution")
+    return repository.nativeCommands.suspendedExecution(
+      owner,
+      worker,
+      operation,
+      generation,
+    );
   if (input.op === "native-command-dispatch")
     return repository.nativeCommands.dispatch(owner, input.input);
+  if (input.op === "native-command-thread-changes")
+    return threadChangeReconcilerFixture(input);
+  if (input.op === "native-command-thread-sync-project")
+    return canonicalMessagesFromThreadSync(
+      agentThreadSyncSchema.parse(input.input),
+      {
+        ...input.options,
+        externalAttachments: input.attachments
+          ? new Map(Object.entries(input.attachments))
+          : undefined,
+      },
+    );
+  if (input.op === "native-command-observe-thread")
+    return repository.nativeCommands.reconcileThreadObservation(
+      owner,
+      input.expected,
+      input.status,
+    );
   if (input.op === "native-command-admit")
     return repository.nativeCommands.admit(
       owner,

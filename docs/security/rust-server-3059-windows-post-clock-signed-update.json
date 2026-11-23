@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "target": "win32-x64",
+  "serverSourceCommit": "cdba080907df32759458d6efed55c4d38f8236dc",
+  "appBuildSourceCommit": "34d4b14ed492b02cde8c1d5108a6eb35ac7bc0a2",
+  "scope": "A headless Windows 11 x64 guest under QEMU software emulation on Apple Silicon. The existing Tauri updater installed the exact rebuilt NSIS through loopback HTTPS using the local QA signature. The guest had no external network access.",
+  "completeReplacement": false,
+  "databaseMode": "pglite",
+  "baselineVersion": "1.1.2938",
+  "baselineInstallerSha256": "508cc4fc20ae9b63caa1cd7f3d157dd5e7083495f0bcbeab65369a35691caaa9",
+  "baselineAppSha256": "ed196f94a7fde4ffbe8eba4e7b2f350bc33a1a35eff0f99f2b8381698b506ad1",
+  "installer": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/Cantrip_1.1.3059_x64-setup.exe",
+    "bytes": 256883449,
+    "sha256": "cf6e01dea29010e8f3071a292305241b56896d41fcdb0a80865d117dd3f05c56"
+  },
+  "qaUpdaterSignature": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/Cantrip_1.1.3059_x64-setup.exe.sig",
+    "bytes": 420,
+    "sha256": "9d0c75e22f32e93d3cb685fe086f53467d1700d4b7ab6a05d53da73dae5bd96b"
+  },
+  "appSha256": "d65a47949658ac5eee8ff80a35d064676216151758752554c836ad3db9ec367d",
+  "serverSha256": "290c60f27e15e5cd2c1110cad05ba413648904e84ffb8f5e7ffc72e0e79ac459",
+  "workerHashes": {
+    "dist/index.js": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+    "bin/codex.exe": "f0db8df766e7b928f9f3f867140e7c3637ca2ef288827a9209aaf0f0d4e39138",
+    "node_modules/@zavora-ai/computer-use-mcp/computer-use-napi.win32-x64.node": "56a0e9f48bb29841fcc5c63fcb0a38454ad194f31c6f63ea6445e21d115960fb",
+    "node_modules/@zavora-ai/computer-use-mcp/vcruntime140.dll": "eb1ee979bf02324712346e5bdbfc59c785388bc50d18cc2688aae4b0734915a0"
+  },
+  "changedDownloadRejectionCode": "update_signature_invalid",
+  "registeredInstallationReplaced": true,
+  "retainedServerIdentity": true,
+  "retainedWorkerIdentity": true,
+  "retainedSettingWrite": true,
+  "shutdown": {
+    "appExitCode": 0,
+    "appReapedServerAndWorker": true,
+    "serverShutdownComplete": true,
+    "normalWindowsShutdownObserved": true
+  },
+  "qaCertificateRemoved": true,
+  "releaseUpdaterSignatureVerified": false,
+  "earlierQaAttempt": {
+    "outcome": "The first fixture interpreted the certificate utility exit status as a failure after the utility logged successful import. The corrected fixture checked HTTPS directly.",
+    "receipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-post-clock.dCbOcNQo/guest-receipts.jsonl",
+      "bytes": 994,
+      "sha256": "358ea5fedef0f433f135bc210f2228e9e9eb52fbc36f5d8d8680e5101f1dd960"
+    }
+  },
+  "evidence": {
+    "onDiskReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-post-clock-retry.gos2rJts/extracted/signed-update-receipt.json",
+      "bytes": 2376,
+      "sha256": "bf8157981df918d21192aece4ecfb682e722667e0bab950d56fec4424c460244"
+    },
+    "matchingSerialEvidence": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-post-clock-retry.gos2rJts/guest-receipts.jsonl",
+      "bytes": 3426,
+      "sha256": "519cd96e763521650328acf8fe628adb47ada63a3d59abb97ead568ab6aba330"
+    },
+    "onDiskUpdateObservation": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-post-clock-retry.gos2rJts/extracted/verified-observation.json",
+      "bytes": 1719,
+      "sha256": "3ca60d1ba339b23863f42f4c701db2c507037998612e190fa087249d1536dfc0"
+    },
+    "collectorVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-post-clock-retry.gos2rJts/collection.json",
+      "bytes": 2661,
+      "sha256": "d54bf45d98e2c622c5de61eab9864662d5b225b4664b58c78ae57ae20511cb1a"
+    },
+    "httpsDownloads": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-post-clock-retry.gos2rJts/extracted/transport.log",
+      "bytes": 248,
+      "sha256": "c7a69a0b7075d89f3bb72493de80bce8e2337aec46a5cb95c9e79c48083996f9"
+    },
+    "trayQuitConfirmation": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-post-clock-retry.gos2rJts/ui/signed-updated-5472-quit-confirmation.png",
+      "bytes": 64294,
+      "sha256": "fd53fd9c08f68fd2f7da999a551292e8f3adbadbc56c1469c1c06888617baae0"
+    },
+    "guestRunner": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-post-clock-retry.gos2rJts/media/run-signed.ps1",
+      "bytes": 10961,
+      "sha256": "3a8710073517f8e6f76034ef9da1fb290edadacfff06a6219d29315a7c24adab"
+    },
+    "webviewObserver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/signed-post-clock-retry.gos2rJts/media/observe-windows-signed-update.mjs",
+      "bytes": 9611,
+      "sha256": "d8d236d5bc766d8186c7692c9a341cd491ee16efcdac4b46f70bab017d93c5da"
+    }
+  }
+}

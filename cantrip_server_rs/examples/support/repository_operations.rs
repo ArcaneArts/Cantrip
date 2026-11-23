@@ -17,6 +17,29 @@ pub fn run<'a>(
     {
         return super::run_configurations::run(database, request);
     }
+    // The umbrella poll frame retained 373760 bytes on Windows.
+    // Target resolution must poll only its own selected future.
+    if request["op"] == "target-resolve" {
+        return Box::pin(async move {
+            let connected = |worker: &str| {
+                request["connected"]
+                    .as_array()
+                    .is_some_and(|workers| workers.iter().any(|w| w == worker))
+            };
+            cantrip_server::projects::targets::TargetRepository::new(database.clone())
+                .resolve(
+                    request["owner"].as_str().context("Fixture owner")?,
+                    request["project"].as_str().context("Fixture project")?,
+                    &request["target"],
+                    request["connected"]
+                        .as_array()
+                        .map(|_| &connected as &(dyn Fn(&str) -> bool + Send + Sync)),
+                    request["allowUnavailable"].as_bool().unwrap_or(false),
+                )
+                .boxed()
+                .await
+        });
+    }
     Box::pin(async move {
         if request["op"] == "worktree-coordinator" {
             super::worktree_coordinator::run(database.clone(), request)
@@ -396,24 +419,6 @@ pub fn run<'a>(
                 .await?
             }
             .unwrap_or(Value::Null))
-        } else if request["op"] == "target-resolve" {
-            let connected = |worker: &str| {
-                request["connected"]
-                    .as_array()
-                    .is_some_and(|workers| workers.iter().any(|w| w == worker))
-            };
-            cantrip_server::projects::targets::TargetRepository::new(database.clone())
-                .resolve(
-                    request["owner"].as_str().context("Fixture owner")?,
-                    request["project"].as_str().context("Fixture project")?,
-                    &request["target"],
-                    request["connected"]
-                        .as_array()
-                        .map(|_| &connected as &(dyn Fn(&str) -> bool + Send + Sync)),
-                    request["allowUnavailable"].as_bool().unwrap_or(false),
-                )
-                .boxed()
-                .await
         } else if request["op"] == "catalog-repository" {
             let connected = |worker: &str| {
                 request["connected"]

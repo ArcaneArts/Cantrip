@@ -51,7 +51,7 @@ const migratedConsumers = [
     ],
   },
   {
-    path: "cantrip_worker/src/remote-surface-worker-link-adapter.ts",
+    path: "tests/reference-node-worker/src/remote-surface-worker-link-adapter.ts",
     required: [
       "encodeWorkerLinkRemoteSurfaceChunk",
       "pendingInteractive",
@@ -59,15 +59,15 @@ const migratedConsumers = [
     ],
   },
   {
-    path: "cantrip_worker/src/browser/browser-adapter.ts",
+    path: "tests/reference-node-worker/src/browser/browser-adapter.ts",
     required: ["publishState(attachmentId)", "captureFrame(attachmentId)"],
   },
   {
-    path: "cantrip_worker/src/index.ts",
+    path: "tests/reference-node-worker/src/index.ts",
     required: ['resourceKind: "remote-desktop"', 'surfaceKind: "desktop"'],
   },
   {
-    path: "cantrip_worker/src/desktop/desktop-adapter.ts",
+    path: "tests/reference-node-worker/src/desktop/desktop-adapter.ts",
     // Refresh routing is exercised by desktop-adapter.test.ts in acceptance.
     // A literal argument list cannot establish that behavior.
     required: ["#resynchronizedAttachments"],

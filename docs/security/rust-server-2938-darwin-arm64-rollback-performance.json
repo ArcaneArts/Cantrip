@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+  "candidateVersion": "1.1.2938",
+  "platform": "darwin-arm64",
+  "historicalPostWriteRollback": {
+    "result": "passed",
+    "legacyVersion": "1.1.2733",
+    "nativeBinarySha256": "a2284ce255add3f7e528e512ebb9584fc1def6108b5d48df96343b77c76db99f",
+    "tableCount": 137,
+    "populatedTableCount": 35,
+    "encryptedWritesPerModePerPhase": 4,
+    "scope": "Local populated historical fixture with the published legacy Node distribution, bounded profile converter, actual Rust and Node server entrypoints, and a read-only original profile. The old Node program opens the reversed profile after Rust writes and adds its own writes before re-upgrade. This product state covers chat, draft, file document and Task. It does not exercise in-flight native work or additional historical profiles.",
+    "modes": [
+      {
+        "stage": "complete-product-roundtrip",
+        "mode": "pglite",
+        "allTableAndSequenceEquality": true,
+        "originalSession": true,
+        "originalIdentity": true,
+        "masterKeyAndContentDecryption": true,
+        "rustThenLegacyWrites": true,
+        "originalFilesUnchanged": true
+      },
+      {
+        "stage": "complete-product-roundtrip",
+        "mode": "bundled-postgres",
+        "allTableAndSequenceEquality": true,
+        "originalSession": true,
+        "originalIdentity": true,
+        "masterKeyAndContentDecryption": true,
+        "rustThenLegacyWrites": true,
+        "originalFilesUnchanged": true
+      },
+      {
+        "stage": "complete-product-roundtrip",
+        "mode": "postgres",
+        "allTableAndSequenceEquality": true,
+        "originalSession": true,
+        "originalIdentity": true,
+        "masterKeyAndContentDecryption": true,
+        "rustThenLegacyWrites": true,
+        "originalFilesUnchanged": true
+      }
+    ],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-historical-product/report.json",
+      "bytes": 72758,
+      "sha256": "b588e427b31876e794cade7564ff15d594f63d17b66c973f0287dd73608f4694"
+    }
+  },
+  "performance": {
+    "smallPGlite": {
+      "scope": "Six runs per implementation in alternating order against a warmed small fixture on local macOS. Includes host activity from the local QA runs. Per-run HTTP p95 values are summarized by their median.",
+      "results": {
+        "node": {
+          "runs": 6,
+          "medianReadyMs": 1314.668,
+          "medianIdleRssKiB": 1361064.0,
+          "medianOfPerRunHttpP95Ms": {
+            "/api/bootstrap": 0.622,
+            "/api/settings": 4.525,
+            "/api/projects": 1.642
+          },
+          "medianSettingsWriteMs": 4.229,
+          "medianLivePingMs": 0.092,
+          "medianShutdownMs": 54.615,
+          "rawReports": [
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/node-1.json",
+              "bytes": 2477,
+              "sha256": "f90db8164b32488a10263a2e5d049a4e9891ee449ed8e42e1e3d6f49eb1fc25c"
+            },
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/node-2.json",
+              "bytes": 2493,
+              "sha256": "ac22484e0910eee165fb9f6d1d91ff05a1d0e08f544d19b618d9ba65bda65343"
+            },
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/node-3.json",
+              "bytes": 2504,
+              "sha256": "bd7c7f223eb88143698abde2e8053bc79f1f68dec233409bc03af97f8c0d93fe"
+            },
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/node-4.json",
+              "bytes": 2510,
+              "sha256": "4422bf9032d241c0d086533467ce5103c07022515e8a821a5e01eff4b20ba06e"
+            },
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/node-5.json",
+              "bytes": 2501,
+              "sha256": "0a9267af7cdf2f29146382ad0f46f354f928a2724c041cc302649803e46d5fc6"
+            },
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/node-6.json",
+              "bytes": 2505,
+              "sha256": "67cc4e555c09409f7db5d7aaaa8a8adc78eec0908f2a31e3dbed9b8a529a7dd0"
+            }
+          ]
+        },
+        "rust": {
+          "runs": 6,
+          "medianReadyMs": 67.821,
+          "medianIdleRssKiB": 101560.0,
+          "medianOfPerRunHttpP95Ms": {
+            "/api/bootstrap": 0.372,
+            "/api/settings": 1.287,
+            "/api/projects": 0.429
+          },
+          "medianSettingsWriteMs": 1.346,
+          "medianLivePingMs": 0.069,
+          "medianShutdownMs": 6.464,
+          "rawReports": [
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/rust-1.json",
+              "bytes": 2464,
+              "sha256": "92bb1f94385fa10db2a52bb52a8dfa5ee5d334908949d28c8075b15a18e79dec"
+            },
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/rust-2.json",
+              "bytes": 2517,
+              "sha256": "112973fcde9d46dbd2724d6a0edd040e2baab4cc10775a9a20baec3ec00b12ec"
+            },
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/rust-3.json",
+              "bytes": 2509,
+              "sha256": "a5e46052186585fb01376062f63806297e593c0bec9b69f95c19c3514d69a4ac"
+            },
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/rust-4.json",
+              "bytes": 2508,
+              "sha256": "2825259c9c5abf41fbc942f1227ae2f1698e2a26765630ded73855f6f50330f4"
+            },
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/rust-5.json",
+              "bytes": 2511,
+              "sha256": "2461f9085eb6f5efb8c1c3fce37eff3cbd81ccb8724374f943f2196ff369d245"
+            },
+            {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-small-profile/rust-6.json",
+              "bytes": 2516,
+              "sha256": "d34c73c5a8fce4110714977c161c76d8ec752823e743293e6653e87917da04d1"
+            }
+          ]
+        }
+      }
+    },
+    "workerLogStream": {
+      "scope": "One 16 MiB run per implementation per store using the actual WorkerConnection and production server entrypoints. Log payloads are controlled. The Node peer uses a separate local PostgreSQL owner for the bundled-PostgreSQL comparison. Worker reconnect time includes retry backoff. These samples do not qualify binary WorkerLink throughput or establish a recovery regression threshold.",
+      "results": {
+        "pglite": {
+          "payloadSha256": "a06c26cbac8b80704f420222dae5658b88ff2da96702d12ef7a4223e9361f7c1",
+          "node": {
+            "payloadMiBPerSecond": 223.247,
+            "streamProcessTreeRssKiB": 1263616,
+            "leaseStopMs": 24.387,
+            "slowConsumerCloseCode": 1013,
+            "restartAndWorkerReconnectMs": 28211.314,
+            "retainedIdentityAndWrite": true,
+            "rawReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-stream-reports/pglite-node.json",
+              "bytes": 2993,
+              "sha256": "40783018b15745ece8d189d7c4910d8282fb2b0627ce72af327211879018e26f"
+            }
+          },
+          "rust": {
+            "payloadMiBPerSecond": 222.726,
+            "streamProcessTreeRssKiB": 127760,
+            "leaseStopMs": 23.77,
+            "slowConsumerCloseCode": 1013,
+            "restartAndWorkerReconnectMs": 28091.26,
+            "retainedIdentityAndWrite": true,
+            "rawReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-stream-reports/pglite-rust.json",
+              "bytes": 2986,
+              "sha256": "c836371ed8c941601d348680e187a7d895b7cdd6c1b83d43af2b6e856e5d312d"
+            }
+          }
+        },
+        "bundled-postgres": {
+          "payloadSha256": "a06c26cbac8b80704f420222dae5658b88ff2da96702d12ef7a4223e9361f7c1",
+          "node": {
+            "payloadMiBPerSecond": 215.346,
+            "streamProcessTreeRssKiB": 508096,
+            "leaseStopMs": 22.46,
+            "slowConsumerCloseCode": 1013,
+            "restartAndWorkerReconnectMs": 26475.458,
+            "retainedIdentityAndWrite": true,
+            "rawReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-stream-reports/bundled-postgres-node.json",
+              "bytes": 2998,
+              "sha256": "43649f3f8aab1d3cd01634411b16c7d80c0f33a330e53e7fbb87552e3e7d4bd4"
+            }
+          },
+          "rust": {
+            "payloadMiBPerSecond": 214.207,
+            "streamProcessTreeRssKiB": 328992,
+            "leaseStopMs": 24.008,
+            "slowConsumerCloseCode": 1013,
+            "restartAndWorkerReconnectMs": 28197.865,
+            "retainedIdentityAndWrite": true,
+            "rawReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-stream-reports/bundled-postgres-rust.json",
+              "bytes": 6054,
+              "sha256": "30843b478d10cb3d6c573498cc919ee94ade9201093b717c22be85c3ac36d907"
+            }
+          }
+        },
+        "postgres": {
+          "payloadSha256": "a06c26cbac8b80704f420222dae5658b88ff2da96702d12ef7a4223e9361f7c1",
+          "node": {
+            "payloadMiBPerSecond": 206.179,
+            "streamProcessTreeRssKiB": 516480,
+            "leaseStopMs": 30.201,
+            "slowConsumerCloseCode": 1013,
+            "restartAndWorkerReconnectMs": 24868.415,
+            "retainedIdentityAndWrite": true,
+            "rawReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-stream-reports/postgres-node.json",
+              "bytes": 2990,
+              "sha256": "e66a143b533b25a8a78f23f0dd700fddd29ce0b8b1b9cd61672d47f381e1babe"
+            }
+          },
+          "rust": {
+            "payloadMiBPerSecond": 219.335,
+            "streamProcessTreeRssKiB": 72416,
+            "leaseStopMs": 24.219,
+            "slowConsumerCloseCode": 1013,
+            "restartAndWorkerReconnectMs": 28547.6,
+            "retainedIdentityAndWrite": true,
+            "rawReport": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-stream-reports/postgres-rust.json",
+              "bytes": 2985,
+              "sha256": "960a521637a3f8d2c27ba3da250231a0a252f1804ae46cad9573f3cbf5436c96"
+            }
+          }
+        }
+      }
+    }
+  },
+  "completeReplacement": false
+}

@@ -1,0 +1,68 @@
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -121,4 +121,8 @@
+     /// revokes this Task input. A title can have used its old reservation.
+     #[serde(default)]
+     task_input_not_dispatched: bool,
++    /// Canonical Goal admission was revoked before forwarding, independently
++    /// of whether its reservation had already been granted.
++    #[serde(default)]
++    goal_input_not_dispatched: bool,
+ }
+@@ -182,10 +186,6 @@
+         reference: &RecoveryReference,
+         generation: &str,
+     ) -> anyhow::Result<&Operation> {
+-        anyhow::ensure!(
+-            reference.worker_generation != generation,
+-            "recovery requires a retired generation"
+-        );
+         let previous = self
+             .operations
+             .get(&reference.key)
+@@ -195,5 +195,17 @@
+                 && previous.revision == reference.revision,
+             "stale recovery evidence"
+         );
++        // A current-generation Goal alias may only be forgotten/adopted after
++        // its real owner settled without beginning inference. Adoption also
++        // requires the canonical dispatch-revocation flag below.
++        anyhow::ensure!(
++            previous.worker_generation != generation
++                || (previous.state == State::Released
++                    && matches!(previous.outcome.as_deref(), Some("never-started" | "runtime-exited"))
++                    && previous.native_execution.is_none()
++                    && previous.identity.recovery.as_ref()
++                        .is_some_and(|recovery| recovery.autonomous_goal.is_some())),
++            "recovery requires a retired or settled Goal owner"
++        );
+         Ok(previous)
+     }
+@@ -411,6 +423,7 @@
+                     !previous.is_empty()
+                         && previous
+                             .iter()
+-                            .all(|p| p.worker_generation != generation && key != p.key),
++                            .all(|p| key != p.key
++                                && (p.worker_generation != generation || p.goal_input_not_dispatched)),
+                     "invalid recovery generation"
+                 );
+@@ -455,9 +468,16 @@
+                             });
++                    let goal_input_not_dispatched = reference.goal_input_not_dispatched
++                        && old.native_execution.is_none()
++                        && old.identity.recovery.as_ref()
++                            .is_some_and(|recovery| recovery.autonomous_goal.is_some())
++                        && identity.recovery.as_ref()
++                            .is_some_and(|recovery| recovery.autonomous_goal.is_some());
+                     anyhow::ensure!(
+                         (!old.ever_granted && old.state != State::Granted)
+                             || (old.state == State::Released
+                                 && old.outcome.as_deref() == Some("never-started"))
+-                            || task_input_not_dispatched,
++                            || task_input_not_dispatched
++                            || goal_input_not_dispatched,
+                         "recovery cannot replay potentially executed input"
+                     );
+                     // A managed pre-start Goal has no GUI message ID. A

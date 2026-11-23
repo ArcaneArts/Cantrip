@@ -15,7 +15,7 @@ import { shareWorker } from "./project-share-http-worker.mjs";
 import { input } from "./project-share-http-cases.mjs";
 import { eventually } from "./full-worker.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const option = (name) => {
   const i = process.argv.indexOf(name);

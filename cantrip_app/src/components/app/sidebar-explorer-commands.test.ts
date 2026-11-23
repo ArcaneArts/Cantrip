@@ -319,19 +319,19 @@ describe("sidebar Explorer ownership commands", () => {
     expect(harness.legacyPin).not.toHaveBeenCalled();
   });
 
-  it.each([
-    { ...entry, kind: "directory", viewable: true },
-    { ...entry, viewable: false },
-  ])("ignores non-viewable or directory entries: %j", (invalid) => {
-    const openOwnedFile = vi.fn(async () => {});
-    const harness = commandHarness({ layout: layout([]), openOwnedFile });
-    harness.commands.openSidebarFilePreview(
-      previewOwner,
-      invalid as ExplorerEntry,
-    );
-    harness.commands.pinSidebarFile(previewOwner, invalid as ExplorerEntry);
-    expect(openOwnedFile).not.toHaveBeenCalled();
-  });
+  it.each([{ ...entry, kind: "directory", viewable: true }])(
+    "ignores directory entries: %j",
+    (invalid) => {
+      const openOwnedFile = vi.fn(async () => {});
+      const harness = commandHarness({ layout: layout([]), openOwnedFile });
+      harness.commands.openSidebarFilePreview(
+        previewOwner,
+        invalid as ExplorerEntry,
+      );
+      harness.commands.pinSidebarFile(previewOwner, invalid as ExplorerEntry);
+      expect(openOwnedFile).not.toHaveBeenCalled();
+    },
+  );
 
   it("reports preview failure without writing legacy preview state", async () => {
     const harness = commandHarness({
@@ -363,4 +363,47 @@ describe("sidebar Explorer ownership commands", () => {
     expect(harness.legacyPin).not.toHaveBeenCalled();
     expect(harness.revealWorkspace).toHaveBeenCalledExactlyOnceWith();
   });
+});
+
+it("lets explicit Open As reach a viewer even when the filename is not marked viewable", async () => {
+  const openOwnedFile = vi.fn(async () => {});
+  const { commands, revealWorkspace } = commandHarness({
+    layout: layout([]),
+    openOwnedFile,
+  });
+  const unknown = {
+    ...entry,
+    path: "opaque.xyz",
+    name: "opaque.xyz",
+    viewable: false,
+  };
+  commands.openSidebarFileAs(previewOwner, unknown, "json");
+  await vi.waitFor(() =>
+    expect(openOwnedFile).toHaveBeenCalledWith(
+      previewOwner,
+      "opaque.xyz",
+      false,
+      "json",
+    ),
+  );
+  expect(revealWorkspace).toHaveBeenCalled();
+});
+
+it("lets the registered reader decide how to open files with unfamiliar names", async () => {
+  const openOwnedFile = vi.fn(async () => {});
+  const { commands } = commandHarness({ layout: layout([]), openOwnedFile });
+  const unknown = {
+    ...entry,
+    path: "opaque.xyz",
+    name: "opaque.xyz",
+    viewable: false,
+  };
+  commands.openSidebarFilePreview(previewOwner, unknown);
+  await vi.waitFor(() =>
+    expect(openOwnedFile).toHaveBeenCalledWith(
+      previewOwner,
+      "opaque.xyz",
+      true,
+    ),
+  );
 });

@@ -3,8 +3,8 @@ import {
   SlidingWindowRateLimiter,
   SlidingWindowByteLimiter,
   ActiveLimit,
-} from "../../cantrip_server/src/security/abuse-limits.ts";
-import { RelayQuotaManager } from "../../cantrip_server/src/operations/relay-quotas.ts";
+} from "../../tests/reference-node-server/src/security/abuse-limits.ts";
+import { RelayQuotaManager } from "../../tests/reference-node-server/src/operations/relay-quotas.ts";
 let count = 0;
 const emit = (op, input, expected) =>
   process.stdout.write(

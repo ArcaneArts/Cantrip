@@ -1,0 +1,259 @@
+import {
+  cantripMcpTaskCreateInputSchema,
+  cantripMcpTaskListInputSchema,
+  cantripMcpTaskStatusInputSchema,
+  cantripMcpTaskWaitInputSchema,
+} from "@cantrip/protocol";
+import {
+  cantripMcpAlertRaiseInputSchema,
+  cantripMcpAlertResolveInputSchema,
+} from "@cantrip/protocol";
+import {
+  cantripMcpChatListInputSchema,
+  cantripMcpChatReadInputSchema,
+  cantripMcpChatSendInputSchema,
+  cantripMcpChatWaitInputSchema,
+} from "@cantrip/protocol";
+import {
+  CANTRIP_MCP_TOOL_NAMES,
+  cantripMcpBrowserNavigateInputSchema,
+  cantripMcpBrowserServicesInputSchema,
+  cantripMcpClientFocusProjectInputSchema,
+  cantripMcpClientFocusSurfaceInputSchema,
+  cantripMcpClientNotifyInputSchema,
+  cantripMcpClientShowInteractionInputSchema,
+  cantripMcpContextCompactInputSchema,
+  cantripMcpContextGetInputSchema,
+  cantripMcpExplorerListInputSchema,
+  cantripMcpExplorerReadInputSchema,
+  cantripMcpExplorerWriteInputSchema,
+  cantripMcpPolicyListInputSchema,
+  cantripMcpPolicyReadInputSchema,
+  cantripMcpRunConfigurationCreateInputSchema,
+  cantripMcpRunConfigurationDeleteInputSchema,
+  cantripMcpRunConfigurationDetectInputSchema,
+  cantripMcpRunConfigurationGetInputSchema,
+  cantripMcpRunConfigurationListInputSchema,
+  cantripMcpRunConfigurationReadOutputInputSchema,
+  cantripMcpRunConfigurationRestartInputSchema,
+  cantripMcpRunConfigurationSecretSetInputSchema,
+  cantripMcpRunConfigurationStartInputSchema,
+  cantripMcpRunConfigurationStatusInputSchema,
+  cantripMcpRunConfigurationStopInputSchema,
+  cantripMcpRunConfigurationUpdateInputSchema,
+  cantripMcpTargetInspectInputSchema,
+  cantripMcpTargetListInputSchema,
+  cantripMcpTerminalReadInputSchema,
+  cantripMcpTerminalRestartInputSchema,
+  cantripMcpTerminalSendInputSchema,
+  cantripMcpToolHelpInputSchema,
+  cantripMcpToolHelpResultSchema,
+  cantripMcpWebReadInputSchema,
+  cantripMcpWebSearchInputSchema,
+  cantripMcpWebSessionClickInputSchema,
+  cantripMcpWebSessionPointerInputSchema,
+  cantripMcpWebSessionCloseInputSchema,
+  cantripMcpWebSessionOpenInputSchema,
+  cantripMcpWebSessionSnapshotInputSchema,
+  cantripMcpWebSessionTypeInputSchema,
+  cantripMcpWorktreeCreateInputSchema,
+  cantripMcpWorktreeListInputSchema,
+  cantripMcpWorktreeReleaseInputSchema,
+  cantripMcpWorktreeRemoveInputSchema,
+  cantripMcpWorktreeStatusInputSchema,
+  cantripMcpWorktreeSwitchInputSchema,
+  type CantripAgentOperationResult,
+} from "@cantrip/protocol";
+
+type ToolName = (typeof CANTRIP_MCP_TOOL_NAMES)[number];
+type InputSchema = {
+  toJSONSchema(): Record<string, unknown>;
+};
+
+const inputSchemas = {
+  task_create: cantripMcpTaskCreateInputSchema,
+  task_list: cantripMcpTaskListInputSchema,
+  task_status: cantripMcpTaskStatusInputSchema,
+  task_wait: cantripMcpTaskWaitInputSchema,
+  alert_raise: cantripMcpAlertRaiseInputSchema,
+  alert_resolve: cantripMcpAlertResolveInputSchema,
+  chat_list: cantripMcpChatListInputSchema,
+  chat_read: cantripMcpChatReadInputSchema,
+  chat_send: cantripMcpChatSendInputSchema,
+  chat_wait: cantripMcpChatWaitInputSchema,
+  context_get: cantripMcpContextGetInputSchema,
+  context_compact: cantripMcpContextCompactInputSchema,
+  tool_help: cantripMcpToolHelpInputSchema,
+  policy_list: cantripMcpPolicyListInputSchema,
+  policy_read: cantripMcpPolicyReadInputSchema,
+  target_list: cantripMcpTargetListInputSchema,
+  target_inspect: cantripMcpTargetInspectInputSchema,
+  run_configuration_list: cantripMcpRunConfigurationListInputSchema,
+  run_configuration_get: cantripMcpRunConfigurationGetInputSchema,
+  run_configuration_detect: cantripMcpRunConfigurationDetectInputSchema,
+  run_configuration_status: cantripMcpRunConfigurationStatusInputSchema,
+  run_configuration_read_output:
+    cantripMcpRunConfigurationReadOutputInputSchema,
+  worktree_list: cantripMcpWorktreeListInputSchema,
+  worktree_status: cantripMcpWorktreeStatusInputSchema,
+  explorer_list: cantripMcpExplorerListInputSchema,
+  explorer_read: cantripMcpExplorerReadInputSchema,
+  terminal_read: cantripMcpTerminalReadInputSchema,
+  web_search: cantripMcpWebSearchInputSchema,
+  web_read: cantripMcpWebReadInputSchema,
+  web_session_snapshot: cantripMcpWebSessionSnapshotInputSchema,
+  browser_services: cantripMcpBrowserServicesInputSchema,
+  run_configuration_create: cantripMcpRunConfigurationCreateInputSchema,
+  run_configuration_update: cantripMcpRunConfigurationUpdateInputSchema,
+  run_configuration_delete: cantripMcpRunConfigurationDeleteInputSchema,
+  run_configuration_start: cantripMcpRunConfigurationStartInputSchema,
+  run_configuration_restart: cantripMcpRunConfigurationRestartInputSchema,
+  run_configuration_stop: cantripMcpRunConfigurationStopInputSchema,
+  run_configuration_secret_set: cantripMcpRunConfigurationSecretSetInputSchema,
+  worktree_create: cantripMcpWorktreeCreateInputSchema,
+  worktree_switch: cantripMcpWorktreeSwitchInputSchema,
+  worktree_release: cantripMcpWorktreeReleaseInputSchema,
+  worktree_remove: cantripMcpWorktreeRemoveInputSchema,
+  explorer_write: cantripMcpExplorerWriteInputSchema,
+  terminal_send: cantripMcpTerminalSendInputSchema,
+  terminal_restart: cantripMcpTerminalRestartInputSchema,
+  web_session_open: cantripMcpWebSessionOpenInputSchema,
+  web_session_click: cantripMcpWebSessionClickInputSchema,
+  web_session_pointer: cantripMcpWebSessionPointerInputSchema,
+  web_session_type: cantripMcpWebSessionTypeInputSchema,
+  web_session_close: cantripMcpWebSessionCloseInputSchema,
+  browser_navigate: cantripMcpBrowserNavigateInputSchema,
+  client_notify: cantripMcpClientNotifyInputSchema,
+  client_focus_project: cantripMcpClientFocusProjectInputSchema,
+  client_focus_surface: cantripMcpClientFocusSurfaceInputSchema,
+  client_show_interaction: cantripMcpClientShowInteractionInputSchema,
+} satisfies Record<ToolName, InputSchema>;
+
+const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
+  context_compact: [{}],
+  web_search: [{ query: "portable local search runtimes", count: 10 }],
+  web_read: [{ searchResultId: `wsr_${"A".repeat(32)}` }],
+  web_session_open: [{ url: "https://example.com/" }],
+  web_session_snapshot: [{ sessionId: `wss_${"A".repeat(32)}` }],
+  tool_help: [{ tool: "worktree_create" }],
+  run_configuration_start: [
+    {
+      operationId: "11111111-1111-4111-8111-111111111111",
+      configurationId: "22222222-2222-4222-8222-222222222222",
+      worktreeId: null,
+    },
+  ],
+  run_configuration_secret_set: [
+    {
+      operationId: "11111111-1111-4111-8111-111111111111",
+      reference: "project/database-url",
+      value: "write-only-value",
+    },
+  ],
+  worktree_create: [
+    {
+      intent: "newBranch",
+      name: "System bell run",
+      branch: "codex/system-bell-run",
+      baseRevision: "main",
+    },
+    {
+      intent: "existingBranch",
+      name: "Review release",
+      branch: "release/2.x",
+    },
+  ],
+  worktree_switch: [
+    {
+      target: {
+        kind: "worktree",
+        projectId: "project-id-from-context_get",
+        worktreeId: "worktree-id-from-worktree_list",
+      },
+      purpose: "Continue implementation in the isolated worktree",
+    },
+  ],
+};
+
+const notes: Partial<Record<ToolName, string[]>> = {
+  task_create: [
+    "Create a normal direct Task, never a Goal. Only description, optional title, and a fresh operationId are needed; model and reasoning settings are inherited from your active Chat. Reuse operationId only for a retry of the same creation. Tasks use the existing project scheduler and stay queued while project Tasks are paused.",
+  ],
+  task_wait: [
+    "Use exact task IDs returned by task_create or task_list. mode all waits for every task; any wakes on the first final success or failure. timeoutMs 0 waits until completion or cancellation/binding expiry. Positive timeouts return a snapshot. Missing IDs return immediately. Paused, blocked, and retrying Tasks remain unfinished; waiting never resumes them. Do not wait for yourself.",
+  ],
+  alert_raise: [
+    "Raise an actionable Alert for this Chat only, with a reason and next step. Reuse key for retries/updates; increment revision for an update. Resolved keys stay resolved; a new attention episode needs a new key. Do not duplicate an existing structured permission, task review, or Goal blocker. This cannot request permissions or approve anything.",
+  ],
+  alert_resolve: [
+    "Resolve only an Alert raised by this Chat. Use its exact key and a higher revision. System permissions, tasks, goals, and other Chats cannot be resolved by this tool.",
+  ],
+  chat_send: [
+    "Use the exact chatId from chat_list. Reuse operationId only when retrying the same message. Messages use the receiving chat model and queue; paused chats stay paused. Both transcripts show agent attribution.",
+  ],
+  chat_wait: [
+    "Copy afterCursor from chat_read or chat_wait. A wait detects new messages, streaming edits, or status changes and returns within timeoutMs.",
+  ],
+  chat_read: [
+    "History is paginated newest-first by page, with messages in chronological order. Use page.nextBeforeSequence to load older pages. Text is bounded by maxChars; activity/tool payloads are omitted.",
+  ],
+  context_compact: [
+    "This requests Codex's native compaction operation; it does not submit /compact as chat text.",
+    "Compaction runs after the current tool-calling turn reaches its idle boundary. End the turn immediately when continuationScheduled is true.",
+  ],
+  web_search: [
+    "Use the opaque result ID with web_read; do not copy a URL when preserving the bound search reference is useful.",
+  ],
+  web_read: [
+    "On the first page provide exactly one of url or searchResultId. On later pages provide only cursor plus optional maxChars.",
+    "render=always requires the managed browser runtime; render=auto begins with static extraction.",
+  ],
+  web_session_snapshot: [
+    "Element references are bound to the current session generation and become stale after any action or navigation.",
+  ],
+  web_session_open: [
+    "Omit browserTarget for an ephemeral session. Provide an exact Browser target to interact with that open Cantrip browser page. User interaction does not cancel the agent session.",
+    "Resume and navigate an existing session with sessionId; its profile cannot be changed.",
+  ],
+  run_configuration_create: [
+    "Definitions are stored under Primary .cantrip/run-configurations with document.id as the filename.",
+    "New documents should leave environment.includeCodexEnvironment enabled unless the user explicitly disables it.",
+  ],
+  run_configuration_update: [
+    "Copy configurationId and expectedRevision from the same run_configuration_get result.",
+  ],
+  run_configuration_start: [
+    "Omit worktreeId or send null to run in Primary; use an exact ID from worktree_list for Run in Worktree.",
+    "Reuse the same operationId only when intentionally replaying the identical lifecycle request.",
+  ],
+  run_configuration_secret_set: [
+    "The value is encrypted by the worker and is never readable back as plaintext.",
+  ],
+  worktree_create: [
+    "baseRevision is the same concept as the CLI --base-revision option; --from remains a CLI compatibility alias.",
+    "Use only fields shown by the selected intent variant. The legacy field name from is not an MCP argument.",
+  ],
+  worktree_switch: [
+    "Copy the complete target object from worktree_list; do not send a branch name or invent an ID.",
+    "End the current turn immediately when continuationScheduled is true.",
+  ],
+  worktree_list: [
+    "By default, lease output omits released lanes and idle suspended Primary lanes while retaining suspended secondary lanes that still protect work.",
+    "Set includeLeaseHistory to true only when inspecting historical lease state.",
+  ],
+};
+
+export function cantripMcpToolHelp(
+  tool: ToolName,
+): CantripAgentOperationResult {
+  const inputSchema = inputSchemas[tool].toJSONSchema();
+  return cantripMcpToolHelpResultSchema.parse({
+    summary: `Returned the exact input schema for ${tool}.`,
+    data: {
+      tool,
+      inputSchema,
+      examples: examples[tool] ?? [],
+      notes: notes[tool] ?? [],
+    },
+  });
+}

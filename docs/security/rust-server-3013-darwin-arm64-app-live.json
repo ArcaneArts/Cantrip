@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "version": "1.1.3013",
+  "sourceCommit": "9069ae6acc0a4456e077582abe1b4867576942cf",
+  "referenceSourceCommit": "eedd9ed90acbae6366482e4c653e9374fcaabf2a",
+  "artifact": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/cantrip-server-1.1.3013-darwin-arm64.tar.gz",
+      "bytes": 66918839,
+      "sha256": "c2720aa5de0a8c54b8ffb4afd0382242a1f2fba492e022f27e66cfd8950f5bda"
+    },
+    "executable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/qualified-candidate/bin/cantrip-server",
+      "bytes": 94240368,
+      "sha256": "6e2c81304db71bc9f77d879b449c973aa8c21c6f5bb0cc11b969d7fa9fe27293"
+    }
+  },
+  "harness": {
+    "path": "scripts/server-rust/live-compatibility.mjs",
+    "sha256": "d99b4980e5c7f8df8ffba2e8270a1a3e566f667894e8e0813b45e71a5e8619fe",
+    "projectRepositoryFixture": {
+      "path": "rust-server-worker-remaining-contracts-20261110-v1/current-binaries/project-repository-fixture",
+      "bytes": 70740960,
+      "sha256": "31842fbe6659019ec27ab657b2dc4f3567d9cadd2a316b6af399b98447ba3aa0"
+    },
+    "postgresFixture": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/historical-profile-probes/database-fixture",
+      "bytes": 177118448,
+      "sha256": "55f64a180e8a8b2e804ebb9bafc0d98505d6d6005659140cf3a2f4cf1d208010"
+    }
+  },
+  "databaseModes": {
+    "pglite": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3013-packaged/maintained-v2-pglite.json",
+        "bytes": 43232,
+        "sha256": "5f523cfdda3cbfe6cde3e0272e5abf3dc6c45b0c83a046c47092c2cbdacd5718"
+      },
+      "matchingSocketCasesByProfile": {
+        "development": 10,
+        "password": 8,
+        "accounts": 8,
+        "capacity": 7
+      },
+      "matchingHttpCases": 8,
+      "matchingUnauthenticatedHandshakeCases": 2,
+      "browserWorkerControlReport": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3013-packaged/browser-worker-control-pglite.json",
+        "bytes": 3003,
+        "sha256": "01f14bd40b9411eab7dcaaf911ee62878d1af801de5df952d22d36dc237bb301"
+      },
+      "matchingBrowserWorkerControlSteps": 14,
+      "workerConnectionsPerServer": 3,
+      "fullWorkerProviderCatalogReport": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3013-packaged/provider-catalog-pglite.json",
+        "bytes": 173954227,
+        "sha256": "21f4387bccac1c578755c80a740961c8f447b33e475ab13dbf830b42e393cb12"
+      },
+      "matchingBrowserProductSteps": 16,
+      "matchingCatalogSnapshots": 26,
+      "fixtureProviderRequests": {
+        "node": 55,
+        "rust": 56
+      }
+    },
+    "bundled-postgres": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3013-packaged/maintained-v2-bundled-postgres.json",
+        "bytes": 43242,
+        "sha256": "7d24469665b19f007624c6368de1b8f76ee12e8103bd31b95d277f6d02419716"
+      },
+      "matchingSocketCasesByProfile": {
+        "development": 10,
+        "password": 8,
+        "accounts": 8,
+        "capacity": 7
+      },
+      "matchingHttpCases": 8,
+      "matchingUnauthenticatedHandshakeCases": 2,
+      "browserWorkerControlReport": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3013-packaged/browser-worker-control-bundled-postgres.json",
+        "bytes": 3013,
+        "sha256": "4f17bc84c7a794c82718cd2c850b103e66e27d13dcaa899a016fa73a71c9fb4e"
+      },
+      "matchingBrowserWorkerControlSteps": 14,
+      "workerConnectionsPerServer": 3,
+      "fullWorkerProviderCatalogReport": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3013-packaged/provider-catalog-bundled-postgres.json",
+        "bytes": 174024138,
+        "sha256": "917eb9fd1a0e6417e2c1c653a6a4283da1fcff9c783c79f39ab78396a6ef7ef8"
+      },
+      "matchingBrowserProductSteps": 16,
+      "matchingCatalogSnapshots": 26,
+      "fixtureProviderRequests": {
+        "node": 55,
+        "rust": 55
+      }
+    },
+    "postgres": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3013-packaged/maintained-v2-postgres.json",
+        "bytes": 44862,
+        "sha256": "f09df2518e250566eb5d489fa43e53acf13915c50065d44ef904975fd20b3dea"
+      },
+      "matchingSocketCasesByProfile": {
+        "development": 11,
+        "password": 8,
+        "accounts": 8,
+        "capacity": 7
+      },
+      "matchingHttpCases": 8,
+      "matchingUnauthenticatedHandshakeCases": 2,
+      "browserWorkerControlReport": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3013-packaged/browser-worker-control-postgres.json",
+        "bytes": 3005,
+        "sha256": "8cd72ecf42b114012945eb53965d045b8b8c1c090bbdf589947b04a2b9f17792"
+      },
+      "matchingBrowserWorkerControlSteps": 14,
+      "workerConnectionsPerServer": 3,
+      "fullWorkerProviderCatalogReport": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/live-3013-packaged/provider-catalog-postgres.json",
+        "bytes": 174021405,
+        "sha256": "c3ed00131eb3faddb00b5f6e9be00ab34a2cd864c72b21a78780e00d105b2614"
+      },
+      "matchingBrowserProductSteps": 16,
+      "matchingCatalogSnapshots": 26,
+      "fixtureProviderRequests": {
+        "node": 55,
+        "rust": 55
+      }
+    }
+  },
+  "totalMatchingSocketCases": 100,
+  "totalMatchingHttpCases": 24,
+  "totalMatchingUnauthenticatedHandshakeCases": 6,
+  "scope": "Real HTTP and App Live WebSocket traffic to the macOS standalone executable and the source Node reference server, with disposable databases and a controlled worker connection. Covers authorization, committed invalidations, replay, capacity, heartbeat and close behavior.",
+  "totalMatchingBrowserWorkerControlSteps": 42,
+  "browserWorkerControlScope": "Chromium uses the actual AppLiveClient and browser account and worker APIs. Worker enrollment, heartbeats, reconnect, and the credential store use production worker modules with a controlled rotation command handler.",
+  "totalMatchingCatalogSnapshots": 78,
+  "fullWorkerProviderCatalog": {
+    "harness": "scripts/server-rust/actual-folder-client.mjs --provider-catalog",
+    "workerEntrypoint": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-drain/runtime/worker/dist/index.js",
+      "bytes": 391545,
+      "sha256": "dbe9866bec05f69098695957e183aa9c5c0a95daa9504b31a3e17f461cc89a39"
+    },
+    "workerCli": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-drain/runtime/worker/bin/cantrip",
+      "bytes": 1342656,
+      "sha256": "b721697bf16cd7a4e28fd808d714fab7adc73c3a204dd26819f657daae077704"
+    },
+    "scope": "Existing Chromium app APIs, durable account encryption and the packaged Node worker entry point exercise private folders, provider discovery, a 1050-model paginated catalog, scoped availability and restart with controlled local provider endpoints."
+  }
+}

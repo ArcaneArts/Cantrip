@@ -41,9 +41,9 @@ let postgresOwner, failure;
 try {
   const executable =
     process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
-  const repositoryExecutable = await buildRustExample(
-    "settings-repository-fixture",
-  );
+  const repositoryExecutable =
+    process.env.CANTRIP_RUST_SETTINGS_REPOSITORY_BINARY ??
+    (await buildRustExample("settings-repository-fixture"));
   if (databaseMode !== "pglite")
     postgresOwner = await postgresFixture(path.join(root, "postgres"));
   for (const mode of ["accounts", "none"]) {

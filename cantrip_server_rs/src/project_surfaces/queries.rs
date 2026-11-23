@@ -11,7 +11,7 @@ pub(super) struct Manifest {
     pub columns: HashMap<String, Vec<String>>,
     queries: HashMap<String, Query>,
 }
-#[derive(serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 struct Query {
     source: String,
     types: Vec<String>,
@@ -33,7 +33,26 @@ pub(super) async fn run(
     key: &str,
     values: &[Value],
 ) -> Result<Vec<Row>> {
-    let query = &manifest().queries[key];
+    run_recorded(executor, key, &manifest().queries[key], values).await
+}
+pub(super) async fn run_captured(executor: Executor<'_, '_>, values: &[Value]) -> Result<Vec<Row>> {
+    let mut query = manifest().queries["explorer_create"].clone();
+    query.source = query.source.replacen(
+        "(default, default, default, default,",
+        "($9, $10, $11, $12,",
+        1,
+    );
+    query
+        .types
+        .extend(std::iter::repeat_n("text".to_owned(), 4));
+    run_recorded(executor, "explorer_create_os", &query, values).await
+}
+async fn run_recorded(
+    executor: Executor<'_, '_>,
+    key: &str,
+    query: &Query,
+    values: &[Value],
+) -> Result<Vec<Row>> {
     ensure!(
         query.types.len() == values.len(),
         "Project surface query binding count: {key}"

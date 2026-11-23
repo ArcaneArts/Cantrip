@@ -1,11 +1,12 @@
 //! Runtime route selection shared by consoles and later execution consumers.
 use super::eligibility;
+use crate::workers::transport::WorkerTransport;
 use crate::{
     database::Database,
     operations::logging::{self, LogCall, Logger},
     settings::{catalog_runtime::CatalogRuntime, reasoning, repository::SettingsRepository},
     wire::{JsString, Value, coercion::truthy, value::json},
-    workers::{bridge::WorkerBridge, repository::WorkerRepository},
+    workers::repository::WorkerRepository,
 };
 use anyhow::{Context, Result, bail};
 use futures::future::BoxFuture;
@@ -74,7 +75,7 @@ impl ModelRouting {
     pub fn new(
         database: Arc<Database>,
         catalogs: Arc<CatalogRuntime>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
     ) -> Arc<Self> {
         Self::with_dependencies(
             database,
@@ -123,6 +124,67 @@ impl ModelRouting {
     }
     pub fn set_cooldown(&self, runtime: &Value, until: Option<f64>) {
         self.set_cooldown_key(cooldown_key(runtime), until);
+    }
+    /// An existing native conversation keeps its bound route/account, including
+    /// disabled or quota-limited routes which may still be observed/resumed.
+    pub async fn bound_managed_runtime(&self, owner: &str, context: &Value) -> Result<Value> {
+        let settings = SettingsRepository::new(self.database.clone());
+        let runtime = if truthy(context.get("modelRouteId")) {
+            let route = text(context, "modelRouteId")?;
+            settings
+                .get_model_runtimes(owner, None, Some(&route), true, None)
+                .await?
+                .into_iter()
+                .next()
+        } else {
+            None
+        };
+        let mut runtime = runtime
+            .as_ref()
+            .map(Value::from_serialize)
+            .context("The bound provider route no longer exists.")?;
+        if !eligibility::account_provider(&runtime["provider"]["kind"]) {
+            if context.get("providerAccountId") != Some(&Value::Null) {
+                bail!("The bound provider account does not match its route.");
+            }
+            return Ok(runtime);
+        }
+        let accounts = wire(
+            settings
+                .list_provider_account_runtimes(
+                    owner,
+                    &text(&runtime["provider"], "id")?,
+                    &text(context, "workerId")?,
+                    None,
+                )
+                .await?,
+        );
+        let account = accounts
+            .iter()
+            .find(|a| a.get("accountId") == context.get("providerAccountId"))
+            .context("The bound provider account no longer exists.")?;
+        for field in ["accountId", "credentialHomeKey", "credits"] {
+            runtime["provider"][field] = account[field].clone();
+        }
+        Ok(runtime)
+    }
+    /// A newly selected destination requires enabled owned configuration, not
+    /// cached health/quota observations. Existing-runtime observation is separate.
+    pub async fn configured_managed_runtime(
+        &self,
+        owner: &str,
+        context: &Value,
+        model: &Value,
+    ) -> Result<Value> {
+        let route = text(context, "modelRouteId")?;
+        let profile = model.as_str().context("Selected model profile")?;
+        let account = context["providerAccountId"].as_str();
+        let rows = self.database.query("SELECT r.id FROM model_routes r JOIN model_profiles m ON m.id=r.model_id JOIN model_providers p ON p.id=r.provider_id WHERE r.id=$1 AND r.model_id=$2 AND m.owner_id=$3 AND p.owner_id=$3 AND r.enabled=true AND (CASE WHEN p.kind IN ('chatgpt','grok') THEN EXISTS(SELECT 1 FROM model_provider_accounts a WHERE a.id=$4 AND a.provider_id=p.id AND a.enabled=true) ELSE $4::text IS NULL END)", &[&route,&profile,&owner,&account]).await?;
+        anyhow::ensure!(
+            !rows.is_empty(),
+            "The selected destination is no longer enabled."
+        );
+        self.bound_managed_runtime(owner, context).await
     }
     pub fn set_cooldown_key(&self, key: JsString, until: Option<f64>) {
         let mut cooldowns = self.cooldowns.lock().unwrap();
@@ -301,7 +363,7 @@ impl ModelRouting {
         roots: Option<&[Value]>,
     ) -> Result<Vec<Value>> {
         let worker = text(context, "workerId")?;
-        if !(self.connected)(&worker) {
+        if roots.is_none() && !(self.connected)(&worker) {
             return reasoning::resolve_pairs(configuration, &[], &[], Some(false));
         }
         if !truthy(configuration.get("modelId")) {
@@ -347,7 +409,7 @@ impl ModelRouting {
                 ));
             }
         }
-        let roots = match roots {
+        let mut roots = match roots {
             Some(roots) => roots.to_vec(),
             None => self
                 .available_runtimes(owner, context, &text(configuration, "modelId")?)
@@ -363,6 +425,21 @@ impl ModelRouting {
                     )
                 })?,
         };
+        if context["contextKind"] == "standalone"
+            && truthy(context.get("modelRouteId"))
+            && let Some(index) = roots.iter().position(|runtime| {
+                runtime.get("routeId") == context.get("modelRouteId")
+                    && runtime["provider"]
+                        .get("accountId")
+                        .filter(|v| !v.is_null())
+                        .unwrap_or(&Value::Null)
+                        == &context["providerAccountId"]
+            })
+            && index > 0
+        {
+            let selected = roots.remove(index);
+            roots.insert(0, selected);
+        }
         let mut subagents = Vec::new();
         if truthy(configuration.get("customSubagentModel"))
             && truthy(configuration.get("subagentModelId"))

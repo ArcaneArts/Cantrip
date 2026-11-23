@@ -27,7 +27,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { discoverRunConfigurationPaths } from "@/lib/run-configuration-api";
+import {
+  useRunDefinitionApi,
+  useRunDefinitionScope,
+} from "@/lib/run-definition-source";
 
 const purposeLabels: Record<RunConfigurationPathPurpose, string> = {
   directory: "project directory",
@@ -131,6 +134,8 @@ export function RunConfigurationPathPicker({
   projectId: string;
   purpose: RunConfigurationPathPurpose;
 }) {
+  const { discoverRunConfigurationPaths } = useRunDefinitionApi();
+  const runSourceScope = useRunDefinitionScope();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -142,7 +147,13 @@ export function RunConfigurationPathPicker({
 
   const discovery = useQuery({
     enabled: open,
-    queryKey: ["run-configuration-paths", projectId, purpose, debouncedQuery],
+    queryKey: [
+      "run-configuration-paths",
+      projectId,
+      runSourceScope,
+      purpose,
+      debouncedQuery,
+    ],
     queryFn: () =>
       discoverRunConfigurationPaths(projectId, purpose, debouncedQuery),
     staleTime: 5_000,

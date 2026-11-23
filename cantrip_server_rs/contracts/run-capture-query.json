@@ -1,0 +1,4 @@
+{
+  "sql": "select \"id\", \"owner_id\", \"project_id\", \"configuration_id\", \"execution_key\", \"os_execution\", \"worktree_id\", \"worker_id\", \"terminal_id\", \"definition_revision\", \"codex_environment_revision\", \"generation\", \"requested_operation_id\", \"state\", \"started_at\", \"ended_at\", \"exit_code\", \"signal\", \"failure\", \"created_at\", \"updated_at\" from \"run_configuration_runtimes\" where (\"run_configuration_runtimes\".\"id\" = $1 and \"run_configuration_runtimes\".\"owner_id\" = $2) limit $3",
+  "params": ["fixture-runtime", "fixture-owner", 1]
+}

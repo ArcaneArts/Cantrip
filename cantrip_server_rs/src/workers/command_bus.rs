@@ -1,7 +1,7 @@
 //! Owner-scoped admission around the worker transport. Admitted work owns its
 //! lifetime, including when its HTTP caller stops awaiting the result.
 use super::{
-    bridge::{BridgeStats, CommandError, EventHandler, WorkerBridge},
+    bridge::{BridgeStats, CommandError, Continuity, EventHandler, WorkerBridge},
     limits::{ActiveLimit, SlidingWindow},
     repository::WorkerRepository,
 };
@@ -17,16 +17,21 @@ use std::{
     collections::HashMap,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
 use tokio::sync::Notify;
 
+pub type InferenceTimingObserver = Arc<dyn Fn(Value) + Send + Sync>;
+
 pub type CommandOutcome = Result<Option<Value>, CommandError>;
 pub trait CommandDelegate: Send + Sync {
     fn stats(&self) -> BridgeStats;
     fn is_connected(&self, worker: &str) -> bool;
+    fn connection_identity(&self, _worker: &str) -> Option<Continuity> {
+        None
+    }
     fn request(
         self: Arc<Self>,
         owner: String,
@@ -37,6 +42,9 @@ pub trait CommandDelegate: Send + Sync {
     ) -> BoxFuture<'static, CommandOutcome>;
 }
 impl CommandDelegate for WorkerBridge {
+    fn connection_identity(&self, worker: &str) -> Option<Continuity> {
+        WorkerBridge::connection_identity(self, worker)
+    }
     fn is_connected(&self, worker: &str) -> bool {
         WorkerBridge::is_connected(self, worker)
     }
@@ -134,15 +142,79 @@ pub struct CommandStats {
     pub routed_requests: f64,
     pub succeeded_requests: f64,
 }
-struct State {
-    owners: HashMap<String, String>,
+// Narrow transport headroom, not provider inference capacity. Keep this
+// allowlist aligned with workers/limited-command-bus.ts; new input stays ordinary.
+fn is_execution_control(command: &Value) -> bool {
+    match command["type"].as_str() {
+        Some("chat.runtime.handoff") => command["intent"] == "cancel",
+        Some("chat.native-control") => matches!(
+            command["control"]["kind"].as_str(),
+            Some("interrupt" | "pause" | "reply")
+        ),
+        Some(
+            "inference.status"
+            | "model.operation.cancel"
+            | "inference.configure"
+            | "inference.revoke"
+            | "inference.task-revoke"
+            | "worker.version"
+            | "worker.restart"
+            | "worker.credential.rotate"
+            | "worker.encryption.refresh"
+            | "chat.interrupt"
+            | "chat.pause.set"
+            | "chat.queue.changed"
+            | "chat.settings.read"
+            | "chat.queue.prepare"
+            | "chat.automation.resume"
+            | "chat.goal.recover"
+            | "chat.goal.claim-recover"
+            | "task.goal.recover"
+            | "task.goal.source"
+            | "agent.interaction.respond"
+            | "agent.interaction.respond.protected"
+            | "agent.interaction.cancel"
+            | "chat.native-logical.cancel"
+            | "chat.native-logical.complete"
+            | "chat.goal.get"
+            | "chat.goal.clear",
+        ) => true,
+        _ => false,
+    }
+}
+
+struct CommandLane {
     account_active: ActiveLimit,
     worker_active: ActiveLimit,
     account_rate: SlidingWindow,
     worker_rate: SlidingWindow,
+}
+impl CommandLane {
+    fn new(limits: &CommandLimits, control: bool) -> Self {
+        Self {
+            account_active: ActiveLimit::new(if control {
+                limits.account_concurrency.min(8)
+            } else {
+                limits.account_concurrency
+            }),
+            worker_active: ActiveLimit::new(if control {
+                limits.worker_concurrency.min(8)
+            } else {
+                limits.worker_concurrency
+            }),
+            account_rate: SlidingWindow::new(limits.account_rate_per_minute),
+            worker_rate: SlidingWindow::new(limits.worker_rate_per_minute),
+        }
+    }
+}
+
+struct State {
+    owners: HashMap<String, String>,
+    lanes: [CommandLane; 2],
     failed: f64,
     routed: f64,
     succeeded: f64,
+    active_requests: usize,
 }
 pub struct LimitedCommandBus {
     dispatch: Arc<tokio::sync::Mutex<()>>,
@@ -155,15 +227,30 @@ pub struct LimitedCommandBus {
     drained: Notify,
 }
 struct ActiveRequest {
+    admission: Arc<AdmissionPermit>,
+}
+struct AdmissionPermit {
     bus: Arc<LimitedCommandBus>,
     owner: String,
     worker: String,
+    lane: usize,
+    released: AtomicBool,
+}
+impl AdmissionPermit {
+    fn release(&self) {
+        if self.released.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let mut state = self.bus.state.lock().unwrap();
+        let lane = &mut state.lanes[self.lane];
+        lane.worker_active.release(&self.worker);
+        lane.account_active.release(&self.owner);
+    }
 }
 impl Drop for ActiveRequest {
     fn drop(&mut self) {
-        let mut state = self.bus.state.lock().unwrap();
-        state.worker_active.release(&self.worker);
-        state.account_active.release(&self.owner);
+        self.admission.release();
+        self.admission.bus.state.lock().unwrap().active_requests -= 1;
     }
 }
 struct RequestTask(Arc<LimitedCommandBus>);
@@ -219,7 +306,7 @@ impl Drop for RequestTask {
 impl LimitedCommandBus {
     pub fn new(
         database: Arc<Database>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn CommandDelegate>,
         quotas: Arc<RelayQuotas>,
         config: &ServerConfig,
     ) -> Arc<Self> {
@@ -255,13 +342,14 @@ impl LimitedCommandBus {
             clock,
             state: Mutex::new(State {
                 owners: HashMap::new(),
-                account_active: ActiveLimit::new(limits.account_concurrency),
-                worker_active: ActiveLimit::new(limits.worker_concurrency),
-                account_rate: SlidingWindow::new(limits.account_rate_per_minute),
-                worker_rate: SlidingWindow::new(limits.worker_rate_per_minute),
+                lanes: [
+                    CommandLane::new(&limits, false),
+                    CommandLane::new(&limits, true),
+                ],
                 failed: 0.0,
                 routed: 0.0,
                 succeeded: 0.0,
+                active_requests: 0,
             }),
             tasks: AtomicUsize::new(0),
             drained: Notify::new(),
@@ -270,7 +358,7 @@ impl LimitedCommandBus {
     pub fn stats(&self) -> CommandStats {
         let state = self.state.lock().unwrap();
         CommandStats {
-            active_requests: state.account_active.total(),
+            active_requests: state.active_requests,
             connected_workers: self.delegate.stats().connected_workers,
             failed_requests: state.failed,
             routed_requests: state.routed,
@@ -279,6 +367,9 @@ impl LimitedCommandBus {
     }
     pub fn is_connected(&self, worker: &str) -> bool {
         self.delegate.is_connected(worker)
+    }
+    pub fn connection_identity(&self, worker: &str) -> Option<Continuity> {
+        self.delegate.connection_identity(worker)
     }
     fn log_limit(&self, worker: &Value, command: &Value, reason: &str) {
         eprintln!(
@@ -318,6 +409,8 @@ impl LimitedCommandBus {
         command: &Value,
     ) -> Result<ActiveRequest, CommandFailure> {
         let mut state = self.state.lock().unwrap();
+        let lane_index = usize::from(is_execution_control(command));
+        let lane = &mut state.lanes[lane_index];
         let rejected = if !self.quotas.consume_relay_at(
             owner,
             &worker.identity,
@@ -329,11 +422,11 @@ impl LimitedCommandBus {
                 RelayLimitError::new("Relay bandwidth quota reached. Retry later.", 1),
             ))
         } else {
-            let account = state
+            let account = lane
                 .account_rate
                 .consume(owner, (self.clock)())
                 .unwrap_or(0);
-            let worker_retry = state
+            let worker_retry = lane
                 .worker_rate
                 .consume(&worker.identity, (self.clock)())
                 .unwrap_or(0);
@@ -346,13 +439,13 @@ impl LimitedCommandBus {
                         retry,
                     ),
                 ))
-            } else if !state.account_active.acquire(owner) {
+            } else if !lane.account_active.acquire(owner) {
                 Some((
                     "account-concurrency-limit",
                     RelayLimitError::new("Account worker-command concurrency limit reached.", 1),
                 ))
-            } else if !state.worker_active.acquire(&worker.identity) {
-                state.account_active.release(owner);
+            } else if !lane.worker_active.acquire(&worker.identity) {
+                lane.account_active.release(owner);
                 Some((
                     "worker-concurrency-limit",
                     RelayLimitError::new("Worker command concurrency limit reached.", 1),
@@ -365,13 +458,18 @@ impl LimitedCommandBus {
             state.failed += 1.0;
             drop(state);
             self.log_limit(&worker.value, command, reason);
-            return Err(CommandFailure::Limit(error));
+            return Err(CommandFailure::Limit(error.before_dispatch()));
         }
         state.routed += 1.0;
+        state.active_requests += 1;
         Ok(ActiveRequest {
-            bus: self.clone(),
-            owner: owner.into(),
-            worker: worker.identity.clone(),
+            admission: Arc::new(AdmissionPermit {
+                bus: self.clone(),
+                owner: owner.into(),
+                worker: worker.identity.clone(),
+                lane: lane_index,
+                released: AtomicBool::new(false),
+            }),
         })
     }
     async fn run(
@@ -380,6 +478,7 @@ impl LimitedCommandBus {
         command: Value,
         timeout: Option<Duration>,
         on_event: Option<EventHandler>,
+        inference_observer: Option<InferenceTimingObserver>,
         mut dispatch: tokio::sync::OwnedMutexGuard<()>,
     ) -> Result<Option<Value>, CommandFailure> {
         let mut resolving = Box::pin(self.owner(&worker));
@@ -394,22 +493,31 @@ impl LimitedCommandBus {
         };
         let permit = self.admit(&owner, &worker, &command)?;
         let event_limit = Arc::new(Mutex::new(None));
-        let on_event = on_event.map(|handler| {
+        let on_event = Some({
+            let handler = on_event;
+            let admission = permit.admission.clone();
             let quotas = self.quotas.clone();
             let clock = self.clock.clone();
             let owner = owner.clone();
             let worker = worker.identity.clone();
             let event_limit = event_limit.clone();
             Arc::new(move |event: Value| {
-                let (quotas, clock, owner, worker, handler, event_limit) = (
+                let (quotas, clock, owner, worker, handler, event_limit, admission) = (
                     quotas.clone(),
                     clock.clone(),
                     owner.clone(),
                     worker.clone(),
                     handler.clone(),
                     event_limit.clone(),
+                    admission.clone(),
                 );
+                let inference_observer = inference_observer.clone();
                 Box::pin(async move {
+                    if event["type"] == "inference.command-state"
+                        && event["admitted"].as_bool() == Some(true)
+                    {
+                        admission.release();
+                    }
                     if !quotas.consume_relay_at(
                         &owner,
                         &worker,
@@ -425,9 +533,21 @@ impl LimitedCommandBus {
                             unavailable: false,
                             request_id: None,
                             encoding_error: None,
+                            inference: None,
                         });
                     }
-                    handler(event).await
+                    if event["type"] == "inference.command-state"
+                        && let Some(observer) = inference_observer
+                    {
+                        observer(event.clone());
+                    }
+                    // Private admission/clock events never enter domain streams.
+                    if event["type"] != "inference.command-state"
+                        && let Some(handler) = handler
+                    {
+                        handler(event).await?;
+                    }
+                    Ok(())
                 }) as BoxFuture<'static, Result<(), CommandError>>
             }) as EventHandler
         });
@@ -455,6 +575,7 @@ impl LimitedCommandBus {
                 unavailable: true,
                 request_id: None,
                 encoding_error: None,
+                inference: None,
             })
         };
         let result = match delegated {
@@ -521,6 +642,24 @@ impl LimitedCommandBus {
             command,
             timeout,
             on_event,
+            None,
+        )
+        .await
+    }
+    pub async fn request_observing_inference(
+        self: &Arc<Self>,
+        worker: &str,
+        command: Value,
+        timeout: RequestTimeout,
+        on_event: Option<EventHandler>,
+        inference_observer: InferenceTimingObserver,
+    ) -> Result<Option<Value>, CommandFailure> {
+        self.request_for_key(
+            WorkerKey::new(Value::String(worker.into()))?,
+            command,
+            timeout,
+            on_event,
+            Some(inference_observer),
         )
         .await
     }
@@ -534,6 +673,7 @@ impl LimitedCommandBus {
             command,
             RequestTimeout::Default,
             None,
+            None,
         )
         .await
     }
@@ -543,6 +683,7 @@ impl LimitedCommandBus {
         command: Value,
         timeout: RequestTimeout,
         on_event: Option<EventHandler>,
+        inference_observer: Option<InferenceTimingObserver>,
     ) -> Result<Option<Value>, CommandFailure> {
         self.tasks.fetch_add(1, Ordering::AcqRel);
         let task = RequestTask(self.clone());
@@ -558,7 +699,14 @@ impl LimitedCommandBus {
             };
             _task
                 .0
-                .run(worker, command, timeout.duration(), on_event, dispatch)
+                .run(
+                    worker,
+                    command,
+                    timeout.duration(),
+                    on_event,
+                    inference_observer,
+                    dispatch,
+                )
                 .await
         })
         .await

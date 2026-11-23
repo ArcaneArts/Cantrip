@@ -1,6 +1,5 @@
 mod approvals;
 pub(crate) mod call_trace;
-mod catalog_parameters;
 pub(crate) mod code_mode;
 pub(crate) mod context;
 mod control_tool_analytics;
@@ -12,6 +11,8 @@ pub(crate) mod hosted_spec;
 pub(crate) mod lifecycle;
 pub(crate) mod metadata_metrics;
 mod multi_agent_tool;
+mod native_tool_review;
+pub(crate) use native_tool_review::review as review_native_tool_call;
 pub(crate) mod network_approval;
 pub(crate) mod orchestrator;
 pub(crate) mod parallel;
@@ -29,6 +30,8 @@ use std::borrow::Cow;
 
 use crate::session::turn_context::TurnContext;
 pub(crate) use approvals::ApprovalContext;
+pub(crate) use approvals::ApprovalResolution;
+pub(crate) use approvals::ApprovalResolutionSource;
 use codex_features::Feature;
 use codex_protocol::exec_output::ExecToolCallOutput;
 use codex_protocol::openai_models::ModelInfo;

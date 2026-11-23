@@ -25,6 +25,9 @@ async fn claim_item(
         }
         return claim_value(&existing);
     }
+    if super::super::goal_recovery::read(tx, chat).await?.is_some() {
+        return reject("canonical-goal-recovery-pending");
+    }
     let row = raw_one(
         tx,
         "SELECT to_jsonb(p)::text FROM queued_prompts p WHERE id=$1 AND chat_id=$2",
@@ -52,7 +55,7 @@ async fn claim_next(tx: &Transaction<'_>, owner: &str, chat: &str) -> Result<Opt
     }
     if tx
         .query(
-            &format!("SELECT c.id FROM chats c WHERE c.id=$1 AND {NO_PERMISSION} AND {NO_HANDOFF}"),
+            &format!("SELECT c.id FROM chats c WHERE c.id=$1 AND {NO_PERMISSION} AND {NO_HANDOFF} AND NOT EXISTS (SELECT 1 FROM managed_queue_states s WHERE s.chat_id=c.id AND s.goal_recovery IS NOT NULL)"),
             &[&chat],
         )
         .await?
@@ -111,12 +114,24 @@ impl QueueRepository {
         self.database.transaction(|tx|Box::pin(async move{authority::lock(tx,&owner,&chat).await?;raw_one(tx,"SELECT to_jsonb(c)::text FROM managed_queue_claims c WHERE id=$1 AND chat_id=$2",&[&id,&chat]).await?.map(|r|claim_value(&r)).transpose()})).await
     }
     pub async fn release_unadmitted(&self, owner: &str, chat: &str, id: &str) -> Result<bool> {
+        self.release_unadmitted_as(owner, chat, id, false).await
+    }
+    pub async fn defer_unadmitted(&self, owner: &str, chat: &str, id: &str) -> Result<bool> {
+        self.release_unadmitted_as(owner, chat, id, true).await
+    }
+    async fn release_unadmitted_as(
+        &self,
+        owner: &str,
+        chat: &str,
+        id: &str,
+        retryable: bool,
+    ) -> Result<bool> {
         let (owner, chat, id) = (owner.to_owned(), chat.to_owned(), id.to_owned());
         self.database.transaction(|tx|Box::pin(async move{
   authority::lock(tx,&owner,&chat).await?;
   let row=raw_one(tx,"SELECT to_jsonb(c)::text FROM managed_queue_claims c WHERE id=$1 AND chat_id=$2",&[&id,&chat]).await?;
   let Some(row)=row.filter(|r|r["status"]=="claimed"&&!truthy(r.get("operation_id")))else{return Ok(false);};
-  tx.query("UPDATE managed_queue_claims SET status='rejected' WHERE id=$1",&[&id]).await?;tx.query("UPDATE queued_prompts SET state='pending' WHERE id=$1",&[&text(&row["prompt_id"])?]).await?;bump(tx,&chat).await?;Ok(true)
+  tx.query("UPDATE managed_queue_claims SET status=$2 WHERE id=$1",&[&id,&if retryable {"deferred"}else{"rejected"}]).await?;tx.query("UPDATE queued_prompts SET state='pending' WHERE id=$1",&[&text(&row["prompt_id"])?]).await?;bump(tx,&chat).await?;Ok(true)
  })).await
     }
 }

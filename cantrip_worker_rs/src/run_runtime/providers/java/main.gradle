@@ -1,0 +1,22 @@
+import groovy.json.JsonSlurper
+
+def cantripDecodeList = { value ->
+  if (!value) return []
+  def json = new String(Base64.decoder.decode(value), 'UTF-8')
+  return new JsonSlurper().parseText(json)
+}
+
+gradle.beforeProject { project ->
+  project.plugins.withId('java') {
+    if (project.tasks.findByName('_cantripRunConfigurationJava') == null) {
+      project.tasks.register('_cantripRunConfigurationJava', JavaExec) {
+        group = 'application'
+        description = 'Cantrip managed Java main-class launcher'
+        classpath = project.extensions.getByName('sourceSets').getByName('main').runtimeClasspath
+        mainClass.set(project.providers.gradleProperty('cantripMainClass'))
+        args(cantripDecodeList(project.findProperty('cantripArguments')))
+        jvmArgs(cantripDecodeList(project.findProperty('cantripVmArguments')))
+      }
+    }
+  }
+}

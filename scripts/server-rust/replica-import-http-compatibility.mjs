@@ -9,6 +9,8 @@ import { buildRustServer } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password, heartbeat, projectLabel } from "./security-fixtures.mjs";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
+import { provisioningStateReopen } from "./provisioning-state-reopen.mjs";
 const option = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? undefined : process.argv[i + 1];
@@ -18,6 +20,7 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-replica-import-http-"));
 const report = {
   suite: "replica-import-http",
   databaseMode,
+  root,
   profiles: [],
   completeReplacement: false,
   connected: process.argv.includes("--connected"),
@@ -33,9 +36,12 @@ let pg, failure;
 try {
   const executable =
     process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer());
+  const passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
-  for (const profile of ["none", "accounts"]) {
+  for (const profile of ["none", "password", "accounts"].filter(
+    (profile) => !option("--profile") || option("--profile") === profile,
+  )) {
     const runtimes = [];
     report.profiles.push({ profile, runtimes });
     for (const kind of ["node", "rust"]) {
@@ -52,6 +58,9 @@ try {
         environment: {
           CANTRIP_AUTH_MODE: profile,
           CANTRIP_REGISTRATION_ENABLED: "true",
+          ...(profile === "password"
+            ? { CANTRIP_PASSWORD_HASH: passwordHash }
+            : {}),
           ...(url ? { DATABASE_URL: url } : {}),
           ...(kind === "rust" && databaseMode === "bundled-postgres"
             ? {
@@ -62,15 +71,31 @@ try {
         },
       });
       const observations = [];
-      runtimes.push({ kind, observations });
-      const visit = async (label, method, route, options = {}) =>
-        observations.push({
+      const admissions = [];
+      runtimes.push({ kind, observations, admissions, startedAt: Date.now() });
+      const visit = async (label, method, route, options = {}) => {
+        const observation = {
           label,
           ...(await fixture.observe(label, method, route, {
             csrf: method === "POST" && !!fixture.client().csrf,
             ...options,
           })),
-        });
+        };
+        observations.push(observation);
+        const match =
+          typeof route === "string" &&
+          route.match(
+            /^\/api\/projects\/([^/]+)\/replicas\/([^/]+)\/(synchronize|remove)$/,
+          );
+        if (method === "POST" && observation.status === 202 && match)
+          admissions.push({
+            jobId: fixture.records.get(label).id,
+            projectId: match[1],
+            replicaId: match[2],
+            kind: match[3],
+            input: structuredClone(options.json),
+          });
+      };
       try {
         await fixture.start();
         if (profile === "accounts")
@@ -81,6 +106,10 @@ try {
               displayName: "Replicas",
               password,
             },
+          });
+        else if (profile === "password")
+          await visit("login", "POST", "/api/auth/login", {
+            json: { password },
           });
         else await visit("session", "GET", "/api/auth/session");
         const handle = (n) =>
@@ -232,17 +261,33 @@ try {
         runtimes.at(-1).replicaShutdownStages = fixture.replicaShutdownStages;
         await fixture.close();
       }
+      if (process.argv.includes("--canonical-state"))
+        runtimes.at(-1).durableState = await provisioningStateReopen({
+          fixture,
+          root,
+          profile,
+          startedAt: runtimes.at(-1).startedAt,
+          admissions,
+        });
     }
     assert.deepEqual(runtimes[1].observations, runtimes[0].observations);
     if (report.connected)
       assert.deepEqual(runtimes[1].connected, runtimes[0].connected);
+    if (process.argv.includes("--canonical-state"))
+      assert.deepEqual(
+        runtimes[1].durableState.canonical,
+        runtimes[0].durableState.canonical,
+        profile + ": complete project/job persistence",
+      );
   }
+  report.passed = true;
 } catch (e) {
   failure = e;
   report.failure = e.stack;
 } finally {
   await pg?.close();
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   else report.retainedRoot = root;
   if (option("--report"))
     await writeFile(option("--report"), JSON.stringify(report, null, 2) + "\n");

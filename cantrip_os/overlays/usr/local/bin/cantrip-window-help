@@ -1,0 +1,18 @@
+#!/bin/sh
+exec xmessage -center -buttons 'Done:0' 'CantripOS window controls
+
+Resize: drag any edge or corner (also works when maximized).
+Or hold Alt and drag with the RIGHT mouse button inside a window.
+Move: drag the title bar, or hold Alt and LEFT-drag inside a window.
+Moving windows snap to nearby screen edges and other windows.
+
+Ctrl + Alt + Left / Right: fill the left / right half.
+Ctrl + Alt + Up / Down: fill the top / bottom half.
+Ctrl + Alt + Home: restore a maximized window.
+Alt + F8: resize with arrow keys; Enter accepts, Escape cancels.
+Right-click the title bar, then Tile, for half/quarter-screen layouts.
+The same menu includes Move, Size, and Maximize commands.
+Ctrl + Alt + Page Up / Page Down: switch workspace.
+
+On a Mac, Alt is Option. Click inside the desktop before shortcuts.
+Use the title-bar menu if a host shortcut takes precedence.'

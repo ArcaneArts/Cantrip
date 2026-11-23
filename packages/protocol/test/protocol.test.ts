@@ -227,8 +227,6 @@ import {
   DEFAULT_ELITE_REVEAL_CONFIG,
   userSettingsSchema,
   userSettingsUpdateSchema,
-  workspaceLayoutProfilePlacement,
-  workspaceLayoutProfileSchema,
   workerCommandSchema,
   workerEventSchema,
   inferenceProgressSnapshotSchema,
@@ -1080,11 +1078,13 @@ describe("Cantrip protocol", () => {
       CANTRIP_MCP_MUTATION_TOOL_NAMES.length,
     );
     expect(CANTRIP_MCP_OPERATIONS).toHaveLength(CANTRIP_MCP_TOOL_NAMES.length);
-    expect(cantripMcpOperationsForPermissionProfile(":read-only")).toEqual(
-      CANTRIP_MCP_READ_OPERATIONS.filter(
+    expect(cantripMcpOperationsForPermissionProfile(":read-only")).toEqual([
+      ...CANTRIP_MCP_READ_OPERATIONS.filter(
         (operation) => operation !== "web.session.snapshot",
       ),
-    );
+      "alert.raise",
+      "alert.resolve",
+    ]);
     expect(cantripMcpOperationsForPermissionProfile(":workspace")).toEqual(
       CANTRIP_MCP_OPERATIONS,
     );
@@ -1092,11 +1092,13 @@ describe("Cantrip protocol", () => {
       cantripMcpToolNamesForOperations(
         cantripMcpOperationsForPermissionProfile(":read-only"),
       ),
-    ).toEqual(
-      CANTRIP_MCP_READ_TOOL_NAMES.filter(
+    ).toEqual([
+      ...CANTRIP_MCP_READ_TOOL_NAMES.filter(
         (toolName) => toolName !== "web_session_snapshot",
       ),
-    );
+      "alert_raise",
+      "alert_resolve",
+    ]);
     expect(cantripMcpToolNamesForOperations(CANTRIP_MCP_OPERATIONS)).toEqual(
       CANTRIP_MCP_TOOL_NAMES,
     );
@@ -5944,31 +5946,13 @@ describe("Cantrip protocol", () => {
       automaticReplicaProvisioning: false,
       automaticReplicaSynchronization: "off",
       mobileProjectTabConfigurations: {},
-      workspaceLayoutProfile: "hybrid",
     });
-    expect(workspaceLayoutProfileSchema.options).toEqual([
-      "agent",
-      "hybrid",
-      "ide",
-    ]);
+    // Older clients may still send the retired preference; it is ignored.
     expect(
       userSettingsUpdateSchema.parse({ workspaceLayoutProfile: "agent" }),
-    ).toEqual({ workspaceLayoutProfile: "agent" });
-    expect(
-      userSettingsUpdateSchema.safeParse({ workspaceLayoutProfile: "wide" })
-        .success,
-    ).toBe(false);
-    expect(workspaceLayoutProfilePlacement("agent", "project.browser")).toBe(
-      "center",
-    );
-    expect(workspaceLayoutProfilePlacement("hybrid", "project.browser")).toBe(
-      "right",
-    );
-    expect(workspaceLayoutProfilePlacement("ide", "project.agent")).toBe(
-      "right",
-    );
-    expect(workspaceLayoutProfilePlacement("ide", "project.terminal")).toBe(
-      "bottom",
+    ).toEqual({});
+    expect(userSettingsSchema.shape).not.toHaveProperty(
+      "workspaceLayoutProfile",
     );
     expect(projectPaneRegionSchema.safeParse("detached").success).toBe(false);
     expect(

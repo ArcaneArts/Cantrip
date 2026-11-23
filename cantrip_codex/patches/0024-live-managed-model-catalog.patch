@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 357b678395846d9cd9dbb16e637f1f04f1ef1370..ff411f3b15c779c80c819d56ab00d1570551c90d 100644
+index 0f95c16e66b31c898379decf8258e76466ca4c98..a0441e4545e4c15dfca25e7a1c58703e8ce6c011 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -1166,6 +1166,11 @@ client_request_definitions! {
+@@ -1188,6 +1188,11 @@ client_request_definitions! {
          response: v2::ReviewStartResponse,
      },
  
@@ -88,10 +88,10 @@ index c9a68ac30aee86542209df4a2c84eeaa3a35ce7b..32a96ebcceca894bde893ab38ae0ed84
 +    namespaced(schema)
 +}
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 74f20ffbcf62b75c39cff62e3538ca91674b668a..8856a88c2d924a752cf6460a6b5b1066050ffeb8 100644
+index 544652a994a9563116137fbe51361682dce12227..64994f5a038b0a499f0d8f6e1157d9b0590d336e 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1656,6 +1656,11 @@ impl MessageProcessor {
+@@ -1710,6 +1710,11 @@ impl MessageProcessor {
              ClientRequest::PluginUninstall { params, .. } => {
                  self.plugin_processor.plugin_uninstall(params).await
              }
@@ -104,7 +104,7 @@ index 74f20ffbcf62b75c39cff62e3538ca91674b668a..8856a88c2d924a752cf6460a6b5b1066
                  self.catalog_processor.model_list(params).await
              }
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 0921c4ba268d7b884f09ec9d4294db1883f09185..ce3ec7fb999b165b9ab897be7794aadbab85a1ac 100644
+index 79629c4280f16408dbbb119842bcb0aacb3147f0..155455d5e2ba4de90e1ec338ee3fd55c14662c65 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -107,6 +107,8 @@ use codex_app_server_protocol::LoginAccountResponse;
@@ -117,10 +117,10 @@ index 0921c4ba268d7b884f09ec9d4294db1883f09185..ce3ec7fb999b165b9ab897be7794aadb
  use codex_app_server_protocol::MarketplaceAddResponse;
  use codex_app_server_protocol::MarketplaceInterface;
 diff --git a/codex-rs/app-server/src/request_processors/catalog_processor.rs b/codex-rs/app-server/src/request_processors/catalog_processor.rs
-index d8aaf4191ad3dc4ea5fd77b10fa060c1c0b8d400..cc5268ab474edb9da19b0490398a9004e269b244 100644
+index 545378cc33ff8714783667eaab19c32fc71e2ec3..bf7b1ab1f8d827ba05c6c7dd14ca576e7be0df8b 100644
 --- a/codex-rs/app-server/src/request_processors/catalog_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/catalog_processor.rs
-@@ -174,6 +174,33 @@ impl CatalogRequestProcessor {
+@@ -175,6 +175,33 @@ impl CatalogRequestProcessor {
              .map(|response| Some(response.into()))
      }
  
@@ -327,10 +327,10 @@ index 0000000000000000000000000000000000000000..bcf1e5429f1e87b2067b9a327c34b51e
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/mod.rs b/codex-rs/app-server/tests/suite/v2/mod.rs
-index 68167089eb2399386a080ddba5f037fd141f7a63..0f60613b5795b65deaabcb43fb4225f758589cc7 100644
+index 032f5e5a32e869991559119dadfc40ca32745d07..bcbb181ebc7af4eba36641fdb72a8e95cf2c9e91 100644
 --- a/codex-rs/app-server/tests/suite/v2/mod.rs
 +++ b/codex-rs/app-server/tests/suite/v2/mod.rs
-@@ -87,6 +87,7 @@ mod misalignment_policy;
+@@ -103,6 +103,7 @@ mod misalignment_policy;
  mod model_auto_review;
  mod model_list;
  mod model_list_requirements_tests;
@@ -339,18 +339,19 @@ index 68167089eb2399386a080ddba5f037fd141f7a63..0f60613b5795b65deaabcb43fb4225f7
  #[path = "model_provider_enforcement_tests.rs"]
  mod model_provider_enforcement;
 diff --git a/codex-rs/models-manager/src/manager.rs b/codex-rs/models-manager/src/manager.rs
-index b1efc0fe7c0303f68304f5c78b5626b1f77496cc..e8ebd9f61fd396ed82cb173bd2b06122b3be52fb 100644
+index 94e8a33ac57d3d8bcf38dc84cf5f457bfb974f3a..409180784ae2e08a653e043c6649f8afe3de8521 100644
 --- a/codex-rs/models-manager/src/manager.rs
 +++ b/codex-rs/models-manager/src/manager.rs
-@@ -15,6 +15,7 @@ use codex_protocol::openai_models::ModelInfo;
- use codex_protocol::openai_models::ModelPreset;
+@@ -22,7 +22,7 @@ use codex_protocol::openai_models::ModelPreset;
  use codex_protocol::openai_models::ModelVisibility;
  use codex_protocol::openai_models::ModelsResponse;
-+use std::collections::HashSet;
+ use std::borrow::Cow;
+-use std::collections::HashMap;
++use std::collections::{HashMap, HashSet};
  use std::fmt;
  use std::future::Future;
  use std::path::PathBuf;
-@@ -156,6 +157,16 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
+@@ -200,6 +200,16 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
          Box::pin(std::future::ready(()))
      }
  
@@ -367,13 +368,14 @@ index b1efc0fe7c0303f68304f5c78b5626b1f77496cc..e8ebd9f61fd396ed82cb173bd2b06122
      /// Return the current in-memory remote model catalog without refreshing or loading cache state.
      fn get_remote_models(&self) -> ModelsManagerFuture<'_, Vec<ModelInfo>>;
  
-@@ -296,10 +307,16 @@ pub struct OpenAiModelsManager {
+@@ -341,11 +351,17 @@ pub struct OpenAiModelsManager {
  /// Static model manager backed by an authoritative in-process catalog.
  #[derive(Debug)]
  pub struct StaticModelsManager {
 -    remote_models: Vec<ModelInfo>,
 +    catalog: std::sync::RwLock<ManagedStaticCatalog>,
      auth_manager: Option<Arc<AuthManager>>,
+     origin: ModelOrigin,
  }
  
 +#[derive(Debug)]
@@ -385,9 +387,9 @@ index b1efc0fe7c0303f68304f5c78b5626b1f77496cc..e8ebd9f61fd396ed82cb173bd2b06122
  impl OpenAiModelsManager {
      /// Construct an OpenAI-compatible remote model manager.
      pub fn new(
-@@ -372,7 +389,10 @@ impl StaticModelsManager {
-     /// Construct a static model manager from an authoritative catalog.
-     pub fn new(auth_manager: Option<Arc<AuthManager>>, model_catalog: ModelsResponse) -> Self {
+@@ -423,7 +439,10 @@ impl StaticModelsManager {
+         origin: ModelOrigin,
+     ) -> Self {
          Self {
 -            remote_models: model_catalog.models,
 +            catalog: std::sync::RwLock::new(ManagedStaticCatalog {
@@ -395,9 +397,9 @@ index b1efc0fe7c0303f68304f5c78b5626b1f77496cc..e8ebd9f61fd396ed82cb173bd2b06122
 +                models: model_catalog.models,
 +            }),
              auth_manager,
+             origin,
          }
-     }
-@@ -814,11 +834,63 @@ impl ModelsManager for StaticModelsManager {
+@@ -920,11 +939,63 @@ impl ModelsManager for StaticModelsManager {
      }
  
      fn get_remote_models(&self) -> ModelsManagerFuture<'_, Vec<ModelInfo>> {
@@ -464,10 +466,10 @@ index b1efc0fe7c0303f68304f5c78b5626b1f77496cc..e8ebd9f61fd396ed82cb173bd2b06122
  
      fn auth_manager(&self) -> Option<&AuthManager> {
 diff --git a/codex-rs/models-manager/src/manager_tests.rs b/codex-rs/models-manager/src/manager_tests.rs
-index 6533129b53a64604a5aa65ddb67580a7c2678c48..be56d91a8fe13ede5ef316929804c480b4e78168 100644
+index 468aee2176e615e336e607dec88f330d4b9c8258..94b50e25a96fa99d6d0c101bbd2a801520771b97 100644
 --- a/codex-rs/models-manager/src/manager_tests.rs
 +++ b/codex-rs/models-manager/src/manager_tests.rs
-@@ -1700,3 +1700,118 @@ fn bundled_models_json_roundtrips() {
+@@ -1885,3 +1885,118 @@ fn bundled_models_json_roundtrips() {
          "bundled models.json should contain at least one model"
      );
  }

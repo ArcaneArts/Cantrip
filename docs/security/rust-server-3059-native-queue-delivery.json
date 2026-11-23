@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "completeReplacement": false,
+  "harnessBaseCommit": "9798f5c699e509476adc1931c2704ff3b8aa2ae7",
+  "macosSourceCommit": "e7f25540d48209e90748cafc09c6e9f483df8934",
+  "linuxSourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+  "scope": "Real HTTP, authenticated App Live and the unchanged worker queue SDK with controlled worker callbacks. Linux images use a separate local PostgreSQL 18 service. Linux x64 runs under Apple Silicon emulation. The development-only repository fixture seeds initial state.",
+  "fixture": "Both runtimes retain exact HTTP comparison, opaque content checks and ordered App Live comparison. The harness observes the actual worker notification and SDK snapshot for each committed revision before admitting another mutation.",
+  "earlierComparison": {
+    "arm64QueueEvents": {
+      "node": 11,
+      "rust": 12
+    },
+    "arm64WorkerNotifications": {
+      "node": 0,
+      "rust": 1
+    },
+    "explanation": "The unpaced test sampled background delivery at different points. The extra Rust App Live event coincided with a real durable queue notification.",
+    "arm64Report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-native-queue-standalone-retry.Wwei92jY/arm64/matrix.json",
+      "bytes": 393572,
+      "sha256": "e8c2e423a880f59a18e48f068e114fff103d774900346ed6fdfd08580eb336bd"
+    },
+    "x64Report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-native-queue-standalone-retry.Wwei92jY/x64/matrix.json",
+      "bytes": 1179214,
+      "sha256": "89539c49ed05c2ce6d947ef45c7a80c99d478fc5dcce4a2f37134985b9acddc4"
+    }
+  },
+  "harnessDiff": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-native-queue-delivery.X7b6Jces/harness.diff",
+    "bytes": 6088,
+    "sha256": "5aee4fd131969e53d99512f07e3e65276ebd5e22425a73ceba673e4a0ee1139e"
+  },
+  "totals": {
+    "pairedHttpObservations": 1525,
+    "pairedEncryptionProofs": 600,
+    "pairedWorkerSdkOperations": 75,
+    "pairedWorkerQueueNotifications": 135,
+    "pairedAppLiveInvalidations": 300
+  },
+  "cells": [
+    {
+      "target": "darwin-arm64",
+      "database": "pglite",
+      "bootstrapMode": "pnpm-dev",
+      "profiles": [
+        {
+          "authentication": "none",
+          "pairedHttpObservations": 101,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        },
+        {
+          "authentication": "password",
+          "pairedHttpObservations": 102,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        },
+        {
+          "authentication": "accounts",
+          "pairedHttpObservations": 102,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-native-queue-delivery.E58LCnBw/pglite/matrix.json",
+        "bytes": 1227359,
+        "sha256": "3dc351eafab09b0ed23687d240f8818f65795554d27a074fadd73194b9550d4a"
+      },
+      "serverSha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+    },
+    {
+      "target": "darwin-arm64",
+      "database": "bundled-postgres",
+      "bootstrapMode": "pnpm-dev",
+      "profiles": [
+        {
+          "authentication": "none",
+          "pairedHttpObservations": 101,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        },
+        {
+          "authentication": "password",
+          "pairedHttpObservations": 102,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        },
+        {
+          "authentication": "accounts",
+          "pairedHttpObservations": 102,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-native-queue-delivery.E58LCnBw/bundled-postgres/matrix.json",
+        "bytes": 1227377,
+        "sha256": "4385dd152986a805a4c3d7da1b56f555cf578104120724d0b7079141fb248393"
+      },
+      "serverSha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+    },
+    {
+      "target": "darwin-arm64",
+      "database": "postgres",
+      "bootstrapMode": "pnpm-dev",
+      "profiles": [
+        {
+          "authentication": "none",
+          "pairedHttpObservations": 101,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        },
+        {
+          "authentication": "password",
+          "pairedHttpObservations": 102,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        },
+        {
+          "authentication": "accounts",
+          "pairedHttpObservations": 102,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-native-queue-delivery.E58LCnBw/postgres/matrix.json",
+        "bytes": 1227367,
+        "sha256": "9bb767d7de242ae163d87d84b085a229ed3e51f514366323eb3d01abcd3d5be6"
+      },
+      "serverSha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+    },
+    {
+      "target": "linux-arm64",
+      "database": "postgres",
+      "bootstrapMode": "standalone",
+      "profiles": [
+        {
+          "authentication": "none",
+          "pairedHttpObservations": 101,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        },
+        {
+          "authentication": "password",
+          "pairedHttpObservations": 102,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        },
+        {
+          "authentication": "accounts",
+          "pairedHttpObservations": 102,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-native-queue-delivery.X7b6Jces/arm64/matrix.json",
+        "bytes": 1227381,
+        "sha256": "fbef86f86cd3998212da6de47acca6e75268c3ccfd514fd7b389f31d0c2165fe"
+      },
+      "serverSha256": "1fc14ed5abc8a8a3e2d2acc02e4da542f280256e81f0b6ca106b93e76fcf72cf",
+      "imageId": "sha256:5ca1ee248797d385739b295faa1d057dfac17ae7f4426871e253cff969ac427c",
+      "cleanRustContainerExits": 6,
+      "liveImageProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-native-queue-delivery.X7b6Jces/arm64/generations.jsonl",
+        "bytes": 8061,
+        "sha256": "f592c6d4180cac43111c7e6642bbf9a1389dcd8db665ed7328cadcf861d6f4b9"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "database": "postgres",
+      "bootstrapMode": "standalone",
+      "profiles": [
+        {
+          "authentication": "none",
+          "pairedHttpObservations": 101,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        },
+        {
+          "authentication": "password",
+          "pairedHttpObservations": 102,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        },
+        {
+          "authentication": "accounts",
+          "pairedHttpObservations": 102,
+          "pairedEncryptionProofs": 40,
+          "pairedWorkerSdkOperations": 5,
+          "pairedWorkerQueueNotifications": 9,
+          "pairedAppLiveInvalidations": 20
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-native-queue-delivery.X7b6Jces/x64/matrix.json",
+        "bytes": 1227382,
+        "sha256": "21ab5d054a7974c52fa6f95fd114ad6f971bc24d0a6bf40cb54dee6efdad8147"
+      },
+      "serverSha256": "50aa09c86bb87aba0ea01acad193a2cab25d1c1bb4abec741ebff09f877f16f4",
+      "imageId": "sha256:ab3d9ff71769e4f885cde41a104abf313b8b0d36ee4601fe649b47de3f315a9f",
+      "cleanRustContainerExits": 6,
+      "liveImageProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-native-queue-delivery.X7b6Jces/x64/generations.jsonl",
+        "bytes": 8021,
+        "sha256": "38b9032dd3db3e1435e2b2cc78fe392ad1bfd3cf4e5b6976ea9565838750159f"
+      }
+    }
+  ]
+}

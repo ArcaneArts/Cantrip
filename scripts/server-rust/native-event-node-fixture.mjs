@@ -1,4 +1,4 @@
-import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-commands.ts";
+import { NativeCommandError } from "../../tests/reference-node-server/src/db/repository/native-commands.ts";
 export async function nativeEventFixture(repository, input) {
   const { owner, worker, operation, generation } = input;
   return repository.nativeCommands.withEventContext(

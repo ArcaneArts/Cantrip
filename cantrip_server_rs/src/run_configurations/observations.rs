@@ -1,15 +1,12 @@
 //! Owned worker observations and reconnect reconciliation for durable runtimes.
 use super::{Repository, text};
+use crate::workers::transport::WorkerTransport;
 use crate::{
     database::Database,
     live::LiveService,
     projects::coordinator::Coordinator,
     wire::{Value, value::json},
-    workers::{
-        bridge::{NotificationSubscription, WorkerBridge},
-        command_bus::LimitedCommandBus,
-        maintenance,
-    },
+    workers::{bridge::NotificationSubscription, command_bus::LimitedCommandBus, maintenance},
 };
 use anyhow::Result;
 use futures::{FutureExt, future::BoxFuture};
@@ -20,7 +17,7 @@ use std::{
 
 pub struct Service {
     repository: Repository,
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     commands: Arc<LimitedCommandBus>,
     live: Weak<LiveService>,
     maintenance: Arc<maintenance::Service>,
@@ -40,7 +37,7 @@ fn logged(worker: &str, message: &'static str, result: Result<()>) {
 impl Service {
     pub fn new(
         database: Arc<Database>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         commands: Arc<LimitedCommandBus>,
         live: &Arc<LiveService>,
         maintenance: Arc<maintenance::Service>,
@@ -133,15 +130,38 @@ impl Service {
         if !self.bridge.is_connected(worker) {
             return Ok(());
         }
-        let identities = self.repository.active_identities(owner, worker).await?;
-        let reply=self.commands.request(worker,json!({"type":"project.run-configuration-runtime.reconcile","identities":identities}),None,None).await?;
-        let reply = crate::settings::parse_response(
-            "runConfigurationRuntimeWorkerReconciliationSchema",
-            reply.as_ref(),
-        )?;
-        let lookups = reply["runtimes"]
-            .as_array()
-            .expect("validated runtime reconciliation");
+        let mut identities = self.repository.active_identities(owner, worker).await?;
+        let captures = self.repository.active_os_captures(owner, worker).await?;
+        let commands = [
+            json!({"type":"project.run-configuration-runtime.reconcile","identities":identities}),
+            json!({"type":"cantrip-os.run-runtime.reconcile","captures":captures}),
+        ];
+        identities.extend(captures.iter().map(|capture| capture["identity"].clone()));
+        let replies = futures::future::join_all(commands.into_iter().map(|command| async move {
+            let result = match self.commands.request(worker, command, None, None).await {
+                Ok(reply) => crate::settings::parse_response(
+                    "runConfigurationRuntimeWorkerReconciliationSchema",
+                    reply.as_ref(),
+                ),
+                Err(error) => Err(error.into()),
+            };
+            match result {
+                Ok(reply) => reply["runtimes"]
+                    .as_array()
+                    .expect("validated runtime reconciliation")
+                    .clone(),
+                Err(error) => {
+                    logged(
+                        worker,
+                        "Could not confirm Run processes after worker reconnect",
+                        Err(error),
+                    );
+                    Vec::new()
+                }
+            }
+        }))
+        .await;
+        let lookups: Vec<_> = replies.into_iter().flatten().collect();
         let mut pending: Vec<BoxFuture<'static, Result<()>>> = Vec::new();
         for identity in identities {
             let found = lookups.iter().find(|lookup| {

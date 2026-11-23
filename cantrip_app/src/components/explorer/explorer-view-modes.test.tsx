@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
+import { Blob as BinaryBlob } from "node:buffer";
 import type { ExplorerEntry, ExplorerSummary } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, createElement } from "react";
+import { act, createElement, useEffect } from "react";
+import type {
+  FileViewerProps,
+  FileViewerSession,
+} from "@/components/files/file-viewers";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
@@ -10,6 +15,17 @@ import {
   type ExplorerHeaderState,
   type ExplorerLifecycleActions,
 } from "./explorer-view";
+const nbt = vi.hoisted(() => ({ session: null as FileViewerSession | null }));
+vi.mock("@/components/nbt/file-viewer", () => ({
+  NbtFileViewer: (props: FileViewerProps) => {
+    useEffect(() => {
+      props.onSessionChange?.(nbt.session);
+      props.onReady?.();
+      return () => props.onSessionChange?.(null);
+    }, [props.onSessionChange, props.onReady]);
+    return createElement("div", { "data-nbt-fixture": "" });
+  },
+}));
 vi.mock("@/components/explorer/explorer-file-browser", () => ({
   ExplorerFileBrowser: ({
     onOpenFile,
@@ -69,6 +85,7 @@ afterEach(async () => {
   client?.clear();
   container?.remove();
   vi.clearAllMocks();
+  nbt.session = null;
 });
 const explorer = {
   activeWorkerId: "worker-one",
@@ -92,6 +109,7 @@ async function settle() {
 async function setup(
   path: string,
   initialExplorer: ExplorerSummary = explorer,
+  fileViewer?: string | null,
 ) {
   await import("./structured-file-visual");
   vi.mocked(api.getExplorerFile).mockImplementation(
@@ -119,6 +137,7 @@ async function setup(
         <QueryClientProvider client={client}>
           <ExplorerView
             appearance="dark"
+            fileViewer={fileViewer}
             explorer={summary}
             onHeaderChange={(state) => {
               header = state;
@@ -138,7 +157,7 @@ async function setup(
     );
     await settle();
   };
-  await render();
+  await render(initialExplorer, fileViewer !== undefined ? null : path);
   return render;
 }
 async function choose(mode: "preview" | "edit" | "visual") {
@@ -146,6 +165,31 @@ async function choose(mode: "preview" | "edit" | "visual") {
   await settle();
   expect(header!.fileMode).toBe(mode);
 }
+it("checkpoints a dirty binary document for transfer without embedding bytes and preserves failures", async () => {
+  const checkpoint = vi.fn(async () => {}),
+    discard = vi.fn(async () => {});
+  nbt.session = {
+    revision: 1,
+    dirty: true,
+    saving: true,
+    pending: true,
+    save: vi.fn(async () => false),
+    discard,
+    reload: vi.fn(async () => {}),
+    checkpoint,
+  };
+  await setup("state.nbt");
+  const state = await lifecycle!.captureTransfer!();
+  expect(checkpoint).toHaveBeenCalledOnce();
+  expect(state.selectedPath).toBe("state.nbt");
+  expect(state.documents.documents).toEqual([]);
+  expect(discard).not.toHaveBeenCalled();
+  checkpoint.mockRejectedValueOnce(new Error("Actual journal storage failure"));
+  await expect(lifecycle!.captureTransfer!()).rejects.toThrow(
+    "Actual journal storage failure",
+  );
+  expect(discard).not.toHaveBeenCalled();
+});
 describe("Explorer renderer modes", () => {
   it("refuses replacement while dirty or saving and permits it after save succeeds", async () => {
     await setup("data/settings.yaml");
@@ -275,6 +319,9 @@ describe("Explorer renderer modes", () => {
     expect(header!.fileMode).toBe("edit");
     expect(container.querySelector("textarea")?.readOnly).toBe(false);
     expect(container.textContent).toContain("Timed out saving view state");
+    await act(async () => header!.refresh());
+    await settle();
+    expect(container.textContent).toContain("Timed out saving view state");
   });
 
   it("still applies a genuinely changed persisted mode after opening inline", async () => {
@@ -290,6 +337,10 @@ describe("Explorer renderer modes", () => {
   });
 
   it("leaves file-tab closing to the tab while retaining transient preview navigation", async () => {
+    const refreshButton = () =>
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+        (button) => button.textContent?.trim() === "Refresh Explorer",
+      );
     const render = await setup("README.md", {
       ...explorer,
       selectedPath: "README.md",
@@ -305,12 +356,33 @@ describe("Explorer renderer modes", () => {
     expect(
       container.querySelector('button[aria-label="Close file"]'),
     ).toBeNull();
-    expect(
-      container.querySelector('button[aria-label="Refresh Explorer"]'),
-    ).not.toBeNull();
+    expect(refreshButton()).toBeUndefined();
     expect(
       container.querySelector('button[aria-label="View mode"]'),
     ).not.toBeNull();
+
+    await render(explorer, null);
+    expect(header!.selectedPath).toBeNull();
+    expect(refreshButton()).toBeDefined();
+    expect(
+      container.querySelector('button[aria-label="View mode"]'),
+    ).toBeNull();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    vi.mocked(api.getExplorerFile).mockClear();
+    await act(async () => refreshButton()!.click());
+    await settle();
+    expect(invalidate).toHaveBeenCalledWith(
+      {
+        queryKey: [
+          "explorer-directory",
+          explorer.projectId,
+          explorer.worktreeId,
+          explorer.id,
+        ],
+      },
+      { throwOnError: true },
+    );
+    expect(api.getExplorerFile).not.toHaveBeenCalled();
   });
 
   it.each(["data/settings.yaml", "data/settings.json"])(
@@ -471,4 +543,85 @@ describe("Explorer renderer modes", () => {
       expect(api.saveExplorerFile).not.toHaveBeenCalled();
     },
   );
+});
+
+it("renders an unfamiliar filename with the explicitly chosen JSON parser", async () => {
+  contents["opaque.xyz"] = '{"enabled":true,"nested":{"value":42}}';
+  await setup(
+    "opaque.xyz",
+    { ...explorer, selectedPath: "opaque.xyz", fileMode: "visual" },
+    "json",
+  );
+  expect(
+    container.querySelector('[aria-label="Search structured values"]'),
+  ).not.toBeNull();
+  expect(
+    container
+      .querySelector('[aria-label="Edit enabled"]')
+      ?.getAttribute("aria-checked"),
+  ).toBe("true");
+  expect(header!.canVisual).toBe(true);
+  const release = lifecycle!.suspendTransfer!();
+  const captured = await lifecycle!.captureTransfer!();
+  expect(captured.fileViewer).toBe("json");
+  await act(async () => release());
+});
+it("renders Markdown source as text when explicitly requested", async () => {
+  await setup(
+    "README.md",
+    { ...explorer, selectedPath: "README.md", fileMode: "preview" },
+    "text",
+  );
+  expect(container.querySelector("h1")).toBeNull();
+  expect(container.querySelector("textarea")?.value).toBe(
+    contents["README.md"],
+  );
+});
+it("uses protected media bytes for an explicit image instead of trying a text read", async () => {
+  vi.stubGlobal(
+    "URL",
+    Object.assign(class extends URL {}, {
+      createObjectURL: vi.fn(() => "blob:forced-image"),
+      revokeObjectURL: vi.fn(),
+    }),
+  );
+  vi.mocked(api.loadExplorerMedia).mockResolvedValue(
+    new BinaryBlob(["image"], { type: "image/png" }) as unknown as Blob,
+  );
+  await setup(
+    "opaque.xyz",
+    { ...explorer, selectedPath: "opaque.xyz", fileMode: "preview" },
+    "image",
+  );
+  expect(api.getExplorerFile).not.toHaveBeenCalled();
+  expect(api.loadExplorerMedia).toHaveBeenCalledWith(
+    explorer.id,
+    "opaque.xyz",
+    { kind: "image", mimeType: "image/png" },
+  );
+  expect(
+    container.querySelector('img[alt="opaque.xyz"]')?.getAttribute("src"),
+  ).toBe("blob:forced-image");
+});
+
+it("applies an external document mode update to the mounted editor without replacing its session", async () => {
+  const view = {
+    ...explorer,
+    kind: "file-document",
+    documentId: "document",
+    selectedPath: "data/settings.json",
+    fileMode: "visual",
+    setMode: vi.fn(async () => {}),
+    openFile: vi.fn(),
+  } as unknown as ExplorerSummary;
+  const render = await setup("data/settings.json", view, "json");
+  expect(header!.fileMode).toBe("visual");
+  await render({ ...view, fileMode: "edit" }, null);
+  expect(header!.fileMode).toBe("edit");
+  const input = container.querySelector("textarea")!;
+  expect(input.readOnly).toBe(false);
+  await render({ ...view, fileMode: "preview" }, null);
+  expect(header!.fileMode).toBe("preview");
+  expect(container.querySelector("textarea")).toBe(input);
+  expect(input.readOnly).toBe(true);
 });

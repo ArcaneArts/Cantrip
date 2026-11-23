@@ -1,9 +1,9 @@
 use std::{
     fs,
     io::{BufRead, BufReader},
-    net::{TcpListener, TcpStream},
+    net::TcpListener,
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::Child,
     sync::{
         atomic::{AtomicBool, Ordering},
         Mutex,
@@ -30,6 +30,7 @@ use tauri_plugin_window_state::StateFlags;
 mod desktop_quit;
 #[cfg(target_os = "macos")]
 mod desktop_renderer_recovery;
+mod desktop_services;
 mod desktop_update;
 #[cfg(desktop)]
 mod desktop_window_placement;
@@ -37,12 +38,18 @@ mod desktop_worker;
 mod direct_probe;
 mod installation_storage;
 mod local_logs;
+mod nbt_export;
 mod process_environment;
 mod project_share;
 mod synthetic_build;
 mod tunnel_forward;
+mod tunnel_ssh;
 
-use process_environment::configure_desktop_child;
+pub(crate) use desktop_services::terminate_child;
+use desktop_services::{
+    server_command, server_environment, spawn_service, terminate_server, wait_for_server,
+    worker_command, worker_environment,
+};
 use project_share::ProjectShareMounts;
 use tunnel_forward::TunnelForwards;
 
@@ -131,7 +138,11 @@ pub(crate) fn shutdown_owned_runtime(app: &tauri::AppHandle) -> bool {
                         "subsystem": "desktop-runtime"
                     })),
                 );
-                terminate_child(&mut child.child);
+                if child.service == "server" {
+                    terminate_server(&mut child.child);
+                } else {
+                    terminate_child(&mut child.child);
+                }
             }
             children.clear();
         };
@@ -264,34 +275,33 @@ fn set_macos_pro_mode(window: tauri::WebviewWindow, enabled: bool) -> Result<boo
     }
 }
 
-fn node_service_command(node: &Path, directory: &Path) -> Command {
-    let mut command = Command::new(node);
-    command.arg("dist/index.js").current_dir(directory);
-    command
-}
-
-fn spawn_node_service(
-    node: &Path,
-    directory: &Path,
-    environment: &[(&str, String)],
-    capture_stderr: bool,
-) -> Result<Child, String> {
-    let mut command = node_service_command(node, directory);
-    configure_desktop_child(&mut command);
-    command.stdout(Stdio::null()).stderr(if capture_stderr {
-        Stdio::piped()
-    } else {
-        Stdio::null()
-    });
-    for (key, value) in environment {
-        command.env(key, value);
+fn capture_server_output(app: tauri::AppHandle, child: &mut Child) {
+    fn capture(app: tauri::AppHandle, stream: impl std::io::Read + Send + 'static) {
+        thread::spawn(move || {
+            for line in BufReader::new(stream).lines() {
+                match line {
+                    Ok(line) if !line.trim().is_empty() => {
+                        app.state::<local_logs::LocalServiceLogs>()
+                            .server_output(&line);
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                            "warn", "Bundled server output could not be read",
+                            Some(json!({"event":"desktop.child.output.failed", "service":"server", "error":error.to_string()})),
+                        );
+                        break;
+                    }
+                }
+            }
+        });
     }
-    command.spawn().map_err(|error| {
-        format!(
-            "Could not start service in {}: {error}",
-            directory.display()
-        )
-    })
+    if let Some(stdout) = child.stdout.take() {
+        capture(app.clone(), stdout);
+    }
+    if let Some(stderr) = child.stderr.take() {
+        capture(app, stderr);
+    }
 }
 
 fn capture_child_stderr(app: tauri::AppHandle, child: &mut Child, service: &'static str) {
@@ -335,24 +345,6 @@ fn capture_child_stderr(app: tauri::AppHandle, child: &mut Child, service: &'sta
     });
 }
 
-fn wait_for_server(child: &mut Child, port: u16) -> Result<(), String> {
-    for _ in 0..100 {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return Ok(());
-        }
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|error| format!("Could not inspect local server: {error}"))?
-        {
-            return Err(format!(
-                "The bundled Cantrip Server exited during startup ({status})."
-            ));
-        }
-        thread::sleep(Duration::from_millis(100));
-    }
-    Err("The bundled Cantrip Server did not become ready within 10 seconds.".into())
-}
-
 fn reserve_local_listener(label: &str) -> Result<TcpListener, String> {
     TcpListener::bind(("127.0.0.1", 0))
         .map_err(|error| format!("Could not reserve a local {label} port: {error}"))
@@ -363,36 +355,6 @@ fn reserved_port(listener: &TcpListener, label: &str) -> Result<u16, String> {
         .local_addr()
         .map_err(|error| format!("Could not read reserved local {label} port: {error}"))
         .map(|address| address.port())
-}
-
-pub(crate) fn terminate_child(child: &mut Child) {
-    if child.try_wait().ok().flatten().is_some() {
-        return;
-    }
-    #[cfg(unix)]
-    {
-        let _ = Command::new("kill")
-            .args(["-TERM", &child.id().to_string()])
-            .status();
-        for _ in 0..20 {
-            if child.try_wait().ok().flatten().is_some() {
-                return;
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-    }
-    #[cfg(windows)]
-    {
-        let mut command = Command::new("taskkill");
-        configure_desktop_child(&mut command);
-        let _ = command
-            .args(["/PID", &child.id().to_string(), "/T", "/F"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 #[tauri::command]
@@ -791,6 +753,10 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         .resource_dir()
         .map_err(|error| format!("Could not resolve bundled resources: {error}"))?
         .join("runtime");
+    // On Windows, initdb launches postgres through the command shell, which
+    // cannot use the verbatim path returned for ordinary installed directories.
+    #[cfg(windows)]
+    let resources = dunce::simplified(&resources);
     service_logs.runtime_event(
         "info",
         "Bundled desktop runtime startup began",
@@ -812,8 +778,6 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     fs::create_dir_all(&logs)
         .map_err(|error| format!("Could not create {}: {error}", logs.display()))?;
 
-    let node_name = if cfg!(windows) { "node.exe" } else { "node" };
-    let node = resources.join(node_name);
     let server_reservation = reserve_local_listener("server")?;
     let port = reserved_port(&server_reservation, "server")?;
     drop(server_reservation);
@@ -826,27 +790,25 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     let worker_token = format!("desktop-{}-{token_seed}", std::process::id());
     let server_directory = resources.join("server");
     let worker_directory = resources.join("worker");
-    let mut server = spawn_node_service(
-        &node,
-        &server_directory,
-        &[
-            ("CANTRIP_SERVER_HOST", "127.0.0.1".into()),
-            ("CANTRIP_SERVER_PORT", port.to_string()),
-            ("CANTRIP_DEPLOYMENT_MODE", "local".into()),
-            ("CANTRIP_BOOTSTRAP_MODE", "tauri".into()),
-            ("CANTRIP_AUTH_MODE", "none".into()),
-            (
-                "CANTRIP_DATA_DIR",
-                data.join("server").to_string_lossy().into_owned(),
-            ),
-            ("CANTRIP_WORKER_TOKEN", worker_token.clone()),
-            (
-                "CANTRIP_SERVICE_LOG_DIR",
-                logs.join("server").to_string_lossy().into_owned(),
-            ),
-        ],
-        false,
-    )?;
+    let worker = worker_command(&worker_directory);
+    let launch = server_command(&server_directory)?;
+    let server_env = server_environment(data.as_path(), &logs, port, &worker_token);
+    let mut preparation = spawn_service(launch.preparation, &server_env, true, true)?;
+    capture_server_output(app.handle().clone(), &mut preparation);
+    let completed = desktop_services::wait_for_preparation(&mut preparation, || {
+        app.state::<DesktopExitState>()
+            .approved
+            .load(Ordering::SeqCst)
+    })?;
+    if !completed {
+        return Ok(ManagedRuntime {
+            children: Mutex::new(Vec::new()),
+            local_worker: None,
+            server_url,
+        });
+    }
+    let mut server = spawn_service(launch.command, &server_env, true, true)?;
+    capture_server_output(app.handle().clone(), &mut server);
     service_logs.runtime_event(
         "info",
         "Bundled Cantrip Server process started",
@@ -857,22 +819,36 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
             "subsystem": "desktop-runtime"
         })),
     );
-    if let Err(error) = wait_for_server(&mut server, port) {
-        service_logs.runtime_event(
-            "error",
-            "Bundled Cantrip Server failed readiness",
-            Some(json!({
-                "durationMs": runtime_started_at.elapsed().as_millis(),
-                "event": "desktop.child.readiness.failed",
-                "operation": "wait-ready",
-                "reasonCode": "readiness-timeout",
-                "service": "server",
-                "status": "failed",
-                "subsystem": "desktop-runtime"
-            })),
-        );
-        terminate_child(&mut server);
-        return Err(error);
+    match wait_for_server(&mut server, port, || {
+        app.state::<DesktopExitState>()
+            .approved
+            .load(Ordering::SeqCst)
+    }) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(ManagedRuntime {
+                children: Mutex::new(Vec::new()),
+                local_worker: None,
+                server_url,
+            });
+        }
+        Err(error) => {
+            service_logs.runtime_event(
+                "error",
+                "Bundled Cantrip Server failed readiness",
+                Some(json!({
+                    "durationMs": runtime_started_at.elapsed().as_millis(),
+                    "event": "desktop.child.readiness.failed",
+                    "operation": "wait-ready",
+                    "reasonCode": "readiness-timeout",
+                    "service": "server",
+                    "status": "failed",
+                    "subsystem": "desktop-runtime"
+                })),
+            );
+            terminate_server(&mut server);
+            return Err(error);
+        }
     }
     service_logs.runtime_event(
         "info",
@@ -887,31 +863,15 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         })),
     );
 
-    let mut worker = match spawn_node_service(
-        &node,
-        &worker_directory,
-        &[
-            ("CANTRIP_SERVER_URL", server_url.clone()),
-            ("CANTRIP_WORKER_TOKEN", worker_token),
-            ("CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP", "true".into()),
-            ("CANTRIP_WORKER_ID", "desktop-local".into()),
-            ("CANTRIP_WORKER_NAME", "Local Worker".into()),
-            (
-                "CANTRIP_WORKER_DATA_DIR",
-                data.join("worker").to_string_lossy().into_owned(),
-            ),
-            (
-                "CANTRIP_SERVICE_LOG_DIR",
-                logs.join("workers/desktop-local")
-                    .to_string_lossy()
-                    .into_owned(),
-            ),
-        ],
+    let mut worker = match spawn_service(
+        worker,
+        &worker_environment(data.as_path(), &logs, &server_url, &worker_token),
+        false,
         true,
     ) {
         Ok(worker) => worker,
         Err(error) => {
-            terminate_child(&mut server);
+            terminate_server(&mut server);
             return Err(error);
         }
     };
@@ -1000,12 +960,26 @@ fn monitor_owned_runtime(app: tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                if let Some(exports) = webview.try_state::<std::sync::Arc<nbt_export::NbtExports>>()
+                {
+                    exports.retire_window(webview.window().label());
+                }
+            }
+        })
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             #[cfg(desktop)]
             show_main_window(app);
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
+    // Signal handlers are installed after build(), before setup() runs. These
+    // states must already exist when a signal arrives during service startup.
+    #[cfg(desktop)]
+    let builder = builder
+        .manage(DesktopShutdownState::default())
+        .manage(DesktopExitState::default());
     #[cfg(target_os = "macos")]
     let builder = builder.on_web_content_process_terminate(desktop_renderer_recovery::recover);
     #[cfg(desktop)]
@@ -1025,6 +999,10 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     let builder = builder
         .invoke_handler(tauri::generate_handler![
+            nbt_export::begin_nbt_export,
+            nbt_export::write_nbt_export,
+            nbt_export::finish_nbt_export,
+            nbt_export::cancel_nbt_export,
             desktop_quit::register_desktop_quit,
             desktop_quit::acknowledge_desktop_quit,
             desktop_autostart_enabled,
@@ -1077,6 +1055,7 @@ pub fn run() {
             project_share::reveal_project_share,
             tunnel_forward::start_tunnel_forward,
             tunnel_forward::prepare_worker_link_tunnel_forward,
+            tunnel_forward::configure_tunnel_ssh_forward,
             tunnel_forward::rotate_worker_link_tunnel_bridge_claim,
             tunnel_forward::update_worker_link_tunnel_forward_route,
             tunnel_forward::refresh_worker_link_tunnel_forward,
@@ -1084,10 +1063,12 @@ pub fn run() {
             tunnel_forward::confirm_tunnel_forward_direct_retired,
             tunnel_forward::refresh_tunnel_forward_relay,
             tunnel_forward::stop_tunnel_forward,
+            tunnel_forward::stop_worker_link_tunnel_forward,
             tunnel_forward::list_tunnel_forwards,
         ])
         .setup(|app| {
             app.manage(std::sync::Arc::new(installation_storage::build(app)));
+            app.manage(std::sync::Arc::new(nbt_export::NbtExports::default()));
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_autostart::init(
                 MacosLauncher::LaunchAgent,
@@ -1147,8 +1128,6 @@ pub fn run() {
             );
             #[cfg(desktop)]
             {
-                app.manage(DesktopShutdownState::default());
-                app.manage(DesktopExitState::default());
                 setup_tray(app)?;
                 #[cfg(target_os = "macos")]
                 setup_macos_application_menu(app)?;
@@ -1203,6 +1182,16 @@ pub fn run() {
     }
 
     app.run(|handle, event| {
+        if let RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Destroyed,
+            ..
+        } = &event
+        {
+            handle
+                .state::<std::sync::Arc<nbt_export::NbtExports>>()
+                .retire_window(label);
+        }
         #[cfg(target_os = "macos")]
         if let RunEvent::Reopen { .. } = &event {
             handle
@@ -1270,18 +1259,14 @@ pub fn run() {
 
 #[cfg(all(test, desktop))]
 mod tests {
-    use std::{
-        ffi::OsStr,
-        path::Path,
-        sync::{
-            atomic::{AtomicUsize, Ordering},
-            Mutex,
-        },
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex,
     };
 
     use super::{
-        desktop_window_state_flags, exit_request_needs_confirmation, node_service_command,
-        run_shutdown_once, should_persist_window_state, LocalWorkerRuntime, ManagedRuntime,
+        desktop_window_state_flags, exit_request_needs_confirmation, run_shutdown_once,
+        should_persist_window_state, LocalWorkerRuntime, ManagedRuntime,
     };
     use tauri_plugin_window_state::StateFlags;
 
@@ -1318,21 +1303,6 @@ mod tests {
         assert!(permissions
             .iter()
             .any(|permission| permission == "core:default"));
-    }
-
-    #[test]
-    fn packaged_node_services_use_a_working_directory_relative_entrypoint() {
-        let directory = Path::new(r"C:\Program Files\Cantrip\runtime\server");
-        let command = node_service_command(
-            Path::new(r"C:\Program Files\Cantrip\runtime\node.exe"),
-            directory,
-        );
-
-        assert_eq!(command.get_current_dir(), Some(directory));
-        assert_eq!(
-            command.get_args().collect::<Vec<_>>(),
-            vec![OsStr::new("dist/index.js")]
-        );
     }
 
     #[test]

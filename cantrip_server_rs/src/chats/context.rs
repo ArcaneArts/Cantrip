@@ -45,6 +45,29 @@ fn permission_projection(state: &Value, source: Value) -> Result<Value> {
 }
 
 impl Repository {
+    pub async fn contexts_by_thread(
+        &self,
+        owner: &str,
+        worker: &str,
+        thread: &str,
+    ) -> Result<Vec<Value>> {
+        let rows = self.database.query("SELECT r.chat_id FROM chat_runtime_sessions r INNER JOIN chats c ON c.id=r.chat_id WHERE c.owner_id=$1 AND r.worker_id=$2 AND r.codex_thread_id=$3 AND c.archived_at IS NULL", &[&owner,&worker,&thread]).await?;
+        let mut ids = Vec::new();
+        for row in rows {
+            let id = row.get::<String>(0)?;
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        let contexts =
+            futures::future::try_join_all(ids.iter().map(|id| self.execution_context(owner, id)))
+                .await?;
+        Ok(contexts
+            .into_iter()
+            .flatten()
+            .filter(|context| context["workerId"] == worker && context["threadId"] == thread)
+            .collect())
+    }
     pub async fn execution_context(&self, owner: &str, chat_id: &str) -> Result<Option<Value>> {
         Self::execution_context_with(Executor::Database(&self.database), owner, chat_id).await
     }
@@ -53,12 +76,39 @@ impl Repository {
         owner: &str,
         chat_id: &str,
     ) -> Result<Option<Value>> {
+        Self::execution_context_with_diagnostics(executor, owner, chat_id, None).await
+    }
+    pub(crate) async fn execution_context_for_mcp(
+        &self,
+        owner: &str,
+        chat_id: &str,
+        raw_id: &Value,
+    ) -> Result<Option<Value>> {
+        Self::execution_context_with_diagnostics(
+            Executor::Database(&self.database),
+            owner,
+            chat_id,
+            Some(raw_id),
+        )
+        .await
+    }
+    async fn execution_context_with_diagnostics(
+        executor: Executor<'_, '_>,
+        owner: &str,
+        chat_id: &str,
+        mcp_id: Option<&Value>,
+    ) -> Result<Option<Value>> {
         let identity = executor
             .query(
                 "SELECT context_kind FROM chats WHERE id=$1 AND owner_id=$2 LIMIT 1",
                 &[&chat_id, &owner],
             )
-            .await?;
+            .await;
+        let identity = if let Some(id) = mcp_id {
+            crate::projects::targets::mcp_queries::context(identity, "chatIdentity", owner, id)?
+        } else {
+            identity?
+        };
         let standalone = identity
             .first()
             .map(|r| r.get::<String>(0))
@@ -70,7 +120,21 @@ impl Repository {
         } else {
             "SELECT jsonb_build_object('chat',to_jsonb(c),'lane',to_jsonb(l),'project',to_jsonb(p),'settings',to_jsonb(s),'nativeSettings',to_jsonb(n),'root',to_jsonb(w),'runtime',to_jsonb(r))::text FROM chats c LEFT JOIN native_settings_states n ON n.chat_id=c.id INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$2 LEFT JOIN user_settings s ON s.user_id=p.owner_id INNER JOIN project_worktrees w ON w.id=c.active_worktree_id LEFT JOIN chat_runtime_sessions r ON r.chat_id=c.id AND r.worker_id=w.worker_id AND r.worktree_id=w.id LEFT JOIN chat_execution_lanes l ON l.chat_id=c.id AND l.state='active' WHERE c.id=$1 AND c.archived_at IS NULL LIMIT 1"
         };
-        let rows = executor.query(sql, &[&chat_id, &owner]).await?;
+        let result = executor.query(sql, &[&chat_id, &owner]).await;
+        let rows = if let Some(id) = mcp_id {
+            crate::projects::targets::mcp_queries::context(
+                result,
+                if standalone {
+                    "chatStandalone"
+                } else {
+                    "chatProject"
+                },
+                owner,
+                id,
+            )?
+        } else {
+            result?
+        };
         let Some(row) = rows.first() else {
             return Ok(None);
         };
@@ -104,6 +168,7 @@ impl Repository {
             "contextKind":if standalone{"standalone"}else{"project"},
             "automationPaused":chat["automation_paused"],"chatId":chat_id,
             "computerUseEnabled":settings["computer_use_enabled"]==Value::Bool(true),
+            "computerUseCantripAppAllowed":settings["computer_use_cantrip_app_allowed"]==Value::Bool(true),
             "computerUseAuthorityGeneration":chat["computer_use_authority_generation"],
             "managedInputRevision":chat["managed_input_revision"],
             "cwd":if standalone{nullish(root.get("protected_path_handle"),json!("standalone-root-unavailable"))}else{root["absolute_path"].clone()},
@@ -123,6 +188,16 @@ impl Repository {
             "worktreeMode":if standalone{Value::Null}else{chat["worktree_mode"].clone()},
             "worktreePolicy":if standalone{Value::Null}else{row["project"]["worktree_policy"].clone()}
         });
+        if !standalone {
+            let raw: serde_json::Value = serde_json::from_str(&root.stringify())?;
+            if let Some(placement) =
+                crate::cantrip_os::chats::resolve(executor, owner, chat_id, &raw).await?
+            {
+                for (key, value) in placement.as_object().unwrap() {
+                    context[key.as_str()] = Value::from_serialize(value);
+                }
+            }
+        }
         if standalone {
             context["scratchRootStatus"] = root["status"].clone();
         }

@@ -14,6 +14,7 @@ import {
   openTunnelContentRecord,
   protectTunnelContentRecord,
   createTunnelDataProtection,
+  publicEndpointsMatch,
 } from "@/lib/tunnel-content-encryption";
 import type {
   TunnelUserCreate,
@@ -26,6 +27,11 @@ import { clientEncryption } from "@/lib/client-encryption";
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { ensureEndpointContentWorkerEncryption } from "@/lib/endpoint-content-worker-encryption";
 import { getWorkers } from "./worker-wire";
+import {
+  tunnelPublicDestinationEndpoint,
+  tunnelPublicSourceEndpoint,
+  tunnelContentOsSource,
+} from "@cantrip/protocol/tunnel-content";
 
 export async function getTunnels(projectId?: string) {
   const tunnels = tunnelWireListSchema.parse(
@@ -59,9 +65,16 @@ export async function getTunnelTransportConfiguration(
     record: wire.protectedRecord,
     workerId: wire.destination.workerId,
   });
+  if (!publicEndpointsMatch(wire, content))
+    throw new Error(
+      "The tunnel's private configuration differs from its canonical route.",
+    );
   return {
     dataProtection: { ...content.dataProtection },
     workerId: wire.destination.workerId,
+    source: content.source,
+    destination: content.destination,
+    revision: wire.protectedRecord.revision,
   };
 }
 
@@ -77,11 +90,16 @@ export async function createTunnel(input: TunnelUserCreate) {
   const parsed = tunnelUserCreateSchema.parse(input);
   await ensureTunnelWorker(parsed.destination.workerId);
   const id = crypto.randomUUID();
+  const source = parsed.source ?? { kind: "desktop-loopback" as const };
+  const osSource = tunnelContentOsSource({
+    source,
+    destination: parsed.destination,
+  });
   const protectedRecord = await protectTunnelContentRecord({
     content: {
       name: parsed.name,
       description: parsed.description,
-      source: { kind: "desktop-loopback" },
+      source,
       destination: parsed.destination,
       dataProtection: createTunnelDataProtection(),
     },
@@ -97,10 +115,9 @@ export async function createTunnel(input: TunnelUserCreate) {
         id,
         projectId: parsed.projectId,
         protocolHint: parsed.protocolHint,
-        destination: {
-          kind: parsed.destination.kind,
-          workerId: parsed.destination.workerId,
-        },
+        source: tunnelPublicSourceEndpoint(source),
+        destination: tunnelPublicDestinationEndpoint(parsed.destination, id),
+        ...(osSource ? { osSource } : {}),
         protectedRecord,
       }),
     ),
@@ -125,9 +142,18 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
   });
   const current = await openTunnelSummary(currentWire);
   const destination = parsed.destination ?? current.destination;
-  if (destination.kind !== "worker-tcp") {
-    throw new Error("User tunnels require a worker TCP destination.");
+  const source = parsed.source ?? currentContent.source;
+  if (
+    destination.kind !== "worker-tcp" &&
+    destination.kind !== "worker-os-tcp" &&
+    destination.kind !== "worker-os-ssh" &&
+    destination.kind !== "worker-os-vnc"
+  ) {
+    throw new Error(
+      "User tunnels require a Host or CantripOS service destination.",
+    );
   }
+  const osSource = tunnelContentOsSource({ source, destination });
   await ensureTunnelWorker(destination.workerId);
   const protectedRecord = await protectTunnelContentRecord({
     content: {
@@ -136,7 +162,7 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
         parsed.description === undefined
           ? current.description
           : parsed.description,
-      source: current.source,
+      source,
       destination,
       dataProtection: currentContent.dataProtection,
     },
@@ -160,10 +186,11 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
             ? {}
             : {
                 destination: {
-                  kind: destination.kind,
-                  workerId: destination.workerId,
+                  ...tunnelPublicDestinationEndpoint(destination, tunnelId),
                 },
               }),
+          source: tunnelPublicSourceEndpoint(source),
+          ...(osSource ? { osSource } : {}),
           protectedRecord,
         }),
       ),

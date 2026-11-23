@@ -50,7 +50,7 @@ const root = path.resolve(
 );
 const appRequire = createRequire(path.join(root, "cantrip_app/package.json"));
 const workerRequire = createRequire(
-  path.join(root, "cantrip_worker/package.json"),
+  path.join(root, "tests/reference-node-worker/package.json"),
 );
 const { WebSocket, WebSocketServer } = workerRequire("ws");
 
@@ -71,6 +71,10 @@ export async function startEditorRecoveryFixture({
   repositoryProject = false,
   nativeLoopbackOrigin = false,
   cuaBinary,
+  projectAlerts = false,
+  serverExecutable,
+  serverEnvironment = {},
+  clientPlugins = [],
 } = {}) {
   const runId = randomUUID();
   const directory = path.join(root, ".qa", `editor-${runId}`);
@@ -79,6 +83,15 @@ export async function startEditorRecoveryFixture({
     ? await (
         await import("./editor-repository-fixture.mjs")
       ).seedEditorRepository(directory, `qa-${runId}`)
+    : null;
+  const alertsSeed = projectAlerts
+    ? await (
+        await import("./editor-repository-fixture.mjs")
+      ).seedEditorRepository(
+        path.join(directory, "background"),
+        `qa-${runId}`,
+        "Alerts-Background-QA",
+      )
     : null;
   const events = [];
   const eventCounts = Object.create(null);
@@ -282,6 +295,14 @@ export async function startEditorRecoveryFixture({
       cacheDir: path.join(directory, "vite-cache"),
       configFile: path.join(root, "cantrip_app/vite.config.ts"),
       plugins: [
+        ...clientPlugins,
+        ...(projectAlerts
+          ? [
+              (
+                await import("./project-alerts-fixture.mjs")
+              ).projectAlertsFixturePlugin(controlToken, alertsSeed),
+            ]
+          : []),
         ...(repositorySeed
           ? [
               (
@@ -349,6 +370,7 @@ export async function startEditorRecoveryFixture({
       CANTRIP_WORKER_ID: `qa-${runId}`,
       CANTRIP_WORKER_NAME: `QA ${runId}`,
       CODEX_HOME: path.join(directory, "codex-home"),
+      ...(projectAlerts ? { CANTRIP_QA_ALERTS_TOKEN: controlToken } : {}),
     };
     // Do not let inherited production deployment/enrollment configuration escape isolation.
     for (const name of [
@@ -387,21 +409,32 @@ export async function startEditorRecoveryFixture({
         flags: "a",
       });
       logStreams.push(stream);
+      const nativeServer = name === "server" && serverExecutable;
+      const environment =
+        name === "server"
+          ? { ...childEnvironment, ...serverEnvironment }
+          : cuaBinary
+            ? { ...childEnvironment, CANTRIP_CUA_BIN: cuaBinary }
+            : childEnvironment;
       const child = spawn(
-        process.execPath,
-        [
-          "--import",
-          "tsx",
-          name === "server"
-            ? path.join(root, "scripts/qa/editor-recovery-server.mts")
-            : "src/index.ts",
-        ],
+        nativeServer ? path.resolve(serverExecutable) : process.execPath,
+        nativeServer
+          ? []
+          : [
+              "--import",
+              "tsx",
+              name === "server"
+                ? path.join(
+                    root,
+                    projectAlerts
+                      ? "scripts/qa/project-alerts-server.mts"
+                      : "scripts/qa/editor-recovery-server.mts",
+                  )
+                : "src/index.ts",
+            ],
         {
           cwd: path.join(root, `cantrip_${name}`),
-          env:
-            name === "worker" && cuaBinary
-              ? { ...childEnvironment, CANTRIP_CUA_BIN: cuaBinary }
-              : childEnvironment,
+          env: environment,
           stdio: ["ignore", "pipe", "pipe"],
         },
       );
@@ -414,7 +447,13 @@ export async function startEditorRecoveryFixture({
       child.once("exit", (code, signal) =>
         event("process.exit", { name, code, signal }),
       );
-      event("process.start", { name, pid: child.pid });
+      event("process.start", {
+        name,
+        pid: child.pid,
+        ...(name === "server"
+          ? { runtime: nativeServer ? "rust" : "node-reference" }
+          : {}),
+      });
       return child;
     };
     const stop = async (name) => {

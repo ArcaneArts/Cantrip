@@ -1,0 +1,448 @@
+# Native Winterhold deployment
+
+The production deployer builds and installs the Rust server distribution using
+SSH, systemd and Caddy. Workers paired with Winterhold run separately from that
+systemd service. Use the [native worker distribution](../deploy/worker.README.md)
+to enroll or reopen a retained worker profile.
+
+## Select the server
+
+The deployment source is the exact promoted `release` commit. Its normal host
+phase builds the Rust server:
+
+```sh
+pnpm deploy:server
+```
+
+This is a production deployment command, not a local test command. Run it only
+when a production deployment is authorized. It reads production credentials
+and contacts the configured host. The promoted snapshot must contain the native
+Dockerfile, packager, installer and matching server code.
+
+`deploy/production/deploy.json` accepts `"serverRuntime": "rust"`; omitting the
+field also selects Rust. The explicit `--server-runtime rust` spelling remains
+accepted. The normal build uses the Rust executable, and the legacy Node
+implementation is retained as a development comparison reference.
+[Production server retirement](RUST_SERVER_NODE_RETIREMENT.md)
+
+The distribution retains the existing entry points, `start.sh` and
+`migrate.sh`. The installer executes those entry points rather than requiring a
+Node executable or using an artifact marker to infer runtime support. Rust
+packages include native PGlite and private PostgreSQL assets. Winterhold's
+production environment continues to select external PostgreSQL with
+`DATABASE_URL`; standalone native services can select either local backend.
+
+Winterhold forwards optional `REDIS_URL` and `NODE_EXTRA_CA_CERTS` settings
+from the configured production environment to systemd. For private Redis
+TLS, use a `rediss://` URL and point `NODE_EXTRA_CA_CERTS` to a PEM CA bundle
+on the host. The `cantrip` service account needs read access to that file, for
+example under `/usr/local/share/cantrip`.
+
+## Installation and failure recovery
+
+The deployer stages the candidate environment with the archive in a root-only
+temporary directory. It does not overwrite the active environment during upload.
+The installer extracts a new immutable release and validates the actual Caddy
+configuration before stopping the current service. It then:
+
+1. Saves the current environment, systemd units and proxy configuration.
+2. Stops the server, releasing local database ownership.
+3. Installs the candidate configuration and runs the real migration unit.
+4. Switches the active symlink and restarts Caddy and Cantrip.
+5. Requires an actual local readiness response, retains a root-only environment
+   snapshot in `/etc/cantrip/releases/<commit>/production.env`, and enables the
+   services.
+
+Migration, configuration-installation and startup/readiness failures restore the
+previous configuration and symlink. An already-running previous service is
+restarted and checked for readiness. First-install failures leave the server
+stopped. This process never restores a database snapshot or discards accepted
+writes. It is an offline single-host upgrade with a short service interruption;
+it does not establish mixed rolling-deployment compatibility.
+
+Both units use `KillMode=mixed`: systemd signals the server first so it can
+flush writes and stop its private database, with group cleanup if shutdown does
+not finish. The original group-wide SIGTERM interrupted the private PostgreSQL
+guardian during the actual rehearsal and made shutdown fail. See the
+[systemd process termination documentation](https://www.freedesktop.org/software/systemd/man/248/systemd.kill.html).
+
+Code rollback requires compatibility with the latest database schema. Stop the
+service, restore the previous release's saved environment, switch the symlink to
+that retained release, restart, and check readiness and authenticated operations.
+Do not substitute a pre-upgrade database snapshot for post-write rollback.
+Older deployments predating environment snapshots require the operator's
+preserved original environment. PGlite engine changes additionally need the
+tested logical conversion described in the
+[profile activation guide](RUST_SERVER_PROFILE_ACTIVATION.md); physical database
+directories are not interchangeable. The deployment installer does not silently
+convert or reset a database.
+
+## Local rehearsal
+
+Use isolated Docker resources and built distributions. The systemd fixture is
+privileged to exercise the actual service namespace restrictions; it mounts no
+host files or Docker socket. Build the server through
+`productionServerBuildArguments` with `serverRuntime: "rust"` and its exact Git
+commit count, exporting the `distribution` target to a new directory. Then run:
+
+```sh
+docker buildx build --platform linux/arm64 \
+  -f scripts/server-rust/systemd-ubuntu.Dockerfile \
+  --load -t cantrip-systemd-qa:ubuntu24 .
+node scripts/server-rust/winterhold-systemd-acceptance.mjs \
+  --artifact /absolute/path/to/native-linux-x64 \
+  --previous-native-image cantrip-server-rust:previous-qa \
+  --node-image cantrip-node-baseline:qa \
+  --systemd-image cantrip-systemd-qa:ubuntu24 \
+  --report .qa/winterhold/report.json
+```
+
+Both baseline images must contain their standalone distributions at
+`/opt/cantrip`. Use an older packaged Rust image for the two local stores and an
+archived Node image for external PostgreSQL. Record the image IDs and build
+versions with the current artifact so the rollback is reproducible.
+
+The driver exercises the actual production installer and units on isolated
+PGlite, private PostgreSQL and TLS-enabled external PostgreSQL databases. It
+uses the production Caddy configuration with a fixture hostname and verifies
+HTTPS and App Live against that hostname and the fixture CA. It checks secure
+session cookies, CSRF, CORS, retained sessions and identity, failed native
+migrations and startup, configuration restoration, post-write rollback,
+restart, SIGTERM status and database-child reaping. External PostgreSQL runs
+Node → Rust → Node → Rust against the latest database. Each local store rolls
+back to the older native artifact and returns to the current build. The driver
+hashes each running native executable to verify which release systemd loaded.
+
+Reports identify the artifact and systemd-host architectures separately. Docker
+Desktop's x64 systemd emulation failed to execute even basic services in the
+initial fixture. An ARM64 systemd host can instead execute the unchanged x64
+artifact using binfmt and an installed x64 ELF loader. That result is a local
+mixed-architecture service rehearsal, not bare-metal x64 Winterhold validation.
+Retain reports, journals, fixture profiles and artifact checksums before
+removing only that run's named containers and network. No GitHub Actions or
+production deployment is involved in this rehearsal.
+
+Final shipping qualification also covers desktop installers and updates,
+interrupted product flows, multi-instance coordination and performance.
+
+## Current Linux x64 qualification
+
+The x64 image rebuilt from PR #3152 passed the 18-step rehearsal with the
+actual installer, systemd units and Caddy configuration. Sessions and
+accepted writes survived upgrade, failure recovery and rollback across all
+three database modes. The two local stores rolled back to an older Rust
+release, and external PostgreSQL rolled back to the historical Node server.
+The TLS-only Redis restart preserved the session and accepted write after
+readiness recovered. Both Linux images from this commit also passed
+migration, SQL export and restart across the three modes as non-root
+processes in read-only containers without Node.
+[Rebuilt Linux artifact and Winterhold evidence](security/rust-server-3059-linux-usage-settlement.json)
+
+The Linux x64 1.1.3059 distribution completed 18 installer operations under
+local ARM64 systemd and Caddy through Rosetta. External PostgreSQL used
+TLS-only Redis and the CA file configured in the systemd environment.
+Stopping Redis returned HTTP 503 for readiness and HTTP 200 for liveness.
+Restarting Redis restored readiness and preserved the authenticated
+session and accepted settings write. Each local store rolled back to an
+older Rust release. External PostgreSQL rolled back to the historical Node
+server and then returned to Rust with its writes intact.
+[Linux 1.1.3059 acceptance](security/rust-server-3059-linux-redis-tls.json)
+
+The Winterhold Dockerfile built Linux x64 `1.1.2954` from
+`f21824cc883343819d581dafcc5fc93e20591a8b`. The container and standalone
+archive matched all 2,558 manifest files and the observed x64 executable.
+All three database modes passed migration, SQL export, settings write and
+restart, hosted reopening and graceful shutdown. The container ran without
+Node, as a non-root user, with a read-only root and a 256 MiB noexec
+temporary mount.
+
+The local systemd and Caddy rehearsal passed 18 installer calls. The
+journal confirmed that the Rust CLI rejected the injected migration and
+startup arguments in each database mode. The installer recovered from all
+six failures, including exhaustion of the systemd start budget on PGlite.
+Sessions, server identity and accepted writes survived rollback to Rust
+`1.1.2936` on the two local stores and to Node `1.1.2739` on external
+PostgreSQL. All three stores then reopened in Rust `1.1.2954`. The x64
+executables ran under Rosetta on a local Ubuntu ARM64 systemd host.
+[Release acceptance record](security/rust-server-2954-linux-x64-acceptance.json)
+
+### Linux x64 candidate `1.1.2936`
+
+The Winterhold Dockerfile built Linux x64 `1.1.2936` from the same
+runtime source as the ARM64 package. The container and native archive
+matched all 2,558 manifest files and the observed x64 executable.
+PGlite, bundled PostgreSQL and external PostgreSQL passed migration,
+SQL export, settings write and restart, hosted reopening and graceful
+shutdown. The container ran without Node, as a non-root user, with a
+read-only root and a 256 MiB noexec temporary mount.
+
+The local systemd and Caddy rehearsal passed 18 installer calls,
+including six injected migration and startup failures. Sessions, server
+identity and accepted writes survived rollback to Rust `1.1.2869` on the
+two local stores and to Node `1.1.2739` on external PostgreSQL. All three
+stores then reopened in Rust `1.1.2936`. The x64 binaries ran under
+emulation on a local Ubuntu ARM64 host. Read-only fixture archives and
+tmpfs release directories kept the rehearsal within local disk space.
+[Release acceptance record](security/rust-server-2936-linux-x64-acceptance.json)
+
+### Linux x64 candidate `1.1.2881`
+
+The production Dockerfile built the `1.1.2881` Linux x64 runtime image
+and standalone distribution from `ccafd3cd4baea444ab43c1b84471ab3225f718e3`.
+All three database modes passed migrations, SQL export, retained settings
+and identity, local and hosted reopening, and graceful shutdown. The
+containers verified all 2,546 package files and the running executable.
+The server ran as a non-root user with a read-only root, a 256 MiB noexec
+temporary mount, and Node absent from its runtime PATH.
+
+The local systemd and Caddy rehearsal passed all 18 installer calls. It
+recovered from six injected migration and startup failures and verified
+ten running executable hashes. PGlite and bundled PostgreSQL rolled back
+to Rust `1.1.2783`, and external PostgreSQL rolled back to Node
+`1.1.2739`. Sessions and accepted writes survived rollback and return to
+Rust `1.1.2881`. The rehearsal verified Caddy HTTPS, App Live, six TLS
+database connections, and an actual failed write outside the profile
+inside the service mount namespace.
+
+The x64 executables ran with emulation on a local ARM64 Linux host. The
+first installer rehearsal stopped after a guest storage I/O failure. The
+successful rerun used the same verified distribution. The
+[acceptance record](security/rust-server-2881-linux-x64-acceptance.json)
+lists the release archives, hashes, and local reports.
+
+### Linux x64 candidate `1.1.2869`
+
+The production Dockerfile built the Linux x64 `1.1.2869` runtime image and
+standalone distribution from `0ae86163efb8503387a2b3d627f9e962d099e1cd`.
+All three stores passed migrations, SQL export, retained settings and identity,
+local and hosted reopening, and graceful shutdown. Each non-root container
+verified the mapped native executable and all 2,546 package files with a
+read-only root, a 256 MiB noexec temporary mount, and Node absent from PATH.
+
+The local systemd and Caddy rehearsal passed 18 installer calls. It recovered
+from six deliberate migration and startup failures, preserved sessions and
+accepted writes through rollback and return to Rust, and verified ten running
+native executables. The two local stores rolled back to Rust `1.1.2783`.
+External PostgreSQL rolled back to Node `1.1.2739` with TLS required. Caddy
+served HTTPS and App Live with the fixture CA. The running unit reported
+`ProtectSystem=strict` and `ReadWritePaths=/var/lib/cantrip`. Shutdown
+reaped the bundled PostgreSQL processes.
+
+The x64 executable ran through Rosetta on a local ARM64 Linux host. The
+[acceptance record](security/rust-server-2869-production-packages.json)
+includes the native executable, saved image, archived profiles and reports.
+The rehearsal used isolated local services.
+
+### Linux x64 candidate `1.1.2845`
+
+The production build from `2e60d2042203f64c8105d5c52d12ae1db92d2d83` exported
+`1.1.2845` as a Linux x64 distribution and a Debian runtime image. Each
+running container matched the exported executable hash and all 2,546
+packaged files. PGlite, bundled PostgreSQL and external PostgreSQL passed
+migrations, SQL export, retained settings and identity, local and hosted
+reopening, and graceful shutdown. The server ran as a non-root user with
+a read-only root, a 256 MiB noexec temporary mount and no Node runtime.
+
+The systemd and Caddy rehearsal passed 18 installer calls, including six
+intentional migration and startup failures with restoration of the service
+and configuration. Ten process observations matched the expected executable
+hashes. Both local stores kept their accepted writes through rollback to
+`1.1.2783` and return to `1.1.2845`. External PostgreSQL kept its accepted
+writes through rollback to Node `1.1.2739` and return to Rust. The live
+database reported six TLS connections, and a write outside the allowed
+profile failed inside the service mount namespace.
+
+The test used a local Linux ARM64 host with Rosetta for x64 execution.
+The [acceptance record](security/rust-server-winterhold-x64-acceptance.json)
+includes the executable, distribution archive, saved image and report
+checksums.
+
+### Prior Linux x64 candidate
+
+The production build from `4c42484d8b3575b5fd6ea8234e1b179885b8b0a4` exported
+version `1.1.2816` as a Linux x64 distribution and a Debian container. Each
+running container matched all 2,546 packaged file hashes and the separately
+exported server executable. PGlite, bundled PostgreSQL and external PostgreSQL
+passed migrations, SQL export, retained identity and settings, local and hosted
+reopen, and graceful shutdown. The container ran without Node as a non-root
+user with a read-only root and a 256 MiB noexec temporary mount.
+
+The systemd rehearsal passed all 18 installer calls across the three stores.
+The six deliberate migration and startup failures restored the working service
+and configuration. Both local stores upgraded from `1.1.2783`, accepted a write
+through `1.1.2816`, rolled back to `1.1.2783` and returned to `1.1.2816`.
+External PostgreSQL exercised the same sequence with Node `1.1.2739` as the
+rollback release. The original sessions, identities and latest writes survived.
+Ten running executable hashes confirmed the selected native release at the
+observed phases. HTTPS and App Live verified Caddy's certificate and fixture
+hostname. All six observed external PostgreSQL connections used TLS, and an
+actual write outside the profile failed in the service's mount namespace.
+
+The [acceptance record](security/rust-server-winterhold-x64-acceptance.json)
+records artifact hashes and local reports. Both runs used an ARM64 Linux host
+executing the x64 artifact under Rosetta. This qualifies the observed service
+and container behavior on that host. Bare-metal x64 performance and a production
+Winterhold deployment remain outside this rehearsal. All 28 local deployment and
+release tests passed.
+
+## Current Linux ARM64 qualification
+
+The Winterhold Dockerfile built Linux ARM64 `1.1.2954` from
+`f21824cc883343819d581dafcc5fc93e20591a8b`, using the shipping patch
+from the preceding runtime commit. The standalone archive, OCI layers
+and running containers matched all 2,558 manifest files and the ARM64
+server executable. PGlite, bundled PostgreSQL and external PostgreSQL
+passed migration, SQL export, settings write and restart, hosted
+reopening and graceful shutdown. The runtime had no Node in its PATH
+and ran as a non-root user with a read-only root and a 256 MiB noexec
+temporary mount.
+
+The local ARM64 systemd and Caddy rehearsal passed 18 installer calls,
+including six injected migration and startup failures. HTTPS, App Live,
+sessions, server identity and accepted writes were verified across
+upgrade and rollback. PGlite and bundled PostgreSQL rolled back to
+ARM64 Rust `1.1.2936`, and external PostgreSQL rolled back to x64 Node
+`1.1.2739` under emulation. All three stores then reopened in Rust
+`1.1.2954`. The initial rehearsal exceeded the readiness polling
+window while starting the emulated Node baseline on external
+PostgreSQL. The installer restored the preceding Rust service, and
+the full rehearsal passed on retry with the same inputs.
+[Release acceptance record](security/rust-server-2954-linux-arm64-acceptance.json)
+
+### Linux ARM64 candidate `1.1.2936`
+
+The Winterhold Dockerfile built Linux ARM64 `1.1.2936` from
+`e97cf3e8e3a474f4f303eda754088cf1072234ae`. The runtime image and standalone
+archive contain the same server executable. All 2,558 manifest files
+matched in the archive and in the running containers. PGlite, bundled
+PostgreSQL and external PostgreSQL passed migration, SQL export, settings
+write and restart, hosted reopening and graceful shutdown. The runtime
+used a non-root user, a read-only root and a 256 MiB noexec temporary mount.
+Node was absent from the server PATH.
+
+The local ARM64 systemd and Caddy rehearsal passed 18 installer calls,
+including six injected migration and startup failures. Rollback after a
+Rust write preserved the setting, session and server identity on all
+three stores. PGlite and bundled PostgreSQL rolled back to ARM64 Rust
+`1.1.2869`. External PostgreSQL rolled back to the archived x64 Node
+`1.1.2739` release under emulation. All three stores then reopened in
+Rust `1.1.2936`. Caddy served HTTPS and App Live, six observed PostgreSQL
+connections used TLS, and a write outside the service profile was denied
+by the service mount namespace.
+[Release acceptance record](security/rust-server-2936-linux-arm64-acceptance.json)
+
+### Linux ARM64 candidate `1.1.2881`
+
+The production Dockerfile built the `1.1.2881` Linux ARM64 runtime image
+and standalone distribution from `ccafd3cd4baea444ab43c1b84471ab3225f718e3`.
+PGlite, bundled PostgreSQL, and external PostgreSQL passed migrations,
+SQL export, retained settings and identity, local and hosted reopening,
+and graceful shutdown. Each running container verified all 2,546 packaged
+files and matched the exported ARM64 executable through `/proc/PID/exe`.
+The server ran as a non-root user with a read-only root, a 256 MiB noexec
+temporary mount, and Node absent from its runtime PATH.
+
+The local Ubuntu ARM64 systemd and Caddy rehearsal passed 18 installer
+calls, including recovery from six injected migration and startup failures.
+Ten running executable hashes identified the expected native release at
+each observed phase. Both local stores retained sessions and accepted
+writes through rollback to Rust `1.1.2783` and return to `1.1.2881`.
+External PostgreSQL passed the same sequence with the Linux x64 Node
+`1.1.2739` rollback image. Caddy served HTTPS and App Live with the fixture
+CA. Six observed database connections used TLS, and an actual write outside
+the service profile failed inside its read-only mount namespace.
+
+Docker Desktop remounted its guest filesystem read-only during an earlier
+attempt. The successful rerun used the same verified native distribution.
+The [acceptance record](security/rust-server-2881-linux-arm64-acceptance.json)
+lists the release archives, hashes, and local reports.
+
+### Linux ARM64 candidate `1.1.2869`
+
+The production Dockerfile built the Linux ARM64 `1.1.2869` runtime image
+and standalone distribution from the same runtime source as the x64
+candidate. All three stores passed migrations, SQL export, retained settings
+and identity, local and hosted reopening, and graceful shutdown. Each
+container verified all 2,546 packaged files and the actual ARM64 executable
+through `/proc/PID/exe`. The runtime ran as a non-root user with a read-only
+root, a 256 MiB noexec temporary mount, and Node absent from PATH.
+
+The native ARM64 systemd and Caddy rehearsal passed 18 installer calls,
+including recovery from six deliberate migration and startup failures. It
+matched ten running executable hashes and retained sessions and accepted
+writes through rollback and return to Rust. The local stores rolled back
+to ARM64 Rust `1.1.2783`. External PostgreSQL rolled back to the x64 Node
+`1.1.2739` reference with TLS required. Caddy verified HTTPS and App Live
+with the fixture CA, and service shutdown reaped its bundled PostgreSQL
+processes.
+
+[Linux ARM64 acceptance record](security/rust-server-2869-linux-arm64-acceptance.json)
+
+### Linux ARM64 candidate `1.1.2845`
+
+The same `2e60d2042203f64c8105d5c52d12ae1db92d2d83` source built
+`1.1.2845` as a native Linux ARM64 distribution and Debian runtime image.
+All three stores passed the container workload, and each running server
+matched the exported executable hash and all 2,546 packaged files.
+
+The ARM64 systemd and Caddy rehearsal passed all 18 installer calls,
+including restoration after six deliberate failures. It checked ten native
+executables directly and preserved settings and sessions through rollback
+to `1.1.2783` for the two local stores and to Node `1.1.2739` for external
+PostgreSQL. Six live external database connections used TLS, and the
+service mount namespace rejected a write outside the profile. The
+[acceptance record](security/rust-server-linux-arm64-acceptance.json)
+includes the distribution, saved image and report checksums.
+
+### Prior Linux ARM64 candidate
+
+The production build from `f902c5328e99c410c6869f0ad8695d483ce5c6a2` exported
+`1.1.2817` as a Linux ARM64 distribution and a Debian container. In all three
+stores the container executed the exact ARM64 binary and matched all 2,546
+packaged files. It passed migrations, SQL export, retained identity and
+settings, local and hosted reopen, and graceful shutdown with the same
+non-root, read-only and noexec configuration as the x64 container.
+
+The native ARM64 systemd and Caddy rehearsal passed all 18 installer cases.
+Both local stores retained writes and sessions through rollback to native
+Rust `1.1.2783`. External PostgreSQL retained them through rollback to the
+x64 Node `1.1.2739` reference and return to Rust. All ten native process
+hashes came directly from `/proc/PID/exe`. HTTPS and App Live verified the
+fixture CA and hostname, all six observed external database connections used
+TLS, and a write outside the profile was rejected in the service namespace.
+
+The [acceptance record](security/rust-server-linux-arm64-acceptance.json)
+records the artifact and report hashes. This rehearsal used a local ARM64
+Linux host and the production installer and service configuration.
+
+## Earlier local results
+
+The [integrated artifact qualification](RUST_SERVER_INTEGRATED_ARTIFACT_ACCEPTANCE.md)
+refreshes this rehearsal with candidate `1.1.2778`: all three stores, all 18
+installer cases, post-write rollback, TLS, namespace write restrictions and
+independent hashing of the mapped native executable passed locally. The original
+milestone below retains its own version and evidence scope.
+
+The optimized `1.1.2739` x64 artifact passed the complete driver locally on
+2026-11-07, with PostgreSQL 18.6 tools and native PGlite 17.5. The unchanged Node
+baseline used the same application version. All three modes retained identity,
+sessions and writes through upgrade, both intentional failures, post-write
+rollback and return to Rust. All 18 installer calls behaved as expected: 12
+successful installations and six rejected candidates with recovery.
+
+Both local database modes exited cleanly and reaped their service cgroup;
+private PostgreSQL included 17 processes. No private-owner or bandwidth-flush
+shutdown errors remained. An actual write attempt inside the server's mount
+namespace failed with a read-only-filesystem error outside the allowed profile.
+All six observed external PostgreSQL connections used TLS. Node was absent from
+the host PATH, and the running native executable matched the exported binary:
+
+```text
+9752afd5a94077c334ee03bb43a9001c7fe7f2a7810688ce7b268e0aee4e65c0
+```
+
+The focused deploy/release suite passed 28 tests. The standard `pnpm check`
+stopped at unchanged Node decomposition budgets (`build-app.ts` 1532/1500 and
+`chat-turn-runtime.ts` 2336/1999); subsequent aggregate stages were not run or
+claimed as passing. The workflow-removal check passed. This result does not
+qualify Windows, native x64 systemd, mixed rolling deployment or performance.

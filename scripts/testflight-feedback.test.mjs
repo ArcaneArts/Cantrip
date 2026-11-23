@@ -292,10 +292,10 @@ test("collector downloads screenshots and private crash logs", async () => {
   );
 });
 
-test("workflow uploads only a short-lived encrypted artifact", async () => {
+test("archived workflow uploads only a short-lived encrypted artifact", async () => {
   const workflow = await readFile(
     new URL(
-      "../.github/workflows/testflight-feedback-collect.yml",
+      "../.github/workflow-archive/testflight-feedback-collect.yml",
       import.meta.url,
     ),
     "utf8",

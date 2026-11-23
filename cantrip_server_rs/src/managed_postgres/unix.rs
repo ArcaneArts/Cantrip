@@ -5,8 +5,8 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use std::{
     ffi::OsStr,
-    fs::File,
-    io::{Read, Write},
+    fs::{File, OpenOptions},
+    io::Write,
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
@@ -79,40 +79,44 @@ struct Arguments {
     port: u16,
 }
 
-fn parent_pipe() -> Result<oneshot::Receiver<()>> {
-    let mut input = os_pipe::dup_stdin()?;
-    let (send, receive) = oneshot::channel();
-    // Tokio's blocking stdin reader cannot be cancelled and can keep runtime
-    // teardown waiting after PostgreSQL itself exits. This plain reader thread
-    // owns only the pipe; it need not be joined before the owner process exits.
-    std::thread::Builder::new()
-        .name("postgres-parent-pipe".into())
-        .spawn(move || {
-            let mut buffer = [0; 256];
-            loop {
-                match input.read(&mut buffer) {
-                    Ok(0) => break,
-                    Ok(_) => {}
-                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                    Err(_) => break,
-                }
-            }
-            let _ = send.send(());
-        })?;
-    Ok(receive)
+async fn ownership(root: &Path, parent: &mut oneshot::Receiver<()>) -> Result<Option<File>> {
+    use std::os::{fd::AsRawFd, unix::fs::OpenOptionsExt};
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(root.join("owner.lock"))
+        .context("open private PostgreSQL ownership lock")?;
+    let mut waiting_logged = false;
+    loop {
+        if parent.try_recv().is_ok() {
+            return Ok(None);
+        }
+        // This is the actual lifetime lock, not a check of a PID file. The old
+        // owner retains it until its PostgreSQL child is stopped and reaped,
+        // so immediate parent-death restart cannot race that child's shutdown.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(Some(file));
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::WouldBlock {
+            return Err(error).context("acquire private PostgreSQL ownership lock");
+        }
+        if !waiting_logged {
+            eprintln!("{{\"event\":\"database.private-owner.waiting\"}}");
+            waiting_logged = true;
+        }
+        tokio::select! {
+            _ = &mut *parent => return Ok(None),
+            _ = tokio::time::sleep(Duration::from_millis(25)) => {}
+        }
+    }
 }
 
 fn signal(child: &Child, signal: i32, group: bool) -> Result<()> {
-    let pid = i32::try_from(child.id().context("owned PostgreSQL process identity")?)?;
-    // The unreaped child handle retains this PID; the initdb process group was
-    // created by us. No identity is inferred from a directory's PID file.
-    if unsafe { libc::kill(if group { -pid } else { pid }, signal) } != 0 {
-        let error = std::io::Error::last_os_error();
-        if error.raw_os_error() != Some(libc::ESRCH) {
-            return Err(error.into());
-        }
-    }
-    Ok(())
+    cantrip_host::process::signal_owned(child, signal, group, "owned PostgreSQL process identity")
 }
 
 async fn initialize(args: &Arguments, parent: &mut oneshot::Receiver<()>) -> Result<bool> {
@@ -198,7 +202,11 @@ pub(super) async fn run_if_requested() -> Result<bool> {
         return Ok(false);
     }
     let args = Arguments::try_parse_from(std::iter::once(executable).chain(raw))?;
-    let mut parent = parent_pipe()?;
+    let mut parent =
+        cantrip_host::process::pipe_closed(os_pipe::dup_stdin()?, "postgres-parent-pipe")?;
+    let Some(_ownership) = ownership(&args.data_dir, &mut parent).await? else {
+        return Ok(true);
+    };
     if !initialize(&args, &mut parent).await? {
         return Ok(true);
     }

@@ -1,20 +1,10 @@
 use super::{Admission, raw_one, reject, text};
+use crate::native_commands::goal_handoff;
 use crate::{
     database::Transaction,
-    wire::{Value, coercion::truthy, value::json},
+    wire::{coercion::truthy, value::json},
 };
 use anyhow::Result;
-
-fn unbound(identity: &Value) -> Value {
-    let mut result = if identity.is_object() {
-        identity.clone()
-    } else {
-        Value::object([] as [(&str, Value); 0])
-    };
-    result["runtimeGeneration"] = Value::Null;
-    result["connectionId"] = Value::Null;
-    result
-}
 impl Admission<'_> {
     pub(super) async fn check_queue(&self, tx: &Transaction<'_>) -> Result<()> {
         let input = self.input;
@@ -22,6 +12,24 @@ impl Admission<'_> {
         if input["intent"].get("goalStatus").is_some() && input["method"] != "thread/goal/set" {
             return reject("invalid-goal-status");
         }
+        if let Some(attempt) = input["intent"].get("autonomousAttempt")
+            && (input["origin"] != "autonomous"
+                || input["method"] != "turn/start"
+                || input["intent"].get("expectedTurnId") != attempt.get("turnId")
+                || (truthy(input.get("goalQueueHandoff"))
+                    && attempt.get("goalEpoch") != input["goalQueueHandoff"].get("goalEpoch"))
+                || input["operationId"]
+                    != format!(
+                        "native:{}:{}",
+                        text(&attempt["runnerGeneration"])?,
+                        text(&attempt["attemptId"])?
+                    )
+                || input["session"]["connectionId"]
+                    != format!("autonomous:{}", text(&attempt["runnerGeneration"])?))
+        {
+            return reject("invalid-autonomous-attempt");
+        }
+        crate::native_commands::goal_recovery::assert_admission(tx, input).await?;
         let mut goal_claim = None;
         if truthy(input.get("goalQueueHandoff")) {
             let handoff = &input["goalQueueHandoff"];
@@ -45,6 +53,7 @@ impl Admission<'_> {
                 .zip(parent.as_ref())
                 .is_some_and(|(claim, parent)| {
                     truthy(claim.get("awaiting_goal"))
+                        && !truthy(claim.get("goal_cancelled"))
                         && !truthy(claim.get("goal_operation_id"))
                         && claim["chat_id"] == input["session"]["chatId"]
                         && claim["operation_id"] == handoff["operationId"]
@@ -55,9 +64,20 @@ impl Admission<'_> {
                         && parent["worker_id"] == input["workerId"]
                         && parent["status"] == "applied"
                         && parent["method"] == "thread/goal/set"
-                        && unbound(&parent["identity"]) == unbound(&input["session"])
                 });
             if !valid {
+                return reject("stale-goal-handoff");
+            }
+            if !goal_handoff::session_matches(
+                tx,
+                self.owner,
+                &text(&input["workerId"])?,
+                claim.as_ref().unwrap(),
+                &parent.as_ref().unwrap()["identity"],
+                &input["session"],
+            )
+            .await?
+            {
                 return reject("stale-goal-handoff");
             }
             goal_claim = claim;
@@ -81,7 +101,9 @@ impl Admission<'_> {
             }
             let queued=!tx.query("SELECT id FROM queued_prompts p WHERE chat_id=$1 AND state='pending' AND frozen=false AND NOT EXISTS(SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id=p.id AND c.prompt_revision=p.revision AND c.status='rejected') LIMIT 1",&[&chat]).await?.is_empty();
             let claimed=!tx.query("SELECT id FROM managed_queue_claims WHERE chat_id=$1 AND status IN ('claimed','accepted','dispatched','uncertain') LIMIT 1",&[&chat]).await?.is_empty();
-            if (queued || claimed) && goal_claim.is_none() {
+            if ((queued && !truthy(input["intent"].get("goalRecovery"))) || claimed)
+                && goal_claim.is_none()
+            {
                 return reject("canonical-queue-pending");
             }
         }

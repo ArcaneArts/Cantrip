@@ -6,7 +6,7 @@ use super::{
     value::{Reader, length, whitespace},
 };
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LaneLimit {
     pub max_channels: u64,
@@ -15,7 +15,7 @@ pub struct LaneLimit {
     pub max_bytes_per_second: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct LaneLimits {
     pub events: LaneLimit,
     pub interactive: LaneLimit,
@@ -24,24 +24,24 @@ pub struct LaneLimits {
     pub bulk: LaneLimit,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct DirectRoutes {
     pub local: bool,
     pub lan: bool,
     pub wan: bool,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct InterfacePolicy {
     pub mode: &'static str,
     pub interfaces: Vec<String>,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VpnPolicy {
     pub default_route: &'static str,
     pub lan_allowlist: Vec<String>,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PeerConfig {
     pub direct_routes: DirectRoutes,
@@ -57,14 +57,14 @@ pub struct PeerConfig {
     pub lane_limits: LaneLimits,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnConfig {
     pub shared_secret: String,
     pub ttl_seconds: u64,
     pub urls: Vec<String>,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebRtcConfig {
     pub ice_transport_policy: String,

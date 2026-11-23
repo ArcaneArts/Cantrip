@@ -158,7 +158,10 @@ describe("Task worker encryption readiness", () => {
       worker: worker(status("pending-approval")),
     });
 
-    expect(createdComponents).toEqual(requiredTaskWorkerComponents);
+    expect(createdComponents).toEqual([
+      ...requiredTaskWorkerComponents,
+      "alert-content",
+    ]);
     expect(refresh).toHaveBeenCalledWith("worker-a", {
       component: "task-content",
       keyRevision: 3,
@@ -226,7 +229,7 @@ describe("Task worker encryption readiness", () => {
     ).rejects.toMatchObject({ state: "wrong-revision" });
   });
 
-  it("refreshes an already-ready worker without manufacturing another grant", async () => {
+  it("refreshes an already-ready worker even if its optional Alert grant is unavailable", async () => {
     const refresh = vi.fn(async () => ({
       component: "task-content" as const,
       keyRevision: 3,
@@ -244,7 +247,7 @@ describe("Task worker encryption readiness", () => {
         worker: worker(status("ready", workerGrants(3))),
       }),
     ).resolves.toMatchObject({ state: "ready" });
-    expect(api.listPrincipals).not.toHaveBeenCalled();
+    expect(api.listPrincipals).toHaveBeenCalledOnce();
     expect(refresh).toHaveBeenCalledOnce();
   });
 

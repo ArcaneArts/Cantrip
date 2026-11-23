@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { TunnelProbe, until } from "./tunnel-attachment-probe.mjs";
 import { tunnelIds } from "./tunnel-state.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 export async function tunnelAttachmentLocks({ fixture, visit, result }) {
   const sql = postgres(fixture.environment.DATABASE_URL, {

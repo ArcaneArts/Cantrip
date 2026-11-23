@@ -405,17 +405,18 @@ Direct is the default mode and queues one ordinary Agent turn. Plan + Goal is
 opt-in: it queues read-only planning cycles, review and question rounds, and a
 final same-thread Goal implementation. Creating or advancing either mode only
 enqueues a durable cycle; an account-global scheduler claims oldest-eligible
-work when a configured Task Worker has capacity. No Task Worker is created
-automatically.
+work using each Task's selected model and reasoning configuration. All models
+allow Plan + Goal, and every runnable Task can start without a task concurrency
+limit.
 
 The Task side supports durable draft, queued/running, planning/review,
 finalizing/implementing, paused, blocked, complete, and recoverable failure
 states:
 
 - The draft is a full-content Markdown editor with rename, attachment
-  drag/drop/paste, Task Worker and priority controls, Implementation access
-  selection, autosave, and optimistic conflict handling. Planning and Goal
-  models are configured centrally in Task settings.
+  drag/drop/paste, model/reasoning and priority controls, Implementation access
+  selection, autosave, and optimistic conflict handling. Plan + Goal is selected
+  per Task, independently of the chosen model.
 - In Plan + Goal mode, planning and finalization always use a server-selected
   read-only execution profile, regardless of Implementation access. Codex can
   inspect project files, available Git state, attachments, and effective
@@ -592,6 +593,10 @@ full-content file surface:
 
 - recognized editable text opens in Edit by default, while Markdown/MDX and
   media or otherwise non-editable files open in Preview;
+- Settings → Editors provides device-local opening defaults for text, Markdown,
+  logs, licenses, and each structured/tabular format, plus NBT view/edit, image
+  fitting, and audio/video looping preferences. Existing tab modes and explicit
+  Open As choices take priority;
 - a compact eye/pencil-style mode menu switches Preview, Edit, or a supported
   structured/visual view;
 - close-file control appears beside the Explorer/worktree title;
@@ -988,7 +993,6 @@ dashboards. Major sections are:
   default model;
 - **Workers:** local/remote worker status, enrollment, default worker,
   provisioning/sync policy;
-- **Tasks:** Task Worker capacity and planning/Goal model selection;
 - **Logs:** client, embedded-server, and worker logs;
 - **Tunnels:** global tunnel status/control;
 - **Workspaces:** storage profiles, names, default workspace, repository
@@ -1015,7 +1019,13 @@ labeled **Sources** for a local Git project. Worktrees appears only when the
 project advertises worktree capability. Non-Git folder projects expose neither
 section.
 
-Project overview can show runtime/replica health and aggregate token usage.
+Project overview opens above the current workspace in a nearly fullscreen
+modal dialog with a consistent margin on every edge, including wide desktop
+and browser windows. The workspace remains visible behind the dimmed backdrop;
+Close, Escape, or clicking the backdrop dismisses the dialog without changing
+the selected tab. Opening or creating a surface from Overview closes the dialog
+and navigates to that surface. Overview can show runtime/replica health and
+aggregate token usage.
 
 ### Service logs
 

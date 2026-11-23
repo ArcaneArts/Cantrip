@@ -7,11 +7,13 @@ export function ProjectSidebarPages({
   onChange,
   files,
   conversations,
+  tabsVisible = true,
 }: {
   page: ProjectSidebarPage;
   onChange(page: ProjectSidebarPage): void;
   files: ReactNode;
   conversations: ReactNode;
+  tabsVisible?: boolean;
 }) {
   const id = useId();
   const fileScroll = useRef<HTMLDivElement>(null);
@@ -40,7 +42,11 @@ export function ProjectSidebarPages({
       <div
         role="tablist"
         aria-label="Project sidebar"
-        className="mb-1 flex h-8 shrink-0 items-center gap-1 border-t border-transparent pt-1 group-hover/sidebar-shell:border-border/70"
+        hidden={!tabsVisible}
+        className={cn(
+          "mb-1 h-8 shrink-0 items-center gap-1 border-t border-transparent pt-1 group-hover/sidebar-shell:border-border/70",
+          tabsVisible ? "flex" : "hidden",
+        )}
       >
         {pages.map((value, index) => (
           <button

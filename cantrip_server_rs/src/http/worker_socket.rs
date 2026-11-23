@@ -7,7 +7,7 @@ use crate::{
     auth::service::AuthService,
     wire::Value,
     workers::{
-        bridge::{Continuity, Outgoing, Peer},
+        bridge::{Continuity, Peer},
         credentials,
         service::WorkerService,
     },
@@ -18,13 +18,18 @@ use axum::{
     response::Response,
     routing::get,
 };
-use futures::{SinkExt, StreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use std::{
     sync::{Arc, atomic::Ordering},
     time::Duration,
 };
-use tungstenite::{Message, protocol::CloseFrame};
+use tungstenite::Message;
 use uuid::Uuid;
+#[path = "worker_socket_logs.rs"]
+mod logs;
+#[path = "worker_socket_output.rs"]
+mod output;
+use logs::Rejection;
 
 const V1: &str = "cantrip-worker-auth-ready-v1";
 const V2: &str = "cantrip-worker-auth-ready-v2";
@@ -81,12 +86,15 @@ fn connection(state: &str, generation: &str, protocol: &str, server: &str) -> St
     value.stringify()
 }
 async fn close(socket: &mut WebSocket, code: u16, reason: &str) {
+    socket.finish_close_handshake();
+    write_close(socket, code, reason).await;
+}
+// A broken frame parser must retain the bounded raw-byte drain instead of
+// parsing the remaining oversized/invalid payload while awaiting an ACK.
+async fn write_close(socket: &mut WebSocket, code: u16, reason: &str) {
     let _ = tokio::time::timeout(
         Duration::from_secs(1),
-        socket.send(Message::Close(Some(CloseFrame {
-            code: code.into(),
-            reason: reason.to_owned().into(),
-        }))),
+        socket.send(output::close_message(code, reason.to_owned())),
     )
     .await;
 }
@@ -97,10 +105,16 @@ async fn connect(
 ) -> Response {
     let query = account::query(request.uri());
     let authorization = middleware::value(request.headers(), "authorization");
+    let lifetime = service.live.transports.begin();
     websocket::upgrade(
         request,
         service.config.websocket_max_payload_bytes as usize,
-        move |socket, selected| run(socket, service, ctx, query, authorization, selected),
+        move |mut socket, selected| {
+            // Runtime/database shutdown waits through actual TCP cleanup, even
+            // after the worker bridge has finished its logical shutdown.
+            socket.on_closed(move || drop(lifetime));
+            run(socket, service, ctx, query, authorization, selected)
+        },
     )
 }
 async fn run(
@@ -126,6 +140,7 @@ async fn run(
         .filter(|s| !s.is_empty())
         .map(String::from)
     else {
+        logs::rejected(&ctx.id, None, Rejection::MissingWorker);
         close(&mut socket, 1008, "Unauthorized").await;
         return;
     };
@@ -143,6 +158,7 @@ async fn run(
         })
     };
     if generation.is_some_and(|value| !valid_generation(value)) {
+        logs::rejected(&ctx.id, Some(&worker), Rejection::InvalidGeneration);
         close(&mut socket, 1008, "Unauthorized").await;
         return;
     }
@@ -178,7 +194,7 @@ async fn run(
     }
     let mut shutdown = state.shutdown.subscribe();
     if *shutdown.borrow() {
-        close(&mut socket, 1001, "Server shutting down").await;
+        close(&mut socket, 1005, "").await;
         return;
     }
     let authentication = async {
@@ -191,6 +207,7 @@ async fn run(
         )
         .await?;
         let Some(authenticated) = authenticated else {
+            logs::rejected(&ctx.id, Some(&worker), Rejection::InvalidCredential);
             return Ok::<_, anyhow::Error>(Err("Unauthorized"));
         };
         if !authenticated.development
@@ -200,11 +217,13 @@ async fn run(
                 .unwrap()
                 .contains(&authenticated.credential.id)
         {
+            logs::rejected(&ctx.id, Some(&worker), Rejection::Revoked);
             return Ok(Err("Worker credential was revoked"));
         }
         if state.repository.owner(&worker).await?.as_deref()
             != Some(authenticated.credential.owner_id.as_str())
         {
+            logs::rejected(&ctx.id, Some(&worker), Rejection::OwnerMismatch);
             return Ok(Err("Worker identity mismatch"));
         }
         Ok(Ok(authenticated))
@@ -227,12 +246,12 @@ async fn run(
             input=async{socket.as_mut().unwrap().recv().await},if socket.is_some()=>{match input{
                 Some(Ok(Message::Close(_)))=>{abandoned=true;buffer.clear();let _=socket.as_mut().unwrap().flush().await;socket=None;},
                 None=>{abandoned=true;buffer.clear();socket=None;},
-                Some(Err(error))=>{abandoned=true;buffer.clear();if let Some(code)=protocol_close(&error){close(socket.as_mut().unwrap(),code,"").await;}socket=None;},
+                Some(Err(error))=>{abandoned=true;buffer.clear();if let Some(code)=protocol_close(&error){write_close(socket.as_mut().unwrap(),code,"").await;}socket=None;},
                 Some(Ok(message))=>{if !abandoned&& let Err((code,reason))=buffer.push(message){abandoned=true;buffer.clear();close(socket.as_mut().unwrap(),code,reason).await;}}
             }},
             _=shutdown.changed()=>{
                 buffer.clear();
-                if let Some(socket)=socket.as_mut(){close(socket,1001,"Server shutting down").await;}
+                if let Some(socket)=socket.as_mut(){close(socket,1005,"").await;}
                 drop(socket.take());
                 // As with a peer close, shutdown must finish credential usage
                 // and the owner lookup. Main drains these handshake permits
@@ -259,34 +278,177 @@ async fn run(
             &state.control_generation,
         )
     });
-    // Owner lookup awaited database IO after the first revocation check. Fence
-    // the final cache check and synchronous attach together: a revoker either
-    // rejects this attach or disconnects the already attached peer afterward.
+    // Register the attachment generation under the final revocation check.
+    // Shared attachment begins eagerly, but Redis IO never holds this lock.
+    // A revoker either rejects it here or invalidates the in-flight generation.
+    service
+        .managed_preparation
+        .subscribe(&state.bridge, &worker);
     service.worktree_observations.subscribe(&worker);
     service.run_configuration_observations.subscribe(&worker);
-    let accepted = {
+    let attaching = {
         let revoked = state.revoked.read().unwrap();
         if !authenticated.development && revoked.contains(&peer.identity.credential) {
-            Err((1008, "Worker credential was revoked"))
-        } else if state.bridge.attach(&worker, peer.clone(), ready) {
-            Ok(())
+            None
         } else {
-            Err((1012, "Worker connection was not accepted"))
+            let attaching = state.bridge.attach_worker(
+                worker.clone(),
+                peer.clone(),
+                Some(owner.clone()),
+                ready,
+            );
+            let request = ctx.id.clone();
+            let target = worker.clone();
+            Some(
+                async move {
+                    let result = attaching.await;
+                    if let Err(error) = &result {
+                        logs::claim_failed(&request, &target, error);
+                    }
+                    result
+                }
+                .boxed(),
+            )
         }
     };
-    if let Err((code, reason)) = accepted {
-        close(&mut socket, code, reason).await;
+    let Some(mut attaching) = attaching else {
+        logs::rejected(&ctx.id, Some(&worker), Rejection::Revoked);
+        close(&mut socket, 1008, "Worker credential was revoked").await;
+        return;
+    };
+    let mut attaching_close = peer.closing.subscribe();
+    let accepted = if let Some(result) = attaching.as_mut().now_or_never() {
+        result
+    } else {
+        loop {
+            let closed = attaching_close.borrow().clone();
+            if let Some((code, reason)) = closed {
+                buffer.clear();
+                close(&mut socket, code, &reason).await;
+                drop(socket);
+                let _ = attaching.await;
+                return;
+            }
+            tokio::select! {biased;
+                _=attaching_close.changed()=>continue,
+                _=shutdown.changed()=>{
+                    peer.open.store(false, Ordering::Release);
+                    buffer.clear();close(&mut socket,1005,"").await;drop(socket);let _=attaching.await;return;
+                },
+                _=&mut timeout=>{
+                    peer.open.store(false,Ordering::Release);buffer.clear();
+                    close(&mut socket,1013,"Worker authentication timed out").await;
+                    drop(socket);let _=attaching.await;return;
+                },
+                input=socket.recv()=>match input {
+                    None=>{peer.open.store(false,Ordering::Release);drop(socket);let _=attaching.await;return;},
+                    Some(Ok(Message::Close(_)))=>{peer.open.store(false,Ordering::Release);buffer.clear();let _=socket.flush().await;drop(socket);let _=attaching.await;return;},
+                    Some(Err(error))=>{peer.open.store(false,Ordering::Release);buffer.clear();if let Some(code)=protocol_close(&error){write_close(&mut socket,code,"").await;}drop(socket);let _=attaching.await;return;},
+                    Some(Ok(message))=>{if let Err((code,reason))=buffer.push(message){peer.open.store(false,Ordering::Release);buffer.clear();close(&mut socket,code,reason).await;drop(socket);let _=attaching.await;return;}},
+                },
+                result=&mut attaching=>break result,
+            }
+        }
+    };
+    let closed = peer.closing.borrow().clone();
+    if let Some((code, reason)) = closed {
+        close(&mut socket, code, &reason).await;
         return;
     }
+    match accepted {
+        Ok(true) => {}
+        Ok(false) => {
+            peer.open.store(false, Ordering::Release);
+            close(&mut socket, 1012, "Worker connection was not accepted").await;
+            return;
+        }
+        Err(_) => {
+            peer.open.store(false, Ordering::Release);
+            close(
+                &mut socket,
+                1013,
+                "Worker relay coordination is unavailable",
+            )
+            .await;
+            return;
+        }
+    }
     state.invalidate(&owner, "worker-availability", &worker);
+    logs::authenticated(&ctx.id, &worker, &generation);
+    // Keep the subscription for this socket's lifetime. Notifications only wake
+    // durable delivery; its exact worker ACK establishes physical settlement.
+    let weak = Arc::downgrade(state);
+    let target_worker = worker.clone();
+    let _task_settlements = state.bridge.subscribe_owned_notifications(
+        &worker,
+        Arc::new(move |owner, event| {
+            let weak = weak.clone();
+            let worker = target_worker.clone();
+            async move {
+                if event["type"] == "inference.task-settled"
+                    && event["ownerId"] == owner
+                    && event["workerId"] == worker
+                    && let Some(state) = weak.upgrade()
+                    && state
+                        .bridge
+                        .connection_identity(&worker)
+                        .is_some_and(|identity| {
+                            identity.owner == owner
+                                && event["workerGeneration"] == identity.process_generation
+                        })
+                {
+                    crate::workers::resource_revocations::wake(state, &owner, &worker);
+                }
+                Ok(())
+            }
+            .boxed()
+        }),
+    );
+    crate::workers::resource_revocations::wake(state.clone(), &owner, &worker);
+    drop(
+        service
+            .provider_accounts
+            .synchronize_inference(&owner, &worker),
+    );
+    drop(
+        service
+            .provider_accounts
+            .migrate_worker_credentials(&owner, &worker),
+    );
+    service
+        .worker_catalog_refresh
+        .worker_connected(owner.clone(), worker.clone());
+    service.execution.worker_connected(&worker);
+    service.computer_use.subscribe(&worker);
+    crate::project_alerts::worker_connected(
+        service.clone(),
+        owner.clone(),
+        worker.clone(),
+        peer.identity.process_generation.clone(),
+    );
     service
         .run_configuration_observations
         .worker_connected(owner.clone(), worker.clone());
     service
         .worktree_observations
         .schedule_worker(owner.clone(), worker.clone());
+    drop(
+        service
+            .execution
+            .recovery
+            .resume_transitions(&owner, &worker),
+    );
+    service.managed_preparation.schedule_worker(
+        peer.identity.owner.clone(),
+        worker.clone(),
+        service
+            .native_handoffs
+            .worker_connected(&peer.identity.owner, &worker),
+    );
     service.folder_setup.worker_connected(worker.clone());
     service.project_replicas.worker_connected(worker.clone());
+    service.chat_relocations.worker_connected(worker.clone());
+    service.chat_imports.worker_connected(worker.clone());
     service.github_conversion.worker_connected(worker.clone());
     service.workspace_discovery.worker_connected(worker.clone());
     service.scratch_roots.worker_connected(worker.clone());
@@ -296,52 +458,67 @@ async fn run(
     );
     drop(permit);
     for message in std::mem::take(&mut buffer.messages) {
-        receive(&state.bridge, &service.usage, &worker, &peer, message);
+        receive(
+            state.bridge.local(),
+            &service.usage,
+            &worker,
+            &peer,
+            message,
+        );
     }
     drop(buffer);
-    let (mut sink, mut stream) = socket.split();
-    let mut closing = peer.closing.subscribe();
-    let writer = async {
-        loop {
-            let closed = closing.borrow().clone();
-            let stopped = *shutdown.borrow();
-            if let Some((code, reason)) =
-                closed.or_else(|| stopped.then(|| (1001, "Server shutting down".into())))
-            {
-                peer.open.store(false, Ordering::Release);
-                let _ = tokio::time::timeout(
-                    Duration::from_secs(1),
-                    sink.send(Message::Close(Some(CloseFrame {
-                        code: code.into(),
-                        reason: reason.into(),
-                    }))),
-                )
-                .await;
-                break;
-            }
-            tokio::select! {biased;_ = closing.changed()=>continue,_ = shutdown.changed()=>continue,message=output.recv()=>{
-                let Some(message)=message else{break};match message{
-                    Outgoing::Close(code,reason)=>{let _=tokio::time::timeout(Duration::from_secs(1),sink.send(Message::Close(Some(CloseFrame{code:code.into(),reason:reason.into()})))).await;break},
-                    Outgoing::Text(mut text)=>{let message=Message::Text(text.take().into());tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}},
-                    Outgoing::Binary(mut frame)=>{let message=Message::Binary(tungstenite::Bytes::from_owner(frame.take()));tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}}
-                    Outgoing::Tunnel(mut frame)=>{let message=Message::Binary(tungstenite::Bytes::from_owner(frame.take()));tokio::select!{biased;_=closing.changed()=>continue,_=shutdown.changed()=>continue,result=sink.send(message)=>{if result.is_err(){break}}}}
-                }
-            }}
-        }
-    };
+    // Bridge interruption belongs to actual transport closure, not the act of
+    // queuing/sending our CLOSE. Keep late responses on this generation valid.
+    let bridge = state.bridge.clone().local_arc();
+    let closed_worker = worker.clone();
+    let closed_peer = peer.clone();
+    socket.on_closed(move || bridge.interrupted(&closed_worker, &closed_peer));
+    let force_close = socket.force_close_signal();
+    let close_deadline = socket.close_deadline_signal();
+    let (sink, mut stream) = socket.split();
+    let writer = output::run(sink, &mut output, &peer, shutdown);
     tokio::pin!(writer);
+    let mut writer_done = false;
     let mut input_closed = false;
     loop {
-        tokio::select! {_=&mut writer=>break,message=stream.next(),if !input_closed=>{match message{
-            Some(Ok(Message::Close(frame)))=>{input_closed=true;let (code,reason)=frame.map_or((1000,String::new()),|frame|(frame.code.into(),frame.reason.to_string()));peer.close(code,&reason);},
-            Some(Err(error))=>{if let Some(code)=protocol_close(&error){input_closed=true;peer.close(code,"");}else{break}},
-            None=>break,
-            Some(Ok(message))=>receive(&state.bridge,&service.usage,&worker,&peer,message)
-        }}}
+        if writer_done && input_closed {
+            break;
+        }
+        let deadline = peer.close_deadline();
+        tokio::select! {
+            result = &mut writer, if !writer_done => {
+                if !result { break; }
+                writer_done = true;
+            },
+            _ = output::expired(deadline) => {
+                force_close.store(true, Ordering::Release);
+                break;
+            },
+            message = stream.next(), if !input_closed => match message {
+                Some(Ok(Message::Close(frame))) => {
+                    input_closed = true;
+                    let (code, reason) = frame.map_or((1005, String::new()), |frame|
+                        (frame.code.into(), frame.reason.to_string()));
+                    peer.close(code, &reason);
+                },
+                Some(Err(error)) => {
+                    // Source also observes actual socket errors independently
+                    // of the subsequent close event.
+                    state.bridge.clone().local_arc().interrupted(&worker, &peer);
+                    if let Some(code) = protocol_close(&error) {
+                        input_closed = true;
+                        peer.close(code, "");
+                    } else { break; }
+                },
+                None => break,
+                Some(Ok(message)) => receive(state.bridge.local(), &service.usage, &worker, &peer, message),
+            }
+        }
     }
+    close_deadline.send_replace(peer.close_deadline());
     peer.open.store(false, Ordering::Release);
-    state.bridge.interrupted(&worker, &peer);
 }
+
 fn protocol_close(error: &tungstenite::Error) -> Option<u16> {
     match error {
         tungstenite::Error::Utf8(..) => Some(1007),
@@ -362,6 +539,8 @@ fn receive(
             bridge.receive_tunnel_frame(worker, peer, bytes.to_vec().into());
         } else if crate::worker_links::frame::is_frame(&bytes) {
             bridge.receive_worker_link_frame(worker, peer, bytes.to_vec().into());
+        } else {
+            bridge.receive_surface_frame(worker, peer, bytes.to_vec().into());
         }
     } else if let Message::Text(text) = message {
         usage.record(

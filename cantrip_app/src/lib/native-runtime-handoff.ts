@@ -2,6 +2,7 @@ import {
   nativeRuntimeHandoffInventorySchema,
   nativeRuntimeHandoffRequestSchema,
   nativeRuntimeHandoffStateSchema,
+  nativeSettingsStateSchema,
   type NativeRuntimeHandoffRequest,
 } from "@cantrip/protocol";
 import { request } from "./api-client";
@@ -10,6 +11,21 @@ import type { ClientSessionIdentitySnapshot } from "./client-session";
 type Scope = { chatId: string; identity: ClientSessionIdentitySnapshot };
 const path = (chatId: string) =>
   `/api/chats/${encodeURIComponent(chatId)}/runtime-handoffs`;
+export async function readTaskGoalRuntimeSource(
+  scope: Scope,
+  signal?: AbortSignal,
+) {
+  const result = nativeSettingsStateSchema.parse(
+    await request(
+      `${path(scope.chatId)}/source`,
+      { method: "POST", signal },
+      { expectedIdentity: scope.identity },
+    ),
+  );
+  if (result.chatId !== scope.chatId || result.binding?.chatId !== scope.chatId)
+    throw new Error("The queued Goal source belongs to another Task.");
+  return result;
+}
 export async function readRuntimeHandoffs(scope: Scope, signal?: AbortSignal) {
   const result = nativeRuntimeHandoffInventorySchema.parse(
     await request(

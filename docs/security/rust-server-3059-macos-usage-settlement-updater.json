@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "scope": "Developer ID signed desktop QA bundles, a disposable updater key and local HTTPS trust anchor, production Tauri updater and managed processes, and a background-window QA overlay. Production notarization and release feed signing are pending.",
+  "sourceCommit": "268f03b956a9cd367945eaf211fc70b1acebc55c",
+  "previousVersion": "1.1.3032",
+  "version": "1.1.3059",
+  "desktopRuntimeInputSha256": "94803a23e54145af26bb21fe11afb32c178512d0afff02aa3b24254a401299bb",
+  "signedDesktopServerSha256": "aef5621c25fc38fde35b0983bf1ff09c34f5b579da504410ee7cadb467f0dd5a",
+  "tamperedPackageRejected": true,
+  "frontendVersion": "1.1.3059",
+  "frontendVersionAssets": [
+    {
+      "asset": "assets/application-session-Dw-VYo_P.js",
+      "sha256": "89ea0867049d6aed26bf60a4251af202e0fcefc58897f83de221d65686b9d4e9"
+    }
+  ],
+  "modes": [
+    {
+      "mode": "pglite",
+      "retainedTheme": "dark",
+      "deviceAndAccountBindingsRetained": true,
+      "workerAndServerRestarted": true,
+      "embeddedServerSha256": "aef5621c25fc38fde35b0983bf1ff09c34f5b579da504410ee7cadb467f0dd5a"
+    },
+    {
+      "mode": "bundled-postgres",
+      "retainedTheme": "dark",
+      "deviceAndAccountBindingsRetained": true,
+      "workerAndServerRestarted": true,
+      "embeddedServerSha256": "aef5621c25fc38fde35b0983bf1ff09c34f5b579da504410ee7cadb467f0dd5a"
+    },
+    {
+      "mode": "postgres",
+      "retainedTheme": "dark",
+      "deviceAndAccountBindingsRetained": true,
+      "workerAndServerRestarted": true,
+      "embeddedServerSha256": "aef5621c25fc38fde35b0983bf1ff09c34f5b579da504410ee7cadb467f0dd5a"
+    }
+  ],
+  "focusObservation": {
+    "qaAppForegroundSamples": 0,
+    "samples": 1134,
+    "samplesWhileQaAppWasRunning": 0
+  },
+  "focusObservationLimit": "NSWorkspace did not enumerate the hidden fixture; the observation cannot establish focus behavior.",
+  "report": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-usage-settlement-desktop-exact.dYXNytIL/acceptance.json",
+    "bytes": 10604,
+    "sha256": "60412bf8b6a54b092134a42095e8893840b55d6eebd6c7381f0652623054ca7b"
+  },
+  "focusOverlay": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-usage-settlement-desktop-exact.dYXNytIL/background-qa-overlay.patch",
+    "bytes": 820,
+    "sha256": "6a2d006c14959de833b65950eb7f2d6405c4c8981bd5d916dd03005c486f9ec8"
+  },
+  "archive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-usage-settlement-desktop-exact.dYXNytIL/signed-app/Cantrip Server Signed Update QA.app.tar.gz",
+    "bytes": 335836961,
+    "sha256": "994243871041a472d53b7354f2a1ce005e24dc8a951ed1f49a8e45938a17b3af"
+  },
+  "updaterSignature": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-usage-settlement-desktop-exact.dYXNytIL/signed-app/Cantrip Server Signed Update QA.app.tar.gz.sig",
+    "bytes": 436,
+    "sha256": "d8c6a6e661ca409785cd8b63f5e4c97c247893b2f17df776de92504ce5bcb1e8"
+  },
+  "inputArchives": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-usage-settlement-desktop-exact.dYXNytIL/input-archives.sha256",
+    "bytes": 1043,
+    "sha256": "0adc1f34a6a7580722e76e6a540513f348b76c223d122e31279ae66172ed9710"
+  },
+  "runtimeInputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-usage-settlement-desktop-exact.dYXNytIL/runtime-inputs.sha256",
+    "bytes": 415,
+    "sha256": "9cd07ef9c46158aefc51742040cbcc9b9fe1f9413c3efc6a72ea0bb974704278"
+  },
+  "previousVersionMetadata": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-usage-settlement-desktop-exact.dYXNytIL/previous-app-version.txt",
+    "bytes": 9,
+    "sha256": "1ffb8fcd415563d8e70a4fd442d2f2967dd020b5155c6bb056233d439d7422dc"
+  },
+  "build": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-usage-settlement-desktop-exact.dYXNytIL/candidate-build.log",
+    "bytes": 2896,
+    "sha256": "92343b10627ff1aaf11167d8ebdf3770695a60941ee1c1189effe505f26b9eda"
+  }
+}

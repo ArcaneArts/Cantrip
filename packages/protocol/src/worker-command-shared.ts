@@ -1,3 +1,4 @@
+import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
 import { z } from "zod";
 import {
   customizationContentScopeSchema,
@@ -105,7 +106,7 @@ export const chatFileReferencesCommandSchema = z
     type: z.literal("chat.files.references"),
     chatId: standaloneChatIdentitySchema,
     serverId: z.string().min(1).max(2_000),
-    root: z.string().min(1).max(32_768),
+    root: z.union([z.string().min(1).max(32_768), cantripOsExecutionSchema]),
   })
   .extend(surfaceStreamWireRequestSchema.shape)
   .strict();

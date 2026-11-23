@@ -1,0 +1,569 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceBase": "6c34bbb3945add6ab1ebb1a7a066184107ca8644",
+  "version": "1.1.2869",
+  "platform": "darwin-arm64",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/task-goal-transfer-recovery-2869",
+  "scope": "The locally rebuilt Rust development binary serves the existing browser and a worker distribution with its JavaScript rebuilt from this change. Codex Core and the rest of the worker distribution come from the original 1.1.2869 package. Test-only worker instrumentation holds real HTTP acknowledgements after durable state changes. The browser sends the ordinary cancel request or the harness kills the real worker. The model endpoints use controlled replies.",
+  "nativeServer": {
+    "path": "candidate/cantrip-server",
+    "bytes": 179774384,
+    "sha256": "996f6b61014514bf33df62ae8a7dbe027f3c4692ba0b7c45f4c4384069baeea9"
+  },
+  "worker": {
+    "version": "1.1.2869",
+    "entrypoint": {
+      "path": "dist/index.js",
+      "bytes": 392214,
+      "sha256": "9c78219a325466b488592088f7690095a1e94615f2b7d0074431e99fa78d514f"
+    },
+    "nativeTransport": {
+      "path": "dist/codex/app-server.js",
+      "bytes": 373910,
+      "sha256": "7dc3ceb1acfbb9b0b061c67193833791583691ac7a5deb306df53075b7a2c3c6"
+    },
+    "coreVersion": "0.166.0",
+    "core": {
+      "path": "bin/codex",
+      "bytes": 281161744,
+      "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+    }
+  },
+  "runs": [
+    {
+      "databaseMode": "pglite",
+      "interruption": "cancel-prepared",
+      "settledPhase": "cancelled",
+      "productSteps": 16,
+      "goalLookupConflictsBeforeBrowserRetry": 0,
+      "workerHandoffSuccesses": 10,
+      "cleanWorkerStops": 5,
+      "intentionalWorkerKills": 0,
+      "destinationModelRequests": 0,
+      "report": {
+        "path": "qualified-pglite-cancel-prepared.json",
+        "bytes": 816846,
+        "sha256": "c12700b32d1f2d6077c775eee92555e36b7a06af0f9a578e31ffdebb922cec6e"
+      },
+      "workerBoundary": {
+        "path": "tmp/cantrip-actual-folder-lyun3f/rust/task-goal-handoff-fault.json",
+        "bytes": 771,
+        "sha256": "f43689d6a388def49591932e8259b0a1f9a965404acf8b9dab60d863d3e57c9b"
+      },
+      "handoffTrace": {
+        "path": "qualified-pglite-cancel-prepared-handoff.jsonl",
+        "bytes": 995,
+        "sha256": "26cf5aea5c4f59f1113cd9694b310cfb7d42452ce55dbbce2b6453b5cb229d9f"
+      },
+      "outcomeTrace": {
+        "path": "qualified-pglite-cancel-prepared-receipts.jsonl",
+        "bytes": 10911,
+        "sha256": "5d76c59ef6aa8d8e15cb84732e569e88af6cba9be562954395e480a2e090e919"
+      },
+      "nativeTrace": {
+        "path": "qualified-pglite-cancel-prepared-native.jsonl",
+        "bytes": 58088,
+        "sha256": "772881efc3a93628653e057f3da29fad6c752b297f04785169e7827bc2f0c259"
+      },
+      "earlyGoalProducersRetiredBeforeFirstInput": [],
+      "nativeFiles": {
+        "export": {
+          "path": "tmp/cantrip-actual-folder-lyun3f/rust/worker/codex-home/managed-history-exports/5e65beb8-d27c-488a-a51c-7b22908387ff.json",
+          "bytes": 73630,
+          "sha256": "9d21425a9b2a96772533b4adcc7383fa0320a583f15609d3fd4ac3bc3debe999"
+        },
+        "plan": {
+          "path": "tmp/cantrip-actual-folder-lyun3f/rust/worker/managed-runtime-handoffs/d716d5b0d305b7219a525dbf4eb0a1315367742a67e5c32d416aa3fb093c760b/5e65beb8-d27c-488a-a51c-7b22908387ff/plan.json",
+          "bytes": 735,
+          "sha256": "01e0cd30c68a2d314fd7cde450d1684b70f3b0911cdfb80c7a10a5f0095eb737"
+        }
+      }
+    },
+    {
+      "databaseMode": "pglite",
+      "interruption": "worker-after-commit",
+      "settledPhase": "completed",
+      "productSteps": 16,
+      "goalLookupConflictsBeforeBrowserRetry": 0,
+      "workerHandoffSuccesses": 10,
+      "cleanWorkerStops": 5,
+      "intentionalWorkerKills": 1,
+      "destinationModelRequests": 3,
+      "report": {
+        "path": "qualified-pglite-worker-after-commit.json",
+        "bytes": 818680,
+        "sha256": "809306e2ce1451ae85b56569b25c54a71474040ff2f61d3f723ce8eb811a46e8"
+      },
+      "workerBoundary": {
+        "path": "tmp/cantrip-actual-folder-d05CFi/rust/task-goal-handoff-fault.json",
+        "bytes": 770,
+        "sha256": "960ec5458e7f2aca9d336c2edef6474dc4e2cfca40662a54b8a235d046f8d10a"
+      },
+      "handoffTrace": {
+        "path": "qualified-pglite-worker-after-commit-handoff.jsonl",
+        "bytes": 1026,
+        "sha256": "6309c596ca7667b7281c4c022cc0510b93500da769f34c968f415f2be4bd72e8"
+      },
+      "outcomeTrace": {
+        "path": "qualified-pglite-worker-after-commit-receipts.jsonl",
+        "bytes": 11931,
+        "sha256": "c0bd63ae35ecebc2f2603685d784e027f143089e9cfa0ad2840e7c7f08b9f7d8"
+      },
+      "nativeTrace": {
+        "path": "qualified-pglite-worker-after-commit-native.jsonl",
+        "bytes": 61666,
+        "sha256": "c73757679f9beea3b6e041bbe8a4cb274c2d8718e33af455fec4524ffdefa016"
+      },
+      "earlyGoalProducersRetiredBeforeFirstInput": [
+        {
+          "turnId": "01a1ce42-0e83-7982-b85b-855bd32519ba",
+          "retiredGoalEpoch": "01a1ce41-deb9-7c92-926d-1a6e3915764d:f41c06d8-62d6-40b4-8347-c6b0ff4aef21:0",
+          "restoredGoalEpoch": "01a1ce41-deb9-7c92-926d-1a6e3915764d:f41c06d8-62d6-40b4-8347-c6b0ff4aef21:1",
+          "explicitTurnId": "01a1ce42-1030-75a3-873d-ced07d4fd452"
+        }
+      ],
+      "nativeFiles": {
+        "export": {
+          "path": "tmp/cantrip-actual-folder-d05CFi/rust/worker/codex-home/managed-history-exports/09e29ac2-0464-4b7f-ba35-d28c979d5325.json",
+          "bytes": 73635,
+          "sha256": "df50bfcd5cb90f13192a9dc428041a369144ad97cd6619d6f74044168ffa6f17"
+        },
+        "plan": {
+          "path": "tmp/cantrip-actual-folder-d05CFi/rust/worker/managed-runtime-handoffs/2ce6ccdb038f8198c6b480b1e3ce24ebc1c1bfde1a3c30ceb57230028cea56d2/09e29ac2-0464-4b7f-ba35-d28c979d5325/plan.json",
+          "bytes": 735,
+          "sha256": "6459720a23cc9f653cab34d15495f12b115578e55fe72b9ab0931e6da12c93b3"
+        },
+        "importedRollout": {
+          "path": "tmp/cantrip-actual-folder-d05CFi/rust/worker/managed-native-namespaces/d31ffe7aa908fcf29973a1adf48e39078f0edc570591b1a5adcb931747e66321/07386f86f31f9c9673c27ed44bd7d5ba82a00c96c730b3a2d1599090067625b8/homes/09e29ac2-0464-4b7f-ba35-d28c979d5325/sessions/managed-tree-09e29ac2-0464-4b7f-ba35-d28c979d5325/rollout-2026-11-12T05-36-25-01a1ce41-deb9-7c92-926d-1a6e3915764d.jsonl",
+          "bytes": 171075,
+          "sha256": "ea3c3c5cec14c0f99bc92ccc6efc1723e098a64bf7b8b3f1596c08f72e79b39b"
+        },
+        "publishedSelection": {
+          "path": "tmp/cantrip-actual-folder-d05CFi/rust/worker/managed-native-namespaces/d31ffe7aa908fcf29973a1adf48e39078f0edc570591b1a5adcb931747e66321/07386f86f31f9c9673c27ed44bd7d5ba82a00c96c730b3a2d1599090067625b8/selections/09e29ac2-0464-4b7f-ba35-d28c979d5325.json",
+          "bytes": 435,
+          "sha256": "14d0ebedea5d91e8670ad9c108a3c3fb356d377829ce2ca6a8b5017d658507a0"
+        }
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "interruption": "cancel-prepared",
+      "settledPhase": "cancelled",
+      "productSteps": 16,
+      "goalLookupConflictsBeforeBrowserRetry": 0,
+      "workerHandoffSuccesses": 10,
+      "cleanWorkerStops": 5,
+      "intentionalWorkerKills": 0,
+      "destinationModelRequests": 0,
+      "report": {
+        "path": "qualified-bundled-postgres-cancel-prepared.json",
+        "bytes": 817650,
+        "sha256": "5e323170084d77e8643bfb9320c3e6ed880f0a17991bfc35bac3d1b1219762c4"
+      },
+      "workerBoundary": {
+        "path": "tmp/cantrip-actual-folder-zRJO1E/rust/task-goal-handoff-fault.json",
+        "bytes": 771,
+        "sha256": "ae3f931668cf3f5cdec5f7122525caa8a1964ffbb6ae1be3a00652b0a4a559fb"
+      },
+      "handoffTrace": {
+        "path": "qualified-bundled-postgres-cancel-prepared-handoff.jsonl",
+        "bytes": 995,
+        "sha256": "6437230dee941fdca11bc945d8a4f9bb41248641ab6043176e76173abb3372f0"
+      },
+      "outcomeTrace": {
+        "path": "qualified-bundled-postgres-cancel-prepared-receipts.jsonl",
+        "bytes": 10911,
+        "sha256": "8fd827aa7ff882c8f883e422b5e0cf9031355c2de6614224cbe1ade85f780926"
+      },
+      "nativeTrace": {
+        "path": "qualified-bundled-postgres-cancel-prepared-native.jsonl",
+        "bytes": 57413,
+        "sha256": "814bc33a47bc233ff0ff2c5ebc0e1e4b02a860ba84a15ee31e7f392d997a03b6"
+      },
+      "earlyGoalProducersRetiredBeforeFirstInput": [],
+      "nativeFiles": {
+        "export": {
+          "path": "tmp/cantrip-actual-folder-zRJO1E/rust/worker/codex-home/managed-history-exports/9c804fa9-f26b-4ce2-a05d-36d5b0cf58bd.json",
+          "bytes": 73629,
+          "sha256": "22e65add0bbc70866584bb33bb0c23ccb95e7d09eb5c7054e68ff517d129616e"
+        },
+        "plan": {
+          "path": "tmp/cantrip-actual-folder-zRJO1E/rust/worker/managed-runtime-handoffs/278f5d808ed21256ebb0f832cd330782234a47a871a4032da94654c22cdbe45a/9c804fa9-f26b-4ce2-a05d-36d5b0cf58bd/plan.json",
+          "bytes": 735,
+          "sha256": "a9932c9a349fbfc6dbeff799451f333969d9545e153cad6d5617882ec849d100"
+        }
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "interruption": "worker-after-commit",
+      "settledPhase": "completed",
+      "productSteps": 16,
+      "goalLookupConflictsBeforeBrowserRetry": 0,
+      "workerHandoffSuccesses": 10,
+      "cleanWorkerStops": 5,
+      "intentionalWorkerKills": 1,
+      "destinationModelRequests": 3,
+      "report": {
+        "path": "qualified-bundled-postgres-worker-after-commit.json",
+        "bytes": 818386,
+        "sha256": "a9b61a806d83ad039df17a60e2874e4fa6e422fe7f65504c66a02c740ffb418d"
+      },
+      "workerBoundary": {
+        "path": "tmp/cantrip-actual-folder-lRhNBI/rust/task-goal-handoff-fault.json",
+        "bytes": 770,
+        "sha256": "087b79493b34418829a25c768a608db9a0238cd4ffcd8690f85f27b5a642c2af"
+      },
+      "handoffTrace": {
+        "path": "qualified-bundled-postgres-worker-after-commit-handoff.jsonl",
+        "bytes": 1026,
+        "sha256": "be51aca98b7cee358ed7d05a3589bb897b2c9e91fe138480d0a0038f2b1793d7"
+      },
+      "outcomeTrace": {
+        "path": "qualified-bundled-postgres-worker-after-commit-receipts.jsonl",
+        "bytes": 11931,
+        "sha256": "7a722ebe236bedcaeec361c396705665e7c2b3bb7619a60953da524cd2d4bff1"
+      },
+      "nativeTrace": {
+        "path": "qualified-bundled-postgres-worker-after-commit-native.jsonl",
+        "bytes": 62438,
+        "sha256": "862c667ad6eb591d9da7e6aa99af43802f10201f3b6aacbacb210eb7274f232f"
+      },
+      "earlyGoalProducersRetiredBeforeFirstInput": [
+        {
+          "turnId": "01a1ce3f-24a3-79a0-8195-2b8d3c054dcf",
+          "retiredGoalEpoch": "01a1ce3e-f7b4-7a80-ac69-07b6d9e50f07:2b393e4a-8c0a-45c4-97bc-c1320806aaf2:0",
+          "restoredGoalEpoch": "01a1ce3e-f7b4-7a80-ac69-07b6d9e50f07:2b393e4a-8c0a-45c4-97bc-c1320806aaf2:1",
+          "explicitTurnId": "01a1ce3f-262e-7582-9ad2-77d7e26e7ff1"
+        }
+      ],
+      "nativeFiles": {
+        "export": {
+          "path": "tmp/cantrip-actual-folder-lRhNBI/rust/worker/codex-home/managed-history-exports/e278b871-b90f-4a9e-988c-50cb3fb4efff.json",
+          "bytes": 73633,
+          "sha256": "4b96d3bd23e07dab1cbfd6e3fab14420603a43066bb63c9f3897d8e554187961"
+        },
+        "plan": {
+          "path": "tmp/cantrip-actual-folder-lRhNBI/rust/worker/managed-runtime-handoffs/db088e6f78e57206c957633cab29f5c54ce4597e78fed70d2f6d4d2da318eec8/e278b871-b90f-4a9e-988c-50cb3fb4efff/plan.json",
+          "bytes": 735,
+          "sha256": "f30f9f95f72ae7f3a46cf8aea1fb51a4d38f1c57144cbc7441fca9607ebb9317"
+        },
+        "importedRollout": {
+          "path": "tmp/cantrip-actual-folder-lRhNBI/rust/worker/managed-native-namespaces/841b46dd63aa7187577d45b6ffcd905990c97c63777096e1bba2fa0617587d62/41d5dac1528a0e29ab0a7cc97776a284307e75a46a661d0df2074c881ab9f7e1/homes/e278b871-b90f-4a9e-988c-50cb3fb4efff/sessions/managed-tree-e278b871-b90f-4a9e-988c-50cb3fb4efff/rollout-2026-11-12T05-33-15-01a1ce3e-f7b4-7a80-ac69-07b6d9e50f07.jsonl",
+          "bytes": 171068,
+          "sha256": "012088d7845120f2c979bbb18de4e85a02735199cf3b244086ef738e288fcab6"
+        },
+        "publishedSelection": {
+          "path": "tmp/cantrip-actual-folder-lRhNBI/rust/worker/managed-native-namespaces/841b46dd63aa7187577d45b6ffcd905990c97c63777096e1bba2fa0617587d62/41d5dac1528a0e29ab0a7cc97776a284307e75a46a661d0df2074c881ab9f7e1/selections/e278b871-b90f-4a9e-988c-50cb3fb4efff.json",
+          "bytes": 435,
+          "sha256": "bbde15e21c6c05840f19be3902200b3fd62cf5fd1e211336c4ba603ccab6a40c"
+        }
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "interruption": "cancel-prepared",
+      "settledPhase": "cancelled",
+      "productSteps": 16,
+      "goalLookupConflictsBeforeBrowserRetry": 0,
+      "workerHandoffSuccesses": 10,
+      "cleanWorkerStops": 5,
+      "intentionalWorkerKills": 0,
+      "destinationModelRequests": 0,
+      "report": {
+        "path": "qualified-postgres-cancel-prepared.json",
+        "bytes": 814196,
+        "sha256": "7389cda5a032defb3dc4b5d7dd7a4276146fc904ae10b6d3b6fef620e4046d4a"
+      },
+      "workerBoundary": {
+        "path": "tmp/cantrip-actual-folder-e6KBQ0/rust/task-goal-handoff-fault.json",
+        "bytes": 771,
+        "sha256": "f26eb1ea1c9983fc2edf960e96cfab41252fa9436bbd0f3e68009d5382d00061"
+      },
+      "handoffTrace": {
+        "path": "qualified-postgres-cancel-prepared-handoff.jsonl",
+        "bytes": 995,
+        "sha256": "cae4f909962a821e2de558d4049751d608ae4518b3fb9d9ecfd96031c66f2438"
+      },
+      "outcomeTrace": {
+        "path": "qualified-postgres-cancel-prepared-receipts.jsonl",
+        "bytes": 10911,
+        "sha256": "329b5c9fd6c7aa61fe6da48d931b0a3651854d5e2a1cd5dd02a3ee321472ac82"
+      },
+      "nativeTrace": {
+        "path": "qualified-postgres-cancel-prepared-native.jsonl",
+        "bytes": 58747,
+        "sha256": "4382cc4fe6b96c411d38619d0e0e286eba6e25698ac1ac39ff947c4193037fe9"
+      },
+      "earlyGoalProducersRetiredBeforeFirstInput": [],
+      "nativeFiles": {
+        "export": {
+          "path": "tmp/cantrip-actual-folder-e6KBQ0/rust/worker/codex-home/managed-history-exports/ad6919f5-c632-45e6-9260-edc1e96cdc74.json",
+          "bytes": 73631,
+          "sha256": "a2ee7c2846031690cf4a1bb93b22bc7972beadc46090f52b5180636e0f3aa9ee"
+        },
+        "plan": {
+          "path": "tmp/cantrip-actual-folder-e6KBQ0/rust/worker/managed-runtime-handoffs/c346e80c09af5f818d7f253ddda85f9e2ce27e3cb843e2f7659551a2f35393bd/ad6919f5-c632-45e6-9260-edc1e96cdc74/plan.json",
+          "bytes": 735,
+          "sha256": "84eff4db8f81bbc6d7d23432eb0c3c8f353254cd1aa7ab9ff7dc8de4b84915fc"
+        }
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "interruption": "worker-after-commit",
+      "settledPhase": "completed",
+      "productSteps": 16,
+      "goalLookupConflictsBeforeBrowserRetry": 0,
+      "workerHandoffSuccesses": 10,
+      "cleanWorkerStops": 5,
+      "intentionalWorkerKills": 1,
+      "destinationModelRequests": 3,
+      "report": {
+        "path": "qualified-postgres-worker-after-commit.json",
+        "bytes": 833846,
+        "sha256": "6cb69d934dfdd81389715c40a881b3509c942f737f117c57e207e0123694260e"
+      },
+      "workerBoundary": {
+        "path": "tmp/cantrip-actual-folder-JLpcJe/rust/task-goal-handoff-fault.json",
+        "bytes": 770,
+        "sha256": "35db435d3bc17a7b3bbc5450ab590474020501df4691666a32200487b98c6795"
+      },
+      "handoffTrace": {
+        "path": "qualified-postgres-worker-after-commit-handoff.jsonl",
+        "bytes": 1026,
+        "sha256": "4732dff59b0cf6bc305cdc5dbbaec7aa0f47fa3339eb20bb8cbb87dd0d28ec71"
+      },
+      "outcomeTrace": {
+        "path": "qualified-postgres-worker-after-commit-receipts.jsonl",
+        "bytes": 11931,
+        "sha256": "30295ee77790728aea1830926e93772918328d8b614f0e0fe1a1afbeaaf617fd"
+      },
+      "nativeTrace": {
+        "path": "qualified-postgres-worker-after-commit-native.jsonl",
+        "bytes": 62486,
+        "sha256": "fd7d6e9db53a5e0a0d79480db4e5a5cca15a4992513dcfba222e0b67fe5ccb0d"
+      },
+      "earlyGoalProducersRetiredBeforeFirstInput": [
+        {
+          "turnId": "01a1ce40-7f62-73c1-b63e-168ffa26f419",
+          "retiredGoalEpoch": "01a1ce40-4a35-7390-aa30-c8d44ec713b8:0e0e71a2-67c3-4fd1-8658-f26a594592cf:0",
+          "restoredGoalEpoch": "01a1ce40-4a35-7390-aa30-c8d44ec713b8:0e0e71a2-67c3-4fd1-8658-f26a594592cf:1",
+          "explicitTurnId": "01a1ce40-8018-7a82-84ed-99099188036d"
+        }
+      ],
+      "nativeFiles": {
+        "export": {
+          "path": "tmp/cantrip-actual-folder-JLpcJe/rust/worker/codex-home/managed-history-exports/c8d0f0a1-ad42-4771-bd62-f586cadff568.json",
+          "bytes": 73634,
+          "sha256": "07a0e65c2e2d785edf4666f72744f72984a561a4e32b70f77ff3ee87c1c48d55"
+        },
+        "plan": {
+          "path": "tmp/cantrip-actual-folder-JLpcJe/rust/worker/managed-runtime-handoffs/00f6e66692ddf0921dba2a155bdf7e365873f57090230e8e899f466fa63f80f6/c8d0f0a1-ad42-4771-bd62-f586cadff568/plan.json",
+          "bytes": 735,
+          "sha256": "002964f0d9ce2512ae59f81f7d485edc85094566821acb30bc5029ea327f9029"
+        },
+        "importedRollout": {
+          "path": "tmp/cantrip-actual-folder-JLpcJe/rust/worker/managed-native-namespaces/e6f09ee4544eb2afef983a6e2db94d0e918ef31a0fbc448b04b26728c47700ee/500ca450f2516d8fa41e5059031c7aeb45bea6151372d3f254cf35ea3a235fae/homes/c8d0f0a1-ad42-4771-bd62-f586cadff568/sessions/managed-tree-c8d0f0a1-ad42-4771-bd62-f586cadff568/rollout-2026-11-12T05-34-42-01a1ce40-4a35-7390-aa30-c8d44ec713b8.jsonl",
+          "bytes": 171074,
+          "sha256": "dbaebff73a1d100bea109d7e7580aab2344f2855437f5b1d7cebb89df4b8200d"
+        },
+        "publishedSelection": {
+          "path": "tmp/cantrip-actual-folder-JLpcJe/rust/worker/managed-native-namespaces/e6f09ee4544eb2afef983a6e2db94d0e918ef31a0fbc448b04b26728c47700ee/500ca450f2516d8fa41e5059031c7aeb45bea6151372d3f254cf35ea3a235fae/selections/c8d0f0a1-ad42-4771-bd62-f586cadff568.json",
+          "bytes": 435,
+          "sha256": "8b743b97bbd5317229b340a0863f7094a06cbad0d5fea4da3b5421b14e3e399d"
+        }
+      }
+    }
+  ],
+  "regressionControls": [
+    {
+      "scenario": "normal-transfer",
+      "databaseMode": "pglite",
+      "report": {
+        "path": "control-normal-transfer.json",
+        "bytes": 789574,
+        "sha256": "a4ac83776eff422d7d94b1a347d8c0f4d1100a94e303e19be94312eb45686e71"
+      }
+    },
+    {
+      "scenario": "first-input-order",
+      "databaseMode": "pglite",
+      "report": {
+        "path": "control-first-input-order.json",
+        "bytes": 685763,
+        "sha256": "0045993dec9573bd8be4cfda4cc10117bda71b9a4738b67da25b9fd5b71498b0"
+      }
+    }
+  ],
+  "cancellationRegression": {
+    "nativeServer": {
+      "path": "current-goal-provider-transfer-2869/lock-fixed-native/cantrip-server",
+      "bytes": 179775136,
+      "sha256": "a4caa019f564b04bfbb7543b4fb3dd37e482ae88f90eb0d0a67216d3afc0d303"
+    },
+    "scope": "A stale worker command failure changed the transfer revision while the cancellation command resolved source configuration.",
+    "observations": [
+      {
+        "databaseMode": "bundled-postgres",
+        "report": {
+          "path": "bundled-postgres-cancel-prepared.json",
+          "bytes": 401475,
+          "sha256": "536b361c5c7cb7cd2075058e21580d6a108e782463dbb0281762effe4d6a34f2"
+        },
+        "handoffTrace": {
+          "path": "bundled-postgres-cancel-prepared-handoff.jsonl",
+          "bytes": 995,
+          "sha256": "9a6027ae36b0d0d64e9b3462e5d81a859d62aaab21309c556136f5b621d790e2"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "report": {
+          "path": "postgres-cancel-prepared.json",
+          "bytes": 391622,
+          "sha256": "1392dd4d2bbdb31ad8ff73d4a83ddb784e4ecf8c30d7e0ee99499cc26cbb19c7"
+        },
+        "handoffTrace": {
+          "path": "postgres-cancel-prepared-handoff.jsonl",
+          "bytes": 995,
+          "sha256": "86310f7df1b68effb6f569a5db0512d98d58334404fa7b9bfb39c88748edc7dd"
+        }
+      }
+    ]
+  },
+  "firstInputRecoveryRegression": {
+    "originalWorkerEntrypoint": {
+      "path": "dist/index.js",
+      "bytes": 391958,
+      "sha256": "d83bb59a3a681b9bbd885519935a167029e969fc7241804bcfbe563cc4367e2b"
+    },
+    "scope": "The replacement worker settled the committed handoff on external PostgreSQL. No inference reached the destination because an autonomous request arrived before the canonical first input started.",
+    "report": {
+      "path": "fixed-postgres-worker-after-commit.json",
+      "bytes": 248532,
+      "sha256": "19d5efda8ff8f1d543f35b722a8ecefeaf1bc58f538441a223b9114e20efdf0c"
+    },
+    "outcomeTrace": {
+      "path": "fixed-postgres-worker-after-commit-receipts.jsonl",
+      "bytes": 13340,
+      "sha256": "a1b3f9e023da0a1087090967806c9557dff30f72b9ad18790792d68a7826a29c"
+    },
+    "parkedWrongEpochReport": {
+      "path": "native-trace-postgres.json",
+      "bytes": 250611,
+      "sha256": "fe0051178de68f42c127831cd7b5b0aed9401e4f4e7f50c226dc7abd5cc44685"
+    },
+    "parkedWrongEpochNativeTrace": {
+      "path": "native-trace-postgres.jsonl",
+      "bytes": 52345,
+      "sha256": "3d2a49a92146f6e46bfd357c19307e4ccdfa6cfe9b17da4912dbfeee12f667c3"
+    }
+  },
+  "pairedHttp": [
+    {
+      "databaseMode": "pglite",
+      "pairedObservations": 136,
+      "report": {
+        "path": "paired-http-pglite.json",
+        "bytes": 821308,
+        "sha256": "648b6935a148cb33a47f421ba6620bb99dddf1712a669287d8db3b3e972f74dc"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "pairedObservations": 136,
+      "report": {
+        "path": "paired-http-bundled-postgres.json",
+        "bytes": 821318,
+        "sha256": "3a552544f9c9065fcb13a52d3a5b5b457b6f3f1a00ad3d2ca0229865dd24b806"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "pairedObservations": 136,
+      "report": {
+        "path": "paired-http-postgres.json",
+        "bytes": 821310,
+        "sha256": "f3a8a82da466e7635134d855323404215efe7ce75c2206f74b1bd673e00734b6"
+      }
+    }
+  ],
+  "localEvidenceVerifier": {
+    "path": "verify-recovery.py",
+    "bytes": 16643,
+    "sha256": "33b9d532f721ee0480446c593933cde80b33812c6cbcc0d21f7033bf9967fbaf"
+  },
+  "initialDirectGoalReadConflict": {
+    "path": "v2-bundled-postgres-worker-after-commit.json",
+    "bytes": 245414,
+    "sha256": "907c8e18298d698f3cb024040294704effbd754bf1200fc31cee8ab4d6d83fa7"
+  },
+  "workerFocusedTests": {
+    "path": "worker-focused-tests-passed.log",
+    "bytes": 2274,
+    "sha256": "cca8330576298d588d6c2fe6fc3b02aeb18ffa1889f66acb6438d8a29ef77745"
+  },
+  "nativeTraceCapture": {
+    "path": "trace-native-first-input.mjs",
+    "bytes": 2886,
+    "sha256": "72bd8f054950d021ecc3046c14d7bbab6bc211e4888c3e1f98096f92a22f7998"
+  },
+  "serverSources": [
+    {
+      "path": "cantrip_server_rs/src/native_handoffs/mod.rs",
+      "bytes": 14133,
+      "sha256": "47d09007a80e9888d96fd3fa62a2a23ba69a750a3b067b4430dc4b66714a5f52"
+    },
+    {
+      "path": "cantrip_server_rs/src/native_handoffs/service.rs",
+      "bytes": 11649,
+      "sha256": "936d603a11d63fde2def44e928cc7a3757947e0e9d26d10d6f1260a2ba1220c3"
+    }
+  ],
+  "fixtureSources": [
+    {
+      "path": "scripts/server-rust/actual-folder-client.mjs",
+      "bytes": 75738,
+      "sha256": "a8c48c60845271faea0e021e7e94eedecb9d6535e59392b81b714c8b9bd94407"
+    },
+    {
+      "path": "scripts/server-rust/actual-task-client.mjs",
+      "bytes": 24419,
+      "sha256": "20612811c0fbf0698fd85e9ed10bdde92737c70081572e6555eea467b5e1652e"
+    },
+    {
+      "path": "scripts/server-rust/actual-task-goal-provider-transfer.mjs",
+      "bytes": 14565,
+      "sha256": "2b9b8b48e1355c2cb00047058f85b69cd9bb8efb73f6fa9e313c141a2430cbc6"
+    },
+    {
+      "path": "scripts/server-rust/worker-task-goal-handoff-fault.mjs",
+      "bytes": 1813,
+      "sha256": "3a093ab65eb5a7a9e2a2218a197834e8c4112f0131151c87157f0bdc70c15675"
+    }
+  ],
+  "workerTestSource": {
+    "path": "cantrip_worker/test/native-imported-session-preparation.test.ts",
+    "bytes": 11866,
+    "sha256": "846bbe466c9ad6d09ce2e2dbe36f7e16b4a09793669243049ff4aa9dc6d3e009"
+  },
+  "workerSources": [
+    {
+      "path": "cantrip_worker/src/index.ts",
+      "bytes": 366958,
+      "sha256": "1b28261b1a2ca4ee541a05537fa9444cfa9b8b385b37f0ef83e408927e498847"
+    },
+    {
+      "path": "cantrip_worker/src/codex/app-server.ts",
+      "bytes": 384524,
+      "sha256": "6cb80eb70319459d75ec2f0dcdda56801acfbf2d8b714a9a3b63d83af112d184"
+    },
+    {
+      "path": "cantrip_worker/src/codex/managed-runtime-handoff.ts",
+      "bytes": 16236,
+      "sha256": "e1ce80a2a1e12fb328e42f11ecdf3953871b44f975a34a9b2617d5e43bcd13e0"
+    }
+  ]
+}

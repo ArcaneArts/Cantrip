@@ -1,0 +1,40 @@
+{
+  "origin": "packages/crypto/src at 89b984bd02eba86b4c6ba3ff28eb8f0bb46f3007; synthetic material only",
+  "aad": {
+    "ownerId": "owner-fixed-vector",
+    "component": "chat-content",
+    "table": "messages",
+    "rowId": "row-vector",
+    "field": "content",
+    "formatVersion": 1,
+    "keyRevision": 2
+  },
+  "key": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "plaintext": "Q2FudHJpcCBuYXRpdmUgY3J5cHRvAPCfpoA",
+  "payload": {
+    "version": 1,
+    "algorithm": "AES-256-GCM",
+    "keyRevision": 2,
+    "nonce": "4ME0fVcg0lvMWuvj",
+    "ciphertext": "kiiZFy5YS55KCvdWti5uJVtLMLQ7TQLVnMHO9nbYOp4aTiVHRuimGbak"
+  },
+  "publicKey": {
+    "version": 1,
+    "algorithm": "P-256",
+    "format": "raw",
+    "value": "BApNakzXjox2A00ROz4m6YNbKA4-yHNtBmJAXbjC6MGltsqwXFAuYuC-DUXPMHnCojmqLMJ5Rju619_2UDmmUy8"
+  },
+  "privateKey": "lt-lrzcwGoWZUEOwO4zwtJdrK-f23qBu5sOAiZR2IPg",
+  "wrappedKey": {
+    "version": 1,
+    "algorithm": "HPKE-RFC9180",
+    "suite": {
+      "mode": "base",
+      "kem": "DHKEM(P-256,HKDF-SHA256)",
+      "kdf": "HKDF-SHA256",
+      "aead": "AES-256-GCM"
+    },
+    "encapsulatedKey": "BKhZz_AQxgXN_6lkG-h6TATmTm53juM2rJBGVfD2DxDDHNXry5AUoj5pRujKkReR0QZDlwuhc9v7YyvD74S45cE",
+    "ciphertext": "2IZbwTHwMjLgepLQZHu63mK_Wgzj0941Uk5DM7Iar8u53ViHxo_dPcpuAXc2TG3a"
+  }
+}

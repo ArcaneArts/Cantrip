@@ -8,7 +8,8 @@ const root = path.resolve(
   "../..",
 );
 const binary = buildCantripCua(root);
-// Exercise production worker service and transport against this exact artifact.
+const reference = process.argv.includes("--reference");
+// Exercise the current contracts or explicitly compare the Node references.
 // No installed-helper inference, native capture, or Screen Recording prompt.
 for (const [project, ...tests] of [
   [
@@ -22,7 +23,7 @@ for (const [project, ...tests] of [
   ],
   ["packages/crypto", "test/computer-use.test.ts"],
   [
-    "cantrip_worker",
+    "tests/reference-node-worker",
     "src/computer-use",
     "test/computer-use-execution-lifetime.test.ts",
     "test/cua-raw-capture.test.ts",
@@ -34,7 +35,7 @@ for (const [project, ...tests] of [
     "src/endpoint-content-encryption.test.ts",
   ],
   [
-    "cantrip_server",
+    "tests/reference-node-server",
     "test/auth-api.test.ts",
     "test/computer-use-routes.test.ts",
     "test/computer-use-coordinated-transport.test.ts",
@@ -76,9 +77,15 @@ for (const [project, ...tests] of [
     "src/components/computer-use",
   ],
 ]) {
+  if (project.startsWith("tests/reference-node-") !== reference) continue;
   const result = spawnSync(
     process.execPath,
-    [path.join(root, "node_modules/vitest/vitest.mjs"), "run", ...tests],
+    [
+      path.join(root, "node_modules/vitest/vitest.mjs"),
+      "run",
+      ...tests,
+      "--maxWorkers=2",
+    ],
     {
       cwd: path.join(root, project),
       env: { ...process.env, CANTRIP_CUA_TEST_BINARY: binary },

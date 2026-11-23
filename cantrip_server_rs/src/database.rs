@@ -1,7 +1,10 @@
+mod health;
 mod postgres;
 mod postgres_url;
 pub(crate) mod query_error;
 pub(crate) mod resource_layout_queries;
+pub mod startup;
+pub(crate) mod task_pause_queries;
 
 use std::{future::Future, path::Path, pin::Pin};
 
@@ -109,6 +112,17 @@ impl Transaction<'_> {
     }
 }
 
+/// Distinguishes a real engine-open failure from configuration, migration, or
+/// SQL failures when an offline upgrade tries a private legacy-profile copy.
+#[derive(Debug)]
+pub struct NativePgliteOpenFailure;
+impl std::fmt::Display for NativePgliteOpenFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("open native PGlite")
+    }
+}
+impl std::error::Error for NativePgliteOpenFailure {}
+
 impl Database {
     pub async fn pglite(directory: &Path) -> Result<Self> {
         // Resolve the host before the native engine changes TZ/PGTZ/LANG.
@@ -130,7 +144,7 @@ impl Database {
             },
         )
         .await
-        .context("open native PGlite")?;
+        .context(NativePgliteOpenFailure)?;
         if !initialized {
             database
                 .exec(&format!("ALTER SYSTEM SET TimeZone='{timezone}'"))
@@ -233,6 +247,17 @@ impl Database {
     }
 
     pub async fn listen(&self, channel: &str) -> Result<broadcast::Receiver<(String, String)>> {
+        self.listen_with_pglite_callback(channel, |_| {}).await
+    }
+
+    /// PGlite delivers committed notifications before the query resolves. A
+    /// synchronous observer preserves that order relative to application events;
+    /// external PostgreSQL keeps its separate LISTEN connection and receiver.
+    pub(crate) async fn listen_with_pglite_callback(
+        &self,
+        channel: &str,
+        observe: impl Fn(&str) + Send + Sync + 'static,
+    ) -> Result<broadcast::Receiver<(String, String)>> {
         let receiver = self.notifications.subscribe();
         match &self.backend {
             Backend::Pglite(database) => {
@@ -244,6 +269,7 @@ impl Database {
                     .as_ref()
                     .context("database is closed")?
                     .listen(channel, move |payload| {
+                        observe(payload);
                         let _ = emitter.send((channel_name.clone(), payload.to_owned()));
                     })
                     .await?;

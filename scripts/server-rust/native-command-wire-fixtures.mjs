@@ -1,3 +1,22 @@
+import { record as suspensionRecord } from "./native-suspension-oracle.mjs";
+import { nativeGoalRecoveryWireFixtures } from "./native-goal-recovery-fixtures.mjs";
+import { retainedPrompt } from "./native-settlement-fixtures.mjs";
+export const autonomousAttempts = [
+  {
+    runnerGeneration: "runner",
+    attemptId: "attempt",
+    turnId: "turn",
+    trigger: "goal",
+  },
+  {
+    runnerGeneration: "runner",
+    attemptId: "attempt",
+    turnId: "turn",
+    trigger: "goal",
+    goalEpoch: "goal-epoch",
+  },
+];
+
 export function nativeCommandWireFixtures(timestamp) {
   const session = {
     chatId: "chat",
@@ -27,7 +46,8 @@ export function nativeCommandWireFixtures(timestamp) {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  return {
+  const fixtures = {
+    nativeAutonomousAttemptSchema: autonomousAttempts,
     nativePermissionTransitionResolveSchema: [
       { workerId: "worker", session, selectedId: null },
       { workerId: "worker", session, selectedId: ":read-only" },
@@ -178,4 +198,117 @@ export function nativeCommandWireFixtures(timestamp) {
       },
     ],
   };
+  fixtures.nativeCommandAdmissionSchema.push(
+    ...fixtures.nativeCommandAdmissionSchema.flatMap((admission) =>
+      autonomousAttempts.map((autonomousAttempt) => ({
+        ...admission,
+        intent: { ...admission.intent, autonomousAttempt },
+      })),
+    ),
+  );
+  fixtures.nativeCommandIntentSchema.push(
+    ...fixtures.nativeCommandIntentSchema.flatMap((intent) =>
+      autonomousAttempts.map((autonomousAttempt) => ({
+        ...intent,
+        autonomousAttempt,
+      })),
+    ),
+  );
+  const recovery = nativeGoalRecoveryWireFixtures();
+  const goalRecovery = recovery.nativeGoalRecoverySourceSchema[0];
+  const workerGeneration =
+    recovery.nativeGoalRecoveryAdmissionSchema[0].workerGeneration;
+  const goalIntent = {
+    scope: "thread",
+    autonomousAttempt: {
+      ...autonomousAttempts[1],
+      goalEpoch: goalRecovery.goalEpoch,
+    },
+    goalRecovery,
+    workerGeneration,
+  };
+  fixtures.nativeCommandIntentSchema.push(goalIntent);
+  fixtures.nativeCommandAdmissionSchema.push({
+    ...fixtures.nativeCommandAdmissionSchema[0],
+    origin: "autonomous",
+    session: { ...session, threadId: goalRecovery.threadId },
+    intent: goalIntent,
+  });
+  fixtures.nativeCommandDispatchSchema.push({
+    ...fixtures.nativeCommandDispatchSchema[0],
+    workerGeneration,
+  });
+  for (const goalRecoveryOrderEpoch of [0, 1, Number.MAX_SAFE_INTEGER]) {
+    const intent = { ...goalIntent, goalRecoveryOrderEpoch };
+    fixtures.nativeCommandIntentSchema.push(intent);
+    fixtures.nativeCommandAdmissionSchema.push({
+      ...fixtures.nativeCommandAdmissionSchema.at(-1),
+      intent,
+    });
+  }
+  const suspensionIntent = {
+    scope: "thread",
+    paused: true,
+    durableSuspension: true,
+    workerGeneration,
+    expectedTurnId: "turn",
+  };
+  fixtures.nativeCommandIntentSchema.push(suspensionIntent);
+  fixtures.nativeCommandAdmissionSchema.push({
+    ...fixtures.nativeCommandAdmissionSchema[0],
+    method: "turn/pause",
+    intent: suspensionIntent,
+  });
+  const restoredSuspension = {
+    controlId: suspensionRecord.controlId,
+    checkpoint: suspensionRecord.checkpoint.suspension,
+    source: {
+      operationId: "original",
+      operationGeneration: "original-generation",
+    },
+  };
+  fixtures.nativeCommandIntentSchema.push({
+    scope: "thread",
+    restoredSuspension,
+    expectedSuspensionControlId: suspensionRecord.controlId,
+  });
+  fixtures.nativeSuspensionExecutionAdmissionSchema = [
+    {
+      workerId: "worker",
+      workerGeneration,
+      operationId: "fresh-observer",
+      controlId: suspensionRecord.controlId,
+      checkpoint: suspensionRecord.checkpoint,
+      session,
+      payloadDigest: "a".repeat(64),
+      protectedPayload:
+        fixtures.nativeCommandAdmissionSchema[0].protectedPayload,
+    },
+  ];
+  fixtures.nativeSuspensionExecutionAdmissionResultSchema = [
+    {
+      receipt: { ...receipt, method: "thread/resume", startsExecution: true },
+      execution: null,
+      computerUseAuthority: null,
+      suspension: {
+        ...suspensionRecord,
+        action: "resume",
+        phase: "resuming",
+        executionOwner: suspensionRecord.actor,
+      },
+      source: restoredSuspension.source,
+      logicalRoot: restoredSuspension.source,
+    },
+  ];
+  const terminalInput = retainedPrompt();
+  fixtures.nativeCommandAdmissionSchema.push({
+    ...fixtures.nativeCommandAdmissionSchema[0],
+    origin: "terminal",
+    intent: {
+      scope: "thread",
+      nativeClientUserMessageId: terminalInput.nativeClientUserMessageId,
+    },
+    retainedInput: { prompt: terminalInput, attachments: [] },
+  });
+  return fixtures;
 }

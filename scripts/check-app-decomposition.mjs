@@ -1,18 +1,16 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  readApplicationSourceCorpus,
-  sourceLineCount,
-} from "./application-source-corpus.mjs";
+import { sourceLineCount } from "./application-source-corpus.mjs";
+import { readRustServerSources } from "./rust-server-source-corpus.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const applicationFacade = "cantrip_server/src/app.ts";
-const applicationCompositionRoot = "cantrip_server/src/app/build-app.ts";
+const applicationFacade = "cantrip_server_rs/src/lib.rs";
+const applicationCompositionRoot = "cantrip_server_rs/src/main.rs";
 const applicationFacadeMaximum = 200;
 const applicationCompositionRootMaximum = 1_500;
 const applicationModuleMaximum = 1_999;
-const sources = await readApplicationSourceCorpus(repositoryRoot);
+const sources = await readRustServerSources(repositoryRoot);
 const failures = [];
 
 for (const { file, sourceText } of sources) {

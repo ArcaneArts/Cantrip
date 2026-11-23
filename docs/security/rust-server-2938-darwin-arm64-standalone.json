@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+  "candidateVersion": "1.1.2938",
+  "target": "darwin-arm64",
+  "scope": "Local macOS ARM64 test of a relocated native distribution, with Node absent from the server PATH and Homebrew access and artifact writes denied during server operation.",
+  "standalone": {
+    "result": "passed",
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/cantrip-server-1.1.2938-darwin-arm64-5015c89a4.tar.gz",
+      "bytes": 66893960,
+      "sha256": "4c6fdf2072d0ddb3e1fd2d7785fe0a9838a67208855cbc92f909b9f261ba4668"
+    },
+    "verifiedFiles": 1762,
+    "serverRuntimePathHasNoNode": true,
+    "homebrewAccessDenied": true,
+    "artifactWritesDenied": true,
+    "embeddedRuntimeFallback": true,
+    "databaseModes": [
+      {
+        "mode": "pglite",
+        "engine": "pglite",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "sigterm": true,
+        "hostedReopen": true,
+        "dotenvAndProcessAndCliPrecedence": true,
+        "sqlExport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/pglite-export.sql",
+          "bytes": 493322,
+          "sha256": "b47ba225514ef6616238dbf617e4600b94f3d4de582b9fdeddad4a95e9fd51ca"
+        }
+      },
+      {
+        "mode": "bundled-postgres",
+        "engine": "postgres",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "sigterm": true,
+        "hostedReopen": true,
+        "dotenvAndProcessAndCliPrecedence": true,
+        "sqlExport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/bundled-postgres-export.sql",
+          "bytes": 493568,
+          "sha256": "6bc2a379e03d6332ef75f9c9bf725acfd34c03cb455c410ffa36c75f54a753a6"
+        }
+      },
+      {
+        "mode": "postgres",
+        "engine": "postgres",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "sigterm": true,
+        "hostedReopen": true,
+        "dotenvAndProcessAndCliPrecedence": true,
+        "sqlExport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/postgres-export.sql",
+          "bytes": 493541,
+          "sha256": "1c269fc1ab66d3a058f93121b66995490038fe08629c60ef2708c6aab4e2b5ad"
+        }
+      }
+    ],
+    "shutdownMethod": "SIGTERM",
+    "evidence": {
+      "runtimeReceipt": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-standalone.json",
+        "bytes": 2642,
+        "sha256": "10eee404ea3b6626bfce8dd16ae074b876bdae7874452a38b27920ff34294947"
+      },
+      "archiveVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-standalone-archive-verification.json",
+        "bytes": 115,
+        "sha256": "cdf071109221ba19ca722fa81ae24efdfb75ec50574d96f4992c084f89ff3825"
+      },
+      "buildLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-aligned-server-package.log",
+        "bytes": 9297,
+        "sha256": "033b6a052eaf42e5a9b961c598ee3d790da7193b7454b6a6a1179af1e56f9e77"
+      }
+    }
+  },
+  "completeReplacement": false
+}

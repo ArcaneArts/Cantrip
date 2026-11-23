@@ -102,6 +102,16 @@ export function agentInteractionWireFixtures() {
       {},
       { chatId: "chat", status: "pending", limit: 2 },
     ],
+    agentInteractionRequestWireSchema: [
+      ...visibleRows,
+      ...protectedRows,
+      { ...computer, ...row, protectedResponse: null },
+    ],
+    agentInteractionResolutionWireCreateSchema: [
+      interactionResponse,
+      protectedInteractionResponse,
+    ],
+    agentInteractionAcceptedSchema: [{ accepted: true }],
     agentInteractionRequestWireListSchema: [
       [visibleRows[0], protectedRows[0]],
       [],

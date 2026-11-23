@@ -19,12 +19,14 @@ const execute = promisify(execFile);
 const protocolChecks = {
   "ClientRequest.ts": [
     '"turn/pause"',
+    '"turn/suspension"',
     '"thread/settings/update"',
     '"turn/settings/update"',
     '"thread/settings/read"',
     '"thread/settings/operation/read"',
     '"thread/managedConfig/update"',
     '"thread/managedExecution/bind"',
+    '"thread/nativeResources/resolve"',
     '"thread/managedExecution/resolve"',
     '"thread/managedExecution/invalidate"',
     '"thread/managedExecution/wake"',
@@ -44,6 +46,23 @@ const protocolChecks = {
     "multiAgentEnabled",
   ],
   "v2/ThreadHistoryTurnMetadata.ts": ["initialSettings", "retention"],
+  "v2/ThreadResumeParams.ts": ["expectedSuspension"],
+  "ServerNotification.ts": ['"thread/nativeResources/requested"'],
+  "v2/NativeResourceProtectionNotification.ts": [
+    "checkpointId",
+    "runnerGeneration",
+    "requestId",
+    "seal",
+    "value",
+  ],
+  "v2/NativeResourceProtectionResolveParams.ts": [
+    "threadId",
+    "turnId",
+    "checkpointId",
+    "runnerGeneration",
+    "requestId",
+    "value",
+  ],
 };
 
 async function expectedRuntime() {
@@ -129,6 +148,23 @@ export async function verifyBuiltRuntime(
       throw new Error(
         `Packaged executable reported unexpected version: ${version.stdout.trim()}`,
       );
+    }
+    if (manifest.buildRecipeVersion >= 6) {
+      const executor = path.join(
+        directory,
+        expected.target.startsWith("win32-")
+          ? "codex-exec-server.exe"
+          : "codex-exec-server",
+      );
+      const executorVersion = await run(executor, ["--version"], options);
+      if (
+        executorVersion.stdout.trim() !==
+        `codex-exec-server ${metadata.version}`
+      ) {
+        throw new Error(
+          `Packaged executor reported unexpected version: ${executorVersion.stdout.trim()}`,
+        );
+      }
     }
     const out = path.join(temporary, "typescript");
     await run(

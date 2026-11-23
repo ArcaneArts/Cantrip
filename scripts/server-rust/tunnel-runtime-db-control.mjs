@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { until } from "./tunnel-attachment-probe.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 export class RuntimeDatabase {
   constructor(fixture, proof) {

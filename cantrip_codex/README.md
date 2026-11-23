@@ -19,11 +19,25 @@ The repository's normal development preparation and worker packaging invoke:
 pnpm codex:build
 ```
 
+For native development and opt-in acceptance fixtures, use the same verified
+build workflow with Cargo's development profile:
+
+```sh
+node scripts/cantrip-codex/build.mjs --dev
+CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/$(node -p 'process.platform + "-" + process.arch')/dev/bundle/codex" \
+  pnpm --dir tests/reference-node-worker exec vitest run test/native-durable-goal.test.ts
+```
+
+Development builds use a separate `dev/` source and bundle directory and record
+`profile: "dev"` in their manifest. They retain the same source, patch, artifact
+and generated-protocol verification. The default build and packaging paths use
+the release profile.
+
 This verifies the snapshot and patch series, then runs Cargo with the upstream
 lockfile and pinned Rust toolchain. Output is cached below
 `cantrip_codex/.build/` and is never
 committed. Worker packages copy the resulting native CLI, code-mode host,
-responses proxy, platform sandbox helpers, and a hash-checked runtime manifest
+standalone executor, responses proxy, platform sandbox helpers, and a hash-checked runtime manifest
 into `bin/`. The bundle also carries the upstream Apache-2.0 `LICENSE` and
 `NOTICE`. The native release verifier checks every listed artifact's bytes;
 the Worker requires the manifest and declared artifacts before starting Codex.
@@ -37,7 +51,7 @@ versions, checksums, and revisions remain exactly as pinned upstream, and the
 tracked source snapshot is never modified. The runtime manifest fingerprints
 the ordered patch set so changing a patch invalidates cached binaries.
 
-Codex 0.163.0 continues to use Rusty V8's heap sandbox for the code-mode host.
+Codex 0.166.0 continues to use Rusty V8's heap sandbox for the code-mode host.
 Those artifacts are published on a separate official OpenAI Codex release
 rather than the upstream Rusty V8 release. The build resolves the pinned `v8`
 crate version and native Rust host target, downloads the same archive and
@@ -52,12 +66,68 @@ generated experimental protocol includes the Cantrip settings, pause, canonical
 history, and portable history/context extensions. Native release jobs also run
 this check against the worker's packaged `bin/` directory on macOS and Windows.
 
-The 0.163.0 upgrade rebases all 42 existing patches and adds `0044` for native
+The 0.166.0 upgrade rebases all 43 existing patches and adds `0045` for native
 interface adaptations and regenerated stable/experimental protocol exports.
 It preserves Cantrip's managed history, settings, queue, permission transitions,
-pause, account configuration, and TUI admission paths alongside upstream's
-updated MCP, settings, and TUI interfaces. The imported upstream snapshot
-remains unpatched; these adaptations belong only to the build copy.
+pause, account configuration, stateless labeling, and TUI admission paths.
+Portable import binds destination metadata to its current configured provider
+while retaining the original immutable history segments and source provenance.
+Patch `0081` holds the existing native tree execution coordinator during
+portable export. Active child/auxiliary execution and final hooks, pending
+native security settings, and attached durable suspension holds prevent export
+even when the root has cleared its active turn. The actual flush, turn-boundary
+check and snapshot run under that guard. A provider ticket's release is not
+native tree settlement. This patch was source-reviewed without native patch
+application, compilation or execution; runtime/platform behavior is unverified.
+Patch `0082` gives provider transfers a revisioned root producer hold. Existing
+children can finish with their own tickets; actual export seals subsequent tree
+admission while holding the quiescence guard. Cancellation releases that exact
+hold and seal on the same gate, including its inference-only mode. It never
+rearms an explicit Stop/Pause. The worker-private RPC is consumed by the existing
+handoff coordinator and managed execution runner. Source review, direct source
+formatting and `git diff --check` were used; native patch application, builds,
+tests and runtime execution were not performed.
+Patch `0083` couples the Goal runtime's existing mutation permit to the native
+root's export seal. Export refuses a live Goal mutation rather than waiting on
+its async permit while holding tree admission; sealed roots reject later Goal
+mutations until the owning transfer releases its hold. An optional exact Goal
+epoch is compared against the actual portable snapshot before publication.
+The worker persists that expectation in its export plan for retry/recovery.
+This is a native checkpoint boundary; the Task provider-transfer server and UI
+integration remains separate. Only source review, formatting of new fragments,
+and `git diff --check` were performed. The native patch was not assembled,
+applied, compiled or executed.
+Patch `0084` lets an owned transfer wait for actual native tree lease release
+and Goal mutation settlement before sealing its snapshot. It registers wakeups
+before inspecting state, then repeats the real locked readiness check. It never
+treats an acknowledgement, timeout or notification as settlement. Cancellation
+and native invalidation wake the waiter; an exact transfer identity prevents a
+late export from sealing a subsequent transfer. Goal permit waits release tree
+admission first. The worker's export observer can be cancelled promptly while
+native I/O remains fenced, and this settlement wait has no inference deadline.
+Ordinary RPC and inference deadlines remain unchanged. These changes received
+source review and direct fragment formatting only; native application, builds
+and runtime behavior remain unverified.
+Patch `0085` adds the private, connection-owned Task pause intent RPC. The actual
+inference-only root compares the canonical control revision and changes its
+pause watch under one gate lock. An older request cannot apply after a newer
+Pause or Resume. Intent acceptance is separate from a model/tool boundary or
+live checkpoint resumption; superseding controls wake the older observer.
+Worker queue notices acknowledge acceptance without retaining one command per
+long-running tool. No ticket is released by an intent acknowledgement. The
+worker and native runtime need a paired update. This patch is source-authored
+only; it has not been applied, built or executed.
+The new item payload wrapper retains lifecycle timestamps, and history replay
+keeps upstream's bounded, cancellable projection pipeline. Cold resume keeps
+acknowledged owned settings and upstream's current permission constraints.
+The imported upstream snapshot remains unpatched; adaptations belong to the
+build copy. Recipe 6 also packages the upstream standalone `codex-exec-server`
+and exercises its actual version alongside the CLI during runtime verification.
+
+The official 0.163.0 and 0.166.0 release commits have diverged ancestry. This
+upgrade advances the vendored source projection to exact tag `rust-v0.166.0`
+at `6ff1e1ca3b30fc8b914720681fcf5fe62e95f856` and rebases the patch series; it
+does not force or rewrite a separate fork branch.
 
 Upstream 0.163.0 retired numeric fork-history selection and the patched-zsh
 executor. Their obsolete compatibility tests are removed; supported full-history
@@ -91,7 +161,7 @@ The actual native request can be tested without account credentials or charges:
 
 ```sh
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run test/native-label-inference.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/native-label-inference.test.ts
 ```
 
 The fixture uses an isolated home and local fake provider. It checks request
@@ -100,7 +170,7 @@ durable threads, and validation/provider failures. It does not establish live
 ChatGPT account latency or full GUI behavior. The native release verifier also
 requires this RPC in the executable's generated experimental protocol.
 Upstream production schema export uses embedded precomputed archives. Patch
-`0043` defines the RPC; `0044` regenerates both 0.163.0 archives with all Cantrip
+`0043` defines the RPC; `0045` regenerates both 0.166.0 archives with all Cantrip
 extensions, including the experimental inference method.
 Native protocol tests check that the method and types are exported only with
 the experimental API and that the archive matches freshly generated schemas.
@@ -122,7 +192,7 @@ The worker has opt-in regressions against the built native executable:
 
 ```sh
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run \
+  pnpm --dir tests/reference-node-worker exec vitest run \
   test/native-thread-observation.test.ts test/native-empty-thread-attach.test.ts
 ```
 
@@ -155,7 +225,7 @@ The opt-in actual TUI regression can be run against the packaged executable:
 
 ```sh
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run test/native-managed-tui-attach.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/native-managed-tui-attach.test.ts
 ```
 
 It starts the real TUI in isolated PTYs through `TerminalManager`, records its
@@ -257,7 +327,7 @@ restart. Run it against the rebuilt bundle:
 
 ```sh
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run test/native-managed-worker-session.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/native-managed-worker-session.test.ts
 ```
 
 This fixture uses isolated synthetic credentials and a rejecting provider;
@@ -313,7 +383,7 @@ Run its actual-runtime fixture against the rebuilt bundle with:
 
 ```sh
 CANTRIP_CODEX_TEST_BINARY="$PWD/cantrip_codex/.build/darwin-arm64/bundle/codex" \
-  pnpm --dir cantrip_worker exec vitest run test/native-history-foundation.test.ts
+  pnpm --dir tests/reference-node-worker exec vitest run test/native-history-foundation.test.ts
 ```
 
 The fixture uses an isolated home, a synthetic local provider, image-only input,
@@ -404,3 +474,441 @@ not proof that an already-running turn changed its pinned model/settings.
 
 Canonical desired/pending/effective settings publication remains an integration
 requirement. Validation and remaining work are recorded in `docs/CODEX_AUDIT.md`.
+
+## Worker inference admission
+
+Reviewed patch `0048` uses the existing connection-owned managed execution channel
+for private inference admission, suspension, resumption, and terminal receipts. It
+does not create another prompt queue or grant capacity in Core. The worker owns
+provider limits and FIFO order; Core supplies actual sampling and wait boundaries.
+
+Root turns can reuse their worker reservation, while child turns, speculative
+compaction, manual compaction, and Guardian classification account for independent
+execution. Parent dependency/approval waits yield only after parent sampling stops;
+resumption reacquires before further inference. A Guardian reservation follows its
+transport through cancellation/draining, including when its observer disappears.
+
+The source patch was formatted and applied to an owned copy of its pre-patch source.
+No native build, tests, benchmarks, or computer-use validation were run under the
+current goal's restriction. Normal future packaging fingerprints the ordered patch
+set; this change does not manufacture a prebuilt binary or update upstream hashes.
+
+Patch `0052` extends the existing worker lifetime keeper's admission journal with
+atomic recovery adoption and acknowledgement. Only the current scope owner may
+reconcile previous-generation records, using captured revision and canonical
+chat/message identity. Proven unstarted attempts can transfer their oldest
+same-provider ordinal to one replacement; changing providers retains the new
+destination ordinal. The durable replacement and removal of old metadata share
+one snapshot write. Redelivery after an unobserved acknowledgement returns the
+same replacement. Potentially executed input cannot use this adoption path.
+This is metadata ownership, not another native prompt queue. No new runtime
+binary was built or executed under the active goal's validation restriction.
+
+Patch `0053` records receipt of the worker's native grant in the regular/restored/
+manual-compaction turn's extension store. Cancellation before that receipt is
+retired from goal accounting instead of entering empty-response retry evaluation.
+Existing empty-response history, token accounting, and native goal elapsed time
+keep their meaning. This marker observes admission; the worker remains the only
+capacity owner. Separate execution/queue-time integration still requires the
+canonical timing handoff, including the outer wait before a first `turn/start`.
+
+This source patch was reviewed and formatted only. No native build, tests,
+benchmarks, helper execution or computer-use validation ran. It adds no public
+RPC or generated protocol shape and does not modify upstream snapshot hashes or
+manufacture a prebuilt runtime.
+
+Patch `0054` distinguishes independent helper admission from a root turn's
+`begin`, including Guardian and speculative background compaction. These requests
+cannot bind a dispatched root before
+its `turn/started` observation or borrow its reservation. Exact operation identity
+still governs their suspension, cancellation and settlement. The corresponding
+worker accepts `begin-independent`; older workers deny that unsupported private
+phase. Memory extraction and response transport ownership remain audit work.
+Only source review, formatting and diff checks were performed; no native binary
+was built or executed.
+
+Patch `0055` retains inference ownership through actual HTTP dispatch/body tasks
+and WebSocket response cleanup. Managed model clients serialize their requests
+through transport teardown. Ending or suspending a turn cannot release its
+ticket while a retained response task can still run; native `finish` follows
+that cleanup. Cancellation retires failed WebSocket pumps by aborting and joining
+them. The worker distinguishes this private settlement from earlier UI turn
+completion and treats private entry as positive native-start evidence.
+SDK outcomes await the corresponding confirmed ticket release before retry or
+provider transition; this does not block native control-frame delivery.
+
+Regular/foreground/speculative compaction clients use the binding, with an API
+for independently admitted model-client helpers. Memory extraction admission and
+stateless labeling's explicit drain path remain separate goal work. Source-only
+review and formatting were performed; no native binary was built or executed.
+
+Patch `0056` adds independent worker admission to parallel memory extraction and
+binds each helper to model-client transport ownership. The existing bounded local
+preparation queue renews every canonical job claim while waiting, including work
+not yet inside that local bound. Claim loss cancels only the matching operation;
+transient database errors cannot release inference capacity. Cancellation is
+reported as skipped work without consuming extraction retry budget. Abandoned
+claims use their existing lease-expiry recovery.
+
+Memory consolidation starts through the existing internal-child API with its
+actual parent, retaining the shared inference channel without rebinding that
+parent's root gate. Its ordinary native turn owns separate capacity, and existing
+consolidation heartbeats cover capacity waits. Only source review, direct Rust
+formatting, mechanical patch generation and diff checks were performed. No native
+binary, test, build, benchmark or computer-use validation ran.
+
+Patch `0057` retains stateless labeling transport ownership through success,
+failure and its existing 25-second native execution deadline. Core cancels and
+awaits real response cleanup before the catalog RPC replies; a timeout alone
+cannot release the worker's outer ticket. This scope requests no nested grant,
+so a same-provider title and first response continue sharing one serial ticket
+at limit one. Existing worker/server observation budgets and timeout error
+classification remain. Source review, Rust formatting, mechanical patch
+generation and diff checks ran; no runtime, tests or builds were executed.
+
+Patch `0058` identifies each native inference lifetime with a fresh private scope
+UUID, independently of reusable logical thread/turn IDs. All admission, suspension,
+resumption, cancellation and terminal notifications carry it; positive resolver
+acknowledgements must echo that exact scope. Older mismatched peers deny admission
+rather than silently use an unscoped ticket. The worker can bind a root reservation
+to only one scope, and late old receipts cannot settle its replacement. No public
+schema is changed. Source review, formatting, patch generation and diff checks
+ran; tests, builds and native execution remain unrun.
+
+Patch `0059` adds an inference-only mode to the existing connection-owned native
+channel for Task-created threads. Task rounds and dispatch records retain input
+ownership; their native Goal cycles, children, compaction and dependency waits
+use the same worker inference boundary as IDE agents. Configuring or resuming a
+Task Goal installs the channel before activating the Goal. This mode does not
+request managed GUI input receipts or create another scheduler. External Task
+Goal activation and cold resume defer their initial automatic kickoff to the Task
+owner's explicit input; subsequent completed-turn idle events still continue the
+Goal. Interrupted Task turns cancel their inference scope without permanently
+invalidating the channel needed by a later explicit resume.
+
+A connection cannot reuse a gate generation with a different admission kind or
+downgrade an existing managed input guard to inference-only mode. Live channel
+installation binds the exact native thread, and replacement checks the actual
+inference owner even when it does not manage input. Existing full managed runners
+keep their behavior. Task permission selection and existing child defaults are
+preserved by the worker's separate preparation intent.
+
+The optional native configuration field is reflected in the checked-in
+TypeScript/JSON and precomputed exports. Lifecycle integration found that the
+original binary patch used snapshot bases from an older patch series, preventing
+the normal build from applying it. Both compressed snapshots were regenerated
+with the actual Rust schema generator against the preceding reviewed patches,
+and the binary patch now names those actual bases. All earlier exported paths
+remain present; the only schema change is the optional `inferenceOnly` field.
+The checked-in JSON fixtures were aligned with the generator's newline format.
+Both generator modes and all four schema fixture/export comparisons passed.
+
+Patch `0060` retains explicit Task input receipt metadata in the lifetime
+keeper's admission journal. The canonical encrypted round remains on the server;
+the journal contains only its opaque attempt, placement, lane activation, route
+and dispatch-fence identities. A current worker can adopt an older Task ticket's
+FIFO order after the server positively confirms that its input authority was
+revoked before forwarding. This also covers a reservation used only for naming.
+The private adoption reference carries that confirmation and still checks the
+captured journal generation/revision and the same canonical Task/chat/message.
+
+Potentially dispatched Task input without exact native no-start evidence is not
+replayed. The existing never-granted/never-started rules for other operation kinds
+remain unchanged. This changes only the private CLI journal, not native public
+RPC or precomputed schema exports. Only source review, direct formatting,
+mechanical patch generation and diff checks were performed; no native execution,
+tests or builds were run.
+
+Patch `0061` retains the original continuation through resumption preparation,
+including an actual directory-sync failure after atomic replacement. Its
+`0.166.0/cantrip-suspension-v3` contract keeps the confirmed capture identity
+stable while physical store revisions advance. A prepared record grants no
+execution authority; explicit Resume still requires fresh admission.
+
+Turn-bound controls and readiness acknowledgements share a control generation.
+A newer Pause fences an older Resume before checkpoint I/O, failed preparation
+releases only its own reservation, and Stop confirms native terminal history.
+Cold restoration also works through the legacy Resume control without another
+TurnStarted event. Observer running status follows successful admission.
+The normal macOS ARM64 release build of all 62 patches and the eight native
+pause fixtures passed, including both history formats and actual scoped
+admission handshakes. The existing live-pause unit fixture now supplies the
+turn context and boundary snapshot required by native checkpoint capture.
+Product pause adoption, Goal/resource continuation and complete worker restart
+acceptance remain separate required work. See
+[durable turn suspension](../docs/DURABLE_TURN_SUSPENSION.md).
+
+Patch `0062` records failure-before-output at the actual admitted model-stream
+boundary, after response interceptors and before Core can consume output or run
+tools. It ignores transport/model metadata, treats completion and every output
+event conservatively as output, and keeps that evidence monotonic across all
+sequential requests in the physical scope. Stream errors, early close and request
+setup failure record failure. WebSocket prewarming is excluded.
+
+The existing private `finish` notification carries the result only after owned
+response transports settle. It is matched to the exact native scope and runtime,
+not inferred from missing UI activity or a response timeout. This changes no
+public native RPC or precomputed schema archive. The evidence describes this
+local model scope; it does not promise exactly-once provider execution or
+authorize replay of a restored checkpoint's original prompt. Only source review,
+direct formatting, mechanical patch/contract generation and diff checks were
+performed for this patch; no native execution, tests or builds were run.
+
+Patch `0063` adds the optional explicit Task Goal input kind to the private
+admission keeper journal. Adoption requires the same kind as well as the existing
+canonical chat/message, worker and dispatch identities. Ordinary round receipts
+omit the new field, preserving their serialized recovery identity. Goal inputs
+reference the server's original protected message and existing dispatch cycle;
+the journal stores no prompt content. This patch changes no public native RPC or
+precomputed schema archive. Source review, direct formatting, mechanical patch
+generation and diff checks were used; no native execution or tests were run.
+
+Patch `0064` preserves a durable suspension during ordinary runtime shutdown and
+App Server input EOF. It fences resumption readiness and detaches the held task
+before normal cancellation can record a terminal turn. Task cancellation/joining
+and security-lease release are shared with the upstream suspension handoff.
+The continuation stays committed while process-local resources are released.
+SessionEnd hooks are skipped for suspended teardown; ordinary completion and
+Stop retain their existing hook and terminal behavior. This does not change the
+checkpoint format or grant execution authority. The existing intercepted-stream
+unit fixture supplies the unmanaged inference argument introduced by `0062` so
+native test-target compilation can validate the current series.
+The legacy `turn/interrupt` operation also stops a cold held turn through its
+existing durable cancellation path. Loaded history preserves the held turn's
+unfinished lifecycle while reporting the idle thread's actual status. This keeps
+native TUI reattachment from falsely displaying an interruption.
+The normal 65-patch macOS ARM64 release build and all 12 native suspension/shared
+pause cases passed, including two physical TUI cold-resumption cases.
+Product recovery, Goal/resource continuation and complete worker-tree acceptance
+remain required work.
+
+Patch `0065` gives the existing inference keeper journal a private `bindNative`
+mutation. Core's private inference begin durably binds its exact thread, turn
+and physical scope to the current ticket before the worker can allow model
+execution. Root turns reuse their existing reservation, including a serial
+same-provider title; independent native operations bind their own tickets.
+The binding is immutable, idempotent, generation-owned, and preserves the FIFO
+ordinal. It is correlation metadata, not evidence of completion or permission
+to replay an input. A cancelled or retired grant cannot use a late write reply
+to start. The optional journal field preserves older unbound records. No public
+native RPC or precomputed schema archive changes. This patch requires its paired
+worker and keeper update. Source review, direct formatting, mechanical patch and
+protocol generation, and diff checks were performed; no native execution, patch
+verification helper, tests or builds were run. Checkpoint/result reconciliation
+and the remaining inference lifecycle audit are still required.
+
+Patch `0066` adds versioned extension bookkeeping to the private v4 continuation.
+The Goal extension preserves original-turn usage baselines, descendant usage,
+failure/empty-turn streaks and fractional elapsed accounting. Durably paused and
+offline time is excluded. Restore reconciles actual persisted Goal counters, and
+cold Stop settles reconstructible usage before retiring the continuation. Short
+native control guards fence stale callbacks without retaining execution grants.
+The v3 suspended payload remains inspectable and stoppable but cannot be resumed
+under v4. The verified 67-patch development build passed all 28 native cases,
+including 16 Goal cases. Fifteen accounting tests, 27 Goal backend tests and the
+SQLite continuation-hold test passed. Final native acceptance used the development
+profile; optimized product and complete worker-tree acceptance remain pending.
+Resource recovery and worker/server/client adoption remain required work.
+
+Patch `0067` adds the private `thread/managedExecution/inferenceClaim` operation.
+It confirms the exact live pending inference gate on its owning connection,
+including child scopes, without granting provider capacity or consuming the gate.
+The worker uses that authority to retire completed private-scope ticket records
+through opaque operation lifetimes, while preserving exact redelivery for held
+handles. Stale requests cannot originate another ticket after cache compaction.
+The worker and native runtime require a paired update. This milestone used source
+review, direct formatting, mechanical patch authoring and diff checks only; no
+native helper, patch application verification, tests, builds or computer-use
+validation was run. Legacy outer-turn/helper retention remains separate work.
+
+Patch `0068` extends the private continuation contract to v5 for input accepted
+while a native turn is durably held. The checkpoint commits exact history-item
+digests before an explicit Goal instruction is appended to native history, and
+commits pending injected input before publishing acceptance to the live queue or
+acknowledging the Goal mutation. History remains the sole transcript. Unprepared,
+duplicated or reordered execution history still invalidates resumption; a prepared
+append that never reached history leaves the original recovery boundary usable.
+Checkpoint amendments advance the physical storage revision while retaining the
+confirmed capture identity returned to the caller.
+
+Final capture and injected input acceptance share a native mutation boundary. Goal
+accounting and steering are prepared under the existing Goal mutation permit,
+and capture acquires its input boundary after extension capture to preserve lock
+ordering. Fresh restoration installs the latest committed pending input, including
+input accepted after attaching the held thread, without starting another turn.
+Later user authorization is restored with its original acceptance order without
+appending its history item again. Actual persistence failures reject acceptance;
+they do not discard the last committed checkpoint or substitute a new turn.
+
+The v4 suspended format is retained for inspection and explicit Stop, but requires
+its matching runtime for Resume. No runtime upgrades a held continuation silently.
+This is a native input-boundary milestone. Background resource recovery and the
+server-owned, restart-persistent product pause controls remain separate required
+work before whole-worker durable pause is available.
+
+The verified 69-patch development runtime passed 42 native cases, including 30
+Goal cases covering accepted edits before and after pause, edits after fresh
+attachment, repeated cold resumes, actual checkpoint-path failures and repaired
+history evidence. Eight focused Core tests and 44 Goal accounting, backend and
+steering tests passed. Core unit checks used the upstream helper's 8 MiB test
+stack size after the initial notification test overflowed the default stack.
+Optimized product and whole-worker process-tree acceptance remain pending.
+
+## Goal budget time while waiting for inference
+
+Patch `0069` observes the actual native `begin`/`resume` admission future with a
+thread-owned monotonic queue clock. Goal progress subtracts those waits live, so
+FIFO reacquisition after a confirmed suspension cannot spend the Goal's time
+budget. Cancellation drops the same wait guard. Ordinary tools, active response
+streams, child work and non-Goal total-elapsed metrics keep their existing meaning.
+Independent background inference does not pause a concurrently executing parent.
+
+The clock stores cumulative duration and active-wait state, without a completed
+request history. Durable Goal checkpoints continue to save net elapsed work in
+the existing format; restoration reattaches the actual thread's queue clock and
+resets its baseline before resumption, preserving fractional work without counting
+the offline interval or subtracting an old wait again.
+
+The original `0069` delivery received source review and formatting without a
+native build. PR #2593 repaired its normal patch application. The completed
+terminal milestone below includes an actual runtime build and Goal regression
+checks with that patch applied; whole-worker acceptance remains outstanding.
+
+## Completed terminal resource continuation
+
+Patch `0070` adds encrypted completed-terminal continuation data under native
+contract `0.166.0/cantrip-suspension-v6`. Capture joins real output/history
+producers and preserves unread output and byte-omission counts. A fresh process
+restores the original terminal IDs as read-only completed records, without
+launching a command or retaining launch authority. Active commands and open
+output producers still refuse durable acknowledgement with live controls intact.
+
+The connection-owned native resource bridge uses the actual worker's current
+`chat-content` grant. Checkpoint data contains only a versioned AES-GCM envelope;
+opening a held thread does not decrypt it. Explicit Resume revalidates the grant,
+and Stop can discard the continuation without it. The normal runtime verifier
+also checks the generated private bridge contracts. Resource and full product
+acceptance are tracked separately in [the suspension contract](../docs/DURABLE_TURN_SUSPENSION.md).
+
+The normal 71-patch macOS ARM64 development build passed all 62 native acceptance
+cases, including 20 terminal-resource cases using the actual worker protection
+handler and fresh encryption grants. Large output, repeated cold suspension,
+concurrent Resume, grant repair, Stop during restoration and read-only input
+errors preserve the original thread/turn identities and completed effects.
+Full worker/server/client recovery and optimized product acceptance remain
+outstanding.
+
+## Withdrawing a response before alternate-provider naming finishes
+
+Patch `0089` permits the current worker to requeue a previously granted input
+that it parked before native dispatch and durably released as `never-started`.
+Requeue clears that outcome before another grant. Native-bound scopes, other
+terminal outcomes, never-granted unrequested seals, and old worker generations
+remain rejected. The worker replaces resolved input permission when parking and
+awaits fresh permission before committing canonical dispatch. This preserves
+both live Resume and cold recovery at the granted preparation boundary.
+The normal 90-patch macOS ARM64 development build and runtime verification passed.
+Actual keeper tests retain terminal/native-binding/generation refusals, and eight
+full-worker GUI/TUI cases passed across the Node and Rust servers. Optimized
+product qualification remains part of the broader suspension acceptance.
+
+Patch `0071` adds the keeper's atomic `sealUnstarted` mutation. An actual canonical
+response source can be sealed before requesting any provider capacity, while its
+private title operation uses another provider's ticket. The mutation records only
+released, never-granted, never-started metadata and rejects an existing operation
+that could have inferred. Exact same-generation redelivery preserves its proof.
+It neither grants a ticket nor writes prompt content.
+
+The worker seals the response lifetime before cancelling the private label and
+waits for label settlement before publishing no-start evidence. Existing handoff
+deferral acknowledgement and source cleanup still precede history transfer.
+The native keeper and worker must be upgraded together. This patch received
+source review and mechanical authoring only; it was not applied, built, tested or
+executed. No native/helper or computer-use validation ran for this change.
+
+## Finalized CodeMode resource continuation
+
+Patch `0072` extends protected resource data with finalized JSON values and cell
+identity bookkeeping under `0.166.0/cantrip-suspension-v7`. The gRPC
+CodeMode host exports only after cells and completion producers are quiescent.
+Explicit, freshly authorized Resume imports that data without evaluating cells
+or replaying tools. Capture never reconnects a missing host to an empty session;
+explicit import can recover a lost helper. Core selects this transport with
+`features.code_mode_host_grpc=true`. The default framed-stdio transport still
+returns an explicit unsupported error; completing its state transfer is the next
+native dependency. Unsupported providers never report empty state.
+See [the suspension contract](../docs/DURABLE_TURN_SUSPENSION.md) for resource
+limits, live controls, compatibility and the outstanding product integration.
+
+## Default framed CodeMode continuation
+
+Patch `0073` implements finalized-state transfer for the default framed-stdio
+provider, using negotiated `stored-state-v2` controls and actual completion and
+forwarding-producer joins. A fresh live lease stays separate from the saved
+public cell namespace, so late replies and retries preserve cell identities.
+The gRPC path retains the same recovery behavior. Export never replaces a dead
+host with empty state; only explicit import can recover it.
+
+Native contract `0.166.0/cantrip-suspension-v8` uses CodeMode state format 2.
+Native counters are decimal strings on the wire to avoid JavaScript JSON number
+rounding. Earlier formats require their matching runtime and remain preserved
+for inspection or Stop. Full worker/server/client recovery and optimized product
+acceptance remain outstanding; see [the suspension contract](../docs/DURABLE_TURN_SUSPENSION.md).
+
+## Revisioned native Task interruption
+
+Patch `0086` adds the connection-owned `thread/managedExecution/taskInterrupt`
+control for an actual inference-only root. It verifies the current paused Task
+revision and exact native turn before taking that turn. The native Stop lifecycle
+runs in an owned task, so losing its RPC observer does not cancel it. A later
+Task Resume waits for that lifecycle operation; it cannot race old abort hooks.
+Cold held turns use the existing validated native suspension Stop path.
+
+The control does not release provider tickets. Existing native scope and keeper
+settlement remain authoritative for execution that may still be tearing down.
+The worker/server use the canonical Task pause revision and a new Goal FIFO
+episode after Stop; no Goal setter or prompt is replayed. The native runtime,
+worker and server need the matching update. This patch was mechanically authored
+from reviewed tracked fragments and formatted only. It was not applied, checked,
+built, tested or executed; runtime/platform behavior remains unverified.
+
+## Portable native child trees
+
+Patch `0087` adds a version 3 managed-transfer artifact containing the selected
+thread, persisted descendants, and their actual spawn edges, including closed
+edges and graph-only child identities. The existing native tree export guard
+remains held during capture. Each saved member retains its history, frozen fork
+visibility, queue, Goal state and native ID. An unfinished saved turn keeps the
+transfer reserved for actual settlement or explicit native Stop; it is never
+replayed as a new turn.
+
+Import merges compatible shared rollout prefixes into canonical files, preserves
+archive locations, and restores children and exact topology before the root.
+Immutable manifests and a final receipt support interrupted publication without
+reopening a newer edge or resetting a completed import. Destination metadata uses
+the current provider for every saved member; historical segments retain their
+original provenance. Existing native lazy child restoration uses the imported
+persisted graph and does not acquire capacity merely to restore identities.
+
+Version 2 single-thread artifacts and their original import/recovery path remain
+supported. New managed exports use the explicit tree operation; unsupported
+stores report that operation as unavailable. The worker accepts both artifact
+versions. This is a paired native/worker change, authored from tracked source
+fragments and formatted only. No patch application/checks, compilation, tests or
+native execution ran; runtime and platform behavior remain unverified.
+
+## Task input queue epochs
+
+Patch `0090` preserves the existing canonical Task receipt's optional
+`queueOrderEpoch` in keeper admission metadata. The server includes this field
+for new Task rounds, including epoch zero; the previous strict native decoder
+rejected those rounds before their first provider request. Omitted legacy epochs
+remain omitted, and explicit zero/later epochs retain their exact identity.
+
+The normal 91-patch macOS ARM64 development build and both runtime/archive
+verifications passed. All 121 focused worker cases passed, including actual
+keeper round trips for omitted, zero and later epochs. Real tool-using Tasks
+completed on Node and Rust, and native-terminal chat turns passed two cold
+suspension cycles on each server with their original thread and turn IDs.
+The separate Task cold-suspension target still fails as documented in the
+[suspension contract](../docs/DURABLE_TURN_SUSPENSION.md#task-recovery-qualification).

@@ -4,10 +4,10 @@ use crate::{
     wire::{self, JsString, Value},
     workers::{command_bus::LimitedCommandBus, repository::WorkerRepository},
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use futures::FutureExt;
 use serde_json::{Value as Json, json};
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 
 fn positive_integer(value: &Value) -> Option<f64> {
     value
@@ -57,7 +57,31 @@ pub fn normalize_model(model: &Value) -> Value {
         })
         .collect();
     let has = |name: &str| capabilities.contains(&JsString::from(name));
+    let mut modalities = Vec::new();
+    if has("completion") {
+        modalities.push("text");
+    }
+    if has("embedding") {
+        modalities.push("embeddings");
+    }
+    if has("decision") {
+        modalities.push("decisions");
+    }
+    let status = |cap: &str| if has(cap) { "supported" } else { "unsupported" };
+    let operation_capabilities = if modalities.is_empty() {
+        json!({})
+    } else {
+        json!({
+            "language": {"status":status("completion"),"source":"ollama","inputModalities":if has("vision") {json!(["text","image"])} else {json!(["text"])}},
+            "embedding": {"status":status("embedding"),"source":"ollama","adapter":"ollama-embed","inputModalities":["text"],"modelRevision":model["digest"]},
+            "decision": {"status":status("decision"),"source":"ollama","adapter":"system-one","inputModalities":if has("vision") {json!(["text","image","json"])} else {json!(["text","json"])},"questionTypes":["predicate","choice","score"]}
+        })
+    };
     let mut output = Value::object([
+        (
+            "operationCapabilities",
+            Value::from_serialize(&operation_capabilities),
+        ),
         ("nativeModelId", model["name"].clone()),
         ("canonicalModelId", Value::Null),
         ("displayName", model["name"].clone()),
@@ -72,7 +96,7 @@ pub fn normalize_model(model: &Value) -> Value {
                 json!(["text"])
             }),
         ),
-        ("outputModalities", Value::from_serialize(&json!(["text"]))),
+        ("outputModalities", Value::from_serialize(&modalities)),
         ("supportsTools", Value::Bool(has("tools"))),
         (
             "supportsParallelTools",
@@ -146,9 +170,13 @@ impl SettingsRepository {
         };
         anyhow::ensure!(owned_worker.is_some(), "Worker not found.");
         anyhow::ensure!(
-            runtime["kind"] == "ollama",
-            "Provider is not an Ollama provider."
+            super::endpoint_providers::worker_catalog_provider(&runtime),
+            "Provider does not use worker endpoint discovery."
         );
+        let revision = runtime["connectionRevision"]
+            .as_i64()
+            .context("catalog connection revision")?;
+        let connection = json!({"ownerId":owner,"connectionRevision":revision});
         let scope = format!("worker:{worker}");
         let existing = self
             .get_provider_model_catalog(owner, provider, false)
@@ -174,34 +202,44 @@ impl SettingsRepository {
                 .is_some_and(|models| !models.is_empty())
         });
         if !worker_key_is_string || !commands.is_connected(worker) {
-            self.set_provider_catalog_sync_state(provider, &json!({"scopeKey":scope,"workerId":worker,"status":"stale","errorCode":"worker-offline"})).await?;
+            if !self.set_provider_catalog_sync_state(provider, &json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":"stale","errorCode":"worker-offline"})).await? { return self.get_provider_model_catalog(owner, provider, false).await; }
             if has_models {
                 return self.get_provider_model_catalog(owner, provider, true).await;
             }
             anyhow::bail!("Worker is offline.");
         }
-        self.set_provider_catalog_sync_state(provider, &json!({"scopeKey":scope,"workerId":worker,"status":"refreshing","errorCode":null,"refreshStartedAt":now()})).await?;
+        if !self.set_provider_catalog_sync_state(provider, &json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":"refreshing","errorCode":null,"refreshStartedAt":now()})).await? { return self.get_provider_model_catalog(owner, provider, false).await; }
         let refresh: Result<Option<Json>> = async {
             let mut runtime = Value::from_serialize(&runtime);
-            runtime["kind"] = Value::String("ollama".into());
-            runtime["name"] = Value::String("Ollama".into());
+            let kind = runtime["kind"].as_str().context("stored provider kind")?.to_owned();
+            let ollama = kind == "ollama";
+            runtime["name"] = Value::String(super::endpoint_providers::label(&kind).into());
             runtime["accountId"] = Value::Null;
             runtime["credentialHomeKey"] = Value::Null;
-            let result = commands.request(worker, Value::object([("type",Value::String("model.ollama.catalog".into())), ("provider",runtime)]), Some(Duration::from_secs(120)), None).await?;
-            let inventory = super::parse_response("ollamaModelInventorySchema", result.as_ref())?;
-            let models: Vec<_> = inventory["models"].as_array().expect("validated Ollama inventory").iter().map(normalize_model).collect();
+            let inventory = super::worker_catalog_pages::read(commands,worker,runtime,ollama).boxed().await?;
+            let incomplete = inventory.metadata_incomplete;
+            let models = inventory.models;
             let available = models.iter().map(|model|model["nativeModelId"].as_js_string().expect("validated model ID").clone()).collect();
-            self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate {
+            let accepted = self.reconcile_provider_model_catalog(owner,provider,CatalogUpdate { connection_revision: Some(revision),
+                preserve_missing_models: incomplete,
                 models, available, availability_scope:scope.clone(), auto_create:true, auto_create_native_ids:None,
                 worker_id:Some(worker.into()), account_id:None, default_native_id:None,
             }).boxed().await?;
-            self.set_provider_catalog_sync_state(provider, &json!({"scopeKey":scope,"workerId":worker,"status":"current","errorCode":null,"lastSuccessAt":now()})).await?;
-            self.get_provider_model_catalog(owner,provider,false).await
+            if !accepted { return self.get_provider_model_catalog(owner, provider, false).await; }
+            let mut sync = json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":if incomplete {"stale"}else{"current"},"errorCode":if incomplete {Some("endpoint-native-metadata-unavailable")}else{None}});
+            if !incomplete { sync["lastSuccessAt"] = json!(now()); }
+            self.set_provider_catalog_sync_state(provider, &sync).await?;
+            self.get_provider_model_catalog(owner,provider,incomplete).await
         }.boxed().await;
         match refresh {
             Ok(result) => Ok(result),
             Err(error) => {
-                self.set_provider_catalog_sync_state(provider,&json!({"scopeKey":scope,"workerId":worker,"status":if has_models {"stale"} else {"failed"},"errorCode":"ollama-catalog-refresh-failed"})).await?;
+                let accepted = self.set_provider_catalog_sync_state(provider,&json!({"connection":connection,"scopeKey":scope,"workerId":worker,"status":if has_models {"stale"} else {"failed"},"errorCode":if runtime["kind"]=="ollama" {"ollama-catalog-refresh-failed"} else {"endpoint-catalog-refresh-failed"}})).await?;
+                if !accepted {
+                    return self
+                        .get_provider_model_catalog(owner, provider, false)
+                        .await;
+                }
                 if has_models {
                     self.get_provider_model_catalog(owner, provider, true).await
                 } else {

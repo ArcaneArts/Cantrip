@@ -24,13 +24,21 @@ use std::{
 async fn bootstrap(
     service: &AuthService,
     context: &Value,
+    owner: &str,
     operation: &Value,
     attachment: &str,
     launch: Value,
     detached: &mut bool,
 ) -> Result<()> {
-    let worker = context["workerId"].as_str().context("Terminal worker")?;
-    let (send, mut receive) = tokio::sync::oneshot::channel();
+    let worker = context["workerId"]
+        .as_str()
+        .context("Terminal worker")?
+        .to_owned();
+    let terminal = context["terminalId"]
+        .as_str()
+        .context("Terminal identity")?
+        .to_owned();
+    let (send, receive) = tokio::sync::oneshot::channel::<Result<()>>();
     let readiness = Arc::new(Mutex::new(Some(send)));
     let event: EventHandler = {
         let readiness = readiness.clone();
@@ -40,41 +48,79 @@ async fn bootstrap(
                 if event["type"] == "terminal.ready"
                     && let Some(send) = readiness.lock().unwrap().take()
                 {
-                    let _ = send.send(());
+                    let _ = send.send(Ok(()));
                 }
                 Ok(())
             })
         })
     };
     let command = json!({"type":"terminal.open","terminalId":context["terminalId"],"attachmentId":attachment,"operationId":operation,"serverId":service.server_id,"worktreePath":context["worktreePath"],"stateProtection":context["stateProtection"],"cols":80,"rows":24,"outputMode":"discard","launch":launch});
-    let mut opened = Box::pin(async {
-        let result = service
-            .workers
-            .commands
-            .request_with_timeout(worker, command, RequestTimeout::Disabled, Some(event))
-            .await?;
-        crate::settings::parse_response("terminalOpenResultSchema", result.as_ref())
-    });
-    let startup = tokio::time::sleep(Duration::from_secs(15));
-    tokio::pin!(startup);
-    let mut result = None;
-    loop {
-        tokio::select! {
-            biased;
-            ready=&mut receive=>{ready.context("Terminal readiness ended")?;break;}
-            value=&mut opened, if result.is_none()=>{
-                let value=value?;
-                if value["status"]=="exited" {bail!("Terminal process exited during startup.");}
-                result=Some(value);
+    let commands = service.workers.commands.clone();
+    let maintenance = service.worker_maintenance.clone();
+    let completion = readiness.clone();
+    let owner = owner.to_owned();
+    let (opened_send, opened_receive) = tokio::sync::oneshot::channel();
+    // The Source observes completion independently of readiness and detach.
+    // An exit still updates status after readiness has already succeeded.
+    tokio::spawn(async move {
+        match commands
+            .request_with_timeout(&worker, command, RequestTimeout::Disabled, Some(event))
+            .await
+        {
+            Err(cause) => {
+                let pending = completion.lock().unwrap().take();
+                if let Some(send) = pending {
+                    let _ = send.send(Err(cause.into()));
+                } else {
+                    let _ = opened_send.send(Err(cause));
+                }
             }
-            _=&mut startup=>bail!("Terminal process startup timed out."),
+            Ok(value) => {
+                let observed: Result<()> = async {
+                    let parsed = crate::settings::parse_response(
+                        "terminalOpenResultSchema",
+                        value.as_ref(),
+                    )?;
+                    if parsed["status"] == "exited" {
+                        maintenance
+                            .record_status(
+                                &owner,
+                                &terminal,
+                                if parsed["executionOutcome"] == "unknown" {
+                                    "offline"
+                                } else {
+                                    "exited"
+                                },
+                            )
+                            .await?;
+                        bail!(if parsed["executionOutcome"] == "unknown" {
+                            "The Linux terminal disconnected; command outcome is unknown."
+                        } else {
+                            "Terminal process exited during startup."
+                        });
+                    }
+                    Ok(())
+                }
+                .await;
+                if let Err(cause) = observed
+                    && let Some(send) = completion.lock().unwrap().take()
+                {
+                    let _ = send.send(Err(cause));
+                }
+                let _ = opened_send.send(Ok(value));
+            }
         }
-    }
+    });
+    tokio::time::timeout(Duration::from_secs(15), receive)
+        .await
+        .map_err(|_| anyhow::anyhow!("Terminal process startup timed out."))?
+        .context("Terminal readiness ended")??;
     detach(service, context, attachment).await?;
     *detached = true;
-    if result.is_none() {
-        opened.await?;
-    }
+    let opened = opened_receive
+        .await
+        .context("Terminal open completion ended")??;
+    crate::settings::parse_response("terminalOpenResultSchema", opened.as_ref())?;
     Ok(())
 }
 async fn detach(service: &AuthService, context: &Value, attachment: &str) -> Result<()> {
@@ -92,7 +138,7 @@ pub(super) async fn execute(
         Ok(v) => v,
         Err(response) => return Ok(response),
     };
-    let Some(session) = authorized(service, ctx, session_id) else {
+    let Some(session) = authorized(service, ctx, session_id).await? else {
         return Ok(error(404, "WorkerLink session not found."));
     };
     let owner = &ctx
@@ -137,12 +183,12 @@ pub(super) async fn execute(
             let (Some(chat),Some(runtime))=(chat,runtime)else{return Ok(error(409,"Choose a model for this chat before opening its Codex console."));};
             launch=service.managed_console.prepare_launch(owner,&chat,&runtime).await?;
         }
-        bootstrap(service,&context,&input["operationId"],&attachment,launch,&mut detached).await?;
+        bootstrap(service,&context,owner,&input["operationId"],&attachment,launch,&mut detached).await?;
         service.worker_maintenance.record_status(owner,terminal_id,"running").await?;
-        let grant=service.worker_links.local.issue_grant(json!({"attachmentId":input["operationId"],"lanes":["interactive"],"maxChannels":1,"operations":["stream:open","stream:read","stream:write"],"resourceId":context["terminalId"],"resourceKind":"terminal","sessionId":session["sessionId"]})).await?;
+        let grant=service.worker_links.authority.issue_grant(json!({"attachmentId":input["operationId"],"lanes":["interactive"],"maxChannels":1,"operations":["stream:open","stream:read","stream:write"],"resourceId":context["terminalId"],"resourceKind":"terminal","sessionId":session["sessionId"]})).await?;
         let current=repository.context(owner,terminal_id).await?;
         if current.as_ref().is_none_or(|v|v["kind"]=="run-configuration" || v["workerId"]!=context["workerId"] || v["worktreePath"]!=context["worktreePath"]) {
-            service.worker_links.local.revoke_grant(session_id,grant["binding"]["grantId"].as_str().context("Terminal grant identity")?,if current.is_some(){"resource-stopped"}else{"resource-deleted"}).await;
+            service.worker_links.authority.revoke_grant(session_id,grant["binding"]["grantId"].as_str().context("Terminal grant identity")?,if current.is_some(){"resource-stopped"}else{"resource-deleted"}).await?;
             return Ok(error(409,"Terminal placement changed while its stream was opening."));
         }
         output(201,"workerLinkResourceGrantSchema",&grant)

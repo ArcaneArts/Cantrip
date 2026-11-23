@@ -1,0 +1,137 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -721,3 +721,8 @@
++    ManagedExecutionInferenceClaim => "thread/managedExecution/inferenceClaim" {
++        params: v2::ManagedExecutionInferenceClaimParams,
++        serialization: None,
++        response: v2::ManagedExecutionInferenceClaimResponse,
++    },
+     ManagedExecutionResolve => "thread/managedExecution/resolve" {
+         params: v2::ManagedExecutionResolveParams,
+         serialization: None,
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+--- a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+@@ -101,6 +101,26 @@
+ pub struct ManagedExecutionResolveResponse {
+     pub accepted: bool,
+ }
++
++/// Confirm the actual pending Core gate before worker admission. This does not
++/// allow inference, consume the gate, or reserve any provider capacity.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionInferenceClaimParams {
++    pub thread_id: String,
++    pub turn_id: String,
++    pub scope_id: String,
++    pub runner_generation: String,
++    pub attempt_id: String,
++}
++
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionInferenceClaimResponse {
++    pub claimed: bool,
++}
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -1491,3 +1491,8 @@
++            ClientRequest::ManagedExecutionInferenceClaim { params, .. } => {
++                self.turn_processor
++                    .managed_execution_inference_claim(&request_id, params)
++                    .await
++            }
+             ClientRequest::ManagedExecutionResolve { params, .. } => {
+                 self.turn_processor
+                     .managed_execution_resolve(&request_id, params)
+diff --git a/codex-rs/app-server/src/request_processors/managed_execution.rs b/codex-rs/app-server/src/request_processors/managed_execution.rs
+--- a/codex-rs/app-server/src/request_processors/managed_execution.rs
++++ b/codex-rs/app-server/src/request_processors/managed_execution.rs
+@@ -191,3 +191,41 @@
++    pub(crate) async fn managed_execution_inference_claim(
++        &self,
++        request_id: &ConnectionRequestId,
++        params: codex_app_server_protocol::ManagedExecutionInferenceClaimParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        // Children need not be public UI threads. The connection-owned gate's
++        // actual pending map is the authority, rather than load_thread or a
++        // cached claim that can outlive this particular native request.
++        let gate = {
++            let gates = self
++                .outgoing
++                .managed_execution_gates
++                .lock()
++                .unwrap_or_else(std::sync::PoisonError::into_inner);
++            gates
++                .get(&params.runner_generation)
++                .and_then(|(owner, gate)| {
++                    (*owner == request_id.connection_id).then(|| gate.clone())
++                })
++        };
++        let thread_id = codex_protocol::ThreadId::from_string(&params.thread_id)
++            .map_err(|_| invalid_params("invalid inference thread id"))?;
++        let claimed = if let Some(gate) = gate {
++            gate.claim_inference(
++                thread_id,
++                &params.turn_id,
++                &params.scope_id,
++                &params.attempt_id,
++            )
++            .map_err(invalid_params)?
++        } else {
++            false
++        };
++        Ok(Some(
++            codex_app_server_protocol::ManagedExecutionInferenceClaimResponse { claimed }.into(),
++        ))
++    }
++
+     pub(crate) async fn managed_execution_resolve(
+         &self,
+         request_id: &ConnectionRequestId,
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -175,3 +175,34 @@
++    /// Only the live pending request can originate worker-owned admission.
++    /// Resolution/cancellation removes this authority; no completed-request
++    /// cache or retention window participates in this decision.
++    pub fn claim_inference(
++        &self,
++        thread_id: ThreadId,
++        turn_id: &str,
++        scope_id: &str,
++        attempt_id: &str,
++    ) -> Result<bool, String> {
++        let state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.closed {
++            return Ok(false);
++        }
++        let Some((expected_thread, expected_turn, expected_scope, reply)) =
++            state.inference_requests.get(attempt_id)
++        else {
++            return Ok(false);
++        };
++        if *expected_thread != thread_id
++            || expected_turn.as_str() != turn_id
++            || expected_scope.as_str() != scope_id
++        {
++            return Err("inference request no longer owns this scope".into());
++        }
++        Ok(!reply.is_closed())
++    }
++
+     pub fn resolve_inference(
+         &self,
+         thread_id: ThreadId,

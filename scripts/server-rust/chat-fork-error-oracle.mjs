@@ -1,12 +1,12 @@
 // Actual source route and error hook over HTTP, with the worker budget failure
 // injected at its command-bus seam. No server state or endpoint keys are needed.
 import { createRequire } from "node:module";
-import { installChatForkRoute } from "../../cantrip_server/src/app/routes/chat-forks.ts";
-import { installApplicationErrorHandler } from "../../cantrip_server/src/app/http/error-handler.ts";
-import { RelayLimitError } from "../../cantrip_server/src/security/abuse-limits.ts";
+import { installChatForkRoute } from "../../tests/reference-node-server/src/app/routes/chat-forks.ts";
+import { installApplicationErrorHandler } from "../../tests/reference-node-server/src/app/http/error-handler.ts";
+import { RelayLimitError } from "../../tests/reference-node-server/src/security/abuse-limits.ts";
 import { securityFixtures } from "./security-fixtures.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const app = require("fastify")({ logger: false });
 let attempt = 0;

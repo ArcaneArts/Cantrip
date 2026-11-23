@@ -22,7 +22,7 @@ import { fixtureEnvironment, startServer } from "./process.mjs";
 import { nativeExportTls } from "./native-export-tls.mjs";
 
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 // This URL-policy matrix owns its TLS choices. Do not let a developer's shell

@@ -20,7 +20,9 @@ import {
   parseDevtopProfileArguments,
 } from "./devtop-tauri-config.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
+import { cantripCliBinaryPath } from "./cantrip-cli/build.mjs";
 import { developmentWorkerEnvironment } from "./cantrip-cua/development-launch.mjs";
+import { buildRustWorker } from "./worker-rust/cargo.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -59,6 +61,7 @@ const stateFile = path.join(
 let activeChild = null;
 let shuttingDown = false;
 let state;
+const workerBuild = new AbortController();
 
 function hardStopActiveChild() {
   if (activeChild?.pid) {
@@ -71,6 +74,7 @@ function handleSignal(signal) {
     return;
   }
   shuttingDown = true;
+  workerBuild.abort();
   hardStopActiveChild();
   void clearOwnedDevtopState(stateFile, state).finally(() => {
     process.exit(signal === "SIGINT" ? 130 : 143);
@@ -146,6 +150,10 @@ try {
   if (exitCode !== 0 || shuttingDown) {
     process.exitCode = exitCode;
   } else {
+    process.env.CANTRIP_DEV_WORKER_BIN ??= await buildRustWorker({
+      signal: workerBuild.signal,
+    });
+    process.env.CANTRIP_CLI_BIN ??= cantripCliBinaryPath(repositoryRoot);
     exitCode = await runStage(process.execPath, [
       path.join(repositoryRoot, "scripts", "prepare-dev-logs.mjs"),
       stateDirectory,
@@ -173,8 +181,8 @@ try {
         "cyan,gray,blue,magenta,green",
         "pnpm --filter @cantrip/glitch dev",
         "pnpm --filter @cantrip/protocol dev",
-        `cross-env FORCE_COLOR=1 CANTRIP_DATA_DIR=${packageStateDirectory} CANTRIP_SERVICE_LOG_DIR=${packageStateDirectory}/logs/server pnpm --filter @cantrip/server dev`,
-        `node scripts/wait-for-server.mjs && cross-env FORCE_COLOR=1 CANTRIP_WORKER_DATA_DIR=${packageStateDirectory}/worker CANTRIP_SERVICE_LOG_DIR=${packageStateDirectory}/logs/worker CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP=true pnpm --filter @cantrip/worker dev`,
+        `cross-env FORCE_COLOR=1 CANTRIP_DATA_DIR=${relativeStateDirectory} CANTRIP_SERVICE_LOG_DIR=${relativeStateDirectory}/logs/server pnpm server:dev`,
+        `node scripts/wait-for-server.mjs && cross-env FORCE_COLOR=1 CANTRIP_WORKER_DATA_DIR=${packageStateDirectory}/worker CANTRIP_SERVICE_LOG_DIR=${packageStateDirectory}/logs/worker CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP=true pnpm worker:dev`,
         `node scripts/wait-for-server.mjs && cross-env CARGO_TARGET_DIR=${tauriTargetDirectory} CANTRIP_DEVELOPMENT_KEY_VAULT=1 VITE_CANTRIP_DISABLE_LEGACY_WEBCRYPTO=true pnpm --filter @cantrip/app exec tauri dev --config ${tauriConfigPath}`,
       ]);
     }

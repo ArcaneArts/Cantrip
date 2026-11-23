@@ -1,6 +1,7 @@
 export async function queuedPromptFixture(repository, input) {
   const { owner, chat, prompt, content, attachments, model } = input;
-  const queued = repository.queuedPrompts;
+  // Include the production facade's argument/default forwarding in comparisons.
+  const queued = repository;
   switch (input.action) {
     case "list-encrypted":
       return queued.listEncryptedQueuedPrompts(owner, chat);

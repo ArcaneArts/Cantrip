@@ -1,6 +1,18 @@
+import { taskInputWireFixtures } from "./task-input-wire-fixtures.mjs";
+import { currentWireFixtures } from "./current-wire-fixtures.mjs";
+import { chatImportWireFixtures } from "./chat-import-wire-fixtures.mjs";
+import { agentOperationWireFixtures } from "./agent-operation-wire-fixtures.mjs";
+import { cliWireFixtures } from "./cli-wire-fixtures.mjs";
+import { threadSyncWireFixtures } from "./chat-thread-sync-fixtures.mjs";
+import { cantripOsWireFixtures } from "./cantrip-os-wire-fixtures.mjs";
+import { cantripOsSystemFixtures } from "./cantrip-os-system-fixtures.mjs";
 import { projectSurfaceWireFixtures } from "./project-surface-wire-fixtures.mjs";
 import * as p from "../../packages/protocol/dist/index.js";
 import { workerIngressFixtures } from "./worker-wire-fixtures.mjs";
+import {
+  inferenceWireFixtures,
+  inferenceLiveMessages,
+} from "./inference-wire-fixtures.mjs";
 import workerCommands from "./worker-command-fixtures.json" with { type: "json" };
 import commandRefinements from "./worker-command-refinement-fixtures.json" with { type: "json" };
 import { usageWireFixtures } from "./usage-wire-fixtures.mjs";
@@ -9,7 +21,9 @@ import { settingsWireFixtures } from "./settings-wire-fixtures.mjs";
 import { placementWireFixtures } from "./placement-wire-fixtures.mjs";
 import { folderWireFixtures } from "./folder-wire-fixtures.mjs";
 import { standaloneChatWireFixtures } from "./standalone-chat-wire-fixtures.mjs";
+import { projectChatWireFixtures } from "./project-chat-wire-fixtures.mjs";
 import { nativeCommandWireFixtures } from "./native-command-wire-fixtures.mjs";
+import { nativeHistoryWireFixtures } from "./native-history-wire-fixtures.mjs";
 import { nativeSettingsWireFixtures } from "./native-settings-fixtures.mjs";
 import { settlementWireFixtures } from "./native-settlement-fixtures.mjs";
 import { deferredAttachment } from "./native-settlement-fixtures.mjs";
@@ -19,6 +33,10 @@ import { nativeSettingsHttpWireFixtures } from "./native-settings-http-wire-fixt
 import { nativeModelInventoryWireFixtures } from "./native-model-inventory-fixtures.mjs";
 import { nativeEventWireFixtures } from "./native-event-http-wire-fixtures.mjs";
 import { agentInteractionWireFixtures } from "./agent-interaction-fixtures.mjs";
+import { chatCustomizationWireFixtures } from "./chat-customization-wire-fixtures.mjs";
+import { skillSettingsWireFixtures } from "./skill-settings-wire-fixtures.mjs";
+import { mcpSettingsWireFixtures } from "./mcp-settings-wire-fixtures.mjs";
+import { settingsOperationsWireFixtures } from "./settings-operations-wire-fixtures.mjs";
 import { terminalWireFixtures } from "./terminal-wire-fixtures.mjs";
 import { browserWireFixtures } from "./browser-wire-fixtures.mjs";
 import { projectShareWireFixtures } from "./project-share-wire-fixtures.mjs";
@@ -33,6 +51,20 @@ import { discoveryWireFixtures } from "./discovery-wire-fixtures.mjs";
 import { runWireFixtures } from "./run-wire-fixtures.mjs";
 import { worktreeWireFixtures } from "./worktree-wire-fixtures.mjs";
 import { provisioningWireFixtures } from "./provisioning-wire-fixtures.mjs";
+import { turnOrchestrationWireFixtures } from "./turn-orchestration-wire-fixtures.mjs";
+import { publicChatWireFixtures } from "./public-chat-wire-fixtures.mjs";
+import { nativeHandoffWireFixtures } from "./native-handoff-wire-fixtures.mjs";
+import { taskSchedulingWireFixtures } from "./task-wire-fixtures.mjs";
+import { taskWireFixtures } from "./task-wire-fixtures.mjs";
+import { taskDashboardWireFixtures } from "./task-dashboard-fixtures.mjs";
+import { projectAutomationWireFixtures } from "./project-automation-wire-fixtures.mjs";
+import { appendEndpointProviderWireFixtures } from "./endpoint-provider-wire-fixtures.mjs";
+import { mcpCompatibleWireFixtures } from "./mcp-compatible-wire-fixtures.mjs";
+import { mcpChatReadWireFixtures } from "./mcp-chat-read-wire-fixtures.mjs";
+import { mcpChatSendWireFixtures } from "./mcp-chat-send-wire-fixtures.mjs";
+import { inferenceRecoveryWireFixtures } from "./inference-recovery-wire-fixtures.mjs";
+import { nativeSuspensionWireFixtures } from "./native-suspension-fixtures.mjs";
+import { nativeGoalRecoveryWireFixtures } from "./native-goal-recovery-fixtures.mjs";
 
 export const owner = "11111111-1111-4111-8111-111111111111";
 export const clientId = "22222222-2222-4222-8222-222222222222";
@@ -262,12 +294,107 @@ export const projectWire = {
   createdAt: timestamp,
   updatedAt: timestamp,
 };
+const nativeEventSamples = nativeEventWireFixtures();
+
+const projectChatFixtures = projectChatWireFixtures(timestamp);
+const ambiguousOsChatTargets =
+  projectChatFixtures.encryptedChatCreateSchema.filter(
+    (input) => input.cantripOsBindingId && (input.worktreeId || input.target),
+  );
+projectChatFixtures.encryptedChatCreateSchema =
+  projectChatFixtures.encryptedChatCreateSchema.filter(
+    (input) => !ambiguousOsChatTargets.includes(input),
+  );
+export const projectChatWireCases = (name) =>
+  name === "encryptedChatCreateSchema" ? ambiguousOsChatTargets : [];
+
 export const securityFixtures = {
-  ...nativeEventWireFixtures(),
+  ...taskInputWireFixtures().samples,
+  ...chatImportWireFixtures(
+    { ...projectLabel, classification: { recordKind: "chat" } },
+    timestamp,
+  ).samples,
+  ...cantripOsWireFixtures(),
+  nativeBehaviorAttributionSchema: [
+    { version: 1, turnIds: [], captures: [], conflictingTurnKeys: [] },
+    {
+      version: 1,
+      turnIds: ["native-turn", "uncaptured"],
+      captures: [
+        {
+          threadId: "thread",
+          turnId: "native-turn",
+          isRoot: true,
+          reasoningEffort: null,
+          selection: {
+            status: "resolved",
+            workerId: "worker",
+            providerId: "provider",
+            providerAccountId: null,
+            modelId: "model",
+            routeId: "route",
+          },
+        },
+      ],
+      conflictingTurnKeys: ['["thread","native-turn"]'],
+    },
+    {
+      version: 1,
+      turnIds: ["\ud800", "😀"],
+      captures: [
+        {
+          threadId: "e\u0301",
+          turnId: "\ud800",
+          isRoot: false,
+          reasoningEffort: "low",
+          selection: {
+            status: "resolved",
+            workerId: "worker",
+            providerId: "provider",
+            providerAccountId: null,
+            modelId: "model",
+            routeId: "route",
+          },
+        },
+      ],
+      conflictingTurnKeys: [],
+    },
+  ],
+  ...nativeEventSamples,
+  cuaAgentAuthoritySchema: nativeEventSamples.cuaPreviewAuthoritySchema.map(
+    (preview) => ({
+      ...preview,
+      executionLaneId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    }),
+  ),
   ...nativeModelInventoryWireFixtures(),
   ...agentInteractionWireFixtures(),
+  ...chatCustomizationWireFixtures(),
+  ...skillSettingsWireFixtures(),
+  ...mcpSettingsWireFixtures(),
+  ...settingsOperationsWireFixtures(),
   ...nativeSettingsHttpWireFixtures(),
   chatPlanOpaqueStateSchema: [eventPlan],
+  ...turnOrchestrationWireFixtures(timestamp),
+  ...publicChatWireFixtures(timestamp),
+  ...nativeHandoffWireFixtures(timestamp),
+  ...taskWireFixtures(timestamp),
+  ...taskDashboardWireFixtures(timestamp),
+  ...taskSchedulingWireFixtures(timestamp),
+  chatPauseUpdateSchema: [{ paused: true }, { paused: false, ignored: true }],
+  chatPauseStateSchema: [{ paused: true }, { paused: false, active: null }],
+  chatPauseRuntimeStateSchema: [
+    { paused: true, active: null },
+    { paused: false, active: { threadId: "thread", turnId: "turn" } },
+    {
+      paused: true,
+      active: { threadId: "😀".repeat(250), turnId: "e\u0301".repeat(250) },
+    },
+  ],
+  taskDispatchCycleListSchema: [
+    [],
+    turnOrchestrationWireFixtures(timestamp).taskDispatchCycleSummarySchema,
+  ],
   chatAttachmentOpaqueSummarySchema: [deferredAttachment()],
   modelConfigurationSchema: [
     { modelId: null },
@@ -676,13 +803,18 @@ export const securityFixtures = {
     },
   ],
   workerServerEnvelopeSchema: workerIngressFixtures,
+  ...inferenceWireFixtures,
+  ...inferenceRecoveryWireFixtures,
   ...usageWireFixtures,
   ...policyWireFixtures,
   ...settingsWireFixtures,
   ...placementWireFixtures(projectLabel),
   ...folderWireFixtures(projectLabel),
   ...standaloneChatWireFixtures(timestamp),
+  ...projectChatFixtures,
+  ...threadSyncWireFixtures(),
   ...nativeCommandWireFixtures(timestamp),
+  ...nativeHistoryWireFixtures(timestamp),
   ...nativeSettingsWireFixtures(),
   ...settlementWireFixtures(timestamp),
   ...managedQueueWireFixtures(timestamp),
@@ -701,8 +833,62 @@ export const securityFixtures = {
   ...runWireFixtures(projectLabel.protectedLabel),
   ...worktreeWireFixtures(),
   ...provisioningWireFixtures(projectLabel),
+  ...projectAutomationWireFixtures(timestamp),
   workerRequestEnvelopeSchema: [
+    ...cantripOsSystemFixtures().cantripOsSystemWorkerCommandSchema.map(
+      (command) => ({
+        kind: "request",
+        requestId: "fixture-system-command",
+        command,
+      }),
+    ),
     ...workerCommands.commands.map((item) => item.input),
     ...commandRefinements.cases.map((item) => item.input),
   ],
 };
+
+appendEndpointProviderWireFixtures(securityFixtures);
+securityFixtures.appLiveServerMessageSchema.push(...inferenceLiveMessages);
+const agentOperations = agentOperationWireFixtures(securityFixtures);
+Object.assign(securityFixtures, agentOperations.baselines);
+Object.assign(securityFixtures, mcpCompatibleWireFixtures(securityFixtures));
+Object.assign(securityFixtures, mcpChatReadWireFixtures(securityFixtures));
+Object.assign(securityFixtures, mcpChatSendWireFixtures(securityFixtures));
+Object.assign(securityFixtures, nativeSuspensionWireFixtures());
+Object.assign(securityFixtures, nativeGoalRecoveryWireFixtures());
+Object.assign(
+  securityFixtures,
+  currentWireFixtures(securityFixtures, timestamp),
+);
+Object.assign(securityFixtures, cliWireFixtures());
+const notification = securityFixtures.clientControlRequestSchema.find(
+  (input) => input.command.kind === "notify",
+).command;
+Object.assign(securityFixtures, {
+  protectedClientNotificationSchema: [
+    {
+      operationId: notification.operationId,
+      protectedContent: notification.protectedContent,
+    },
+  ],
+  cantripMcpClientFocusProjectInputSchema: [{}],
+  cantripMcpClientFocusSurfaceInputSchema: [
+    "chat",
+    "terminal",
+    "explorer",
+    "code",
+    "browser",
+  ].map((surfaceKind) => ({
+    target: {
+      kind: "surface",
+      projectId: "project",
+      surfaceKind,
+      surfaceId: "surface",
+    },
+  })),
+  cantripMcpClientShowInteractionInputSchema: [
+    { interactionId: "interaction" },
+  ],
+});
+export const agentOperationWireCases = (name) =>
+  agentOperations.boundaries[name] ?? [];

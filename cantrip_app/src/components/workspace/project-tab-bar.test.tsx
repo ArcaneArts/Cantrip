@@ -781,6 +781,7 @@ describe("project pane tab strip", () => {
       expect(labels(menus[0]!)).toContain("Close View");
       expect(labels(menus[0]!)).toContain("Delete Resource");
       expect(labels(menus[0]!)).toContain("Pop Out");
+      expect(labels(menus[0]!)).not.toContain("Move Pane to New Window");
       for (const menu of menus) {
         await act(async () =>
           menu
@@ -792,19 +793,6 @@ describe("project pane tab strip", () => {
       expect(onPopOut).toHaveBeenCalledTimes(2);
       expect(onPopOut).toHaveBeenCalledWith(surface);
       expect(onPopOutPane).not.toHaveBeenCalled();
-      for (const menu of menus) {
-        await act(async () =>
-          menu
-            .findAllByType("button")
-            .find(
-              (item) => textContent(item).trim() === "Move Pane to New Window",
-            )!
-            .props.onClick(),
-        );
-      }
-      expect(onPopOutPane).toHaveBeenCalledTimes(2);
-      expect(onPopOutPane).toHaveBeenCalledWith(surface);
-      expect(onPopOut).toHaveBeenCalledTimes(2);
       const target = ["center", "right", "bottom"].find(
         (region) => region !== paneRegion,
       )!;

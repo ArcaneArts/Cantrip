@@ -49,6 +49,30 @@ const defaultApi: WorkerGrantApi = {
   revokeGrant: revokeEncryptionGrant,
 };
 
+/** Optional observation capability: a grant failure must not disable Chat turns. */
+export async function authorizeWorkerAlertEncryption(
+  input: Omit<Parameters<typeof authorizeWorkerEncryption>[0], "components"> & {
+    grants: readonly { component: string; keyRevision: number }[];
+  },
+): Promise<void> {
+  if (
+    input.grants.some(
+      (g) =>
+        g.component === "alert-content" && g.keyRevision === input.keyRevision,
+    )
+  )
+    return;
+  try {
+    await authorizeWorkerEncryption({
+      ...input,
+      components: ["alert-content"],
+    });
+  } catch {
+    // No plaintext fallback. An Alert tool reports a real encryption failure
+    // if the optional key cannot be provisioned; existing Chat keys stay usable.
+  }
+}
+
 export type WorkerGrantEncryptionService = Pick<
   ClientEncryptionService,
   "getSnapshot" | "componentKey"
@@ -105,6 +129,7 @@ function workerPrincipal(
 
 export async function authorizeWorkerEncryption(input: {
   api?: WorkerGrantApi;
+  approvePending?: boolean;
   assertCurrent?: () => void;
   components: WorkerEncryptionComponentScope[];
   identity: ClientEncryptionIdentity;
@@ -129,7 +154,7 @@ export async function authorizeWorkerEncryption(input: {
       "The worker has not registered an encryption key yet.",
     );
   }
-  if (principal.state === "pending") {
+  if (principal.state === "pending" && input.approvePending !== false) {
     try {
       principal = await api.approvePrincipal(principal.id, principal.revision);
     } catch {

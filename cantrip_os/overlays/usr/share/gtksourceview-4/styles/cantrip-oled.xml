@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<style-scheme id="cantrip-oled" name="Cantrip OLED" version="1.0">
+  <author>Cantrip</author>
+  <description>Black editor surface with monochrome syntax</description>
+  <style name="text" foreground="#eeeeee" background="#000000"/>
+  <style name="selection" foreground="#ffffff" background="#333333"/>
+  <style name="cursor" foreground="#ffffff"/>
+  <style name="current-line" background="#101010"/>
+  <style name="line-numbers" foreground="#888888" background="#000000"/>
+  <style name="draw-spaces" foreground="#555555"/>
+  <style name="bracket-match" foreground="#ffffff" background="#333333" bold="true"/>
+  <style name="bracket-mismatch" foreground="#ffffff" background="#555555"/>
+  <style name="search-match" foreground="#000000" background="#dddddd"/>
+  <style name="def:comment" foreground="#888888" italic="true"/>
+  <style name="def:constant" foreground="#cccccc"/>
+  <style name="def:string" foreground="#bbbbbb"/>
+  <style name="def:identifier" foreground="#eeeeee"/>
+  <style name="def:statement" foreground="#ffffff" bold="true"/>
+  <style name="def:type" foreground="#dddddd" bold="true"/>
+  <style name="def:preprocessor" foreground="#aaaaaa"/>
+  <style name="def:error" foreground="#ffffff" underline="error"/>
+</style-scheme>

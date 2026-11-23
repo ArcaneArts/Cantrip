@@ -1,5 +1,6 @@
 //! Durable approvals and requests. Ordinary calls preserve the source's
 //! statement boundaries; native events bind the same code to their transaction.
+pub mod expiry;
 mod mapping;
 mod reads;
 mod record;

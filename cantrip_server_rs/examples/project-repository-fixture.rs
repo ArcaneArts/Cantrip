@@ -5,52 +5,130 @@ use cantrip_server::{
     migrations::migrate, projects::repository::ProjectRepository, wire::Value,
 };
 use clap::Parser;
+#[path = "support/account_failover.rs"]
+mod account_failover;
 #[path = "support/agent_interactions.rs"]
 mod agent_interactions;
+#[path = "support/automation_pause.rs"]
+mod automation_pause;
 #[path = "support/browsers.rs"]
 mod browsers;
 #[path = "support/chat_console.rs"]
 mod chat_console;
 #[path = "support/chat_forks.rs"]
 mod chat_forks;
+#[path = "support/chat_hydration.rs"]
+mod chat_hydration;
+#[path = "support/chat_imports.rs"]
+mod chat_imports;
 #[path = "support/chat_messages.rs"]
 mod chat_messages;
+#[path = "support/chat_relocations.rs"]
+mod chat_relocations;
 #[path = "support/conversions.rs"]
 mod conversions;
 #[path = "support/discovery.rs"]
 mod discovery;
+#[path = "support/durable_resume.rs"]
+mod durable_resume;
 #[path = "support/execution_lane_rest.rs"]
 mod execution_lane_rest;
 #[path = "support/execution_lanes.rs"]
 mod execution_lanes;
 #[path = "support/file_documents.rs"]
 mod file_documents;
+#[path = "support/git_operations.rs"]
+mod git_operations;
+#[path = "support/identity_state.rs"]
+mod identity_state;
+#[path = "support/managed_gui_finish.rs"]
+mod managed_gui_finish;
+#[path = "support/managed_preparation.rs"]
+mod managed_preparation;
 #[path = "support/managed_queue.rs"]
 mod managed_queue;
 #[path = "support/native_commands.rs"]
 mod native_commands;
 #[path = "support/native_events.rs"]
 mod native_events;
+#[path = "support/native_handoff_service.rs"]
+mod native_handoff_service;
+#[path = "support/native_handoffs.rs"]
+mod native_handoffs;
+#[path = "support/native_history.rs"]
+mod native_history;
 #[path = "support/native_logical.rs"]
 mod native_logical;
 #[path = "support/native_settings.rs"]
 mod native_settings;
 #[path = "support/pane_layouts.rs"]
 mod pane_layouts;
+#[path = "support/project_automations.rs"]
+mod project_automations;
+#[path = "support/project_state.rs"]
+mod project_state;
 #[path = "support/project_surfaces.rs"]
 mod project_surfaces;
+#[path = "support/queue_delivery.rs"]
+mod queue_delivery;
 #[path = "support/queued_prompts.rs"]
 mod queued_prompts;
+#[path = "support/receipt_handler.rs"]
+mod receipt_handler;
+#[path = "support/recovery.rs"]
+mod recovery;
 #[path = "support/replicas.rs"]
 mod replicas;
+#[path = "support/repository_dispatch.rs"]
+mod repository_dispatch;
 #[path = "support/repository_operations.rs"]
 mod repository_operations;
+#[path = "support/resource_state.rs"]
+mod resource_state;
 #[path = "support/run_configurations.rs"]
 mod run_configurations;
+#[path = "support/runtime_quota.rs"]
+mod runtime_quota;
+#[path = "support/runtime_telemetry.rs"]
+mod runtime_telemetry;
 #[path = "support/scratch_roots.rs"]
 mod scratch_roots;
+#[path = "support/task_automatic.rs"]
+mod task_automatic;
+#[path = "support/task_background.rs"]
+mod task_background;
+#[path = "support/task_claimed.rs"]
+mod task_claimed;
+#[path = "support/task_dispatch_lease.rs"]
+mod task_dispatch_lease;
+#[path = "support/task_eligibility.rs"]
+mod task_eligibility;
+#[path = "support/task_goals.rs"]
+mod task_goals;
+#[path = "support/task_retries.rs"]
+mod task_retries;
+#[path = "support/task_scheduler.rs"]
+mod task_scheduler;
+#[path = "support/task_workers.rs"]
+mod task_workers;
+#[path = "support/tasks.rs"]
+mod tasks;
+#[path = "support/thread_changes.rs"]
+mod thread_changes;
 #[path = "support/tunnels.rs"]
 mod tunnels;
+#[path = "support/turn_behavior.rs"]
+mod turn_behavior;
+#[path = "support/turn_bootstrap.rs"]
+mod turn_bootstrap;
+#[path = "support/turn_execution.rs"]
+mod turn_execution;
+#[path = "support/turn_live.rs"]
+mod turn_live;
+#[path = "support/turn_outcomes.rs"]
+mod turn_outcomes;
+#[path = "support/turn_placement.rs"]
+mod turn_placement;
 #[path = "support/workspaces.rs"]
 mod workspaces;
 #[path = "support/worktree_coordinator.rs"]
@@ -60,6 +138,7 @@ use std::{
     io::{self, BufRead, Write},
     path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 
 #[derive(Parser)]
@@ -118,6 +197,14 @@ async fn run() -> Result<()> {
         cantrip_server::projects::placement::PlacementRepository::new(database.clone())?;
     let live = cantrip_server::live::repository::LiveRepository::new(database.clone())?;
     let chats = cantrip_server::chats::Repository::new(database.clone());
+    let dispatcher = repository_dispatch::Dispatcher {
+        database: &database,
+        repository: &repository,
+        folders: &folders,
+        placement: &placement,
+        live: &live,
+        chats: &chats,
+    };
     eprintln!("project-fixture repository ready");
     writeln!(
         output,
@@ -128,122 +215,35 @@ async fn run() -> Result<()> {
     for line in io::BufReader::new(input).lines() {
         let request: Value = serde_json::from_str(&line?)?;
         let console_trace = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let outcome: Result<Value> = async {
-            if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("console-"))
-            {
-                let result = chat_console::run(database.clone(), &request, console_trace.clone())
-                    .boxed()
-                    .await?;
-                Ok(Value::object([
-                    ("result", result),
-                    ("trace", Value::Array(console_trace.lock().unwrap().clone())),
-                ]))
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("fork-"))
-            {
-                chat_forks::run(database.clone(), &request, console_trace.clone())
-                    .boxed()
-                    .await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("message-"))
-            {
-                chat_messages::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("native-command-"))
-            {
-                native_commands::run(database.clone(), &request)
-                    .boxed()
-                    .await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("scratch-"))
-            {
-                scratch_roots::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("discovery-"))
-            {
-                discovery::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("conversion-"))
-            {
-                conversions::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("replica-"))
-            {
-                replicas::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("tunnel-"))
-            {
-                tunnels::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("browser-"))
-            {
-                browsers::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("document-"))
-            {
-                file_documents::run(database.clone(), &request)
-                    .boxed()
-                    .await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("layout-"))
-            {
-                pane_layouts::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("workspace-"))
-            {
-                workspaces::run(database.clone(), &request).boxed().await
-            } else if request["op"]
-                .as_str()
-                .is_some_and(|op| op.starts_with("project-surface-"))
-            {
-                project_surfaces::run(database.clone(), &request)
-                    .boxed()
-                    .await
-            } else {
-                repository_operations::run(
-                    &database,
-                    &request,
-                    &repository,
-                    &folders,
-                    &placement,
-                    &live,
-                    &chats,
-                )
-                .await
-            }
-        }
-        .boxed()
-        .await;
+        let clock = (request["observeOperationClock"] == true)
+            .then(|| (chrono::Utc::now().timestamp_millis(), Instant::now()));
+        let outcome = dispatcher.run(&request, console_trace.clone()).await;
+        let clock = clock.map(|(before, started)| serde_json::json!({"before":before,"after":chrono::Utc::now().timestamp_millis(),"elapsedNanoseconds":started.elapsed().as_nanos().to_string()}));
         let mut reply: Value = serde_json::from_value(
             serde_json::json!({"id":request["id"],"rejected":outcome.is_err()}),
         )?;
+        if let Some(clock) = clock {
+            reply["operationClock"] = Value::from_serialize(&clock);
+        }
         match outcome {
             Ok(value) => reply["value"] = value,
             Err(error) => {
                 reply["diagnostic"] = Value::String(error.to_string().into());
+                if error.is::<cantrip_server::task_dispatch::Conflict>() {
+                    reply["taskLeaseError"] = Value::String("stale-lease".into());
+                }
                 if error.is::<cantrip_server::agent_interactions::Conflict>() {
                     reply["interactionError"] =
                         Value::String("AgentInteractionConflictError".into());
                 }
-                if request["op"]
-                    .as_str()
-                    .is_some_and(|op| op.starts_with("native-command-lane-"))
-                    && let Some(error) =
-                        error.downcast_ref::<cantrip_server::chats::execution_lanes::LaneError>()
+                if request["op"].as_str().is_some_and(|op| {
+                    op.starts_with("native-command-lane-")
+                        || matches!(
+                            op,
+                            "native-command-gui-placement" | "native-command-gui-worktree"
+                        )
+                }) && let Some(error) =
+                    error.downcast_ref::<cantrip_server::chats::execution_lanes::LaneError>()
                 {
                     reply["laneError"] = Value::String(error.class_name().into());
                 }
@@ -261,6 +261,13 @@ async fn run() -> Result<()> {
                 {
                     reply["historyError"] = Value::String(error.code.into());
                     reply["historyStatus"] = Value::from_serialize(&error.status_code);
+                }
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::native_history::BatchRejection>()
+                {
+                    reply["historyError"] = error.rejection["code"].clone();
+                    reply["historyStatus"] = Value::from_serialize(&409);
+                    reply["rejection"] = error.rejection.clone();
                 }
                 if request["op"]
                     .as_str()
@@ -301,6 +308,14 @@ async fn run() -> Result<()> {
                         }
                         .into(),
                     );
+                }
+                if let Some(error) =
+                    error.downcast_ref::<cantrip_server::chats::relocations::Error>()
+                {
+                    reply["relocationError"] = Value::String(error.class_name().into());
+                }
+                if let Some(error) = error.downcast_ref::<cantrip_server::chats::imports::Error>() {
+                    reply["importError"] = Value::String(error.class_name().into());
                 }
                 if error.is::<cantrip_server::projects::workspaces::WorkspaceInvariant>() {
                     reply["discoveryError"] =
@@ -369,6 +384,8 @@ async fn run() -> Result<()> {
                         || op.starts_with("fork-")
                         || op.starts_with("message-")
                         || op.starts_with("native-command-")
+                        || op.starts_with("native-history-")
+                        || op.starts_with("chat-import-")
                 }) {
                     for cause in error.chain() {
                         if let Some(pg) = cause.downcast_ref::<tokio_postgres::Error>()
@@ -449,7 +466,14 @@ async fn run() -> Result<()> {
                 }
             }
         };
-        writeln!(output, "\n{}", reply.stringify())?;
+        writeln!(
+            output,
+            "\n{}",
+            reply
+                .stringify()
+                .replace('\u{2028}', "\\u2028")
+                .replace('\u{2029}', "\\u2029")
+        )?;
         output.flush()?;
     }
     database.close().await?;

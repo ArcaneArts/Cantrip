@@ -3,18 +3,21 @@ import { createInterface } from "node:readline";
 import path from "node:path";
 import { repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment, startServer } from "./process.mjs";
+import { repositoryDebugger } from "./repository-debugger.mjs";
 
 export async function repositoryFixture({
   kind,
   executable,
   root,
+  dataDirectory,
   databaseMode,
   databaseUrl,
   nodeScript = "scripts/server-rust/project-node-fixture.mjs",
   requestTimeoutMs = 15000,
+  onReplyLine,
 }) {
   const environment = {
-    ...fixtureEnvironment(path.join(root, kind)),
+    ...fixtureEnvironment(dataDirectory ?? path.join(root, kind)),
     ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
     ...(kind === "rust" && process.env.CANTRIP_FIXTURE_STACK_BYTES
       ? { CANTRIP_FIXTURE_STACK_BYTES: process.env.CANTRIP_FIXTURE_STACK_BYTES }
@@ -25,13 +28,14 @@ export async function repositoryFixture({
       process.env.CANTRIP_TEST_POSTGRES_BIN_DIR;
   let server;
   try {
-    server = await startServer(
-      kind === "node" ? process.execPath : executable,
-      kind === "node"
-        ? ["--import", "tsx", nodeScript]
-        : ["--database", databaseMode],
-      { cwd: repositoryRoot, env: environment },
-    );
+    const launch =
+      kind === "rust"
+        ? await repositoryDebugger(executable, ["--database", databaseMode])
+        : { command: process.execPath, args: ["--import", "tsx", nodeScript] };
+    server = await startServer(launch.command, launch.args, {
+      cwd: repositoryRoot,
+      env: environment,
+    });
   } catch (error) {
     error.message = `${kind}/${databaseMode}: ${error.message}`;
     throw error;
@@ -40,6 +44,7 @@ export async function repositoryFixture({
   let sequence = 0;
   const lines = createInterface({ input: server.child.stdout });
   lines.on("line", (line) => {
+    onReplyLine?.(line);
     let result;
     try {
       result = JSON.parse(line);

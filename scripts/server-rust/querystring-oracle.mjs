@@ -1,7 +1,7 @@
 // Exercise the parser actually resolved by the installed reference Fastify.
 import { createRequire } from "node:module";
 const server = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const fastify = createRequire(server.resolve("fastify"));
 const { parse } = fastify("fast-querystring");

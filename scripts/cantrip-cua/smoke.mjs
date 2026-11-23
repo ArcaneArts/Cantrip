@@ -158,7 +158,9 @@ export async function smokeCantripCua(
       "runtime capability handshake did not satisfy the smoke contract.",
     );
     const inventory = noPayload(
-      await child.request({ operation: "targets.list" }),
+      // This function admits only the fake backend. Its simulated display and
+      // Cantrip window intentionally exercise the protected-target path.
+      await child.request({ operation: "targets.list", allowCantripApp: true }),
     );
     requireResult(
       Array.isArray(inventory?.targets) &&
@@ -185,7 +187,11 @@ export async function smokeCantripCua(
         targetGeneration: target.generation,
       };
       const attached = noPayload(
-        await child.request({ operation: "target.attach", ...selected }),
+        await child.request({
+          operation: "target.attach",
+          ...selected,
+          allowCantripApp: true,
+        }),
       );
       sessionMatches(attached?.session, binding, target);
       const position = {

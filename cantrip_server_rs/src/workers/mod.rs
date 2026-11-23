@@ -1,16 +1,22 @@
 pub mod bridge;
 pub mod command_bus;
+pub(crate) use cantrip_transport::command_deadline;
+pub mod coordinated;
 pub mod credentials;
-mod frames;
+pub(crate) use cantrip_transport::frames;
+pub(crate) mod inference_failure;
 pub mod limits;
 pub mod maintenance;
-mod notifications;
-mod offline;
-pub(crate) mod output;
+pub mod management;
+pub(crate) use cantrip_transport::notifications;
+pub(crate) use cantrip_transport::offline;
+pub(crate) use cantrip_transport::output;
 pub mod repository;
 pub mod request;
+pub(crate) mod resource_revocations;
 mod rows;
 pub mod service;
+pub mod transport;
 
 use std::fmt;
 

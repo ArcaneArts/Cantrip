@@ -16,7 +16,7 @@ import { unixLifecycle } from "./postgres-lifecycle-unix.mjs";
 
 const execute = promisify(execFile);
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 const root = await mkdtemp(path.join(tmpdir(), "cantrip postgres lifecycle "));

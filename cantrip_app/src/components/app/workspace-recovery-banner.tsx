@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/error-message";
 import type { useWorkspaceConnection } from "./use-workspace-connection";
+import { WorkspaceReconnectBanner } from "./workspace-reconnect-banner";
 
 type Connection = ReturnType<typeof useWorkspaceConnection>;
 export function WorkspaceRecoveryBanner({
@@ -22,43 +23,43 @@ export function WorkspaceRecoveryBanner({
   };
 }) {
   const state = workspace.controllerState;
-  const issue =
-    workspace.error || state?.disposed
+  const connectionUnavailable = Boolean(workspace.error || state?.disposed);
+  const issue = connectionUnavailable
+    ? {
+        title: "Workspace connection unavailable",
+        error: workspace.error ?? state?.error,
+        action: "Reconnect",
+        retry: workspace.retry,
+      }
+    : state?.error
       ? {
-          title: "Workspace connection unavailable",
-          error: workspace.error ?? state?.error,
-          action: "Reconnect",
-          retry: workspace.retry,
+          title: "Workspace action could not be confirmed",
+          error: state.error,
+          action: "Retry action",
+          retry: workspace.retryCommand,
         }
-      : state?.error
+      : state?.refreshError
         ? {
-            title: "Workspace action could not be confirmed",
-            error: state.error,
-            action: "Retry action",
-            retry: workspace.retryCommand,
+            title: "Workspace updates unavailable",
+            error: state.refreshError,
+            action: "Refresh",
+            retry: workspace.refresh,
           }
-        : state?.refreshError
+        : workspace.presentation.error
           ? {
-              title: "Workspace updates unavailable",
-              error: state.refreshError,
-              action: "Refresh",
-              retry: workspace.refresh,
+              title: "Workspace labels unavailable",
+              error: workspace.presentation.error,
+              action: "Retry labels",
+              retry: workspace.retryLabels,
             }
-          : workspace.presentation.error
+          : migration?.error
             ? {
-                title: "Workspace labels unavailable",
-                error: workspace.presentation.error,
-                action: "Retry labels",
-                retry: workspace.retryLabels,
+                title: "File tab migration needs attention",
+                error: migration.error,
+                action: "Retry migration",
+                retry: migration.retry,
               }
-            : migration?.error
-              ? {
-                  title: "File tab migration needs attention",
-                  error: migration.error,
-                  action: "Retry migration",
-                  retry: migration.retry,
-                }
-              : null;
+            : null;
   if (!issue)
     return workspace.loading || transferPending ? (
       <div
@@ -70,6 +71,8 @@ export function WorkspaceRecoveryBanner({
           : "Moving views into this window…"}
       </div>
     ) : null;
+  if (connectionUnavailable)
+    return <WorkspaceReconnectBanner error={issue.error} retry={issue.retry} />;
   return (
     <div
       role="status"

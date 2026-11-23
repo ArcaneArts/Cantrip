@@ -1,3 +1,5 @@
+import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
+import { protectedTunnelContentRecordSchema } from "./tunnel-content.js";
 import { z } from "zod";
 import {
   managedSessionContextSchema,
@@ -36,6 +38,42 @@ import {
 } from "./worker-runtime-support.js";
 
 export const workerSurfaceCommandSchemas = [
+  z
+    .strictObject({
+      type: z.literal("surface.tunnel.os-prepare"),
+      mode: z.enum(["connect", "listen"]).optional(),
+      serverId: z.string().min(1).max(2_000),
+      projectId: z.string().min(1),
+      tunnelId: z.uuid(),
+      attachmentId: z.uuid(),
+      grantId: z.uuid(),
+      expiresAt: z.iso.datetime(),
+      expectedIdentity: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/)
+        .nullable(),
+      protectedRecord: protectedTunnelContentRecordSchema,
+      osExecution: cantripOsExecutionSchema,
+    })
+    .refine(
+      (command) => command.projectId === command.osExecution.scope.projectId,
+      { message: "The OS tunnel must match its canonical project source." },
+    ),
+  z
+    .strictObject({
+      type: z.literal("surface.desktop.os-prepare"),
+      serverId: z.string().min(1).max(255),
+      projectId: z.string().min(1),
+      osExecution: cantripOsExecutionSchema,
+    })
+    .superRefine((command, context) => {
+      if (command.projectId !== command.osExecution.scope.projectId)
+        context.addIssue({
+          code: "custom",
+          message: "Desktop execution must match its canonical source capture.",
+          path: ["osExecution"],
+        });
+    }),
   z.object({
     type: z.literal("permission-profiles.list"),
     cwd: z.string().min(1),
@@ -99,7 +137,10 @@ export const workerSurfaceCommandSchemas = [
       attachmentId: z.string().min(1),
       operationId: surfaceStreamWireRequestSchema.shape.operationId,
       serverId: z.string().min(1).max(255),
-      worktreePath: z.string().min(1).max(8_192),
+      worktreePath: z.union([
+        z.string().min(1).max(8_192),
+        cantripOsExecutionSchema,
+      ]),
       stateProtection: terminalPrivateStateOpaqueSchema,
       cols: z.number().int().min(1).max(1_000),
       rows: z.number().int().min(1).max(1_000),
@@ -110,6 +151,8 @@ export const workerSurfaceCommandSchemas = [
         z.object({
           type: z.literal("codex"),
           session: managedSessionContextSchema.optional(),
+          /** Task console identity is not managed input authority. */
+          taskChatId: z.string().min(1).optional(),
           subagentDefaults: managedSessionSubagentDefaultsSchema
             .nullable()
             .optional(),
@@ -168,6 +211,7 @@ export const workerSurfaceCommandSchemas = [
   z
     .object({
       type: z.literal("surface.attach"),
+      osExecution: cantripOsExecutionSchema.optional(),
       surfaceId: z.string().min(1),
       attachmentId: z.string().min(1),
       projectId: z.string().min(1),
@@ -195,6 +239,28 @@ export const workerSurfaceCommandSchemas = [
     })
     .strict()
     .superRefine((command, context) => {
+      const source =
+        command.configuration.kind === "desktop"
+          ? command.configuration.osSource
+          : undefined;
+      const scope = command.osExecution?.scope;
+      if (
+        Boolean(source) !== Boolean(scope) ||
+        (source && !source.desktopGeneration) ||
+        (source &&
+          scope &&
+          (scope.projectId !== command.projectId ||
+            scope.bindingId !== source.bindingId ||
+            scope.worktreeId !== source.worktreeId ||
+            scope.bindingGeneration !== source.bindingGeneration ||
+            scope.attachmentGeneration !== source.attachmentGeneration ||
+            scope.runtimeGeneration !== source.runtimeGeneration))
+      )
+        context.addIssue({
+          code: "custom",
+          message: "Desktop execution must match its canonical source capture.",
+          path: ["osExecution"],
+        });
       const expectedRecordKind =
         command.configuration.kind === "browser"
           ? "browser-state"

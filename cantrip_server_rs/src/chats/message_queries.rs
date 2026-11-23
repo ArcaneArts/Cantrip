@@ -2,9 +2,98 @@
 use super::{Repository, catalog, messages};
 use crate::{
     database::Row,
-    wire::{Value, coercion::truthy, value::json},
+    wire::{
+        JsString, Value,
+        coercion::truthy,
+        value::{Object, json},
+    },
 };
 use anyhow::{Context, Result};
+use postgres_types::Json;
+use std::sync::OnceLock;
+
+#[derive(Clone, Copy)]
+enum MessageColumn {
+    Text,
+    Json,
+    Sequence,
+    Boolean,
+    Timestamp,
+}
+
+struct MessageProjection {
+    select: String,
+    columns: Vec<(JsString, MessageColumn)>,
+}
+
+impl MessageProjection {
+    fn stored() -> &'static Self {
+        use MessageColumn::*;
+        const COLUMNS: &[(&str, MessageColumn)] = &[
+            ("id", Text),
+            ("chat_id", Text),
+            ("worktree_id", Text),
+            ("scratch_root_id", Text),
+            ("execution_lane_id", Text),
+            ("sequence", Sequence),
+            ("role", Text),
+            ("mode", Text),
+            ("content", Json),
+            ("protected_content", Json),
+            ("task_protected_content", Json),
+            ("attachment_ids", Json),
+            ("task_attachment_ids", Json),
+            ("model_id", Text),
+            ("model_route_id", Text),
+            ("provider_id", Text),
+            ("provider_name", Text),
+            ("provider_model_name", Text),
+            ("reasoning_effort", Text),
+            ("applied_reasoning_effort", Text),
+            ("reasoning_adjusted", Boolean),
+            ("idempotency_key", Text),
+            ("created_at", Timestamp),
+        ];
+        static PROJECTION: OnceLock<MessageProjection> = OnceLock::new();
+        PROJECTION.get_or_init(|| Self {
+            select: COLUMNS
+                .iter()
+                .map(|(name, kind)| match kind {
+                    // Keep PostgreSQL's JSON spelling of historical timestamps.
+                    Timestamp => format!("to_jsonb(m.{name}) #>> '{{}}'"),
+                    _ => format!("m.{name}"),
+                })
+                .collect::<Vec<_>>()
+                .join(","),
+            columns: COLUMNS
+                .iter()
+                .map(|&(name, kind)| (name.into(), kind))
+                .collect(),
+        })
+    }
+
+    fn decode(&self, row: &Row) -> Result<Value> {
+        let mut message = Object::with_capacity(self.columns.len());
+        for (index, (name, column)) in self.columns.iter().enumerate() {
+            let value = match column {
+                MessageColumn::Text | MessageColumn::Timestamp => row
+                    .get::<Option<&str>>(index)?
+                    .map_or(Value::Null, |text| Value::String(text.into())),
+                MessageColumn::Json => row
+                    .get::<Option<Json<Value>>>(index)?
+                    .map_or(Value::Null, |json| json.0),
+                MessageColumn::Sequence => row
+                    .get::<Option<i64>>(index)?
+                    .map_or(Value::Null, |sequence| Value::Number(sequence as f64)),
+                MessageColumn::Boolean => row
+                    .get::<Option<bool>>(index)?
+                    .map_or(Value::Null, Value::Bool),
+            };
+            message.insert(name.clone(), value);
+        }
+        Ok(Value::Object(message))
+    }
+}
 
 #[derive(Clone, Copy)]
 pub enum MessageKind {
@@ -28,8 +117,9 @@ fn checked(result: Result<Vec<Row>>, params: &[&str]) -> Result<Vec<Row>> {
     result.map_err(|cause| catalog::statement_failure(cause, params))
 }
 fn mapped(rows: Vec<Row>, kind: MessageKind) -> Result<Vec<Value>> {
+    let projection = MessageProjection::stored();
     rows.iter()
-        .map(|row| kind.map(&catalog::raw(row)?))
+        .map(|row| kind.map(&projection.decode(row)?))
         .collect()
 }
 impl Repository {
@@ -38,6 +128,16 @@ impl Repository {
         owner: &str,
         chat: &str,
         kind: MessageKind,
+    ) -> Result<Vec<Value>> {
+        self.list_messages_with_query_context(owner, chat, kind, None)
+            .await
+    }
+    pub(crate) async fn list_messages_with_query_context(
+        &self,
+        owner: &str,
+        chat: &str,
+        kind: MessageKind,
+        context: Option<(&str, &[Value])>,
     ) -> Result<Vec<Value>> {
         // Legacy/plain and Task reads authorize through the project. Protected
         // Agent reads instead authorize on the Chat, including standalone rows.
@@ -55,16 +155,16 @@ impl Repository {
                 "p.owner_id=$1 AND c.experience='agent'",
             ),
         };
+        let columns = &MessageProjection::stored().select;
         let sql = format!(
-            "SELECT to_jsonb(m)::text FROM chat_messages m INNER JOIN chats c ON c.id=m.chat_id {joins} WHERE {filter} AND m.chat_id=$2 ORDER BY m.sequence ASC"
+            "SELECT {columns} FROM chat_messages m INNER JOIN chats c ON c.id=m.chat_id {joins} WHERE {filter} AND m.chat_id=$2 ORDER BY m.sequence ASC"
         );
-        mapped(
-            checked(
-                self.database.query(&sql, &[&owner, &chat]).await,
-                &[owner, chat],
-            )?,
-            kind,
-        )
+        let result = self.database.query(&sql, &[&owner, &chat]).await;
+        let rows = match context {
+            Some((sql, params)) => crate::database::query_error::context(result, sql, params)?,
+            None => checked(result, &[owner, chat])?,
+        };
+        mapped(rows, kind)
     }
 
     pub async fn latest_encrypted_user_message(
@@ -111,6 +211,26 @@ impl Repository {
         task: bool,
         query: &Value,
     ) -> Result<Value> {
+        self.opaque_message_page_inner(owner, chat, task, query, false)
+            .await
+    }
+    pub(crate) async fn opaque_message_page_for_mcp(
+        &self,
+        owner: &str,
+        chat: &str,
+        query: &Value,
+    ) -> Result<Value> {
+        self.opaque_message_page_inner(owner, chat, false, query, true)
+            .await
+    }
+    async fn opaque_message_page_inner(
+        &self,
+        owner: &str,
+        chat: &str,
+        task: bool,
+        query: &Value,
+        mcp: bool,
+    ) -> Result<Value> {
         let experience = if task { "task" } else { "agent" };
         let column = if task {
             "task_protected_content"
@@ -124,19 +244,25 @@ impl Repository {
             let boundary = query["beforeSequence"]
                 .as_i64()
                 .context("Message page cursor")?;
-            checked(self.database.query(&format!("SELECT m.role,m.sequence {base} AND m.sequence<$4 ORDER BY m.sequence DESC LIMIT 501"),&[&owner,&chat,&experience,&boundary]).await,&[owner,chat,experience,&boundary.to_string()])?
+            let result=self.database.query(&format!("SELECT m.role,m.sequence {base} AND m.sequence<$4 ORDER BY m.sequence DESC LIMIT 501"),&[&owner,&chat,&experience,&boundary]).await;
+            if mcp {
+                super::mcp_read_queries::headers(result, owner, chat, Some(boundary))?
+            } else {
+                checked(result, &[owner, chat, experience, &boundary.to_string()])?
+            }
         } else {
-            checked(
-                self.database
-                    .query(
-                        &format!(
-                            "SELECT m.role,m.sequence {base} ORDER BY m.sequence DESC LIMIT 501"
-                        ),
-                        &[&owner, &chat, &experience],
-                    )
-                    .await,
-                &[owner, chat, experience],
-            )?
+            let result = self
+                .database
+                .query(
+                    &format!("SELECT m.role,m.sequence {base} ORDER BY m.sequence DESC LIMIT 501"),
+                    &[&owner, &chat, &experience],
+                )
+                .await;
+            if mcp {
+                super::mcp_read_queries::headers(result, owner, chat, None)?
+            } else {
+                checked(result, &[owner, chat, experience])?
+            }
         };
         if rows.is_empty() {
             return Ok(
@@ -167,11 +293,35 @@ impl Repository {
             .take(selected)
             .map(|(_, sequence)| *sequence)
             .collect::<Vec<_>>();
-        let rows=checked(self.database.query(&format!("SELECT to_jsonb(m)::text {base} AND m.sequence=ANY($4) ORDER BY m.sequence ASC"),&[&owner,&chat,&experience,&sequences]).await,&[owner,chat,experience])?;
+        let columns = &MessageProjection::stored().select;
+        let result = self
+            .database
+            .query(
+                &format!("SELECT {columns} {base} AND m.sequence=ANY($4) ORDER BY m.sequence ASC"),
+                &[&owner, &chat, &experience, &sequences],
+            )
+            .await;
+        let rows = if mcp {
+            super::mcp_read_queries::rows(result, owner, chat, &sequences)?
+        } else {
+            checked(result, &[owner, chat, experience])?
+        };
         let oldest = sequences.last().copied();
         let has_more = headers.len() > selected;
-        Ok(
-            json!({"messages":mapped(rows,if task{MessageKind::Task}else{MessageKind::Encrypted})?,"page":json!({"hasMore":has_more,"nextBeforeSequence":if has_more{oldest}else{None},"oldestSequence":oldest,"newestSequence":headers[0].1,"startsAtUserTurn":starts})}),
-        )
+        let kind = if task {
+            MessageKind::Task
+        } else {
+            MessageKind::Encrypted
+        };
+        Ok(Value::object([
+            (
+                "messages",
+                Value::Array(mapped(rows, kind)?).into_json_round_trip(),
+            ),
+            (
+                "page",
+                json!({"hasMore":has_more,"nextBeforeSequence":if has_more{oldest}else{None},"oldestSequence":oldest,"newestSequence":headers[0].1,"startsAtUserTurn":starts}),
+            ),
+        ]))
     }
 }

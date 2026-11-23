@@ -1,0 +1,987 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "2ac9a08d45a54e9a799bdfd65bb259ef9238b625",
+  "platform": "darwin-arm64",
+  "productionRustChanges": false,
+  "actualBrowserRendering": false,
+  "scope": "Actual usage repository operations and production Rust/reference HTTP comparisons; complete canonical accounting and browser/surface/tunnel rows, exact process/store reopen, real public bandwidth accounting/tenant isolation, controlled browser worker facts and existing sibling SQL cleanup failure.",
+  "counts": {
+    "pairedRepositoryScenarios": 165,
+    "pairedAccountingStages": 195,
+    "pairedHttpCaseObservations": 504,
+    "browserCanonicalStages": 36,
+    "rawStoreReopenComparisons": 42,
+    "receivedBrowserConfigureCommands": 36,
+    "browserLiveEvents": 612,
+    "tracedRequests": 1115,
+    "newDurableTables": 6,
+    "newWorkerCommands": 1,
+    "newLiveResources": 0
+  },
+  "reports": [
+    {
+      "family": "accounting",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-persisted-resources/accounting-pglite-v1.json",
+      "sha256": "ee0e9d24c9d7d60c64a9f0849a754825fdce1fe1e71ef8948e13f379513e388d"
+    },
+    {
+      "family": "browser",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+      "sha256": "7bd6cb67f8aa3779ad3a3b2ec306ff8806e6fb7f97fcac3902095de4f0908011"
+    },
+    {
+      "family": "usage-http",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-persisted-resources/usage-http-pglite-v1.json",
+      "sha256": "117cd9bc528cb2905aa6cf5dcf19d71260a2c305940b7def9db1ad89e4f66887"
+    },
+    {
+      "family": "usage-accounts",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-persisted-resources/usage-accounts-pglite-v1.json",
+      "sha256": "da67cf63267bbe7ecdf7927f9512df6dba4c3d54acf892739647b330cd4351a3"
+    },
+    {
+      "family": "accounting",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-persisted-resources/accounting-bundled-postgres-v1.json",
+      "sha256": "844b58f82b3f8d6e5cbaeca24604e0ab143446591aff45a2b1103550e94386d6"
+    },
+    {
+      "family": "browser",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+      "sha256": "d14294d018bca59364800e35e72ee9b7d9e51a9505ded6c1e1f2e55620406b82"
+    },
+    {
+      "family": "usage-http",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-persisted-resources/usage-http-bundled-postgres-v1.json",
+      "sha256": "087e5653abd28aedfeaaf772b7dc8b1c4188c050fc251a00d129c75a2138dfee"
+    },
+    {
+      "family": "usage-accounts",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-persisted-resources/usage-accounts-bundled-postgres-v1.json",
+      "sha256": "ca7fdd7b4e9603a8aa60deb49758fa649de126f275ed8862f6250aa55ba72642"
+    },
+    {
+      "family": "accounting",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-persisted-resources/accounting-postgres-v1.json",
+      "sha256": "e456a3bba1da4c0a8f0ce3dae32984ba4a080ac3508e4789e431a3cb3eac2795"
+    },
+    {
+      "family": "browser",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+      "sha256": "afed53a6a3889739e1382123338cb8c75e06a4fe7e09f22a07319e07515c5521"
+    },
+    {
+      "family": "usage-http",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-persisted-resources/usage-http-postgres-v1.json",
+      "sha256": "148a5f61c0f2660a077b20282a36c4b46cd7b821eba7ddae1cd4fe699eeb5e42"
+    },
+    {
+      "family": "usage-accounts",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-persisted-resources/usage-accounts-postgres-v1.json",
+      "sha256": "5737b00c8798bda0189180da8975d610654a11a2861dd90f2e48c1302944a4e2"
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-persisted-resources/browser-pglite-v2.requests.json",
+      "sha256": "ea1a39872ca0b6fc74ffe2c904790591f2a5117b7be04b1378cb13bfdb93a324",
+      "requests": 264
+    },
+    {
+      "path": ".qa/rust-persisted-resources/usage-http-pglite-v1.requests.json",
+      "sha256": "1fcc2499a9d9cf5d49d696b058752abdb043afe92cabbb9ed32325387f0a3f5a",
+      "requests": 68
+    },
+    {
+      "path": ".qa/rust-persisted-resources/usage-accounts-pglite-v1.requests.json",
+      "sha256": "71444ec3f6bb64fc701bf193b736d95db24e081882a465cb516b3313416d6f49",
+      "requests": 36
+    },
+    {
+      "path": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.requests.json",
+      "sha256": "988af9180e87940096173125271f03d778cb8cd26476c3927ea8036339580338",
+      "requests": 264
+    },
+    {
+      "path": ".qa/rust-persisted-resources/usage-http-bundled-postgres-v1.requests.json",
+      "sha256": "d12a435b4f55cc8eb9099a0652526bf8e96e585874d814629ced06c2f63c34c2",
+      "requests": 68
+    },
+    {
+      "path": ".qa/rust-persisted-resources/usage-accounts-bundled-postgres-v1.requests.json",
+      "sha256": "78dd092e0dd4498085558171c1cd42685d7ab5c6c3913c96810d8b0fc19a242b",
+      "requests": 38
+    },
+    {
+      "path": ".qa/rust-persisted-resources/browser-postgres-v2.requests.json",
+      "sha256": "39111259caeaa5e976d0e5e4399d85a6dd11da93835cb14aa14ae047303f7aa4",
+      "requests": 270
+    },
+    {
+      "path": ".qa/rust-persisted-resources/usage-http-postgres-v1.requests.json",
+      "sha256": "78d4d94e8ff296ce3e242570bcd315784d5a2762c3eddd6ace4fc4e478cefddd",
+      "requests": 68
+    },
+    {
+      "path": ".qa/rust-persisted-resources/usage-accounts-postgres-v1.requests.json",
+      "sha256": "3fd33e30810ac321f3de59ea873a3643cc7e78927f14774c312ab7473bc6e773",
+      "requests": 39
+    }
+  ],
+  "workerCommandMappings": [
+    {
+      "command": "surface.configure",
+      "implementation": "cantrip_server_rs/src/browsers/runtime.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/0/commands",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/1/commands",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/0/commands",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/1/commands",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/0/commands",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/1/commands",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/commands",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/commands",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/commands",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/commands",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/commands",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/commands",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/commands",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/commands",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/commands",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/commands",
+            "indexes": [0, 1]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/commands",
+            "indexes": [0, 1]
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/commands",
+            "indexes": [0, 1]
+          }
+        }
+      ]
+    }
+  ],
+  "durableTableMappings": [
+    {
+      "tableName": "account_bandwidth_flushes",
+      "exportName": "accountBandwidthFlushes",
+      "field": "receipts",
+      "implementation": "cantrip_server_rs/src/usage/repository.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-pglite-v1.json",
+            "pointer": "/stages/64/values/0/receipts",
+            "beforeReopen": "/stages/63/values/0/receipts"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-pglite-v1.json",
+            "pointer": "/stages/64/values/1/receipts",
+            "beforeReopen": "/stages/63/values/1/receipts"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-bundled-postgres-v1.json",
+            "pointer": "/stages/64/values/0/receipts",
+            "beforeReopen": "/stages/63/values/0/receipts"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-bundled-postgres-v1.json",
+            "pointer": "/stages/64/values/1/receipts",
+            "beforeReopen": "/stages/63/values/1/receipts"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-postgres-v1.json",
+            "pointer": "/stages/64/values/0/receipts",
+            "beforeReopen": "/stages/63/values/0/receipts"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-postgres-v1.json",
+            "pointer": "/stages/64/values/1/receipts",
+            "beforeReopen": "/stages/63/values/1/receipts"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "account_storage_reconciliation_leases",
+      "exportName": "accountStorageReconciliationLeases",
+      "field": "leases",
+      "implementation": "cantrip_server_rs/src/usage/repository.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-pglite-v1.json",
+            "pointer": "/stages/64/values/0/leases",
+            "beforeReopen": "/stages/63/values/0/leases"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-pglite-v1.json",
+            "pointer": "/stages/64/values/1/leases",
+            "beforeReopen": "/stages/63/values/1/leases"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-bundled-postgres-v1.json",
+            "pointer": "/stages/64/values/0/leases",
+            "beforeReopen": "/stages/63/values/0/leases"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-bundled-postgres-v1.json",
+            "pointer": "/stages/64/values/1/leases",
+            "beforeReopen": "/stages/63/values/1/leases"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-postgres-v1.json",
+            "pointer": "/stages/64/values/0/leases",
+            "beforeReopen": "/stages/63/values/0/leases"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-postgres-v1.json",
+            "pointer": "/stages/64/values/1/leases",
+            "beforeReopen": "/stages/63/values/1/leases"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "account_storage_usage_current",
+      "exportName": "accountStorageUsageCurrent",
+      "field": "current",
+      "implementation": "cantrip_server_rs/src/usage/repository.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-pglite-v1.json",
+            "pointer": "/stages/64/values/0/current",
+            "beforeReopen": "/stages/63/values/0/current"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-pglite-v1.json",
+            "pointer": "/stages/64/values/1/current",
+            "beforeReopen": "/stages/63/values/1/current"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-bundled-postgres-v1.json",
+            "pointer": "/stages/64/values/0/current",
+            "beforeReopen": "/stages/63/values/0/current"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-bundled-postgres-v1.json",
+            "pointer": "/stages/64/values/1/current",
+            "beforeReopen": "/stages/63/values/1/current"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-postgres-v1.json",
+            "pointer": "/stages/64/values/0/current",
+            "beforeReopen": "/stages/63/values/0/current"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-postgres-v1.json",
+            "pointer": "/stages/64/values/1/current",
+            "beforeReopen": "/stages/63/values/1/current"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "account_storage_usage_snapshots",
+      "exportName": "accountStorageUsageSnapshots",
+      "field": "snapshots",
+      "implementation": "cantrip_server_rs/src/usage/repository.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-pglite-v1.json",
+            "pointer": "/stages/64/values/0/snapshots",
+            "beforeReopen": "/stages/63/values/0/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-pglite-v1.json",
+            "pointer": "/stages/64/values/1/snapshots",
+            "beforeReopen": "/stages/63/values/1/snapshots"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-bundled-postgres-v1.json",
+            "pointer": "/stages/64/values/0/snapshots",
+            "beforeReopen": "/stages/63/values/0/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-bundled-postgres-v1.json",
+            "pointer": "/stages/64/values/1/snapshots",
+            "beforeReopen": "/stages/63/values/1/snapshots"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "node": {
+            "report": ".qa/rust-persisted-resources/accounting-postgres-v1.json",
+            "pointer": "/stages/64/values/0/snapshots",
+            "beforeReopen": "/stages/63/values/0/snapshots"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/accounting-postgres-v1.json",
+            "pointer": "/stages/64/values/1/snapshots",
+            "beforeReopen": "/stages/63/values/1/snapshots"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "browsers",
+      "exportName": "browsers",
+      "field": "browsers",
+      "implementation": "cantrip_server_rs/src/browsers/mod.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/0/rawStates/0/value/browsers",
+            "reopened": "/profiles/0/runtimes/0/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/0/runtimes/0/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/0/runtimes/0/rawStates/1/reopened/browsers"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/1/rawStates/0/value/browsers",
+            "reopened": "/profiles/0/runtimes/1/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/0/runtimes/1/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/0/runtimes/1/rawStates/1/reopened/browsers"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/0/rawStates/0/value/browsers",
+            "reopened": "/profiles/1/runtimes/0/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/1/runtimes/0/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/1/runtimes/0/rawStates/1/reopened/browsers"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/1/rawStates/0/value/browsers",
+            "reopened": "/profiles/1/runtimes/1/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/1/runtimes/1/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/1/runtimes/1/rawStates/1/reopened/browsers"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/0/rawStates/0/value/browsers",
+            "reopened": "/profiles/2/runtimes/0/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/2/runtimes/0/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/2/runtimes/0/rawStates/1/reopened/browsers"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/1/rawStates/0/value/browsers",
+            "reopened": "/profiles/2/runtimes/1/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/2/runtimes/1/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/2/runtimes/1/rawStates/1/reopened/browsers"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/rawStates/0/value/browsers",
+            "reopened": "/profiles/0/runtimes/0/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/0/runtimes/0/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/0/runtimes/0/rawStates/1/reopened/browsers"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/rawStates/0/value/browsers",
+            "reopened": "/profiles/0/runtimes/1/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/0/runtimes/1/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/0/runtimes/1/rawStates/1/reopened/browsers"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/rawStates/0/value/browsers",
+            "reopened": "/profiles/1/runtimes/0/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/1/runtimes/0/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/1/runtimes/0/rawStates/1/reopened/browsers"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/rawStates/0/value/browsers",
+            "reopened": "/profiles/1/runtimes/1/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/1/runtimes/1/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/1/runtimes/1/rawStates/1/reopened/browsers"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/rawStates/0/value/browsers",
+            "reopened": "/profiles/2/runtimes/0/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/2/runtimes/0/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/2/runtimes/0/rawStates/1/reopened/browsers"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/rawStates/0/value/browsers",
+            "reopened": "/profiles/2/runtimes/1/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/2/runtimes/1/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/2/runtimes/1/rawStates/1/reopened/browsers"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/rawStates/0/value/browsers",
+            "reopened": "/profiles/0/runtimes/0/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/0/runtimes/0/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/0/runtimes/0/rawStates/1/reopened/browsers"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/rawStates/0/value/browsers",
+            "reopened": "/profiles/0/runtimes/1/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/0/runtimes/1/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/0/runtimes/1/rawStates/1/reopened/browsers"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/rawStates/0/value/browsers",
+            "reopened": "/profiles/1/runtimes/0/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/1/runtimes/0/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/1/runtimes/0/rawStates/1/reopened/browsers"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/rawStates/0/value/browsers",
+            "reopened": "/profiles/1/runtimes/1/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/1/runtimes/1/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/1/runtimes/1/rawStates/1/reopened/browsers"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/rawStates/0/value/browsers",
+            "reopened": "/profiles/2/runtimes/0/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/2/runtimes/0/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/2/runtimes/0/rawStates/1/reopened/browsers"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/rawStates/0/value/browsers",
+            "reopened": "/profiles/2/runtimes/1/rawStates/0/reopened/browsers",
+            "afterDeletion": "/profiles/2/runtimes/1/rawStates/1/value/browsers",
+            "afterDeletionReopened": "/profiles/2/runtimes/1/rawStates/1/reopened/browsers"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "remote_surfaces",
+      "exportName": "remoteSurfaces",
+      "field": "surfaces",
+      "implementation": "cantrip_server_rs/src/browsers/mod.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/0/rawStates/0/value/surfaces",
+            "reopened": "/profiles/0/runtimes/0/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/0/runtimes/0/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/0/runtimes/0/rawStates/1/reopened/surfaces"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/1/rawStates/0/value/surfaces",
+            "reopened": "/profiles/0/runtimes/1/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/0/runtimes/1/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/0/runtimes/1/rawStates/1/reopened/surfaces"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/0/rawStates/0/value/surfaces",
+            "reopened": "/profiles/1/runtimes/0/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/1/runtimes/0/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/1/runtimes/0/rawStates/1/reopened/surfaces"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/1/rawStates/0/value/surfaces",
+            "reopened": "/profiles/1/runtimes/1/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/1/runtimes/1/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/1/runtimes/1/rawStates/1/reopened/surfaces"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/0/rawStates/0/value/surfaces",
+            "reopened": "/profiles/2/runtimes/0/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/2/runtimes/0/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/2/runtimes/0/rawStates/1/reopened/surfaces"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/1/rawStates/0/value/surfaces",
+            "reopened": "/profiles/2/runtimes/1/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/2/runtimes/1/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/2/runtimes/1/rawStates/1/reopened/surfaces"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/rawStates/0/value/surfaces",
+            "reopened": "/profiles/0/runtimes/0/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/0/runtimes/0/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/0/runtimes/0/rawStates/1/reopened/surfaces"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/rawStates/0/value/surfaces",
+            "reopened": "/profiles/0/runtimes/1/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/0/runtimes/1/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/0/runtimes/1/rawStates/1/reopened/surfaces"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/rawStates/0/value/surfaces",
+            "reopened": "/profiles/1/runtimes/0/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/1/runtimes/0/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/1/runtimes/0/rawStates/1/reopened/surfaces"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/rawStates/0/value/surfaces",
+            "reopened": "/profiles/1/runtimes/1/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/1/runtimes/1/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/1/runtimes/1/rawStates/1/reopened/surfaces"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/rawStates/0/value/surfaces",
+            "reopened": "/profiles/2/runtimes/0/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/2/runtimes/0/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/2/runtimes/0/rawStates/1/reopened/surfaces"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/rawStates/0/value/surfaces",
+            "reopened": "/profiles/2/runtimes/1/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/2/runtimes/1/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/2/runtimes/1/rawStates/1/reopened/surfaces"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/rawStates/0/value/surfaces",
+            "reopened": "/profiles/0/runtimes/0/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/0/runtimes/0/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/0/runtimes/0/rawStates/1/reopened/surfaces"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/rawStates/0/value/surfaces",
+            "reopened": "/profiles/0/runtimes/1/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/0/runtimes/1/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/0/runtimes/1/rawStates/1/reopened/surfaces"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/rawStates/0/value/surfaces",
+            "reopened": "/profiles/1/runtimes/0/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/1/runtimes/0/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/1/runtimes/0/rawStates/1/reopened/surfaces"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/rawStates/0/value/surfaces",
+            "reopened": "/profiles/1/runtimes/1/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/1/runtimes/1/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/1/runtimes/1/rawStates/1/reopened/surfaces"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/rawStates/0/value/surfaces",
+            "reopened": "/profiles/2/runtimes/0/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/2/runtimes/0/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/2/runtimes/0/rawStates/1/reopened/surfaces"
+          },
+          "rust": {
+            "report": ".qa/rust-persisted-resources/browser-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/rawStates/0/value/surfaces",
+            "reopened": "/profiles/2/runtimes/1/rawStates/0/reopened/surfaces",
+            "afterDeletion": "/profiles/2/runtimes/1/rawStates/1/value/surfaces",
+            "afterDeletionReopened": "/profiles/2/runtimes/1/rawStates/1/reopened/surfaces"
+          }
+        }
+      ]
+    }
+  ],
+  "sourceSha256": {
+    "scripts/server-rust/stored-state-clocks.mjs": "749cd35e49695a634d4b1eeacd336af5f32d8ebc420322b9d370e0c29da03a0e",
+    "scripts/server-rust/usage-repository-compatibility.mjs": "c5f152729554aa6d5f744ecaa3a6c9213368b53d7f0f07635f55d7373e4f559d",
+    "scripts/server-rust/usage-http-compatibility.mjs": "6856dcd41e0995a92155e8f3ddb7f8845a3cef450df30e6d6b799440336b1926",
+    "scripts/server-rust/usage-account-compatibility.mjs": "1ae050a0e58b878752cd2c06a9f811f4f2b787a6537e681e368cd95288bbba40",
+    "scripts/server-rust/browser-http-compatibility.mjs": "bd2900dcb83ef8469bbfecd64c016803b427deac95d0aa85b347a82b2f15f9aa",
+    "scripts/server-rust/browser-cleanup-failure.mjs": "b8c1e42d5cb0164349e1e44715febc33456e364c30bb2951ce325606abbbc762",
+    "scripts/server-rust/usage-guest-storage.mjs": "0707c2864cecb45ef1d441a55440ce893ed472573407e3af45711bfbb0a17873"
+  },
+  "frozenExecutables": {
+    "baseCommit": "2ac9a08d45a54e9a799bdfd65bb259ef9238b625",
+    "executables": [
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-persisted-resource-contracts/Cantrip/.qa/rust-persisted-resources/helpers-v1/cantrip-server",
+        "bytes": 179418224,
+        "sha256": "7d04998b299624f08ac4de554dabea0e7e2b83f8cc641afede7ccb223a693144"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-persisted-resource-contracts/Cantrip/.qa/rust-persisted-resources/helpers-v1/http-sql-fixture",
+        "bytes": 179667056,
+        "sha256": "c8b1c48c3780573e016313692dbf098efd23822dadf38d3862c8f9446106ba16"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-persisted-resource-contracts/Cantrip/.qa/rust-persisted-resources/helpers-v1/project-repository-fixture",
+        "bytes": 181320416,
+        "sha256": "a3592b8d7be0144db2c3fdc0f1ec1659b7b420e3a021266830c87b446c53d226"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-persisted-resource-contracts/Cantrip/.qa/rust-persisted-resources/helpers-v1/usage-repository-fixture",
+        "bytes": 176987312,
+        "sha256": "49d16fbc1ea18e8999c8a8e8dba9a03c1a723132ce3259af0e15f59a9acda63f"
+      }
+    ]
+  },
+  "localChecks": {
+    "standard": {
+      "command": ["pnpm", "check"],
+      "exitCode": 1
+    },
+    "cleanPrimaryWorkerReproduction": {
+      "command": [
+        "pnpm",
+        "--filter",
+        "@cantrip/worker",
+        "exec",
+        "vitest",
+        "run",
+        "test/app-server.test.ts",
+        "-t",
+        "retries terminal model-capacity failures on the same Codex thread|interrupts a pending model-capacity backoff"
+      ],
+      "cwd": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip",
+      "head": "2ac9a08d45a54e9a799bdfd65bb259ef9238b625",
+      "exitCode": 1,
+      "files": [
+        {
+          "path": "cantrip_worker/test/app-server.test.ts",
+          "sha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+          "primarySha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+          "identical": true
+        },
+        {
+          "path": "cantrip_worker/src/codex/app-server.ts",
+          "sha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+          "primarySha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+          "identical": true
+        }
+      ]
+    },
+    "fullFormatting": {
+      "command": ["pnpm", "format:check"],
+      "exitCode": 1,
+      "files": [
+        {
+          "path": "cantrip_app/src/lib/client-session.ts",
+          "sha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+          "primarySha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+          "identical": true
+        },
+        {
+          "path": "cantrip_os/packages/remote/root/etc/cantrip-os/remote.json",
+          "sha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+          "primarySha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+          "identical": true
+        },
+        {
+          "path": "cantrip_os/tests/active-browser.html",
+          "sha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+          "primarySha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+          "identical": true
+        },
+        {
+          "path": "cantrip_server_rs/third-party/icu_collator/README.md",
+          "sha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+          "primarySha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+          "identical": true
+        },
+        {
+          "path": "cantrip_server_rs/third-party/pglite-rs/README.md",
+          "sha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+          "primarySha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+          "identical": true
+        },
+        {
+          "path": "cantrip_worker/src/computer-use/captures.ts",
+          "sha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+          "primarySha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+          "identical": true
+        },
+        {
+          "path": "cantrip_worker/test/project-repository-stats.test.ts",
+          "sha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+          "primarySha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+          "identical": true
+        },
+        {
+          "path": "docs/BROWSER_AGENT_CURSOR_ACCEPTANCE.md",
+          "sha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+          "primarySha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+          "identical": true
+        },
+        {
+          "path": "docs/COMPUTER_USE_EFFECTS.md",
+          "sha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+          "primarySha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+          "identical": true
+        },
+        {
+          "path": "docs/REMOTE_DESKTOP_ACCEPTANCE.md",
+          "sha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+          "primarySha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+          "identical": true
+        },
+        {
+          "path": "docs/WQA-2026-10-08.md",
+          "sha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+          "primarySha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+          "identical": true
+        },
+        {
+          "path": "scripts/qa/editor-reload-error.test.mjs",
+          "sha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+          "primarySha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+          "identical": true
+        }
+      ]
+    },
+    "changedScriptFormatting": {
+      "command": [
+        "pnpm",
+        "exec",
+        "prettier",
+        "--check",
+        "scripts/server-rust/stored-state-clocks.mjs",
+        "scripts/server-rust/usage-repository-compatibility.mjs",
+        "scripts/server-rust/usage-http-compatibility.mjs",
+        "scripts/server-rust/usage-account-compatibility.mjs",
+        "scripts/server-rust/browser-http-compatibility.mjs"
+      ],
+      "exitCode": 0
+    },
+    "boundaryAudit": {
+      "command": ["pnpm", "audit:server-boundaries"],
+      "exitCode": 0
+    },
+    "diffCheck": {
+      "command": ["git", "diff", "--check"],
+      "exitCode": 0
+    },
+    "currentGeneratedContracts": {
+      "report": ".qa/rust-persisted-resources/source-drift-v1.json",
+      "matched": 17
+    }
+  },
+  "retainedFailures": [],
+  "retainedEvidenceDirectory": "rust-server-persisted-resources-delivery-20261110-v1",
+  "remaining": [
+    "These table bindings qualify complete rows within executed accounting and browser consumers, not every writer. Controlled browser worker acknowledgments do not establish native browser rendering, endpoint cryptographic execution or every remote-surface consumer.",
+    "Historical partial scopes, remaining worker-command/Live identities, broader faults/coordination and final current supported-platform/product/package acceptance remain required by the complete server-replacement goal."
+  ]
+}

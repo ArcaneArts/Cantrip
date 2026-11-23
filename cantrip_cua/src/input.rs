@@ -437,7 +437,10 @@ mod targeted_tests {
                 1,
             )
         };
-        run(&mut service, request("target.attach")).unwrap();
+        let mut attachment = request("target.attach");
+        // The explicit shared-pointer case below requires the session grant.
+        attachment["allowCantripApp"] = json!(true);
+        run(&mut service, attachment).unwrap();
         let mut movement = request("cursor.move");
         movement["position"] = json!({"x":12,"y":15});
         run(&mut service, movement).unwrap();

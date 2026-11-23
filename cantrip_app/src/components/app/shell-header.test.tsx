@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -11,6 +12,55 @@ vi.mock("./use-mouse-back", () => ({
     mouseBack.callback = callback;
   },
 }));
+
+it.each([false, true])(
+  "uses the captured Linux location without a host fallback (binding cached: %s)",
+  (cached) => {
+    const client = new QueryClient();
+    client.setQueryData(
+      ["cantrip-os-bindings", "linux-project"],
+      cached
+        ? [
+            {
+              id: "linux-binding",
+              guestPath: "/linux/worktrees/selected",
+              provisionedRuntimeGeneration: "current",
+            },
+          ]
+        : [],
+    );
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <ShellHeader
+            bindings={{
+              appMode: "ide",
+              showContentTitlebar: true,
+              renderProjectRunConfigurationControl: () => null,
+              selectedTerminal: {
+                title: "Linux terminal",
+                projectId: "linux-project",
+                cantripOsBindingId: "linux-binding",
+                cantripOsRuntimeGeneration: "previous",
+              },
+              selectedProject: {
+                name: "Project",
+                source: { displayPath: "/host/checkout" },
+              },
+            }}
+          />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    expect(markup).toContain("CantripOS");
+    expect(markup).not.toContain("/host/checkout");
+    if (cached) {
+      expect(markup).toContain("/linux/worktrees/selected");
+      expect(markup).toContain("previous runtime");
+    } else expect(markup).toContain("captured Linux target");
+    client.clear();
+  },
+);
 
 describe("file document header", () => {
   it.each([false, true])(
@@ -88,22 +138,26 @@ describe("desktop settings workspace", () => {
     mouseBack.callback?.();
     expect(close).toHaveBeenCalledExactlyOnceWith(false);
   });
-  it("returns from Overview without selecting or closing a tab", () => {
-    const setShowProjectOverview = vi.fn();
-    const header = ShellHeader({
-      bindings: {
-        appMode: "ide",
-        showProjectOverview: true,
-        setShowProjectOverview,
-        sidebarToggleVisible: true,
-      },
-    });
-    const markup = renderToStaticMarkup(header);
-    expect(markup).toContain("Back to Project");
-    expect(markup).toContain("Overview");
-    expect(markup).not.toContain("Expand sidebar");
-    header.props.children[0].props.onClick();
-    expect(setShowProjectOverview).toHaveBeenCalledExactlyOnceWith(false);
+  it("keeps the file header while Overview is open, and mouse Back closes the dialog", () => {
+    const close = vi.fn();
+    const markup = renderToStaticMarkup(
+      <TooltipProvider>
+        <ShellHeader
+          bindings={{
+            appMode: "ide",
+            showContentTitlebar: true,
+            selectedFileDocument: { path: "src/main.rs" },
+            showProjectOverview: true,
+            setShowProjectOverview: close,
+          }}
+        />
+      </TooltipProvider>,
+    );
+    expect(markup).toContain("main.rs");
+    expect(markup).not.toContain("Back to Project");
+    expect(markup).not.toContain("Overview");
+    mouseBack.callback?.();
+    expect(close).toHaveBeenCalledExactlyOnceWith(false);
   });
   it("closes project settings without changing account settings or the selected tab", () => {
     const setShowSettings = vi.fn();
@@ -154,33 +208,23 @@ describe("desktop settings workspace", () => {
   );
 });
 
-describe("project overview safe area", () => {
+describe("project overview window chrome", () => {
   it.each([
     ["ide", true],
     ["chat", true],
     ["ide", false],
     ["chat", false],
   ])(
-    "reserves the mobile safe area only in compact %s mode (%s)",
+    "does not replace the %s titlebar in compact mode=%s",
     (appMode, compactShell) => {
-      const setShowProjectOverview = vi.fn();
-      const header = ShellHeader({
-        bindings: {
-          appMode,
-          compactShell,
-          showProjectOverview: true,
-          setShowProjectOverview,
-        },
-      });
-
-      expect(
-        header.props.className.split(" ").includes("mobile-safe-top"),
-      ).toBe(compactShell);
-      expect(renderToStaticMarkup(header)).toContain(
-        appMode === "ide" ? "Back to Project" : "Back to Chat",
-      );
-      header.props.children[0].props.onClick();
-      expect(setShowProjectOverview).toHaveBeenCalledExactlyOnceWith(false);
+      const bindings = { appMode, compactShell };
+      const render = (showProjectOverview: boolean) =>
+        renderToStaticMarkup(
+          <TooltipProvider>
+            <ShellHeader bindings={{ ...bindings, showProjectOverview }} />
+          </TooltipProvider>,
+        );
+      expect(render(true)).toBe(render(false));
     },
   );
 });
@@ -250,6 +294,10 @@ function dockFocusedBindings(mainFile = false, region = "right") {
   const dock = {
     kind: "history",
     tabKey: "view:history",
+    title: "History",
+    paneId: "dock",
+    projectId: "project",
+    definition: { supportedPlacements: ["center", "right", "bottom"] },
     entity: {
       id: "history",
       title: "History",
@@ -272,6 +320,7 @@ function dockFocusedBindings(mainFile = false, region = "right") {
       capabilities: { git: true, worktrees: true },
     },
     selectedSurface: dock,
+    selectedPaneSurfaces: [dock],
     selectedProjectView: dock.entity,
     selectedTabKey: dock.tabKey,
     gitHistoryProject: { name: "Repository" },
@@ -388,11 +437,25 @@ describe("desktop main tab window title", () => {
     ])
       expect(markup).not.toContain(text);
   });
-  it("keeps a History popout's own title", () => {
-    expect(
-      windowMarkup({ ...dockFocusedBindings(), isPopout: true }),
-    ).toContain(">History<");
-  });
+  it.each([false, true])(
+    "merges a History popout's tabs and controls into one header (overlay=%s)",
+    (overlayTitlebar) => {
+      const markup = windowMarkup({
+        ...dockFocusedBindings(),
+        isPopout: true,
+        overlayTitlebar,
+        renderProjectRunConfigurationControl: () => (
+          <button>Window controls</button>
+        ),
+      });
+      expect(markup).toContain("data-popout-tab-titlebar");
+      expect(markup).toContain('role="tablist"');
+      expect(markup.match(/>History</g)).toHaveLength(1);
+      expect(markup).toContain("Window controls");
+      expect(markup).not.toContain("h-16");
+      expect(markup.includes("padding-left:5.5rem")).toBe(overlayTitlebar);
+    },
+  );
   it("keeps settings available over an empty main workspace", () => {
     const markup = windowMarkup({
       ...dockFocusedBindings(),

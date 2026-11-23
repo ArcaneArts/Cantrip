@@ -154,8 +154,7 @@ await step("build-services", "Build Cantrip services", async () => {
     ],
     "Shared service build",
   );
-  await runPnpm(["--filter", "@cantrip/server", "build"], "Server build");
-  await runPnpm(["--filter", "@cantrip/worker", "build"], "Worker build");
+  await runPnpm(["worker:rust:build"], "Rust worker build");
 });
 await step("build-desktop", "Package Cantrip desktop", async () => {
   await rm(bundleSource, { force: true, recursive: true });

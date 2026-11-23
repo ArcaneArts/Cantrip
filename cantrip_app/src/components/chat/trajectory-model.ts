@@ -257,7 +257,12 @@ export function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
       preview: true,
     }),
   );
-  return [...merged, ...previewSlices].sort(
+  // Late native correlation can move every message out of an earlier slice.
+  // That slice no longer represents a turn and has no ordering anchor.
+  return [
+    ...merged.filter((slice) => slice.messages.length > 0),
+    ...previewSlices,
+  ].sort(
     (a, b) =>
       (a.preview
         ? Math.max(...a.messages.map((message) => message.sequence))

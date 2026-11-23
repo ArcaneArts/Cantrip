@@ -9,7 +9,7 @@ import {
 } from "./native-settings-http-fixture.mjs";
 import { literal } from "./project-target-state.mjs";
 const require = createRequire(
-    new URL("../../cantrip_server/package.json", import.meta.url),
+    new URL("../../tests/reference-node-server/package.json", import.meta.url),
   ),
   postgres = require("postgres");
 async function waiting(sql) {

@@ -17,7 +17,10 @@ import {
   getClientSessionIdentitySnapshot,
   onClientSessionIdentityChanged,
 } from "@/lib/client-session";
-import { ProjectPaneTabStrip } from "@/components/workspace/project-tab-bar";
+import {
+  SelectedPaneTabStrip,
+  selectedPaneTabStripVisible,
+} from "./selected-pane-tab-strip";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 type PersistentSurfaceBindings = Readonly<Record<string, any>>;
 const NO_VISIBLE_PLACEMENTS: readonly any[] = [];
@@ -43,12 +46,6 @@ export function PersistentSurfaceLayer({
     codeAppearance,
     codeSurfaceVisible,
     compactShell,
-    closeSurfaceView,
-    keepSurfaceOpen,
-    createProjectSurface,
-    creatingSurfaceKinds,
-    deleteSurfaceResource,
-    desktopRuntime,
     dockPanePresentations,
     explorerGraphRequest,
     explorerSurfaceVisible,
@@ -68,7 +65,6 @@ export function PersistentSurfaceLayer({
     isPopout,
     newTerminal,
     onlineWorkerIds,
-    openExplorerFileWindow,
     openExplorers,
     openProjectExplorerFile,
     persistFileViewMode,
@@ -76,15 +72,11 @@ export function PersistentSurfaceLayer({
     openTerminalLinkExternally,
     ownedTerminals,
     pendingTerminalInputs,
-    selectedPaneSurfaces,
     projects,
     projectSurfaces,
     queryClient,
-    renameSurface,
-    selectTopTab,
     selectedCodeTab,
     selectedExplorer,
-    selectedPlacementContext,
     selectedProject,
     selectedProjectId,
     selectedSurface,
@@ -117,8 +109,7 @@ export function PersistentSurfaceLayer({
     !showSettings &&
     !showServerAdmin &&
     !showProjectSettings &&
-    !showArchivedStandaloneChats &&
-    !bindings.showProjectOverview;
+    !showArchivedStandaloneChats;
   const surfaceDockPanePresentations = projectContentVisible
     ? dockPanePresentations
     : dockPanePresentations
@@ -314,7 +305,6 @@ export function PersistentSurfaceLayer({
           appMode === "ide" &&
           !showImporter &&
           !showSettings &&
-          !bindings.showProjectOverview &&
           !showArchivedStandaloneChats &&
           !showServerAdmin &&
           !showProjectSettings &&
@@ -347,7 +337,6 @@ export function PersistentSurfaceLayer({
           appMode === "ide" &&
           !showImporter &&
           !showSettings &&
-          !bindings.showProjectOverview &&
           !showArchivedStandaloneChats &&
           !showServerAdmin &&
           !showProjectSettings &&
@@ -375,7 +364,6 @@ export function PersistentSurfaceLayer({
             appMode === "ide" &&
             !showImporter &&
             !showSettings &&
-            !bindings.showProjectOverview &&
             !showArchivedStandaloneChats &&
             !showServerAdmin &&
             !showProjectSettings &&
@@ -410,44 +398,8 @@ export function PersistentSurfaceLayer({
           }
         />
       </Suspense>
-      {!dockPanePresentations &&
-      appMode === "ide" &&
-      !compactShell &&
-      !showImporter &&
-      !showSettings &&
-      !bindings.showProjectOverview &&
-      !showArchivedStandaloneChats &&
-      !showServerAdmin &&
-      !showProjectSettings &&
-      !selectedPaneOwnedElsewhere &&
-      Boolean(selectedProject) ? (
-        <ProjectPaneTabStrip
-          activeTabKey={selectedTabKey ?? ""}
-          creatingKinds={creatingSurfaceKinds}
-          surfaces={selectedPaneSurfaces}
-          onCreate={(kind, target) => {
-            const paneId =
-              selectedPane?.id ?? selectedPaneSurfaces.at(-1)?.paneId;
-            if (selectedProject) {
-              createProjectSurface(
-                selectedProject.id,
-                kind,
-                paneId,
-                target,
-                paneId ? undefined : "center",
-              );
-            }
-          }}
-          onClose={closeSurfaceView}
-          onKeepOpen={keepSurfaceOpen}
-          onDelete={deleteSurfaceResource}
-          onRename={renameSurface}
-          onSelect={selectTopTab}
-          paneId={selectedPane?.id}
-          paneRegion={selectedPane?.region}
-          placement={selectedPlacementContext}
-          projectId={selectedProject.id}
-        />
+      {selectedPaneTabStripVisible(bindings) && !isPopout ? (
+        <SelectedPaneTabStrip bindings={bindings} />
       ) : null}
 
       <Suspense
@@ -630,26 +582,43 @@ export function PersistentSurfaceLayer({
           onChanged={handleExplorerChanged}
           onHeaderChange={setExplorerHeader}
           onLifecycleChange={handleExplorerLifecycleChange}
-          onOpenFile={
-            desktopRuntime
-              ? openExplorerFileWindow
-              : (explorer, entry) =>
-                  openProjectExplorerFile(
-                    explorer.projectId,
-                    explorer.worktreeId,
-                    entry.path,
-                  )
+          onOpenFile={(explorer, entry) =>
+            openProjectExplorerFile(
+              explorer.projectId,
+              explorer.worktreeId,
+              entry.path,
+              explorer.cantripOsBindingId
+                ? {
+                    cantripOsBindingId: explorer.cantripOsBindingId,
+                    cantripOsRuntimeGeneration:
+                      explorer.cantripOsRuntimeGeneration,
+                    workerId: explorer.activeWorkerId,
+                  }
+                : undefined,
+            )
           }
           onOpenGraphFile={(explorer, path) =>
             openProjectExplorerFile(
               explorer.projectId,
               explorer.worktreeId,
               path,
+              explorer.cantripOsBindingId
+                ? {
+                    cantripOsBindingId: explorer.cantripOsBindingId,
+                    cantripOsRuntimeGeneration:
+                      explorer.cantripOsRuntimeGeneration,
+                    workerId: explorer.activeWorkerId,
+                  }
+                : undefined,
             )
           }
           onRevealFolder={
             folderRevealLabel && selectedProject?.source
               ? async (explorer, entry, localFolder) => {
+                  if (explorer.cantripOsBindingId)
+                    throw new Error(
+                      "Open this Linux folder in its CantripOS workspace desktop.",
+                    );
                   const project = projects.data?.find(
                     (candidate: ProjectSummary) =>
                       candidate.id === explorer.projectId,
@@ -681,11 +650,17 @@ export function PersistentSurfaceLayer({
               directoryPath: entry.path,
               paneId: selectedSurface.paneId,
               title: `Terminal · ${entry.name}`,
-              target: {
-                kind: "worktree",
-                projectId: explorer.projectId,
-                worktreeId: explorer.worktreeId,
-              },
+              cantripOsBindingId: explorer.cantripOsBindingId,
+              cantripOsRuntimeGeneration: explorer.cantripOsRuntimeGeneration,
+              ...(explorer.cantripOsBindingId
+                ? { worktreeId: explorer.worktreeId }
+                : {
+                    target: {
+                      kind: "worktree",
+                      projectId: explorer.projectId,
+                      worktreeId: explorer.worktreeId,
+                    },
+                  }),
             });
           }}
           onlineWorkerIds={onlineWorkerIds}

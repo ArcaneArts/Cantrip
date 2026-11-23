@@ -100,11 +100,13 @@ impl SettingsRepository {
             .collect();
         // These are separate commits in the source service. A reconcile failure
         // must retain its refreshing state for the next real retry.
-        self.set_provider_catalog_sync_state(provider, &json!({"scopeKey":scope,"status":"refreshing","errorCode":null,"refreshStartedAt":now()})).await?;
+        self.set_provider_catalog_sync_state(provider, &json!({"connection":{"ownerId":owner,"connectionRevision":runtime["connectionRevision"]},"scopeKey":scope,"status":"refreshing","errorCode":null,"refreshStartedAt":now()})).await?;
         self.reconcile_provider_model_catalog(
             owner,
             provider,
             CatalogUpdate {
+                connection_revision: runtime["connectionRevision"].as_i64(),
+                preserve_missing_models: false,
                 models: models.iter().map(WireValue::from_serialize).collect(),
                 availability_scope: scope.into(),
                 available: available.clone(),
@@ -116,7 +118,7 @@ impl SettingsRepository {
             },
         )
         .await?;
-        self.set_provider_catalog_sync_state(provider, &json!({"scopeKey":scope,"status":"current","errorCode":null,"etag":format!("built-in-v{}",data["version"]),"lastSuccessAt":now()})).await?;
+        self.set_provider_catalog_sync_state(provider, &json!({"connection":{"ownerId":owner,"connectionRevision":runtime["connectionRevision"]},"scopeKey":scope,"status":"current","errorCode":null,"etag":format!("built-in-v{}",data["version"]),"lastSuccessAt":now()})).await?;
         self.get_provider_model_catalog(owner, provider, false)
             .await
     }

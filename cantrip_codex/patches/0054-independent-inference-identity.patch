@@ -1,0 +1,68 @@
+diff --git a/codex-rs/core/src/managed_inference.rs b/codex-rs/core/src/managed_inference.rs
+--- a/codex-rs/core/src/managed_inference.rs
++++ b/codex-rs/core/src/managed_inference.rs
+@@ -53,6 +53,16 @@
+         thread_id: ThreadId,
+         turn_id: String,
+         cancellation: CancellationToken,
++    ) -> CodexResult<InferenceLifetime> {
++        Self::begin_with_kind(gate, thread_id, turn_id, cancellation, false).await
++    }
++
++    async fn begin_with_kind(
++        gate: Arc<ManagedExecutionGate>,
++        thread_id: ThreadId,
++        turn_id: String,
++        cancellation: CancellationToken,
++        independent: bool,
+     ) -> CodexResult<InferenceLifetime> {
+         let turn = Arc::new(Self {
+             gate,
+@@ -67,9 +77,25 @@
+         // Own cleanup before awaiting the grant: cancellation can win after
+         // the worker grants but before Core receives that exact reply.
+         let lifetime = InferenceLifetime(turn);
+-        lifetime.0.phase("begin").await?;
++        lifetime
++            .0
++            .phase(if independent {
++                "begin-independent"
++            } else {
++                "begin"
++            })
++            .await?;
+         *lifetime.0.held.lock().await = true;
+         Ok(lifetime)
++    }
++
++    pub(crate) async fn begin_independent_turn(
++        gate: Arc<ManagedExecutionGate>,
++        thread_id: ThreadId,
++        operation: String,
++        cancellation: CancellationToken,
++    ) -> CodexResult<InferenceLifetime> {
++        Self::begin_with_kind(gate, thread_id, operation, cancellation, true).await
+     }
+ 
+     async fn phase(&self, phase: &str) -> CodexResult<()> {
+@@ -163,7 +189,7 @@
+     operation: String,
+ ) -> CodexResult<IndependentInference> {
+     Ok(IndependentInference {
+-        _lifetime: ManagedInferenceTurn::begin(
++        _lifetime: ManagedInferenceTurn::begin_independent_turn(
+             gate,
+             thread_id,
+             operation,
+diff --git a/codex-rs/core/src/compact_remote_v2.rs b/codex-rs/core/src/compact_remote_v2.rs
+--- a/codex-rs/core/src/compact_remote_v2.rs
++++ b/codex-rs/core/src/compact_remote_v2.rs
+@@ -298,7 +298,7 @@
+             // Speculative compaction can overlap its parent; it owns independent capacity.
+             let _inference_lifetime = if let Some(gate) = sess.managed_inference_gate().await {
+                 Some(
+-                    crate::managed_inference::ManagedInferenceTurn::begin(
++                    crate::managed_inference::ManagedInferenceTurn::begin_independent_turn(
+                         gate,
+                         sess.thread_id,
+                         format!("background-compaction:{}", uuid::Uuid::new_v4()),

@@ -648,6 +648,7 @@ export {
   workerEventSchema,
   workerEventEnvelopeSchema,
   workerNotificationSchema,
+  workerChatTurnOutcomeNotificationSchema,
   workerEventIsProvisional,
 } from "./worker-events.js";
 

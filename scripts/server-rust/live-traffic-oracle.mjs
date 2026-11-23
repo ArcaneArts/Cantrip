@@ -1,5 +1,5 @@
 // Development-only oracle: every result comes from the actual Node meter.
-import { LiveTrafficMeter } from "../../cantrip_server/src/account-usage/live-traffic-meter.ts";
+import { LiveTrafficMeter } from "../../tests/reference-node-server/src/account-usage/live-traffic-meter.ts";
 
 const epoch = "11111111-1111-4111-8111-111111111111";
 const otherEpoch = "22222222-2222-4222-8222-222222222222";

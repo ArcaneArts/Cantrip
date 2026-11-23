@@ -18,7 +18,6 @@ import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
-import java.security.SecureRandom;
 import java.security.interfaces.ECPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.PKCS8EncodedKeySpec;
@@ -211,16 +210,19 @@ final class CantripInstallationStorage {
             byte[] privateKey = null;
             byte[] publicKey = null;
             byte[] encrypted = null;
-            byte[] iv = new byte[12];
+            byte[] iv = null;
             try {
                 KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
                 generator.initialize(new ECGenParameterSpec("secp256r1"));
                 KeyPair pair = generator.generateKeyPair();
                 privateKey = pair.getPrivate().getEncoded();
                 publicKey = CantripHpke.publicKeyBytes((ECPublicKey) pair.getPublic());
-                new SecureRandom().nextBytes(iv);
                 Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-                cipher.init(Cipher.ENCRYPT_MODE, wrappingKeys.getOrCreate(keyAlias), new GCMParameterSpec(128, iv));
+                // Android Keystore requires the encrypting cipher to generate
+                // the IV for keys with randomized encryption enabled.
+                cipher.init(Cipher.ENCRYPT_MODE, wrappingKeys.getOrCreate(keyAlias));
+                iv = cipher.getIV();
+                if (iv == null || iv.length != 12) throw new StorageException("native-key-store-unavailable");
                 cipher.updateAAD(keyAlias.getBytes(StandardCharsets.UTF_8));
                 encrypted = cipher.doFinal(privateKey);
                 String createdAt = requestedCreatedAt == null ? Instant.now().toString() : requestedCreatedAt;

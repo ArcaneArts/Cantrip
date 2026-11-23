@@ -1,0 +1,745 @@
+// Browser SDK -> server -> full worker -> bundled Codex -> local model HTTP.
+// No worker handler, native RPC, encrypted operation or repository is replaced.
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { eventually } from "./full-worker.mjs";
+import { taskModelProvider } from "./task-model-provider.mjs";
+import { pauseTransferredTaskGoal } from "./actual-task-goal-transfer-pause.mjs";
+import { suspensionChat } from "./durable-suspension-browser.mjs";
+import { actualTaskRecovery } from "./actual-task-recovery.mjs";
+import { captureTaskRuntimeState } from "./task-runtime-snapshot.mjs";
+import { browserFixtureSql } from "./browser-fixture-sql.mjs";
+import {
+  readTaskGoalTransfer,
+  transferQueuedTaskGoal,
+} from "./actual-task-goal-provider-transfer.mjs";
+import {
+  activateRecoveredGoalLane,
+  observeSettledGoalLane,
+} from "./actual-task-goal-lane.mjs";
+
+async function verifyOutcomeOrdering(
+  readMessages,
+  reply,
+  answer,
+  file,
+  result,
+  field,
+) {
+  try {
+    await eventually(readMessages, (messages) =>
+      assert.ok(
+        messages.some((message) =>
+          message.content.some(
+            (item) =>
+              item.type === "text" &&
+              item.text === answer &&
+              item.streaming === true,
+          ),
+        ),
+      ),
+    );
+  } finally {
+    reply.release();
+  }
+  const order = await eventually(
+    () =>
+      readFile(file, "utf8").then(JSON.parse, (error) => {
+        if (error.code === "ENOENT") return undefined;
+        throw error;
+      }),
+    (observation) =>
+      assert.ok(observation, "the worker observed the HTTP outcome"),
+  );
+  result[field] = order;
+  assert.equal(order.status, 200);
+  assert.equal(order.committed, true);
+  assert.equal(order.finalEventHeld, true);
+  assert.equal(order.receiptMatchesFinalEvent, true);
+  assert.equal(order.differsFromProvisionalEvent, true);
+  assert.equal(order.replayedProvisionalEvent, true);
+  assert.equal(order.exactReplay, true);
+  assert.equal(order.changedReplayStatus, 409);
+  assertFinalAnswer(await readMessages(), order, answer);
+}
+
+function assertFinalAnswer(messages, order, answer) {
+  const saved = messages.filter((message) => message.id === order.messageId);
+  assert.equal(saved.length, 1);
+  assert.ok(
+    saved[0].content.some(
+      (item) =>
+        item.type === "text" && item.text === answer && item.streaming !== true,
+    ),
+  );
+}
+
+export async function actualTaskClient({
+  page,
+  fixture,
+  projectId,
+  workerId,
+  startWorker,
+  stopWorker,
+  result,
+  requests,
+  taskOutcomeOrder,
+  taskGoalFirstInputOrder,
+  taskGoalTransferWorkerData,
+  taskGoalAutonomousTransfer,
+  taskGoalTransferredPause,
+  taskGoalTransferFault,
+  goalLaneScenario,
+}) {
+  const model = await taskModelProvider();
+  const destination = taskGoalTransferWorkerData
+    ? await taskModelProvider()
+    : null;
+  const brief = "Private full-worker direct Task brief 🍄";
+  const answer = "Private full-worker direct Task answer 🌲";
+  try {
+    await page.evaluate(() => window.folderLive.start());
+    const worker = await startWorker();
+    const sourceModel = await page.evaluate(
+      async ({ workerId, baseUrl, nativeModel, transfer }) => {
+        const models = await import("/src/lib/api/models.ts");
+        const settings = await import("/src/lib/api/settings.ts");
+        const workers = await import("/src/lib/api/worker-wire.ts");
+        const encryption = await import("/src/lib/task-worker-encryption.ts");
+        const provider = await models.createModelProvider({
+          name: "Disposable Task provider",
+          kind: "openai-compatible",
+          baseUrl,
+          apiKey: null,
+          ...(transfer ? { maxConcurrentInference: 1 } : {}),
+        });
+        const profile = await models.createModelProfile({
+          name: "Disposable Task model",
+          routes: [
+            { providerId: provider.id, modelName: nativeModel, enabled: true },
+          ],
+        });
+        await settings.updateSettings({
+          defaultModelId: profile.id,
+          autoNameTasks: false,
+          autoNameChats: false,
+        });
+        const worker = (await workers.getWorkers()).find(
+          (worker) => worker.workerId === workerId,
+        );
+        await encryption.ensureTaskWorkerEncryption({ worker });
+        if (transfer) {
+          await (
+            await import("/src/lib/chat-worker-encryption.ts")
+          ).ensureChatWorkerEncryption({ worker });
+          await (
+            await import("/src/lib/private-label-worker-encryption.ts")
+          ).ensurePrivateLabelWorkerEncryption({ worker });
+          await (
+            await import("/src/lib/surface-private-state-worker-encryption.ts")
+          ).ensureSurfacePrivateStateWorkerEncryption({ worker });
+        }
+        return { providerId: provider.id, modelId: profile.id };
+      },
+      {
+        workerId,
+        baseUrl: model.baseUrl,
+        nativeModel: model.model,
+        transfer: Boolean(destination),
+      },
+    );
+    const created = await page.evaluate(
+      async ({ projectId, brief }) => {
+        const api = await import("/src/lib/api/tasks.ts");
+        const created = await api.createTask(
+          projectId,
+          "Private actual direct Task",
+        );
+        const task = await api.updateTaskDraft(created.chat.id, {
+          rowVersion: created.task.rowVersion,
+          briefMarkdown: brief,
+        });
+        window.folderLive.retainScope({
+          kind: "chat",
+          chatId: created.chat.id,
+        });
+        return { chat: created.chat, task };
+      },
+      { projectId, brief },
+    );
+    assert.equal(created.task.briefMarkdown, brief);
+    assert.equal(created.task.state, "draft");
+    const readChatMessages = (chatId) =>
+      page.evaluate(
+        async (chat) =>
+          (await import("/src/lib/api/chats.ts")).getMessages(chat),
+        chatId,
+      );
+    const readMessages = () => readChatMessages(created.chat.id);
+    const forceRoundOrder = taskOutcomeOrder?.kind === "round";
+    const forceGoalOrder = taskOutcomeOrder?.kind === "goal";
+    const reply = model.reply({ text: answer, hold: forceRoundOrder });
+    const admitted = await page.evaluate(
+      async ({ chatId, rowVersion }) => {
+        return (await import("/src/lib/api/tasks.ts")).startTaskDirectly(
+          chatId,
+          { rowVersion, operationId: crypto.randomUUID() },
+        );
+      },
+      { chatId: created.chat.id, rowVersion: created.task.rowVersion },
+    );
+    assert.equal(admitted.dispatch.state, "queued");
+    assert.equal(admitted.dispatch.operationKind, "direct");
+    assert.equal(admitted.state, created.task.state);
+    assert.equal(admitted.rowVersion, created.task.rowVersion);
+    if (forceRoundOrder)
+      await verifyOutcomeOrdering(
+        () => readMessages(),
+        reply,
+        answer,
+        taskOutcomeOrder.file,
+        result,
+        "taskRoundOutcomeOrder",
+      );
+    const readTask = () =>
+      page.evaluate(
+        async (chat) => (await import("/src/lib/api/tasks.ts")).getTask(chat),
+        created.chat.id,
+      );
+    const completed = await eventually(readTask, (task) =>
+      assert.equal(task.state, "complete"),
+    );
+    assert.equal(completed.briefMarkdown, brief);
+    assert.equal(completed.activeOperationId, null);
+    assert.equal(reply.entered, true);
+    assert.equal(reply.request.completed, true);
+    assert.deepEqual(model.failures, []);
+    const messages = await readMessages();
+    assert.ok(
+      JSON.stringify(messages).includes(answer),
+      "the existing browser decrypts the actual native Task response",
+    );
+    if (forceRoundOrder) {
+      assertFinalAnswer(messages, result.taskRoundOutcomeOrder, answer);
+      result.steps.push(
+        "the durable round outcome commits ahead of the final stream event and preserves the finished response after the provisional event is replayed",
+      );
+    }
+    const dashboard = await page.evaluate(
+      async (chat) =>
+        (await import("/src/lib/api/tasks.ts")).getTaskImplementationDashboard(
+          chat,
+        ),
+      created.chat.id,
+    );
+    assert.equal(dashboard.task.state, "complete");
+    assert.equal(dashboard.placement.kind, "folder");
+    assert.equal(dashboard.goal, null);
+    result.steps.push(
+      "existing browser creates and encrypts a Task, the full worker executes it through real Codex, and browser APIs decrypt its result and dashboard",
+    );
+    const planned = await page.evaluate(async (projectId) => {
+      const api = await import("/src/lib/api/tasks.ts");
+      const created = await api.createTask(
+        projectId,
+        "Private actual Goal Task",
+      );
+      const task = await api.updateTaskDraft(created.chat.id, {
+        rowVersion: created.task.rowVersion,
+        briefMarkdown: "Private full-worker planning brief 🍄",
+        planGoalEnabled: true,
+      });
+      window.folderLive.retainScope({ kind: "chat", chatId: created.chat.id });
+      return { chat: created.chat, task };
+    }, projectId);
+    const planText = "Private full-worker implementation plan 🌲";
+    model.reply({
+      text: JSON.stringify({ planMarkdown: planText, questions: [] }),
+    });
+    await page.evaluate(
+      async ({ chatId, rowVersion }) =>
+        (await import("/src/lib/api/tasks.ts")).startTaskPlanning(chatId, {
+          rowVersion,
+          operationId: crypto.randomUUID(),
+        }),
+      { chatId: planned.chat.id, rowVersion: planned.task.rowVersion },
+    );
+    const review = await eventually(
+      () =>
+        page.evaluate(
+          async (chat) => (await import("/src/lib/api/tasks.ts")).getTask(chat),
+          planned.chat.id,
+        ),
+      (task) => {
+        assert.equal(task.state, "review");
+        assert.equal(task.dispatch?.state, "succeeded");
+      },
+    );
+    assert.equal(review.planMarkdown, planText);
+    assert.equal(review.planningRound, 1);
+    const objective = "Private full-worker implementation objective 🌙";
+    const finalizer = model.reply({
+      text: JSON.stringify({
+        finalPlanMarkdown: planText,
+        goalPrompt: objective,
+      }),
+      hold: Boolean(destination) && !taskGoalAutonomousTransfer,
+    });
+    const restoreSource = taskGoalTransferFault?.mode === "cancel-prepared";
+    const goalModel = restoreSource ? model : (destination ?? model);
+    const initialGoalAnswer = "Private initial Task Goal turn 🍄";
+    const implementationAnswer = "Private full-worker implementation result 🌤";
+    const queueFirstTurn = () =>
+      goalLaneScenario ||
+      destination ||
+      forceGoalOrder ||
+      taskGoalFirstInputOrder ||
+      process.argv.includes("--task-goal-autonomous")
+        ? (taskGoalAutonomousTransfer ? model : goalModel).reply({
+            text: initialGoalAnswer,
+            hold: forceGoalOrder || taskGoalAutonomousTransfer,
+          })
+        : null;
+    const queueGoalReplies = () => {
+      const pauseTool = taskGoalTransferredPause
+        ? goalModel.reply({ hold: true })
+        : null;
+      const pauseBoundary = taskGoalTransferredPause
+        ? goalModel.reply({ hold: true })
+        : null;
+      const completeGoal = goalModel.reply({
+        responseId: "task-goal-completion",
+        calls: [{ name: "update_goal", arguments: { status: "complete" } }],
+        hold: Boolean(goalLaneScenario),
+      });
+      const implementation = goalModel.reply({ text: implementationAnswer });
+      // Goal activation attempts an idle turn. The saved encrypted Task control
+      // can arrive first and make that automatic turn unnecessary.
+      goalModel.reply({
+        text: implementationAnswer,
+        onlyFor: (request) => JSON.stringify(request.input).includes(objective),
+      });
+      return { pauseTool, pauseBoundary, completeGoal, implementation };
+    };
+    let firstTurn =
+      restoreSource && !taskGoalAutonomousTransfer ? null : queueFirstTurn();
+    let goalReplies = restoreSource ? null : queueGoalReplies();
+    await page.evaluate(
+      async ({ chatId, rowVersion }) =>
+        (await import("/src/lib/api/tasks.ts")).beginTaskImplementation(
+          chatId,
+          { rowVersion, operationId: crypto.randomUUID() },
+        ),
+      { chatId: planned.chat.id, rowVersion: review.rowVersion },
+    );
+    if (destination)
+      await transferQueuedTaskGoal({
+        page,
+        projectId,
+        chatId: planned.chat.id,
+        workerId,
+        workerData: taskGoalTransferWorkerData,
+        source: model,
+        sourceModel,
+        destination,
+        heldSource: taskGoalAutonomousTransfer ? firstTurn : finalizer,
+        firstDestinationTurn: taskGoalAutonomousTransfer
+          ? (goalReplies?.pauseTool ?? goalReplies?.completeGoal)
+          : firstTurn,
+        autonomous: taskGoalAutonomousTransfer,
+        queueRestoredReplies: restoreSource
+          ? () => {
+              if (!taskGoalAutonomousTransfer) firstTurn = queueFirstTurn();
+              goalReplies = queueGoalReplies();
+              return taskGoalAutonomousTransfer
+                ? (goalReplies.pauseTool ?? goalReplies.completeGoal)
+                : firstTurn;
+            }
+          : undefined,
+        fault: taskGoalTransferFault,
+        objective,
+        result,
+      });
+    const { pauseTool, pauseBoundary, completeGoal, implementation } =
+      goalReplies;
+    if (pauseTool)
+      await pauseTransferredTaskGoal({
+        page,
+        projectId,
+        chatId: planned.chat.id,
+        model: goalModel,
+        tool: pauseTool,
+        boundary: pauseBoundary,
+        continued: completeGoal,
+        startWorker,
+        stopWorker,
+        result,
+      });
+    if (forceGoalOrder)
+      await verifyOutcomeOrdering(
+        () => readChatMessages(planned.chat.id),
+        firstTurn,
+        initialGoalAnswer,
+        taskOutcomeOrder.file,
+        result,
+        "taskGoalOutcomeOrder",
+      );
+    if (goalLaneScenario)
+      await activateRecoveredGoalLane({
+        fixture,
+        page,
+        chatId: planned.chat.id,
+        completeGoal,
+        worker,
+        workerId,
+        ...goalLaneScenario,
+        result,
+      });
+    const goalTask = await eventually(
+      () =>
+        page.evaluate(
+          async (chat) => (await import("/src/lib/api/tasks.ts")).getTask(chat),
+          planned.chat.id,
+        ),
+      (task) => assert.equal(task.state, "complete"),
+    );
+    await eventually(
+      () =>
+        page.evaluate(
+          async (project) =>
+            (await import("/src/lib/api/chats.ts")).getChats(project),
+          projectId,
+        ),
+      (chats) =>
+        assert.equal(
+          chats.find((chat) => chat.id === planned.chat.id)?.status,
+          "idle",
+        ),
+    );
+    if (goalLaneScenario)
+      await observeSettledGoalLane(fixture, planned.chat.id, result);
+    if (taskGoalFirstInputOrder) {
+      const order = JSON.parse(await readFile(taskGoalFirstInputOrder, "utf8"));
+      result.taskGoalFirstInputOrder = order;
+      assert.equal(order.authorityStatus, 200);
+      assert.equal(order.wakeScheduled, true);
+      assert.equal(order.earlyBeginBeforeReply, true);
+      assert.equal(order.earlyDenialAcknowledged, true);
+      assert.equal(order.earlyTurnFinishedBeforeFirstInput, true);
+      assert.ok(order.firstInputTurnId);
+      assert.notEqual(order.firstInputTurnId, order.earlyGoalTurnId);
+      assert.equal(order.boundFirstInputTurnId, order.firstInputTurnId);
+      assert.ok(order.laterGoalTurnId);
+      assert.notEqual(order.laterGoalTurnId, order.firstInputTurnId);
+      result.steps.push(
+        "an early native Goal begin settles before the canonical Task input and a later autonomous cycle completes",
+      );
+    }
+    assert.equal(goalTask.finalPlanMarkdown, planText);
+    assert.ok(
+      goalTask.goalPrompt.startsWith(
+        "# Cantrip Task implementation objective\n",
+      ),
+    );
+    assert.ok(goalTask.goalPrompt.endsWith(objective));
+    if (firstTurn) assert.equal(firstTurn.request?.completed, true);
+    assert.equal(implementation.request.completed, true);
+    const completionResult = implementation.request.input.input.find(
+      (item) =>
+        item.type === "function_call_output" &&
+        item.call_id === `${completeGoal.responseId}-call-0`,
+    );
+    assert.ok(completionResult, "the native Goal tool returns its result");
+    const nativeGoal = JSON.parse(completionResult.output);
+    assert.equal(
+      nativeGoal.goal?.status,
+      "complete",
+      "the actual Codex Goal tool completes the implementation Goal",
+    );
+    const { openedGoal, lookupConflicts } = await page.evaluate(
+      async (chat) => {
+        // The browser can read during native Goal settlement. Apply its
+        // retry limit to that conflict and still require the decrypted Goal.
+        const { chatGoalQueryOptions } =
+          await import("/src/lib/chat-goal-query.ts");
+        const { queryFn, retry } = chatGoalQueryOptions(chat, "idle");
+        let lookupConflicts = 0;
+        for (;;) {
+          try {
+            return { openedGoal: await queryFn(), lookupConflicts };
+          } catch (error) {
+            if (error.status !== 409 || lookupConflicts >= retry) throw error;
+            const delay = 1000 * 2 ** lookupConflicts++;
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
+      },
+      planned.chat.id,
+    );
+    result.taskGoalLookupConflicts = lookupConflicts;
+    assert.equal(openedGoal.goal.status, "complete");
+    if (pauseTool) {
+      const saved = result.transferredGoalPause;
+      const completed = await eventually(
+        () => suspensionChat(page, projectId, planned.chat.id),
+        (chat) => {
+          assert.equal(chat.nativeSuspension?.phase, "completed");
+          assert.equal(chat.nativeSuspension.resumable, false);
+          assert.deepEqual(chat.nativeSuspension.active, saved.paused.active);
+        },
+      );
+      saved.completed = completed.nativeSuspension;
+      result.steps.push(
+        "a transferred autonomous Goal pauses and resumes the same native turn after the worker restarts",
+      );
+    }
+    assert.ok(nativeGoal.goal.objective.startsWith(goalTask.goalPrompt));
+    assert.equal(openedGoal.goal.objective, nativeGoal.goal.objective);
+    assert.ok(openedGoal.goal.objective.includes(objective));
+    assert.ok(openedGoal.goal.objective.includes("implementation-plan.md"));
+    const goalDashboard = await page.evaluate(
+      async (chat) =>
+        (await import("/src/lib/api/tasks.ts")).getTaskImplementationDashboard(
+          chat,
+        ),
+      planned.chat.id,
+    );
+    assert.equal(goalDashboard.task.state, "complete");
+    assert.equal(goalDashboard.goal.status, "complete");
+    assert.equal(goalDashboard.goal.objective, openedGoal.goal.objective);
+    assert.equal(goalDashboard.placement.kind, "folder");
+    const goalMessages = await eventually(
+      () =>
+        page.evaluate(
+          async (chat) =>
+            (await import("/src/lib/api/chats.ts")).getMessages(chat),
+          planned.chat.id,
+        ),
+      (messages) => {
+        if (taskGoalTransferFault)
+          result.taskGoalTransferTranscript = messages.map((message) => {
+            const serialized = JSON.stringify(message);
+            return {
+              id: message.id,
+              role: message.role,
+              initialAnswer: serialized.includes(initialGoalAnswer),
+              destinationAnswer: serialized.includes(implementationAnswer),
+            };
+          });
+        assert.ok(JSON.stringify(messages).includes(implementationAnswer));
+      },
+    );
+    if (forceGoalOrder) {
+      assertFinalAnswer(
+        goalMessages,
+        result.taskGoalOutcomeOrder,
+        initialGoalAnswer,
+      );
+      result.steps.push(
+        "the durable Goal input outcome commits ahead of the final stream event and retains the finished answer",
+      );
+    }
+    if (firstTurn) {
+      for (const text of [initialGoalAnswer, implementationAnswer])
+        assert.equal(
+          goalMessages.filter((message) =>
+            JSON.stringify(message).includes(text),
+          ).length,
+          1,
+        );
+      result.steps.push(
+        "an autonomous continuation completes the active Task and preserves each encrypted turn exactly once",
+      );
+    }
+    assert.deepEqual(model.failures, []);
+    assert.deepEqual(destination?.failures ?? [], []);
+    result.steps.push(
+      "the existing Task APIs plan, review and finalize through real Codex; its native Goal tool completes implementation and the browser decrypts the objective and transcript",
+    );
+    await stopWorker();
+    // Worker shutdown drains late turn summaries and usage events. Capture
+    // the committed transcript before replacing its server.
+    const directBeforeRestart = await readMessages();
+    const goalBeforeRestart = await readChatMessages(planned.chat.id);
+    for (const [transcript, text] of [
+      [directBeforeRestart, answer],
+      [goalBeforeRestart, implementationAnswer],
+      ...(firstTurn ? [[goalBeforeRestart, initialGoalAnswer]] : []),
+    ])
+      assert.equal(
+        transcript.filter((message) => JSON.stringify(message).includes(text))
+          .length,
+        1,
+        "worker shutdown retains one completed response",
+      );
+    const inferenceBeforeRestart = structuredClone(
+      model.requests.filter((request) => request.method === "POST"),
+    );
+    const transferredInferenceBeforeRestart = structuredClone(
+      destination?.requests.filter((request) => request.method === "POST") ??
+        [],
+    );
+    assert.ok(
+      inferenceBeforeRestart.every((request) => request.completed),
+      "Task inference completes before restarting its server and worker",
+    );
+    result.taskInferenceBeforeRestart = {
+      postRequests: inferenceBeforeRestart.length,
+    };
+    const port = Number(new URL(fixture.server.origin).port);
+    await fixture.close();
+    await fixture.start({ port });
+    assert.equal((await readTask()).state, "complete");
+    assert.deepEqual(await readMessages(), directBeforeRestart);
+    assert.deepEqual(
+      await readChatMessages(planned.chat.id),
+      goalBeforeRestart,
+    );
+    await startWorker();
+    assert.equal((await readTask()).briefMarkdown, brief);
+    assert.deepEqual(await readMessages(), directBeforeRestart);
+    assert.deepEqual(
+      model.requests.filter((request) => request.method === "POST"),
+      inferenceBeforeRestart,
+      "restart does not repeat completed Task inference",
+    );
+    assert.deepEqual(
+      destination?.requests.filter((request) => request.method === "POST") ??
+        [],
+      transferredInferenceBeforeRestart,
+      "restart does not repeat transferred Goal inference",
+    );
+    if (taskGoalTransferFault || taskGoalAutonomousTransfer) {
+      const before = result.taskGoalProviderTransfer.latest;
+      const after = await readTaskGoalTransfer(page, planned.chat.id);
+      assert.equal(after.operationId, before.operationId);
+      assert.equal(after.phase, before.phase);
+      assert.equal(after.binding.threadId, before.binding.threadId);
+      assert.equal(after.binding.modelRouteId, before.binding.modelRouteId);
+      result.taskGoalProviderTransfer.reopened = after;
+    }
+    await page.evaluate(async (workerId) => {
+      const workers = await import("/src/lib/api/worker-wire.ts");
+      await (
+        await import("/src/lib/task-worker-encryption.ts")
+      ).ensureTaskWorkerEncryption({
+        worker: (await workers.getWorkers()).find(
+          (worker) => worker.workerId === workerId,
+        ),
+      });
+    }, workerId);
+    const retainedGoal = await page.evaluate(
+      async (chat) => (await import("/src/lib/api/chats.ts")).getChatGoal(chat),
+      planned.chat.id,
+    );
+    assert.equal(retainedGoal.goal.status, "complete");
+    assert.equal(retainedGoal.goal.objective, openedGoal.goal.objective);
+    assert.equal(retainedGoal.goal.threadId, openedGoal.goal.threadId);
+    assert.deepEqual(
+      await readChatMessages(planned.chat.id),
+      goalBeforeRestart,
+    );
+    const recovery = await actualTaskRecovery({
+      page,
+      fixture,
+      projectId,
+      workerId,
+      startWorker,
+      stopWorker,
+      model,
+      result,
+    });
+    for (const marker of [
+      brief,
+      answer,
+      planText,
+      objective,
+      initialGoalAnswer,
+      implementationAnswer,
+      ...recovery.privateMarkers,
+    ]) {
+      assert.equal(
+        JSON.stringify(requests).includes(marker),
+        false,
+        "private Task content stays out of browser-to-server requests",
+      );
+      assert.equal(
+        fixture.server.diagnostics().includes(marker),
+        false,
+        "private Task content stays out of server diagnostics",
+      );
+    }
+    result.steps.push(
+      "completed encrypted Task and transcript survive both server and full-worker restart without duplicate inference",
+    );
+    result.taskExecution = {
+      completed: true,
+      plannedGoalCompleted: true,
+      failedOperationRetried: recovery.failedOperationRetried,
+      pausedAdmissionRecovered: recovery.pausedAdmissionRecovered,
+      modelRequests: model.requests.filter(
+        (request) => request.method === "POST",
+      ).length,
+      modelFailures: model.failures,
+      chatId: created.chat.id,
+    };
+  } catch (error) {
+    result.taskFailure = { message: error.message, stack: error.stack };
+    if (fixture.liveSqlFixture) {
+      try {
+        result.taskRuntimeSnapshot = await captureTaskRuntimeState({
+          ownerId: await page.evaluate(() => window.folderIdentity.ownerId),
+          projectId,
+          query: (statements, queries) =>
+            browserFixtureSql(fixture, page, statements, queries),
+        });
+      } catch (snapshotError) {
+        result.taskRuntimeSnapshotFailure = {
+          message: snapshotError.message,
+          stack: snapshotError.stack,
+        };
+      }
+      if (result.taskRuntimeSnapshot) {
+        try {
+          // Only predefined disposable Task content is decrypted here. Keep
+          // the original failure and database snapshot before observing the
+          // existing browser's view of each retained Task error/transcript.
+          result.taskFailureMessages = await page.evaluate(
+            async (chatIds) => {
+              const { getMessages } = await import("/src/lib/api/chats.ts");
+              return Promise.all(
+                chatIds.map(async (chatId) => ({
+                  chatId,
+                  messages: await getMessages(chatId),
+                })),
+              );
+            },
+            result.taskRuntimeSnapshot.rows.tasks.map((task) => task.chat_id),
+          );
+        } catch (cause) {
+          result.taskFailureMessagesError = cause.message;
+        }
+      }
+    }
+    throw error;
+  } finally {
+    const describeModel = ({ failures, requests }) => ({
+      failures,
+      requests: requests.map(({ method, path, completed, input }) => ({
+        method,
+        path,
+        completed,
+        model: input?.model,
+        format: input?.text?.format,
+        toolResults: input?.input?.filter(
+          (item) => item.type === "function_call_output",
+        ),
+      })),
+    });
+    result.taskModel = describeModel(model);
+    if (destination) result.taskGoalTransferModel = describeModel(destination);
+    await stopWorker();
+    await model.close();
+    await destination?.close();
+  }
+}

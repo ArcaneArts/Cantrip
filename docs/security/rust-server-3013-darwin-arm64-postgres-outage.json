@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "version": "1.1.3013",
+  "databaseMode": "postgres",
+  "sourceCommit": "9069ae6acc0a4456e077582abe1b4867576942cf",
+  "artifact": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-9069ae6ac/qualified-candidate/bin/cantrip-server",
+    "bytes": 94240368,
+    "sha256": "6e2c81304db71bc9f77d879b449c973aa8c21c6f5bb0cc11b969d7fa9fe27293"
+  },
+  "harness": {
+    "path": "scripts/server-rust/restartable-postgres.mjs",
+    "sha256": "937199aa765f64f0eac3d675118cf21b810603fbc33a92ac4a3dc3bffa1de2b5"
+  },
+  "productSteps": 20,
+  "operationCases": 14,
+  "offlineMs": 60006,
+  "checks": {
+    "initialReadinessWhileOffline": 503,
+    "serverLivenessWhileOffline": 200,
+    "recoveredReadiness": 200,
+    "inferenceFinishedWhileOffline": true,
+    "databaseProcessReplacedOnSamePort": true
+  },
+  "report": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-outage-fixture/packaged-rust-pg-ctl.json",
+    "bytes": 530871,
+    "sha256": "f430dc2f6ac766f4de38e83cd845e0453c22766e7f0b7c7321b6e9f8e335814f"
+  },
+  "signalRoundTrip": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-outage-fixture/pg-ctl-signal-roundtrip.log",
+    "bytes": 438,
+    "sha256": "97291ee359b3b2009839ba28c2945a4eb7373a95dc5f7750179ee93ed753b8fe"
+  }
+}

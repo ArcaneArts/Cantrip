@@ -8,7 +8,6 @@ export function projectFrameVisibility({
   showProjectSettings,
   showServerAdmin,
   showSettings,
-  showProjectOverview = false,
   workspaceDestination,
 }: {
   desktopProjectFrame: boolean;
@@ -18,7 +17,6 @@ export function projectFrameVisibility({
   showProjectSettings: boolean;
   showServerAdmin: boolean;
   showSettings: boolean;
-  showProjectOverview?: boolean;
   workspaceDestination: WorkspaceSelection["destination"];
 }) {
   const railsVisible = Boolean(
@@ -26,7 +24,6 @@ export function projectFrameVisibility({
     !mobileProjectSelectorOpen &&
     !showImporter &&
     !showSettings &&
-    !showProjectOverview &&
     !showArchivedStandaloneChats &&
     !showServerAdmin &&
     !showProjectSettings,

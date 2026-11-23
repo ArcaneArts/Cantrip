@@ -6,15 +6,16 @@ import { repositoryFixture } from "./repository-fixture.mjs";
 import { LiveProbe } from "./live-sockets.mjs";
 import { heartbeat, password } from "./security-fixtures.mjs";
 import { label, json, literal } from "./project-target-state.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { readProtectedNativeSettings } from "../../cantrip_worker/src/native-settings-read.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { WorkerInferenceAdmission } from "../../tests/reference-node-worker/src/inference-admission.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
+import { readProtectedNativeSettings } from "../../tests/reference-node-worker/src/native-settings-read.ts";
 import {
   openNativeSettingsSnapshot,
   protectNativeSettingsSnapshot,
-} from "../../cantrip_worker/src/native-settings-content.ts";
-import { updateProtectedNativeSettings } from "../../cantrip_worker/src/native-settings-update.ts";
-import { protectedNativeAccountDefaults } from "../../cantrip_worker/src/native-account-defaults.ts";
+} from "../../tests/reference-node-worker/src/native-settings-content.ts";
+import { updateProtectedNativeSettings } from "../../tests/reference-node-worker/src/native-settings-update.ts";
+import { protectedNativeAccountDefaults } from "../../tests/reference-node-worker/src/native-account-defaults.ts";
 export const settingsChat = "22222222-2222-4222-8222-222222222222",
   settingsProject = "11111111-1111-4111-8111-111111111111",
   settingsTree = "33333333-3333-4333-8333-333333333333",
@@ -61,6 +62,13 @@ export async function settingsHttpFixture({
   passwordHash,
   result,
   configure,
+  prepare,
+  onLogicalCompletion,
+  onCommand,
+  observeCompletions = false,
+  liveSqlFixture = false,
+  providerAuthDrain = false,
+  environment = {},
 }) {
   const fixture = new HttpFixture({
     kind,
@@ -68,9 +76,14 @@ export async function settingsHttpFixture({
     root,
     name: profile,
     databaseMode,
+    liveSqlFixture,
+    providerAuthDrain,
     environment: {
       CANTRIP_AUTH_MODE: profile,
       CANTRIP_REGISTRATION_ENABLED: "true",
+      ...(observeCompletions
+        ? { CANTRIP_TEST_COMPLETION_OBSERVATIONS: "true" }
+        : {}),
       ...(profile === "password"
         ? { CANTRIP_PASSWORD_HASH: passwordHash }
         : {}),
@@ -80,6 +93,7 @@ export async function settingsHttpFixture({
             CANTRIP_POSTGRES_BIN_DIR: process.env.CANTRIP_TEST_POSTGRES_BIN_DIR,
           }
         : {}),
+      ...environment,
     },
   });
   let repository,
@@ -107,6 +121,7 @@ export async function settingsHttpFixture({
   const encryption = {
     ownerId: () => owner,
     serverIdentity: () => serverId,
+    status: () => ({ error: null }),
     componentKey: () => ({ key: new Uint8Array(componentKey), keyRevision: 1 }),
   };
   const nativeSettings = () => ({
@@ -252,20 +267,30 @@ export async function settingsHttpFixture({
         },
       },
     );
-    await fixture.close();
-    repository = await repositoryFixture({
-      kind,
-      executable: repositoryExecutable,
-      root: path.join(root, profile),
-      databaseMode,
-      databaseUrl: url,
-    });
-    const owned = await repository.request({
-      op: "query-json",
-      sql: `SELECT jsonb_build_object('owner',owner_id) result FROM workers WHERE id=${literal(settingsWorker)}`,
-    });
-    assert.equal(owned.rejected, false, owned.diagnostic);
-    owner = owned.value.owner;
+    if (liveSqlFixture) {
+      const [owned] = await fixture.sql(
+        [],
+        [
+          `SELECT jsonb_build_object('owner',owner_id)::text result FROM workers WHERE id=${literal(settingsWorker)}`,
+        ],
+      );
+      owner = owned.owner;
+    } else {
+      await fixture.close();
+      repository = await repositoryFixture({
+        kind,
+        executable: repositoryExecutable,
+        root: path.join(root, profile),
+        databaseMode,
+        databaseUrl: url,
+      });
+      const owned = await repository.request({
+        op: "query-json",
+        sql: `SELECT jsonb_build_object('owner',owner_id) result FROM workers WHERE id=${literal(settingsWorker)}`,
+      });
+      assert.equal(owned.rejected, false, owned.diagnostic);
+      owner = owned.value.owner;
+    }
     const statements = [
       `INSERT INTO projects(id,owner_id,protected_label,origin_kind,git_capability,github_capability,worktree_policy,preferred_worker_id,github_repository_blind_index) VALUES(${literal(settingsProject)},${literal(owner)},${json(label("project"))},'github',true,true,'agent-managed',${literal(settingsWorker)},'settings-project')`,
       `INSERT INTO project_sources(id,project_id,worker_id,source_kind,absolute_path,display_path) VALUES('settings-source',${literal(settingsProject)},${literal(settingsWorker)},'git','/worker-owned/settings','/worker-owned/settings')`,
@@ -274,11 +299,20 @@ export async function settingsHttpFixture({
       `INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,codex_thread_id) VALUES('settings-runtime',${literal(settingsChat)},${literal(settingsWorker)},${literal(settingsTree)},'thread')`,
       ...(configure?.(owner, scope) ?? []),
     ];
-    const seeded = await repository.request({ op: "transaction", statements });
-    assert.equal(seeded.rejected, false, seeded.diagnostic);
-    await repository.close();
-    repository = null;
-    await fixture.start();
+    if (liveSqlFixture) {
+      await fixture.sql(statements);
+      await prepare?.({ owner, scope, fixture });
+    } else {
+      const seeded = await repository.request({
+        op: "transaction",
+        statements,
+      });
+      assert.equal(seeded.rejected, false, seeded.diagnostic);
+      await prepare?.({ owner, scope, repository });
+      await repository.close();
+      repository = null;
+      await fixture.start();
+    }
     live = await new LiveProbe(fixture).open();
     await live.initialized();
     await live.subscribed("native-settings", [
@@ -300,43 +334,101 @@ export async function settingsHttpFixture({
       serverUrl: config.serverUrl,
       workerId: settingsWorker,
     });
-    worker = new WorkerConnection(
-      config,
-      async (command) => {
-        if (command.type === "chat.scratch.reconcile")
-          return {
-            retainedRootIds: command.roots.map((r) => r.rootId),
-            missingRootIds: [],
-            orphanedRootIds: [],
-            dueRootIds: [],
-          };
-        if (command.type === "chat.settings.read")
-          return readProtectedNativeSettings({
-            scope: command.scope,
-            resolve: () => ({ scope, runtime, generation: "runtime" }),
-            service: encryption,
-          });
-        if (command.type === "chat.settings.update")
-          return updateProtectedNativeSettings({
-            request: command,
-            resolve: () => ({ scope, runtime, generation: "runtime" }),
-            service: encryption,
-          });
-        if (command.type === "chat.account-defaults")
-          return protectedNativeAccountDefaults({
-            command,
-            resolve: () => ({ scope, runtime, generation: "runtime" }),
-            service: encryption,
-          });
-        throw new Error("Controlled settings worker command is unsupported");
+    const inference = new WorkerInferenceAdmission(
+      {
+        serverId,
+        ownerId: owner,
+        workerId: settingsWorker,
+        workerGeneration: "fixture",
       },
-      undefined,
-      undefined,
-      undefined,
-      1000,
-      () => connections++,
+      (error) => {
+        throw error;
+      },
     );
-    worker.start();
+    const inferenceSyncs = [];
+    let inferenceSnapshotOverride;
+    const inferenceSnapshot = () => ({
+      ...inference.snapshot(),
+      workerGeneration: worker.connectionGeneration(),
+    });
+    async function connectWorker() {
+      worker = new WorkerConnection(
+        config,
+        async (command, emit) => {
+          if (onCommand) {
+            const result = await onCommand(command, emit, {
+              encryption,
+              owner,
+              serverId,
+              scope,
+            });
+            if (result !== undefined) return result;
+          }
+          if (
+            command.type === "chat.native-logical.complete" &&
+            onLogicalCompletion
+          )
+            return onLogicalCompletion(command);
+          if (command.type === "inference.configure") {
+            if (command.catalogRevision === undefined)
+              for (const configuration of command.configurations)
+                inference.configure({
+                  ...configuration,
+                  inferenceCatalogCreatedRevision: undefined,
+                });
+            else
+              inference.configureCatalog({
+                catalogRevision: command.catalogRevision,
+                configurations: command.configurations,
+              });
+            const status = inferenceSnapshot();
+            inferenceSyncs.push({
+              command: structuredClone(command),
+              configurations: structuredClone(command.configurations),
+              status,
+            });
+            return status;
+          }
+          if (command.type === "inference.status")
+            return inferenceSnapshotOverride === undefined
+              ? inferenceSnapshot()
+              : inferenceSnapshotOverride;
+          if (command.type === "chat.scratch.reconcile")
+            return {
+              retainedRootIds: command.roots.map((r) => r.rootId),
+              missingRootIds: [],
+              orphanedRootIds: [],
+              dueRootIds: [],
+            };
+          if (command.type === "chat.settings.read")
+            return readProtectedNativeSettings({
+              scope: command.scope,
+              resolve: () => ({ scope, runtime, generation: "runtime" }),
+              service: encryption,
+            });
+          if (command.type === "chat.settings.update")
+            return updateProtectedNativeSettings({
+              request: command,
+              resolve: () => ({ scope, runtime, generation: "runtime" }),
+              service: encryption,
+            });
+          if (command.type === "chat.account-defaults")
+            return protectedNativeAccountDefaults({
+              command,
+              resolve: () => ({ scope, runtime, generation: "runtime" }),
+              service: encryption,
+            });
+          throw new Error("Controlled settings worker command is unsupported");
+        },
+        undefined,
+        undefined,
+        undefined,
+        1000,
+        () => connections++,
+      );
+      worker.start();
+    }
+    await connectWorker();
     await until(
       () => connections,
       (n) => n === 1,
@@ -345,11 +437,26 @@ export async function settingsHttpFixture({
       fixture,
       visit,
       live,
-      worker,
+      get worker() {
+        return worker;
+      },
+      reconnectWorker: async () => {
+        const previous = connections;
+        await connectWorker();
+        await until(
+          () => connections,
+          (n) => n === previous + 1,
+        );
+      },
       encryption,
       scope,
       owner,
       serverId,
+      inferenceSyncs,
+      inferenceStatus: () => inference.snapshot(),
+      inferenceSnapshot,
+      setInferenceSnapshotOverride: (value) =>
+        (inferenceSnapshotOverride = value),
       updates,
       defaultsCalls,
       close,
@@ -380,6 +487,7 @@ export async function settingsHttpFixture({
         hold = null;
       },
       credential: enrollment.credential,
+      connectionCount: () => connections,
       diagnostics: () => fixture.server?.diagnostics() ?? "",
     };
   } catch (error) {

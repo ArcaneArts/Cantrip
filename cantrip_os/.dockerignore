@@ -1,0 +1,7 @@
+.git
+.build
+.state
+artifacts
+tests
+**/__pycache__
+**/*.pyc

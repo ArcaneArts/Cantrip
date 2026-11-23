@@ -1,0 +1,1265 @@
+import type { ModelConfiguration } from "@cantrip/protocol";
+import { randomUUID } from "node:crypto";
+
+import {
+  taskDispatchCycleListSchema,
+  taskDispatchCycleSummarySchema,
+  taskDispatchWorkerLeaseSchema,
+  type TaskDispatchCycleState,
+  type TaskDispatchCycleSummary,
+  type TaskDispatchEligibilityCode,
+  type TaskDispatchFence,
+  type TaskDispatchOperationKind,
+  type TaskDispatchWorkerLease,
+} from "@cantrip/protocol/task-scheduling";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lte,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
+import type { PgDatabase } from "drizzle-orm/pg-core";
+import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
+
+import * as schema from "./schema.js";
+import {
+  TaskStateTransitionError,
+  validateTaskOperationStart,
+} from "../tasks/state.js";
+
+type TaskDispatchDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
+type TaskDispatchRow = typeof schema.taskDispatchCycles.$inferSelect;
+
+export const TASK_DISPATCH_LEASE_MS = 2 * 60_000;
+const RETRYABLE_TERMINAL_STATES: readonly TaskDispatchCycleState[] = [
+  "failed",
+  "cancelled",
+  "expired",
+];
+
+/** A committed expiry can precede a server crash or failed recovery write.
+ * Revisit canonical pending input or a recorded terminal input awaiting failure
+ * settlement, not settled expired history. */
+function pendingInputRecovery() {
+  return sql`(EXISTS (
+    SELECT 1 FROM task_planning_rounds r
+    JOIN tasks t ON t.chat_id=r.chat_id AND t.active_operation_id=r.id
+    JOIN chats chat ON chat.id=t.chat_id
+    WHERE r.id=${schema.taskDispatchCycles.operationId}
+      AND r.status='running' AND r.relay_result IS NULL
+      AND r.assistant_message_id IS NULL AND r.turn_id IS NULL
+      AND r.inference_input->>'deferred'='false'
+      AND (r.inference_input->>'failedBeforeDispatch'='true' OR (
+        r.inference_input->>'accepted'='true'
+        AND r.inference_input->>'allAttemptsEnforced'='true'
+        AND r.inference_input->>'firstDispatchedOperationId' IS NULL
+      ))
+      AND chat.archived_at IS NULL AND t.state NOT IN ('failed','complete')
+      AND NOT EXISTS(SELECT 1 FROM task_dispatch_cycles newer
+        WHERE newer.chat_id=${schema.taskDispatchCycles.chatId}
+          AND (newer.created_at,newer.id)>(${schema.taskDispatchCycles.createdAt},${schema.taskDispatchCycles.id}))
+  ) OR EXISTS (
+    SELECT 1 FROM tasks t JOIN chats chat ON chat.id=t.chat_id
+    WHERE t.chat_id=${schema.taskDispatchCycles.chatId}
+      AND t.plan_goal_enabled=true AND t.implementation_started_at IS NOT NULL
+      AND t.state NOT IN ('failed','complete') AND chat.archived_at IS NULL
+      AND ${schema.taskDispatchCycles.goalInput}->>'deferred'='false'
+      AND (${schema.taskDispatchCycles.goalInput}->>'failedBeforeDispatch'='true' OR (
+        ${schema.taskDispatchCycles.goalInput}->>'accepted'='true'
+        AND ${schema.taskDispatchCycles.goalInput}->>'allAttemptsEnforced'='true'
+        AND ${schema.taskDispatchCycles.goalInput}->>'firstDispatchedOperationId' IS NULL
+      ))
+      AND NOT EXISTS(SELECT 1 FROM task_dispatch_cycles newer
+        WHERE newer.chat_id=${schema.taskDispatchCycles.chatId}
+          AND (newer.created_at,newer.id)>(${schema.taskDispatchCycles.createdAt},${schema.taskDispatchCycles.id}))
+  ))`;
+}
+
+export class TaskDispatchNotFoundError extends Error {}
+
+export class TaskDispatchConflictError extends Error {
+  constructor(
+    message: string,
+    readonly code:
+      | "active-operation"
+      | "idempotency-conflict"
+      | "stale-lease"
+      | "stale-version",
+  ) {
+    super(message);
+    this.name = "TaskDispatchConflictError";
+  }
+}
+
+export interface TaskDispatchEligibilityInput {
+  cycle: TaskDispatchCycleSummary;
+  projectId: string;
+  physicalWorkerId: string;
+  worktreeId: string;
+  modelConfiguration: ModelConfiguration;
+}
+
+export type TaskDispatchEligibilityResult =
+  | {
+      eligible: true;
+      modelRouteId: string;
+      providerAccountId: string | null;
+      codexThreadId?: string | null;
+    }
+  | { eligible: false; code: TaskDispatchEligibilityCode };
+
+export type TaskDispatchEligibilityResolver = (
+  input: TaskDispatchEligibilityInput,
+) => Promise<TaskDispatchEligibilityResult>;
+
+export type TaskDispatchResumeEligibilityResolver = (
+  cycle: TaskDispatchCycleSummary,
+) => Promise<
+  { eligible: true } | { eligible: false; code: TaskDispatchEligibilityCode }
+>;
+
+export interface ClaimedTaskDispatch {
+  cycle: TaskDispatchCycleSummary;
+  lease: TaskDispatchWorkerLease;
+  projectId: string;
+  modelConfiguration: ModelConfiguration;
+}
+
+export interface TaskDispatchSchedulerOwner {
+  ownerId: string;
+  hasQueued: boolean;
+  hasClaimed: boolean;
+  hasRunning: boolean;
+  hasPaused: boolean;
+}
+
+export interface TaskDispatchSchedulerPlan {
+  reconcileUnstartedClaims: boolean;
+  reconcileStartedLeases: boolean;
+  resumePaused: boolean;
+  claimQueued: boolean;
+}
+
+export function taskDispatchSchedulerPlan(
+  owner: TaskDispatchSchedulerOwner,
+): TaskDispatchSchedulerPlan {
+  return {
+    reconcileUnstartedClaims: owner.hasClaimed,
+    reconcileStartedLeases:
+      owner.hasClaimed || owner.hasRunning || owner.hasPaused,
+    resumePaused: owner.hasPaused,
+    claimQueued: owner.hasQueued,
+  };
+}
+
+function iso(value: Date): string {
+  return value.toISOString();
+}
+
+export function toTaskDispatchCycleSummary(
+  row: TaskDispatchRow,
+): TaskDispatchCycleSummary {
+  return taskDispatchCycleSummarySchema.parse({
+    id: row.id,
+    chatId: row.chatId,
+    operationId: row.operationId,
+    operationKind: row.operationKind,
+    state: row.state,
+    fifoCreatedAt: iso(row.fifoCreatedAt),
+    requestedTaskWorkerId: row.requestedTaskWorkerId,
+    selectedTaskWorkerId: row.selectedTaskWorkerId,
+    taskWorkerRevision: row.taskWorkerRevision,
+    continuityFamily: row.continuityFamily,
+    ...(row.goalOrderEpoch > 0 ? { goalOrderEpoch: row.goalOrderEpoch } : {}),
+    modelConfiguration: row.modelConfiguration,
+    modelRouteId: row.modelRouteId,
+    providerAccountId: row.providerAccountId,
+    physicalWorkerId: row.physicalWorkerId,
+    worktreeId: row.worktreeId,
+    codexThreadId: row.codexThreadId,
+    turnId: row.turnId,
+    leaseOwner: row.leaseOwner,
+    leaseExpiresAt: row.leaseExpiresAt ? iso(row.leaseExpiresAt) : null,
+    lastHeartbeatAt: row.lastHeartbeatAt ? iso(row.lastHeartbeatAt) : null,
+    fencingToken: row.fencingToken,
+    attemptCount: row.attemptCount,
+    eligibilityCode: row.eligibilityCode,
+    queuedAt: iso(row.queuedAt),
+    claimedAt: row.claimedAt ? iso(row.claimedAt) : null,
+    startedAt: row.startedAt ? iso(row.startedAt) : null,
+    pausedAt: row.pausedAt ? iso(row.pausedAt) : null,
+    completedAt: row.completedAt ? iso(row.completedAt) : null,
+    createdAt: iso(row.createdAt),
+    updatedAt: iso(row.updatedAt),
+  });
+}
+
+function assertOperationId(operationId: string): void {
+  if (operationId.trim().length === 0 || operationId.length > 200) {
+    throw new TypeError(
+      "Task dispatch operation IDs must contain 1-200 characters.",
+    );
+  }
+}
+
+function fenceWhere(fence: TaskDispatchFence, now: Date) {
+  return and(
+    eq(schema.taskDispatchCycles.id, fence.cycleId),
+    eq(schema.taskDispatchCycles.operationId, fence.operationId),
+    eq(schema.taskDispatchCycles.leaseOwner, fence.leaseOwner),
+    eq(schema.taskDispatchCycles.fencingToken, fence.fencingToken),
+    gt(schema.taskDispatchCycles.leaseExpiresAt, now),
+  );
+}
+
+export class TaskDispatchRepository {
+  constructor(private readonly database: TaskDispatchDatabase) {}
+
+  async get(
+    ownerId: string,
+    cycleId: string,
+  ): Promise<TaskDispatchCycleSummary | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(
+        and(
+          eq(schema.taskDispatchCycles.ownerId, ownerId),
+          eq(schema.taskDispatchCycles.id, cycleId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toTaskDispatchCycleSummary(rows[0]) : null;
+  }
+
+  async list(ownerId: string): Promise<TaskDispatchCycleSummary[]> {
+    const rows = await this.database
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(eq(schema.taskDispatchCycles.ownerId, ownerId))
+      .orderBy(
+        asc(schema.taskDispatchCycles.fifoCreatedAt),
+        asc(schema.taskDispatchCycles.id),
+      );
+    return taskDispatchCycleListSchema.parse(
+      rows.map(toTaskDispatchCycleSummary),
+    );
+  }
+
+  async listSchedulerOwners(): Promise<TaskDispatchSchedulerOwner[]> {
+    const rows = await this.database
+      .selectDistinct({
+        ownerId: schema.taskDispatchCycles.ownerId,
+        state: schema.taskDispatchCycles.state,
+      })
+      .from(schema.taskDispatchCycles)
+      .where(
+        or(
+          inArray(schema.taskDispatchCycles.state, [
+            "queued",
+            "claimed",
+            "running",
+            "paused",
+          ]),
+          and(
+            eq(schema.taskDispatchCycles.state, "expired"),
+            pendingInputRecovery(),
+          ),
+        ),
+      )
+      .orderBy(
+        asc(schema.taskDispatchCycles.ownerId),
+        asc(schema.taskDispatchCycles.state),
+      );
+    const owners = new Map<string, TaskDispatchSchedulerOwner>();
+    for (const { ownerId, state } of rows) {
+      const owner = owners.get(ownerId) ?? {
+        ownerId,
+        hasQueued: false,
+        hasClaimed: false,
+        hasRunning: false,
+        hasPaused: false,
+      };
+      owners.set(ownerId, owner);
+      switch (state) {
+        case "queued":
+          owner.hasQueued = true;
+          break;
+        case "claimed":
+          owner.hasClaimed = true;
+          break;
+        case "running":
+        case "expired":
+          owner.hasRunning = true;
+          break;
+        case "paused":
+          owner.hasPaused = true;
+          break;
+        default:
+          break;
+      }
+    }
+    return [...owners.values()];
+  }
+
+  async enqueue(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    operationKind: TaskDispatchOperationKind,
+    rowVersion: number,
+  ): Promise<TaskDispatchCycleSummary> {
+    assertOperationId(operationId);
+    return this.database.transaction(async (transaction) => {
+      const ownerRows = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!ownerRows[0]) throw new TaskDispatchNotFoundError("Task not found.");
+      const priorRows = await transaction
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.chatId, chatId),
+            eq(schema.taskDispatchCycles.operationId, operationId),
+          ),
+        )
+        .limit(1);
+      const prior = priorRows[0];
+      if (prior && prior.operationKind !== operationKind) {
+        throw new TaskDispatchConflictError(
+          "This Task operation ID was already used for another operation.",
+          "idempotency-conflict",
+        );
+      }
+      if (prior && !RETRYABLE_TERMINAL_STATES.includes(prior.state)) {
+        return toTaskDispatchCycleSummary(prior);
+      }
+      const taskRows = await transaction
+        .select({ task: schema.tasks })
+        .from(schema.tasks)
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = taskRows[0]?.task;
+      if (!task) throw new TaskDispatchNotFoundError("Task not found.");
+      if (task.rowVersion !== rowVersion) {
+        throw new TaskDispatchConflictError(
+          "The Task changed in another client.",
+          "stale-version",
+        );
+      }
+      if (operationKind !== "goal-continuation") {
+        if ((operationKind === "direct") === task.planGoalEnabled) {
+          throw new TaskDispatchConflictError(
+            task.planGoalEnabled
+              ? "Disable Plan + Goal before queueing this Task directly."
+              : "Enable Plan + Goal before queueing a planning operation.",
+            "idempotency-conflict",
+          );
+        }
+        try {
+          validateTaskOperationStart(
+            task.state,
+            task.stableStateBeforeFailure,
+            operationKind,
+          );
+        } catch (error) {
+          if (error instanceof TaskStateTransitionError) {
+            throw new TaskDispatchConflictError(
+              error.message,
+              "idempotency-conflict",
+            );
+          }
+          throw error;
+        }
+      }
+
+      const activeRows = await transaction
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.chatId, chatId),
+            inArray(schema.taskDispatchCycles.state, [
+              "queued",
+              "claimed",
+              "running",
+              "paused",
+            ]),
+          ),
+        )
+        .limit(1);
+      const active = activeRows[0];
+      if (active?.operationId === operationId)
+        return toTaskDispatchCycleSummary(active);
+      if (active) {
+        throw new TaskDispatchConflictError(
+          "The Task already has an active scheduled operation.",
+          "active-operation",
+        );
+      }
+
+      if (prior) {
+        const now = new Date();
+        const rows = await transaction
+          .update(schema.taskDispatchCycles)
+          .set({
+            state: "queued",
+            requestedTaskWorkerId: null,
+            selectedTaskWorkerId: null,
+            taskWorkerRevision: null,
+            continuityFamily: null,
+            modelConfiguration: task.modelConfiguration,
+            modelRouteId: null,
+            providerAccountId: null,
+            physicalWorkerId: null,
+            worktreeId: null,
+            codexThreadId: null,
+            turnId: null,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            lastHeartbeatAt: null,
+            fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+            eligibilityCode: null,
+            claimedAt: null,
+            startedAt: null,
+            pausedAt: null,
+            completedAt: null,
+            updatedAt: now,
+          })
+          .where(eq(schema.taskDispatchCycles.id, prior.id))
+          .returning();
+        return toTaskDispatchCycleSummary(rows[0]!);
+      }
+
+      const rows = await transaction
+        .insert(schema.taskDispatchCycles)
+        .values({
+          id: randomUUID(),
+          ownerId,
+          chatId,
+          operationId,
+          operationKind,
+          state: "queued",
+          fifoCreatedAt: task.createdAt,
+          requestedTaskWorkerId: null,
+          modelConfiguration: task.modelConfiguration,
+        })
+        .returning();
+      return toTaskDispatchCycleSummary(rows[0]!);
+    });
+  }
+
+  async claimNext(
+    ownerId: string,
+    leaseOwner: string,
+    resolveEligibility: TaskDispatchEligibilityResolver,
+    options: { now?: Date; leaseMs?: number } = {},
+  ): Promise<ClaimedTaskDispatch | null> {
+    if (leaseOwner.trim().length === 0 || leaseOwner.length > 200) {
+      throw new TypeError(
+        "Task dispatch lease owners must contain 1-200 characters.",
+      );
+    }
+    const now = options.now ?? new Date();
+    const leaseMs = options.leaseMs ?? TASK_DISPATCH_LEASE_MS;
+    if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0) {
+      throw new TypeError("Task dispatch lease duration must be positive.");
+    }
+
+    return this.database.transaction(async (transaction) => {
+      const ownerRows = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!ownerRows[0]) return null;
+
+      const [candidateRows, activeLanes, branchLeases] = await Promise.all([
+        transaction
+          .select({
+            cycle: schema.taskDispatchCycles,
+            task: schema.tasks,
+            projectId: schema.projects.id,
+            projectPaused: schema.projects.taskSchedulingPaused,
+            archivedAt: schema.chats.archivedAt,
+            worktreeId: schema.projectWorktrees.id,
+            worktreeState: schema.projectWorktrees.lifecycleState,
+            branch: schema.projectWorktrees.branch,
+            physicalWorkerId: schema.projectWorktrees.workerId,
+            physicalWorkerUnlinkedAt: schema.workers.unlinkedAt,
+          })
+          .from(schema.taskDispatchCycles)
+          .innerJoin(
+            schema.tasks,
+            eq(schema.tasks.chatId, schema.taskDispatchCycles.chatId),
+          )
+          .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, schema.chats.projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .innerJoin(
+            schema.projectWorktrees,
+            eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
+          )
+          .innerJoin(
+            schema.workers,
+            eq(schema.workers.id, schema.projectWorktrees.workerId),
+          )
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.ownerId, ownerId),
+              eq(schema.taskDispatchCycles.state, "queued"),
+              sql`NOT EXISTS (SELECT 1 FROM native_runtime_handoffs h
+                WHERE h.chat_id=${schema.taskDispatchCycles.chatId}
+                  AND h.phase IN ('preparing','prepared','committed'))`,
+              sql`NOT EXISTS (SELECT 1 FROM task_planning_rounds r
+                WHERE r.chat_id=${schema.taskDispatchCycles.chatId}
+                  AND r.inference_input->'routeChange'->>'phase'='draining')`,
+              isNull(schema.chats.archivedAt),
+              eq(schema.chats.automationPaused, false),
+              ne(schema.tasks.state, "complete"),
+            ),
+          )
+          .orderBy(
+            asc(schema.taskDispatchCycles.fifoCreatedAt),
+            asc(schema.taskDispatchCycles.id),
+          ),
+        transaction
+          .selectDistinct({ chatId: schema.chatExecutionLanes.chatId })
+          .from(schema.chatExecutionLanes)
+          .innerJoin(
+            schema.taskDispatchCycles,
+            and(
+              eq(
+                schema.taskDispatchCycles.chatId,
+                schema.chatExecutionLanes.chatId,
+              ),
+              eq(schema.taskDispatchCycles.ownerId, ownerId),
+              eq(schema.taskDispatchCycles.state, "queued"),
+            ),
+          )
+          .where(
+            inArray(schema.chatExecutionLanes.state, ["active", "delivering"]),
+          ),
+        transaction
+          .select({
+            projectId: schema.projectBranchLeases.projectId,
+            branch: schema.projectBranchLeases.branchName,
+            chatId: schema.chatExecutionLanes.chatId,
+          })
+          .from(schema.projectBranchLeases)
+          .innerJoin(
+            schema.projects,
+            eq(schema.projects.id, schema.projectBranchLeases.projectId),
+          )
+          .leftJoin(
+            schema.chatExecutionLanes,
+            eq(
+              schema.chatExecutionLanes.id,
+              schema.projectBranchLeases.chatExecutionLaneId,
+            ),
+          )
+          .where(
+            and(
+              eq(schema.projects.ownerId, ownerId),
+              eq(schema.projectBranchLeases.state, "active"),
+            ),
+          ),
+      ]);
+
+      const activeChatIds = new Set(activeLanes.map(({ chatId }) => chatId));
+      const reasons = new Map<string, TaskDispatchEligibilityCode>();
+
+      for (const candidate of candidateRows) {
+        const { cycle, task } = candidate;
+        if (candidate.projectPaused) {
+          reasons.set(cycle.id, "project-paused");
+          continue;
+        }
+        if (candidate.archivedAt || activeChatIds.has(cycle.chatId)) continue;
+        if (
+          candidate.branch &&
+          branchLeases.some(
+            (lease) =>
+              lease.projectId === candidate.projectId &&
+              lease.branch === candidate.branch &&
+              lease.chatId !== cycle.chatId,
+          )
+        ) {
+          reasons.set(cycle.id, "capacity-unavailable");
+          continue;
+        }
+        if (
+          candidate.worktreeState !== "ready" ||
+          candidate.physicalWorkerUnlinkedAt !== null
+        ) {
+          reasons.set(cycle.id, "placement-unavailable");
+          continue;
+        }
+
+        const resolution = await resolveEligibility({
+          cycle: toTaskDispatchCycleSummary(cycle),
+          projectId: candidate.projectId,
+          physicalWorkerId: candidate.physicalWorkerId,
+          worktreeId: candidate.worktreeId,
+          modelConfiguration: task.modelConfiguration,
+        });
+        if (!resolution.eligible) {
+          reasons.set(cycle.id, resolution.code);
+          continue;
+        }
+
+        const leaseExpiresAt = new Date(now.getTime() + leaseMs);
+        const fencingToken = cycle.fencingToken + 1;
+        const claimedRows = await transaction
+          .update(schema.taskDispatchCycles)
+          .set({
+            state: "claimed",
+            selectedTaskWorkerId: null,
+            taskWorkerRevision: null,
+            continuityFamily: null,
+            modelConfiguration: task.modelConfiguration,
+            modelRouteId: resolution.modelRouteId,
+            providerAccountId: resolution.providerAccountId,
+            physicalWorkerId: candidate.physicalWorkerId,
+            worktreeId: candidate.worktreeId,
+            codexThreadId: resolution.codexThreadId ?? null,
+            leaseOwner,
+            leaseExpiresAt,
+            lastHeartbeatAt: now,
+            fencingToken,
+            attemptCount:
+              cycle.attemptCount +
+              (candidate.cycle.goalInput?.deferred ? 0 : 1),
+            eligibilityCode: null,
+            claimedAt: now,
+            pausedAt: null,
+            completedAt: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.id, cycle.id),
+              eq(schema.taskDispatchCycles.state, "queued"),
+              eq(schema.taskDispatchCycles.fencingToken, cycle.fencingToken),
+            ),
+          )
+          .returning();
+        const claimed = claimedRows[0];
+        if (!claimed) continue;
+
+        await transaction
+          .update(schema.tasks)
+          .set({
+            schedulerRevision: sql`${schema.tasks.schedulerRevision} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(schema.tasks.chatId, cycle.chatId));
+
+        const claimedCycle = toTaskDispatchCycleSummary(claimed);
+        const lease = taskDispatchWorkerLeaseSchema.parse({
+          cycleId: claimed.id,
+          operationId: claimed.operationId,
+          leaseOwner,
+          leaseExpiresAt: iso(leaseExpiresAt),
+          fencingToken,
+        });
+        return {
+          cycle: claimedCycle,
+          lease,
+          projectId: candidate.projectId,
+          modelConfiguration: task.modelConfiguration,
+        };
+      }
+      for (const [cycleId, eligibilityCode] of reasons) {
+        await transaction
+          .update(schema.taskDispatchCycles)
+          .set({ eligibilityCode, updatedAt: now })
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.id, cycleId),
+              eq(schema.taskDispatchCycles.state, "queued"),
+            ),
+          );
+      }
+      return null;
+    });
+  }
+
+  async markRunning(
+    fence: TaskDispatchFence,
+    options: {
+      now?: Date;
+      turnId?: string | null;
+      affinity?: {
+        worktreeId: string;
+        threadId: string;
+        modelRouteId: string | null;
+        providerAccountId: string | null;
+      };
+    } = {},
+  ): Promise<TaskDispatchCycleSummary> {
+    const now = options.now ?? new Date();
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({
+        state: "running",
+        startedAt: sql`coalesce(${schema.taskDispatchCycles.startedAt}, ${now.toISOString()})`,
+        turnId: options.turnId,
+        ...(options.affinity
+          ? {
+              worktreeId: options.affinity.worktreeId,
+              codexThreadId: options.affinity.threadId,
+              modelRouteId: options.affinity.modelRouteId,
+              providerAccountId: options.affinity.providerAccountId,
+            }
+          : {}),
+        lastHeartbeatAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          fenceWhere(fence, now),
+          inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+        ),
+      )
+      .returning();
+    if (!rows[0]) throw this.staleLease();
+    return toTaskDispatchCycleSummary(rows[0]);
+  }
+
+  async heartbeat(
+    fence: TaskDispatchFence,
+    options: { now?: Date; leaseMs?: number } = {},
+  ): Promise<TaskDispatchWorkerLease> {
+    const now = options.now ?? new Date();
+    const leaseMs = options.leaseMs ?? TASK_DISPATCH_LEASE_MS;
+    if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0) {
+      throw new TypeError("Task dispatch lease duration must be positive.");
+    }
+    const leaseExpiresAt = new Date(now.getTime() + leaseMs);
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({ leaseExpiresAt, lastHeartbeatAt: now, updatedAt: now })
+      .where(
+        and(
+          fenceWhere(fence, now),
+          inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+        ),
+      )
+      .returning({ id: schema.taskDispatchCycles.id });
+    if (!rows[0]) throw this.staleLease();
+    return taskDispatchWorkerLeaseSchema.parse({
+      ...fence,
+      leaseExpiresAt: iso(leaseExpiresAt),
+    });
+  }
+
+  async pause(
+    fence: TaskDispatchFence,
+    affinity: { threadId: string | null; turnId: string | null },
+    options: { now?: Date } = {},
+  ): Promise<TaskDispatchCycleSummary> {
+    const now = options.now ?? new Date();
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({
+        state: "paused",
+        codexThreadId: affinity.threadId,
+        turnId: affinity.turnId,
+        lastHeartbeatAt: now,
+        pausedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          fenceWhere(fence, now),
+          inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+        ),
+      )
+      .returning();
+    if (!rows[0]) throw this.staleLease();
+    return toTaskDispatchCycleSummary(rows[0]);
+  }
+
+  async pauseUnstarted(
+    fence: TaskDispatchFence,
+    affinity: { threadId: string | null; turnId: string | null },
+    options: { now?: Date } = {},
+  ): Promise<TaskDispatchCycleSummary> {
+    const now = options.now ?? new Date();
+    // A delayed preflight still holds the prior fence. Advance it here so that
+    // attempt cannot acquire a lane after this paused cycle is resumed.
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({
+        state: "paused",
+        codexThreadId: affinity.threadId,
+        turnId: affinity.turnId,
+        lastHeartbeatAt: now,
+        pausedAt: now,
+        fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          fenceWhere(fence, now),
+          eq(schema.taskDispatchCycles.state, "claimed"),
+          isNull(schema.taskDispatchCycles.startedAt),
+        ),
+      )
+      .returning();
+    if (!rows[0]) throw this.staleLease();
+    return toTaskDispatchCycleSummary(rows[0]);
+  }
+
+  async resumeNextPaused(
+    ownerId: string,
+    leaseOwner: string,
+    resolveEligibility: TaskDispatchResumeEligibilityResolver,
+    options: {
+      now?: Date;
+      leaseMs?: number;
+      nativeSuspension?: { chatId: string; controlId: string };
+    } = {},
+  ): Promise<ClaimedTaskDispatch | null> {
+    const now = options.now ?? new Date();
+    const leaseMs = options.leaseMs ?? TASK_DISPATCH_LEASE_MS;
+    if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0) {
+      throw new TypeError("Task dispatch lease duration must be positive.");
+    }
+    const leaseExpiresAt = new Date(now.getTime() + leaseMs);
+    return this.database.transaction(async (transaction) => {
+      const owner = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!owner[0]) return null;
+      const candidates = await transaction
+        .select({
+          cycle: schema.taskDispatchCycles,
+          projectId: schema.projects.id,
+          projectPaused: schema.projects.taskSchedulingPaused,
+        })
+        .from(schema.taskDispatchCycles)
+        .innerJoin(
+          schema.chats,
+          eq(schema.chats.id, schema.taskDispatchCycles.chatId),
+        )
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.state, "paused"),
+            // A committed native continuation requires an explicit restore
+            // admission. The ordinary scheduler must never unpause its input.
+            options.nativeSuspension
+              ? and(
+                  eq(
+                    schema.taskDispatchCycles.chatId,
+                    options.nativeSuspension.chatId,
+                  ),
+                  sql`${schema.chats.nativeSuspensionState}->>'controlId'=${options.nativeSuspension.controlId}`,
+                  sql`${schema.chats.nativeSuspensionState}->>'phase'='resuming'`,
+                  sql`${schema.chats.nativeSuspensionState}->>'action'='resume'`,
+                  sql`COALESCE(${schema.chats.nativeSuspensionState}->'target'->'taskRound'->>'cycleId', ${schema.chats.nativeSuspensionState}->'target'->'taskGoalCycle'->>'cycleId')=${schema.taskDispatchCycles.id}`,
+                  sql`${schema.chats.nativeSuspensionState}->'checkpoint' <> 'null'::jsonb`,
+                )
+              : sql`NOT COALESCE((
+              COALESCE(${schema.chats.nativeSuspensionState}->'target'->'taskRound'->>'cycleId', ${schema.chats.nativeSuspensionState}->'target'->'taskGoalCycle'->>'cycleId')=${schema.taskDispatchCycles.id}
+              AND (${schema.chats.nativeSuspensionState}->>'action'='stop' OR (
+                ${schema.chats.nativeSuspensionState}->'checkpoint' <> 'null'::jsonb
+                AND ${schema.chats.nativeSuspensionState}->>'phase' IN ('pausing','paused','resuming','error')
+              ))
+            ), false)`,
+            sql`NOT EXISTS (SELECT 1 FROM native_runtime_handoffs h
+              WHERE h.chat_id=${schema.taskDispatchCycles.chatId}
+                AND h.phase IN ('preparing','prepared','committed'))`,
+            sql`NOT EXISTS (SELECT 1 FROM task_planning_rounds r
+              WHERE r.chat_id=${schema.taskDispatchCycles.chatId}
+                AND r.inference_input->'routeChange'->>'phase'='draining')`,
+          ),
+        )
+        .orderBy(
+          asc(schema.taskDispatchCycles.fifoCreatedAt),
+          asc(schema.taskDispatchCycles.id),
+        );
+      for (const candidate of candidates) {
+        const cycle = toTaskDispatchCycleSummary(candidate.cycle);
+        if (candidate.projectPaused) continue;
+        const eligibility = await resolveEligibility(cycle);
+        if (!eligibility.eligible) {
+          await transaction
+            .update(schema.taskDispatchCycles)
+            .set({ eligibilityCode: eligibility.code, updatedAt: now })
+            .where(eq(schema.taskDispatchCycles.id, cycle.id));
+          continue;
+        }
+        const resumed = await transaction
+          .update(schema.taskDispatchCycles)
+          .set({
+            state: "running",
+            leaseOwner: options.nativeSuspension
+              ? leaseOwner
+              : (candidate.cycle.leaseOwner ?? leaseOwner),
+            leaseExpiresAt,
+            lastHeartbeatAt: now,
+            ...(options.nativeSuspension
+              ? {
+                  fencingToken: sql`${schema.taskDispatchCycles.fencingToken}+1`,
+                }
+              : {
+                  attemptCount: sql`${schema.taskDispatchCycles.attemptCount} + CASE WHEN ${schema.taskDispatchCycles.goalInput}->>'deferred'='true' THEN 0 ELSE 1 END`,
+                }),
+            eligibilityCode: null,
+            pausedAt: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.id, cycle.id),
+              eq(schema.taskDispatchCycles.state, "paused"),
+              eq(schema.taskDispatchCycles.fencingToken, cycle.fencingToken),
+            ),
+          )
+          .returning();
+        if (!resumed[0]) continue;
+        const resumedCycle = toTaskDispatchCycleSummary(resumed[0]);
+        const lease = taskDispatchWorkerLeaseSchema.parse({
+          cycleId: resumedCycle.id,
+          operationId: resumedCycle.operationId,
+          leaseOwner: resumedCycle.leaseOwner,
+          leaseExpiresAt: resumedCycle.leaseExpiresAt,
+          fencingToken: resumedCycle.fencingToken,
+        });
+        return {
+          cycle: resumedCycle,
+          lease,
+          projectId: candidate.projectId,
+          modelConfiguration: resumedCycle.modelConfiguration!,
+        };
+      }
+      return null;
+    });
+  }
+
+  async settle(
+    fence: TaskDispatchFence,
+    state: Extract<
+      TaskDispatchCycleState,
+      "succeeded" | "failed" | "cancelled" | "expired"
+    >,
+    options: { now?: Date } = {},
+  ): Promise<TaskDispatchCycleSummary> {
+    const now = options.now ?? new Date();
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({ state, completedAt: now, updatedAt: now })
+      .where(
+        and(
+          fenceWhere(fence, now),
+          inArray(schema.taskDispatchCycles.state, [
+            "claimed",
+            "running",
+            "paused",
+          ]),
+        ),
+      )
+      .returning();
+    if (!rows[0]) throw this.staleLease();
+    return toTaskDispatchCycleSummary(rows[0]);
+  }
+
+  /** A competing execution won admission; no input has been dispatched. */
+  async deferForCapacity(
+    fence: TaskDispatchFence,
+    now = new Date(),
+  ): Promise<TaskDispatchCycleSummary> {
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({
+        state: "queued",
+        selectedTaskWorkerId: null,
+        taskWorkerRevision: null,
+        continuityFamily: null,
+        modelConfiguration: null,
+        modelRouteId: null,
+        providerAccountId: null,
+        physicalWorkerId: null,
+        worktreeId: null,
+        codexThreadId: null,
+        turnId: null,
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        lastHeartbeatAt: null,
+        fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+        eligibilityCode: "capacity-unavailable",
+        claimedAt: null,
+        startedAt: null,
+        completedAt: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          fenceWhere(fence, now),
+          inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+          isNull(schema.taskDispatchCycles.turnId),
+        ),
+      )
+      .returning();
+    if (!rows[0]) throw this.staleLease();
+    return toTaskDispatchCycleSummary(rows[0]);
+  }
+
+  /** Re-fence an observed, retained Goal; never enqueue or replay its operation. */
+  async recoverStartedGoal(
+    ownerId: string,
+    expected: TaskDispatchCycleSummary,
+    leaseOwner: string,
+    now = new Date(),
+    options: {
+      allowSettled?: boolean;
+      /** Condition from the actual native read; not independent lease authority. */
+      assertObservation?(transaction: TaskDispatchDatabase): Promise<void>;
+    } = {},
+  ): Promise<TaskDispatchWorkerLease> {
+    return this.database.transaction(async (transaction) => {
+      // Same owner/task/cycle lock order as enqueue and claim; a recovery may
+      // not overtake a newer user operation for this Task.
+      await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      await options.assertObservation?.(transaction);
+      const tasks = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, expected.chatId))
+        .for("update")
+        .limit(1);
+      const rows = await transaction
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.id, expected.id),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      const task = tasks[0];
+      const input = row?.goalInput;
+      const latest = await transaction
+        .select({ id: schema.taskDispatchCycles.id })
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.chatId, expected.chatId),
+          ),
+        )
+        .orderBy(
+          sql`${schema.taskDispatchCycles.createdAt} DESC`,
+          sql`${schema.taskDispatchCycles.id} DESC`,
+        )
+        .limit(1);
+      if (
+        !row ||
+        latest[0]?.id !== row.id ||
+        row.operationKind !== "finalize" ||
+        !row.startedAt ||
+        !task?.implementationStartedAt ||
+        !task.planGoalEnabled ||
+        task.state === "complete" ||
+        !task.hasFinalPlan ||
+        !task.hasGoalPrompt ||
+        (input &&
+          !input.deferred &&
+          ((!input.failedBeforeDispatch &&
+            input.firstDispatchedOperationId === null) ||
+            (input.terminal && !input.terminal.projectedAt))) ||
+        row.operationId !== expected.operationId ||
+        row.fencingToken !== expected.fencingToken ||
+        row.state !== expected.state ||
+        row.leaseOwner !== expected.leaseOwner ||
+        row.physicalWorkerId !== expected.physicalWorkerId ||
+        row.modelRouteId !== expected.modelRouteId ||
+        row.providerAccountId !== expected.providerAccountId ||
+        row.codexThreadId !== expected.codexThreadId ||
+        row.worktreeId !== expected.worktreeId ||
+        ![
+          "running",
+          "expired",
+          "failed",
+          ...(options.allowSettled ? ["succeeded"] : []),
+        ].includes(row.state)
+      )
+        throw this.staleLease();
+      const live =
+        row.state === "running" &&
+        row.leaseExpiresAt &&
+        row.leaseExpiresAt > now;
+      const owner = live ? row.leaseOwner! : leaseOwner;
+      const fencingToken = live ? row.fencingToken : row.fencingToken + 1;
+      const leaseExpiresAt = new Date(now.getTime() + TASK_DISPATCH_LEASE_MS);
+      await transaction
+        .update(schema.taskDispatchCycles)
+        .set({
+          state: "running",
+          leaseOwner: owner,
+          fencingToken,
+          leaseExpiresAt,
+          lastHeartbeatAt: now,
+          completedAt: null,
+          eligibilityCode: null,
+          updatedAt: now,
+        })
+        .where(eq(schema.taskDispatchCycles.id, row.id));
+      return taskDispatchWorkerLeaseSchema.parse({
+        cycleId: row.id,
+        operationId: row.operationId,
+        leaseOwner: owner,
+        fencingToken,
+        leaseExpiresAt: iso(leaseExpiresAt),
+      });
+    });
+  }
+
+  async requeueExpiredLeases(
+    ownerId: string,
+    now = new Date(),
+  ): Promise<TaskDispatchCycleSummary[]> {
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({
+        state: "queued",
+        selectedTaskWorkerId: null,
+        taskWorkerRevision: null,
+        continuityFamily: null,
+        modelConfiguration: null,
+        modelRouteId: null,
+        providerAccountId: null,
+        physicalWorkerId: null,
+        worktreeId: null,
+        codexThreadId: null,
+        turnId: null,
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        lastHeartbeatAt: null,
+        fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+        eligibilityCode: "reconciliation-required",
+        claimedAt: null,
+        startedAt: null,
+        pausedAt: null,
+        completedAt: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.taskDispatchCycles.ownerId, ownerId),
+          eq(schema.taskDispatchCycles.state, "claimed"),
+          isNull(schema.taskDispatchCycles.startedAt),
+          sql`NOT EXISTS (SELECT 1 FROM ${schema.taskPlanningRounds} r WHERE r.id = ${schema.taskDispatchCycles.operationId} AND r.inference_input IS NOT NULL)`,
+          lte(schema.taskDispatchCycles.leaseExpiresAt, now),
+        ),
+      )
+      .returning();
+    return taskDispatchCycleListSchema.parse(
+      rows.map(toTaskDispatchCycleSummary),
+    );
+  }
+
+  async expireStartedLeases(
+    ownerId: string,
+    now = new Date(),
+  ): Promise<TaskDispatchCycleSummary[]> {
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({
+        state: "expired",
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        lastHeartbeatAt: null,
+        fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+        eligibilityCode: "reconciliation-required",
+        completedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.taskDispatchCycles.ownerId, ownerId),
+          or(
+            eq(schema.taskDispatchCycles.state, "running"),
+            and(
+              eq(schema.taskDispatchCycles.state, "claimed"),
+              or(
+                sql`${schema.taskDispatchCycles.startedAt} IS NOT NULL`,
+                sql`EXISTS (SELECT 1 FROM ${schema.taskPlanningRounds} r WHERE r.id = ${schema.taskDispatchCycles.operationId} AND r.inference_input IS NOT NULL)`,
+              ),
+            ),
+          ),
+          lte(schema.taskDispatchCycles.leaseExpiresAt, now),
+        ),
+      )
+      .returning();
+    const pending = await this.database
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(
+        and(
+          eq(schema.taskDispatchCycles.ownerId, ownerId),
+          eq(schema.taskDispatchCycles.state, "expired"),
+          pendingInputRecovery(),
+        ),
+      );
+    return taskDispatchCycleListSchema.parse(
+      [
+        ...new Map([...rows, ...pending].map((row) => [row.id, row])).values(),
+      ].map(toTaskDispatchCycleSummary),
+    );
+  }
+
+  private staleLease(): TaskDispatchConflictError {
+    return new TaskDispatchConflictError(
+      "The Task dispatch lease is stale or no longer active.",
+      "stale-lease",
+    );
+  }
+}

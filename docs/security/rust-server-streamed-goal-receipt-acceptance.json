@@ -1,0 +1,393 @@
+{
+  "completeReplacement": false,
+  "scope": "Final opaque native root Task answers for direct, Goal input and autonomous Goal cycle receipts. Active browser/worker verification covers direct and Goal input ordering. Autonomous cycle ordering uses a controlled SQL fixture.",
+  "baseCommit": "1b03e850c4fc5b6c13b5e906ab8d8bab7b016f7f",
+  "evidenceRoot": "rust-server-final-native-2e60d2042-20261111-v1",
+  "sourcePatch": {
+    "path": "goal-receipt-settlement/final-source.patch",
+    "bytes": 12659,
+    "sha256": "9d1e2b449ce79770904524f62d623766b1c211c0f99061ea7c644cda63cf1446"
+  },
+  "package": {
+    "version": "1.1.2863",
+    "target": "darwin-arm64",
+    "serverRequiresNode": false,
+    "verifiedFiles": 1762,
+    "manifest": {
+      "path": "goal-receipt-settlement/cantrip-server-darwin-arm64/native-server.json",
+      "bytes": 325804,
+      "sha256": "ba504310aef9ea581b4255f68a3c1ec9350d0b2e58f6f4050dd917773085f9d7"
+    },
+    "executable": {
+      "path": "goal-receipt-settlement/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94287712,
+      "sha256": "7b06e0042028c88d002df456656a19f9039b27535928943a961b2a95cc42006b"
+    }
+  },
+  "priorForcedGoalInputFailures": [
+    {
+      "store": "pglite",
+      "runtime": "rust",
+      "steps": 10,
+      "outcomeStatuses": {
+        "200": 3,
+        "500": 1
+      },
+      "report": {
+        "path": "goal-receipt-settlement/forced-goal-baseline/product.json",
+        "bytes": 170270,
+        "sha256": "ac6f448a3a67d6e988d387ad1c628e8ec1905e2f4b6f58900b295eb5728ef7ad"
+      },
+      "ordering": {
+        "status": 500,
+        "committed": false,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": false
+      },
+      "failure": "Expected values to be strictly equal:"
+    },
+    {
+      "store": "pglite",
+      "runtime": "node",
+      "steps": 10,
+      "outcomeStatuses": {
+        "200": 4,
+        "500": 1
+      },
+      "report": {
+        "path": "goal-receipt-settlement/forced-goal-reference/product.json",
+        "bytes": 270162,
+        "sha256": "05f33789144cb08c36b1a09d359a09afe8bf68cfb914f747f2a0bc95af8620a7"
+      },
+      "ordering": {
+        "status": 500,
+        "committed": false,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": false
+      },
+      "failure": "Expected values to be strictly equal:"
+    }
+  ],
+  "priorAutonomousCycleFailure": {
+    "path": "goal-receipt-settlement/controlled-cycle-streamed-root-node.json",
+    "bytes": 46284,
+    "sha256": "40faff8a1729ac0010b9a08dea8c7dfcfb7a787f66df47afebf9f05729a2d693"
+  },
+  "packagedProduct": [
+    {
+      "store": "pglite",
+      "runtime": "rust",
+      "steps": 16,
+      "outcomeStatuses": {
+        "200": 9,
+        "409": 1
+      },
+      "report": {
+        "path": "goal-receipt-settlement/final-forced-goal-pglite/product.json",
+        "bytes": 698667,
+        "sha256": "af6e1cb7c4d52842cf925f13bd632d1f574ecfdfd6c7cd8306a40db60e7179dd"
+      },
+      "ordering": {
+        "status": 200,
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "changedReplayStatus": 409
+      },
+      "goalLookupConflicts": 0
+    },
+    {
+      "store": "bundled-postgres",
+      "runtime": "rust",
+      "steps": 16,
+      "outcomeStatuses": {
+        "200": 9,
+        "409": 1
+      },
+      "report": {
+        "path": "goal-receipt-settlement/final-forced-goal-bundled-postgres/product.json",
+        "bytes": 702123,
+        "sha256": "f097650eb463f3df44a4f2bf82700f84ff4237f30dcdaa3c9d85acece21beeaa"
+      },
+      "ordering": {
+        "status": 200,
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "changedReplayStatus": 409
+      },
+      "goalLookupConflicts": 0
+    },
+    {
+      "store": "postgres",
+      "runtime": "rust",
+      "steps": 16,
+      "outcomeStatuses": {
+        "200": 9,
+        "409": 1
+      },
+      "report": {
+        "path": "goal-receipt-settlement/final-forced-goal-postgres/product.json",
+        "bytes": 734182,
+        "sha256": "7cb0e0fd757dcff38a3819a6962193c1740b183053d90163e219fb233fcdafdb"
+      },
+      "ordering": {
+        "status": 200,
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "changedReplayStatus": 409
+      },
+      "goalLookupConflicts": 0
+    },
+    {
+      "store": "postgres",
+      "runtime": "rust/rust",
+      "steps": 16,
+      "outcomeStatuses": {
+        "200": 9,
+        "409": 1
+      },
+      "report": {
+        "path": "goal-receipt-settlement/final-shared-goal-rerun/product.json",
+        "bytes": 865736,
+        "sha256": "5d6c002e11ebdec7f5889488b9c9effd31ae06ffbb2b97712974a2cff18c004c"
+      },
+      "ordering": {
+        "status": 200,
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "changedReplayStatus": 409
+      },
+      "goalLookupConflicts": 0
+    },
+    {
+      "store": "postgres",
+      "runtime": "rust",
+      "steps": 16,
+      "outcomeStatuses": {
+        "200": 9,
+        "409": 1
+      },
+      "report": {
+        "path": "goal-receipt-settlement/final-forced-direct-postgres/product.json",
+        "bytes": 695587,
+        "sha256": "fe999af44897481b1c8fca15e7ff17018a583e51c93a1c9995e6967fff261c90"
+      },
+      "ordering": {
+        "status": 200,
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "changedReplayStatus": 409
+      }
+    }
+  ],
+  "retainedBrowserFailures": [
+    {
+      "store": "pglite",
+      "runtime": "rust",
+      "steps": 10,
+      "outcomeStatuses": {
+        "200": 6,
+        "409": 1
+      },
+      "report": {
+        "path": "goal-receipt-settlement/forced-goal-debug-v2-pglite/product.json",
+        "bytes": 170986,
+        "sha256": "cc5e4cd2c83ea6b785d51a37040e07692a6fa3957b9311833f6ef410da99f63f"
+      },
+      "ordering": {
+        "status": 200,
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "changedReplayStatus": 409
+      },
+      "failure": "page.evaluate: CantripApiError: Encrypted Goal status is unavailable."
+    },
+    {
+      "store": "postgres",
+      "runtime": "rust/rust",
+      "steps": 13,
+      "outcomeStatuses": {
+        "200": 6,
+        "409": 1
+      },
+      "report": {
+        "path": "goal-receipt-settlement/final-shared-goal/product.json",
+        "bytes": 313403,
+        "sha256": "035531835648b4128bad1dc847a33f046e9d5854993a7bb74d044ab073d25c24"
+      },
+      "ordering": {
+        "status": 200,
+        "committed": true,
+        "finalEventHeld": true,
+        "receiptMatchesFinalEvent": true,
+        "differsFromProvisionalEvent": true,
+        "replayedProvisionalEvent": true,
+        "exactReplay": true,
+        "changedReplayStatus": 409
+      },
+      "goalLookupConflicts": 0,
+      "failure": "page.evaluate: CantripApiError: Cantrip Server returned HTTP 502."
+    }
+  ],
+  "pairedGoalHttp": [
+    {
+      "store": "pglite",
+      "cells": 3,
+      "observations": 83,
+      "paired": true,
+      "report": {
+        "path": "goal-receipt-settlement/controlled-pglite.json",
+        "bytes": 634466,
+        "sha256": "eb4237fb319b888a6ef74fb4fb319001162a1427583451081036d36b87ed4a92"
+      }
+    },
+    {
+      "store": "bundled-postgres",
+      "cells": 3,
+      "observations": 83,
+      "paired": true,
+      "report": {
+        "path": "goal-receipt-settlement/controlled-bundled-postgres.json",
+        "bytes": 644415,
+        "sha256": "0fea155276a8c657ccf525b853ca6862adfa8554e3a439012954a50244423959"
+      }
+    },
+    {
+      "store": "postgres",
+      "cells": 3,
+      "observations": 83,
+      "paired": true,
+      "report": {
+        "path": "goal-receipt-settlement/controlled-postgres.json",
+        "bytes": 643747,
+        "sha256": "baf211afcd18812295a7ba4e47daf8bd416254747769e9ee83e994edb2705685"
+      }
+    }
+  ],
+  "pairedRoundHttp": [
+    {
+      "store": "pglite",
+      "cells": 3,
+      "observations": 50,
+      "paired": true,
+      "report": {
+        "path": "goal-receipt-settlement/controlled-round-pglite.json",
+        "bytes": 445775,
+        "sha256": "45843ac86a046f2b381cdcc24d39fbf471dd10b8dfe44c6a83df6608d50641da"
+      }
+    },
+    {
+      "store": "bundled-postgres",
+      "cells": 3,
+      "observations": 50,
+      "paired": true,
+      "report": {
+        "path": "goal-receipt-settlement/controlled-round-bundled-postgres.json",
+        "bytes": 446669,
+        "sha256": "8a922fd4c64ffac4679564829f105db56d8b7ecf194d40da70d884381df523d8"
+      }
+    },
+    {
+      "store": "postgres",
+      "cells": 3,
+      "observations": 50,
+      "paired": true,
+      "report": {
+        "path": "goal-receipt-settlement/controlled-round-postgres.json",
+        "bytes": 446006,
+        "sha256": "bf8ac16db066d24e07a261867ae1036566684015f0c244e317329088f37ff0ab"
+      }
+    }
+  ],
+  "controlledStreamedCycle": [
+    {
+      "store": "pglite",
+      "cells": 1,
+      "observations": 29,
+      "paired": false,
+      "report": {
+        "path": "goal-receipt-settlement/controlled-streamed-cycle-pglite.json",
+        "bytes": 116659,
+        "sha256": "388636077b3b1cfafff95965b9ec6302702ddf6c11f27cd71e9f6148d9c24654"
+      }
+    },
+    {
+      "store": "bundled-postgres",
+      "cells": 1,
+      "observations": 29,
+      "paired": false,
+      "report": {
+        "path": "goal-receipt-settlement/controlled-streamed-cycle-bundled-postgres.json",
+        "bytes": 117321,
+        "sha256": "251754480cc7226e0958893fce0717639735e0909bb7827128c80d4a32e38dac"
+      }
+    },
+    {
+      "store": "postgres",
+      "cells": 1,
+      "observations": 29,
+      "paired": false,
+      "report": {
+        "path": "goal-receipt-settlement/controlled-streamed-cycle-postgres.json",
+        "bytes": 117105,
+        "sha256": "bcc097525141b42be7a6ef0a64327bbdbcde9c80583f839c4735d9144ac25044"
+      }
+    }
+  ],
+  "migrationRollback": {
+    "stores": 3,
+    "phases": 12,
+    "retainedIdentityAndAcceptedSettingsWrites": true,
+    "report": {
+      "path": "goal-receipt-settlement/same-profile-migration.json",
+      "bytes": 3163,
+      "sha256": "5b153a2e7796fbf4311e1c22c7c974995fee9afae81f5a1f589d85f40fe332a1"
+    }
+  },
+  "rustLibrary": {
+    "passed": 87,
+    "failed": 0,
+    "log": {
+      "path": "goal-receipt-settlement/rust-library-tests.log",
+      "bytes": 9667,
+      "sha256": "8064e289f2ded3f3653e9c8549bdfa604aca8e5bcde243566a8676cd55166779"
+    }
+  },
+  "strictClippy": {
+    "path": "goal-receipt-settlement/rust-library-clippy.log",
+    "bytes": 990,
+    "sha256": "854489ee80fb9f2fbd2346d6ece9340b6ebc2f0d0390ab3d2a72b0726bffb3e5"
+  },
+  "remaining": [
+    "Reproduce and repair the retained autonomous Goal that stayed implementing and the completed Goal with a recovered lane that stayed active.",
+    "Interrupt the worker-owning peer after durable cycle commit, then verify projection, lane release, native continuation and exact history.",
+    "Repeat final acceptance on the supported shipping artifacts."
+  ]
+}

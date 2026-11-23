@@ -22,6 +22,7 @@ export const labelingInputSchema = z.discriminatedUnion("kind", [
 export const generateLabelCommandSchema = z
   .object({
     type: z.literal("label.generate"),
+    operationId: z.string().min(1).max(500).optional(),
     chatId: z.string().uuid(),
     labelKind: labelKindSchema,
     input: labelingInputSchema,
@@ -35,6 +36,11 @@ export const generateLabelResultSchema = z
     emptyInput: z.boolean().default(false),
   })
   .strict();
+
+/** A claimed title job travels with the first response instead of racing it. */
+export const initialLabelCommandSchema = generateLabelCommandSchema.extend({
+  operationId: z.string().uuid(),
+});
 
 /** Unknown/custom effort names are not guessed or ranked. */
 export function lowestLabelingEffort(

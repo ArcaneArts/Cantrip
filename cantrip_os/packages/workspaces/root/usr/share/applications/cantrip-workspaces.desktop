@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=CantripOS Workspaces
+Comment=Open your independent workspace desktops
+Exec=cantrip-workspaces-viewer
+Icon=/usr/share/cantrip-os-workspaces/www/bolt.svg
+Categories=System;
+Terminal=false

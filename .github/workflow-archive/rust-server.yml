@@ -1,0 +1,2308 @@
+name: Rust server replacement
+
+on:
+  pull_request:
+    paths:
+      - cantrip_server_rs/**
+      - cantrip_app/src-tauri/src/direct_probe*.rs
+      - cantrip_server/drizzle/**
+      - cantrip_server/src/config.ts
+      - cantrip_server/src/auth/**
+      - cantrip_server/src/app/routes/auth-sessions.ts
+      - cantrip_server/src/app/routes/system-status.ts
+      - cantrip_server/src/app/routes/chat-catalogs.ts
+      - cantrip_server/src/app/routes/project-automations.ts
+      - cantrip_server/src/app/routes/agent-interactions.ts
+      - cantrip_server/src/app/routes/chat-customizations.ts
+      - cantrip_server/src/app/routes/chat-runtime-configuration.ts
+      - cantrip_server/src/app/runtime/settings-routes.ts
+      - cantrip_server/src/db/repository/desktop-update-state.ts
+      - cantrip_server/test/desktop-update-active-work.test.ts
+      - cantrip_server/test/provider-connection-test.test.ts
+      - cantrip_server/src/app/runtime/model-routing-runtime.ts
+      - cantrip_server/src/db/repository/mcp.ts
+      - cantrip_worker/src/skill-manager.ts
+      - cantrip_worker/src/skill-manager.test.ts
+      - cantrip_app/src/lib/api/customization.ts
+      - cantrip_app/src/lib/customization-content-encryption.ts
+      - cantrip_worker/src/commands/customization.ts
+      - cantrip_worker/src/commands/skills.ts
+      - cantrip_worker/src/customization-content-encryption.ts
+      - cantrip_app/src/lib/interaction-encryption.ts
+      - cantrip_app/src/lib/api/chats.ts
+      - cantrip_server/src/db/project-automations.ts
+      - cantrip_server/test/project-automation-api.test.ts
+      - cantrip_app/src/lib/project-automation-*.ts
+      - cantrip_worker/src/automation*.ts
+      - cantrip_worker/test/automation*.test.ts
+      - cantrip_server/src/app/routes/account-security.ts
+      - cantrip_server/src/app/routes/account-live-traffic.ts
+      - cantrip_server/src/account-usage/**
+      - cantrip_server/src/db/account-resource-usage.ts
+      - cantrip_server/src/db/policies.ts
+      - cantrip_server/src/db/repository/settings.ts
+      - cantrip_server/src/db/repository.ts
+      - cantrip_server/src/db/repository/native*.ts
+      - cantrip_server/src/db/repository/managed-queue*.ts
+      - cantrip_server/src/db/repository/queued-prompts.ts
+      - cantrip_server/src/db/repository/agent-interactions.ts
+      - cantrip_server/src/db/repository/chat-execution-lanes.ts
+      - cantrip_server/src/db/repository/chat-state.ts
+      - cantrip_server/src/app/routes/*native*.ts
+      - cantrip_server/src/app/runtime/computer-use-agent-events.ts
+      - cantrip_server/src/app/runtime/clear-agent-interaction.ts
+      - cantrip_server/src/app/runtime/live-mutation-runtime.ts
+      - cantrip_server/src/app/runtime/managed-queue-receipts.ts
+      - cantrip_server/src/app/runtime/managed-queue-delivery.ts
+      - cantrip_server/src/app/runtime/managed-queue-input.ts
+      - cantrip_server/src/app/runtime/native-logical-completion-delivery.ts
+      - cantrip_server/src/app/runtime/finish-managed-gui.ts
+      - cantrip_worker/src/native*.ts
+      - cantrip_worker/src/interaction-encryption.ts
+      - cantrip_worker/src/chat-message-encryption.ts
+      - cantrip_worker/src/chat-plan-encryption.ts
+      - cantrip_server/src/db/repository/browsers.ts
+      - cantrip_server/src/db/repository/file-documents.ts
+      - cantrip_server/src/db/workspace-layouts.ts
+      - cantrip_server/src/db/workspace-document-migration.ts
+      - cantrip_server/src/db/workspace-resource-removal.ts
+      - cantrip_server/src/db/tab-layouts.ts
+      - cantrip_server/src/app/routes/workspace-layouts.ts
+      - cantrip_server/src/app/routes/tab-layouts.ts
+      - cantrip_server/src/app/routes/file-documents.ts
+      - cantrip_server/src/app/routes/browser-management.ts
+      - cantrip_server/src/app/routes/browser-service-discovery.ts
+      - cantrip_server/src/app/routes/project-network-shares.ts
+      - cantrip_server/src/project-shares/**
+      - cantrip_server/src/app/runtime/tunnel-control-plane-runtime.ts
+      - cantrip_server/test/project-share-tunnel.test.ts
+      - cantrip_server/src/projects/worker-affinity.ts
+      - cantrip_server/src/app/shared/constants.ts
+      - cantrip_server/src/app/runtime/interactive-surface-runtime.ts
+      - cantrip_server/src/db/repository/provider*.ts
+      - cantrip_server/src/db/repository/telemetry.ts
+      - cantrip_server/src/db/repository-facade-identity-model.ts
+      - cantrip_server/src/db/schema.ts
+      - cantrip_server/src/db/tasks.ts
+      - cantrip_server/src/db/task-retries.ts
+      - cantrip_server/src/tasks/automatic-retry.ts
+      - cantrip_server/src/app/runtime/task-goal-runtime.ts
+      - cantrip_server/src/app/runtime/task-*.ts
+      - cantrip_server/src/app/runtime/project-task-pause-runtime.ts
+      - cantrip_server/src/app/runtime/chat-automation-pause-runtime.ts
+      - cantrip_server/src/app/runtime/chat-recovery-runtime.ts
+      - cantrip_server/src/app/runtime/chat-turn-*.ts
+      - cantrip_server/src/app/runtime/chat-thread-sync-runtime.ts
+      - cantrip_server/src/app/runtime/managed-chat-account-failover.ts
+      - cantrip_server/test/local-foundation.test.ts
+      - cantrip_server/test/foundation-account-handoff-fixture.ts
+      - cantrip_server/test/managed-chat-account-failover.test.ts
+      - cantrip_server/src/app/runtime/worker-notification-runtime.ts
+      - cantrip_server/src/app/routes/chat-messages-and-sync.ts
+      - cantrip_server/src/chats/thread-sync.ts
+      - cantrip_server/src/chats/thread-change-reconciliation.ts
+      - cantrip_worker/src/codex/thread-observation.ts
+      - cantrip_server/src/app/runtime/task-execution-recovery.ts
+      - cantrip_server/src/db/task-dispatch.ts
+      - cantrip_server/src/tasks/**
+      - cantrip_server/src/db/repository/model*.ts
+      - cantrip_server/src/models/**
+      - cantrip_server/src/app/runtime/settings-routes.ts
+      - cantrip_server/src/app/runtime/application-service-foundation.ts
+      - cantrip_server/src/app/routes/provider-account-auth.ts
+      - cantrip_server/src/app/routes/internal-provider-credentials.ts
+      - cantrip_server/src/operations/relay-quotas.ts
+      - cantrip_server/src/security/abuse-limits.ts
+      - cantrip_server/src/security/json-bytes.ts
+      - cantrip_server/test/json-bytes.test.ts
+      - cantrip_server/test/abuse-limits.test.ts
+      - cantrip_server/src/policies/**
+      - cantrip_server/src/app/routes/policies.ts
+      - policy_templates/**
+      - cantrip_server/src/app/shared/constants.ts
+      - cantrip_server/src/app/routes/internal-worker*.ts
+      - cantrip_server/src/app/routes/worker-*.ts
+      - cantrip_server/src/workers/**
+      - cantrip_server/src/worker-links/**
+      - cantrip_server/src/direct-attachments/**
+      - cantrip_server/src/app/routes/direct-attachment-control.ts
+      - cantrip_server/src/operations/metrics.ts
+      - cantrip_server/src/db/repository/workers.ts
+      - cantrip_server/src/db/repository/projects.ts
+      - cantrip_server/src/db/workspace-repository-discovery-jobs.ts
+      - cantrip_server/src/workspace-repository-discovery/**
+      - cantrip_server/src/app/routes/project-workspaces.ts
+      - cantrip_server/src/app/routes/project-preserving-removal.ts
+      - cantrip_app/src/lib/workspace-encryption.ts
+      - cantrip_app/src/lib/project-encryption.ts
+      - cantrip_app/src/lib/api/workspaces.ts
+      - cantrip_app/src/lib/api/discovery.ts
+      - cantrip_server/src/db/repository/run-configuration-state.ts
+      - cantrip_server/src/db/repository/worktree-*.ts
+      - cantrip_server/src/worktrees/**
+      - cantrip_server/src/app/runtime/run-configuration-runtime.ts
+      - cantrip_server/src/app/shared/run-configuration-secrets.ts
+      - cantrip_server/src/app/routes/project-worktree*.ts
+      - cantrip_server/src/app/routes/repository-operations.ts
+      - cantrip_server/src/db/repository/placement.ts
+      - cantrip_server/src/db/repository/execution-targets.ts
+      - cantrip_server/src/execution-targets/**
+      - cantrip_server/src/app/routes/project-catalog-and-placement.ts
+      - cantrip_server/src/app/routes/project-replicas.ts
+      - cantrip_server/src/app/routes/project-github-import.ts
+      - cantrip_server/src/app/routes/project-github-conversion.ts
+      - cantrip_server/src/db/project-github-conversion-jobs.ts
+      - cantrip_server/src/project-github-conversions/**
+      - cantrip_app/src/lib/api/project-replicas.ts
+      - cantrip_server/src/db/project-replica*
+      - cantrip_server/src/project-replicas/**
+      - cantrip_server/src/db/repository/project-lifecycle.ts
+      - cantrip_server/src/db/repository/chat-catalog.ts
+      - cantrip_server/src/db/repository/chat-mappers.ts
+      - cantrip_server/src/db/repository/terminals.ts
+      - cantrip_server/src/db/repository/explorers.ts
+      - cantrip_server/src/db/repository/code-surfaces.ts
+      - cantrip_server/src/db/repository/browsers.ts
+      - cantrip_server/src/db/repository/remote-surfaces.ts
+      - cantrip_server/src/db/repository/tunnels.ts
+      - cantrip_server/src/tunnels/**
+      - cantrip_server/src/app/runtime/tunnel-control-plane-runtime.ts
+      - cantrip_server/src/app/runtime/direct-attachment-runtime.ts
+      - cantrip_server/src/db/repository/chat-runtime-context.ts
+      - cantrip_server/src/app/routes/live.ts
+      - cantrip_server/src/app/runtime/session-socket-runtime.ts
+      - cantrip_server/src/app/runtime/live-infrastructure-runtime.ts
+      - cantrip_server/src/app/runtime/interactive-surface-runtime.ts
+      - cantrip_server/src/worker-encryption-refresh.ts
+      - cantrip_server/src/live/**
+      - cantrip_server/test/worker-authentication-shutdown.test.ts
+      - cantrip_server/test/worker-notification-connect-order.test.ts
+      - cantrip_server/test/buffered-worker-socket.test.ts
+      - cantrip_server/test/websocket-subprotocol.test.ts
+      - cantrip_worker/**
+      - cantrip_cli/**
+      - cantrip_app/src/lib/api/workers.ts
+      - cantrip_app/src/lib/api/account.ts
+      - cantrip_app/src/lib/api/models.ts
+      - cantrip_app/src/lib/protected-secrets.ts
+      - cantrip_app/src/lib/api-client.ts
+      - cantrip_app/src/lib/api/workspace-layouts.ts
+      - cantrip_app/src/lib/workspace-*.ts
+      - cantrip_app/src/components/editor/document-session.ts
+      - cantrip_app/src/lib/app-live-client.ts
+      - cantrip_app/src/lib/worker-link*.ts
+      - cantrip_app/src/lib/worker-observation-client.ts
+      - cantrip_app/src/lib/remote-surface-worker-link.ts
+      - cantrip_app/src/lib/remote-surface-stream-encryption.ts
+      - cantrip_app/src/lib/tunnel-worker-link.ts
+      - cantrip_app/src/lib/tunnel-content-encryption.ts
+      - cantrip_app/src/lib/api/worker-link.ts
+      - cantrip_server/src/app/http/**
+      - cantrip_server/src/db/repository/accounts.ts
+      - cantrip_server/src/db/encryption-registry.ts
+      - packages/protocol/**
+      - packages/crypto/**
+      - packages/logging/**
+      - scripts/server-rust/**
+      - scripts/database-transfer/**
+      - scripts/cantrip-cli/**
+      - scripts/version.mjs
+      - version.json
+      - package.json
+      - .github/workflows/rust-server.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - patches/@zavora-ai__computer-use-mcp@7.0.0.patch
+  workflow_dispatch:
+    inputs:
+      source_reference_diagnostic:
+        description: "Run the original Windows Source tests and profile actual worker failures"
+        type: boolean
+        default: false
+      conversion_lifetime_diagnostic:
+        description: Run only the repeated Linux HTTP conversion lifetime diagnostic
+        type: boolean
+        default: false
+      discovery_lifetime_diagnostic:
+        description: Run only the repeated Linux workspace admission lifetime diagnostic
+        type: boolean
+        default: false
+      native_stack_diagnostic:
+        description: Capture the original Windows native PGlite admission stack overflow with GDB
+        type: boolean
+        default: false
+      task_recovery_diagnostic:
+        description: Repeat only the actual Linux Task quota failure, manual retry and restart flows
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-server-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic && !inputs.source_reference_diagnostic) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    # The Windows GNU build plus actual Node/Rust storage and transport suites
+    # exceeded 60 minutes in run 40473447456 without a failing test.
+    timeout-minutes: 120
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+          # Full Cargo tests include the real native PGlite 17 dump. Retain
+          # PostgreSQL 16 server coverage and use the migration job's dump client.
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "CANTRIP_TEST_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Shared resource cleanup SQL matches the actual TypeScript helpers
+        run: node --import tsx scripts/server-rust/resource-layout-query-manifest.mjs --check
+      - name: Browser query statements match the actual TypeScript repository
+        run: node --import tsx scripts/server-rust/browser-query-manifest.mjs --check
+      - name: File-document query statements match the actual TypeScript repository
+        run: node --import tsx scripts/server-rust/file-document-query-manifest.mjs --check
+      - name: Early HTTP replies survive upload termination while resets and partial replies fail
+        run: node --test scripts/server-rust/streaming-http-request.test.mjs scripts/server-rust/http-connection-trace.test.mjs scripts/server-rust/windows-worker-tree.test.mjs
+      - name: Native HTTP rejections deliver before upload EOF and bound abandoned drains
+        run: node scripts/server-rust/cargo.mjs test --lib http::body::tests -- --nocapture
+      - name: File-document and surface-stream protocol compatibility
+        run: node scripts/server-rust/cargo.mjs test --test file_document_contracts -- --nocapture
+      - name: Workspace query statements match the actual TypeScript repositories
+        run: node --import tsx scripts/server-rust/workspace-query-manifest.mjs --check
+      - name: Workspace protocol and exact validation errors
+        run: node scripts/server-rust/cargo.mjs test --test workspace_contracts -- --nocapture
+      - name: Workspace commands, imports and resource deletion match the actual shared models
+        run: node scripts/server-rust/cargo.mjs test --test workspace_models -- --nocapture
+      - name: Workspace repositories and legacy layout cleanup with native PGlite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/workspace-repository-compatibility.mjs --report .qa/rust-server/workspace-repository-pglite.json
+      - name: Workspace HTTP, authentication and Live with native PGlite
+        run: node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --report .qa/rust-server/workspace-http-pglite.json
+      - name: Workspace repositories and legacy layout cleanup with private PostgreSQL
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/workspace-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/workspace-repository-bundled.json
+      - name: Workspace HTTP, authentication and Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/workspace-http-bundled.json
+      - name: Workspace repositories, document authority and commit lock races with external PostgreSQL
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/workspace-repository-compatibility.mjs --database postgres --report .qa/rust-server/workspace-repository-external.json
+      - name: Workspace HTTP, authentication and Live with external PostgreSQL
+        run: node --import tsx scripts/server-rust/workspace-http-compatibility.mjs --database postgres --report .qa/rust-server/workspace-http-external.json
+      - name: Concurrent workspace seeds, command receipts and admitted shutdown
+        run: node --import tsx scripts/server-rust/workspace-http-lifetimes.mjs --report .qa/rust-server/workspace-http-lifetimes.json
+      - name: Project surface SQL matches the actual TypeScript repositories
+        run: node --import tsx scripts/server-rust/project-surface-query-manifest.mjs --check
+      - name: Project surface protocol and exact validation errors
+        run: node scripts/server-rust/cargo.mjs test --test project_surface_contracts -- --nocapture
+      - name: Project surface repository state and placement with native PGlite
+        run: node --import tsx scripts/server-rust/project-surfaces-repository-compatibility.mjs --database pglite --report .qa/rust-server/project-surfaces-repository-compatibility-pglite.json
+      - name: Project surface HTTP, worker routing and ordered Live with native PGlite
+        run: node --import tsx scripts/server-rust/project-surface-http-compatibility.mjs --database pglite --report .qa/rust-server/project-surface-http-compatibility-pglite.json
+      - name: Project surface repository state and placement with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-surfaces-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-surfaces-repository-compatibility-bundled-postgres.json
+      - name: Project surface HTTP, worker routing and ordered Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-surface-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-surface-http-compatibility-bundled-postgres.json
+      - name: Project surface repository state and placement with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-surfaces-repository-compatibility.mjs --database postgres --report .qa/rust-server/project-surfaces-repository-compatibility-postgres.json
+      - name: Project surface HTTP, worker routing and ordered Live with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-surface-http-compatibility.mjs --database postgres --report .qa/rust-server/project-surface-http-compatibility-postgres.json
+      - name: Project surface pin races, retarget fencing and admitted shutdown
+        run: node --import tsx scripts/server-rust/project-surface-lifetimes.mjs --report .qa/rust-server/project-surface-lifetimes.json
+      - name: Removed plaintext GitHub catalog HTTP compatibility with native PGlite
+        run: node --import tsx scripts/server-rust/github-catalog-http-compatibility.mjs --database pglite --report .qa/rust-server/github-catalog-http-pglite.json
+      - name: Removed plaintext GitHub catalog HTTP compatibility with private PostgreSQL
+        run: node --import tsx scripts/server-rust/github-catalog-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/github-catalog-http-bundled.json
+      - name: Removed plaintext GitHub catalog HTTP compatibility with external PostgreSQL
+        run: node --import tsx scripts/server-rust/github-catalog-http-compatibility.mjs --database postgres --report .qa/rust-server/github-catalog-http-postgres.json
+      - name: Git, worktree and Run wire validation contracts
+        run: node scripts/server-rust/cargo.mjs test --test worktree_contracts -- --nocapture
+      - name: Git, worktrees and Run admission, retirement and disconnect with native PGlite
+        run: node --import tsx scripts/server-rust/project-git-http-compatibility.mjs --database pglite --report .qa/rust-server/project-git-http-pglite.json
+      - name: Git, worktrees and Run admission, retirement and disconnect with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-git-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-git-http-bundled.json
+      - name: Git, worktrees and Run admission, retirement and disconnect with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-git-http-compatibility.mjs --database postgres --report .qa/rust-server/project-git-http-external.json
+      - name: Legacy pane query statements match the actual TypeScript repository
+        run: node --import tsx scripts/server-rust/layout-query-manifest.mjs --check
+      - name: Legacy pane protocol and exact validation errors
+        run: node scripts/server-rust/cargo.mjs test --test pane_contracts -- --nocapture
+      - name: Legacy pane repositories and durable layout state with native PGlite
+        run: node --import tsx scripts/server-rust/layout-repository-compatibility.mjs --report .qa/rust-server/layout-repository-compatibility-pglite.json
+      - name: Legacy pane HTTP, authentication and ordered Live notifications with native PGlite
+        run: node --import tsx scripts/server-rust/pane-http-compatibility.mjs --report .qa/rust-server/pane-http-compatibility-pglite.json
+      - name: Legacy pane repositories and durable layout state with private PostgreSQL
+        run: node --import tsx scripts/server-rust/layout-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/layout-repository-compatibility-bundled.json
+      - name: Legacy pane HTTP, authentication and ordered Live notifications with private PostgreSQL
+        run: node --import tsx scripts/server-rust/pane-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/pane-http-compatibility-bundled.json
+      - name: Legacy pane repositories and durable layout state with external PostgreSQL
+        run: node --import tsx scripts/server-rust/layout-repository-compatibility.mjs --database postgres --report .qa/rust-server/layout-repository-compatibility-external.json
+      - name: Legacy pane HTTP, authentication and ordered Live notifications with external PostgreSQL
+        run: node --import tsx scripts/server-rust/pane-http-compatibility.mjs --database postgres --report .qa/rust-server/pane-http-compatibility-external.json
+      - name: Legacy pane revision races, read boundaries and admitted shutdown
+        run: node --import tsx scripts/server-rust/pane-http-lifetimes.mjs --report .qa/rust-server/pane-http-lifetimes.json
+      - name: Shared desktop verifier retains its owning crate's formatting
+        run: rustfmt --edition 2021 --check cantrip_app/src-tauri/src/direct_probe_connection.rs
+      - name: Terminal HTTP and ordered Live notifications with native PGlite
+        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --report .qa/rust-server/terminal-http-pglite.json
+      - name: Terminal HTTP and ordered Live notifications with private PostgreSQL
+        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/terminal-http-bundled.json
+      - name: Terminal HTTP and disconnected creation through shutdown with external PostgreSQL
+        run: node --import tsx scripts/server-rust/terminal-http-compatibility.mjs --database postgres --report .qa/rust-server/terminal-http-external.json
+      - name: Immutable document repository authority and restart with native PGlite
+        run: node --import tsx scripts/server-rust/file-document-repository-compatibility.mjs --report .qa/rust-server/file-document-repository-pglite.json
+      - name: File-document HTTP, opaque operations and Live with native PGlite
+        run: node --import tsx scripts/server-rust/file-document-http-compatibility.mjs --report .qa/rust-server/file-document-http-pglite.json
+      - name: Immutable document repository authority and restart with private PostgreSQL
+        run: node --import tsx scripts/server-rust/file-document-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/file-document-repository-bundled.json
+      - name: File-document HTTP, opaque operations and Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/file-document-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/file-document-http-bundled.json
+      - name: Immutable document repository authority and restart with external PostgreSQL
+        run: node --import tsx scripts/server-rust/file-document-repository-compatibility.mjs --database postgres --report .qa/rust-server/file-document-repository-external.json
+      - name: File-document HTTP, opaque operations and Live with external PostgreSQL
+        run: node --import tsx scripts/server-rust/file-document-http-compatibility.mjs --database postgres --report .qa/rust-server/file-document-http-external.json
+      - name: Admitted document creation survives caller disconnect and shutdown
+        run: node --import tsx scripts/server-rust/file-document-shutdown.mjs --report .qa/rust-server/file-document-shutdown.json
+      - name: Build the production worker used by browser integration
+        run: pnpm --filter @cantrip/worker build
+      - name: Browser state refresh retains concurrent updates and attachment recipients
+        run: pnpm --filter @cantrip/worker exec vitest run test/browser-state-publication.test.ts --maxWorkers=1
+      - name: Embedded desktop backend retains worker signal ownership
+        run: pnpm --filter @cantrip/worker exec vitest run test/desktop-automation-lifecycle.test.ts --maxWorkers=1
+      - name: Browser for unchanged client and worker control integration
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Allow the downloaded Chromium to use its namespace sandbox on Ubuntu
+        if: runner.os == 'Linux'
+        run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Existing Explorer and Code clients, full worker files and restart with native PGlite
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database pglite --project-surfaces --report .qa/rust-server/actual-project-surfaces-pglite.json
+      - name: Existing Explorer and Code clients, full worker files and restart with private PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database bundled-postgres --project-surfaces --report .qa/rust-server/actual-project-surfaces-bundled-postgres.json
+      - name: Existing Explorer and Code clients, full worker files and restart with external PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database postgres --project-surfaces --report .qa/rust-server/actual-project-surfaces-postgres.json
+      - name: Actual browser, server and full worker catalog flow with PGlite
+        run: node --import tsx scripts/server-rust/actual-worker-client.mjs --report .qa/rust-server/actual-worker-client-pglite.json
+      - name: Actual browser, server and full worker catalog flow with private PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-worker-client.mjs --database bundled-postgres --report .qa/rust-server/actual-worker-client-bundled.json
+      - name: Actual browser, server and full worker catalog flow with external PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-worker-client.mjs --database postgres --report .qa/rust-server/actual-worker-client-external.json
+      - name: Execution target descriptor composition and wire ordering
+        run: node scripts/server-rust/project-target-catalog-compatibility.mjs --report .qa/rust-server/project-target-catalog.json
+      - name: Project placement selection with native PGlite
+        run: node scripts/server-rust/project-placement-compatibility.mjs --report .qa/rust-server/project-placement-pglite.json
+      - name: Project placement selection with private PostgreSQL
+        run: node scripts/server-rust/project-placement-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-placement-bundled.json
+      - name: Project placement selection with external PostgreSQL
+        run: node scripts/server-rust/project-placement-compatibility.mjs --database postgres --report .qa/rust-server/project-placement-external.json
+      - name: Protected execution target repositories with native PGlite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node scripts/server-rust/project-target-repository-compatibility.mjs --report .qa/rust-server/project-target-repository-pglite.json
+      - name: Protected execution target repositories with private PostgreSQL
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node scripts/server-rust/project-target-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-target-repository-bundled.json
+      - name: Protected execution target repositories with external PostgreSQL
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node scripts/server-rust/project-target-repository-compatibility.mjs --database postgres --report .qa/rust-server/project-target-repository-external.json
+      - name: Project HTTP contracts and actual worker presence with native PGlite
+        run: node --import tsx scripts/server-rust/project-http-compatibility.mjs --report .qa/rust-server/project-http-pglite.json
+      - name: Project HTTP contracts and actual worker presence with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-http-bundled.json
+      - name: Project HTTP contracts and actual worker presence with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-http-compatibility.mjs --database postgres --report .qa/rust-server/project-http-external.json
+      - name: Managed-folder durable repository compatibility with native PGlite
+        run: node --import tsx scripts/server-rust/folder-repository-compatibility.mjs --report .qa/rust-server/folder-repository-pglite.json
+      - name: Managed-folder durable repository compatibility with private PostgreSQL
+        run: node --import tsx scripts/server-rust/folder-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/folder-repository-bundled.json
+      - name: Managed-folder durable repository compatibility with external PostgreSQL
+        run: node --import tsx scripts/server-rust/folder-repository-compatibility.mjs --database postgres --report .qa/rust-server/folder-repository-external.json
+      - name: Managed-folder HTTP, Live, encrypted routing and shutdown with native PGlite
+        run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --report .qa/rust-server/folder-http-pglite.json
+      - name: Managed-folder HTTP, Live, encrypted routing and shutdown with private PostgreSQL
+        run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/folder-http-bundled.json
+      - name: Managed-folder HTTP, Live, encrypted routing and shutdown with external PostgreSQL
+        run: node --import tsx scripts/server-rust/folder-http-compatibility.mjs --database postgres --report .qa/rust-server/folder-http-external.json
+      - name: Chat, scratch and protected fork protocol compatibility
+        run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+      - name: Chat fork command-budget HTTP error compatibility
+        run: node scripts/server-rust/cargo.mjs test --lib http::chat_forks::tests -- --nocapture
+      - name: Chat fork snapshot equality matches the actual reference runtime
+        run: node scripts/server-rust/cargo.mjs test --lib chats::forks::tests -- --nocapture
+      - name: Protected Chat fork transactions and cleanup with native PGlite
+        run: node --import tsx scripts/server-rust/chat-fork-repository-compatibility.mjs --database pglite --report .qa/rust-server/chat-fork-repository-pglite.json
+      - name: Protected Chat fork transactions and cleanup with private PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-fork-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-fork-repository-bundled.json
+      - name: Protected Chat fork transactions and cleanup with external PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-fork-repository-compatibility.mjs --database postgres --report .qa/rust-server/chat-fork-repository-external.json
+      - name: Chat fork HTTP and production worker reprotection with native PGlite
+        run: node --import tsx scripts/server-rust/chat-fork-http-compatibility.mjs --database pglite --report .qa/rust-server/chat-fork-http-pglite.json
+      - name: Chat fork HTTP and production worker reprotection with private PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-fork-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-fork-http-bundled.json
+      - name: Chat fork HTTP and production worker reprotection with external PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-fork-http-compatibility.mjs --database postgres --report .qa/rust-server/chat-fork-http-external.json
+      - name: Standalone Chat catalog and scratch transactions with native PGlite
+        run: node --import tsx scripts/server-rust/scratch-root-repository-compatibility.mjs --database pglite --report .qa/rust-server/scratch-catalog-repository-pglite.json
+      - name: Standalone Chat catalog and scratch transactions with private PostgreSQL
+        run: node --import tsx scripts/server-rust/scratch-root-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/scratch-catalog-repository-bundled.json
+      - name: Standalone Chat catalog and scratch transactions with external PostgreSQL
+        run: node --import tsx scripts/server-rust/scratch-root-repository-compatibility.mjs --database postgres --report .qa/rust-server/scratch-catalog-repository-external.json
+      - name: Chat retention, metadata, drafts and ownership cleanup with native PGlite
+        run: node --import tsx scripts/server-rust/chat-lifecycle-repository-compatibility.mjs --database pglite --report .qa/rust-server/chat-lifecycle-repository-pglite.json
+      - name: Chat retention, metadata, drafts and ownership cleanup with private PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-lifecycle-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-lifecycle-repository-bundled.json
+      - name: Chat retention, metadata, drafts and ownership cleanup with external PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-lifecycle-repository-compatibility.mjs --database postgres --report .qa/rust-server/chat-lifecycle-repository-external.json
+      - name: Standalone Chat HTTP, worker transport and Live with native PGlite
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --lifecycle --database pglite --report .qa/rust-server/scratch-chat-http-pglite.json
+      - name: Standalone Chat HTTP, worker transport and Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --lifecycle --database bundled-postgres --report .qa/rust-server/scratch-chat-http-bundled.json
+      - name: Standalone Chat HTTP, worker transport and Live with external PostgreSQL
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --lifecycle --database postgres --report .qa/rust-server/scratch-chat-http-external.json
+      - name: Standalone Chat error-message matching uses the source statement parameters
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --database postgres --worker-id unique-scratch-worker --report .qa/rust-server/scratch-chat-http-message.json
+      - name: Standalone Chat production lease renewal preserves its current attempt
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --database postgres --lease-renewal --report .qa/rust-server/scratch-chat-http-leases.json
+      - name: Standalone Chat executor admits four jobs and retains queued work
+        run: node --import tsx scripts/server-rust/standalone-chat-http-compatibility.mjs --database postgres --capacity --report .qa/rust-server/scratch-chat-http-capacity.json
+      - name: Browser repositories, layouts and rollback with native PGlite
+        run: node --import tsx scripts/server-rust/browser-repository-compatibility.mjs --report .qa/rust-server/browser-repository-pglite.json
+      - name: Browser repositories, layouts and rollback with private PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/browser-repository-bundled.json
+      - name: Browser repositories and observed write races with external PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-repository-compatibility.mjs --database postgres --report .qa/rust-server/browser-repository-external.json
+      - name: Browser HTTP, saved state and managed tunnel cleanup with native PGlite
+        run: node --import tsx scripts/server-rust/browser-http-compatibility.mjs --report .qa/rust-server/browser-http-pglite.json
+      - name: Browser HTTP, saved state and managed tunnel cleanup with private PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/browser-http-bundled.json
+      - name: Browser HTTP, saved state and managed tunnel cleanup with external PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-http-compatibility.mjs --database postgres --report .qa/rust-server/browser-http-external.json
+      - name: Browser service discovery, worker deadlines and fleet bounds with native PGlite
+        run: node --import tsx scripts/server-rust/browser-discovery-http-compatibility.mjs --report .qa/rust-server/browser-discovery-http-pglite.json
+      - name: Browser service discovery, worker deadlines and fleet bounds with private PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-discovery-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/browser-discovery-http-bundled.json
+      - name: Browser service discovery, worker deadlines and fleet bounds with external PostgreSQL
+        run: node --import tsx scripts/server-rust/browser-discovery-http-compatibility.mjs --database postgres --report .qa/rust-server/browser-discovery-http-external.json
+      - name: Project-share repository query drift
+        run: node --import tsx scripts/server-rust/project-share-query-manifest.mjs --check
+      - name: Project-share reference broker and grant revocation
+        run: pnpm --filter @cantrip/server exec vitest run test/project-share-tunnel.test.ts
+      - name: Protected project and chat shares with native PGlite
+        run: node --import tsx scripts/server-rust/project-share-http-compatibility.mjs --report .qa/rust-server/project-share-http-pglite.json
+      - name: Protected project and chat shares with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-share-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-share-http-bundled.json
+      - name: Protected project and chat shares with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-share-http-compatibility.mjs --database postgres --report .qa/rust-server/project-share-http-external.json
+      - name: Admitted share registration survives caller disconnect and shutdown
+        run: node --import tsx scripts/server-rust/project-share-shutdown.mjs --report .qa/rust-server/project-share-shutdown.json
+      - name: Actual POSIX Run secrets, definitions and process retirement with native PGlite
+        if: runner.os != 'Windows'
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --worktrees --report .qa/rust-server/actual-run-product-pglite.json
+      - name: Actual POSIX Run secrets, definitions and process retirement with private PostgreSQL
+        if: runner.os != 'Windows'
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database bundled-postgres --worktrees --report .qa/rust-server/actual-run-product-bundled.json
+      - name: Actual POSIX Run secrets, definitions and process retirement with external PostgreSQL
+        if: runner.os != 'Windows'
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --database postgres --worktrees --report .qa/rust-server/actual-run-product-external.json
+      - name: Actual browser folders, encrypted PTYs and WorkerLink observations with native PGlite
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --project-shares --file-documents --workspaces --report .qa/rust-server/actual-folder-client-pglite.json
+      - name: Actual browser folders, encrypted PTYs and WorkerLink observations with private PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database bundled-postgres --project-shares --file-documents --workspaces --report .qa/rust-server/actual-folder-client-bundled.json
+      - name: Actual browser folders, encrypted PTYs and WorkerLink observations with external PostgreSQL
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --terminals --worker-links --terminal-direct --surfaces --tunnels --database postgres --project-shares --file-documents --workspaces --report .qa/rust-server/actual-folder-client-external.json
+      - name: Terminal-service repository compatibility with native PGlite
+        run: node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --report .qa/rust-server/maintenance-repository-pglite.json
+      - name: Terminal-service repository compatibility with private PostgreSQL
+        run: node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/maintenance-repository-bundled.json
+      - name: Terminal-service repository compatibility with external PostgreSQL
+        run: node --import tsx scripts/server-rust/maintenance-repository-compatibility.mjs --database postgres --report .qa/rust-server/maintenance-repository-external.json
+      - name: Worker encryption refresh and terminal Live with native PGlite
+        run: node --import tsx scripts/server-rust/maintenance-http-compatibility.mjs --report .qa/rust-server/maintenance-http-pglite.json
+      - name: Worker encryption refresh and terminal Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/maintenance-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/maintenance-http-bundled.json
+      - name: Worker encryption refresh, fail-fast siblings and shutdown with external PostgreSQL
+        run: node --import tsx scripts/server-rust/maintenance-http-compatibility.mjs --database postgres --report .qa/rust-server/maintenance-http-external.json
+      - name: Terminal resources and transactional layouts with native PGlite
+        run: node --import tsx scripts/server-rust/terminal-repository-compatibility.mjs --report .qa/rust-server/terminal-repository-pglite.json
+      - name: Terminal resources and transactional layouts with private PostgreSQL
+        run: node --import tsx scripts/server-rust/terminal-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/terminal-repository-bundled.json
+      - name: Terminal resources and transactional layouts with external PostgreSQL
+        run: node --import tsx scripts/server-rust/terminal-repository-compatibility.mjs --database postgres --report .qa/rust-server/terminal-repository-external.json
+      - name: Managed console routing and canonical bindings with native PGlite
+        run: node --import tsx scripts/server-rust/chat-runtime-repository-compatibility.mjs --report .qa/rust-server/chat-runtime-pglite.json
+      - name: Managed console routing and canonical bindings with private PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-runtime-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-runtime-bundled.json
+      - name: Managed console routing and canonical bindings with external PostgreSQL
+        run: node --import tsx scripts/server-rust/chat-runtime-repository-compatibility.mjs --database postgres --report .qa/rust-server/chat-runtime-external.json
+      - name: WorkerLink coordinator authority and acknowledgment races
+        run: node --import tsx scripts/server-rust/worker-link-coordinator-compatibility.mjs --report .qa/rust-server/worker-link-coordinator.json
+      - name: Remote-surface canonical context, status and browser backfill with native PGlite
+        run: node --import tsx scripts/server-rust/remote-surface-repository-compatibility.mjs --report .qa/rust-server/remote-surface-repository-pglite.json
+      - name: Remote-surface canonical context, status and browser backfill with private PostgreSQL
+        run: node --import tsx scripts/server-rust/remote-surface-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/remote-surface-repository-bundled.json
+      - name: Remote-surface canonical context, status and browser backfill with external PostgreSQL
+        run: node --import tsx scripts/server-rust/remote-surface-repository-compatibility.mjs --database postgres --report .qa/rust-server/remote-surface-repository-external.json
+      - name: Direct attachment capability, lease and mutation races
+        run: node --import tsx scripts/server-rust/direct-attachment-compatibility.mjs --report .qa/rust-server/direct-attachment-coordinator.json
+      - name: Tunnel catalog, managed ownership, attachments and direct leases with native PGlite
+        run: node --import tsx scripts/server-rust/tunnel-repository-compatibility.mjs --report .qa/rust-server/tunnel-repository-pglite.json
+      - name: Tunnel catalog, managed ownership, attachments and direct leases with private PostgreSQL
+        run: node --import tsx scripts/server-rust/tunnel-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/tunnel-repository-bundled.json
+      - name: Tunnel catalog, managed ownership and actual write races with external PostgreSQL
+        run: node --import tsx scripts/server-rust/tunnel-repository-compatibility.mjs --database postgres --report .qa/rust-server/tunnel-repository-external.json
+      - name: Tunnel catalog HTTP, authorization and Live with native PGlite
+        run: node --import tsx scripts/server-rust/tunnel-http-compatibility.mjs --report .qa/rust-server/tunnel-http-pglite.json
+      - name: Tunnel catalog HTTP, authorization and Live with private PostgreSQL
+        run: node --import tsx scripts/server-rust/tunnel-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/tunnel-http-bundled.json
+      - name: Tunnel catalog HTTP, authorization and Live with external PostgreSQL
+        run: node --import tsx scripts/server-rust/tunnel-http-compatibility.mjs --database postgres --report .qa/rust-server/tunnel-http-external.json
+      - name: Reference tunnel control plane, runtime and stream broker
+        run: pnpm --filter @cantrip/server exec vitest run test/tunnel-control-plane.test.ts test/tunnel-runtime.test.ts test/tunnel-runtime-shutdown.test.ts test/tunnel-stream-broker.test.ts --maxWorkers=1
+      - name: Raw tunnel upgrade headers and malformed handshakes with native PGlite
+        run: node --import tsx scripts/server-rust/tunnel-handshake-compatibility.mjs --report .qa/rust-server/tunnel-handshakes-pglite.json
+      - name: Raw tunnel upgrade headers and malformed handshakes with private PostgreSQL
+        run: node --import tsx scripts/server-rust/tunnel-handshake-compatibility.mjs --database bundled-postgres --report .qa/rust-server/tunnel-handshakes-bundled.json
+      - name: Raw tunnel upgrade headers and malformed handshakes with external PostgreSQL
+        run: node --import tsx scripts/server-rust/tunnel-handshake-compatibility.mjs --database postgres --report .qa/rust-server/tunnel-handshakes-external.json
+      - name: Legacy tunnel attachments, direct activation, heartbeat and opaque sockets with native PGlite
+        run: node --import tsx scripts/server-rust/tunnel-attachment-compatibility.mjs --report .qa/rust-server/tunnel-attachments-http-pglite.json
+      - name: Legacy tunnel attachments, direct activation, heartbeat and opaque sockets with private PostgreSQL
+        run: node --import tsx scripts/server-rust/tunnel-attachment-compatibility.mjs --database bundled-postgres --report .qa/rust-server/tunnel-attachments-http-bundled.json
+      - name: Legacy tunnel attachment activation, expiry and disconnect lock races with external PostgreSQL
+        run: node --import tsx scripts/server-rust/tunnel-attachment-compatibility.mjs --database postgres --report .qa/rust-server/tunnel-attachments-http-external.json
+      - name: Legacy tunnel initialization and active-worker revocation with native PGlite
+        run: node --import tsx scripts/server-rust/tunnel-attachment-compatibility.mjs --runtime-faults --report .qa/rust-server/tunnel-runtime-faults-pglite.json
+      - name: Legacy tunnel initialization and active-worker revocation with private PostgreSQL
+        run: node --import tsx scripts/server-rust/tunnel-attachment-compatibility.mjs --runtime-faults --database bundled-postgres --report .qa/rust-server/tunnel-runtime-faults-bundled.json
+      - name: Legacy tunnel initialization during blocked authorization and worker revocation with external PostgreSQL
+        run: node --import tsx scripts/server-rust/tunnel-attachment-compatibility.mjs --runtime-faults --database postgres --report .qa/rust-server/tunnel-runtime-faults-external.json
+      - name: Legacy tunnel shutdown retains blocked activation and fenced cleanup
+        run: node --import tsx scripts/server-rust/tunnel-attachment-compatibility.mjs --runtime-shutdown --database postgres --report .qa/rust-server/tunnel-runtime-shutdown-activation.json
+      - name: Legacy tunnel shutdown retains blocked authorization and usage recording
+        run: node --import tsx scripts/server-rust/tunnel-attachment-compatibility.mjs --runtime-shutdown --pending-authorization --database postgres --report .qa/rust-server/tunnel-runtime-shutdown-authorization.json
+      - name: Reference idle HTTP shutdown and admitted request retention
+        run: pnpm --filter @cantrip/server exec vitest run test/http-idle-shutdown.test.ts test/server-shutdown-handlers.test.ts --maxWorkers=1
+      - name: Direct attachment production log redaction and noise-control policy
+        run: node --import tsx scripts/server-rust/direct-attachment-compatibility.mjs --policy-logs --report .qa/rust-server/direct-attachment-policy-logs.json
+      - name: WorkerLink authenticated HTTP and binary relay with native PGlite
+        run: node --import tsx scripts/server-rust/worker-link-http-compatibility.mjs --report .qa/rust-server/worker-link-http-pglite.json
+      - name: WorkerLink authenticated HTTP and binary relay with private PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-link-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-link-http-bundled.json
+      - name: WorkerLink authenticated HTTP and binary relay with external PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-link-http-compatibility.mjs --database postgres --report .qa/rust-server/worker-link-http-external.json
+      - name: Encryption and account security with native PGlite
+        run: node --import tsx scripts/server-rust/security-compatibility.mjs --report .qa/rust-server/security-pglite-http.json
+      - name: Encryption and account security with private PostgreSQL
+        run: node --import tsx scripts/server-rust/security-compatibility.mjs --database bundled-postgres --report .qa/rust-server/security-bundled-http.json
+      - name: Encryption and account security with external PostgreSQL and post-write reversal
+        run: node --import tsx scripts/server-rust/security-compatibility.mjs --database postgres --report .qa/rust-server/security-external-http.json
+      - name: Mutation audit response completion, real locks and shutdown ownership
+        run: node --import tsx scripts/server-rust/audit-lifecycle-compatibility.mjs --report .qa/rust-server/audit-lifecycle.json
+      - name: Reference worker authentication shutdown and socket ordering
+        # Each integration file initializes PGlite's WASM runtime and full SQL
+        # schema. Avoid competing cold initializations on the hosted runners.
+        run: pnpm --filter @cantrip/server exec vitest run test/worker-authentication-shutdown.test.ts test/worker-notification-connect-order.test.ts test/buffered-worker-socket.test.ts test/websocket-subprotocol.test.ts test/json-bytes.test.ts test/abuse-limits.test.ts test/direct-attachment-coordinator.test.ts test/operational-metrics.test.ts --maxWorkers=1
+      - name: Shared message decoding isolates validator exceptions
+        run: pnpm --filter @cantrip/protocol exec vitest run src/json-message.test.ts
+      - name: Built-in provider data matches the actual reference service
+        run: node --import tsx scripts/server-rust/zai-catalog-data.mjs --check
+      - run: cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check
+      - run: node scripts/server-rust/cargo.mjs clippy --all-targets -- -D warnings
+      - name: Configuration parity, existing schema, all storage modes and restart
+        run: node scripts/server-rust/cargo.mjs test -- --nocapture
+      - name: Node and Rust over real HTTP connections
+        run: node scripts/server-rust/compatibility.mjs --report .qa/rust-server/foundation-http.json
+      - name: PostgreSQL TLS policy and unrelated HTTP requests under a real relation lock
+        run: node scripts/server-rust/postgres-connections.mjs --report .qa/rust-server/postgres-connections.json
+      - name: Private PostgreSQL ownership, abrupt server death and retained restart
+        run: node scripts/server-rust/postgres-lifecycle.mjs --report .qa/rust-server/postgres-lifecycle.json
+      - name: Actual publication cursor accounting and rejection controls
+        run: node --import tsx scripts/server-rust/live-cursor-contract.mjs --report .qa/rust-server/json-cursor-contract.json
+      - name: Deep and malformed JSON with native PGlite
+        run: node --import tsx scripts/server-rust/json-compatibility.mjs --report .qa/rust-server/json-pglite-http.json
+      - name: Deep and malformed JSON with private PostgreSQL
+        run: node --import tsx scripts/server-rust/json-compatibility.mjs --database bundled-postgres --report .qa/rust-server/json-bundled-http.json
+      - name: Deep and malformed JSON with external PostgreSQL
+        run: node --import tsx scripts/server-rust/json-compatibility.mjs --database postgres --report .qa/rust-server/json-external-http.json
+      - name: Actual Node and Rust Live hub protocol, replay and control oracle
+        run: node --import tsx scripts/server-rust/live-hub-oracle.mjs --report .qa/rust-server/live-hub-oracle.json
+      - name: Account usage repositories with native PGlite
+        run: node --import tsx scripts/server-rust/usage-repository-compatibility.mjs --report .qa/rust-server/usage-repository-pglite.json
+      - name: Account usage repositories with private PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/usage-repository-bundled.json
+      - name: Account usage repositories with external PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-repository-compatibility.mjs --database postgres --report .qa/rust-server/usage-repository-external.json
+      - name: Usage HTTP payloads and shutdown persistence with native PGlite
+        run: node --import tsx scripts/server-rust/usage-http-compatibility.mjs --report .qa/rust-server/usage-http-pglite.json
+      - name: Usage HTTP payloads and shutdown persistence with private PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/usage-http-bundled.json
+      - name: Usage HTTP payloads and shutdown persistence with external PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-http-compatibility.mjs --database postgres --report .qa/rust-server/usage-http-external.json
+      - name: Usage socket accounting and observer feedback with native PGlite
+        run: node --import tsx scripts/server-rust/usage-socket-compatibility.mjs --report .qa/rust-server/usage-sockets-pglite.json
+      - name: Usage socket accounting and observer feedback with private PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-socket-compatibility.mjs --database bundled-postgres --report .qa/rust-server/usage-sockets-bundled.json
+      - name: Usage socket accounting and observer feedback with external PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-socket-compatibility.mjs --database postgres --report .qa/rust-server/usage-sockets-external.json
+      - name: Retained account usage and tenant isolation with native PGlite
+        run: node --import tsx scripts/server-rust/usage-account-compatibility.mjs --report .qa/rust-server/usage-accounts-pglite.json
+      - name: Retained account usage and tenant isolation with private PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-account-compatibility.mjs --database bundled-postgres --report .qa/rust-server/usage-accounts-bundled.json
+      - name: Retained account usage and tenant isolation with external PostgreSQL
+        run: node --import tsx scripts/server-rust/usage-account-compatibility.mjs --database postgres --report .qa/rust-server/usage-accounts-external.json
+      - name: Settings and provider repositories with native PGlite
+        run: node scripts/server-rust/settings-repository-compatibility.mjs --report .qa/rust-server/settings-repository-pglite.json
+      - name: Settings and provider repositories with private PostgreSQL
+        run: node scripts/server-rust/settings-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/settings-repository-bundled.json
+      - name: Settings and provider repositories with external PostgreSQL
+        run: node scripts/server-rust/settings-repository-compatibility.mjs --database postgres --report .qa/rust-server/settings-repository-external.json
+      - name: Telemetry analytics, exports and rollback with native PGlite
+        run: node scripts/server-rust/telemetry-repository-compatibility.mjs --report .qa/rust-server/telemetry-repository-pglite.json
+      - name: Telemetry analytics, exports and rollback with private PostgreSQL
+        run: node scripts/server-rust/telemetry-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/telemetry-repository-bundled.json
+      - name: Telemetry analytics, exports and rollback with external PostgreSQL
+        run: node scripts/server-rust/telemetry-repository-compatibility.mjs --database postgres --report .qa/rust-server/telemetry-repository-external.json
+      - name: Strict telemetry producer clock boundary regressions
+        run: node --test scripts/server-rust/operation-clock.test.mjs
+      - name: Actual HTTP producer clocks and ordinary entrypoint controls
+        run: node scripts/server-rust/http-clock-compatibility.mjs --report .qa/rust-server/http-clock-controls.json
+      - name: Telemetry HTTP, privacy and restart with native PGlite
+        run: node scripts/server-rust/telemetry-http-compatibility.mjs --report .qa/rust-server/telemetry-http-pglite.json
+      - name: Telemetry HTTP, privacy and restart with private PostgreSQL
+        run: node scripts/server-rust/telemetry-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/telemetry-http-bundled.json
+      - name: Telemetry HTTP, privacy and admitted deletion shutdown with external PostgreSQL
+        run: node scripts/server-rust/telemetry-http-compatibility.mjs --database postgres --report .qa/rust-server/telemetry-http-external.json
+      - name: Public OpenRouter HTTP cache, errors and actual deadlines
+        run: node --import tsx scripts/server-rust/openrouter-http-compatibility.mjs --timeouts --report .qa/rust-server/openrouter-public-http.json
+      - name: Settings HTTP and worker effects with native PGlite
+        run: node scripts/server-rust/settings-http-compatibility.mjs --report .qa/rust-server/settings-http-pglite.json
+      - name: Settings HTTP and worker effects with private PostgreSQL
+        run: node scripts/server-rust/settings-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/settings-http-bundled.json
+      - name: Settings HTTP and worker effects with external PostgreSQL
+        run: node scripts/server-rust/settings-http-compatibility.mjs --database postgres --report .qa/rust-server/settings-http-external.json
+      - name: Worker provider credentials with native PGlite
+        run: node scripts/server-rust/provider-credential-http-compatibility.mjs --report .qa/rust-server/provider-credential-http-pglite.json
+      - name: Worker provider credentials with private PostgreSQL
+        run: node scripts/server-rust/provider-credential-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-credential-http-bundled.json
+      - name: Worker provider credentials with external PostgreSQL
+        run: node scripts/server-rust/provider-credential-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-credential-http-external.json
+      - name: Provider account HTTP, Live and shutdown with native PGlite
+        run: node scripts/server-rust/provider-account-http-compatibility.mjs --report .qa/rust-server/provider-account-http-pglite.json
+      - name: Provider account HTTP, Live and shutdown with private PostgreSQL
+        run: node scripts/server-rust/provider-account-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-account-http-bundled.json
+      - name: Provider account HTTP, Live and shutdown with external PostgreSQL
+        run: node scripts/server-rust/provider-account-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-account-http-external.json
+      - name: Provider catalog HTTP, cancellation and retained cache with native PGlite
+        run: node scripts/server-rust/provider-catalog-http-compatibility.mjs --report .qa/rust-server/provider-catalog-http-pglite.json
+      - name: Provider catalog HTTP, cancellation and retained cache with private PostgreSQL
+        run: node scripts/server-rust/provider-catalog-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-catalog-http-bundled.json
+      - name: Provider catalog HTTP, cancellation and retained cache with external PostgreSQL
+        run: node scripts/server-rust/provider-catalog-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-catalog-http-external.json
+      - name: Global settings and provider CRUD with native PGlite
+        run: node scripts/server-rust/provider-management-http-compatibility.mjs --report .qa/rust-server/provider-management-http-pglite.json
+      - name: Global settings and provider CRUD with private PostgreSQL
+        run: node scripts/server-rust/provider-management-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-management-http-bundled.json
+      - name: Global settings and provider CRUD with external PostgreSQL
+        run: node scripts/server-rust/provider-management-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-management-http-external.json
+      - name: Provider auth status, opaque capture and caller lifetime with native PGlite
+        run: node scripts/server-rust/provider-auth-http-compatibility.mjs --report .qa/rust-server/provider-auth-http-pglite.json
+      - name: Provider auth status, opaque capture and caller lifetime with private PostgreSQL
+        run: node scripts/server-rust/provider-auth-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-auth-http-bundled.json
+      - name: Provider auth status, opaque capture and caller lifetime with external PostgreSQL
+        run: node scripts/server-rust/provider-auth-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-auth-http-external.json
+      - name: Provider quota/reset HTTP and partial commits with native PGlite
+        run: node scripts/server-rust/provider-quota-http-compatibility.mjs --report .qa/rust-server/provider-quota-http-pglite.json
+      - name: Provider quota/reset HTTP and partial commits with private PostgreSQL
+        run: node scripts/server-rust/provider-quota-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/provider-quota-http-bundled.json
+      - name: Provider quota/reset HTTP and partial commits with external PostgreSQL
+        run: node scripts/server-rust/provider-quota-http-compatibility.mjs --database postgres --report .qa/rust-server/provider-quota-http-external.json
+      - name: Command quotas through HTTP and worker sockets with native PGlite
+        run: node scripts/server-rust/worker-command-http-compatibility.mjs --report .qa/rust-server/command-http-pglite.json
+      - name: Command quotas through HTTP and worker sockets with private PostgreSQL
+        run: node scripts/server-rust/worker-command-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/command-http-bundled.json
+      - name: Command quotas through HTTP and worker sockets with external PostgreSQL
+        run: node scripts/server-rust/worker-command-http-compatibility.mjs --database postgres --report .qa/rust-server/command-http-external.json
+      - name: Native PGlite host environment compatibility
+        run: node scripts/server-rust/pglite-environment-compatibility.mjs --report .qa/rust-server/pglite-host-environment.json
+      # Policy scope rows are seeded fixtures; these suites do not claim
+      # project/workspace CRUD or the unported chat execution runtime.
+      - name: Policy persistence and rollback with native PGlite
+        run: node scripts/server-rust/policy-repository-compatibility.mjs --report .qa/rust-server/policy-repository-pglite.json
+      - name: Policy persistence and rollback with private PostgreSQL
+        run: node scripts/server-rust/policy-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/policy-repository-bundled.json
+      - name: Policy persistence and rollback with external PostgreSQL
+        run: node scripts/server-rust/policy-repository-compatibility.mjs --database postgres --report .qa/rust-server/policy-repository-external.json
+      - name: Encrypted policy HTTP and Live events with native PGlite
+        run: node scripts/server-rust/policy-http-compatibility.mjs --report .qa/rust-server/policy-http-pglite.json
+      - name: Encrypted policy HTTP and Live events with private PostgreSQL
+        run: node scripts/server-rust/policy-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/policy-http-bundled.json
+      - name: Encrypted policy HTTP and Live events with external PostgreSQL
+        run: node scripts/server-rust/policy-http-compatibility.mjs --database postgres --report .qa/rust-server/policy-http-external.json
+      - name: Policy HTTP method routing with native PGlite
+        run: node scripts/server-rust/policy-routing-compatibility.mjs --report .qa/rust-server/policy-routing-pglite.json
+      - name: Policy HTTP method routing with private PostgreSQL
+        run: node scripts/server-rust/policy-routing-compatibility.mjs --database bundled-postgres --report .qa/rust-server/policy-routing-bundled.json
+      - name: Policy HTTP method routing with external PostgreSQL
+        run: node scripts/server-rust/policy-routing-compatibility.mjs --database postgres --report .qa/rust-server/policy-routing-external.json
+      - name: Retained policy writes through Node Rust Node reversal
+        run: node scripts/server-rust/policy-retained-compatibility.mjs --report .qa/rust-server/policy-retained.json
+      - name: Full project mapping with native PGlite
+        run: node --import tsx scripts/server-rust/project-repository-compatibility.mjs --report .qa/rust-server/live-projects-pglite.json
+      - name: Full project mapping with private PostgreSQL
+        run: node --import tsx scripts/server-rust/project-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/live-projects-bundled.json
+      - name: Full project mapping with external PostgreSQL
+        run: node --import tsx scripts/server-rust/project-repository-compatibility.mjs --database postgres --report .qa/rust-server/live-projects-external.json
+      - name: Live scope and session authorization with native PGlite
+        run: node --import tsx scripts/server-rust/live-repository-compatibility.mjs --report .qa/rust-server/live-scopes-pglite.json
+      - name: Live scope and session authorization with private PostgreSQL
+        run: node --import tsx scripts/server-rust/live-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/live-scopes-bundled.json
+      - name: Live scope and session authorization with external PostgreSQL
+        run: node --import tsx scripts/server-rust/live-repository-compatibility.mjs --database postgres --report .qa/rust-server/live-scopes-external.json
+      - name: Actual Live HTTP and WebSocket transport with native PGlite
+        run: node --import tsx scripts/server-rust/live-compatibility.mjs --report .qa/rust-server/live-pglite-http.json
+      - name: Actual Live HTTP and WebSocket transport with private PostgreSQL
+        run: node --import tsx scripts/server-rust/live-compatibility.mjs --database bundled-postgres --report .qa/rust-server/live-bundled-http.json
+      - name: Actual Live HTTP and WebSocket transport with external PostgreSQL
+        run: node --import tsx scripts/server-rust/live-compatibility.mjs --database postgres --report .qa/rust-server/live-external-http.json
+      - name: Authentication over real HTTP with native PGlite
+        run: node --import tsx scripts/server-rust/auth-compatibility.mjs --report .qa/rust-server/auth-pglite-http.json
+      - name: Authentication over real HTTP with private PostgreSQL
+        run: node --import tsx scripts/server-rust/auth-compatibility.mjs --database bundled-postgres --report .qa/rust-server/auth-bundled-http.json
+      - name: Authentication over external PostgreSQL and Node/Rust retained state
+        run: node --import tsx scripts/server-rust/auth-compatibility.mjs --database postgres --report .qa/rust-server/auth-external-http.json
+      - name: Synthetic build metadata and existing wire-version rejection
+        run: node scripts/server-rust/version-compatibility.mjs
+      - name: Worker enrollment, credentials and sockets with native PGlite
+        run: node --import tsx scripts/server-rust/worker-compatibility.mjs --report .qa/rust-server/worker-pglite-http.json
+      - name: Worker enrollment, credentials and sockets with private PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-bundled-http.json
+      - name: Worker control with external PostgreSQL and real authentication lock faults
+        run: node --import tsx scripts/server-rust/worker-compatibility.mjs --database postgres --report .qa/rust-server/worker-external-http.json
+      - name: Actual worker command admission and incoming envelopes with PGlite
+        run: node --import tsx scripts/server-rust/worker-ingress-compatibility.mjs --report .qa/rust-server/worker-ingress-pglite.json
+      - name: Actual worker command admission and incoming envelopes with private PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-ingress-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-ingress-bundled.json
+      - name: Actual worker command admission and incoming envelopes with external PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-ingress-compatibility.mjs --database postgres --report .qa/rust-server/worker-ingress-external.json
+      - name: Actual Chromium APIs, Live client and unchanged worker components with PGlite
+        run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --report .qa/rust-server/worker-client-pglite.json
+      - name: Actual Chromium APIs, Live client and unchanged worker components with private PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --database bundled-postgres --report .qa/rust-server/worker-client-bundled.json
+      - name: Actual Chromium APIs, Live client and unchanged worker components with external PostgreSQL
+        run: node --import tsx scripts/server-rust/worker-client-compatibility.mjs --database postgres --report .qa/rust-server/worker-client-external.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-${{ matrix.os }}
+          path: .qa/rust-server/
+
+  replicas:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic && !inputs.source_reference_diagnostic) }}
+    # Production lease timers take about 30 minutes for the three stores.
+    # Keep the complete replica matrix independent of the existing domain matrix.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Create replica evidence directory
+        run: |
+          node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
+      - name: Build the production worker used by replica integration
+        run: pnpm --filter @cantrip/worker build
+      - name: Browser for actual encrypted replica clients
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Allow the downloaded Chromium to use its namespace sandbox on Ubuntu
+        if: runner.os == 'Linux'
+        run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Replica durable leases and transitions with native PGlite
+        run: node --import tsx scripts/server-rust/replica-lifecycle-repository-compatibility.mjs --database pglite --report .qa/rust-server/replica-lifecycle-repository-compatibility-pglite.json
+      - name: Replica admission and idempotency with native PGlite
+        run: node --import tsx scripts/server-rust/replica-admission-repository-compatibility.mjs --database pglite --report .qa/rust-server/replica-admission-repository-compatibility-pglite.json
+      - name: Replica completion and source transactions with native PGlite
+        run: node --import tsx scripts/server-rust/replica-completion-repository-compatibility.mjs --database pglite --report .qa/rust-server/replica-completion-repository-compatibility-pglite.json
+      - name: Replica HTTP validation and error precedence with native PGlite
+        run: node --import tsx scripts/server-rust/replica-http-validation-compatibility.mjs --database pglite --report .qa/rust-server/replica-http-validation-compatibility-pglite.json
+      - name: Replica protected import, worker transport and recovery with native PGlite
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database pglite --connected --faults --reconnect --shutdown --report .qa/rust-server/replica-import-http-compatibility-pglite.json
+      - name: Replica executor four-job capacity and queued dispatch with pglite
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database pglite --connected --faults --reconnect --concurrency --report .qa/rust-server/replica-concurrency-pglite.json
+      - name: Converted-folder replica retention and deletion with pglite
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database pglite --connected --faults --reconnect --converted-removal --report .qa/rust-server/replica-converted-pglite.json
+      - name: Replica real lease renewal and stale completion recovery with pglite
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database pglite --connected --faults --reconnect --lease-recovery --report .qa/rust-server/replica-lease-pglite.json
+      - name: Replica durable leases and transitions with private PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-lifecycle-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/replica-lifecycle-repository-compatibility-bundled-postgres.json
+      - name: Replica admission and idempotency with private PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-admission-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/replica-admission-repository-compatibility-bundled-postgres.json
+      - name: Replica completion and source transactions with private PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-completion-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/replica-completion-repository-compatibility-bundled-postgres.json
+      - name: Replica HTTP validation and error precedence with private PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-http-validation-compatibility.mjs --database bundled-postgres --report .qa/rust-server/replica-http-validation-compatibility-bundled-postgres.json
+      - name: Replica protected import, worker transport and recovery with private PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database bundled-postgres --connected --faults --reconnect --shutdown --report .qa/rust-server/replica-import-http-compatibility-bundled-postgres.json
+      - name: Replica executor four-job capacity and queued dispatch with bundled-postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database bundled-postgres --connected --faults --reconnect --concurrency --report .qa/rust-server/replica-concurrency-bundled-postgres.json
+      - name: Converted-folder replica retention and deletion with bundled-postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database bundled-postgres --connected --faults --reconnect --converted-removal --report .qa/rust-server/replica-converted-bundled-postgres.json
+      - name: Replica real lease renewal and stale completion recovery with bundled-postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database bundled-postgres --connected --faults --reconnect --lease-recovery --report .qa/rust-server/replica-lease-bundled-postgres.json
+      - name: Replica HTTP admission races, caller disconnect and shutdown ownership
+        run: node --import tsx scripts/server-rust/replica-http-lifetimes.mjs --report .qa/rust-server/replica-http-lifetimes.json
+      - name: Replica durable leases and transitions with external PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-lifecycle-repository-compatibility.mjs --database postgres --report .qa/rust-server/replica-lifecycle-repository-compatibility-postgres.json
+      - name: Replica admission and idempotency with external PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-admission-repository-compatibility.mjs --database postgres --report .qa/rust-server/replica-admission-repository-compatibility-postgres.json
+      - name: Replica completion and source transactions with external PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-completion-repository-compatibility.mjs --database postgres --report .qa/rust-server/replica-completion-repository-compatibility-postgres.json
+      - name: Replica HTTP validation and error precedence with external PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-http-validation-compatibility.mjs --database postgres --report .qa/rust-server/replica-http-validation-compatibility-postgres.json
+      - name: Replica protected import, worker transport and recovery with external PostgreSQL
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database postgres --connected --faults --reconnect --shutdown --report .qa/rust-server/replica-import-http-compatibility-postgres.json
+      - name: Replica executor four-job capacity and queued dispatch with postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database postgres --connected --faults --reconnect --concurrency --report .qa/rust-server/replica-concurrency-postgres.json
+      - name: Converted-folder replica retention and deletion with postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database postgres --connected --faults --reconnect --converted-removal --report .qa/rust-server/replica-converted-postgres.json
+      - name: Replica real lease renewal and stale completion recovery with postgres
+        run: node --import tsx scripts/server-rust/replica-import-http-compatibility.mjs --database postgres --connected --faults --reconnect --lease-recovery --report .qa/rust-server/replica-lease-postgres.json
+      - name: Worker observation lifetime, index retirement and Git safety
+        run: pnpm --filter @cantrip/worker exec vitest run test/worktrees.test.ts test/codegraph-supervisor.test.ts test/github.test.ts --maxWorkers=1
+      - name: Actual browser local Git and managed GitHub replicas with pglite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --replicas --github-replicas --database pglite --report .qa/rust-server/actual-replica-product-pglite.json
+      - name: Actual browser local Git and managed GitHub replicas with bundled-postgres
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --replicas --github-replicas --database bundled-postgres --report .qa/rust-server/actual-replica-product-bundled-postgres.json
+      - name: Actual browser local Git and managed GitHub replicas with postgres
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --replicas --github-replicas --database postgres --report .qa/rust-server/actual-replica-product-postgres.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-replicas-${{ matrix.os }}
+          path: .qa/rust-server/
+
+  conversions:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic && !inputs.source_reference_diagnostic) }}
+    # Exercise production lease timers separately from the domain matrices.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Create conversion evidence directory
+        run: |
+          node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
+      - name: Build the production worker used by conversion integration
+        run: pnpm --filter @cantrip/worker build
+      - name: Browser for actual encrypted conversion clients
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Allow the downloaded Chromium to use its namespace sandbox on Ubuntu
+        if: runner.os == 'Linux'
+        run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Conversion durable admission, fencing and rollback with pglite
+        run: node --import tsx scripts/server-rust/conversion-repository-compatibility.mjs --database pglite --report .qa/rust-server/conversion-repository-compatibility-pglite.json
+      - name: Conversion HTTP, worker, Live, capacity and recovery with pglite
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database pglite --lifecycle --report .qa/rust-server/conversion-http-compatibility-pglite.json
+      - name: Conversion production lease renewal and expiry with pglite
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database pglite --profile none --leases --report .qa/rust-server/conversion-real-leases-pglite.json
+      - name: Pending observation command shutdown and conversion recovery with pglite
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database pglite --profile none --lifecycle --observation-shutdown --report .qa/rust-server/conversion-observation-shutdown-pglite.json
+      - name: Actual encrypted browser and full worker GitHub conversion with pglite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --github-conversion --database pglite --report .qa/rust-server/actual-github-conversion-pglite.json
+      - name: Conversion durable admission, fencing and rollback with bundled-postgres
+        run: node --import tsx scripts/server-rust/conversion-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/conversion-repository-compatibility-bundled-postgres.json
+      - name: Conversion HTTP, worker, Live, capacity and recovery with bundled-postgres
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database bundled-postgres --lifecycle --report .qa/rust-server/conversion-http-compatibility-bundled-postgres.json
+      - name: Conversion production lease renewal and expiry with bundled-postgres
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database bundled-postgres --profile none --leases --report .qa/rust-server/conversion-real-leases-bundled-postgres.json
+      - name: Pending observation command shutdown and conversion recovery with bundled-postgres
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database bundled-postgres --profile none --lifecycle --observation-shutdown --report .qa/rust-server/conversion-observation-shutdown-bundled-postgres.json
+      - name: Actual encrypted browser and full worker GitHub conversion with bundled-postgres
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --github-conversion --database bundled-postgres --report .qa/rust-server/actual-github-conversion-bundled-postgres.json
+      - name: Conversion durable admission, fencing and rollback with postgres
+        run: node --import tsx scripts/server-rust/conversion-repository-compatibility.mjs --database postgres --report .qa/rust-server/conversion-repository-compatibility-postgres.json
+      - name: Conversion HTTP, worker, Live, capacity and recovery with postgres
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database postgres --lifecycle --report .qa/rust-server/conversion-http-compatibility-postgres.json
+      - name: Conversion production lease renewal and expiry with postgres
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database postgres --profile none --leases --report .qa/rust-server/conversion-real-leases-postgres.json
+      - name: Pending observation command shutdown and conversion recovery with postgres
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database postgres --profile none --lifecycle --observation-shutdown --report .qa/rust-server/conversion-observation-shutdown-postgres.json
+      - name: Actual encrypted browser and full worker GitHub conversion with postgres
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --github-conversion --database postgres --report .qa/rust-server/actual-github-conversion-postgres.json
+      - name: Conversion actual PostgreSQL admission races and disconnected shutdown
+        run: node --import tsx scripts/server-rust/conversion-http-compatibility.mjs --database postgres --lifetimes --trace-http --report .qa/rust-server/conversion-http-lifetimes.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-conversions-${{ matrix.os }}
+          path: .qa/rust-server/
+
+  native-stack-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.native_stack_diagnostic }}
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl mingw-w64-x86_64-gdb
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Original one MiB admission suite under GDB
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+          CANTRIP_FIXTURE_GDB: gdb
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database pglite --report .qa/rust-server/native-stack-admission-pglite.json
+      - name: Original one MiB execution target suite under GDB
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+          CANTRIP_FIXTURE_GDB: gdb
+        run: node scripts/server-rust/project-target-repository-compatibility.mjs --report .qa/rust-server/target-stack-pglite.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-native-stack-diagnostic
+          path: .qa/rust-server/
+
+  native-commands:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic && !inputs.source_reference_diagnostic) }}
+    # Native command policy, durable execution, queues and protected HTTP/Live.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Native policy and state unit compatibility
+        run: node scripts/server-rust/cargo.mjs test --lib native_commands -- --nocapture
+      - name: Native method policy matches the TypeScript authority
+        run: node --import tsx scripts/server-rust/native-command-policy-manifest.mjs --check
+      - name: Worker queue HTTP, endpoint encryption and imports with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-http-compatibility.mjs --database pglite --report .qa/rust-server/native-queue-http-pglite.json
+      - name: Worker queue HTTP, endpoint encryption and imports with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-queue-http-bundled-postgres.json
+      - name: Worker queue HTTP, endpoint encryption and imports with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-http-compatibility.mjs --database postgres --report .qa/rust-server/native-queue-http-postgres.json
+      - name: Queue receipt lifetimes, tenant isolation and transaction recovery with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database pglite --report .qa/rust-server/native-queue-receipt-pglite.json
+      - name: Queue receipt lifetimes, tenant isolation and transaction recovery with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database bundled-postgres --report .qa/rust-server/native-queue-receipt-bundled-postgres.json
+      - name: Queue receipt lifetimes, tenant isolation and transaction recovery with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-queue-receipt-http.mjs --database postgres --report .qa/rust-server/native-queue-receipt-postgres.json
+      - name: Task pause and lease SQL diagnostics match current Source builders
+        run: node --import tsx scripts/server-rust/task-pause-queries.mjs
+      - name: Native event publication oracle rejects missing and reordered events
+        run: node --test scripts/server-rust/native-event-publication-trace.test.mjs scripts/server-rust/process.test.mjs
+      - name: Native approval publication under controlled PostgreSQL delivery
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database postgres --publication-schedules-only --report .qa/rust-server/native-event-publication-schedules.json
+      - name: Native command protocol compatibility
+        run: node scripts/server-rust/cargo.mjs test --test native_command_contracts -- --nocapture
+      - name: Turn protocol, lifetime and recovery scheduler compatibility
+        run: node scripts/server-rust/cargo.mjs test --test task_contracts --test task_dashboard --test task_failure_kind --test task_behavior --test turn_orchestration_contracts --test turn_behavior_contracts --test turn_stage_lifetime --test turn_outcome_scheduler -- --nocapture
+      - name: native-settings-repository with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-repository-compatibility.mjs --database pglite --report .qa/rust-server/native-settings-repository-pglite.json
+      - name: execution-lanes with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/execution-lane-repository-compatibility.mjs --database pglite --report .qa/rust-server/execution-lanes-pglite.json
+      - name: native-command-kernel with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database pglite --report .qa/rust-server/native-command-kernel-pglite.json
+      - name: Task dispatch capacity, retained Goal leases and recovery with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-dispatch --database pglite --report .qa/rust-server/task-dispatch-pglite.json
+      - name: Native Task session recovery and canonical Goal continuation with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-recovery --database pglite --report .qa/rust-server/task-recovery-pglite.json
+      - name: Task Worker resources and project pause with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-workers --database pglite --report .qa/rust-server/task-workers-pglite.json
+      - name: Prepared Task dispatch and retained-session eligibility with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-eligibility --database pglite --report .qa/rust-server/task-eligibility-pglite.json
+      - name: Task naming, operation queue and saved finalization retries with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-queue --database pglite --report .qa/rust-server/task-queue-pglite.json
+      - name: Automatic Task retries, concurrent claims and recovery with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-automatic --database pglite --report .qa/rust-server/task-automatic-pglite.json
+      - name: Task snapshots preserve per-tenant order and exact message identity
+        run: node --test scripts/server-rust/task-background-observation.test.mjs
+      - name: Coalesced Task scheduler, retry/recovery and owned shutdown with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-background --database pglite --report .qa/rust-server/task-background-pglite.json
+      - name: Worker-acknowledged pause/resume and late native controls with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain automation-pause --database pglite --report .qa/rust-server/automation-pause-pglite.json
+      - name: Claimed/resumed Task execution, structured completion and launch recovery with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-claimed --database pglite --report .qa/rust-server/task-claimed-pglite.json
+      - name: Task Worker authenticated HTTP and Live with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-workers-http-compatibility.mjs --database pglite --report .qa/rust-server/task-workers-http-pglite.json
+      - name: Encrypted Goal observations, launch, resume and retained leases with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-goal --database pglite --report .qa/rust-server/task-goal-pglite.json
+      - name: Durable Task retry accounting and contention with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-retry --database pglite --report .qa/rust-server/task-retry-pglite.json
+      - name: Encrypted Task persistence, Goal finalization and recovery with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain tasks --database pglite --report .qa/rust-server/task-runtime-pglite.json
+      - name: GUI admission, execution, recovery and handoffs with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain gui --database pglite --report .qa/rust-server/gui-runtime-pglite.json
+      - name: Managed preparation HTTP and encrypted worker transport with pglite
+        run: node --import tsx scripts/server-rust/managed-preparation-http-compatibility.mjs --database pglite --report .qa/rust-server/managed-preparation-http-pglite.json
+      - name: Handoff HTTP, retry, restart and pending-command shutdown with pglite
+        run: node --import tsx scripts/server-rust/native-handoff-http-compatibility.mjs --database pglite --report .qa/rust-server/native-handoff-http-pglite.json
+      - name: native-settings-http with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-settings-http-compatibility.mjs --database pglite --report .qa/rust-server/native-settings-http-pglite.json
+      - name: native-model-inventory-http with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-model-inventory-http-compatibility.mjs --database pglite --report .qa/rust-server/native-model-inventory-http-pglite.json
+      - name: native-event-http with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database pglite --report .qa/rust-server/native-event-http-pglite.json
+      - name: Production native receipts and durable outcomes with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-execution-http-compatibility.mjs --database pglite --report .qa/rust-server/native-execution-http-pglite.json
+      - name: Public encrypted chat, queue and pause controls with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/public-chat-execution-http.mjs --database pglite --report .qa/rust-server/public-chat-execution-http-pglite.json
+      - name: Public encrypted Task reads and draft/plan edits with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-controls-http.mjs --database pglite --report .qa/rust-server/task-controls-http-pglite.json
+      - name: Public Task creation, deletion, attachments and model configuration with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-surfaces-http.mjs --database pglite --report .qa/rust-server/task-surfaces-http-pglite.json
+      - name: Public Task dashboard and Chat Goal lifecycle with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-dashboard-goals-http.mjs --database pglite --report .qa/rust-server/task-dashboard-goals-http-pglite.json
+      - name: native-coordination-http with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-coordination-http-compatibility.mjs --database pglite --report .qa/rust-server/native-coordination-http-pglite.json
+      - name: Logical completion delivery, retry and restart with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/completion-http-compatibility.mjs --database pglite --report .qa/rust-server/logical-completion-http-pglite.json
+      - name: Canonical native history, archives and publication ownership with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-compatibility.mjs --database pglite --report .qa/rust-server/native-history-repository-pglite.json
+      - name: Native history HTTP, publication retry and restart with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-http-compatibility.mjs --database pglite --report .qa/rust-server/native-history-http-pglite.json
+      - name: execution-lanes with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/execution-lane-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/execution-lanes-bundled-postgres.json
+      - name: native-settings-repository with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-settings-repository-bundled-postgres.json
+      - name: native-command-kernel with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-command-kernel-bundled-postgres.json
+      - name: Task dispatch capacity, retained Goal leases and recovery with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-dispatch --database bundled-postgres --report .qa/rust-server/task-dispatch-bundled-postgres.json
+      - name: Native Task session recovery and canonical Goal continuation with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-recovery --database bundled-postgres --report .qa/rust-server/task-recovery-bundled-postgres.json
+      - name: Task Worker resources and project pause with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-workers --database bundled-postgres --report .qa/rust-server/task-workers-bundled-postgres.json
+      - name: Prepared Task dispatch and retained-session eligibility with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-eligibility --database bundled-postgres --report .qa/rust-server/task-eligibility-bundled-postgres.json
+      - name: Task naming, operation queue and saved finalization retries with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-queue --database bundled-postgres --report .qa/rust-server/task-queue-bundled-postgres.json
+      - name: Automatic Task retries, concurrent claims and recovery with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-automatic --database bundled-postgres --report .qa/rust-server/task-automatic-bundled-postgres.json
+      - name: Coalesced Task scheduler, retry/recovery and owned shutdown with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-background --database bundled-postgres --report .qa/rust-server/task-background-bundled-postgres.json
+      - name: Worker-acknowledged pause/resume and late native controls with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain automation-pause --database bundled-postgres --report .qa/rust-server/automation-pause-bundled-postgres.json
+      - name: Claimed/resumed Task execution, structured completion and launch recovery with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-claimed --database bundled-postgres --report .qa/rust-server/task-claimed-bundled-postgres.json
+      - name: Task Worker authenticated HTTP and Live with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-workers-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/task-workers-http-bundled-postgres.json
+      - name: Encrypted Goal observations, launch, resume and retained leases with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-goal --database bundled-postgres --report .qa/rust-server/task-goal-bundled-postgres.json
+      - name: Durable Task retry accounting and contention with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-retry --database bundled-postgres --report .qa/rust-server/task-retry-bundled-postgres.json
+      - name: Encrypted Task persistence, Goal finalization and recovery with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain tasks --database bundled-postgres --report .qa/rust-server/task-runtime-bundled-postgres.json
+      - name: GUI admission, execution, recovery and handoffs with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain gui --database bundled-postgres --report .qa/rust-server/gui-runtime-bundled-postgres.json
+      - name: Managed preparation HTTP and encrypted worker transport with bundled-postgres
+        run: node --import tsx scripts/server-rust/managed-preparation-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/managed-preparation-http-bundled-postgres.json
+      - name: Handoff HTTP, retry, restart and pending-command shutdown with bundled-postgres
+        run: node --import tsx scripts/server-rust/native-handoff-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-handoff-http-bundled-postgres.json
+      - name: native-settings-http with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-settings-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-settings-http-bundled-postgres.json
+      - name: native-model-inventory-http with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-model-inventory-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-model-inventory-http-bundled-postgres.json
+      - name: native-event-http with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-event-http-bundled-postgres.json
+      - name: Production native receipts and durable outcomes with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-execution-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-execution-http-bundled-postgres.json
+      - name: Public encrypted chat, queue and pause controls with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/public-chat-execution-http.mjs --database bundled-postgres --report .qa/rust-server/public-chat-execution-http-bundled-postgres.json
+      - name: Public encrypted Task reads and draft/plan edits with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-controls-http.mjs --database bundled-postgres --report .qa/rust-server/task-controls-http-bundled-postgres.json
+      - name: Public Task creation, deletion, attachments and model configuration with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-surfaces-http.mjs --database bundled-postgres --report .qa/rust-server/task-surfaces-http-bundled-postgres.json
+      - name: Public Task dashboard and Chat Goal lifecycle with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-dashboard-goals-http.mjs --database bundled-postgres --report .qa/rust-server/task-dashboard-goals-http-bundled-postgres.json
+      - name: native-coordination-http with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-coordination-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-coordination-http-bundled-postgres.json
+      - name: Logical completion delivery, retry and restart with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/completion-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/logical-completion-http-bundled-postgres.json
+      - name: Canonical native history, archives and publication ownership with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-history-repository-bundled-postgres.json
+      - name: Native history HTTP, publication retry and restart with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/native-history-http-bundled-postgres.json
+      - name: execution-lanes with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/execution-lane-repository-compatibility.mjs --database postgres --report .qa/rust-server/execution-lanes-postgres.json
+      - name: native-settings-repository with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-repository-compatibility.mjs --database postgres --report .qa/rust-server/native-settings-repository-postgres.json
+      - name: native-command-kernel with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --database postgres --report .qa/rust-server/native-command-kernel-postgres.json
+      - name: Task dispatch capacity, retained Goal leases and recovery with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-dispatch --database postgres --report .qa/rust-server/task-dispatch-postgres.json
+      - name: Native Task session recovery and canonical Goal continuation with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-recovery --database postgres --report .qa/rust-server/task-recovery-postgres.json
+      - name: Task Worker resources and project pause with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-workers --database postgres --report .qa/rust-server/task-workers-postgres.json
+      - name: Prepared Task dispatch and retained-session eligibility with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-eligibility --database postgres --report .qa/rust-server/task-eligibility-postgres.json
+      - name: Task naming, operation queue and saved finalization retries with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-queue --database postgres --report .qa/rust-server/task-queue-postgres.json
+      - name: Automatic Task retries, concurrent claims and recovery with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-automatic --database postgres --report .qa/rust-server/task-automatic-postgres.json
+      - name: Coalesced Task scheduler, retry/recovery and owned shutdown with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-background --database postgres --report .qa/rust-server/task-background-postgres.json
+      - name: Worker-acknowledged pause/resume and late native controls with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain automation-pause --database postgres --report .qa/rust-server/automation-pause-postgres.json
+      - name: Claimed/resumed Task execution, structured completion and launch recovery with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-claimed --database postgres --report .qa/rust-server/task-claimed-postgres.json
+      - name: Task Worker authenticated HTTP and Live with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-workers-http-compatibility.mjs --database postgres --report .qa/rust-server/task-workers-http-postgres.json
+      - name: Encrypted Goal observations, launch, resume and retained leases with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-goal --database postgres --report .qa/rust-server/task-goal-postgres.json
+      - name: Durable Task retry accounting and contention with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain task-retry --database postgres --report .qa/rust-server/task-retry-postgres.json
+      - name: Encrypted Task persistence, Goal finalization and recovery with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain tasks --database postgres --report .qa/rust-server/task-runtime-postgres.json
+      - name: GUI admission, execution, recovery and handoffs with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain gui --database postgres --report .qa/rust-server/gui-runtime-postgres.json
+      - name: Managed preparation HTTP and encrypted worker transport with postgres
+        run: node --import tsx scripts/server-rust/managed-preparation-http-compatibility.mjs --database postgres --report .qa/rust-server/managed-preparation-http-postgres.json
+      - name: Handoff HTTP, retry, restart and pending-command shutdown with postgres
+        run: node --import tsx scripts/server-rust/native-handoff-http-compatibility.mjs --database postgres --report .qa/rust-server/native-handoff-http-postgres.json
+      - name: native-settings-http with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-settings-http-compatibility.mjs --database postgres --report .qa/rust-server/native-settings-http-postgres.json
+      - name: native-model-inventory-http with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-model-inventory-http-compatibility.mjs --database postgres --report .qa/rust-server/native-model-inventory-http-postgres.json
+      - name: native-event-http with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-event-http-compatibility.mjs --database postgres --report .qa/rust-server/native-event-http-postgres.json
+      - name: Production native receipts and durable outcomes with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-execution-http-compatibility.mjs --database postgres --report .qa/rust-server/native-execution-http-postgres.json
+      - name: Public encrypted chat, queue and pause controls with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/public-chat-execution-http.mjs --database postgres --report .qa/rust-server/public-chat-execution-http-postgres.json
+      - name: Public encrypted Task reads and draft/plan edits with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-controls-http.mjs --database postgres --report .qa/rust-server/task-controls-http-postgres.json
+      - name: Public Task creation, deletion, attachments and model configuration with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-surfaces-http.mjs --database postgres --report .qa/rust-server/task-surfaces-http-postgres.json
+      - name: Public Task dashboard and Chat Goal lifecycle with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/task-dashboard-goals-http.mjs --database postgres --report .qa/rust-server/task-dashboard-goals-http-postgres.json
+      - name: native-coordination-http with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-coordination-http-compatibility.mjs --database postgres --report .qa/rust-server/native-coordination-http-postgres.json
+      - name: Logical completion delivery, retry and restart with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/completion-http-compatibility.mjs --database postgres --report .qa/rust-server/logical-completion-http-postgres.json
+      - name: Canonical native history, archives and publication ownership with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-compatibility.mjs --database postgres --report .qa/rust-server/native-history-repository-postgres.json
+      - name: Native history HTTP, publication retry and restart with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/native-history-http-compatibility.mjs --database postgres --report .qa/rust-server/native-history-http-postgres.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-native-commands-${{ matrix.os }}
+          path: .qa/rust-server/
+  actual-task-worker:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic && !inputs.source_reference_diagnostic) }}
+    # Use the production worker and bundled Codex; only model HTTP is controlled.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x64
+            suffix: ""
+          - os: macos-15
+            target: darwin-arm64
+            suffix: ""
+          - os: windows-2025
+            target: win32-x64
+            suffix: ".exe"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    env:
+      CANTRIP_CODEX_BIN: ${{ github.workspace }}/cantrip_codex/.build/${{ matrix.target }}/bundle/codex${{ matrix.suffix }}
+    steps:
+      - run: git config --global core.autocrlf false
+      - name: Enable long Windows paths
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+      - name: Install Windows assembler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nasm --no-progress --yes
+          nasm -v
+      - name: Linux build tools and PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql build-essential pkg-config libssl-dev libclang-dev cmake libcap-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - name: Restore verified Codex runtime
+        id: codex-runtime-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/bundle
+          key: cantrip-codex-bundle-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
+      - name: Restore Codex rusty_v8 downloads
+        id: codex-v8-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/rusty-v8
+          key: cantrip-codex-rusty-v8-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
+          restore-keys: |
+            cantrip-codex-rusty-v8-${{ matrix.target }}-
+      - run: pnpm install --frozen-lockfile
+      # Build Codex with its native MSVC toolchain before configuring GNU PGlite.
+      - name: Build the production bundled Codex runtime
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: pnpm codex:build
+      - name: Save verified Codex runtime
+        if: steps.codex-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/bundle
+          key: cantrip-codex-bundle-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
+      - name: Save Codex rusty_v8 downloads
+        if: steps.codex-runtime-cache.outputs.cache-hit != 'true' && steps.codex-v8-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/rusty-v8
+          key: cantrip-codex-rusty-v8-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Build the existing browser dependencies and full worker
+        run: pnpm --filter '@cantrip/app^...' --filter @cantrip/worker -r build
+      - name: Browser for encrypted Task clients
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Allow the downloaded Chromium to use its namespace sandbox on Ubuntu
+        if: runner.os == 'Linux'
+        run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Actual browser, full worker and native Task Goals with pglite
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database pglite --report .qa/rust-server/actual-task-worker-pglite.json
+      - name: Actual browser, full worker and native Task Goals with bundled-postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database bundled-postgres --report .qa/rust-server/actual-task-worker-bundled-postgres.json
+      - name: Actual browser, full worker and native Task Goals with postgres
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database postgres --report .qa/rust-server/actual-task-worker-postgres.json
+      - name: Actual Agent, Goal, automations, approvals, customizations, permissions, global skills and MCP settings with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --provider-test --database pglite --report .qa/rust-server/actual-project-chat-worker-pglite.json
+      - name: Actual Agent, Goal, automations, approvals, customizations, permissions, global skills and MCP settings with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --provider-test --database bundled-postgres --report .qa/rust-server/actual-project-chat-worker-bundled-postgres.json
+      - name: Actual Agent, Goal, automations, approvals, customizations, permissions, global skills and MCP settings with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --project-chats --project-automations --agent-interactions --chat-customizations --skill-settings --mcp-settings --provider-test --trace-worker-shutdown --database postgres --report .qa/rust-server/actual-project-chat-worker-postgres.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-actual-task-worker-${{ matrix.os }}
+          path: .qa/rust-server/
+
+  chat-messages:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic && !inputs.source_reference_diagnostic) }}
+    # Compare protected message writes and archive reads through real sockets.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Protected message validation contracts
+        run: node scripts/server-rust/cargo.mjs test --test chat_contracts -- --nocapture
+      - name: Automation contracts, exact errors and native recurrence
+        run: node scripts/server-rust/cargo.mjs test --test project_automation_contracts --test project_automation_schedule -- --nocapture
+      - name: Interaction, reply and computer-use authority contracts and exact errors
+        if: ${{ !cancelled() }}
+        run: node scripts/server-rust/cargo.mjs test --test agent_interaction_http_contracts -- --nocapture
+      - name: Interaction HTTP, worker encryption, Live, limits and recovery with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/agent-interaction-http-compatibility.mjs --database pglite --report .qa/rust-server/agent-interactions-http-pglite.json
+      - name: Interaction HTTP, worker encryption, Live, limits and recovery with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/agent-interaction-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/agent-interactions-http-bundled-postgres.json
+      - name: Interaction HTTP, worker encryption, Live, limits and recovery with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/agent-interaction-http-compatibility.mjs --database postgres --report .qa/rust-server/agent-interactions-http-postgres.json
+      - name: Chat customization, model and permission contracts and exact errors
+        if: ${{ !cancelled() }}
+        run: node scripts/server-rust/cargo.mjs test --test chat_customization_contracts -- --nocapture
+      - name: Customization encryption, configuration and permission HTTP with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/chat-customization-http-compatibility.mjs --database pglite --report .qa/rust-server/chat-customizations-http-pglite.json
+      - name: Customization encryption, configuration and permission HTTP with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/chat-customization-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-customizations-http-bundled-postgres.json
+      - name: Customization encryption, configuration and permission HTTP with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/chat-customization-http-compatibility.mjs --database postgres --report .qa/rust-server/chat-customizations-http-postgres.json
+      - name: Global skill settings and audience contracts and exact errors
+        if: ${{ !cancelled() }}
+        run: node scripts/server-rust/cargo.mjs test --test skill_settings_contracts -- --nocapture
+      - name: Global skills HTTP, encryption, persistence, limits and recovery with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/skill-settings-http-compatibility.mjs --database pglite --report .qa/rust-server/skill-settings-http-pglite.json
+      - name: Global skills HTTP, encryption, persistence, limits and recovery with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/skill-settings-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/skill-settings-http-bundled-postgres.json
+      - name: Global skills HTTP, encryption, persistence, limits and recovery with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/skill-settings-http-compatibility.mjs --database postgres --report .qa/rust-server/skill-settings-http-postgres.json
+      - name: MCP settings SQL matches actual Source query builders
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/mcp-settings-query-manifest.mjs
+      - name: MCP settings contracts, discovery refinements and exact boundary errors
+        if: ${{ !cancelled() }}
+        run: node scripts/server-rust/cargo.mjs test --test mcp_settings_contracts -- --nocapture
+      - name: Global/project MCP HTTP, discovery, encryption, persistence and recovery with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/mcp-settings-http-compatibility.mjs --database pglite --report .qa/rust-server/mcp-settings-http-pglite.json
+      - name: Global/project MCP HTTP, discovery, encryption, persistence and recovery with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/mcp-settings-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/mcp-settings-http-bundled-postgres.json
+      - name: Global/project MCP HTTP, discovery, encryption, persistence and recovery with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/mcp-settings-http-compatibility.mjs --database postgres --report .qa/rust-server/mcp-settings-http-postgres.json
+      - name: Reference desktop update and provider-test behavior
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/desktop-update-active-work.test.ts test/provider-connection-test.test.ts
+      - name: Desktop update SQL matches actual Source query builders
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/desktop-update-query-manifest.mjs
+      - name: Settings operation response contracts and provider diagnostics
+        if: ${{ !cancelled() }}
+        run: node scripts/server-rust/cargo.mjs test --test settings_operations_contracts -- --nocapture
+      - name: Desktop update and provider-test HTTP with pglite
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/settings-operations-http-compatibility.mjs --database pglite --report .qa/rust-server/settings-operations-pglite.json
+      - name: Desktop update and provider-test HTTP with bundled-postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/settings-operations-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/settings-operations-bundled-postgres.json
+      - name: Desktop update and provider-test HTTP with postgres
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/settings-operations-http-compatibility.mjs --database postgres --report .qa/rust-server/settings-operations-postgres.json
+      - name: Provider-test production two-minute deadline and late-reply recovery
+        if: ${{ !cancelled() }}
+        run: node --import tsx scripts/server-rust/settings-operations-http-compatibility.mjs --database pglite --profile none --deadline --report .qa/rust-server/settings-operations-real-deadline.json
+      - name: Automation SQL and legacy timezone assets match actual Source
+        run: |
+          node --import tsx scripts/server-rust/project-automation-query-manifest.mjs
+          node scripts/server-rust/project-automation-legacy-zones.mjs
+      - name: Automation repository, HTTP, worker encryption and Live with pglite
+        run: |
+          node --import tsx scripts/server-rust/project-automation-repository-compatibility.mjs --database pglite --report .qa/rust-server/project-automations-repository-pglite.json
+          node --import tsx scripts/server-rust/project-automation-http-compatibility.mjs --database pglite --report .qa/rust-server/project-automations-http-pglite.json
+      - name: Automation repository, HTTP, worker encryption and Live with bundled-postgres
+        run: |
+          node --import tsx scripts/server-rust/project-automation-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-automations-repository-bundled-postgres.json
+          node --import tsx scripts/server-rust/project-automation-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/project-automations-http-bundled-postgres.json
+      - name: Automation repository, HTTP, worker encryption and Live with postgres
+        run: |
+          node --import tsx scripts/server-rust/project-automation-repository-compatibility.mjs --database postgres --report .qa/rust-server/project-automations-repository-postgres.json
+          node --import tsx scripts/server-rust/project-automation-http-compatibility.mjs --database postgres --report .qa/rust-server/project-automations-http-postgres.json
+      - name: Reference thread synchronization and observation contracts
+        run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/chat-thread-sync-admission.test.ts test/chat-thread-sync-observation.test.ts test/chat-thread-change-reconciliation.test.ts
+      - name: Archive cleanup retention, ownership, faults, races and restart with pglite
+        run: node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database pglite --report .qa/rust-server/chat-archive-cleanup-pglite.json
+      - name: Archive cleanup retention, ownership, faults, races and restart with bundled-postgres
+        run: node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database bundled-postgres --report .qa/rust-server/chat-archive-cleanup-bundled-postgres.json
+      - name: Archive cleanup retention, ownership, faults, races and restart with postgres
+        run: node --import tsx scripts/server-rust/chat-archive-cleanup-http.mjs --database postgres --report .qa/rust-server/chat-archive-cleanup-postgres.json
+      - name: Project Chat catalogs and archives with pglite
+        run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database pglite --report .qa/rust-server/project-chat-catalog-pglite.json
+      - name: Project Chat creation, conversation keysets and usage with pglite
+        run: node --import tsx scripts/server-rust/project-chat-creation-http.mjs --database pglite --report .qa/rust-server/project-chat-creation-pglite.json
+      - name: Passive thread observation and admission with pglite
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain thread-observation --database pglite --report .qa/rust-server/chat-thread-observation-pglite.json
+      - name: Chat synchronization HTTP, protected history and notifications with pglite
+        run: node --import tsx scripts/server-rust/chat-thread-sync-http.mjs --database pglite --report .qa/rust-server/chat-thread-sync-http-pglite.json
+      - name: Message query state with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-repository-compatibility.mjs --database pglite --report .qa/rust-server/chat-message-repository-compatibility-pglite.json
+      - name: Message writes and archive restart with pglite
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database pglite --report .qa/rust-server/chat-message-write-repository-compatibility-pglite.json
+      - name: Message HTTP, endpoint encryption and ordered Live with pglite
+        run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database pglite --report .qa/rust-server/chat-message-http-compatibility-pglite.json
+      - name: Project Chat catalogs and archives with bundled-postgres
+        run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database bundled-postgres --report .qa/rust-server/project-chat-catalog-bundled-postgres.json
+      - name: Project Chat creation, conversation keysets and usage with bundled-postgres
+        run: node --import tsx scripts/server-rust/project-chat-creation-http.mjs --database bundled-postgres --report .qa/rust-server/project-chat-creation-bundled-postgres.json
+      - name: Passive thread observation and admission with bundled-postgres
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain thread-observation --database bundled-postgres --report .qa/rust-server/chat-thread-observation-bundled-postgres.json
+      - name: Chat synchronization HTTP, protected history and notifications with bundled-postgres
+        run: node --import tsx scripts/server-rust/chat-thread-sync-http.mjs --database bundled-postgres --report .qa/rust-server/chat-thread-sync-http-bundled-postgres.json
+      - name: Message query state with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-message-repository-compatibility-bundled-postgres.json
+      - name: Message writes and archive restart with bundled-postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-message-write-repository-compatibility-bundled-postgres.json
+      - name: Message HTTP, endpoint encryption and ordered Live with bundled-postgres
+        run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database bundled-postgres --report .qa/rust-server/chat-message-http-compatibility-bundled-postgres.json
+      - name: Project Chat catalogs and archives with postgres
+        run: node --import tsx scripts/server-rust/project-chat-catalog-http.mjs --database postgres --report .qa/rust-server/project-chat-catalog-postgres.json
+      - name: Project Chat creation, usage receipt races, SQL faults and aborted callers with postgres
+        run: node --import tsx scripts/server-rust/project-chat-creation-http.mjs --database postgres --report .qa/rust-server/project-chat-creation-postgres.json
+      - name: Passive thread observation and admission with postgres
+        run: node --import tsx scripts/server-rust/native-command-admission-compatibility.mjs --domain thread-observation --database postgres --report .qa/rust-server/chat-thread-observation-postgres.json
+      - name: Chat synchronization HTTP, protected history and notifications with postgres
+        run: node --import tsx scripts/server-rust/chat-thread-sync-http.mjs --database postgres --report .qa/rust-server/chat-thread-sync-http-postgres.json
+      - name: Message query state with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-repository-compatibility.mjs --database postgres --report .qa/rust-server/chat-message-repository-compatibility-postgres.json
+      - name: Message writes and archive restart with postgres
+        env:
+          CANTRIP_FIXTURE_STACK_BYTES: "1048576"
+        run: node --import tsx scripts/server-rust/chat-message-write-repository-compatibility.mjs --database postgres --report .qa/rust-server/chat-message-write-repository-compatibility-postgres.json
+      - name: Message HTTP, endpoint encryption and ordered Live with postgres
+        run: node --import tsx scripts/server-rust/chat-message-http-compatibility.mjs --database postgres --report .qa/rust-server/chat-message-http-compatibility-postgres.json
+      # Keep the independent full reference scenario visible without preventing
+      # the actual paired feature suites from executing when it fails.
+      - name: Reference prepared account selection and durable handoff
+        id: source_reference_handoff
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts
+      - name: Profile the failed Source reference without replacing its result
+        if: ${{ failure() && steps.source_reference_handoff.outcome == 'failure' }}
+        run: |
+          node -e "const fs = require('node:fs'); const os = require('node:os'); fs.mkdirSync('.qa/rust-server/source-reference-cpu', { recursive: true }); fs.writeFileSync('.qa/rust-server/source-reference-cpu/runtime.json', JSON.stringify({ platform: process.platform, arch: process.arch, node: process.version, cpus: os.availableParallelism(), load: os.loadavg(), freeMemory: os.freemem(), totalMemory: os.totalmem() }, null, 2))"
+          pnpm --filter @cantrip/server exec vitest run --config ../scripts/server-rust/source-reference-profile.config.mjs --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-chat-messages-${{ matrix.os }}
+          path: .qa/rust-server/
+  discovery:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic && !inputs.source_reference_diagnostic) }}
+    # Exercise attached roots, imports, lease renewal and real user-owned Git.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Create discovery evidence directory
+        run: |
+          node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
+      - name: Build the production worker used by workspace discovery integration
+        run: pnpm --filter @cantrip/worker build
+      - name: Browser for actual encrypted workspace discovery clients
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Allow the downloaded Chromium to use its namespace sandbox on Ubuntu
+        if: runner.os == 'Linux'
+        run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Workspace catalog and discovery protocol compatibility
+        run: node scripts/server-rust/cargo.mjs test --test discovery_contracts
+      - name: Workspace catalog SQL matches the actual TypeScript repository
+        run: node --import tsx scripts/server-rust/workspace-catalog-query-manifest.mjs --check
+      - name: Workspace catalog, discovery and import transactions with pglite
+        run: node --import tsx scripts/server-rust/discovery-repository-compatibility.mjs --database pglite --report .qa/rust-server/discovery-repository-pglite.json
+      - name: Workspace discovery HTTP, authentication, worker and Live with pglite
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database pglite --lifecycle --report .qa/rust-server/discovery-http-pglite.json
+      - name: Workspace scan renewal, stale completion and real lease expiry with pglite
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database pglite --profile none --leases --expiry --report .qa/rust-server/discovery-real-leases-pglite.json
+      - name: Workspace caller disconnect and admitted shutdown with pglite
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database pglite --profile none --lifetimes --trace-http --report .qa/rust-server/discovery-lifetimes-pglite.json
+      - name: Actual encrypted browser and full worker discover, import, convert and preserve user files with pglite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --workspace-discovery --database pglite --report .qa/rust-server/actual-workspace-discovery-pglite.json
+      - name: Workspace catalog, discovery and import transactions with bundled-postgres
+        run: node --import tsx scripts/server-rust/discovery-repository-compatibility.mjs --database bundled-postgres --report .qa/rust-server/discovery-repository-bundled-postgres.json
+      - name: Workspace discovery HTTP, authentication, worker and Live with bundled-postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database bundled-postgres --lifecycle --report .qa/rust-server/discovery-http-bundled-postgres.json
+      - name: Workspace scan renewal, stale completion and real lease expiry with bundled-postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database bundled-postgres --profile none --leases --expiry --report .qa/rust-server/discovery-real-leases-bundled-postgres.json
+      - name: Workspace caller disconnect and admitted shutdown with bundled-postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database bundled-postgres --profile none --lifetimes --trace-http --report .qa/rust-server/discovery-lifetimes-bundled-postgres.json
+      - name: Actual encrypted browser and full worker discover, import, convert and preserve user files with bundled-postgres
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --workspace-discovery --database bundled-postgres --report .qa/rust-server/actual-workspace-discovery-bundled-postgres.json
+      - name: Workspace catalog, discovery and import transactions with postgres
+        run: node --import tsx scripts/server-rust/discovery-repository-compatibility.mjs --database postgres --report .qa/rust-server/discovery-repository-postgres.json
+      - name: Workspace discovery HTTP, authentication, worker and Live with postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database postgres --lifecycle --report .qa/rust-server/discovery-http-postgres.json
+      - name: Workspace scan renewal, stale completion and real lease expiry with postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database postgres --profile none --leases --expiry --report .qa/rust-server/discovery-real-leases-postgres.json
+      - name: Workspace caller disconnect and admitted shutdown with postgres
+        run: node --import tsx scripts/server-rust/discovery-http-compatibility.mjs --database postgres --lifetimes --trace-http --report .qa/rust-server/discovery-lifetimes-postgres.json
+      - name: Actual encrypted browser and full worker discover, import, convert and preserve user files with postgres
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import tsx scripts/server-rust/actual-folder-client.mjs --workspace-discovery --database postgres --report .qa/rust-server/actual-workspace-discovery-postgres.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-discovery-${{ matrix.os }}
+          path: .qa/rust-server/
+
+  migrations:
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.conversion_lifetime_diagnostic && !inputs.discovery_lifetime_diagnostic && !inputs.native_stack_diagnostic && !inputs.task_recovery_diagnostic && !inputs.source_reference_diagnostic) }}
+    # Exercise real legacy SQL transfer, pending upgrades and interrupted restores.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          components: rustfmt, clippy
+      - name: Windows native PGlite toolchain
+        if: runner.os == 'Windows'
+        id: mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-zlib mingw-w64-x86_64-openssl
+      - name: Windows Rust target and PostgreSQL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CANTRIP_MINGW_BIN: ${{ steps.mingw.outputs.msys2-location }}\mingw64\bin
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> $env:GITHUB_ENV
+          "$env:CANTRIP_MINGW_BIN" >> $env:GITHUB_PATH
+          "CANTRIP_TEST_POSTGRES_BIN_DIR=$env:PGBIN" >> $env:GITHUB_ENV
+      - name: Linux PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+          # Keep the distro server as a cross-version target; use a newer
+          # native dump client for PGlite 17 and external PostgreSQL 18.
+          # https://www.postgresql.org/download/linux/ubuntu/
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+          echo "CANTRIP_TEST_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump" >> "$GITHUB_ENV"
+      - name: macOS PostgreSQL
+        if: runner.os == 'macOS'
+        run: |
+          brew install postgresql@18
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(brew --prefix postgresql@18)/bin" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Create migration evidence directory
+        run: |
+          node -e "require('node:fs').mkdirSync('.qa/rust-server', { recursive: true })"
+      - name: Native SQL migration, cancellation and lossless dump contracts
+        run: |
+          node scripts/server-rust/cargo.mjs test --test database_contract
+          node scripts/server-rust/cargo.mjs test --test native_wire_session
+          node scripts/server-rust/cargo.mjs test --test native_sql_dump --test native_dump_bytes
+          node scripts/server-rust/cargo.mjs test --test profile_database --test profile_files
+      - name: Real restricted SQL export failures retain private diagnostics without publishing partial files
+        run: node scripts/server-rust/native-export-redaction.mjs --report .qa/rust-server/native-export-redaction.json
+      - name: Legacy dump preserves literal guard lines and redacts real failures
+        run: node scripts/server-rust/legacy-export-literals.mjs --report .qa/rust-server/legacy-export-literals.json
+      - name: Legacy PGlite export and native restore, rollback, restart and redaction on all stores
+        run: node --import tsx scripts/server-rust/legacy-pglite-compatibility.mjs --interrupt --report .qa/rust-server/migration-current.json
+      - name: Historical schema upgrades and interrupted migration recovery on all stores
+        run: node --import tsx scripts/server-rust/legacy-pglite-compatibility.mjs --history-count 233 --interrupt --report .qa/rust-server/migration-historical.json
+      - name: Stored backend selection survives real restart and failed setup on all stores
+        run: node --import tsx scripts/server-rust/profile-database-compatibility.mjs --report .qa/rust-server/profile-database.json
+      - name: Complete profile transfer, post-write reverse migration and interrupted publication on all stores
+        run: node --import tsx scripts/server-rust/profile-transfer-compatibility.mjs --report .qa/rust-server/profile-transfer.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-migrations-${{ matrix.os }}
+          path: .qa/rust-server/
+
+  conversion-lifetime-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.conversion_lifetime_diagnostic }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+      - name: PostgreSQL and native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Repeated actual admission, disconnect and restart scenarios with socket tracing
+        run: |
+          node --test scripts/server-rust/streaming-http-request.test.mjs scripts/server-rust/http-connection-trace.test.mjs
+          node scripts/server-rust/repeat-conversion-lifetimes.mjs --iterations 20
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-conversion-lifetime-diagnostic
+          path: .qa/rust-server/
+  discovery-lifetime-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.discovery_lifetime_diagnostic }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+      - name: PostgreSQL and native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libssl-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Repeated actual workspace admission, disconnect and restart with socket tracing
+        run: |
+          node --test scripts/server-rust/streaming-http-request.test.mjs scripts/server-rust/http-connection-trace.test.mjs
+          node scripts/server-rust/repeat-discovery-lifetimes.mjs --iterations 20
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-discovery-lifetime-diagnostic
+          path: .qa/rust-server/
+  task-recovery-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.task_recovery_diagnostic }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      CANTRIP_CODEX_BIN: ${{ github.workspace }}/cantrip_codex/.build/linux-x64/bundle/codex
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - name: Linux build tools and PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql build-essential pkg-config libssl-dev libclang-dev cmake libcap-dev
+          echo "CANTRIP_TEST_POSTGRES_BIN_DIR=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v4
+        id: codex-runtime-cache
+        with:
+          path: cantrip_codex/.build/linux-x64/bundle
+          key: cantrip-codex-bundle-linux-x64-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
+      - uses: actions/cache/restore@v4
+        id: codex-v8-cache
+        with:
+          path: cantrip_codex/.build/linux-x64/rusty-v8
+          key: cantrip-codex-rusty-v8-linux-x64-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
+          restore-keys: |
+            cantrip-codex-rusty-v8-linux-x64-
+      - run: pnpm install --frozen-lockfile
+      - name: Build the production bundled Codex runtime
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: pnpm codex:build
+      - uses: actions/cache/save@v4
+        if: steps.codex-runtime-cache.outputs.cache-hit != 'true'
+        with:
+          path: cantrip_codex/.build/linux-x64/bundle
+          key: cantrip-codex-bundle-linux-x64-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
+      - uses: actions/cache/save@v4
+        if: steps.codex-runtime-cache.outputs.cache-hit != 'true' && steps.codex-v8-cache.outputs.cache-hit != 'true'
+        with:
+          path: cantrip_codex/.build/linux-x64/rusty-v8
+          key: cantrip-codex-rusty-v8-linux-x64-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
+      - run: pnpm --filter '@cantrip/app^...' --filter @cantrip/worker -r build
+      - run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - run: node scripts/server-rust/linux-chromium-sandbox.mjs
+      - name: Repeat the existing paired Task assertions without changing their deadlines
+        run: |
+          status=0
+          for attempt in 1 2 3; do
+            if node --import tsx scripts/server-rust/actual-folder-client.mjs --tasks --database pglite --report ".qa/rust-server/task-recovery-${attempt}.json"; then
+              echo "Task recovery attempt ${attempt} passed"
+            else
+              status=1
+              echo "Task recovery attempt ${attempt} failed"
+            fi
+          done
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-server-task-recovery-diagnostic-linux
+          path: .qa/rust-server/
+
+  # This manual diagnostic preserves the original test body/default deadline and
+  # fork pool. It needs only the Node reference; no native Codex build is needed.
+  source-reference-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.source_reference_diagnostic }}
+    runs-on: windows-2025
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter '@cantrip/app^...' -r build
+      - name: Record the actual reference host
+        run: >-
+          node -e "const fs = require('node:fs'); const os = require('node:os'); fs.mkdirSync('.qa/rust-server/source-reference-cpu', { recursive: true }); fs.writeFileSync('.qa/rust-server/source-reference-cpu/runtime.json', JSON.stringify({ platform: process.platform, arch: process.arch, node: process.version, cpus: os.availableParallelism(), load: os.loadavg(), freeMemory: os.freemem(), totalMemory: os.totalmem() }, null, 2))"
+      - name: Run the ordinary reference scenarios with their original deadlines
+        run: pnpm --filter @cantrip/server exec vitest run --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts
+      - name: Profile failed reference scenarios inside their workers
+        if: failure()
+        run: pnpm --filter @cantrip/server exec vitest run --config ../scripts/server-rust/source-reference-profile.config.mjs --maxWorkers=2 test/local-foundation.test.ts test/managed-chat-account-failover.test.ts
+      - name: Measure cold Source startup and experimental migration batching
+        if: always()
+        run: node scripts/server-rust/source-reference-startup-benchmark.mjs matrix .qa/rust-server/source-reference-cpu/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-reference-worker-diagnostic-windows
+          path: .qa/rust-server/source-reference-cpu/

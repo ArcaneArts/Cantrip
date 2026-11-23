@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "811cd9a580d80b7592ef6ab1a1e15ee385f0e36b",
+  "completeReplacement": false,
+  "platform": "darwin-arm64 host, Linux arm64 Docker guest",
+  "guestImage": {
+    "id": "sha256:0f167ee073c93b20e56a10742776b6487a9f66190124f98fb169fffd834692a4",
+    "loadRecord": {
+      "path": ".qa/os-backup/os-image.json",
+      "sha256": "6fc4d0378ee108f97a20a2277ddf4ca31064e6dce511df855aeef6a85e8dfa73"
+    }
+  },
+  "scope": "Account browser SDK, production Rust/Node reference server peers, full worker and actual source archive, restore, rollback, physical guest home and file proofs, and recovery after dropped worker acknowledgements.",
+  "productionRustChanges": ["cantrip_server_rs/src/cantrip_os/backups.rs"],
+  "counts": {
+    "databasePairs": 3,
+    "guestCells": 6,
+    "comparedSnapshots": 48,
+    "fileProofs": 30,
+    "retainedReceipts": 18,
+    "intentionalServerKills": 12,
+    "intentionalWorkerKills": 6,
+    "droppedWorkerReplies": 12,
+    "conflictResponses": 42,
+    "cleanServerLogsChecked": 12,
+    "serverGenerationDiagnosticsChecked": 24,
+    "mappedWorkerCommands": 302,
+    "unmappedWorkerCommands": 21
+  },
+  "matrix": [
+    {
+      "databaseMode": "pglite",
+      "report": {
+        "path": ".qa/os-backup/matrix-pglite-v2.json",
+        "sha256": "1e55066036b0f60e1c2576ed815598a2fd9ee50d9eb9a0669643b16415d5251c"
+      },
+      "trace": {
+        "path": ".qa/os-backup/matrix-pglite-v2.requests.json",
+        "sha256": "de6099acb2694281499ff6db0b0d167664bce5f29d8f8695435bab3e3d8423ee"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "report": {
+        "path": ".qa/os-backup/matrix-bundled-postgres-v2.json",
+        "sha256": "96577ba17a8cbe4ccfeb5265c8508f3c51ae394be1cf79da4343f45bb0c765a5"
+      },
+      "trace": {
+        "path": ".qa/os-backup/matrix-bundled-postgres-v2.requests.json",
+        "sha256": "281b96c91aa8bb58ea505c3d94bd688eb5448202619e636499c3170c3dc3f7e5"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "report": {
+        "path": ".qa/os-backup/matrix-postgres-v2.json",
+        "sha256": "a99c30b6d12b0a72355ace89c6396399bb1a9292d4fcbcaebec916576aba01ba"
+      },
+      "trace": {
+        "path": ".qa/os-backup/matrix-postgres-v2.requests.json",
+        "sha256": "48d5f54726a0cc15040ac6a493f5abdac71261ac4175614f62912951a6be328d"
+      }
+    }
+  ],
+  "verified": {
+    "path": ".qa/os-backup/verified-matrix.json",
+    "sha256": "067f39a13721bd670d415c3e1e2e76df63dd5d6deaf197ead6032f5e97d760fa"
+  },
+  "verifier": {
+    "path": ".qa/os-backup/verify-matrix.py",
+    "sha256": "4599abcaefaafc484a4a02f120c9503086c9a18cc11b02c716e2a3ceb79ffeb7"
+  },
+  "preFixBehavior": {
+    "path": ".qa/os-backup/pilot-paired-v3.json",
+    "sha256": "a732c0b51de2e8ed748b247275a17c3395e37d8f348f3310d92dfc89a5f16b58"
+  },
+  "preFixRustSource": {
+    "path": ".qa/os-backup/pre-fix-backups.rs",
+    "sha256": "1d562988ae777e7bb26696e2b34a7e4114f4e20b014dda938d4f268846166108"
+  },
+  "nativeServer": {
+    "path": ".qa/os-backup/current/cantrip-server",
+    "sha256": "dce4d34b2ba08aba7d7e9af7070ccbcd6cb774e473ef91667393f8993a73ce36"
+  },
+  "nativeBackupSource": {
+    "path": ".qa/os-backup/current/backups.rs",
+    "sha256": "2f1a4b62dca5a610950a08d8a5fe74f5034091bbe67f4224c17f1303b504d97d"
+  },
+  "restoredArtifacts": {
+    "path": ".qa/os-backup/restore.json",
+    "sha256": "538e9d5db4b0eb84127241d2b8fb698c8697d4d8d4af373f4c3456eca1d34987"
+  },
+  "validation": [
+    {
+      "path": ".qa/os-backup/rust-build-final.log",
+      "sha256": "51d2aa5513d2c3cdc51d6fd7af882c09cc765a98abc98096c1d067c2aec610f3"
+    },
+    {
+      "path": ".qa/os-backup/rust-tests.log",
+      "sha256": "2f7ef050b406c68877b35cd33fbad3c23676dd23087a05eab53837cc173b7fc0"
+    },
+    {
+      "path": ".qa/os-backup/native-worker-test.log",
+      "sha256": "5fb2ea78460bb30ecd4033d722e4fff1fe837eca1d24af86bc277904f0b13c64"
+    },
+    {
+      "path": ".qa/os-backup/run-worker-phase5.log",
+      "sha256": "51bca4c3bfa494261d3f351cf4710c169982dafc0686b31ad61da4c921a107d9"
+    },
+    {
+      "path": ".qa/os-backup/rust-clippy.log",
+      "sha256": "f30eb38c8a2c6e8627cb9b80157fe84542e95ad78407f0de748be2c3ea940760"
+    },
+    {
+      "path": ".qa/os-backup/root-check.log",
+      "sha256": "d0f702603b0edeea1ef620905d5c3c4bd4470c48578c9982b009790178da5fb1"
+    },
+    {
+      "path": ".qa/os-backup/baseline-worker-source-diff.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "sources": [
+    {
+      "path": "cantrip_server_rs/src/cantrip_os/backups.rs",
+      "sha256": "2f1a4b62dca5a610950a08d8a5fe74f5034091bbe67f4224c17f1303b504d97d"
+    },
+    {
+      "path": "cantrip_server_rs/src/cantrip_os/backup_coordinator.rs",
+      "sha256": "e9c3ec405531b33f62a1d44131f839660e350cf98f1a49e0e5d1b5ac92ad3a58"
+    },
+    {
+      "path": "scripts/server-rust/actual-folder-client.mjs",
+      "sha256": "70e0e2958f1c576b90c26877493c0678c3e747db46ce2ffa7c571b940f575112"
+    },
+    {
+      "path": "scripts/server-rust/actual-cantrip-os-client.mjs",
+      "sha256": "21551185ce6a4b72fb96e2849cd121f4880bea19ed39feab75b7656dfc8a30e5"
+    },
+    {
+      "path": "scripts/server-rust/actual-cantrip-os-backup-client.mjs",
+      "sha256": "b1d8a0a3bb51f57756c8eb84d5016db9f73b51ab9d296f54c898bd8fbcd62b88"
+    },
+    {
+      "path": "scripts/server-rust/os-backup-response-fault.mjs",
+      "sha256": "f2e4007833e0036b058ac0d024bf0e14fd987caff1d5c9a6cd5ec906798f08bf"
+    },
+    {
+      "path": "tests/reference-node-server/src/db/repository/cantrip-os-backup-command.ts",
+      "sha256": "6341bf2b58f6b7a77dd1148f612f5d316233f9c66a6967699f5bf96fd34e87a7"
+    },
+    {
+      "path": "tests/reference-node-server/src/db/repository/cantrip-os-backups.ts",
+      "sha256": "113cdc75cb8a866a995e8cfac0e5e7f60a8ca3f651e0eb6bcc12540c97bd4c4d"
+    }
+  ],
+  "limits": [
+    "Single production peer per guest with account authentication. Mixed Redis, supported shipping artifacts and representative Winterhold acceptance remain open for the full goal.",
+    "The product scenario restores into another workspace in the same guest. The focused actual worker integration suite covers a separate guest instance."
+  ],
+  "aggregateCheck": {
+    "exitCode": 1,
+    "workerTests": {
+      "passed": 744,
+      "failed": 2,
+      "unhandledErrors": 2
+    },
+    "sameBaselineWorkerSources": "c65da5e2e",
+    "baselineEvidence": "docs/RUST_SERVER_OS_EXECUTION_CONTRACTS.md"
+  }
+}

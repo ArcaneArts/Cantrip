@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "platform": "darwin-arm64",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "driverSourceCommit": "1b5b3e2667dc6ce2605ad5c7a21aa9b450f6a4f1",
+  "scope": "Packaged Rust server, actual debug Tauri and WKWebView windows with the current app frontend and an acceptance-only controller, and the full Node worker launched from source. Disposable account, Git repository and profiles.",
+  "server": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 94198000,
+    "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+  },
+  "report": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/acceptance.json",
+    "bytes": 23440,
+    "sha256": "fe91d417845c04db9e97e67d18b90e9ba450f091e182a5ea0c40c5d0a06d1219"
+  },
+  "log": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/acceptance.log",
+    "bytes": 26782,
+    "sha256": "fafe27cd815ed1b88d3eb6a80806c5063fdc9e2306de3d5fb545638327ac9ad7"
+  },
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "passed": true,
+      "checkpoints": 8,
+      "serverRestarts": 1,
+      "appCrashRestarts": 1,
+      "nativeAppSha256": "73631da8a1fe4f3aa311245f22bd273a5c41292ffa2994a3b655044017d35e55",
+      "cleanProcessTeardown": true,
+      "screenshots": [
+        {
+          "stage": "detached",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/pglite/detached-5036.png",
+          "bytes": 118292,
+          "sha256": "27c137f23dd67f9bac717e44356cc5953cb5aa1209fab95a8a81c427be3239fc"
+        },
+        {
+          "stage": "detached",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/pglite/detached-5019.png",
+          "bytes": 139680,
+          "sha256": "098aa5476538ed5f4c3897a65540bfc97f76c5c15e1e8c301531a7995604e0f7"
+        },
+        {
+          "stage": "after-app-crash",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/pglite/after-app-crash-5055.png",
+          "bytes": 107822,
+          "sha256": "e3068d64300056ef5ea3582f1ea14dd4f3b2bcedc5d205f50e7ecbfb3a43f17d"
+        },
+        {
+          "stage": "after-app-crash",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/pglite/after-app-crash-5039.png",
+          "bytes": 152767,
+          "sha256": "ec875788b2f8764ba8fe61877d7ed7bc49dde1c4ea641118162b7376c72cef3b"
+        },
+        {
+          "stage": "saved-and-unsaved",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/pglite/saved-and-unsaved-5039.png",
+          "bytes": 145223,
+          "sha256": "53ba18d44f317a2bbeb77ba906a03e4504b617134b10d243e84f7d4ed07410f9"
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/pglite/report.json",
+        "bytes": 6437,
+        "sha256": "3f1e593a0cc366bf1582ec01f9dbca64812db031b27fbe130e56d2e500984210"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "passed": true,
+      "checkpoints": 8,
+      "serverRestarts": 1,
+      "appCrashRestarts": 1,
+      "nativeAppSha256": "5f00a2d5531d7f4343ab27e5df8bdadf54dd14fdb3972bf5d77e6048ce8ac923",
+      "cleanProcessTeardown": true,
+      "screenshots": [
+        {
+          "stage": "detached",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/bundled-postgres/detached-5073.png",
+          "bytes": 118292,
+          "sha256": "27c137f23dd67f9bac717e44356cc5953cb5aa1209fab95a8a81c427be3239fc"
+        },
+        {
+          "stage": "detached",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/bundled-postgres/detached-5056.png",
+          "bytes": 140477,
+          "sha256": "3a0e173d5f195ecc43499c658b3f079f0e05f9ecc84fe7a044678b3185da69d0"
+        },
+        {
+          "stage": "after-app-crash",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/bundled-postgres/after-app-crash-5092.png",
+          "bytes": 108438,
+          "sha256": "006fdcc9f303c71311c67525db67faab81da858d3bdfc4d2f758f3987f83a0d1"
+        },
+        {
+          "stage": "after-app-crash",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/bundled-postgres/after-app-crash-5076.png",
+          "bytes": 153524,
+          "sha256": "56455ce5ce3b9e4879b3504063981ca1910f295456d1e6d326a0b42d5e53bb4a"
+        },
+        {
+          "stage": "saved-and-unsaved",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/bundled-postgres/saved-and-unsaved-5076.png",
+          "bytes": 145854,
+          "sha256": "135374ed5fdcb47d1d90889dd28b106c6a368168722a665429755944ebae972d"
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/bundled-postgres/report.json",
+        "bytes": 6980,
+        "sha256": "12342d90a90655766b937889f4a1b514a469075a91e561972370cdbcb3cc6c1d"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "passed": true,
+      "checkpoints": 8,
+      "serverRestarts": 1,
+      "appCrashRestarts": 1,
+      "nativeAppSha256": "76e5a0fb52ea0dd31063497c3452f7f7e1f23ac7d2ae8de87fb2e66b9f241fbd",
+      "cleanProcessTeardown": true,
+      "screenshots": [
+        {
+          "stage": "detached",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/postgres/detached-5102.png",
+          "bytes": 118292,
+          "sha256": "27c137f23dd67f9bac717e44356cc5953cb5aa1209fab95a8a81c427be3239fc"
+        },
+        {
+          "stage": "detached",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/postgres/detached-5099.png",
+          "bytes": 134918,
+          "sha256": "8122fa25e459fd5926ac06e52363cc0e013fd9bb1bb32fa55386c4e9c822842d"
+        },
+        {
+          "stage": "after-app-crash",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/postgres/after-app-crash-5121.png",
+          "bytes": 108017,
+          "sha256": "a8081d00845ed6b4a6e29d54d71441847b881c7d7576abf8e7225696937bcc61"
+        },
+        {
+          "stage": "after-app-crash",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/postgres/after-app-crash-5119.png",
+          "bytes": 134918,
+          "sha256": "8122fa25e459fd5926ac06e52363cc0e013fd9bb1bb32fa55386c4e9c822842d"
+        },
+        {
+          "stage": "saved-and-unsaved",
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/postgres/saved-and-unsaved-5119.png",
+          "bytes": 141288,
+          "sha256": "c07642361bf95c1ca1f95518706063dee49e1068be1c232a620fafe4d366d83f"
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-3059.BKsBvqAZ/cases/postgres/report.json",
+        "bytes": 6417,
+        "sha256": "1032b61857a7d0d3b8f4877d758e19314af6f9b268fdd821022e90061606b76f"
+      }
+    }
+  ]
+}

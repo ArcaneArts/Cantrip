@@ -1,10 +1,8 @@
 use super::*;
+use crate::workers::transport::WorkerTransport;
 use crate::{
     live::LiveService,
-    workers::{
-        bridge::WorkerBridge,
-        command_bus::{CommandFailure, LimitedCommandBus},
-    },
+    workers::command_bus::{CommandFailure, LimitedCommandBus},
 };
 use std::{sync::Mutex, time::Duration};
 use tokio::sync::{Notify, watch};
@@ -20,7 +18,7 @@ struct State {
 pub struct ConversionService {
     pub repository: ConversionRepository,
     pub(super) commands: Arc<LimitedCommandBus>,
-    pub(super) bridge: Arc<WorkerBridge>,
+    pub(super) bridge: Arc<dyn WorkerTransport>,
     live: Arc<LiveService>,
     observations: Arc<crate::projects::observations::Service>,
     state: Mutex<State>,
@@ -62,7 +60,7 @@ impl ConversionService {
     pub fn new(
         database: Arc<Database>,
         commands: Arc<LimitedCommandBus>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         live: Arc<LiveService>,
         observations: Arc<crate::projects::observations::Service>,
     ) -> Arc<Self> {
@@ -78,7 +76,10 @@ impl ConversionService {
         })
     }
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        self.repository.recover(true, crate::auth::now()).await?;
+        self.start_with_recovery(true).await
+    }
+    pub async fn start_with_recovery(self: &Arc<Self>, force: bool) -> Result<()> {
+        self.repository.recover(force, crate::auth::now()).await?;
         self.queue();
         let service = Arc::downgrade(self);
         let mut stop = self.stop.subscribe();

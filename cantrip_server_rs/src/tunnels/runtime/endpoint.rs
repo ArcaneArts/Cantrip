@@ -1,5 +1,6 @@
 use super::broker::{Handle as Route, Registration, Side};
 use super::*;
+use crate::workers::transport::WorkerTransport;
 pub(super) struct Endpoint {
     pub socket: Arc<dyn Socket>,
     authorization: Value,
@@ -63,7 +64,7 @@ impl Endpoint {
     pub fn register(
         self: &Arc<Self>,
         broker: &Arc<Broker>,
-        bridge: &Arc<WorkerBridge>,
+        bridge: &Arc<dyn WorkerTransport>,
         diagnostic: Option<Value>,
     ) -> Result<Route> {
         let a = &self.authorization;

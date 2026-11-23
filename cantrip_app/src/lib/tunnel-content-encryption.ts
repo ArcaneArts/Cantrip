@@ -9,6 +9,7 @@ import {
   tunnelContentRecordSchema,
   tunnelPublicDestinationEndpoint,
   tunnelPublicSourceEndpoint,
+  tunnelContentOsSource,
   type ProtectedTunnelContentRecord,
   type TunnelContentErrorCode,
   type TunnelContentRecord,
@@ -133,15 +134,18 @@ function stableErrorMessage(
 
 type TunnelPresentation = Omit<TunnelContentRecord, "dataProtection">;
 
-function publicEndpointsMatch(
+export function publicEndpointsMatch(
   wire: TunnelWireSummary,
   content: TunnelPresentation,
 ): boolean {
   return (
     JSON.stringify(tunnelPublicSourceEndpoint(content.source)) ===
       JSON.stringify(wire.source) &&
-    JSON.stringify(tunnelPublicDestinationEndpoint(content.destination)) ===
-      JSON.stringify(wire.destination)
+    JSON.stringify(
+      tunnelPublicDestinationEndpoint(content.destination, wire.id),
+    ) === JSON.stringify(wire.destination) &&
+    JSON.stringify(tunnelContentOsSource(content)) ===
+      JSON.stringify(wire.osSource)
   );
 }
 

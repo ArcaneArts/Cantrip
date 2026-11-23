@@ -10,16 +10,17 @@ use std::{
     task::{Context, Poll},
 };
 
+type Completion = Box<dyn FnOnce(Option<&axum::Error>) + Send>;
 struct CompletedBody {
     inner: Body,
-    callback: Option<Box<dyn FnOnce() + Send>>,
+    callback: Option<Completion>,
     include_errors: bool,
     headers_only: bool,
 }
 impl CompletedBody {
-    fn complete(&mut self) {
+    fn complete(&mut self, error: Option<&axum::Error>) {
         if let Some(callback) = self.callback.take() {
-            callback();
+            callback(error);
         }
     }
 }
@@ -32,8 +33,8 @@ impl HttpBody for CompletedBody {
     ) -> Poll<Option<Result<Frame<Bytes>, Self::Error>>> {
         let frame = Pin::new(&mut self.inner).poll_frame(cx);
         match &frame {
-            Poll::Ready(None) => self.complete(),
-            Poll::Ready(Some(Err(_))) if self.include_errors => self.complete(),
+            Poll::Ready(None) => self.complete(None),
+            Poll::Ready(Some(Err(error))) if self.include_errors => self.complete(Some(error)),
             Poll::Ready(Some(Err(_))) => self.callback = None,
             _ => {}
         }
@@ -49,7 +50,7 @@ impl HttpBody for CompletedBody {
 impl Drop for CompletedBody {
     fn drop(&mut self) {
         if self.headers_only || self.inner.is_end_stream() {
-            self.complete();
+            self.complete(None);
         }
     }
 }
@@ -73,8 +74,25 @@ pub(super) fn finished_head(
 }
 
 fn observe(
-    mut response: Response,
+    response: Response,
     callback: impl FnOnce() + Send + 'static,
+    include_errors: bool,
+    headers_only: bool,
+) -> Response {
+    observe_outcome(response, move |_| callback(), include_errors, headers_only)
+}
+
+/// A body error is distinct from a completed response for the request logger.
+pub(super) fn outcome(
+    response: Response,
+    headers_only: bool,
+    callback: impl FnOnce(Option<&axum::Error>) + Send + 'static,
+) -> Response {
+    observe_outcome(response, callback, true, headers_only)
+}
+fn observe_outcome(
+    mut response: Response,
+    callback: impl FnOnce(Option<&axum::Error>) + Send + 'static,
     include_errors: bool,
     headers_only: bool,
 ) -> Response {

@@ -20,7 +20,7 @@ impl Repository {
         }
         let project = optional(input, "projectId")?;
         if !self
-            .references_owned(owner, project.as_deref(), source, destination)
+            .references_owned(owner, project.as_deref(), source, destination, false)
             .await?
         {
             return Ok(None);

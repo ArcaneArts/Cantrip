@@ -189,12 +189,20 @@ it("archives by middle-click, restores from the keyboard menu, and never opens a
     ),
   );
   expect(item("Permanently Delete")).toBeDefined();
+  const settingsKeys = [
+    ["native-settings", "one", "identity"],
+    ["permission-profiles", "one", "binding"],
+    ["chat-runtime-selection", "one"],
+  ];
+  for (const key of settingsKeys) client.setQueryData(key, { cached: true });
   await act(async () => item("Restore").click());
   await flush();
   expect(api.restore).toHaveBeenCalledWith("project", "one", {
     userId: "owner",
   });
   expect(openConversation).not.toHaveBeenCalled();
+  for (const key of settingsKeys)
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
   expect(
     host.querySelector('[data-archived-conversation-id="one"]'),
   ).toBeNull();

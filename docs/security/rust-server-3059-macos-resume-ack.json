@@ -1,0 +1,275 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "sourceBase": "a81a0947be9cf2aecb446b5efe825d791926210e",
+  "database": "external PostgreSQL 18.6",
+  "coordination": "Redis 8.10.3",
+  "packagedBaseline": {
+    "version": "1.1.3059",
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 94198000,
+    "sha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+  },
+  "candidateExecutable": {
+    "bytes": 179734896,
+    "sha256": "7d467dfbef2075401c34bd971ee4c46014b6927d3ae881d55ac62a3f699c738f",
+    "buildLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/candidate-build.log",
+      "bytes": 8988,
+      "sha256": "47b5d78a67cad1201087a4a3e4dd31fb1088c83bdec77a8bd922e17e31811c25"
+    }
+  },
+  "testMethod": "The worker constructs the successful correlated Resume reply after the native queue claim and turn receipt commit. The probe holds that reply on the old socket. The fixture defers competing server-origin claims for the first prompt until the worker start is observed. It then kills and replaces the worker-owning server with the browser peer still running. The newer-Pause case lets the single original turn finish and pauses the chat while the earlier Resume still awaits acknowledgment.",
+  "packagedFailures": [
+    {
+      "pair": "rust/node",
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/baseline/resume-ack/rust-node/matrix.json",
+        "bytes": 472013,
+        "sha256": "87a98a4df8062bdaf2680eaa713f431a19c5bc123916e8c0b474e3d83853c447"
+      },
+      "successfulWorkerReplyWithheld": true,
+      "sameNativeTurnRetained": true,
+      "httpStatus": 409,
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/baseline/resume-ack/rust-node/matrix.log",
+        "bytes": 3028,
+        "sha256": "c1726b6c9dfdd0e631828b06ad96e61edc516644c5e3e6c260f01a0719e85260"
+      }
+    },
+    {
+      "pair": "rust/rust",
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/baseline/resume-ack/rust-rust/matrix.json",
+        "bytes": 470046,
+        "sha256": "106f36c9f731d04b633b9155cf402aa8d56c7323d2c12d977446b2dc5fdbfe13"
+      },
+      "successfulWorkerReplyWithheld": true,
+      "sameNativeTurnRetained": true,
+      "httpStatus": 409,
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/baseline/resume-ack/rust-rust/matrix.log",
+        "bytes": 3317,
+        "sha256": "af6c66eb1745c82026eb2a214060fa6ea1a62bf8f04094bf2fe67579d571ee08"
+      }
+    }
+  ],
+  "recoveredOpenStreams": [
+    {
+      "pair": "rust/node",
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/qualified/resume-ack/rust-node/matrix.json",
+        "bytes": 590130,
+        "sha256": "70b0e53f7e02b444d67218ea53169d6d0b9da27ccde87b174c0e22f6a6a61a8d"
+      },
+      "successfulWorkerReplyWithheld": true,
+      "sameNativeTurnRetained": true,
+      "browserRequestSucceeded": true,
+      "browserPaused": false,
+      "durablePaused": false,
+      "originalModelStreamPreserved": true,
+      "modelRequests": 2,
+      "completedTurns": 2,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    },
+    {
+      "pair": "rust/rust",
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/qualified/resume-ack/rust-rust/matrix.json",
+        "bytes": 605168,
+        "sha256": "4c65dfb93aff37321cc2ca50f1e2953b142d0f611f935c02e4a04809fcdbe9ad"
+      },
+      "successfulWorkerReplyWithheld": true,
+      "sameNativeTurnRetained": true,
+      "browserRequestSucceeded": true,
+      "browserPaused": false,
+      "durablePaused": false,
+      "originalModelStreamPreserved": true,
+      "modelRequests": 2,
+      "completedTurns": 2,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    }
+  ],
+  "recoveredAfterNewerPause": [
+    {
+      "pair": "rust/node",
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/qualified/resume-ack-paused/rust-node/matrix.json",
+        "bytes": 530765,
+        "sha256": "6162b7ed3981fd0bca3a55f423cabba2d92df03a386d4248bb5ebd9ba037dc23"
+      },
+      "successfulWorkerReplyWithheld": true,
+      "sameNativeTurnRetained": true,
+      "browserRequestSucceeded": true,
+      "browserPaused": true,
+      "durablePaused": true,
+      "newerPauseConfirmedByBrowser": true,
+      "modelRequests": 1,
+      "completedTurns": 1,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    },
+    {
+      "pair": "rust/rust",
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/qualification-retry/resume-ack-paused/rust-rust/matrix.json",
+        "bytes": 563217,
+        "sha256": "4a8aeda29a28c121a16543095e958955c0e78dc6c1a7ced244c15ad340d0c649"
+      },
+      "successfulWorkerReplyWithheld": true,
+      "sameNativeTurnRetained": true,
+      "browserRequestSucceeded": true,
+      "browserPaused": true,
+      "durablePaused": true,
+      "newerPauseConfirmedByBrowser": true,
+      "modelRequests": 1,
+      "completedTurns": 1,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    }
+  ],
+  "preDispatchControls": [
+    {
+      "pair": "rust/node",
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/candidate/claim/rust-node/matrix.json",
+        "bytes": 590373,
+        "sha256": "e1f59b6e9ee7faeb409bade95a216541daa3a7ab4163a38bd7f9f8bd32396e3b"
+      },
+      "httpStatusBeforeDispatch": 409,
+      "explicitRetryUnpaused": true,
+      "modelRequests": 2,
+      "completedTurns": 2,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    },
+    {
+      "pair": "rust/rust",
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/candidate/claim/rust-rust/matrix.json",
+        "bytes": 620309,
+        "sha256": "9e894a1a2cc684d876795f1c3302a527d11fba6c888f442e33eac6b8afe74145"
+      },
+      "httpStatusBeforeDispatch": 409,
+      "explicitRetryUnpaused": true,
+      "modelRequests": 2,
+      "completedTurns": 2,
+      "originalThreadRetained": true,
+      "queueDrained": true
+    }
+  ],
+  "resumeCompatibility": [
+    {
+      "mode": "bundled-postgres",
+      "authenticationProfiles": ["none", "password", "accounts"],
+      "matchingHttpObservations": 36,
+      "matchingBrowserSdkObservations": 9,
+      "matchingWorkerCommands": 33,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/http/bundled-postgres/matrix.json",
+        "bytes": 1580470,
+        "sha256": "40a28299b060cd5192ab76827c74c7836fb8a22a80683470af2788659526fb1b"
+      }
+    },
+    {
+      "mode": "pglite",
+      "authenticationProfiles": ["none", "password", "accounts"],
+      "matchingHttpObservations": 36,
+      "matchingBrowserSdkObservations": 9,
+      "matchingWorkerCommands": 33,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/http/pglite/matrix.json",
+        "bytes": 1581419,
+        "sha256": "0cabebc75142f4d5d6dfaa8de20cacf6d346ccef3c9e8110c8169d33ec942d2e"
+      }
+    },
+    {
+      "mode": "postgres",
+      "authenticationProfiles": ["none", "password", "accounts"],
+      "matchingHttpObservations": 36,
+      "matchingBrowserSdkObservations": 9,
+      "matchingWorkerCommands": 33,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/http/postgres/matrix.json",
+        "bytes": 1580097,
+        "sha256": "5c3b94cbccf3ee0694ed463b2c144cc3d8db5fd046183b9141b5906f389e3943"
+      }
+    }
+  ],
+  "localChecks": {
+    "rustLibraryTests": 88,
+    "referenceNodeVersion": "24.22.1",
+    "rustLibraryLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/rust-lib-pinned-node.log",
+      "bytes": 9177,
+      "sha256": "ba99c592f4b448b1c69d2e4b3c498a2a710ba040e40bb6ae7dec77f86f2654dd"
+    },
+    "repositoryChecksLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/repository-checks.log",
+      "bytes": 2858,
+      "sha256": "c53e41c4a8efb05bcd6187dfc29891d7798921276054ee632036af23dc00f07c"
+    }
+  },
+  "earlierFixtureAttempts": [
+    {
+      "finding": "A competing recovery sweep started the head before the worker received Resume. These observations did not reach the withheld-reply boundary.",
+      "reports": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/verified/resume-ack/rust-node/matrix.json",
+          "bytes": 464146,
+          "sha256": "c346f07c56f4472e991e4bcc6b9cfd405db6c0170ad0da3ef2fc843f3d642695"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/verified/resume-ack/rust-rust/matrix.json",
+          "bytes": 462962,
+          "sha256": "83ee6a1dd2ef51559b93aba89e988f61a4c7ed4082daf9ceaf3936beba70e308"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/verified/resume-ack-paused/rust-node/matrix.json",
+          "bytes": 424863,
+          "sha256": "b4e32a6dbb5c4f3a7b7b0e9de515e0d5a4c12bb6cbdd43ba5093f945d9e670c3"
+        }
+      ]
+    },
+    {
+      "finding": "One concurrent all-Rust cell failed the earlier transcript synchronization check before entering queue recovery. The isolated rerun exercised the pause boundary.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/qualified/resume-ack-paused/rust-rust/matrix.json",
+        "bytes": 371975,
+        "sha256": "54bd3462fc7ed9d9e43d0f3b5ff82803620453d86abcee8116028351345cab8e"
+      }
+    },
+    {
+      "finding": "The original shell used Node 24.14.0 and pnpm attempted to reinstall the shared dependencies. All library tests passed with the packaged Node and the existing workspace dependencies.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-resume-ack.83Z0M28n/rust-lib.log",
+        "bytes": 10468,
+        "sha256": "c25dc35872d4c9c0d0a6089340fa51f586e9f3cf54ef9013b3aad68e9a3808d4"
+      }
+    }
+  ],
+  "remainingQualification": [
+    "Shared queue owner-loss and mixed placement on Linux and Windows.",
+    "Multiple workers competing for the same ordered queue head.",
+    "The remaining installed-client, signed release and deployment requirements in the release reconciliation."
+  ]
+}

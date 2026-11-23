@@ -33,6 +33,7 @@ export const agentTurnResultModeSchema = z.discriminatedUnion("kind", [
     kind: z.literal("task-message-encrypted"),
     messageId: z.string().uuid(),
     idempotencyKey: z.string().min(1).max(200),
+    reusePublishedResponse: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("chat-message-encrypted"),

@@ -17,8 +17,41 @@ pub const DEFAULT_OLLAMA_PROVIDER_ID: &str = "00000000-0000-0000-0000-0000000000
 pub const DEFAULT_MODEL_ID: &str = "00000000-0000-0000-0000-000000000020";
 pub const DEFAULT_MODEL_ROUTE_ID: &str = "00000000-0000-0000-0000-000000000021";
 
+// Settings presentation only: all observed scopes must positively identify a
+// non-language route. Unknown and unavailable language scopes remain selectable.
+// Explicit inference does not depend on these discovery observations.
+const ROUTE_SUMMARIES_SQL: &str = r#"
+SELECT jsonb_build_object(
+  'route', to_jsonb(r) || jsonb_build_object('language_selection_conflict', coalesce(
+    (SELECT bool_and(
+      coalesce(a.operation_capabilities->'language'->>'status', 'unknown') = 'unsupported'
+      AND (
+        coalesce(a.operation_capabilities->'embedding'->>'status', 'unknown') = 'supported'
+        OR coalesce(a.operation_capabilities->'decision'->>'status', 'unknown') = 'supported'
+      )
+    ) FROM provider_model_availability a WHERE a.provider_model_id = c.id),
+    (
+      coalesce(c.operation_capabilities->'language'->>'status', 'unknown') = 'unsupported'
+      AND (
+        coalesce(c.operation_capabilities->'embedding'->>'status', 'unknown') = 'supported'
+        OR coalesce(c.operation_capabilities->'decision'->>'status', 'unknown') = 'supported'
+      )
+    ), false
+  )),
+  'providerName', p.name
+)
+FROM model_routes r
+INNER JOIN model_profiles m ON m.id = r.model_id
+INNER JOIN model_providers p ON p.id = r.provider_id
+LEFT JOIN provider_models c ON c.provider_id = r.provider_id
+  AND (c.id = r.provider_model_id OR (r.provider_model_id IS NULL AND c.native_model_id = r.model_name))
+WHERE m.owner_id = $1
+ORDER BY r.position ASC
+"#;
+
 const PREFERENCES: &[&str] = &[
     "computerUseEnabled",
+    "computerUseCantripAppAllowed",
     "computerUseEffects",
     "computerUseEffectsRevision",
     "protectedComputerUseCursor",
@@ -30,7 +63,6 @@ const PREFERENCES: &[&str] = &[
     "eliteMode",
     "eliteRevealConfig",
     "sidebarWidth",
-    "workspaceLayoutProfile",
     "showChatPromptOverlay",
     "randomAgentNames",
     "autoNameTasks",
@@ -39,6 +71,8 @@ const PREFERENCES: &[&str] = &[
     "desktopFrameRate",
     "desktopStreamQuality",
     "defaultModelId",
+    "defaultEmbeddingModelId",
+    "defaultDecisionModelId",
     "defaultReasoningEffort",
     "defaultCustomSubagentModel",
     "defaultSubagentModelId",
@@ -173,7 +207,16 @@ pub(super) fn provider_summary(
 ) -> Result<Value> {
     let mut output = project(
         provider,
-        &["id", "name", "kind", "baseUrl", "weeklyUsageReservePercent"],
+        &[
+            "id",
+            "name",
+            "kind",
+            "baseUrl",
+            "weeklyUsageReservePercent",
+            "maxConcurrentInference",
+            "inferenceConfigRevision",
+            "connectionRevision",
+        ],
     );
     output["hasApiKey"] = json!(!provider["protected_api_key"].is_null());
     output["accounts"] = json!(accounts);
@@ -190,12 +233,17 @@ fn route_summary(route: &Value, provider_name: &Value) -> Value {
             "providerId",
             "providerModelId",
             "modelName",
+            "operationAdapter",
+            "operationOptions",
             "position",
             "enabled",
             "discoveryManaged",
         ],
     );
     output["providerName"] = provider_name.clone();
+    if route["language_selection_conflict"] == true {
+        output["languageSelectionConflict"] = json!(true);
+    }
     output
 }
 fn model_summary(
@@ -209,6 +257,7 @@ fn model_summary(
         &[
             "id",
             "name",
+            "operation",
             "canonicalModelId",
             "defaultReasoningEffort",
             "discoveryManaged",
@@ -238,6 +287,7 @@ pub(super) fn catalog_entry(model: &Value) -> Result<Value> {
             "maxOutputTokens",
             "inputModalities",
             "outputModalities",
+            "operationCapabilities",
             "supportsTools",
             "supportsParallelTools",
             "supportsStructuredOutput",
@@ -256,6 +306,9 @@ pub(super) fn catalog_entry(model: &Value) -> Result<Value> {
         ],
     );
     output["matchConfidence"] = percentage(&model["match_confidence_basis_points"], 10_000.0);
+    if let Some(loaded) = model["raw_metadata"]["loaded"].as_bool() {
+        output["loaded"] = Value::Bool(loaded);
+    }
     dates(
         &mut output,
         model,
@@ -314,12 +367,39 @@ impl SettingsRepository {
     }
 
     pub async fn get_user_settings(&self, owner: &str) -> Result<Value> {
-        let rows = self
-            .json_rows(
+        self.get_user_settings_with_query_context(owner, None).await
+    }
+    pub(crate) async fn get_user_settings_with_query_context(
+        &self,
+        owner: &str,
+        context: Option<(&str, &[wire::Value])>,
+    ) -> Result<Value> {
+        Self::user_settings_with(
+            crate::database::Executor::Database(&self.database),
+            owner,
+            context,
+        )
+        .await
+    }
+    pub(crate) async fn user_settings_with(
+        executor: crate::database::Executor<'_, '_>,
+        owner: &str,
+        context: Option<(&str, &[wire::Value])>,
+    ) -> Result<Value> {
+        let result = executor
+            .query(
                 "SELECT to_jsonb(s) FROM user_settings s WHERE user_id=$1 LIMIT 1",
                 &[&owner],
             )
-            .await?;
+            .await;
+        let rows = match context {
+            Some((sql, params)) => crate::database::query_error::context(result, sql, params)?,
+            None => result?,
+        };
+        let rows = rows
+            .iter()
+            .map(|row| row.get::<Value>(0))
+            .collect::<Result<Vec<_>>>()?;
         Ok(project(
             rows.first()
                 .context("Database returned no row after loading user settings.")?,
@@ -333,7 +413,7 @@ impl SettingsRepository {
         project: Option<&str>,
         at: DateTime<Utc>,
     ) -> Result<AgentTimeAnalytics> {
-        let rows = self.database.query("SELECT attempt_status,completed_at::text,model_id,provider_id,started_at::text FROM token_usage_records WHERE owner_id=$1 AND ($2::text IS NULL OR project_id=$2)", &[&owner,&project.filter(|id| !id.is_empty())]).await?;
+        let rows = self.database.query("SELECT attempt_status,completed_at::text,model_id,provider_id,started_at::text FROM token_usage_records WHERE owner_id=$1 AND attempt_kind NOT IN ('embedding','decision') AND ($2::text IS NULL OR project_id=$2)", &[&owner,&project.filter(|id| !id.is_empty())]).await?;
         let mut intervals = Vec::new();
         for row in rows {
             intervals.push((
@@ -368,17 +448,17 @@ impl SettingsRepository {
 
     async fn usage_totals(&self, owner: &str, providers: bool) -> Result<HashMap<String, Value>> {
         let key = if providers { "provider_id" } else { "model_id" };
-        let rows = self.database.query(&format!("SELECT {key},coalesce(sum(input_tokens),0)::text,coalesce(sum(output_tokens),0)::text FROM token_usage_records WHERE owner_id=$1 GROUP BY {key}"), &[&owner]).await?;
+        let observed = super::model_operation_usage::OBSERVED_TOTAL_SQL;
+        let rows = self.database.query(&format!("SELECT {key},coalesce(sum(input_tokens),0)::text,coalesce(sum(output_tokens),0)::text,coalesce(sum({observed}),0)::text FROM token_usage_records WHERE owner_id=$1 GROUP BY {key}"), &[&owner]).await?;
         let mut totals = HashMap::new();
         for row in rows {
             if let Some(id) = row.get::<Option<String>>(0)?.filter(|id| !id.is_empty()) {
-                totals.insert(
-                    id,
-                    token_usage(
-                        row.get::<String>(1)?.parse()?,
-                        row.get::<String>(2)?.parse()?,
-                    ),
+                let mut usage = token_usage(
+                    row.get::<String>(1)?.parse()?,
+                    row.get::<String>(2)?.parse()?,
                 );
+                usage["totalTokens"] = Value::Number(row.get::<String>(3)?.parse()?);
+                totals.insert(id, usage);
             }
         }
         Ok(totals)
@@ -393,7 +473,7 @@ impl SettingsRepository {
             self.json_rows("SELECT to_jsonb(a) FROM model_provider_accounts a INNER JOIN model_providers p ON p.id=a.provider_id AND p.owner_id=$1 ORDER BY a.position ASC", parameters).boxed(),
             self.json_rows("SELECT to_jsonb(b) FROM model_provider_account_workers b INNER JOIN model_provider_accounts a ON a.id=b.account_id INNER JOIN model_providers p ON p.id=a.provider_id AND p.owner_id=$1", parameters).boxed(),
             self.json_rows("SELECT to_jsonb(m) FROM model_profiles m WHERE owner_id=$1 ORDER BY name ASC", parameters).boxed(),
-            self.json_rows("SELECT jsonb_build_object('route',to_jsonb(r),'providerName',p.name) FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id INNER JOIN model_providers p ON p.id=r.provider_id WHERE m.owner_id=$1 ORDER BY r.position ASC", parameters).boxed(),
+            self.json_rows(ROUTE_SUMMARIES_SQL, parameters).boxed(),
             self.usage_totals(owner,true).boxed(),self.usage_totals(owner,false).boxed(),self.agent_time_analytics(owner,None,at).boxed(),
         )?;
         let providers = providers
@@ -478,6 +558,15 @@ impl SettingsRepository {
     }
 
     pub async fn update_settings(&self, owner: &str, input: &Value) -> Result<Option<Value>> {
+        for (field, operation) in [
+            ("defaultEmbeddingModelId", "embedding"),
+            ("defaultDecisionModelId", "decision"),
+        ] {
+            if let Some(id) = input[field].as_str().filter(|id| !id.is_empty())
+                && self.database.query("SELECT id FROM model_profiles WHERE id=$1 AND owner_id=$2 AND operation=$3 LIMIT 1", &[&id, &owner, &operation]).await?.is_empty() {
+                return Ok(None);
+            }
+        }
         for field in [
             "labelingModelId",
             "defaultModelId",
@@ -547,7 +636,7 @@ impl SettingsRepository {
         include_disabled: bool,
         provider: Option<&str>,
     ) -> Result<Vec<Value>> {
-        let rows = self.json_rows("SELECT jsonb_build_object('profile',to_jsonb(m),'route',to_jsonb(r),'provider',to_jsonb(p),'catalog',to_jsonb(c)) FROM model_profiles m INNER JOIN model_routes r ON r.model_id=m.id INNER JOIN model_providers p ON p.id=r.provider_id AND p.owner_id=$1 LEFT JOIN provider_models c ON c.provider_id=r.provider_id AND (c.id=r.provider_model_id OR (r.provider_model_id IS NULL AND c.native_model_id=r.model_name)) WHERE m.owner_id=$1 AND ($2::text IS NULL OR m.id=$2) AND ($3::text IS NULL OR r.id=$3) AND ($4 OR r.enabled=true) AND ($5::text IS NULL OR p.id=$5) ORDER BY r.position ASC", &[&owner,&model.filter(|id| !id.is_empty()),&route.filter(|id| !id.is_empty()),&include_disabled,&provider.filter(|id| !id.is_empty())]).await?;
+        let rows = self.json_rows("SELECT jsonb_build_object('profile',to_jsonb(m),'route',to_jsonb(r),'provider',to_jsonb(p),'catalog',to_jsonb(c)) FROM model_profiles m INNER JOIN model_routes r ON r.model_id=m.id INNER JOIN model_providers p ON p.id=r.provider_id AND p.owner_id=$1 LEFT JOIN provider_models c ON c.provider_id=r.provider_id AND (c.id=r.provider_model_id OR (r.provider_model_id IS NULL AND c.native_model_id=r.model_name)) WHERE m.owner_id=$1 AND m.operation='language' AND ($2::text IS NULL OR m.id=$2) AND ($3::text IS NULL OR r.id=$3) AND ($4 OR r.enabled=true) AND ($5::text IS NULL OR p.id=$5) ORDER BY r.position ASC", &[&owner,&model.filter(|id| !id.is_empty()),&route.filter(|id| !id.is_empty()),&include_disabled,&provider.filter(|id| !id.is_empty())]).await?;
         let catalogs = rows
             .iter()
             .map(|row| catalog_entry(&row["catalog"]))
@@ -575,7 +664,7 @@ impl SettingsRepository {
             let (profile,route,provider) = (&row["profile"],&row["route"],&row["provider"]);
             let kind = provider["kind"].as_str().context("provider kind")?;
             let catalog = enrichment::enrich(&wire::Value::from_serialize(&catalog),kind,&candidates);
-            Ok(json!({"routeId":route["id"],"model":{"id":profile["id"],"profileName":profile["name"],"routeId":route["id"],"name":route["model_name"],"reasoningEffort":null,"providerModelId":if route["provider_model_id"].is_null() { &row["catalog"]["id"] } else { &route["provider_model_id"] },"catalog":serde_json::from_str::<Value>(&catalog.stringify())?},"provider":{"id":provider["id"],"name":provider["name"],"kind":provider["kind"],"baseUrl":provider["base_url"],"protectedApiKey":provider["protected_api_key"],"accountId":null,"credentialHomeKey":null,"weeklyUsageReservePercent":provider["weekly_usage_reserve_percent"]}}))
+            Ok(json!({"routeId":route["id"],"model":{"id":profile["id"],"profileName":profile["name"],"routeId":route["id"],"name":route["model_name"],"reasoningEffort":null,"providerModelId":if route["provider_model_id"].is_null() { &row["catalog"]["id"] } else { &route["provider_model_id"] },"catalog":serde_json::from_str::<Value>(&catalog.stringify())?},"provider":{"id":provider["id"],"name":provider["name"],"kind":provider["kind"],"baseUrl":provider["base_url"],"protectedApiKey":provider["protected_api_key"],"accountId":null,"credentialHomeKey":null,"weeklyUsageReservePercent":provider["weekly_usage_reserve_percent"],"maxConcurrentInference":provider["max_concurrent_inference"],"inferenceConfigRevision":provider["inference_config_revision"],"inferenceCatalogCreatedRevision":provider["inference_catalog_created_revision"]}}))
         }).collect()
     }
 }

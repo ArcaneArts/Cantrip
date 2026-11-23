@@ -8,6 +8,42 @@ use crate::{
     wire::{self, Value, coercion::truthy, value::json},
 };
 use anyhow::Result;
+async fn restored_observation(tx: &Transaction<'_>, command: &Value) -> Result<Option<Value>> {
+    if command["intent"].get("restoredSuspension").is_none() {
+        return Ok(None);
+    }
+    let intent = parse("nativeCommandIntentSchema", &command["intent"])?;
+    let restored = &intent["restoredSuspension"];
+    if restored.is_null() {
+        return Ok(None);
+    }
+    let session = parse("nativeCommandSessionSchema", &command["identity"])?;
+    let source = raw_one(tx, "SELECT to_jsonb(n)::text FROM native_commands n WHERE operation_id=$1 AND operation_generation=$2 AND owner_id=$3 AND worker_id=$4 AND chat_id=$5", &[&text(&restored["source"]["operationId"])?,&text(&restored["source"]["operationGeneration"])?,&text(&command["owner_id"])?,&text(&command["worker_id"])?,&text(&command["chat_id"])?]).await?;
+    let canonical = find(tx, &restored["source"]["operationId"]).await?;
+    let Some((source, canonical)) = source.zip(canonical) else {
+        return reject("native-restoration-provenance-mismatch");
+    };
+    let original = parse("nativeCommandSessionSchema", &source["identity"])?;
+    if command["kind"] != "start"
+        || command["method"] != "thread/resume"
+        || !truthy(command.get("previous_operation_id"))
+        || !truthy(session.get("runtimeGeneration"))
+        || source["kind"] != "start"
+        || source["logical_operation_id"] != command["logical_operation_id"]
+        || source["execution_lane_id"] != command["execution_lane_id"]
+        || canonical["chatId"] != command["chat_id"]
+        || canonical["threadId"] != session["threadId"]
+        || canonical["threadId"] != restored["checkpoint"]["threadId"]
+        || canonical["turnId"] != restored["checkpoint"]["turnId"]
+        || original["threadId"] != canonical["threadId"]
+        || canonical["runtimeGeneration"] != original["runtimeGeneration"]
+    {
+        return reject("native-restoration-provenance-mismatch");
+    }
+    Ok(Some(
+        json!({"operationId":command["operation_id"],"chatId":command["chat_id"],"threadId":canonical["threadId"],"turnId":canonical["turnId"],"runtimeGeneration":session["runtimeGeneration"]}),
+    ))
+}
 async fn find(tx: &Transaction<'_>, operation: &Value) -> Result<Option<Value>> {
     Ok(raw_one(tx,"SELECT to_jsonb(t)::text FROM native_command_turns t WHERE operation_id=$1",&[&text(operation)?]).await?.map(|row|json!({"operationId":row["operation_id"],"chatId":row["chat_id"],"threadId":row["thread_id"],"turnId":row["turn_id"],"runtimeGeneration":row["runtime_generation"]})))
 }
@@ -19,6 +55,14 @@ pub async fn remember(tx: &Transaction<'_>, command: &Value, evidence: &Value) -
         || session.get("runtimeGeneration") != evidence.get("runtimeGeneration")
     {
         return reject("native-turn-association-mismatch");
+    }
+    if let Some(restored) = restored_observation(tx, command).await? {
+        if restored["turnId"] != evidence["nativeTurnId"]
+            || restored["runtimeGeneration"] != evidence["runtimeGeneration"]
+        {
+            return reject("native-turn-association-conflict");
+        }
+        return Ok(());
     }
     if let Some(existing) = find(tx, &command["operation_id"]).await? {
         if existing.get("chatId") != command.get("chat_id")
@@ -39,6 +83,12 @@ pub async fn find_observed_command(
     command: &Value,
     backfill: bool,
 ) -> Result<Option<Value>> {
+    if let Some(restored) = restored_observation(tx, command).await? {
+        return Ok((command["status"] == "applied"
+            && truthy(command.get("result_digest"))
+            && truthy(command.get("protected_result")))
+        .then_some(restored));
+    }
     if let Some(existing) = find(tx, &command["operation_id"]).await? {
         return Ok(Some(existing));
     }

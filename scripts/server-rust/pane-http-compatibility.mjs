@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { buildRustServer, buildRustExample } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
@@ -423,6 +423,34 @@ try {
           "/panes/member/close",
           { revision: 0, viewId: "builtin:github:github.issues" },
           { method: "POST" },
+        );
+        const alertOpen = {
+          surfaceRef: { kind: "builtin", definitionId: "project.alerts" },
+          targetPaneId: "center",
+        };
+        await change("open Alert Inbox", "/panes/member/open", alertOpen, {
+          method: "POST",
+        });
+        await change(
+          "reuse Alert Inbox singleton",
+          "/panes/member/open",
+          alertOpen,
+          { method: "POST" },
+        );
+        await change(
+          "close Alert Inbox",
+          "/panes/member/close",
+          { viewId: "builtin:github:project.alerts" },
+          { method: "POST" },
+        );
+        await change("restore Alert Inbox", "/panes/member/open", alertOpen, {
+          method: "POST",
+        });
+        await change(
+          "Alert Inbox rejects worktree",
+          "/builtin-surfaces/project.alerts/worktree",
+          { worktreeId: "github-alpha-main" },
+          { status: 400 },
         );
         await change("pin built-in launcher", "/surface-launchers", {
           definitionId: "git.history",

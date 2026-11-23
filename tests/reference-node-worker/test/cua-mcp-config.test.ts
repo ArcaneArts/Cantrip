@@ -1,0 +1,153 @@
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { describe, expect, it } from "vitest";
+import { isManagedMcpName } from "@cantrip/protocol";
+import {
+  codexMcpConfigOverride,
+  cantripChatThreadParams,
+  managedMcpToolRequirements,
+} from "../src/codex/app-server.js";
+import {
+  cuaMcpHostInvocation,
+  managedCuaMcpServer,
+  managedCantripMcpServer,
+  mergeManagedMcpServers,
+} from "../src/mcp/managed.js";
+import { CUA_MCP_INSTRUCTIONS } from "../src/mcp/cua-server.js";
+import { CANTRIP_MCP_MAX_RESPONSE_BYTES } from "../src/mcp/http.js";
+import { CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS } from "../src/mcp/timeouts.js";
+
+const invocation = { command: "node", arguments: ["cua-stdio.js"] };
+describe("managed CUA MCP configuration", () => {
+  it("gives Linux turns assigned-display instructions instead of the Host window starter", () => {
+    const instructions = cantripChatThreadParams(true, "ide", [
+      {
+        name: "cantrip_cua",
+        enabled: true,
+        transport: "http",
+        url: "http://127.0.0.1:1234/v1/cua-mcp/fixture",
+      },
+    ]).developerInstructions;
+    expect(instructions).toContain("assigned CantripOS X11 desktop");
+    expect(instructions).toContain("cua.targets()");
+    expect(instructions).toContain("cantrip-desktop");
+    expect(instructions).not.toContain("Computer use is not enabled");
+    expect(instructions).not.toContain("cua.openWindow({application:");
+    expect(instructions).not.toContain("Brave");
+  });
+  it.each(["ide", "standalone-chat"] as const)(
+    "advertises the actual CUA entry point in %s thread instructions",
+    (profile) => {
+      const cua = managedCuaMcpServer(invocation, "connection.json");
+      const instructions = cantripChatThreadParams(true, profile, [
+        cua,
+      ]).developerInstructions;
+      expect(instructions).toContain("cua.openWindow(");
+      expect(instructions).toContain("namespace is separate from `cantrip`");
+      expect(instructions).toContain(
+        "an empty registry does not mean native CUA is unavailable",
+      );
+      expect(instructions).toContain("Window sharing starts automatically");
+      expect(
+        cantripChatThreadParams(true, profile, [{ ...cua, enabled: false }])
+          .developerInstructions,
+      ).not.toContain("cua.openWindow(");
+      expect(
+        cantripChatThreadParams(true, profile, [{ ...cua, name: "unrelated" }])
+          .developerInstructions,
+      ).not.toContain("cua.openWindow(");
+    },
+  );
+  it("gives disabled agent turns only a brief computer-use notice", () => {
+    const instructions = cantripChatThreadParams(
+      true,
+      "ide",
+      [],
+    ).developerInstructions;
+    expect(instructions).toContain("Computer use is not enabled.");
+    expect(instructions).not.toContain("cua.targets");
+    expect(instructions).not.toContain("cua.openWindow");
+    expect(instructions).not.toContain("cantrip_cua");
+  });
+  it("keeps dedicated guidance compact and uses current ordinary click routing", () => {
+    expect(CUA_MCP_INSTRUCTIONS.length).toBeLessThan(6000);
+    expect(CUA_MCP_INSTRUCTIONS).toContain(
+      "No Accessibility lookup or separate preparation call is required",
+    );
+    expect(CUA_MCP_INSTRUCTIONS).toContain("Never automatically replay");
+    expect(CUA_MCP_INSTRUCTIONS).toContain("await the entire tool call");
+    expect(CUA_MCP_INSTRUCTIONS).toContain("150-second piece");
+    expect(CUA_MCP_INSTRUCTIONS).toContain("no performance duration");
+    expect(CUA_MCP_INSTRUCTIONS).toContain("cua.clickSequence(");
+    expect(CUA_MCP_INSTRUCTIONS).toContain("input methods never do");
+    expect(CUA_MCP_INSTRUCTIONS).not.toContain(
+      "Failed calls already clear attachment",
+    );
+    expect(CUA_MCP_INSTRUCTIONS).not.toContain(
+      "through the attached window's Accessibility controls",
+    );
+  });
+  it("uses the dedicated worker host in source and packaged runtimes", () => {
+    expect(
+      cuaMcpHostInvocation({
+        execPath: "node",
+        moduleUrl: pathToFileURL(path.resolve("/worker/dist/mcp/managed.js"))
+          .href,
+      }),
+    ).toEqual({
+      command: "node",
+      arguments: [path.resolve("/worker/dist/mcp/cua-stdio.js")],
+    });
+    expect(
+      cuaMcpHostInvocation({
+        execPath: "node",
+        moduleUrl: pathToFileURL(path.resolve("/worker/src/mcp/managed.ts"))
+          .href,
+        execArguments: ["--import", "tsx"],
+      }),
+    ).toEqual({
+      command: "node",
+      arguments: [
+        "--import",
+        "tsx",
+        path.resolve("/worker/src/mcp/cua-stdio.ts"),
+      ],
+    });
+  });
+  it("reserves the name and removes configured shadows", () => {
+    const managed = managedCuaMcpServer(invocation, "connection.json");
+    expect(isManagedMcpName(" Cantrip_CUA ")).toBe(true);
+    expect(
+      mergeManagedMcpServers(
+        [{ ...managed, name: "CANTRIP_CUA", command: "shadow" }],
+        [managed],
+      ),
+    ).toEqual([managed]);
+  });
+  it("extends only CUA's approval-compatible deadline and required tools", () => {
+    const cua = managedCuaMcpServer(invocation, "connection.json");
+    const ordinary = managedCantripMcpServer(
+      { command: "node", arguments: ["stdio.js"] },
+      "connection.json",
+    );
+    const custom = { ...ordinary, name: "user-server" };
+    const config = codexMcpConfigOverride([cua, ordinary, custom]) as {
+      mcp_servers: Record<string, Record<string, unknown>>;
+    };
+    expect(config.mcp_servers.cantrip_cua).toMatchObject({
+      required: true,
+      enabled_tools: ["js", "js_reset"],
+      tool_timeout_sec: 0,
+    });
+    expect(config.mcp_servers.cantrip).toHaveProperty("tool_timeout_sec", 0);
+    expect(config.mcp_servers["user-server"]).not.toHaveProperty(
+      "tool_timeout_sec",
+    );
+    expect(managedMcpToolRequirements([cua])).toEqual([
+      { name: "cantrip_cua", tool: "js" },
+      { name: "cantrip_cua", tool: "js_reset" },
+    ]);
+    expect(CANTRIP_MCP_MAX_RESPONSE_BYTES).toBe(512 * 1024);
+    expect(CANTRIP_MCP_LOCAL_OPERATION_TIMEOUT_MS).toBe(55_000);
+  });
+});

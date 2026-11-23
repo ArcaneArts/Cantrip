@@ -54,6 +54,34 @@ test("packaged apps use signed static updater artifacts", async () => {
   assert.equal(updater?.windows?.installMode, "passive");
 });
 
+test("every desktop configuration delivers file drops to the HTML handlers", async () => {
+  const baseConfig = JSON.parse(
+    await readFile(path.join(tauriDir, "tauri.conf.json"), "utf8"),
+  );
+  for (const platform of ["macos", "windows", "linux"]) {
+    const platformConfig = await readFile(
+      path.join(tauriDir, `tauri.${platform}.conf.json`),
+      "utf8",
+    )
+      .then(JSON.parse)
+      .catch((error) => {
+        if (error.code === "ENOENT") return {};
+        throw error;
+      });
+    // Tauri uses JSON Merge Patch: a platform's windows array replaces the
+    // base array, so omitted window options revert to Tauri's defaults.
+    const windows = platformConfig.app?.windows ?? baseConfig.app.windows;
+    assert.ok(windows.length > 0, `${platform} must define a window`);
+    for (const window of windows) {
+      assert.equal(
+        window.dragDropEnabled,
+        false,
+        `${platform}/${window.label}: native interception blocks sidebar imports and chat attachments`,
+      );
+    }
+  }
+});
+
 test("macOS DMGs use the branded installer background", async () => {
   const config = JSON.parse(
     await readFile(path.join(tauriDir, "tauri.macos.conf.json"), "utf8"),

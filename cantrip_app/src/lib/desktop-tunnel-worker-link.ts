@@ -22,7 +22,16 @@ const SOCKET_APPLICATION_REJECTED = 4001;
 const MIN_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
 
+export interface DesktopTunnelSshConnection {
+  user: string;
+  hostAlias: string;
+  hostKey: string;
+  fingerprint: string;
+  knownHostsPath: string;
+}
+
 export interface DesktopTunnelWorkerLinkSummary {
+  ssh?: DesktopTunnelSshConnection;
   attachmentId: string;
   diagnosticTraceId: string | null;
   expiresAt: string;
@@ -148,6 +157,7 @@ export async function startDesktopTunnelWorkerLinkForward(
     const route = await controller.start();
     return {
       ...preparation.forward,
+      ...(controller.ssh ? { ssh: controller.ssh } : {}),
       effectiveRoute: route,
       routeState: routeState(route),
     };
@@ -157,11 +167,12 @@ export async function startDesktopTunnelWorkerLinkForward(
     }
     controller.stop();
     await dependencies
-      .invoke("stop_tunnel_forward", {
-        expectedAttachmentId: input.attachmentId,
-        expectedDiagnosticTraceId: input.diagnosticTraceId ?? null,
-        expectedDirectCapabilityId: null,
-        tunnelId: input.tunnelId,
+      .invoke("stop_worker_link_tunnel_forward", {
+        request: {
+          attachmentId: input.attachmentId,
+          nativeForwardGeneration: preparation.bridge.nativeForwardGeneration,
+          tunnelId: input.tunnelId,
+        },
       })
       .catch(() => undefined);
     throw error;
@@ -217,6 +228,8 @@ class DesktopTunnelWorkerLinkController {
     private readonly dependencies: DesktopTunnelWorkerLinkDependencies,
   ) {}
 
+  ssh?: DesktopTunnelSshConnection;
+
   async start(): Promise<WorkerLinkRoute> {
     const route = await this.#connect();
     await this.#publishRoute(this.#generation, route);
@@ -266,6 +279,19 @@ class DesktopTunnelWorkerLinkController {
       }
       this.#connection = connection;
       await this.#ensureFreshBridgeClaim();
+      if (connection.ssh) {
+        this.ssh = (await this.dependencies.invoke(
+          "configure_tunnel_ssh_forward",
+          {
+            request: {
+              tunnelId: this.input.tunnelId,
+              attachmentId: this.input.attachmentId,
+              nativeForwardGeneration: this.bridge.nativeForwardGeneration,
+              ssh: connection.ssh,
+            },
+          },
+        )) as DesktopTunnelSshConnection;
+      }
       socket = await openBridgeSocket(
         this.bridge,
         connection.tunnelRoute,

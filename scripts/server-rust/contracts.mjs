@@ -3,10 +3,18 @@
 import * as protocol from "../../packages/protocol/dist/index.js";
 import * as computerUsePreview from "../../packages/protocol/dist/computer-use-preview.js";
 import * as attachmentContent from "../../packages/protocol/dist/attachment-content.js";
+import * as remoteSurfaceStream from "../../packages/protocol/dist/remote-surface-stream.js";
 import * as runDefinitions from "../../packages/protocol/dist/run-configuration-definitions.js";
 import * as runSecrets from "../../packages/protocol/dist/run-configuration-secrets.js";
 import * as runConfigurationOperations from "../../packages/protocol/dist/run-configuration-operations.js";
 import * as runConfigurationRuntime from "../../packages/protocol/dist/run-configuration-runtime.js";
+import * as taskScheduling from "../../packages/protocol/dist/task-scheduling.js";
+import * as taskOperations from "../../packages/protocol/dist/tasks.js";
+import * as automations from "../../packages/protocol/dist/automations.js";
+import * as automationContent from "../../packages/protocol/dist/project-automation-content.js";
+import * as computerUseAgent from "../../packages/protocol/dist/computer-use-agent.js";
+import * as customizationContent from "../../packages/protocol/dist/customization-content.js";
+import * as osSystem from "../../packages/protocol/dist/cantrip-os-system.js";
 import { repositoryRoutingHandleSchema } from "../../packages/protocol/dist/repository-operation.js";
 import { cuaCursorPreferenceRecordSchema } from "../../packages/protocol/dist/computer-use-preferences.js";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -17,6 +25,62 @@ import { registerWorkerContracts } from "./worker-contracts.mjs";
 import { registerWorkerCommandContracts } from "./worker-command-contracts.mjs";
 
 export const contractRoots = [
+  "protectedDecisionRequestSchema",
+  "protectedDecisionResponseSchema",
+  "protectedEmbeddingRequestSchema",
+  "protectedEmbeddingResponseSchema",
+  "modelOperationCancelSchema",
+  "modelOperationCancelResultSchema",
+  "modelOperationRouteSchema",
+  "nativeTurnSuspensionSchema",
+  "nativeSuspensionTargetSchema",
+  "nativeSuspensionTaskGoalCycleSchema",
+  "nativeSuspensionActorSchema",
+  "nativeSuspensionActiveTurnSchema",
+  "nativeSuspensionEvidenceSchema",
+  "nativeSuspensionErrorSchema",
+  "nativeSuspensionRecordSchema",
+  "chatNativeSuspensionSchema",
+  "workerInferenceStatusSchema",
+  "inferenceFailureEvidenceSchema",
+  "nativeInferenceRecoverySchema",
+  "nativeInferenceRecoveryResultSchema",
+  "nativeGoalRecoverySourceSchema",
+  "nativeGoalRecoveryAdmissionSchema",
+  "nativeGoalRecoverySchema",
+  "nativeGoalRecoveryReceiptSchema",
+  "nativeGoalClaimRecoverySchema",
+  "nativeGoalClaimRecoveryReceiptSchema",
+  "nativeGoalRecoveryFenceSchema",
+  "nativeGoalRecoveryFenceResultSchema",
+  "nativeGoalRecoveryWithdrawalSchema",
+  "nativeInferenceResourceAuthorizationSchema",
+  "nativeInferenceResourceAuthorizationResultSchema",
+  "taskInferenceInputReceiptSchema",
+  "taskPauseScopeSchema",
+  "taskPauseIntentSchema",
+  "taskPauseRuntimeStateSchema",
+  "taskTurnResumptionSchema",
+  "taskTurnStopSchema",
+  "taskTurnStopResultSchema",
+  "taskInferenceInputDispatchSchema",
+  "taskInferenceInputDispatchResultSchema",
+  "taskGoalCycleIdentitySchema",
+  "taskGoalCycleSuspensionSourceSchema",
+  "taskGoalCycleRecoverySchema",
+  "taskGoalCycleDispatchSchema",
+  "taskGoalCycleDispatchResultSchema",
+  "taskGoalCycleRecoveryReceiptSchema",
+  "taskGoalCycleSourceRecordSchema",
+  "taskGoalCycleCaptureSchema",
+  "taskGoalInputSourceRecordSchema",
+  "taskGoalInputTransferContextSchema",
+  "taskGoalInputCaptureSchema",
+  "taskGoalHandoffCaptureSchema",
+  "taskInferenceRouteChangeRequestSchema",
+  "taskInferenceRouteChangeSchema",
+  "taskInferenceRouteViewSchema",
+  "taskInferenceRouteSettlementSchema",
   "chatAttachmentOpaqueSummarySchema",
   "accountRegistrationSchema",
   "authLoginSchema",
@@ -113,6 +177,9 @@ export const contractRoots = [
   "appDestinationSchema",
   "cuaEffectWorkerStatusSchema",
   "ollamaModelInventorySchema",
+  "endpointModelInventorySchema",
+  "modelCatalogPageSchema",
+  "modelCatalogPageRequestSchema",
   "providerQuotaSnapshotSchema",
   "providerRateLimitResetConsumeRequestSchema",
   "providerRateLimitResetConsumeResultSchema",
@@ -267,6 +334,7 @@ export const contractRoots = [
   "surfaceStreamWireRequestSchema",
   "surfaceStreamWireResponseSchema",
   "tunnelUserWireCreateSchema",
+  "tunnelOsPrepareResultSchema",
   "tunnelUserWireUpdateSchema",
   "tunnelWireSummarySchema",
   "tunnelWireListSchema",
@@ -375,7 +443,23 @@ export const contractRoots = [
   "taskMessageOpaqueContentSchema",
   "nativeHistoryTurnReadRequestSchema",
   "nativeHistoryTurnReadResponseSchema",
+  "nativeHistoryBindingOpenSchema",
+  "nativeHistoryBindingSchema",
+  "nativeHistoryResolveSchema",
+  "nativeHistoryItemMappingSchema",
+  "nativeHistoryIngestSchema",
+  "nativeHistoryPreparedBatchSchema",
+  "nativeHistoryCommitReceiptSchema",
+  "nativeHistoryBatchRejectionSchema",
+  "nativeHistoryArchiveReadSchema",
+  "nativeHistoryArchivePageSchema",
+  "nativeHistoryTurnArchiveReadSchema",
+  "nativeHistoryTurnArchivePageSchema",
+  "nativeHistoryBatchArchiveReadSchema",
+  "nativeHistoryBatchArchivePageSchema",
+  "nativeTurnModelAttributionSchema",
   "chatPlanOpaqueStateSchema",
+  "chatPlanUpdateSchema",
   "nativeSettingsRefreshRequestSchema",
   "nativeSettingsUpdateRequestSchema",
   "nativeSettingsUpdateReceiptSchema",
@@ -390,7 +474,10 @@ export const contractRoots = [
   "nativeChatModelInventorySchema",
   "nativeCommandSessionSchema",
   "nativeCommandAdmissionSchema",
+  "nativeSuspensionExecutionAdmissionSchema",
+  "nativeSuspensionExecutionAdmissionResultSchema",
   "nativeCommandIntentSchema",
+  "nativeAutonomousAttemptSchema",
   "nativeCommandReceiptSchema",
   "nativeCommandDispatchSchema",
   "nativeCommandContinuationSchema",
@@ -423,18 +510,792 @@ export const contractRoots = [
   "managedQueueImportResultSchema",
   "managedQueueLookupSchema",
   "managedQueueLookupResultSchema",
+  "managedChatPreparationSchema",
+  "encryptedLinkedConsoleCreateSchema",
+  "nativeBehaviorAttributionSchema",
+  "encryptedChatPlanWireStateSchema",
+  "taskDispatchCycleSummarySchema",
+  "taskDispatchWorkerLeaseSchema",
+  "taskOperationRelayRequestSchema",
+  "chatMessageSchema",
+  "chatTurnRollbackAcceptedSchema",
+  "generateLabelResultSchema",
+  "agentTurnResultSchema",
+  "chatMessageRelayResultSchema",
+  "taskMessageRelayResultSchema",
+  "cuaApprovalRequestEventSchema",
+  "cuaApprovalTerminalSchema",
+  "worktreeStatusResultSchema",
+  "nativeRuntimeHandoffRequestSchema",
+  "nativeRuntimeHandoffQueuedSourceSchema",
+  "nativeRuntimeHandoffPreparedSchema",
+  "nativeRuntimeHandoffStateSchema",
+  "nativeRuntimeHandoffInventorySchema",
+  "nativeRuntimeHandoffWorkerRequestSchema",
+  "nativeRuntimeHandoffConfigurationRequestSchema",
+  "nativeRuntimeHandoffConfigurationSchema",
+  "nativeRuntimeHandoffTaskContextSchema",
+  "taskEncryptedOperationStartSchema",
+  "taskOpaqueContentSchema",
+  "taskOpaqueMutationSchema",
+  "taskOpaqueSummarySchema",
+  "taskOperationRelayResultSchema",
+  "taskPlanningRoundOpaqueSummarySchema",
+  "taskPlanningRoundOpaqueContentSchema",
+  "taskWorkerSummarySchema",
+  "taskDispatchCycleListSchema",
+  "taskGoalWorkerResultSchema",
+  "chatGoalResponseSchema",
+  "taskWorkerContinuityFamilySchema",
+  "taskWorkerCreateSchema",
+  "taskWorkerUpdateSchema",
+  "taskWorkerDeleteSchema",
+  "taskWorkerOrderUpdateSchema",
+  "taskWorkerListSchema",
+  "projectTaskPauseStateSchema",
+  "projectTaskPauseUpdateSchema",
+  "chatPauseUpdateSchema",
+  "chatPauseStateSchema",
+  "chatPauseRuntimeStateSchema",
+  "encryptedChatTurnCreateSchema",
+  "encryptedQueuedPromptListSchema",
+  "encryptedQueuedPromptUpdateSchema",
+  "queuedPromptOrderSchema",
+  "encryptedChatPromptSubmitResultSchema",
+  "encryptedConversationPromptSubmitResultSchema",
+  "encryptedChatPromptSteerResultSchema",
+  "taskOperationStartSchema",
+  "taskRecoveryStartSchema",
+  "projectAlertProjectionSchema",
+  "projectAlertSchema",
+  "projectAlertQuerySchema",
+  "projectAlertPageSchema",
+  "projectAlertCountsSchema",
+  "projectAlertChangeSchema",
+  "projectAlertProtectedDetailSchema",
+  "encryptedTaskCreateSchema",
+  "taskWireCreateResultSchema",
+  "chatAttachmentOpaqueListSchema",
+  "chatInterruptAcceptedSchema",
+  "chatModelConfigurationUpdateSchema",
+  "taskImplementationOpaqueDashboardSchema",
+  "githubPullRequestListSchema",
+  "githubIssueListFiltersSchema",
+  "chatGoalCreateSchema",
+  "chatGoalUpdateSchema",
+  "chatGoalClearSchema",
+  "chatGoalWireResponseSchema",
+  "agentAlertMutationWireSchema",
+  "cantripMcpAlertRaiseInputSchema",
+  "cantripMcpAlertResolveInputSchema",
+  "workerCantripMcpOperationCallSchema",
+  "compatibleWorkerCantripMcpOperationCallSchema",
+  "cantripAgentOperationNameSchema",
+  "cantripMcpChatListInputSchema",
+  "cantripMcpChatReadInputSchema",
+  "agentChatReadWireSchema",
+  "agentChatSendWireSchema",
+  "workerCantripMcpCapabilitiesQuerySchema",
+  "cantripAgentOperationResultSchema",
+  "projectGoalSnapshotSchema",
+  "projectGoalObservationSchema",
+  "projectGoalObservationResultSchema",
+  "cantripMcpContextGetResultSchema",
+  "archivedChatWireSummarySchema",
+  "encryptedChatCreateSchema",
+  "conversationCatalogQuerySchema",
+  "conversationCatalogWirePageSchema",
+  "conversationCursorSchema",
+  "conversationUsageSchema",
+  "conversationUsageResultSchema",
+  "agentThreadSyncSchema",
+  "agentThreadSyncItemSchema",
+  "archivedChatCleanupResultSchema",
+  "projectAutomationIntervalScheduleSchema",
+  "projectAutomationWeeklyScheduleSchema",
+  "projectAutomationCronScheduleSchema",
+  "projectAutomationScheduleSchema",
+  "projectAutomationOpaqueContentSchema",
+  "encryptedProjectAutomationCreateSchema",
+  "encryptedProjectAutomationUpdateSchema",
+  "projectAutomationWireSchema",
+  "projectAutomationWireListSchema",
+  "projectAutomationDispatchRequestSchema",
+  "projectAutomationDispatchResultSchema",
+  "projectAutomationProtectedDispatchResultSchema",
+  "agentInteractionRequestWireSchema",
+  "agentInteractionResolutionWireCreateSchema",
+  "agentInteractionAcceptedSchema",
+  "cuaAgentAuthoritySchema",
+  "customizationContentScopeSchema",
+  "protectedCustomizationRequestSchema",
+  "protectedCustomizationResponseSchema",
+  "customizationOperationIdSchema",
+  "permissionProfileCapabilitySchema",
+  "chatPermissionProfileStateSchema",
+  "chatPermissionProfileUpdateSchema",
+  "configurablePermissionProfileIdSchema",
+  "chatModelUpdateSchema",
+  "chatReasoningUpdateSchema",
+  "skillSettingsContextSchema",
+  "skillAudienceContextSchema",
+  "skillAudienceUpdateSchema",
+  "skillAudienceSummarySchema",
+  "skillAudienceListSchema",
+  "skillSettingsInventorySchema",
+  "skillSettingsDocumentSchema",
+  "skillSettingsMutationResultSchema",
+  "skillSettingsConfigResultSchema",
+  "skillSettingsFileRequestSchema",
+  "skillSettingsFileUpdateSchema",
+  "skillSettingsDeleteRequestSchema",
+  "skillSettingsConfigUpdateSchema",
+  "encryptedMcpServerCreateSchema",
+  "encryptedMcpServerUpdateSchema",
+  "mcpServerWireSummarySchema",
+  "mcpServerWireListSchema",
+  "mcpServerDiscoveryResultSchema",
+  "agentTaskCreateWireSchema",
+  "agentTaskStatusWireSchema",
+  "cantripMcpTaskCreateInputSchema",
+  "cantripMcpTaskListInputSchema",
+  "cantripMcpTaskStatusInputSchema",
+  "cantripMcpTaskWaitInputSchema",
+  "cantripOsExecutionSchema",
+  "cantripOsExecutionScopeSchema",
+  "cantripOsDispatchScopeSchema",
+  "cantripOsSourceDispatchScopeSchema",
+  "cantripOsProvisionIntentSchema",
+  "cantripOsProvisionRequestContentSchema",
+  "cantripOsObservedInstanceSchema",
+  "cantripOsSourceReceiptSchema",
+  "cantripOsOperationResultSchema",
+  "cantripOsBackupOperationResultSchema",
+  "cantripOsBackupPrivateRequestSchema",
+  "cantripOsBackupPrivateResultSchema",
+  "cantripOsBackupWorkspaceSchema",
+  "cantripOsResetPathsSchema",
+  "cantripOsBackupResetCommandSchema",
+  "cantripOsBackupAdmissionSchema",
+  "cantripOsBackupRecoverySchema",
+  "cantripOsBackupListQuerySchema",
+  "cantripOsBackupSummarySchema",
+  "cantripOsBackupPageSchema",
+
+  "cantripOsBackupSourceSchema",
+  "cantripOsInspectSchema",
+  "cantripOsDockerCarrierSchema",
+  "cantripOsDesktopActionSchema",
+  "cantripOsGuestDesktopTargetSchema",
+  "cantripOsDesktopScopeSchema",
+  "cantripOsGuestDesktopRequestSchema",
+  "cantripOsGuestDesktopReceiptSchema",
+  "cantripOsGuestDesktopResultSchema",
+  "cantripOsDesktopWorkerCommandSchema",
+  "cantripOsDesktopReceiptSchema",
+  "cantripOsDesktopOperationResultSchema",
+  "cantripOsDesktopCreateSchema",
+  "cantripOsDesktopTargetSummarySchema",
+  "cantripOsDesktopStatusSchema",
+  "cantripOsDesktopSummarySchema",
+  "cantripOsDesktopListQuerySchema",
+  "cantripOsDesktopPageSchema",
+  "cantripOsWorkspaceOperationSummarySchema",
+  "cantripOsWorkspaceOperationListQuerySchema",
+  "cantripOsWorkspaceOperationPageSchema",
+  "cantripOsPowerActionSchema",
+  "cantripOsPowerEvidenceSchema",
+  "cantripOsPowerObservationSchema",
+  "cantripOsPowerTargetSchema",
+  "cantripOsPowerWorkerCommandSchema",
+  "cantripOsPowerReceiptSchema",
+  "cantripOsPowerOperationResultSchema",
+  "cantripOsPowerCreateSchema",
+  "cantripOsPowerTargetSummarySchema",
+  "cantripOsPowerStatusSchema",
+  "cantripOsPowerSummarySchema",
+  "cantripOsPowerListQuerySchema",
+  "cantripOsPowerPageSchema",
+  "cantripOsPackageTargetSummarySchema",
+  "cantripOsPackageStatusSchema",
+  "cantripOsPackageCreateSchema",
+  "cantripOsPackageControlSchema",
+  "cantripOsPackageSummarySchema",
+  "cantripOsPackageListQuerySchema",
+  "cantripOsPackagePageSchema",
+  "cantripOsGuestPackageRecordSchema",
+  "cantripOsGuestPackageRequestSchema",
+  "cantripOsPackageArtifactSchema",
+  "cantripOsPackageArtifactsSchema",
+  "cantripOsPackageCatalogResultSchema",
+  "cantripOsPackageCryptoContextSchema",
+  "cantripOsPackageExpectedSchema",
+  "cantripOsPackageInstalledSchema",
+  "cantripOsPackageManifestSchema",
+  "cantripOsPackageNameSchema",
+  "cantripOsPackageOperationCommandSchema",
+  "cantripOsPackageOperationResultSchema",
+  "cantripOsPackagePrivateResultSchema",
+  "cantripOsPackageProbeSchema",
+  "cantripOsPackageProtectedResultSchema",
+  "cantripOsPackageScopeSchema",
+  "cantripOsPackageShaSchema",
+  "cantripOsPackageTargetSchema",
+  "cantripOsPackageWorkerCommandSchema",
+  "cantripOsSystemScopeSchema",
+  "cantripOsSystemTargetSchema",
+  "cantripOsSystemReferenceSchema",
+  "cantripOsSystemBaseImageSchema",
+  "cantripOsSystemSourceSchema",
+  "cantripOsSystemOperationCommandSchema",
+  "cantripOsSystemWorkerCommandSchema",
+  "cantripOsSystemStatusResultSchema",
+  "cantripOsSystemOperationContextSchema",
+  "cantripOsSystemProtectedOperationResultSchema",
+  "cantripOsSystemRootReceiptSchema",
+  "cantripOsSystemOperationResultSchema",
+  "cantripOsSystemPrivateOperationResultSchema",
+  "cantripOsSystemCreateSchema",
+  "cantripOsSystemControlSchema",
+  "cantripOsSystemTargetSummarySchema",
+  "cantripOsSystemStatusSchema",
+  "cantripOsSystemSummarySchema",
+  "cantripOsSystemListQuerySchema",
+  "cantripOsSystemPageSchema",
+  "cantripOsRecoveryRequestSchema",
+  "cantripOsRecoveryResultSchema",
+  "cantripOsWorkspaceCreateSchema",
+  "cantripOsBindingCreateSchema",
+  "cantripOsProvisionSchema",
+  "cantripOsGuestPathSchema",
+  "projectSourceLocationSchema",
+  "cantripOsTransportSchema",
+  "cantripOsDependencyOverlaySchema",
+  "cantripOsDependencyOverlaysSchema",
+  "cantripOsAttachSchema",
+  "cantripOsWorkspaceObservationSchema",
+  "cantripOsInstanceSummarySchema",
+  "cantripOsWorkspaceSummarySchema",
+  "cantripOsProjectSourceSummarySchema",
+  "cantripOsProjectWorktreeSummarySchema",
+  "cantripOsSourceBindingSummarySchema",
+  "cantripOsRunDefinitionRequestSchema",
+  "cantripOsRunDefinitionApiSchema",
+  "cantripOsRunDefinitionResponseSchema",
+  "cantripOsRunPrimarySchema",
+  "cantripOsRunRootsSchema",
+  "cantripOsRunLaunchSchema",
+  "cantripOsRunCaptureSchema",
+  "cantripOsRunSelectionSchema",
+  "cantripOsRunSourceSchema",
+  "desktopUpdateActiveWorkSummarySchema",
+  "providerConnectionTestResultSchema",
+  "workerProviderConnectionTestResultSchema",
+  "policyCliWireListResultSchema",
+  "policyCliWireReadResultSchema",
+  "executionTargetResourceKindSchema",
+  "executionTargetSchema",
+  "taskGoalOutcomeDeliverySchema",
+  "taskGoalOutcomeCommitSchema",
+  "workerChatTurnOutcomeNotificationSchema",
+  "inferenceCommandTimingSchema",
+  "remoteSurfaceFrameHeaderSchema",
+  "workerCommandSchema",
+  "workerEventSchema",
+  "workerNotificationSchema",
+  "workerLinkResourceKindSchema",
+  "chatRelocationJobSummarySchema",
+  "chatRelocationJobListSchema",
+  "chatRelocationSnapshotSummarySchema",
+  "chatRelocationContextPayloadSchema",
+  "chatRelocationCreateSchema",
+  "chatRelocationJobRetrySchema",
+  "chatRelocationJobCancelSchema",
+  "chatRelocationHydrationBeginResultSchema",
+  "chatRelocationHydrationResultSchema",
+  "workerAttachmentReadResultSchema",
+  "workerAttachmentUploadResultSchema",
+  "chatImportJobSummarySchema",
+  "chatImportJobListSchema",
+  "chatImportCreateSchema",
+  "chatImportJobRetrySchema",
+  "externalChatImportReferenceSchema",
+  "externalChatAttachmentSchema",
+  "externalChatTranscriptSchema",
+  "externalChatReadWorkerResultSchema",
+  "externalChatAttachmentReadResultSchema",
+  "externalChatDiscoveryWorkerResultSchema",
+  "projectExternalChatDiscoverySchema",
+  "modelOperationUsageSchema",
+  "modelOperationUsageIdentitySchema",
+  "modelOperationUsageEvidenceSchema",
+  "taskGoalCycleDispatchPublicationResultSchema",
+  "cuaEffectPreferencesSchema",
+  "encryptionAssociatedDataSchema",
+  "encryptedPayloadEnvelopeSchema",
+  "encryptionPublicKeySchema",
+  "hpkeWrappedKeyEnvelopeSchema",
+  "workerComponentKeyGrantSchema",
+  "encryptionComponentScopeSchema",
+  "workerEncryptionComponentScopeSchema",
+  "encryptionKeyRevisionSchema",
+  "workerEncryptionStatusSchema",
+  "protectedSecretEnvelopeSchema",
+  "providerApiKeyProtectedContentSchema",
+  "providerAccountLabelProtectedContentSchema",
+  "providerCredentialProtectedContentSchema",
+  "providerCredentialPublicMetadataSchema",
+  "protectedProviderCredentialSchema",
+  "mcpServerConfigurationSchema",
+  "endpointContentContextSchema",
+  "endpointContentOpaqueSchema",
+  "privateDisplayLabelOpaqueSchema",
+  "privateDisplayLabelProtectedContentSchema",
+  "attachmentMetadataProtectedContentSchema",
+  "surfaceStreamContextSchema",
+  "surfaceStreamOpaqueSchema",
+  "remoteSurfaceStreamContextSchema",
+  "tunnelDataProtectionConfigurationSchema",
+  "terminalInputContentSchema",
+  "terminalOutputContentSchema",
+  "terminalSnapshotRequestContentSchema",
+  "terminalSnapshotContentSchema",
+  "projectGithubConversionRepositorySchema",
+  "repositoryOperationContextSchema",
+  "repositoryOperationRequestContentSchema",
+  "repositoryOperationOutcomeContentSchema",
+  "workspaceRootAttachmentSchema",
+  "workspaceRootAttachArgumentsSchema",
+  "repositoryMetadataValuesSchema",
+  "repositoryMetadataResultSchema",
+  "explorerEntrySchema",
+  "explorerDirectorySchema",
+  "explorerFileSearchSchema",
+  "explorerDirectoryCommitsSchema",
+  "explorerFileSchema",
+  "explorerEntryNameSchema",
+  "explorerEntryRenameSchema",
+  "explorerEntryMutationResultSchema",
+  "surfacePrivateStateContextSchema",
+  "surfacePrivateStateOpaqueSchema",
+  "surfacePrivateStateProtectedContentSchema",
+  "fileDocumentPrivateStateProtectedContentSchema",
+  "explorerOperationRequestContentSchema",
+  "surfaceOperationOutcomeContentSchema",
+  "terminalPrivateStateProtectedContentSchema",
+  "gitStatusSchema",
+  "gitFileDiffSchema",
+  "gitManagedOperationRecordSchema",
+  "gitActionResultSchema",
+  "gitHistorySchema",
+  "gitFileHistorySchema",
+  "gitBlameSchema",
+  "gitCommitSearchQuerySchema",
+  "gitCommitSearchResultSchema",
+  "gitCommitDetailSchema",
+  "gitSignatureSchema",
+  "gitRevisionCandidateListSchema",
+  "gitComparisonSchema",
+  "gitRevisionFileDiffSchema",
+  "gitManagedOperationContextSchema",
+  "gitManagedOperationWorkerStateSchema",
+  "gitManagedOperationResponseSchema",
+  "gitStashListSchema",
+  "gitManagedOperationPreviewSchema",
+  "gitConflictListSchema",
+  "gitConflictDetailSchema",
+  "gitConflictResolutionPreviewSchema",
+  "gitConflictResolutionResultSchema",
+  "gitCommitActionPreviewSchema",
+  "gitCommitActionResultSchema",
+  "gitStashFileDiffSchema",
+  "gitStashActionPreviewSchema",
+  "gitStashMutationResultSchema",
+  "gitPartialPatchPreviewSchema",
+  "gitBranchListSchema",
+  "gitBranchActionPreviewSchema",
+  "gitBranchMutationResultSchema",
+  "gitRemoteListSchema",
+  "gitRemoteActionPreviewSchema",
+  "gitRemoteMutationResultSchema",
+  "gitTagListSchema",
+  "gitTagDetailSchema",
+  "gitTagActionPreviewSchema",
+  "gitTagMutationResultSchema",
+  "gitSubmoduleListSchema",
+  "gitSubmoduleActionPreviewSchema",
+  "gitSubmoduleMutationResultSchema",
+  "gitLfsStatusSchema",
+  "gitLfsActionPreviewSchema",
+  "gitLfsMutationResultSchema",
+  "gitGraphSnapshotSchema",
+  "gitGraphMetricsSchema",
+  "gitGraphCommitOverlaySchema",
+  "gitWorktreeChangesMovePreviewSchema",
+  "gitWorktreeChangesMoveResultSchema",
+  "gitRecoveryCandidateListSchema",
+  "gitRecoveryPreviewSchema",
+  "gitRecoveryResultSchema",
+  "githubAuthStatusSchema",
+  "githubWorkerRepositorySchema",
+  "githubWorkerRepositoryListSchema",
+  "githubRepositoryOwnerListSchema",
+  "githubRepositoryCreateSchema",
+  "githubIssueListSchema",
+  "githubIssueDetailSchema",
+  "githubIssueCreateSchema",
+  "githubPullRequestSummarySchema",
+  "githubPullRequestOverviewSchema",
+  "githubPullRequestFilesSchema",
+  "githubPullRequestCommitsSchema",
+  "githubPullRequestChecksSchema",
+  "githubPullRequestDetailSchema",
+  "githubPullRequestCreateResultSchema",
+  "githubPullRequestLifecyclePreviewSchema",
+  "githubPullRequestAgentContextSchema",
+  "githubInboxListSchema",
+  "githubInboxItemSchema",
+  "githubActionsWorkflowSchema",
+  "githubActionsRunSchema",
+  "githubActionsJobSchema",
+  "githubActionsRunnerSchema",
+  "githubActionsArtifactSchema",
+  "githubActionsOverviewSchema",
+  "githubActionsRunDetailSchema",
+  "githubActionsRunLogsSchema",
+  "githubActionsWorkflowDispatchSchema",
+  "githubActionsRunActionSchema",
+  "githubActionsMutationResultSchema",
+  "githubActionsRunCheckoutPreparedSchema",
+  "githubReleaseSummarySchema",
+  "githubReleaseListSchema",
+  "worktreePolicySchema",
+  "nativeCommandAdmissionResultSchema",
+  "nativeCommandSettlementResultSchema",
+  "standaloneChatScratchResolveResultSchema",
+  "endpointModelInventoryItemSchema",
+  "ollamaModelInventoryItemSchema",
+  "embeddingInputSchema",
+  "embeddingOutcomeSchema",
+  "decisionInputSchema",
+  "decisionOutcomeSchema",
+  "decisionResultSchema",
+  "runConfigurationPathSuggestionSchema",
+  "runConfigurationRuntimeWorkerLookupSchema",
+  "runConfigurationRuntimeOutputContentSchema",
+  "runConfigurationSecretValueContentSchema",
+  "workerObservationEnvelopeSchema",
+  "cantripOsRunDefinitionWorkerCommandSchema",
+  "runConfigurationOperationResponseSchema",
+  "osRunPlanInputSchema",
+  "osRunPlanResponseSchema",
+  "chatFileReferencesRequestContentSchema",
+  "chatFileReferencesResultContentSchema",
+  "nativeSettingsSnapshotContextSchema",
+  "nativeThreadSettingsSchema",
+  "nativeModelAttributionSchema",
+  "nativeSettingsUpdateCommandSchema",
+  "nativeSettingsUpdateContextSchema",
+  "nativeSettingsPatchSchema",
+  "nativeAccountDefaultsCommandSchema",
+  "nativeAccountDefaultsContextSchema",
+  "nativeAccountDefaultsWriteSchema",
+  "nativeAccountDefaultsSnapshotSchema",
+  "nativeAccountDefaultsResultSchema",
+  "nativePermissionUpdateCommandSchema",
+  "permissionTransitionSchema",
+  "nativePermissionTransitionResolutionSchema",
+  "cantripOsBackupCaptureCommandSchema",
+  "cantripOsBackupObserveCommandSchema",
+  "cantripOsBackupCryptoContextSchema",
+  "cantripOsBackupFrameSchema",
+  "cantripOsBackupFileHeaderSchema",
+  "cantripOsBackupArchiveMetadataSchema",
+  "cantripOsBackupEndSchema",
+  "cantripOsBackupPhaseSchema",
+  "cantripOsBackupRequestEnvelopeSchema",
+  "cantripOsBackupResponseEnvelopeSchema",
+  "cantripOsBackupRestoreCommandSchema",
+  "cantripOsBackupRollbackCommandSchema",
+  "cantripOsSystemCryptoContextSchema",
+  "cantripOsSystemSnapshotSchema",
+  "cantripOsSystemManifestSchema",
+  "cantripOsSystemFrameSchema",
+  "cantripOsSystemFileHeaderSchema",
+  "cantripOsSystemEndSchema",
+  "cantripOsSystemArchiveReceiptSchema",
+  "cantripOsSystemCaptureAdmissionSchema",
+  "cantripOsSystemProtectedResultSchema",
+  "cantripOsSystemCaptureOutcomeSchema",
+  "gitAgentDraftCreateSchema",
+  "gitAgentDraftModelOutputSchema",
+  "gitAgentDraftResultSchema",
+  "customizationContentResultSchema",
+  "skillListSchema",
+  "skillSettingsReadContentSchema",
+  "skillSettingsWriteContentSchema",
+  "skillSettingsDeleteContentSchema",
+  "skillSettingsConfigureContentSchema",
+  "codexSkillConfigUpdateSchema",
+  "codexSkillConfigResultSchema",
+  "codexCustomizationInventorySchema",
+  "codexSkillRootsUpdateSchema",
+  "codexSkillRootsResultSchema",
+  "codexMcpResourceReadRequestSchema",
+  "codexMcpResourceReadSchema",
+  "codexMcpReloadRequestSchema",
+  "codexMcpReloadResultSchema",
+  "codexMcpOauthStartSchema",
+  "codexMcpOauthStartResultSchema",
+  "codexMcpOauthStatusSchema",
+  "codexExternalImportItemTypeSchema",
+  "codexExternalImportPreviewSchema",
+  "codexExternalImportApplySchema",
+  "codexExternalImportStatusRequestSchema",
+  "codexExternalImportStatusSchema",
+  "projectAutomationContentOpaqueSchema",
+  "projectAutomationProtectedNameSchema",
+  "projectAutomationProtectedPromptSchema",
+  "projectAutomationProtectedConditionSchema",
+  "standaloneChatFileOperationRequestContentSchema",
 ];
+
+export const projectExportContractRoots = [
+  "projectExportTargetSchema",
+  "projectExportMappingSchema",
+  "projectExportPreviewRequestSchema",
+  "projectExportTargetInspectionSchema",
+  "projectExportPreviewSchema",
+  "projectExportCreateSchema",
+  "projectExportChatResultSchema",
+  "projectExportItemOutcomeSchema",
+  "projectExportResultSchema",
+  "projectExportChatBeginResultSchema",
+];
+
+export const chatAttachmentContractRoots = [
+  "attachmentUploadOpaqueSchema",
+  "attachmentDownloadOpaqueSchema",
+  "attachmentChunkOpaqueSchema",
+  "attachmentProtectedMetadataSchema",
+];
+
+export const workerManagementContractRoots = [
+  "workerManagementSourceSchema",
+  "workerManagementSummarySchema",
+  "workerManagementListSchema",
+  "workerUpdateSchema",
+  "workerRestartAcknowledgementSchema",
+  "workerRestartResultSchema",
+];
+
+export const workerOperationContractRoots = [
+  "cantripVersionSchema",
+  "codeGraphActionAcknowledgementSchema",
+  "managedWebRuntimeActionRequestSchema",
+  "managedWebRuntimeActionResultSchema",
+  "managedWebRuntimeReleaseManifestSchema",
+];
+
+export const projectAdministrationContractRoots = [
+  "projectPreferredWorkerUpdateSchema",
+  "projectWorktreePolicyUpdateSchema",
+  "projectRemoveSchema",
+  "computerUseAuthorityChangeSchema",
+];
+
+export const chatControlContractRoots = [
+  "chatWorktreeUpdateSchema",
+  "chatExecutionLaneReleaseSchema",
+  "chatExecutionLaneListSchema",
+  "chatCompactAcceptedSchema",
+];
+
+export const operationalStatusContractRoots = [
+  "systemHealthSchema",
+  "operationalProbeSchema",
+];
+
+export const workerLogContractRoots = [
+  "workerLogReadQuerySchema",
+  "serviceLogReadResultSchema",
+  "workerLogStreamStartResultSchema",
+  "workerLogStreamRenewResultSchema",
+  "workerLogStreamServerMessageSchema",
+];
+
+export const projectInsightContractRoots = [
+  "projectRepositoryStatsSchema",
+  "projectTokenUsageSchema",
+  "protectedScriptCommandListSchema",
+  "projectTaskWorkloadOpaqueSchema",
+  "repositoryOperationOpaqueSchema",
+  "scriptCommandOperationIdSchema",
+  "scriptCommandListSchema",
+];
+
+export const gitObservationContractRoots = [
+  "gitManagedOperationWorkerStateSchema",
+  "gitManagedOperationResponseSchema",
+  "gitConflictListSchema",
+  "gitChangeSummarySchema",
+  "gitForcePushPreviewSchema",
+];
+
+export const remoteSurfaceHttpContractRoots = [
+  "encryptedRemoteSurfaceCreateSchema",
+  "encryptedRemoteSurfaceUpdateSchema",
+  "remoteSurfaceWireSummarySchema",
+  "remoteSurfaceWireListSchema",
+  "encryptedRemoteDesktopCreateSchema",
+  "encryptedRemoteDesktopUpdateSchema",
+  "remoteDesktopWireSummarySchema",
+  "remoteDesktopWireListSchema",
+  "remoteDesktopFleetWireSchema",
+  "remoteDesktopProtectedInventorySchema",
+  "remoteDesktopProbeResultSchema",
+  "remoteDesktopOsSourceSchema",
+  "remoteDesktopPreparedGenerationSchema",
+  "remoteSurfaceViewportSchema",
+  "remoteSurfaceConnectionMessageSchema",
+  "remoteSurfaceWebRtcConfigurationSchema",
+  "remoteBrowserClientMessageSchema",
+  "remoteBrowserServerMessageSchema",
+  "remoteBrowserCursorMessageSchema",
+  "remoteBrowserClipboardMessageSchema",
+  "browserPrivateStateProtectedContentSchema",
+  "remoteDesktopServerMessageSchema",
+  "remoteDesktopStreamFeedbackSchema",
+  "remoteDesktopViewerPointerSchema",
+  "remoteDesktopViewerKeySchema",
+  "remoteDesktopViewerClipboardSchema",
+  "remoteDesktopViewerInputCancelSchema",
+  "remoteDesktopViewerControlSchema",
+  "remoteDesktopViewerTargetIconsSchema",
+];
+
+export const computerUseHttpContractRoots = [
+  "computerUseRequestSchema",
+  "computerUseResponseSchema",
+  "computerUseChunkEventSchema",
+  "computerUseHttpResultSchema",
+  "computerUseActivityEventSchema",
+  "cuaPreviewLeaseSchema",
+  "cuaPreviewStopSchema",
+  "cuaPreviewStoppedSchema",
+  "cuaAgentAuthorityRequestSchema",
+  "computerUseNativePreviewActionSchema",
+  "computerUseNativePreviewResultSchema",
+  "cuaSessionSchema",
+  "cuaInputResultSchema",
+  "cuaClipboardResultSchema",
+  "cuaInventorySchema",
+  "cuaControlsResultSchema",
+  "cuaSnapshotSchema",
+  "cuaAgentObservationSchema",
+];
+
+// Keep independently added roots self-contained. Numeric graph references must
+// not depend on the size of the base graph after an unrelated branch merges.
+export const runMcpContractRoots = [
+  "cantripMcpRunConfigurationListInputSchema",
+  "cantripMcpRunConfigurationGetInputSchema",
+  "cantripMcpRunConfigurationDetectInputSchema",
+  "cantripMcpRunConfigurationCreateInputSchema",
+  "cantripMcpRunConfigurationUpdateInputSchema",
+  "cantripMcpRunConfigurationDeleteInputSchema",
+  "cantripMcpRunConfigurationStartInputSchema",
+  "cantripMcpRunConfigurationRestartInputSchema",
+  "cantripMcpRunConfigurationStopInputSchema",
+  "cantripMcpRunConfigurationStatusInputSchema",
+  "cantripMcpRunConfigurationReadOutputInputSchema",
+];
+
+export const surfaceMcpContractRoots = [
+  "protectedClientNotificationSchema",
+  "cantripMcpClientFocusProjectInputSchema",
+  "cantripMcpClientFocusSurfaceInputSchema",
+  "cantripMcpClientShowInteractionInputSchema",
+];
+
+export const cliContractRoots = [
+  "cantripCliCommandNameSchema",
+  "cantripCliContextSchema",
+  "cantripCliCommandRequestSchema",
+  "workerCliCommandCallSchema",
+  "cantripCliCommandResultSchema",
+];
+
+const desktopClientKind = new Map([
+  ["remoteDesktopStreamFeedbackSchema", "stream-feedback"],
+  ["remoteDesktopViewerPointerSchema", "pointer"],
+  ["remoteDesktopViewerKeySchema", "key"],
+  ["remoteDesktopViewerClipboardSchema", "clipboard"],
+  ["remoteDesktopViewerInputCancelSchema", "input-cancel"],
+  ["remoteDesktopViewerControlSchema", "desktop-control"],
+  ["remoteDesktopViewerTargetIconsSchema", "request-target-icons"],
+]);
 
 // Resolve the actual source schemas, including their separate protocol modules.
 // Compatibility oracles use this registry, never the generated native manifest.
 export function sourceContractSchema(name) {
   return (
+    protocol.remoteDesktopClientMessageSchema.options.find(
+      (message) => message.shape.type.value === desktopClientKind.get(name),
+    ) ??
+    (name === "remoteDesktopPreparedGenerationSchema"
+      ? protocol.remoteDesktopOsSourceSchema
+          .pick({ desktopGeneration: true })
+          .required()
+      : undefined) ??
+    (name === "scriptCommandOperationIdSchema"
+      ? protocol.endpointContentContextSchema.shape.operationId
+      : undefined) ??
+    (name === "skillSettingsReadContentSchema"
+      ? protocol.skillSettingsFileRequestSchema.pick({
+          skillId: true,
+          file: true,
+        })
+      : undefined) ??
+    (name === "skillSettingsWriteContentSchema"
+      ? protocol.skillSettingsFileUpdateSchema.pick({
+          skillId: true,
+          file: true,
+          content: true,
+        })
+      : undefined) ??
+    (name === "skillSettingsDeleteContentSchema"
+      ? protocol.skillSettingsDeleteRequestSchema.pick({ skillId: true })
+      : undefined) ??
+    (name === "skillSettingsConfigureContentSchema"
+      ? protocol.skillSettingsConfigUpdateSchema.pick({
+          skillId: true,
+          enabled: true,
+        })
+      : undefined) ??
+    (name === "computerUseAuthorityChangeSchema"
+      ? computerUsePreview.cuaPreviewAuthoritySchema
+          .pick({ ownerId: true })
+          .extend({ scope: computerUsePreview.cuaPreviewRevocationSchema })
+          .strict()
+      : undefined) ??
     protocol[name] ??
+    remoteSurfaceStream[name] ??
     computerUsePreview[name] ??
+    computerUseAgent[name] ??
+    customizationContent[name] ??
+    osSystem[name] ??
     attachmentContent[name] ??
     runConfigurationRuntime[name] ??
     runConfigurationOperations[name] ??
     runDefinitions[name] ??
+    taskScheduling[name] ??
+    taskOperations[name] ??
+    automations[name] ??
+    automationContent[name] ??
+    (name === "customizationOperationIdSchema"
+      ? protocol.endpointContentContextSchema.shape.operationId
+      : undefined) ??
     (name === "nativeCommandTerminalEvidenceSchema"
       ? protocol.nativeCommandSettlementSchema.shape.reconciliation.unwrap()
       : undefined) ??
@@ -445,6 +1306,70 @@ export function sourceContractSchema(name) {
 }
 
 const refinements = new Map([
+  [protocol.scriptCommandSchema.shape.name, "script-command-text"],
+  [protocol.scriptCommandSchema.shape.command, "script-command-text"],
+  [
+    protocol.scriptCommandSchema.shape.description.unwrap(),
+    "script-command-text",
+  ],
+  [protocol.scriptCommandSchema.shape.source, "script-command-text"],
+  [protocol.codexExternalImportApplySchema, "external-import-selection"],
+  [protocol.projectTaskWorkloadOpaqueItemSchema, "task-workload-chat-binding"],
+  [protocol.cantripVersionSchema, "worker-operation-version"],
+  [
+    protocol.managedWebRuntimeActionRequestSchema,
+    "worker-command-runtime-profiles",
+  ],
+  [attachmentContent.attachmentUploadOpaqueSchema, "attachment-upload-stream"],
+  [
+    attachmentContent.attachmentDownloadOpaqueSchema,
+    "attachment-download-stream",
+  ],
+  [protocol.projectExportCreateSchema, "project-export-chat-ids"],
+  [protocol.externalChatAttachmentSchema, "external-chat-attachment"],
+  [protocol.externalChatTranscriptSchema, "external-chat-transcript"],
+  [protocol.nativeSuspensionRecordSchema, "native-suspension-record"],
+  [protocol.taskInferenceInputDispatchSchema, "task-input-native-binding"],
+  [protocol.taskGoalCycleSuspensionSourceSchema, "task-goal-suspension-source"],
+  [protocol.taskTurnResumptionSchema, "task-goal-turn-resumption"],
+  [protocol.taskGoalOutcomeDeliverySchema, "task-goal-outcome-delivery"],
+  [protocol.taskGoalOutcomeCommitSchema, "task-goal-outcome-commit"],
+  [protocol.cantripOsGuestPathSchema, "cantrip-os-guest-path"],
+  [protocol.cantripOsResetPathsSchema.element, "cantrip-os-reset-path"],
+  [protocol.cantripOsResetPathsSchema, "cantrip-os-reset-paths"],
+  [
+    protocol.cantripOsDependencyOverlaySchema.shape.path,
+    "cantrip-os-overlay-path",
+  ],
+  [protocol.cantripOsDependencyOverlaysSchema, "cantrip-os-unique-overlays"],
+  [protocol.chatGoalUpdateSchema, "chat-goal-update"],
+  [protocol.taskGoalCycleSourceRecordSchema, "task-goal-cycle-source"],
+  [protocol.taskGoalCycleCaptureSchema, "task-goal-cycle-capture"],
+  [protocol.taskGoalInputSourceRecordSchema, "task-goal-input-source"],
+  [protocol.taskGoalInputCaptureSchema, "task-goal-input-capture"],
+  [protocol.nativeRuntimeHandoffQueuedSourceSchema, "task-goal-handoff-source"],
+  [protocol.projectGoalObservationSchema, "project-goal-observation"],
+  [protocol.cantripMcpBindingSchema, "mcp-binding-dates"],
+  [
+    protocol.cantripMcpBindingSchema.options[0].shape.allowedOperations,
+    "worker-command-unique",
+  ],
+  [protocol.cantripAgentOperationArgumentsSchema, "mcp-arguments-size"],
+  [protocol.workerCliCommandCallSchema.shape.arguments, "cli-arguments-size"],
+  [protocol.mcpServerDiscoveryCandidateSchema, "mcp-discovery-worker"],
+  [protocol.projectAlertProjectionSchema, "project-alert-projection"],
+  [protocol.projectAlertProtectedDetailSchema, "project-alert-detail"],
+  [taskScheduling.taskWorkerUpdateSchema, "task-worker-update"],
+  [
+    taskScheduling.taskWorkerOrderUpdateSchema.shape.ids,
+    "worker-command-unique",
+  ],
+  [taskOperations.taskGoalWorkerResultSchema, "task-goal-worker-result"],
+  [taskOperations.taskEncryptedOperationStartSchema, "task-operation-start"],
+  [taskOperations.taskOperationRelayResultSchema, "task-operation-result"],
+  [taskOperations.taskMessageRelayResultSchema, "task-message-relay-result"],
+  [protocol.encryptedChatPlanWireStateSchema, "encrypted-plan-state"],
+  [protocol.chatMessageSchema, "chat-message-root"],
   [
     protocol.encryptedProjectGithubConversionPreflightRequestSchema,
     "conversion-source-pair",
@@ -461,12 +1386,21 @@ const refinements = new Map([
     runDefinitions.runConfigurationCodexEnvironmentSourceStatusSchema,
     "run-codex-source",
   ],
+  [
+    runSecrets.runConfigurationSecretValueContentSchema.shape.value,
+    "run-secret-no-nul",
+  ],
+  [
+    protocol.osRunPlanInputSchema.shape.secrets.element.shape.value,
+    "run-secret-no-nul",
+  ],
   [runSecrets.runConfigurationSecretSummarySchema, "run-secret-summary"],
   [
     runSecrets.runConfigurationSecretSetResultSchema.shape.secret,
     "run-secret-summary",
   ],
   [runSecrets.runConfigurationSecretSummaryListSchema, "run-secret-summaries"],
+  [protocol.cantripMcpRunConfigurationUpdateInputSchema, "mcp-run-update"],
   [
     runConfigurationRuntime.runConfigurationRuntimeWorkerOperationResultSchema,
     "worker-wire-runtime-result",
@@ -490,6 +1424,10 @@ const refinements = new Map([
   [protocol.workerEncryptionStatusSchema, "worker-encryption-status"],
   [protocol.managedWebRuntimeCapabilitiesSchema, "managed-runtime-components"],
   [protocol.managedWebRuntimeProgressSchema, "managed-runtime-progress"],
+  [
+    protocol.managedWebRuntimeReleaseManifestSchema,
+    "managed-runtime-manifest-targets",
+  ],
 ]);
 // Register individual checks where safeExtend/refine reuses them, including
 // schemas with multiple custom checks. Never infer an unknown callback's meaning.
@@ -505,6 +1443,14 @@ function registerCustom(schema, index, tag) {
     throw new Error("Conflicting native refinement registration: " + previous);
   explicitChecks.set(check, tag);
 }
+registerCustom(
+  protocol.standaloneChatFileOperationRequestContentSchema.options.find(
+    (option) => option.shape.type.value === "chat-files.download.prepare",
+  ),
+  0,
+  "standalone-chat-file-download-path",
+);
+
 function registerChecks(schema, tags) {
   const checks = (schema._zod.def.checks ?? []).filter(
     (c) => c._zod.def.check === "custom",
@@ -515,11 +1461,136 @@ function registerChecks(schema, tags) {
     );
   tags.forEach((tag, index) => registerCustom(schema, index, tag));
 }
+registerChecks(protocol.managedWebRuntimeArtifactSchema.shape.downloadUrl, [
+  "managed-runtime-release-url",
+]);
+for (const key of ["licenseManifest", "sourceManifest"]) {
+  registerChecks(protocol.managedWebRuntimeArtifactSchema.shape[key], [
+    "managed-runtime-inventory-path",
+  ]);
+}
+registerChecks(protocol.modelInputPartSchema.options[1].shape.url, [
+  "model-operation-media-url",
+]);
+registerChecks(protocol.embeddingInputSchema, [
+  "embedding-unique-items",
+  "model-operation-content-bytes",
+]);
+registerChecks(protocol.embeddingOutcomeSchema, [
+  "model-operation-content-bytes",
+]);
+registerChecks(protocol.embeddingItemSchema.options[2], [
+  "embedding-sparse-coordinates",
+]);
+registerChecks(protocol.embeddingItemSchema.options[3].shape.sparse, [
+  "embedding-sparse-coordinates",
+]);
+registerChecks(protocol.decisionInputSchema, ["model-operation-content-bytes"]);
+registerChecks(protocol.decisionOutcomeSchema, [
+  "model-operation-content-bytes",
+]);
+for (const schema of [
+  protocol.decisionInputSchema.shape.questions,
+  protocol.decisionQuestionSchema.options[1].shape.choices,
+  protocol.decisionQuestionSchema.options[2].shape.levels,
+]) {
+  registerChecks(schema, ["decision-unique-ids"]);
+}
+registerChecks(
+  protocol.mcpServerConfigurationSchema.options[0].shape.environment.unwrap(),
+  ["mcp-key-value-count", "mcp-key-value-size"],
+);
+registerChecks(protocol.remoteDesktopPrivateInventoryOpaqueSchema, [
+  "worker-command-surface-kind:remote-desktop-inventory",
+]);
+registerChecks(protocol.encryptedRemoteSurfaceCreateSchema, [
+  "remote-surface-create",
+]);
+registerChecks(protocol.encryptedRemoteSurfaceUpdateSchema, [
+  "remote-surface-update",
+]);
+registerChecks(protocol.remoteSurfaceWireSummarySchema, [
+  "remote-surface-wire",
+]);
+registerChecks(protocol.encryptedRemoteDesktopCreateSchema, [
+  "desktop-os-source",
+  "browser-placement",
+  "desktop-title",
+]);
+registerChecks(protocol.remoteDesktopWireSummarySchema, ["desktop-wire-title"]);
+registerChecks(sourceContractSchema("remoteDesktopViewerControlSchema"), [
+  "desktop-control-return",
+]);
+registerChecks(protocol.remoteDesktopFleetWireWorkerSchema, [
+  "desktop-fleet-inventory",
+]);
+registerChecks(protocol.cantripOsPackageProtectedResultSchema, [
+  "cantrip-os-package-envelope",
+]);
+registerChecks(protocol.cantripOsPackageArtifactsSchema, [
+  "cantrip-os-unique-packages",
+]);
+for (const schema of [
+  protocol.cantripOsGuestPackageRequestSchema,
+  protocol.cantripOsPackageOperationCommandSchema,
+  protocol.cantripOsPackageCreateSchema,
+])
+  registerChecks(schema, ["cantrip-os-package-repair"]);
+registerChecks(protocol.cantripOsPackageOperationResultSchema, [
+  "cantrip-os-package-outcome",
+]);
+registerChecks(protocol.cantripOsSystemProtectedOperationResultSchema, [
+  "cantrip-os-system-envelope",
+]);
+registerChecks(protocol.cantripOsSystemOperationResultSchema, [
+  "cantrip-os-system-outcome",
+]);
+registerChecks(osSystem.cantripOsSystemProtectedResultSchema, [
+  "cantrip-os-system-frame-receipt",
+]);
+registerChecks(osSystem.cantripOsSystemCaptureOutcomeSchema, [
+  "cantrip-os-system-outcome",
+]);
+for (const schema of [
+  taskOperations.taskOpaqueMutationSchema.shape.draftAttachmentIds.unwrap(),
+  taskOperations.taskOpaqueSummarySchema.shape.draftAttachmentIds,
+])
+  registerChecks(schema, ["worker-command-unique"]);
+registerChecks(protocol.fileDocumentCreateSchema, [
+  "cantrip-os-file-placement",
+]);
+registerChecks(protocol.fileDocumentWireSummarySchema, [
+  "cantrip-os-file-placement",
+]);
 registerChecks(protocol.nativeSettingsVersionSchema.shape.revision, [
   "native-settings-version",
 ]);
 registerChecks(protocol.nativeCommandAdmissionSchema, [
   "native-command-admission",
+]);
+registerChecks(protocol.encryptedChatTurnCreateSchema, [
+  "encrypted-chat-turn-pair",
+]);
+registerChecks(protocol.encryptedTaskCreateSchema, [
+  "chat-placement-create",
+  "encrypted-task-create",
+]);
+registerChecks(protocol.encryptedChatCreateSchema, [
+  "chat-placement-create",
+  "encrypted-chat-create",
+]);
+registerChecks(protocol.agentThreadSyncItemSchema.options[0], [
+  "agent-sync-user-message",
+]);
+registerChecks(protocol.chatModelConfigurationUpdateSchema, [
+  "model-configuration",
+  "chat-root-model",
+]);
+registerChecks(protocol.nativeHistoryPreparedBatchSchema.shape.items.element, [
+  "native-history-evidence-revision",
+]);
+registerChecks(protocol.nativeHistoryArchivePageSchema.shape.items.element, [
+  "native-history-archive-evidence",
 ]);
 registerChecks(protocol.nativeSettingsEvidenceSchema, [
   "native-settings-evidence",
@@ -557,6 +1628,11 @@ registerChecks(protocol.encryptedProjectWorkspaceUpdateSchema, [
 ]);
 registerChecks(protocol.repositoryOperationWireRequestSchema, [
   "repository-agent-model",
+]);
+registerChecks(protocol.gitAgentDraftCreateSchema, ["git-agent-draft-input"]);
+registerChecks(protocol.repositoryMetadataValuesSchema, [
+  "repository-metadata-fields",
+  "repository-metadata-count",
 ]);
 registerChecks(protocol.repositoryWorkerOperationWireRequestSchema, [
   "repository-agent-model",
@@ -602,6 +1678,9 @@ registerChecks(protocol.standaloneChatScratchArchiveResultSchema, [
 registerChecks(protocol.archivedStandaloneChatWireSummarySchema, [
   "worker-command-chat-title",
 ]);
+registerChecks(protocol.archivedChatWireSummarySchema, [
+  "worker-command-chat-title",
+]);
 registerChecks(protocol.githubAgentWorkflowContextSchema, [
   "github-agent-workflow-context",
 ]);
@@ -615,6 +1694,13 @@ registerChecks(protocol.encryptedPrivateDisplayLabelSchema, [
   "private-label-envelope",
 ]);
 registerChecks(protocol.modelConfigurationSchema, ["model-configuration"]);
+// The legacy Task Worker codec remains public but is no longer part of an
+// outgoing worker command. Keep its native check in the public contract corpus.
+registerCustom(
+  taskScheduling.taskWorkerModelConfigurationSchema,
+  1,
+  "worker-command-task-model",
+);
 registerChecks(protocol.accountResourceUsageHistoryQuerySchema, [
   "usage-history-window",
 ]);
@@ -652,6 +1738,44 @@ registerChecks(cuaCursorPreferenceRecordSchema.shape.protectedContent, [
   "endpoint-protected-bytes",
   "settings-cursor-content",
 ]);
+registerChecks(protocol.cuaTargetSchema.shape.title.unwrap(), [
+  "worker-wire-cua-title-size",
+]);
+registerChecks(protocol.cuaTargetSchema.shape.application.unwrap(), [
+  "worker-wire-cua-application-size",
+]);
+registerChecks(protocol.cuaInventorySchema.shape.targets, [
+  "worker-wire-cua-target-ids",
+]);
+registerChecks(protocol.cuaInventorySchema, [
+  "worker-wire-cua-inventory-cursor",
+]);
+registerChecks(protocol.cuaAgentSourcesSchema.shape.sources, [
+  "worker-wire-cua-source-ids",
+]);
+registerCustom(
+  protocol.cuaAgentObservationSchema.shape.image,
+  1,
+  "worker-wire-cua-model-bytes",
+);
+registerChecks(protocol.cuaAgentObservationSchema, [
+  "worker-wire-cua-observation",
+]);
+const cuaInputs = Object.fromEntries(
+  protocol.cuaInputCommandSchema.options.map((schema) => [
+    schema.shape.kind.value,
+    schema.shape,
+  ]),
+);
+registerChecks(protocol.cuaClipboardResultSchema.shape.text.unwrap(), [
+  "worker-wire-cua-clipboard-bytes",
+  "worker-wire-cua-clipboard-unicode",
+]);
+registerChecks(cuaInputs.text.text, ["worker-wire-cua-input-text"]);
+registerChecks(cuaInputs.timeline.frames, ["worker-wire-cua-input-timeline"]);
+registerChecks(cuaInputs.key.modifiers.removeDefault(), [
+  "worker-wire-cua-input-modifiers",
+]);
 registerChecks(protocol.eliteRevealConfigSchema, ["settings-elite-range"]);
 registerChecks(protocol.encryptedModelProviderAccountUpdateSchema, [
   "provider-account-update-fields",
@@ -663,6 +1787,30 @@ registerChecks(protocol.providerAuthLiveStatusSchema, [
   "provider-auth-live-kind",
 ]);
 const recursiveJson = registerWorkerContracts(registerChecks);
+registerChecks(protocol.nativeSettingsPatchSchema, [
+  "native-settings-unset-tier",
+]);
+registerChecks(protocol.nativeAccountDefaultsWriteSchema.shape.values, [
+  "native-account-defaults-fields",
+]);
+registerChecks(protocol.nativeAccountDefaultsResultSchema, [
+  "native-account-defaults-verification",
+]);
+const patch = protocol.nativeSettingsPatchSchema.shape;
+const nativeSettings = protocol.nativeThreadSettingsSchema;
+const collaboration = nativeSettings.shape.collaborationMode;
+for (const schema of [
+  nativeSettings._zod.def.catchall,
+  nativeSettings.shape.activePermissionProfile,
+  nativeSettings.shape.sandboxPolicy._zod.def.valueType,
+  nativeSettings.shape.approvalPolicy.options[1]._zod.def.valueType,
+  collaboration._zod.def.catchall,
+  collaboration.shape.settings._zod.def.valueType,
+  patch.approvalPolicy.unwrap().unwrap().options[1]._zod.def.valueType,
+  patch.sandboxPolicy.unwrap().unwrap()._zod.def.valueType,
+])
+  recursiveJson.add(schema);
+
 registerChecks(protocol.agentInteractionRequestCreateSchema, [
   "interaction-payload-owner",
   "worker-wire-interaction-storage",
@@ -694,12 +1842,15 @@ registerChecks(
 
 registerChecks(protocol.encryptedTerminalCreateSchema, [
   "terminal-placement",
+  "cantrip-os-file-placement",
   "terminal-title",
 ]);
 registerChecks(protocol.encryptedTerminalUpdateSchema, ["terminal-title"]);
+registerChecks(protocol.encryptedLinkedConsoleCreateSchema, ["terminal-title"]);
 registerChecks(protocol.terminalWireSummarySchema, ["terminal-wire"]);
 registerChecks(protocol.encryptedExplorerCreateSchema, [
   "terminal-placement",
+  "cantrip-os-file-placement",
   "surface-title:explorer",
 ]);
 registerChecks(protocol.encryptedExplorerUpdateSchema, [
@@ -739,6 +1890,7 @@ registerChecks(protocol.browserServiceSchema.shape.url, [
   "browser-service-http-url",
 ]);
 registerChecks(protocol.tunnelUserWireCreateSchema, [
+  "tunnel-os-source",
   "tunnel-create-operation",
   "tunnel-create-revision",
 ]);
@@ -789,10 +1941,43 @@ registerChecks(protocol.legacyProjectTabLayoutWireSummarySchema, [
   "legacy-project-layout",
 ]);
 const commandContracts = registerWorkerCommandContracts(registerCustom);
+registerChecks(
+  automations.projectAutomationWeeklyScheduleSchema.shape.timeZone,
+  ["automation-timezone"],
+);
+registerChecks(automations.projectAutomationCronScheduleSchema, [
+  "automation-cron",
+]);
+registerChecks(automations.encryptedProjectAutomationUpdateSchema, [
+  "automation-update",
+]);
+registerChecks(protocol.projectAutomationProtectedDispatchResultSchema, [
+  "automation-protected-dispatch",
+]);
+registerChecks(
+  automations.projectAutomationConditionSchema.options[0].shape.script,
+  ["automation-condition-script"],
+);
 registerChecks(protocol.nativeCommandEventSchema.shape.event._zod.def.in, [
   "native-command-event",
 ]);
 const transforms = new Map([
+  [cuaInputs.key.key._zod.def.in._zod.def.out, "cua-keyboard-key"],
+  [
+    protocol.embeddingItemSchema.options[0].shape.metadata.unwrap()._zod.def
+      .out,
+    "bounded-json-value",
+  ],
+  [
+    protocol.compatibleWorkerCantripMcpOperationCallSchema._zod.def.in._zod.def
+      .out,
+    "mcp-compatible-call",
+  ],
+  [
+    automations.projectAutomationWeeklyScheduleSchema.shape.weekdays._zod.def
+      .out,
+    "automation-weekdays",
+  ],
   [
     protocol.nativeCommandEventSchema.shape.event._zod.def.out,
     "native-event-identity",
@@ -813,6 +1998,7 @@ const allowedTypes = new Set([
   "intersection",
   "nullable",
   "optional",
+  "nonoptional",
   "default",
   "prefault",
   "readonly",
@@ -849,7 +2035,7 @@ function constantMessage(error, where) {
   return message;
 }
 
-export function buildContractManifest() {
+export function buildContractManifest(rootNames = contractRoots, local = {}) {
   const nodes = [];
   const ids = new Map();
   const names = new Map(
@@ -867,7 +2053,7 @@ export function buildContractManifest() {
     if (schema._zod.optin === "optional") node.optionalIn = true;
     if (schema._zod.optout === "optional") node.optionalOut = true;
     nodes.push(node);
-    if (recursiveJson.has(schema)) {
+    if (recursiveJson.has(schema) || local.recursiveJson?.has(schema)) {
       node.type = "json";
       node.checks = [];
       return id;
@@ -933,6 +2119,7 @@ export function buildContractManifest() {
         const tag = new Map([
           ["(input) => input.trim()", "trim"],
           ["(input) => input.toLowerCase()", "lowercase"],
+          ["(value) => value.toLowerCase()", "lowercase"],
         ]).get(c.tx.toString());
         if (!tag) throw new Error(`Unimplemented native transform: ${where}`);
         return { check: tag };
@@ -941,7 +2128,9 @@ export function buildContractManifest() {
         const tag =
           c.fn?.name === "hasCanonicalTrailingBits"
             ? "canonical-base64url"
-            : (explicitChecks.get(check) ?? refinements.get(schema));
+            : (explicitChecks.get(check) ??
+              local.refinements?.get(schema) ??
+              refinements.get(schema));
         if (!tag) throw new Error(`Unimplemented native refinement: ${where}`);
         const message = constantMessage(c.error, where);
         return {
@@ -960,6 +2149,9 @@ export function buildContractManifest() {
               "worker-link-signal-bytes",
               "workspace-ownership",
               "workspace-tab",
+              "task-goal-suspension-source",
+              "task-goal-turn-resumption",
+              "task-goal-outcome-delivery",
             ].includes(tag),
           ...(message ? { message } : {}),
           ...(c.path ? { path: c.path } : {}),
@@ -1009,9 +2201,9 @@ export function buildContractManifest() {
   return {
     schemaVersion: 1,
     roots: Object.fromEntries(
-      contractRoots.map((name) => [
+      rootNames.map((name) => [
         name,
-        visit(sourceContractSchema(name), name),
+        visit(local.schemas?.[name] ?? sourceContractSchema(name), name),
       ]),
     ),
     nodes,
@@ -1023,11 +2215,27 @@ if (
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const destination = new URL(
-    "../../cantrip_server_rs/contracts/security.json",
+    "../../crates/cantrip-protocol/contracts/security.json",
     import.meta.url,
   );
   await mkdir(fileURLToPath(new URL(".", destination)), { recursive: true });
   const manifest = buildContractManifest();
+  await writeFile(
+    new URL(
+      "../../cantrip_server_rs/contracts/endpoint-providers.json",
+      import.meta.url,
+    ),
+    await format(
+      JSON.stringify(
+        Object.fromEntries(
+          Object.entries(protocol.providerDefinitions).filter(([kind]) =>
+            protocol.isWorkerEndpointProviderKind(kind),
+          ),
+        ),
+      ),
+      { parser: "json" },
+    ),
+  );
   const filename = fileURLToPath(destination);
   await writeFile(
     destination,
@@ -1036,10 +2244,232 @@ if (
       filepath: filename,
     }),
   );
+  const runManifest = buildContractManifest(runMcpContractRoots);
+  const runDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/mcp-run.json",
+    import.meta.url,
+  );
+  await writeFile(
+    runDestination,
+    await format(JSON.stringify(runManifest), {
+      ...(await resolveConfig(fileURLToPath(runDestination))),
+      filepath: fileURLToPath(runDestination),
+    }),
+  );
+  const surfaceManifest = buildContractManifest(surfaceMcpContractRoots);
+  const surfaceDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/mcp-surface.json",
+    import.meta.url,
+  );
+  await writeFile(
+    surfaceDestination,
+    await format(JSON.stringify(surfaceManifest), {
+      ...(await resolveConfig(fileURLToPath(surfaceDestination))),
+      filepath: fileURLToPath(surfaceDestination),
+    }),
+  );
+  const cliManifest = buildContractManifest(cliContractRoots);
+  const cliDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/cli.json",
+    import.meta.url,
+  );
+  await writeFile(
+    cliDestination,
+    await format(JSON.stringify(cliManifest), {
+      ...(await resolveConfig(fileURLToPath(cliDestination))),
+      filepath: fileURLToPath(cliDestination),
+    }),
+  );
+  const exportDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/project-exports.json",
+    import.meta.url,
+  );
+  await writeFile(
+    exportDestination,
+    await format(
+      JSON.stringify(buildContractManifest(projectExportContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(exportDestination))),
+        filepath: fileURLToPath(exportDestination),
+      },
+    ),
+  );
+  const attachmentDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/chat-attachments.json",
+    import.meta.url,
+  );
+  await writeFile(
+    attachmentDestination,
+    await format(
+      JSON.stringify(buildContractManifest(chatAttachmentContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(attachmentDestination))),
+        filepath: fileURLToPath(attachmentDestination),
+      },
+    ),
+  );
+  const managementDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/worker-management.json",
+    import.meta.url,
+  );
+  await writeFile(
+    managementDestination,
+    await format(
+      JSON.stringify(buildContractManifest(workerManagementContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(managementDestination))),
+        filepath: fileURLToPath(managementDestination),
+      },
+    ),
+  );
+  const operationsDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/worker-operations.json",
+    import.meta.url,
+  );
+  const administrationDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/project-administration.json",
+    import.meta.url,
+  );
+  const chatControlDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/chat-control.json",
+    import.meta.url,
+  );
+  const operationalStatusDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/operational-status.json",
+    import.meta.url,
+  );
+  const workerLogsDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/worker-logs.json",
+    import.meta.url,
+  );
+  const remoteSurfacesDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/remote-surface-http.json",
+    import.meta.url,
+  );
+  const computerUseDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/computer-use-http.json",
+    import.meta.url,
+  );
+  const gitObservationsDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/git-observations.json",
+    import.meta.url,
+  );
+  await writeFile(
+    gitObservationsDestination,
+    await format(
+      JSON.stringify(buildContractManifest(gitObservationContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(gitObservationsDestination))),
+        filepath: fileURLToPath(gitObservationsDestination),
+      },
+    ),
+  );
+  await writeFile(
+    computerUseDestination,
+    await format(
+      JSON.stringify(buildContractManifest(computerUseHttpContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(computerUseDestination))),
+        filepath: fileURLToPath(computerUseDestination),
+      },
+    ),
+  );
+  await writeFile(
+    remoteSurfacesDestination,
+    await format(
+      JSON.stringify(buildContractManifest(remoteSurfaceHttpContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(remoteSurfacesDestination))),
+        filepath: fileURLToPath(remoteSurfacesDestination),
+      },
+    ),
+  );
+  const projectInsightsDestination = new URL(
+    "../../crates/cantrip-protocol/contracts/project-insights.json",
+    import.meta.url,
+  );
+  await writeFile(
+    projectInsightsDestination,
+    await format(
+      JSON.stringify(buildContractManifest(projectInsightContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(projectInsightsDestination))),
+        filepath: fileURLToPath(projectInsightsDestination),
+      },
+    ),
+  );
+  await writeFile(
+    workerLogsDestination,
+    await format(
+      JSON.stringify(buildContractManifest(workerLogContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(workerLogsDestination))),
+        filepath: fileURLToPath(workerLogsDestination),
+      },
+    ),
+  );
+  await writeFile(
+    operationalStatusDestination,
+    await format(
+      JSON.stringify(buildContractManifest(operationalStatusContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(operationalStatusDestination))),
+        filepath: fileURLToPath(operationalStatusDestination),
+      },
+    ),
+  );
+  await writeFile(
+    chatControlDestination,
+    await format(
+      JSON.stringify(buildContractManifest(chatControlContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(chatControlDestination))),
+        filepath: fileURLToPath(chatControlDestination),
+      },
+    ),
+  );
+  await writeFile(
+    administrationDestination,
+    await format(
+      JSON.stringify(buildContractManifest(projectAdministrationContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(administrationDestination))),
+        filepath: fileURLToPath(administrationDestination),
+      },
+    ),
+  );
+  await writeFile(
+    operationsDestination,
+    await format(
+      JSON.stringify(buildContractManifest(workerOperationContractRoots)),
+      {
+        ...(await resolveConfig(fileURLToPath(operationsDestination))),
+        filepath: fileURLToPath(operationsDestination),
+      },
+    ),
+  );
+  // Zod's strict object checks enumerate inherited Buffer properties as well
+  // as byte indices. Retain Source's enumeration for binary-body contracts;
+  // the Rust server does not need a JavaScript object/prototype runtime.
+  const bufferKeys = [];
+  for (const key in Buffer.alloc(0)) bufferKeys.push(key);
+  const bufferDestination = new URL(
+    "../../cantrip_server_rs/contracts/js-buffer-keys.json",
+    import.meta.url,
+  );
+  await writeFile(
+    bufferDestination,
+    await format(JSON.stringify(bufferKeys), {
+      ...(await resolveConfig(fileURLToPath(bufferDestination))),
+      filepath: fileURLToPath(bufferDestination),
+    }),
+  );
   console.log(
     JSON.stringify({
       roots: Object.keys(manifest.roots).length,
       nodes: manifest.nodes.length,
+      runRoots: Object.keys(runManifest.roots).length,
+      runNodes: runManifest.nodes.length,
     }),
   );
 }

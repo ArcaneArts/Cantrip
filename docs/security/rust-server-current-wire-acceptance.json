@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "status": "passed",
+  "harnessCommit": "b8b199af567ff9cdb6dbe51fdef1bc4b16d52062",
+  "jsonTransport": {
+    "pairedHttpCasesPerPlatform": 156,
+    "pairedWebSocketCasesPerPlatform": 81,
+    "macosArm64": {
+      "version": "1.1.3013",
+      "nativeExecutableSha256": "6e2c81304db71bc9f77d879b449c973aa8c21c6f5bb0cc11b969d7fa9fe27293",
+      "reports": [
+        {
+          "mode": "pglite",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/wire-acceptance-reconciliation/pglite.json",
+            "bytes": 148351,
+            "sha256": "0db486be31c20ba154c3f2f014ed2b76184de7c4cdfc0291366ca5b13d5ef430"
+          }
+        },
+        {
+          "mode": "bundled-postgres",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/wire-acceptance-reconciliation/bundled-postgres.json",
+            "bytes": 148361,
+            "sha256": "1813a0a923c4b42d288085c0a06c86e6647e00113475c6fdbb9384689fbfd9a8"
+          }
+        },
+        {
+          "mode": "postgres",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/wire-acceptance-reconciliation/postgres.json",
+            "bytes": 148353,
+            "sha256": "e0a16a0b35cdd78ebddd84265d21fbf0db4e7146f5e77ed9eb3262cb52d90ae5"
+          }
+        }
+      ]
+    },
+    "linuxX64": {
+      "version": "1.1.3033",
+      "nativeExecutableSha256": "2c50bb5a38cfaa428417236b146c3761e6b7501d28b61f1cde2fa8251d1ac4e9",
+      "observedRustContainerGenerations": 6,
+      "cleanRustContainerExits": 6,
+      "scope": "Rust server in the Linux x64 package through Rosetta on an ARM64 Linux Docker host. Node reference on macOS.",
+      "reports": [
+        {
+          "mode": "pglite",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/json-wire/x64-pglite.json",
+            "bytes": 148345,
+            "sha256": "5528630a5dff7923bf09392d9e26c8490d370c61431f1dff754f6cea1b52b320"
+          },
+          "generations": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/json-wire/x64-pglite-generations.jsonl",
+            "bytes": 1556,
+            "sha256": "f3d95eeb0cff486b745f4ced6900ec8a062a6c72e88ccf622d208a2fe2ea8735"
+          }
+        },
+        {
+          "mode": "bundled-postgres",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/json-wire-postgres-retry/x64-bundled-postgres.json",
+            "bytes": 148355,
+            "sha256": "2baf010055705037fdae5c4751d054202deba06ae4b6da156ce821203c16bd0d"
+          },
+          "generations": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/json-wire-postgres-retry/x64-bundled-postgres-generations.jsonl",
+            "bytes": 1630,
+            "sha256": "ed32e868a82a70165af0bc7ced246f49d207ef350aad2f9644f22d90511518b0"
+          }
+        },
+        {
+          "mode": "postgres",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/json-wire-external-postgres/x64-postgres.json",
+            "bytes": 148347,
+            "sha256": "1f7269b28119e05f17b779a0dc57bf84ba4ce0851031eceabc5a914d81415535"
+          },
+          "generations": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/json-wire-external-postgres/x64-postgres-generations.jsonl",
+            "bytes": 1600,
+            "sha256": "c1b4a6e467da9a96e5b5bfff0172da9526d481e42cf3915f2f9dadc3fb35a495"
+          }
+        }
+      ],
+      "initialPostgresFixtureErrors": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/json-wire/x64-postgres.json",
+          "bytes": 936,
+          "sha256": "13627e6cc867fa598a000910e7af5b89c5c9a0aca652b010849800c032383a45"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/redis-subscription-recovery/linux-x64/json-wire-postgres-retry/x64-postgres.json",
+          "bytes": 3888,
+          "sha256": "063015e25b6c6302651038b7e7b5f724956d0b2038aad77efdbe9711d45b965f"
+        }
+      ]
+    }
+  },
+  "httpDiscovery": {
+    "platform": "darwin-arm64",
+    "database": "pglite",
+    "routesPerRuntime": 584,
+    "exactInventoryErrorContracts": 4,
+    "capabilityQueryCasesPerRuntime": 4,
+    "rustFallbacks": 0,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/wire-acceptance-reconciliation/inventory.json",
+      "bytes": 2451941,
+      "sha256": "d79e1ed8da4a7fc508bb8c7ccedac02f69c919308060769365e969fd1f311784"
+    }
+  },
+  "accountSecurity": {
+    "platform": "darwin-arm64",
+    "pairedHttpCases": 1161,
+    "reportProfiles": [
+      {
+        "mode": "pglite",
+        "pairedHttpCases": 387,
+        "cryptoStepsPerRuntime": 9,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/wire-acceptance-reconciliation/security-pglite.json",
+          "bytes": 806919,
+          "sha256": "2c3b4750e9c57dc6fdbd813e8be80b27db53bab72a08abf422ccbe5a08c676f4"
+        }
+      },
+      {
+        "mode": "bundled-postgres",
+        "pairedHttpCases": 387,
+        "cryptoStepsPerRuntime": 9,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/wire-acceptance-reconciliation/security-bundled-postgres.json",
+          "bytes": 806929,
+          "sha256": "f474a0e2ea75af800ef8d61f55b19be97b37f43a424711a626317188fa838988"
+        }
+      },
+      {
+        "mode": "postgres",
+        "pairedHttpCases": 387,
+        "cryptoStepsPerRuntime": 9,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/wire-acceptance-reconciliation/security-postgres.json",
+          "bytes": 807208,
+          "sha256": "b5daa98b1dbe27224d8265160077e5898a20d66c36d8837bfbdf65cacf2ad78b"
+        }
+      }
+    ],
+    "externalPostgresCrossRuntime": ["node", "rust", "node"],
+    "crossRuntimeCryptoSteps": 9
+  },
+  "sourceOracles": {
+    "platform": "darwin-arm64",
+    "tests": 10,
+    "ecmascriptJsonRoundTrips": 69696,
+    "fixtureTests": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/wire-acceptance-reconciliation/wire-oracle-focused.log",
+      "bytes": 295,
+      "sha256": "7d12d5d39e916b223d6fb6bcaf329523119b7812a8e007729f92f99860cc410d"
+    },
+    "authAndDepthReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/wire-acceptance-reconciliation/auth-and-depth.log",
+      "bytes": 1221,
+      "sha256": "def23ae462f7a3cbce5d090a07cc86fbad291c1e28615d6075c3de806eb3d26a"
+    }
+  },
+  "scope": "Packaged JSON parsing and App Live parser cursor behavior, HTTP route discovery and selected exact errors, account protection, and source-level validation and digest comparisons. Raw evidence retains the reference request outcomes. The database run covers actual profile initialization, session use, encrypted key preservation and rewrap. Release and product scope are recorded separately."
+}

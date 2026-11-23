@@ -2,10 +2,10 @@
 mod checks;
 mod persist;
 mod queue;
-use super::{CommandError, Repository, admission, context, receipt};
+use super::{CommandError, Repository, admission, context, receipt, suspension};
 use crate::{
     database::Transaction,
-    wire::{Value, value::json},
+    wire::{Value, coercion::truthy, value::json},
 };
 use anyhow::{Context, Result};
 use futures::FutureExt;
@@ -58,6 +58,9 @@ pub(super) async fn admit(
     input: &Value,
     options: &Value,
 ) -> Result<Value> {
+    if truthy(input["intent"].get("restoredSuspension")) {
+        return reject("suspension-admission-required");
+    }
     let chat = text(&input["session"]["chatId"])?;
     context::lock_chat(tx, owner, &chat).await?;
     if let Some(existing) = admission::existing(tx, owner, input).await? {
@@ -67,6 +70,18 @@ pub(super) async fn admit(
     if !context::same_placement(current.as_ref(), &input["workerId"], input.get("session"))? {
         return reject("stale-placement");
     }
+    let mut normalized = input.clone();
+    if normalized["intent"]["durableSuspension"] == true
+        && matches!(
+            normalized["method"].as_str(),
+            Some("turn/pause" | "turn/interrupt")
+        )
+        && !truthy(normalized["intent"].get("expectedSuspensionControlId"))
+        && let Some(state) = suspension::read(&suspension::chat(tx, owner, &chat).await?)?
+    {
+        normalized["intent"]["expectedSuspensionControlId"] = state["controlId"].clone();
+    }
+    let input = &normalized;
     let queue_claim = options
         .get("queueClaim")
         .filter(|v| !v.is_null())

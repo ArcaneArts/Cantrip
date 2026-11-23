@@ -1,4 +1,11 @@
-//! Actual child-process tests: no native desktop access or private screenshots.
+//! Child-process tests. Native X11 coverage requires an explicit disposable display.
+#[cfg(target_os = "macos")]
+#[path = "fixtures/macos_clipboard.rs"]
+mod macos_clipboard;
+#[cfg(windows)]
+#[path = "fixtures/windows_monitor.rs"]
+mod windows_monitor;
+
 use cantrip_cua::protocol::{
     Frame, Header, Message, Outcome, PROTOCOL_VERSION, read_frame, write_frame,
 };
@@ -28,9 +35,19 @@ static PROCESS_SPAWN: Mutex<()> = Mutex::new(());
 impl Process {
     fn start(fake: bool) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_cantrip-cua"));
+        #[cfg(target_os = "linux")]
+        command
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .env_remove("WAYLAND_SOCKET")
+            .env_remove("XDG_SESSION_TYPE");
         if fake {
             command.args(["--backend", "fake"]);
         }
+        Self::spawn(command)
+    }
+
+    fn spawn(mut command: Command) -> Self {
         let spawn_guard = PROCESS_SPAWN.lock().unwrap();
         let mut child = command
             .stdin(Stdio::piped())
@@ -645,7 +662,16 @@ fn default_binary_never_silently_uses_fake_capture() {
             }
         );
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    assert_eq!(
+        capabilities["backend"],
+        if capabilities["capture"] == true {
+            "windows-win32"
+        } else {
+            "unavailable"
+        }
+    );
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         assert_eq!(capabilities["backend"], "unavailable");
         assert_eq!(capabilities["capture"], false);
@@ -655,8 +681,180 @@ fn default_binary_never_silently_uses_fake_capture() {
             matches!(outcome, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::Unsupported)
         );
     }
-    // On macOS this is deliberately handshake-only: ordinary CI/tests must
+    // On macOS and Windows this is deliberately handshake-only: ordinary CI/tests must
     // never enumerate private windows or request Screen Recording permission.
+    child.stop(true);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires an explicitly selected disposable Xvfb display"]
+fn linux_host_x11_isolates_window_pixels_input_and_lifetimes() {
+    use x11rb::{
+        connection::Connection,
+        protocol::{
+            Event,
+            xproto::{
+                AtomEnum, ConnectionExt, CreateWindowAux, EventMask, InputFocus, WindowClass,
+            },
+        },
+        wrapper::ConnectionExt as _,
+    };
+    let display = std::env::var("CANTRIP_CUA_HOST_X11_TEST_DISPLAY").unwrap();
+    let (x11, screen) = x11rb::connect(Some(&display)).unwrap();
+    let root = &x11.setup().roots[screen];
+    let first = x11.generate_id().unwrap();
+    let second = x11.generate_id().unwrap();
+    let create = |id, x, y, rgb, name: &str| {
+        x11.create_window(
+            root.root_depth,
+            id,
+            root.root,
+            x,
+            y,
+            160,
+            120,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            root.root_visual,
+            &CreateWindowAux::new().background_pixel(rgb).event_mask(
+                EventMask::KEY_PRESS
+                    | EventMask::KEY_RELEASE
+                    | EventMask::BUTTON_PRESS
+                    | EventMask::BUTTON_RELEASE
+                    | EventMask::POINTER_MOTION,
+            ),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        x11.change_property8(
+            x11rb::protocol::xproto::PropMode::REPLACE,
+            id,
+            AtomEnum::WM_NAME,
+            AtomEnum::STRING,
+            name.as_bytes(),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        x11.change_property8(
+            x11rb::protocol::xproto::PropMode::REPLACE,
+            id,
+            AtomEnum::WM_CLASS,
+            AtomEnum::STRING,
+            if id == second {
+                b"cantrip\0Cantrip\0"
+            } else {
+                b"fixture\0Fixture\0"
+            },
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        x11.map_window(id).unwrap().check().unwrap();
+        x11.clear_area(false, id, 0, 0, 0, 0)
+            .unwrap()
+            .check()
+            .unwrap();
+    };
+    create(first, 20, 30, 0x00_00_ff, "native blue fixture");
+    create(second, 80, 55, 0xff_00_00, "covered area fixture");
+    x11.set_input_focus(InputFocus::PARENT, second, x11rb::CURRENT_TIME)
+        .unwrap()
+        .check()
+        .unwrap();
+    x11.warp_pointer(x11rb::NONE, root.root, 0, 0, 0, 0, 100, 90)
+        .unwrap()
+        .check()
+        .unwrap();
+    x11.get_input_focus().unwrap().reply().unwrap();
+    while x11.poll_for_event().unwrap().is_some() {}
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_cantrip-cua"));
+    command
+        .env("DISPLAY", display)
+        .env("XDG_SESSION_TYPE", "x11")
+        .env("PATH", "");
+    let mut child = Process::spawn(command);
+    let (caps, _) = child.call(json!({"operation":"capabilities.get"}));
+    assert_eq!(caps["backend"], "linux-x11");
+    assert_eq!(caps["capture"], true);
+    assert_eq!(caps["nativeInput"], true);
+    let (inventory, _) = child.call(json!({"operation":"targets.list"}));
+    let targets = inventory["targets"].as_array().unwrap();
+    let target = |id| {
+        targets
+            .iter()
+            .find(|t| t["id"] == format!("x11-window-{id}"))
+            .unwrap()
+    };
+    let selected = target(first);
+    assert_eq!(selected["title"], "native blue fixture");
+    assert_eq!(target(second)["access"]["reason"], "cantrip-app-protected");
+    assert!(targets.iter().any(|t| t["kind"] == "monitor"));
+
+    let scope = json!({"workerId":"worker","surfaceId":"desktop","attachmentId":"view","participantId":"viewer"});
+    let open = |operation: &str, target: &Value| json!({"operation":operation,"request":{"type":"open","binding":scope,"targetId":target["id"],"targetGeneration":target["generation"]}});
+    let (lease, _) = child.call(open("capture.request", selected));
+    let frame = json!({"operation":"capture.request","request":{"type":"frame","binding":scope,"handle":lease["handle"]}});
+    let (_, pixels) = child.call(frame.clone());
+    let mut reader = png::Decoder::new(std::io::Cursor::new(pixels))
+        .read_info()
+        .unwrap();
+    let mut raster = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut raster).unwrap();
+    assert_eq!((info.width, info.height), (160, 120));
+    assert_eq!(
+        &raster[(70 * 160 + 90) * 4..(70 * 160 + 90) * 4 + 4],
+        &[0, 0, 255, 255]
+    );
+
+    let (participant, _) = child.call(open("interaction.request", selected));
+    let send = |child: &mut Process, sequence, event| {
+        child.call(json!({"operation":"interaction.request","request":{"type":"input","binding":scope,"handle":participant["handle"],"sequence":sequence,"event":event}}));
+    };
+    send(
+        &mut child,
+        1,
+        json!({"type":"pointerDown","data":{"point":{"x":90,"y":70},"button":"left","modifiers":[]}}),
+    );
+    send(
+        &mut child,
+        2,
+        json!({"type":"keyDown","data":{"key":"a","modifiers":[],"repeat":false}}),
+    );
+    child.call(json!({"operation":"interaction.request","request":{"type":"close","binding":scope,"handle":participant["handle"]}}));
+    assert_eq!(
+        x11.get_input_focus().unwrap().reply().unwrap().focus,
+        second
+    );
+    let pointer = x11.query_pointer(root.root).unwrap().reply().unwrap();
+    assert_eq!((pointer.root_x, pointer.root_y), (100, 90));
+    let mut received = Vec::new();
+    while let Some(event) = x11.poll_for_event().unwrap() {
+        match event {
+            Event::ButtonPress(e) | Event::ButtonRelease(e) => {
+                assert_eq!(e.event, first);
+                assert_eq!((e.event_x, e.event_y), (90, 70));
+                received.push(e.response_type & 0x7f);
+            }
+            Event::KeyPress(e) | Event::KeyRelease(e) => {
+                assert_eq!(e.event, first);
+                received.push(e.response_type & 0x7f);
+            }
+            _ => {}
+        }
+    }
+    received.sort_unstable();
+    assert_eq!(received, [2, 3, 4, 5]);
+
+    x11.destroy_window(first).unwrap().check().unwrap();
+    create(first, 20, 30, 0x00_ff_00, "native blue fixture");
+    let id = child.send(frame);
+    assert!(
+        matches!(child.response(id).0, Outcome::Error { error } if error.code == cantrip_cua::error::ErrorCode::StaleTarget)
+    );
     child.stop(true);
 }
 
@@ -671,6 +869,498 @@ fn invalid_operation_is_bounded_and_does_not_poison_connection() {
     assert!(!error.message.contains("private-canary"));
     assert!(bytes.is_empty());
     child.call(json!({"operation":"capabilities.get"}));
+    child.stop(true);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires an explicitly selected disposable Xvfb display"]
+fn linux_host_x11_monitor_input_is_exclusive_and_follows_the_selected_layout() {
+    use cantrip_cua::error::ErrorCode;
+    use x11rb::{
+        CURRENT_TIME,
+        connection::Connection,
+        protocol::{
+            Event,
+            randr::{ConnectionExt as _, MonitorInfo},
+            xproto::{
+                ConnectionExt, CreateWindowAux, EventMask, InputFocus, KeyButMask, PropMode,
+                SELECTION_NOTIFY_EVENT, SelectionNotifyEvent, WindowClass,
+            },
+        },
+        wrapper::ConnectionExt as _,
+    };
+    let display = std::env::var("CANTRIP_CUA_HOST_X11_TEST_DISPLAY").unwrap();
+    let (x11, screen) = x11rb::connect(Some(&display)).unwrap();
+    let root = &x11.setup().roots[screen];
+    let atom = |name| x11.intern_atom(false, name).unwrap().reply().unwrap().atom;
+    let left_name = atom(b"Cantrip test left display");
+    let right_name = atom(b"Cantrip test right display");
+    let output = x11
+        .randr_get_screen_resources_current(root.root)
+        .unwrap()
+        .reply()
+        .unwrap()
+        .outputs[0];
+    let configure = |name, x, outputs: Vec<u32>| {
+        x11.randr_set_monitor(
+            root.root,
+            MonitorInfo {
+                name,
+                primary: x == 0,
+                automatic: false,
+                x,
+                y: 0,
+                width: 400,
+                height: 600,
+                width_in_millimeters: 100,
+                height_in_millimeters: 150,
+                outputs,
+            },
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+    };
+    configure(right_name, 400, vec![]);
+    configure(left_name, 0, vec![output]);
+    let window = |x| {
+        let id = x11.generate_id().unwrap();
+        x11.create_window(
+            root.root_depth,
+            id,
+            root.root,
+            x,
+            10,
+            180,
+            140,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            root.root_visual,
+            &CreateWindowAux::new().event_mask(EventMask::KEY_PRESS | EventMask::KEY_RELEASE),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        x11.map_window(id).unwrap().check().unwrap();
+        id
+    };
+    let other = window(20);
+    let selected = window(430);
+    let focus = |id| {
+        x11.set_input_focus(InputFocus::PARENT, id, CURRENT_TIME)
+            .unwrap()
+            .check()
+            .unwrap()
+    };
+    focus(other);
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_cantrip-cua"));
+    command
+        .env("DISPLAY", &display)
+        .env("XDG_SESSION_TYPE", "x11")
+        .env("PATH", "");
+    let mut child = Process::spawn(command);
+    assert_eq!(
+        child.call(json!({"operation":"capabilities.get"})).0["hostMonitorInput"],
+        true
+    );
+    let (inventory, _) = child.call(json!({"operation":"targets.list"}));
+    let target = |x: i32| {
+        inventory["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|target| {
+                target["kind"] == "monitor" && target["bounds"]["x"].as_f64() == Some(f64::from(x))
+            })
+            .unwrap()
+    };
+    let right = target(400);
+    let left = target(0);
+    let binding = |viewer| json!({"workerId":"worker","surfaceId":"display","attachmentId":viewer,"participantId":viewer});
+    let viewer = binding("viewer");
+    let waiting = binding("waiting");
+    let operation = |request| json!({"operation":"interaction.request","request":request});
+    let open = |binding: &Value, target: &Value| {
+        operation(
+            json!({"type":"open","binding":binding,"targetId":target["id"],"targetGeneration":target["generation"]}),
+        )
+    };
+    let first = child.call(open(&viewer, right)).0;
+    let request = child.send(open(&waiting, left));
+    assert!(
+        matches!(child.response(request).0, Outcome::Error { error } if error.code == ErrorCode::OwnershipMismatch)
+    );
+    let input = |binding: &Value, participant: &Value, sequence, event| {
+        operation(
+            json!({"type":"input","binding":binding,"handle":participant["handle"],"sequence":sequence,"event":event}),
+        )
+    };
+    let key = |name| json!({"type":"keyDown","data":{"key":name,"modifiers":[],"repeat":false}});
+    let movement = |x| json!({"type":"pointerMove","data":{"point":{"x":x,"y":60},"modifiers":[]}});
+    child.call(input(&viewer, &first, 1, movement(399.9)));
+    let pointer = x11.query_pointer(root.root).unwrap().reply().unwrap();
+    assert_eq!((pointer.root_x, pointer.root_y), (799, 60));
+    let request = child.send(input(&viewer, &first, 2, key("A")));
+    assert!(
+        matches!(child.response(request).0, Outcome::Error { error } if error.code == ErrorCode::PermissionDenied)
+    );
+    let empty_keys = || {
+        x11.query_keymap()
+            .unwrap()
+            .reply()
+            .unwrap()
+            .keys
+            .iter()
+            .all(|key| *key == 0)
+    };
+    assert!(empty_keys());
+
+    focus(selected);
+    let participant = child.call(open(&viewer, right)).0;
+    child.call(input(
+        &viewer,
+        &participant,
+        1,
+        json!({"type":"keyDown","data":{"key":"Control","modifiers":["Control"],"repeat":false}}),
+    ));
+    let clipboard = atom(b"CLIPBOARD");
+    let copy = child.send(operation(json!({"type":"clipboardCopy","binding":viewer,"handle":participant["handle"],"sequence":3})));
+    let copy_outcome = std::thread::scope(|scope| {
+        let reply = scope.spawn(|| child.response(copy).0);
+        while !reply.is_finished() {
+            while let Some(event) = x11.poll_for_event().unwrap() {
+                match event {
+                    Event::KeyPress(e) if e.state.contains(KeyButMask::CONTROL) => {
+                        assert_eq!(e.event, selected);
+                        x11.set_selection_owner(selected, clipboard, CURRENT_TIME)
+                            .unwrap()
+                            .check()
+                            .unwrap();
+                    }
+                    Event::SelectionRequest(e) => {
+                        assert_eq!(e.owner, selected);
+                        x11.change_property8(
+                            PropMode::REPLACE,
+                            e.requestor,
+                            e.property,
+                            e.target,
+                            "selected λ\n".as_bytes(),
+                        )
+                        .unwrap()
+                        .check()
+                        .unwrap();
+                        x11.send_event(
+                            false,
+                            e.requestor,
+                            EventMask::NO_EVENT,
+                            SelectionNotifyEvent {
+                                response_type: SELECTION_NOTIFY_EVENT,
+                                sequence: 0,
+                                time: e.time,
+                                requestor: e.requestor,
+                                selection: e.selection,
+                                target: e.target,
+                                property: e.property,
+                            },
+                        )
+                        .unwrap()
+                        .check()
+                        .unwrap();
+                    }
+                    _ => {}
+                }
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        reply.join().unwrap()
+    });
+    assert_eq!(
+        copy_outcome,
+        Outcome::Ok {
+            data: json!({"handle":participant["handle"], "sequence":3, "text":"selected λ\n"})
+        }
+    );
+    assert!(
+        !empty_keys(),
+        "copy preserves the viewer's held Control key"
+    );
+    child.call(input(
+        &viewer,
+        &participant,
+        4,
+        json!({"type":"keyUp","data":{"key":"Control"}}),
+    ));
+    assert!(empty_keys());
+    let down = json!({"type":"pointerDown","data":{"point":{"x":75,"y":60},"button":"left","modifiers":[]}});
+    child.call(input(&viewer, &participant, 5, down.clone()));
+    child.call(input(&viewer, &participant, 6, key("A")));
+    let pointer = x11.query_pointer(root.root).unwrap().reply().unwrap();
+    assert_eq!(
+        (pointer.root_x, pointer.root_y, pointer.child),
+        (475, 60, selected)
+    );
+    assert!(pointer.mask.contains(KeyButMask::BUTTON1));
+    assert!(!empty_keys());
+    child.call(operation(json!({"type":"closeBinding","binding":viewer})));
+    let released = || {
+        !x11.query_pointer(root.root)
+            .unwrap()
+            .reply()
+            .unwrap()
+            .mask
+            .contains(KeyButMask::BUTTON1)
+            && empty_keys()
+    };
+    assert!(released());
+
+    let controller = child.call(open(&waiting, right)).0;
+    child.call(input(&waiting, &controller, 1, down));
+    x11.randr_delete_monitor(root.root, right_name)
+        .unwrap()
+        .check()
+        .unwrap();
+    configure(right_name, 399, vec![]);
+    let request = child.send(input(&waiting, &controller, 2, movement(10.0)));
+    assert!(
+        matches!(child.response(request).0, Outcome::Error { error } if error.code == ErrorCode::StaleTarget)
+    );
+    assert!(
+        released(),
+        "reconfiguring the monitor releases the physical button"
+    );
+    child.stop(true);
+    x11.randr_delete_monitor(root.root, right_name)
+        .unwrap()
+        .check()
+        .unwrap();
+    x11.randr_delete_monitor(root.root, left_name)
+        .unwrap()
+        .check()
+        .unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires an explicitly selected disposable Xvfb display"]
+fn linux_host_x11_clipboard_accepts_only_a_fresh_copy_from_the_selected_client() {
+    use cantrip_cua::error::ErrorCode;
+    use x11rb::{
+        CURRENT_TIME, NONE,
+        connection::Connection,
+        protocol::{
+            Event,
+            xproto::{
+                ConnectionExt, CreateWindowAux, EventMask, InputFocus, KeyButMask, PropMode,
+                Property, SELECTION_NOTIFY_EVENT, SelectionNotifyEvent, WindowClass,
+            },
+        },
+        rust_connection::RustConnection,
+        wrapper::ConnectionExt as _,
+    };
+    let display = std::env::var("CANTRIP_CUA_HOST_X11_TEST_DISPLAY").unwrap();
+    let (selected, screen) = x11rb::connect(Some(&display)).unwrap();
+    let (foreign, _) = x11rb::connect(Some(&display)).unwrap();
+    let root = &selected.setup().roots[screen];
+    let create = |connection: &RustConnection, events| {
+        let window = connection.generate_id().unwrap();
+        connection
+            .create_window(
+                root.root_depth,
+                window,
+                root.root,
+                0,
+                0,
+                100,
+                100,
+                0,
+                WindowClass::INPUT_OUTPUT,
+                root.root_visual,
+                &CreateWindowAux::new().event_mask(events),
+            )
+            .unwrap()
+            .check()
+            .unwrap();
+        window
+    };
+    let window = create(&selected, EventMask::KEY_PRESS | EventMask::KEY_RELEASE);
+    let owner = create(&selected, EventMask::NO_EVENT);
+    let other = create(&foreign, EventMask::KEY_PRESS);
+    selected.map_window(window).unwrap().check().unwrap();
+    foreign.map_window(other).unwrap().check().unwrap();
+    foreign
+        .set_input_focus(InputFocus::PARENT, other, CURRENT_TIME)
+        .unwrap()
+        .check()
+        .unwrap();
+    let atom = |name| {
+        selected
+            .intern_atom(false, name)
+            .unwrap()
+            .reply()
+            .unwrap()
+            .atom
+    };
+    let clipboard = atom(b"CLIPBOARD");
+    let incr = atom(b"INCR");
+    let own = |connection: &RustConnection, owner| {
+        connection
+            .set_selection_owner(owner, clipboard, CURRENT_TIME)
+            .unwrap()
+            .check()
+            .unwrap();
+    };
+    own(&foreign, other);
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_cantrip-cua"));
+    command
+        .env("DISPLAY", &display)
+        .env("XDG_SESSION_TYPE", "x11")
+        .env("PATH", "");
+    let mut child = Process::spawn(command);
+    let (inventory, _) = child.call(json!({"operation":"targets.list"}));
+    let id = format!("x11-window-{window}");
+    let target = inventory["targets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|target| target["id"] == id)
+        .unwrap();
+    let binding = json!({"workerId":"w","surfaceId":"s","attachmentId":"a","participantId":"p"});
+    let (participant, _) = child.call(json!({"operation":"interaction.request","request":{"type":"open","binding":binding,"targetId":id,"targetGeneration":target["generation"]}}));
+    let copy = |sequence| json!({"operation":"interaction.request","request":{"type":"clipboardCopy","binding":binding,"handle":participant["handle"],"sequence":sequence}});
+    let mut forged = copy(2);
+    forged["request"]["binding"]["attachmentId"] = json!("other");
+    let request = child.send(forged);
+    assert!(matches!(child.response(request).0, Outcome::Error { .. }));
+    let request = child.send(json!({"operation":"interaction.request","request":{"type":"clipboardRead","binding":binding,"handle":participant["handle"]}}));
+    assert!(
+        matches!(child.response(request).0, Outcome::Error { error } if error.code == ErrorCode::Unsupported)
+    );
+
+    let chunks = [" first ", "λ🚋\n", ""];
+    for (sequence, expected) in [(2, None), (4, Some(chunks.concat())), (6, None)] {
+        let request = child.send(copy(sequence));
+        let (result, presses, releases, conversions) = std::thread::scope(|scope| {
+            let reply = scope.spawn(|| child.response(request).0);
+            let mut presses = 0;
+            let mut releases = 0;
+            let mut copied_key = None;
+            let mut conversions = 0;
+            let mut transfer = None;
+            let mut chunks = chunks.into_iter();
+            while !reply.is_finished() {
+                while let Some(event) = selected.poll_for_event().unwrap() {
+                    match event {
+                        Event::KeyPress(e) if e.state.contains(KeyButMask::CONTROL) => {
+                            assert_eq!(e.event, window);
+                            presses += 1;
+                            copied_key = Some(e.detail);
+                            if sequence == 2 {
+                                own(&foreign, other);
+                            } else if sequence == 4 {
+                                own(&selected, owner);
+                            }
+                        }
+                        Event::KeyRelease(e) if Some(e.detail) == copied_key => {
+                            assert_eq!(e.event, window);
+                            releases += 1;
+                        }
+                        Event::SelectionRequest(e) => {
+                            assert_eq!(e.owner, owner);
+                            assert_eq!(e.selection, clipboard);
+                            conversions += 1;
+                            selected
+                                .change_window_attributes(
+                                    e.requestor,
+                                    &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
+                                        .event_mask(EventMask::PROPERTY_CHANGE),
+                                )
+                                .unwrap()
+                                .check()
+                                .unwrap();
+                            selected
+                                .change_property32(
+                                    PropMode::REPLACE,
+                                    e.requestor,
+                                    e.property,
+                                    incr,
+                                    &[14],
+                                )
+                                .unwrap()
+                                .check()
+                                .unwrap();
+                            selected
+                                .send_event(
+                                    false,
+                                    e.requestor,
+                                    EventMask::NO_EVENT,
+                                    SelectionNotifyEvent {
+                                        response_type: SELECTION_NOTIFY_EVENT,
+                                        sequence: 0,
+                                        time: e.time,
+                                        requestor: e.requestor,
+                                        selection: e.selection,
+                                        target: e.target,
+                                        property: e.property,
+                                    },
+                                )
+                                .unwrap()
+                                .check()
+                                .unwrap();
+                            transfer = Some(e);
+                        }
+                        Event::PropertyNotify(e) if e.state == Property::DELETE => {
+                            if let Some(transfer) = transfer.filter(|request| {
+                                (e.window, e.atom) == (request.requestor, request.property)
+                            }) && let Some(chunk) = chunks.next()
+                            {
+                                selected
+                                    .change_property8(
+                                        PropMode::REPLACE,
+                                        e.window,
+                                        e.atom,
+                                        transfer.target,
+                                        chunk.as_bytes(),
+                                    )
+                                    .unwrap()
+                                    .check()
+                                    .unwrap();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                while let Some(event) = foreign.poll_for_event().unwrap() {
+                    assert!(!matches!(
+                        event,
+                        Event::SelectionRequest(_) | Event::KeyPress(_)
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            (reply.join().unwrap(), presses, releases, conversions)
+        });
+        assert_eq!((presses, releases), (1, 1));
+        assert_eq!(conversions, usize::from(expected.is_some()));
+        assert_eq!(
+            result,
+            Outcome::Ok {
+                data: json!({"handle":participant["handle"],"sequence":sequence,"text":expected})
+            }
+        );
+    }
+    let request = child.send(copy(6));
+    assert!(
+        matches!(child.response(request).0, Outcome::Error { error } if error.code == ErrorCode::InvalidRequest)
+    );
+    assert_eq!(
+        selected.get_input_focus().unwrap().reply().unwrap().focus,
+        other
+    );
+    // Drop the fixture's selection before the display is used by another test.
+    own(&selected, NONE);
     child.stop(true);
 }
 
@@ -792,3 +1482,11 @@ fn full_worst_escaped_inventory_page_returns_through_unchanged_javascript_output
     assert_eq!(actual, expected);
     child.stop(true);
 }
+
+#[cfg(windows)]
+#[path = "fixtures/windows_host.rs"]
+mod windows_host;
+
+#[cfg(target_os = "linux")]
+#[path = "fixtures/wayland_host.rs"]
+mod wayland_host;

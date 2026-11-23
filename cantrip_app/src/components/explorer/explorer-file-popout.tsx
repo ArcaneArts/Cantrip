@@ -1,6 +1,6 @@
 import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import type { CodeAppearance, ExplorerSummary } from "@cantrip/protocol";
-import { Loader2 } from "lucide-react";
+import { CantripLoading } from "@/components/ui/cantrip-loading";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -156,9 +156,7 @@ export function ExplorerFilePopout({
         <ContentHeaderActions compact explorer={header} />
       </PanelToolbar>
       {loading ? (
-        <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
-          <Loader2 className="size-5 animate-spin" />
-        </div>
+        <CantripLoading label="Loading file…" />
       ) : error ? (
         <div className="grid min-h-0 flex-1 place-items-center p-6">
           <p className="max-w-xl border-y border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">

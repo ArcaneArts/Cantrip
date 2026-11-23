@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "imageSourceCommit": "f924d0fe74a86c8eed6e7a8cd1a816bd1b049699",
+  "harnessCommit": "fc12fae50f99dbf82ea3ff751f910813317f4b1c",
+  "scope": "Packaged Linux ARM64 and x64 OCI Rust images with the local Node reference on macOS ARM64. Linux x64 used Rosetta. Real HTTP account and protection cases ran in isolated PGlite, bundled PostgreSQL and external PostgreSQL. The shared external PostgreSQL handoff ran Node to Rust to Node with retained wrappers and browser cryptography.",
+  "matrixExecution": "Local-store reports came from the run whose external PostgreSQL wrapper initially rejected the cross-runtime fixture directory. The external PostgreSQL run added that fixture with its own volume and repeated all four profiles and the shared database handoff.",
+  "httpCasesPerCell": {
+    "none": 89,
+    "password": 92,
+    "accounts": 109,
+    "administrator": 97
+  },
+  "totals": {
+    "pairedHttpCases": 2322,
+    "crossRuntimeHttpSteps": 18,
+    "cleanRustExits": 56
+  },
+  "drivers": {
+    "localStores": {
+      "containerWrapper": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/container-server.mjs",
+        "bytes": 5757,
+        "sha256": "713480f68821108039efc6bc414704569f548b867e7b8b83ddb9487e808a4169"
+      },
+      "matrixDriver": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/run.sh",
+        "bytes": 3013,
+        "sha256": "a5f06540edff8e538c8a4af660d8320a97b6b6b3e3cd20a83d2bdd3cf6d03c99"
+      }
+    },
+    "externalPostgres": {
+      "containerWrapper": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.45c5FIoI/container-server.mjs",
+        "bytes": 5771,
+        "sha256": "ca6a1de317de364987681773c1bdcea6be14979780c2913e6a7d5f93930ed1ed"
+      },
+      "matrixDriver": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.45c5FIoI/run.sh",
+        "bytes": 3017,
+        "sha256": "be6c3372afe8428e478192df3df9ad4999458566cd6b5ec8ccce5c1409ea4096"
+      }
+    }
+  },
+  "cells": [
+    {
+      "target": "linux-arm64",
+      "databaseMode": "pglite",
+      "driver": "localStores",
+      "imageDigest": "sha256:3e985d86d6c0f09cbf9136c99cdb03a778d9ffc1d0f09a56daa686c66bf2f2da",
+      "serverSha256": "8c4388b8303c5d126cc9e4789397fa467041a24ccebd344d3bdd9b6daf8bca4b",
+      "verifiedPackageFiles": 2558,
+      "pairedHttpCases": 387,
+      "crossRuntimeHttpSteps": 0,
+      "cleanRustExits": 9,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/arm64/pglite.json",
+        "bytes": 806919,
+        "sha256": "2c3b4750e9c57dc6fdbd813e8be80b27db53bab72a08abf422ccbe5a08c676f4"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/arm64/pglite-generations.jsonl",
+        "bytes": 8304,
+        "sha256": "d60d6ad0acb1b5fca980655031283b139707a65ce237e302f7cc2b751a2505a5"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/arm64/pglite.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "linux-arm64",
+      "databaseMode": "bundled-postgres",
+      "driver": "localStores",
+      "imageDigest": "sha256:3e985d86d6c0f09cbf9136c99cdb03a778d9ffc1d0f09a56daa686c66bf2f2da",
+      "serverSha256": "8c4388b8303c5d126cc9e4789397fa467041a24ccebd344d3bdd9b6daf8bca4b",
+      "verifiedPackageFiles": 2558,
+      "pairedHttpCases": 387,
+      "crossRuntimeHttpSteps": 0,
+      "cleanRustExits": 9,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/arm64/bundled-postgres.json",
+        "bytes": 806929,
+        "sha256": "f474a0e2ea75af800ef8d61f55b19be97b37f43a424711a626317188fa838988"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/arm64/bundled-postgres-generations.jsonl",
+        "bytes": 8583,
+        "sha256": "03c964558c8eaeab6bb8129453886385e61eb5e100aba7952b522a985601bf6f"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/arm64/bundled-postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "linux-arm64",
+      "databaseMode": "postgres",
+      "driver": "externalPostgres",
+      "imageDigest": "sha256:3e985d86d6c0f09cbf9136c99cdb03a778d9ffc1d0f09a56daa686c66bf2f2da",
+      "serverSha256": "8c4388b8303c5d126cc9e4789397fa467041a24ccebd344d3bdd9b6daf8bca4b",
+      "verifiedPackageFiles": 2558,
+      "pairedHttpCases": 387,
+      "crossRuntimeHttpSteps": 9,
+      "cleanRustExits": 10,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.45c5FIoI/arm64/postgres.json",
+        "bytes": 807208,
+        "sha256": "b5daa98b1dbe27224d8265160077e5898a20d66c36d8837bfbdf65cacf2ad78b"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.45c5FIoI/arm64/postgres-generations.jsonl",
+        "bytes": 9279,
+        "sha256": "a89ec8689d1e26e759fe59a8ed7716e85819ecab2a3ef6eff6b60ac5916c9041"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.45c5FIoI/arm64/postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "databaseMode": "pglite",
+      "driver": "localStores",
+      "imageDigest": "sha256:d2a43e692d43417756d2de4452e1a35e21c91f842b9ddfb5ae340d6320a6cdad",
+      "serverSha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+      "verifiedPackageFiles": 2558,
+      "pairedHttpCases": 387,
+      "crossRuntimeHttpSteps": 0,
+      "cleanRustExits": 9,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/x64/pglite.json",
+        "bytes": 806919,
+        "sha256": "2c3b4750e9c57dc6fdbd813e8be80b27db53bab72a08abf422ccbe5a08c676f4"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/x64/pglite-generations.jsonl",
+        "bytes": 8367,
+        "sha256": "253e9981835d65d89f41af2a9a4149dbeeba5aac40e47fd5f4d52b3b11860fa7"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/x64/pglite.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "databaseMode": "bundled-postgres",
+      "driver": "localStores",
+      "imageDigest": "sha256:d2a43e692d43417756d2de4452e1a35e21c91f842b9ddfb5ae340d6320a6cdad",
+      "serverSha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+      "verifiedPackageFiles": 2558,
+      "pairedHttpCases": 387,
+      "crossRuntimeHttpSteps": 0,
+      "cleanRustExits": 9,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/x64/bundled-postgres.json",
+        "bytes": 806929,
+        "sha256": "f474a0e2ea75af800ef8d61f55b19be97b37f43a424711a626317188fa838988"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/x64/bundled-postgres-generations.jsonl",
+        "bytes": 8646,
+        "sha256": "d886f497fac7006d2ef5becec5707107f8ce4ddd185da3f8d7d0e8f5d4aedb47"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.YrmOfPVs/x64/bundled-postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "databaseMode": "postgres",
+      "driver": "externalPostgres",
+      "imageDigest": "sha256:d2a43e692d43417756d2de4452e1a35e21c91f842b9ddfb5ae340d6320a6cdad",
+      "serverSha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+      "verifiedPackageFiles": 2558,
+      "pairedHttpCases": 387,
+      "crossRuntimeHttpSteps": 9,
+      "cleanRustExits": 10,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.45c5FIoI/x64/postgres.json",
+        "bytes": 807208,
+        "sha256": "b5daa98b1dbe27224d8265160077e5898a20d66c36d8837bfbdf65cacf2ad78b"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.45c5FIoI/x64/postgres-generations.jsonl",
+        "bytes": 9349,
+        "sha256": "17365f09972cb1f8dd69d3af38d3b05ba162b77292075ff79a2ea5648a3616c6"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-account-protection.45c5FIoI/x64/postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    }
+  ]
+}

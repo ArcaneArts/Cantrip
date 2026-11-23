@@ -12,12 +12,15 @@ Chromium-family browser documented in the [root README](../README.md).
 1. Update both runtime locks as one compatibility unit. Keep their
    `bundleVersion` values identical and pin every URL, byte count, digest,
    source revision, and dependency hash.
-2. Open a pull request that touches the runtime inputs. The **Managed web
-   runtimes** workflow must build and smoke-test SearXNG and Playwright on all
-   six native targets. Publication is forbidden if any matrix job fails.
-3. After the change is merged, dispatch `.github/workflows/managed-web-runtimes.yml`
-   on `main` with `publish=true`. The signing key and key ID come only from the
-   protected repository secret and variable.
+2. Open a pull request with local validation of the runtime inputs. Pull requests
+   do not start hosted builds. GitHub Actions is reserved for releases and
+   deployments.
+3. When preparing a release after the change is merged, explicitly dispatch
+   `.github/workflows/managed-web-runtimes.yml` on `main`. This release workflow
+   builds and smoke-tests SearXNG and Playwright on all six native targets. Use
+   `publish=true` to sign and publish; publication is forbidden if any matrix job
+   fails. The signing key and key ID come only from the protected repository
+   secret and variable. Do not dispatch this workflow for development validation.
 4. Verify the resulting immutable `web-runtime-<bundleVersion>` release has one
    shared `manifest.json` containing twelve individually signed artifact
    records, the twelve artifacts, twelve descriptors, and corresponding

@@ -99,8 +99,8 @@ export const validationSteps = [
   ),
   packageTestStep(
     "Server authoring, lifecycle, CLI, and MCP",
-    "@cantrip/server",
-    "cantrip_server",
+    "@cantrip/server-reference",
+    "tests/reference-node-server",
     serverTests,
   ),
   {
@@ -108,7 +108,7 @@ export const validationSteps = [
     command: "pnpm",
     args: [
       "--filter",
-      "@cantrip/server",
+      "@cantrip/server-reference",
       "exec",
       "vitest",
       "run",
@@ -116,12 +116,12 @@ export const validationSteps = [
       "--testNamePattern",
       "retires an active Run instance instead of treating it as a worktree removal blocker",
     ],
-    inputs: ["cantrip_server/test/worktree-api.test.ts"],
+    inputs: ["tests/reference-node-server/test/worktree-api.test.ts"],
   },
   packageTestStep(
-    "Worker providers, process ownership, environment, and security",
-    "@cantrip/worker",
-    "cantrip_worker",
+    "Reference worker providers, process ownership, environment, and security",
+    "@cantrip/worker-reference",
+    "tests/reference-node-worker",
     workerTests,
   ),
   packageTestStep(

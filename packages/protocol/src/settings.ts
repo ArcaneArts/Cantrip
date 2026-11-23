@@ -11,7 +11,6 @@ import {
   modelProviderWireListSchema,
   reasoningEffortSchema,
 } from "./providers.js";
-import { workspaceLayoutProfileSchema } from "./workspace-layout-profiles.js";
 import { cuaCursorPreferenceRecordSchema } from "./computer-use-preferences.js";
 
 export const themePreferenceSchema = z.enum(["system", "light", "dark"]);
@@ -44,6 +43,7 @@ export const configurablePermissionProfileIdSchema = z.enum([
 
 export const userSettingsSchema = z.object({
   computerUseEnabled: z.boolean().default(false),
+  computerUseCantripAppAllowed: z.boolean().default(false),
   computerUseEffects: cuaEffectConfigurationSchema.optional(),
   computerUseEffectsRevision: z.number().int().positive().optional(),
   protectedComputerUseCursor: cuaCursorPreferenceRecordSchema
@@ -59,7 +59,6 @@ export const userSettingsSchema = z.object({
     DEFAULT_ELITE_REVEAL_CONFIG,
   ),
   sidebarWidth: sidebarWidthPreferenceSchema,
-  workspaceLayoutProfile: workspaceLayoutProfileSchema.default("hybrid"),
   showChatPromptOverlay: z.boolean().default(true),
   randomAgentNames: z.boolean().default(false),
   autoNameTasks: z.boolean().default(true),
@@ -68,6 +67,9 @@ export const userSettingsSchema = z.object({
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
   defaultModelId: z.string().min(1).nullable(),
+  // Optional on the wire for older peers; repositories always emit null or an ID.
+  defaultEmbeddingModelId: z.string().min(1).nullable().optional(),
+  defaultDecisionModelId: z.string().min(1).nullable().optional(),
   defaultReasoningEffort: reasoningEffortSchema.nullable().default(null),
   defaultCustomSubagentModel: z.boolean().default(false),
   defaultSubagentModelId: z.string().min(1).nullable().default(null),
@@ -109,6 +111,7 @@ export const userSettingsUpdateSchema = userSettingsSchema
   })
   .extend({
     computerUseEnabled: z.boolean().optional(),
+    computerUseCantripAppAllowed: z.boolean().optional(),
     contentGutters: z.boolean().optional(),
     eliteMode: z.boolean().optional(),
     eliteRevealConfig: eliteRevealConfigSchema.optional(),
@@ -132,7 +135,6 @@ export const userSettingsUpdateSchema = userSettingsSchema
     automaticReplicaSynchronization: z
       .enum(["off", "verify-only", "fast-forward-primary"])
       .optional(),
-    workspaceLayoutProfile: workspaceLayoutProfileSchema.optional(),
     mobileProjectTabConfigurations:
       mobileProjectTabConfigurationsSchema.optional(),
   });

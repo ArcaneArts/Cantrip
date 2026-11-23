@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNonLanguageRoutes } from "./use-language-model-routes";
 import type { NativeSettingsBinding } from "@cantrip/protocol";
 import type { ClientSessionIdentitySnapshot } from "@/lib/client-session";
 import { clientSessionIdentityMatches } from "@/lib/client-session";
@@ -12,20 +13,36 @@ export function NativeRuntimeHandoffEditor({
   binding,
   identity,
   disabled,
+  allowSameProviderModelChange = false,
+  description,
 }: {
   controller: ReturnType<typeof useRuntimeHandoff>;
   binding: NativeSettingsBinding;
   identity: ClientSessionIdentitySnapshot;
   disabled: boolean;
+  allowSameProviderModelChange?: boolean;
+  description?: string;
 }) {
   const { query, latest, active, busy, error, unconfirmed, run } = controller;
   const [providerId, setProviderId] = useState("");
   const [routeId, setRouteId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [labels, setLabels] = useState<Record<string, string>>({});
-  const providers = query.data?.providers ?? [];
+  const nonLanguageRoutes = useNonLanguageRoutes();
+  const providers = useMemo(
+    () =>
+      (query.data?.providers ?? [])
+        .map((provider) => ({
+          ...provider,
+          models: provider.models.filter(
+            (model) => !nonLanguageRoutes.has(model.routeId),
+          ),
+        }))
+        .filter((provider) => provider.models.length > 0),
+    [query.data?.providers, nonLanguageRoutes],
+  );
   const provider = providers.find((entry) => entry.id === providerId);
-  const sourceProvider = providers.find((entry) =>
+  const sourceProvider = query.data?.providers.find((entry) =>
     entry.models.some((model) => model.routeId === binding.modelRouteId),
   );
   const sourceAccount = binding.providerAccountId;
@@ -70,7 +87,8 @@ export function NativeRuntimeHandoffEditor({
       provider.accounts.some((account) => account.id === accountId)) &&
     !(
       provider.id === sourceProvider?.id &&
-      (provider.requiresAccount ? accountId : null) === sourceAccount
+      (provider.requiresAccount ? accountId : null) === sourceAccount &&
+      (!allowSameProviderModelChange || routeId === binding.modelRouteId)
     );
   const locked =
     disabled ||
@@ -79,7 +97,7 @@ export function NativeRuntimeHandoffEditor({
     Boolean(unconfirmed) ||
     Boolean(query.error) ||
     query.data?.binding?.bindingId !== binding.bindingId;
-  const destination = providers.find((entry) =>
+  const destination = query.data?.providers.find((entry) =>
     entry.models.some((model) => model.routeId === latest?.targetModelRouteId),
   );
   return (
@@ -89,9 +107,14 @@ export function NativeRuntimeHandoffEditor({
     >
       <p className="font-medium">Provider and account</p>
       <p className="text-xs text-muted-foreground">
-        Move this conversation to another provider or account. History and
-        session settings are retained. Start the transfer when the agent is
-        idle; queued messages wait for it to finish.
+        {description ?? (
+          <>
+            Move this conversation to another provider or account. History and
+            session settings are retained. Transfer while idle or waiting for
+            provider capacity. Queued messages continue automatically after
+            transfer.
+          </>
+        )}
       </p>
       <p className="text-xs">
         Current: {sourceProvider?.name ?? "Current provider"}
@@ -185,7 +208,11 @@ export function NativeRuntimeHandoffEditor({
                 cancelled: "Transfer cancelled",
               }[latest.phase]}
           {destination ? ` · ${destination.name}` : ""}
-          {latest.errorCode ? ` · ${latest.errorCode}` : ""}
+          {latest.errorCode === "handoff-source-no-longer-queued"
+            ? " · Transfer is unavailable for the current turn; try again when the agent is idle."
+            : latest.errorCode
+              ? ` · ${latest.errorCode}`
+              : ""}
         </p>
       ) : null}
       {unconfirmed ? (

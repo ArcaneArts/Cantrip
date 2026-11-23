@@ -9,8 +9,8 @@ import { buildRustServer, buildRustExample } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { heartbeat } from "./security-fixtures.mjs";
 import {
   targetStateSql,

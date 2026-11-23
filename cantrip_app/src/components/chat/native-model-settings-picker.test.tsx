@@ -686,3 +686,27 @@ describe("bound GUI native model picker", () => {
     ).toBe("");
   });
 });
+
+it("does not show stale settings from a prior native binding as a pending model change", async () => {
+  const source = observed();
+  source.state.data.pending = [
+    {
+      bindingId: "retired-binding",
+      status: "uncertain",
+      intent: { operationId: "retired-operation" },
+    },
+  ] as NativeSettingsState["pending"];
+  runtime.observed = source;
+  const view = await mount();
+  expect(view.controller().pending).toBe(0);
+  expect(JSON.stringify(view.view.toJSON())).not.toContain("Change pending");
+  source.state.data = {
+    ...source.state.data,
+    pending: [
+      { ...source.state.data.pending[0]!, bindingId: binding.bindingId },
+    ],
+  };
+  await view.rerender();
+  expect(view.controller().pending).toBe(1);
+  expect(JSON.stringify(view.view.toJSON())).toContain("Change pending");
+});

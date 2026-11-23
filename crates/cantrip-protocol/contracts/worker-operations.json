@@ -1,0 +1,546 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "cantripVersionSchema": 0,
+    "codeGraphActionAcknowledgementSchema": 5,
+    "managedWebRuntimeActionRequestSchema": 10,
+    "managedWebRuntimeActionResultSchema": 14,
+    "managedWebRuntimeReleaseManifestSchema": 43
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "cantripVersionSchema",
+      "shape": { "major": 1, "minor": 2, "patch": 3, "version": 4 },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-operation-version",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "flags": "u",
+          "displayPattern": "/^\\d+\\.\\d+\\.\\d+$/u"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "codeGraphActionAcknowledgementSchema",
+      "shape": { "jobId": 6, "action": 7, "acceptedAt": 8, "status": 9 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["sync", "rebuild", "update-check"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "literal", "values": ["queued"], "checks": [] },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeActionRequestSchema",
+      "shape": { "component": 11, "action": 12 },
+      "catchall": 13,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-runtime-profiles",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeComponentSchema",
+      "values": ["searxng", "playwright"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeActionSchema",
+      "values": [
+        "check-update",
+        "retry",
+        "reinstall",
+        "clear-cache",
+        "clear-profiles"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeActionResultSchema",
+      "shape": { "accepted": 15, "action": 12, "component": 11, "status": 16 },
+      "catchall": 42,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeStatusSchema",
+      "shape": {
+        "component": 11,
+        "supported": 17,
+        "state": 18,
+        "installedVersion": 19,
+        "previousVersion": 21,
+        "latestVersion": 23,
+        "lastCheckedAt": 25,
+        "progress": 27,
+        "failure": 34
+      },
+      "catchall": 41,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeStateSchema",
+      "values": [
+        "checking",
+        "installing",
+        "updating",
+        "ready",
+        "degraded",
+        "failed",
+        "unsupported"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 20, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 24, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 26, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 28, "checks": [] },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeProgressSchema",
+      "shape": {
+        "phase": 29,
+        "completedBytes": 30,
+        "totalBytes": 31,
+        "updatedAt": 32
+      },
+      "catchall": 33,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "managed-runtime-progress",
+          "messageAfterPath": true,
+          "message": "Managed web runtime progress cannot exceed its total."
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeProgressPhaseSchema",
+      "values": [
+        "manifest",
+        "download",
+        "verify",
+        "extract",
+        "inventory",
+        "probe",
+        "promote",
+        "cleanup"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 12000000000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 12000000000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 35, "checks": [] },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeFailureSchema",
+      "shape": {
+        "category": 36,
+        "message": 37,
+        "retryable": 38,
+        "failedAt": 39
+      },
+      "catchall": 40,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeFailureCategorySchema",
+      "values": [
+        "download",
+        "integrity",
+        "signature",
+        "archive",
+        "inventory",
+        "health-check",
+        "compatibility",
+        "disk",
+        "process",
+        "unknown"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeReleaseManifestSchema",
+      "shape": {
+        "schemaVersion": 44,
+        "channel": 45,
+        "publishedAt": 46,
+        "artifacts": 47
+      },
+      "catchall": 68,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "managed-runtime-manifest-targets",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 48,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 12, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeArtifactSchema",
+      "shape": {
+        "schemaVersion": 49,
+        "component": 11,
+        "version": 50,
+        "platform": 51,
+        "architecture": 52,
+        "archiveFormat": 53,
+        "downloadUrl": 54,
+        "sha256": 55,
+        "signature": 56,
+        "signingKeyId": 57,
+        "compressedBytes": 58,
+        "extractedBytes": 59,
+        "licenseManifest": 60,
+        "sourceManifest": 60,
+        "minimumOs": 61,
+        "minimumKernel": 63,
+        "minimumLibc": 65
+      },
+      "catchall": 67,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimePlatformSchema",
+      "values": ["darwin", "win32", "linux"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeArchitectureSchema",
+      "values": ["arm64", "x64"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeArchiveFormatSchema",
+      "values": ["tar.gz", "zip"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "string_format", "format": "url", "abort": false },
+        { "check": "max_length", "maximum": 8192, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "managed-runtime-release-url",
+          "messageAfterPath": true,
+          "message": "Managed web runtime artifacts must use HTTPS."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "message": "Managed runtime signatures must be Ed25519 base64 values.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9+/]{86}==$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9+/]{86}==$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 4000000000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 12000000000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 8192, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "managed-runtime-inventory-path",
+          "messageAfterPath": true,
+          "message": "Managed runtime inventory paths must be safe relative paths."
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 62,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 64,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 66,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] }
+  ]
+}

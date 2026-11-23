@@ -31,6 +31,7 @@ fn active(service: &AuthService, lease: &PreparationLease) -> Result<()> {
 async fn ready(
     service: &AuthService,
     context: &Value,
+    owner: &str,
     attachment: &str,
     launch: Value,
 ) -> Result<()> {
@@ -57,6 +58,12 @@ async fn ready(
         .context("Terminal worker")?
         .to_owned();
     let completion = readiness.clone();
+    let maintenance = service.worker_maintenance.clone();
+    let owner = owner.to_owned();
+    let terminal = context["terminalId"]
+        .as_str()
+        .context("Terminal identity")?
+        .to_owned();
     // The Source waits for readiness, not completion of this streaming command.
     // A result arriving after readiness cannot undo the successful bootstrap.
     tokio::spawn(async move {
@@ -67,7 +74,22 @@ async fn ready(
             let result =
                 crate::settings::parse_response("terminalOpenResultSchema", result.as_ref())?;
             if result["status"] == "exited" {
-                bail!("Terminal process exited during startup.");
+                maintenance
+                    .record_status(
+                        &owner,
+                        &terminal,
+                        if result["executionOutcome"] == "unknown" {
+                            "offline"
+                        } else {
+                            "exited"
+                        },
+                    )
+                    .await?;
+                bail!(if result["executionOutcome"] == "unknown" {
+                    "The Linux terminal disconnected; command outcome is unknown."
+                } else {
+                    "Terminal process exited during startup."
+                });
             }
             Ok(())
         }
@@ -133,7 +155,7 @@ pub(super) async fn execute(
             }
             active(service,&lease)?;
             started=true;
-            ready(service,&context,&bootstrap,launch).await?;
+            ready(service,&context,owner,&bootstrap,launch).await?;
             active(service,&lease)?;
             detach(service,&context,&bootstrap).await?;
             active(service,&lease)?;

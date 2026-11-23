@@ -87,6 +87,7 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
     if truthy(input.get("terminalResult")) && !truthy(input.get("executionComplete")) {
         return reject("terminal-result-requires-completion");
     }
+    super::suspension::assert_terminal_proof(tx, owner, &current, input).await?;
     let missing = current["status"] == "uncertain"
         && current["rejection_code"] == "missing-native-receipt"
         && [
@@ -94,10 +95,11 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
             "protected_result",
             "terminal_result_digest",
             "protected_terminal_result",
-            "terminal_evidence",
         ]
         .iter()
-        .all(|field| !truthy(current.get(field)));
+        .all(|field| !truthy(current.get(field)))
+        && (!truthy(current.get("terminal_evidence"))
+            || super::transport_evidence::is_transport_closure(current.get("terminal_evidence")));
     let state = Settlement {
         owner,
         input,
@@ -121,6 +123,7 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
         {
             return reject("receipt-conflict");
         }
+        super::logical_inputs::finish_restored(tx, owner, &state.current).await?;
         return response(tx, owner, input, &state.current, &chat).await;
     }
     state.deferred(tx).boxed().await?;
@@ -139,15 +142,25 @@ async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Valu
     if truthy(input.get("reconciliation")) {
         turns::remember(tx, &state.current, &input["reconciliation"]).await?;
     }
+    super::suspension::settle(tx, owner, &state.current, input).await?;
+    super::suspension::finish(tx, owner, &state.current, input).await?;
     let updated = state.persist(tx).await?;
     settings_persistence::settle_transport(tx, &updated).await?;
-    state.finish(tx).boxed().await?;
+    let goal_before_dispatch =
+        super::goal_recovery::settle_before_dispatch(tx, &updated, &state.current).await?;
+    state.finish(tx, goal_before_dispatch).boxed().await?;
     let turn = input["reconciliation"]
         .get("nativeTurnId")
         .filter(|v| !v.is_null())
         .map(text)
         .transpose()?;
-    queue::settle(tx, &updated, turn.as_deref(), input.get("goalEpoch")).await?;
+    if !goal_before_dispatch {
+        queue::settle(tx, &updated, turn.as_deref(), input.get("goalEpoch")).await?;
+    }
+    if goal && state.current["status"] != "applied" {
+        queue::changed(tx, &chat).await?;
+    }
+    super::logical_inputs::finish_restored(tx, owner, &updated).await?;
     response(tx, owner, input, &updated, &chat).await
 }
 impl Repository {

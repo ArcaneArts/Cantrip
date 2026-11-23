@@ -21,7 +21,7 @@ import {
 } from "./project-target-state.mjs";
 import { fileDocumentWireFixtures } from "./file-document-wire-fixtures.mjs";
 import { fileDocumentHttpWorker } from "./file-document-http-worker.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password } from "./security-fixtures.mjs";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
 import { eventually } from "./full-worker.mjs";
@@ -41,13 +41,17 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-project-git-http-"));
 const report = {
   suite: "project-git-http",
   databaseMode,
+  root,
   completeReplacement: false,
   profiles: [],
 };
 let pg, failure;
 try {
-  const executable = await buildRustServer(),
-    repositoryBinary = await buildRustExample("project-repository-fixture");
+  const executable =
+      process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
+    repositoryBinary =
+      process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+      (await buildRustExample("project-repository-fixture"));
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
   const passwordHash = await hashPassword(password);
@@ -85,6 +89,7 @@ try {
         },
       });
       const result = { kind, observations: [], commands: [], changes: [] };
+      const started = Date.now();
       runtimes.push(result);
       let repo, worker, live;
       let agentRoute = "git-route";
@@ -847,6 +852,7 @@ try {
             );
           assert.equal(events.length, 1);
           assert.equal(events[0].entityId, "github-alpha-main");
+          (result.rawFilesystemEvents ??= []).push(...structuredClone(events));
           result.filesystemChanges.push(
             ...events.map(
               ({ resource, scope, entityId, revision, payload, action }) => ({
@@ -1330,6 +1336,54 @@ try {
           terminal: 0,
           receipts: 1,
         });
+        const runState = await repo.request({
+          op: "query-json",
+          sql: `SELECT jsonb_build_object(
+            'secrets',(SELECT jsonb_agg(to_jsonb(s)-'id'-'created_at'-'updated_at' ORDER BY reference) FROM run_configuration_secrets s WHERE project_id=${literal(gitProject)}),
+            'secretOperations',(SELECT jsonb_agg(to_jsonb(o)-'created_at' ORDER BY id) FROM run_configuration_secret_operations o WHERE project_id=${literal(gitProject)}),
+            'runtimes',(SELECT jsonb_agg(to_jsonb(r)-'created_at'-'updated_at' ORDER BY configuration_id,worktree_id) FROM run_configuration_runtimes r WHERE project_id=${literal(gitProject)}),
+            'runtimeOperations',(SELECT jsonb_agg(to_jsonb(o)-'created_at' ORDER BY id) FROM run_configuration_runtime_operations o WHERE project_id=${literal(gitProject)} AND id LIKE 'dddddddd-dddd-4ddd-8ddd-%')) result`,
+        });
+        assert.equal(runState.rejected, false, runState.diagnostic);
+        const secret = runState.value.secrets.find(
+          (row) => row.reference === "run/http-secret",
+        );
+        assert.equal(secret.revision, 2);
+        assert.deepEqual(
+          secret.protected_value,
+          fileDocumentWireFixtures().fileDocumentCreateSchema[0].stateProtection
+            .protectedState,
+        );
+        assert.deepEqual(
+          runState.value.secretOperations.map(({ id, revision }) => ({
+            id,
+            revision,
+          })),
+          [1, 2].map((revision) => ({
+            id: `77777777-7777-4777-8777-${String(revision).padStart(12, "0")}`,
+            revision,
+          })),
+        );
+        assert.ok(runState.value.runtimes.length > 0);
+        result.rawRunState = structuredClone(runState.value);
+        for (const runtime of runState.value.runtimes) {
+          if (runtime.ended_at === null) continue;
+          const ended = Date.parse(runtime.ended_at);
+          assert.ok(
+            Number.isFinite(ended) &&
+              ended >= started &&
+              ended <= Date.now() + 1000,
+            "persisted runtime exit uses the actual server clock",
+          );
+          runtime.ended_at = "<validated runtime exit clock>";
+        }
+        for (const operation of ["start", "restart", "stop"])
+          assert.ok(
+            runState.value.runtimeOperations.some(
+              (row) => row.operation === operation,
+            ),
+          );
+        result.runState = fixture.normalize(runState.value);
       } catch (error) {
         result.serverDiagnostics = fixture.server?.diagnostics();
         throw error;
@@ -1362,9 +1416,11 @@ try {
       "secretAudit",
       "definitionCommands",
       "definitionAudit",
+      "runState",
     ])
       assert.deepEqual(runtimes[1][key], runtimes[0][key], profile + " " + key);
   }
+  report.passed = true;
 } catch (error) {
   failure = error;
   report.failure = error.stack;
@@ -1379,7 +1435,8 @@ try {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(

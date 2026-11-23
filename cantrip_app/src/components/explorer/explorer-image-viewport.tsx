@@ -1,7 +1,9 @@
+import { readEditorBoolean } from "@/lib/editor-preferences";
 import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -100,6 +102,7 @@ export function ExplorerImageViewport({
   onError?(): void;
   source: string;
 }) {
+  const fit = useMemo(() => readEditorBoolean("image-fit"), [source]);
   const [dragging, setDragging] = useState(false);
   const [transform, setTransform] = useState(INITIAL_TRANSFORM);
   const transformRef = useRef(transform);
@@ -188,7 +191,7 @@ export function ExplorerImageViewport({
   return (
     <div
       aria-label={`Interactive preview of ${alt}`}
-      className={`grid h-full w-full place-items-center overflow-hidden p-4 ${
+      className={`grid h-full w-full grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] place-items-center overflow-hidden p-4 ${
         dragging ? "cursor-grabbing" : "cursor-grab"
       }`}
       onDoubleClick={reset}
@@ -203,7 +206,11 @@ export function ExplorerImageViewport({
     >
       <img
         alt={alt}
-        className="max-h-full max-w-full select-none object-contain"
+        className={
+          fit
+            ? "max-h-full max-w-full select-none object-contain"
+            : "max-h-none max-w-none select-none object-contain"
+        }
         draggable={false}
         onDragStart={(event) => event.preventDefault()}
         onError={onError}

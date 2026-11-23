@@ -5,12 +5,12 @@ import {
   bindNativeSettingsRead,
   observeNativeSettings,
   settleNativeSettingsIntent,
-} from "../../cantrip_server/src/db/repository/native-settings-state.ts";
+} from "../../tests/reference-node-server/src/db/repository/native-settings-state.ts";
 import {
   resolvePermissionTransition,
   assertPermissionTransition,
-} from "../../cantrip_server/src/db/repository/native-permission-transitions.ts";
-import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-command-errors.ts";
+} from "../../tests/reference-node-server/src/db/repository/native-permission-transitions.ts";
+import { NativeCommandError } from "../../tests/reference-node-server/src/db/repository/native-command-errors.ts";
 import {
   settingsBinding as binding,
   settingsSnapshot as snapshot,

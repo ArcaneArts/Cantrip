@@ -7,6 +7,7 @@ settings:
 
 patchedDependencies:
   "@zavora-ai/computer-use-mcp@7.0.0": afa23d13147ea84ad1c3aa7992aacfca6ea1af8e41823e5a6b316ac945d9020d
+  postgres@3.4.9: 4389a11287604ec2f70ca3230fe616c50e0305a5437000d32fb3db883acbe69d
   webdav-server@2.6.3: 6d9ab239e94069970537406374780261e3dc976865163fad26cafb6643d2da2f
   werift@0.24.3: f5f05bb51067f16d98c5fc0e23abb71f7b291e04ed8459cac5a010806a51ad60
 
@@ -31,6 +32,9 @@ importers:
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
       playwright-core:
         specifier: 1.62.1
         version: 1.62.1
@@ -58,6 +62,9 @@ importers:
       "@cantrip/logging":
         specifier: workspace:*
         version: link:../packages/logging
+      "@cantrip/nbt":
+        specifier: workspace:*
+        version: link:../packages/nbt
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol
@@ -252,51 +259,7 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@26.1.2)(jsdom@26.1.0(supports-color@10.2.2))(vite@8.2.0(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.9)(yaml@2.9.0))
 
-  cantrip_server:
-    dependencies:
-      "@cantrip/logging":
-        specifier: workspace:*
-        version: link:../packages/logging
-      "@cantrip/protocol":
-        specifier: workspace:*
-        version: link:../packages/protocol
-      "@cantrip/version":
-        specifier: workspace:*
-        version: link:../packages/version
-      "@electric-sql/pglite":
-        specifier: ^0.5.4
-        version: 0.5.4
-      "@fastify/cors":
-        specifier: ^11.3.0
-        version: 11.3.0
-      "@fastify/websocket":
-        specifier: ^11.3.0
-        version: 11.3.0
-      "@node-rs/argon2":
-        specifier: ^2.0.2
-        version: 2.0.2
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@electric-sql/pglite@0.5.4)(postgres@3.4.9)
-      fastify:
-        specifier: ^5.11.2
-        version: 5.11.2
-      postgres:
-        specifier: ^3.4.9
-        version: 3.4.9
-      redis:
-        specifier: ^5.12.1
-        version: 5.12.1
-      ws:
-        specifier: ^8.21.2
-        version: 8.21.2
-    devDependencies:
-      "@types/ws":
-        specifier: ^8.18.1
-        version: 8.18.1
-      drizzle-kit:
-        specifier: ^0.31.10
-        version: 0.31.10
+  cantrip_os/host: {}
 
   cantrip_site:
     dependencies:
@@ -326,26 +289,145 @@ importers:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.9)(yaml@2.9.0)
 
-  cantrip_worker:
+  cantrip_worker: {}
+
+  packages/crypto:
     dependencies:
-      "@cantrip/crypto":
-        specifier: workspace:*
-        version: link:../packages/crypto
-      "@cantrip/logging":
-        specifier: workspace:*
-        version: link:../packages/logging
       "@cantrip/protocol":
         specifier: workspace:*
-        version: link:../packages/protocol
+        version: link:../protocol
+      "@hpke/core":
+        specifier: ^1.9.0
+        version: 1.9.0
+      "@noble/hashes":
+        specifier: ^2.3.0
+        version: 2.3.0
+
+  packages/glitch:
+    dependencies:
+      "@cantrip/protocol":
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      "@types/react":
+        specifier: ^19.2.18
+        version: 19.2.18
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.2)(jsdom@26.1.0(supports-color@10.2.2))(vite@8.2.0(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.9)(yaml@2.9.0))
+
+  packages/logging: {}
+
+  packages/nbt:
+    dependencies:
+      "@noble/hashes":
+        specifier: ^2.3.0
+        version: 2.3.0
+      pako:
+        specifier: 3.0.3
+        version: 3.0.3
+    devDependencies:
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
+      nbtify:
+        specifier: 2.2.0
+        version: 2.2.0
+
+  packages/profile-converter:
+    dependencies:
+      "@electric-sql/pglite-tools":
+        specifier: 0.4.4
+        version: 0.4.4(@electric-sql/pglite@0.5.4)
+
+  packages/protocol:
+    dependencies:
+      croner:
+        specifier: ^10.0.1
+        version: 10.0.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
+  packages/version: {}
+
+  tests/reference-node-server:
+    devDependencies:
+      "@cantrip/logging":
+        specifier: workspace:*
+        version: link:../../packages/logging
+      "@cantrip/protocol":
+        specifier: workspace:*
+        version: link:../../packages/protocol
       "@cantrip/version":
         specifier: workspace:*
-        version: link:../packages/version
+        version: link:../../packages/version
+      "@electric-sql/pglite":
+        specifier: ^0.5.4
+        version: 0.5.4
+      "@fastify/cors":
+        specifier: ^11.3.0
+        version: 11.3.0
+      "@fastify/websocket":
+        specifier: ^11.3.0
+        version: 11.3.0
+      "@node-rs/argon2":
+        specifier: ^2.0.2
+        version: 2.0.2
+      "@types/ws":
+        specifier: ^8.18.1
+        version: 8.18.1
+      drizzle-kit:
+        specifier: ^0.31.10
+        version: 0.31.10
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@electric-sql/pglite@0.5.4)(postgres@3.4.9(patch_hash=4389a11287604ec2f70ca3230fe616c50e0305a5437000d32fb3db883acbe69d))
+      fastify:
+        specifier: ^5.11.2
+        version: 5.11.2
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9(patch_hash=4389a11287604ec2f70ca3230fe616c50e0305a5437000d32fb3db883acbe69d)
+      redis:
+        specifier: ^5.12.1
+        version: 5.12.1
+      ws:
+        specifier: ^8.21.2
+        version: 8.21.2
+
+  tests/reference-node-worker:
+    devDependencies:
+      "@cantrip/crypto":
+        specifier: workspace:*
+        version: link:../../packages/crypto
+      "@cantrip/logging":
+        specifier: workspace:*
+        version: link:../../packages/logging
+      "@cantrip/os-host":
+        specifier: workspace:*
+        version: link:../../cantrip_os/host
+      "@cantrip/protocol":
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      "@cantrip/version":
+        specifier: workspace:*
+        version: link:../../packages/version
       "@modelcontextprotocol/sdk":
         specifier: 1.29.0
         version: 1.29.0(supports-color@10.2.2)(zod@4.4.3)
       "@mozilla/readability":
         specifier: 0.6.0
         version: 0.6.0
+      "@types/ws":
+        specifier: ^8.18.1
+        version: 8.18.1
+      "@types/yauzl":
+        specifier: ^2.10.3
+        version: 2.10.3
       "@xterm/addon-serialize":
         specifier: 0.14.0
         version: 0.14.0
@@ -397,54 +479,6 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
-    devDependencies:
-      "@types/ws":
-        specifier: ^8.18.1
-        version: 8.18.1
-      "@types/yauzl":
-        specifier: ^2.10.3
-        version: 2.10.3
-
-  packages/crypto:
-    dependencies:
-      "@cantrip/protocol":
-        specifier: workspace:*
-        version: link:../protocol
-      "@hpke/core":
-        specifier: ^1.9.0
-        version: 1.9.0
-      "@noble/hashes":
-        specifier: ^2.3.0
-        version: 2.3.0
-
-  packages/glitch:
-    dependencies:
-      "@cantrip/protocol":
-        specifier: workspace:*
-        version: link:../protocol
-    devDependencies:
-      "@types/react":
-        specifier: ^19.2.18
-        version: 19.2.18
-      react:
-        specifier: ^19.2.8
-        version: 19.2.8
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@types/node@26.1.2)(jsdom@26.1.0(supports-color@10.2.2))(vite@8.2.0(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.9)(yaml@2.9.0))
-
-  packages/logging: {}
-
-  packages/protocol:
-    dependencies:
-      croner:
-        specifier: ^10.0.1
-        version: 10.0.1
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-
-  packages/version: {}
 
 packages:
   "@asamuzakjp/css-color@3.2.0":
@@ -7323,6 +7357,12 @@ packages:
       }
     hasBin: true
 
+  mutf-8@1.1.4:
+    resolution:
+      {
+        integrity: sha512-zyVV1mk9eO99NOdBq0CR7Wg+hkRcDCpaNsf6hRHYw4LgWTPh9GjJpQxRlRkgEAx+rtcy11SBtjpY70Kt6AosVQ==,
+      }
+
   nanoid@3.3.17:
     resolution:
       {
@@ -7338,6 +7378,12 @@ packages:
       }
     engines: { node: ">=16.0.0" }
     hasBin: true
+
+  nbtify@2.2.0:
+    resolution:
+      {
+        integrity: sha512-xlMI29ZAB4ZCBJRnoa+L8al8uKMTLSwrcx13LbdhFLc3KwJb0sWS4/OcKEN2UcjQOVNyk+CqDWfYvPLOo8of/g==,
+      }
 
   negotiator@1.0.0:
     resolution:
@@ -7622,6 +7668,12 @@ packages:
     resolution:
       {
         integrity: sha512-UEZIS3/by4OC8vL3P2dTXRETpebLI2NiI5vIrjaD/5UtrkFX/tNbwjTSRAGC/+7CAo2pIcBaRgWmcBBHcsaCIw==,
+      }
+
+  pako@3.0.3:
+    resolution:
+      {
+        integrity: sha512-tmrebBBYI5FOw8QICGwJNqE8fotC8R+gwcxOvoFNv+GKehOI6Lc6YBolNcQNnC4v96l1wt7rh102ifD4kVeZAQ==,
       }
 
   parent-module@1.0.1:
@@ -12495,10 +12547,10 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.23.9
 
-  drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(postgres@3.4.9):
+  drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(postgres@3.4.9(patch_hash=4389a11287604ec2f70ca3230fe616c50e0305a5437000d32fb3db883acbe69d)):
     optionalDependencies:
       "@electric-sql/pglite": 0.5.4
-      postgres: 3.4.9
+      postgres: 3.4.9(patch_hash=4389a11287604ec2f70ca3230fe616c50e0305a5437000d32fb3db883acbe69d)
 
   dunder-proto@1.0.1:
     dependencies:
@@ -13879,6 +13931,8 @@ snapshots:
       dns-packet: 5.6.1
       thunky: 1.1.0
 
+  mutf-8@1.1.4: {}
+
   nanoid@3.3.17: {}
 
   native-run@2.0.3(supports-color@10.2.2):
@@ -13896,6 +13950,10 @@ snapshots:
       yauzl: 2.10.0
     transitivePeerDependencies:
       - supports-color
+
+  nbtify@2.2.0:
+    dependencies:
+      mutf-8: 1.1.4
 
   negotiator@1.0.0: {}
 
@@ -14026,6 +14084,8 @@ snapshots:
 
   package-json-from-dist@1.0.1: {}
 
+  pako@3.0.3: {}
+
   parent-module@1.0.1:
     dependencies:
       callsites: 3.1.0
@@ -14125,7 +14185,8 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postgres@3.4.9: {}
+  postgres@3.4.9(patch_hash=4389a11287604ec2f70ca3230fe616c50e0305a5437000d32fb3db883acbe69d):
+    {}
 
   powershell-utils@0.1.0: {}
 

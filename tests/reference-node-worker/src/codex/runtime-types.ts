@@ -1,0 +1,719 @@
+import type { InferenceOperationSource } from "../inference-admission.js";
+import type { InferenceRecoveryIdentity } from "../inference-journal.js";
+import type {
+  ChildProcessWithoutNullStreams,
+  ProcessEnvOptions,
+} from "node:child_process";
+import type {
+  AgentActivity,
+  AgentInteractionResponse,
+  AgentInteractionRuntimeRequest,
+  AgentScope,
+  AgentTurnResult,
+  ChatAttachmentSummary,
+  ChatRelocationContextPayload,
+  CodexEventCorrelation,
+  McpServerConfiguration,
+  NativeInitialTurnSettings,
+  NativeTurnSuspension,
+  NormalizedAgentMessage,
+  PendingPlanQuestion,
+  PermissionTransition,
+  PlanMode,
+  PlanStep,
+  WorkerCommand,
+} from "@cantrip/protocol";
+import type {
+  CommandExecutionItem,
+  ThreadTokenUsageUpdatedParams,
+  TokenUsageBreakdown,
+  TurnError,
+  WorkspaceSnapshot,
+} from "./event-types.js";
+import type { CodexExecutionLifetime } from "./execution-lifetime.js";
+import type { RuntimeProvider } from "./external-chatgpt-auth.js";
+import type { MeasuredAgentUsage } from "@cantrip/protocol/agent-usage";
+import type { NativeThreadSettings } from "./native-thread-settings.js";
+import type { ManagedHistoryImport } from "./managed-history-transfer.js";
+import type { CodexInferenceExecution } from "./inference-admission.js";
+
+export type CodexProcessLauncher = (
+  binary: string,
+  arguments_: string[],
+  options: ProcessEnvOptions,
+) => ChildProcessWithoutNullStreams;
+
+export interface CodexNativeEnvironment {
+  readonly selection: {
+    environmentId: string;
+    cwd: string;
+    runtimeWorkspaceRoots: string[];
+  };
+  readonly instructions: string;
+  prepare(codexHome: string): Promise<void>;
+  hasGitMetadata(cwd: string): Promise<boolean>;
+  snapshot(cwd: string): Promise<WorkspaceSnapshot>;
+  materializeAttachments?(
+    chatId: string,
+    attachments: readonly RuntimeChatAttachment[],
+  ): Promise<GuestRuntimeAttachment[]>;
+}
+
+export interface RpcError {
+  code: number;
+  message: string;
+}
+
+export interface RpcMessage {
+  historyCursor?: unknown;
+  error?: RpcError;
+  id?: number | string;
+  method?: string;
+  params?: unknown;
+  result?: unknown;
+}
+
+export interface PendingRpcRequest {
+  method: string;
+  reject(error: Error): void;
+  resolve(result: unknown): void;
+  startedAtMs: number;
+  timeout: ReturnType<typeof setTimeout> | undefined;
+}
+
+export interface ActiveTurn {
+  goalCompletion?: {
+    turnId: string;
+    text: string;
+    checkpointPublished: boolean;
+  };
+  nativeModelAttribution?: import("@cantrip/protocol").NativeTurnModelAttribution;
+  initialSettings?: NativeInitialTurnSettings;
+  inheritThreadSettings?: boolean;
+  admission?: {
+    operationGeneration: string;
+    controller: AbortController;
+    initialTurnId: string | null;
+    resolvedRequestIds: Set<string>;
+  };
+  agentScope: AgentScope | null;
+  baseline: WorkspaceSnapshot;
+  chatId: string | null;
+  collaborationMode: NativeCollaborationMode | null;
+  contextCompactionRequestedAtMs: number | null;
+  contextUsage: ThreadTokenUsageUpdatedParams["tokenUsage"] | null;
+  contextUsageUpdatedAtMs: number | null;
+  captureProtectedDiagnostics: boolean;
+  commandTelemetry: Map<string, ActiveCommandTelemetry>;
+  completedCommandIds: Set<string>;
+  cwd: string;
+  delta: string;
+  diffChanges: FileActivityChange[];
+  durationMs: number | null;
+  executionKind: "chat" | "operation";
+  executionLaneId: string | null;
+  fileStartedAtMs: Map<string, number>;
+  finalText: string | null;
+  interactionMode: "interactive" | "preauthorized";
+  interruptionRequestedAtMs: number | null;
+  itemStartedAtMs: Map<string, number>;
+  latestUsage: TokenUsageBreakdown | null;
+  liveAgentMessageFingerprints: Set<string>;
+  observedActivityFingerprints: Set<string>;
+  model: RunAgentTurnOptions["model"];
+  providerId: string;
+  providerKind: string;
+  onActivity?: (activity: AgentActivity) => void;
+  onMessage?: (message: NormalizedAgentMessage) => void;
+  onInteractionCleared?: (
+    requestKey: string,
+    response?: AgentInteractionResponse,
+  ) => void;
+  onInteractionExpired?: (requestKey: string) => void;
+  onInteractionRequest?: (request: AgentInteractionRuntimeRequest) => void;
+  onNativeInteractionRequest?: (
+    request: AdmittedNativeReply,
+  ) => void | Promise<void>;
+  onCheckpoint?: (checkpoint: { text: string; turnId: string }) => void;
+  onPlan?: (plan: {
+    explanation: string | null;
+    steps: PlanStep[];
+    turnId: string;
+  }) => void;
+  onPlanQuestion?: (question: PendingPlanQuestion) => void;
+  onPlanQuestionResolved?: (questionId: string) => void;
+  pendingActivities: Map<string, AgentActivity>;
+  pendingAgentMessage: NormalizedAgentMessage | null;
+  reasoningSummaries: Map<string, string[]>;
+  reject(error: Error): void;
+  resolve(result: AgentTurnResult | AgentOperationResult): void;
+  startedAtMs: number;
+  streamingAgentMessage: StreamingAgentMessage | null;
+  structuredChat: boolean;
+  threadId: string;
+  timeout: ReturnType<typeof setTimeout> | null;
+  structuredOutputSchema: Record<string, unknown> | null;
+}
+
+export type AgentEventState = Pick<
+  ActiveTurn,
+  | "agentScope"
+  | "initialSettings"
+  | "nativeModelAttribution"
+  | "captureProtectedDiagnostics"
+  | "commandTelemetry"
+  | "completedCommandIds"
+  | "cwd"
+  | "delta"
+  | "diffChanges"
+  | "fileStartedAtMs"
+  | "finalText"
+  | "itemStartedAtMs"
+  | "latestUsage"
+  | "liveAgentMessageFingerprints"
+  | "observedActivityFingerprints"
+  | "onActivity"
+  | "onMessage"
+  | "pendingActivities"
+  | "pendingAgentMessage"
+  | "reasoningSummaries"
+  | "startedAtMs"
+  | "streamingAgentMessage"
+  | "structuredChat"
+>;
+
+export type AgentRuntimeStatus =
+  "starting" | "running" | "idle" | "completed" | "failed" | "interrupted";
+
+export interface AgentRuntimeState extends AgentEventState {
+  computerUseLifetime: CodexExecutionLifetime;
+  agentPath: string[];
+  currentTurnId: string | null;
+  depth: number;
+  lastActiveAtMs: number;
+  nickname: string | null;
+  parentThreadId: string;
+  role: string | null;
+  segmentTurnIds: Set<string>;
+  status: AgentRuntimeStatus;
+  threadId: string;
+}
+
+export interface RootExecution {
+  computerUseLifetime: CodexExecutionLifetime;
+  active: ActiveTurn;
+  agents: Map<string, AgentRuntimeState>;
+  rootThreadId: string;
+  rootTurnId: string | null;
+}
+
+export interface ChildThreadMetadata {
+  agentPath?: string | null;
+  depth?: number | null;
+  nickname?: string | null;
+  parentThreadId: string;
+  role?: string | null;
+  threadId: string;
+}
+
+export interface AgentNotificationTarget {
+  active: ActiveTurn;
+  execution: RootExecution;
+  isRoot: boolean;
+  state: AgentEventState;
+}
+
+export type FileActivityChange = Extract<
+  AgentActivity,
+  { type: "fileChange" }
+>["changes"][number];
+
+export interface CommandOutputBuffer {
+  output: string | null;
+  truncated: boolean;
+}
+
+export interface CommandTelemetryValue extends CommandOutputBuffer {
+  startedAtMs: number;
+  updatedAtMs: number;
+}
+
+export interface ActiveCommandTelemetry extends CommandTelemetryValue {
+  correlation: CodexEventCorrelation;
+  flushTimer: ReturnType<typeof setTimeout> | null;
+  item: CommandExecutionItem | null;
+}
+
+interface StreamingAgentMessage {
+  correlation: CodexEventCorrelation;
+  flushTimer: ReturnType<typeof setTimeout> | null;
+  id: string;
+  lastEmittedText: string;
+  phase: NormalizedAgentMessage["phase"];
+  text: string;
+}
+
+export type CodexExternalThreadChangeKind = "turn" | "goal" | "queue" | "plan";
+
+export interface CodexExternalThreadChange {
+  changes: CodexExternalThreadChangeKind[];
+  revision: number;
+  threadId: string;
+}
+
+export interface ThreadResponse {
+  thread: { id: string };
+}
+
+export interface TurnStartResponse {
+  turn: { id: string };
+}
+
+export interface TurnStartedParams {
+  threadId: string;
+  initialSettings?: NativeInitialTurnSettings;
+  turn: {
+    id: string;
+    startedAt?: number | null;
+  };
+}
+
+export interface TurnCompletedParams {
+  threadId: string;
+  turn: {
+    completedAt?: number | null;
+    durationMs?: number | null;
+    error: TurnError | null;
+    id: string;
+    startedAt?: number | null;
+    status: "completed" | "failed" | "interrupted" | "inProgress";
+  };
+}
+
+export interface ThreadStartedParams {
+  thread: {
+    agentNickname?: string | null;
+    agentRole?: string | null;
+    id: string;
+    parentThreadId?: string | null;
+    source?: unknown;
+    status?: { type?: string };
+  };
+}
+
+export interface ThreadStatusChangedParams {
+  status: { type?: string };
+  threadId: string;
+}
+
+export interface NativeCollaborationMode {
+  mode: PlanMode;
+  settings: {
+    model: string;
+    reasoning_effort: RunAgentTurnOptions["model"]["reasoningEffort"];
+    developer_instructions: null;
+  };
+}
+
+export interface NativeCollaborationModeListResponse {
+  data: Array<{
+    mode: PlanMode | null;
+    model: string | null;
+    reasoning_effort: RunAgentTurnOptions["model"]["reasoningEffort"];
+  }>;
+}
+
+export interface TurnPlanUpdatedParams {
+  threadId: string;
+  turnId: string;
+  explanation: string | null;
+  plan: PlanStep[];
+}
+
+export interface ToolRequestUserInputParams {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  questions: PendingPlanQuestion["questions"];
+  autoResolutionMs: number | null;
+}
+
+export interface ServerRequestResolvedParams {
+  threadId: string;
+  requestId: number | string;
+}
+
+export interface NativePendingPlanQuestion {
+  active: ActiveTurn;
+  question: PendingPlanQuestion;
+  requestKey: string;
+}
+
+export interface NativePendingAgentInteraction {
+  stopPublication?: () => void;
+  requestMethod: string;
+  active: ActiveTurn;
+  request: AgentInteractionRuntimeRequest;
+  rpcId: number | string;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
+export interface RunAgentTurnRetry {
+  reason: "capacity" | "invalid-compaction";
+  attempt: number;
+  operationGeneration: string | null;
+  threadId: string | null;
+  turnId: string | null;
+  nextThreadId: string | null;
+  error: unknown;
+  signal: AbortSignal;
+}
+
+export interface RunAgentTurnOptions {
+  /** The existing Task lifecycle owns input; native cycles still need provider admission. */
+  taskOwned?: boolean;
+  /** Immutable canonical dispatch cycle for native Task Goal continuations.
+   * Null explicitly removes a preceding Goal cycle's private association. */
+  taskGoalCycleId?: string | null;
+  /** The current provider FIFO episode. Account/model changes keep it; a
+   * committed provider switch increments it before the next native begin. */
+  taskGoalOrderEpoch?: number;
+  /** First-message metadata is serial with this turn, never a concurrent borrower. */
+  initialLabel?: {
+    providerId: string;
+    run(
+      inference?: CodexInferenceExecution,
+      signal?: AbortSignal,
+    ): Promise<void>;
+  };
+  /** Shared managed preparation owns configuration; this input inherits the native
+   * thread selection instead of replaying a possibly stale GUI bootstrap model. */
+  inheritThreadSettings?: boolean;
+  /** Already protected, complete native queue vector. Never flatten or append inferred skills. */
+  nativeInput?: ReadonlyArray<Record<string, unknown>>;
+  nativeClientUserMessageId?: string;
+  operationGeneration?: string;
+  /** Exact current canonical GUI owner, retained through its whole operation. */
+  inferenceSource?: InferenceOperationSource;
+  /** Read after managed preparation/retry selected the exact canonical attempt. */
+  inferenceRecovery?: () => InferenceRecoveryIdentity;
+  /** Exact logical-root cancellation before native dispatch; never a chat-wide active-turn interrupt. */
+  preparationSignal?: AbortSignal;
+  /** Performs initial managed preparation inside native retry/cancellation handling, without model input. */
+  onBeforeFirstAttempt?: (
+    signal: AbortSignal,
+  ) => Promise<Partial<RunAgentTurnOptions>>;
+  /** Replaces authority/options for an actual new native attempt after retry delay. */
+  onBeforeRetry?: (
+    retry: RunAgentTurnRetry,
+  ) => Promise<Partial<RunAgentTurnOptions>>;
+  onBeforeNativeDispatch?: (threadId: string) => Promise<void>;
+  onNativeReceipt?: (receipt: { turn: { id: string } }) => Promise<void>;
+  /** Settle a received turn/start rejection; transport loss has no rejection receipt. */
+  onNativeRejected?: (input: {
+    threadId: string;
+    frame: { error: { code: number; message: string; data?: unknown } };
+  }) => Promise<void>;
+  /** Persist an explicitly unconsumed input before ending this GUI attempt. */
+  onNativeDeferred?: (input: {
+    threadId: string;
+    nativeInput: ReadonlyArray<Record<string, unknown>>;
+    frame: { error: { code: number; message: string; data?: unknown } };
+  }) => Promise<void>;
+  onNativeInteractionRequest?: (
+    request: AdmittedNativeReply,
+  ) => void | Promise<void>;
+  attachments?: RuntimeChatAttachment[];
+  chatId: string;
+  /** Canonical project scope; standalone turns omit it. */
+  projectId?: string | null;
+  captureProtectedDiagnostics: boolean;
+  clientMessageId: string;
+  cwd: string;
+  executionProfile: "ide" | "standalone-chat";
+  executionLaneId?: string;
+  isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
+  model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+  mcpServers?: McpServerConfiguration[];
+  automationPaused: Extract<
+    WorkerCommand,
+    { type: "chat.turn" }
+  >["automationPaused"];
+  planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
+  policyContext: string | null;
+  resultMode?: Extract<WorkerCommand, { type: "chat.turn" }>["resultMode"];
+  provider: RuntimeProvider;
+  permissionProfileId: Extract<
+    WorkerCommand,
+    { type: "chat.turn" }
+  >["permissionProfileId"];
+  prompt: string;
+  rootKind: Extract<WorkerCommand, { type: "chat.turn" }>["rootKind"];
+  skillNames: string[];
+  subagentDefaults: RuntimeSubagentDefaults | null;
+  subagentProtocolVersion: Extract<
+    WorkerCommand,
+    { type: "chat.turn" }
+  >["subagentProtocolVersion"];
+  threadId: string | null;
+  worktreeMode: Extract<WorkerCommand, { type: "chat.turn" }>["worktreeMode"];
+  worktreePolicy: Extract<
+    WorkerCommand,
+    { type: "chat.turn" }
+  >["worktreePolicy"];
+  onActivity?: (activity: AgentActivity) => void;
+  onMessage?: ActiveTurn["onMessage"];
+  onInteractionCleared?: ActiveTurn["onInteractionCleared"];
+  onInteractionExpired?: ActiveTurn["onInteractionExpired"];
+  onInteractionRequest?: ActiveTurn["onInteractionRequest"];
+  onCheckpoint?: ActiveTurn["onCheckpoint"];
+  onPlan?: ActiveTurn["onPlan"];
+  onPlanQuestion?: ActiveTurn["onPlanQuestion"];
+  onPlanQuestionResolved?: ActiveTurn["onPlanQuestionResolved"];
+  onThreadLoaded?: (threadId: string) => void;
+}
+
+export type PrepareAdmittedNativeExecutionOptions = Pick<
+  RunAgentTurnOptions,
+  | "chatId"
+  | "cwd"
+  | "executionLaneId"
+  | "model"
+  | "provider"
+  | "captureProtectedDiagnostics"
+  | "onActivity"
+  | "onMessage"
+  | "onInteractionCleared"
+  | "onInteractionExpired"
+  | "onInteractionRequest"
+  | "onCheckpoint"
+  | "onPlan"
+  | "onPlanQuestion"
+  | "onPlanQuestionResolved"
+  | "onNativeInteractionRequest"
+> & {
+  operationGeneration: string;
+  /** Process bootstrap profile for an explicitly restored observer. */
+  executionProfile?: RunAgentTurnOptions["executionProfile"];
+  recovery?: InferenceRecoveryIdentity;
+  recoveryKey?: string;
+  threadId: string;
+  /** Native preallocated identity. Matching it does not itself start a turn. */
+  expectedTurnId?: string;
+  /** Current one-time command admission, never a reconstructed receipt cache. */
+  inferenceSource?: InferenceOperationSource;
+  /** Execution-owner cancellation while waiting for provider capacity. */
+  inferenceSignal?: AbortSignal;
+  /** Observation only, after the worker journal acknowledges enqueue. */
+  onInferenceQueued?: () => Promise<void>;
+};
+
+export interface ManagedExecutionAttempt {
+  threadId: string;
+  runnerGeneration: string;
+  attemptId: string;
+  turnId: string;
+  trigger: "goal" | "queue";
+  goalEpoch?: string;
+  input: Record<string, unknown>;
+}
+
+export interface ManagedExecutionDeclined extends Omit<
+  ManagedExecutionAttempt,
+  "input" | "trigger"
+> {
+  operationGeneration: string | null;
+  reason: string;
+}
+
+export interface ManagedExecutionResolution {
+  threadId: string;
+  runnerGeneration: string;
+  attemptId: string;
+  operationGeneration: string | null;
+  allow: boolean;
+}
+
+export interface ManagedExecutionGateHandler {
+  requested(
+    attempt: ManagedExecutionAttempt,
+    signal: AbortSignal,
+  ): Promise<void>;
+  declined(event: ManagedExecutionDeclined): void | Promise<void>;
+  failed(error: unknown): void;
+}
+
+export interface ManagedNativeGuiCommand {
+  /** Editing the objective does not authorize resuming paused automation. */
+  goalObjectiveOnly?: boolean;
+  permissionTransition?: PermissionTransition;
+  operationId?: string;
+  /** Server-issued settings source; metadata, never a native API parameter. */
+  settingsBindingId?: string;
+  queueClaim?: { id: string; promptRevision: number };
+  method: string;
+  params: Record<string, unknown>;
+  reply?: {
+    requestId: string | number;
+    requestMethod: string;
+    turnId: string | null;
+  };
+  /** Executes the exact already resolved native mutation once admission succeeds. */
+  dispatch(forward?: {
+    method: string;
+    params: Record<string, unknown>;
+  }): Promise<unknown>;
+}
+
+export type ManagedNativeCommandDispatcher = (
+  command: ManagedNativeGuiCommand,
+) => Promise<unknown>;
+
+export interface AdmittedNativeReplyIdentity {
+  operationGeneration: string;
+  rootThreadId: string;
+  requestId: string | number;
+}
+
+export interface AdmittedNativeReply extends AdmittedNativeReplyIdentity {
+  requestKey: string;
+  requestMethod: string;
+  threadId: string;
+  turnId: string | null;
+  kind: AgentInteractionRuntimeRequest["payload"]["kind"];
+}
+
+export type AdmittedNativeReplyResponse =
+  | { result: unknown; error?: never }
+  | {
+      error: { code: number; message: string; data?: unknown };
+      result?: never;
+    };
+
+/** Registration of an already admitted operation, before its native mutation. */
+export interface AdmittedNativeExecution {
+  readonly operationGeneration: string;
+  readonly threadId: string;
+  /** Whole operation lifetime; actual root/child turn signals remain separate. */
+  readonly signal: AbortSignal;
+  readonly completion: Promise<AgentTurnResult>;
+  assertCurrent(): void;
+  /** Actual native receipt, never fabricated to create a turn identity. */
+  bindReceipt(receipt: unknown): void;
+  /** Bind an actually inspected held continuation without a new TurnStarted. */
+  bindRestoredSuspension(suspension: NativeTurnSuspension): void;
+  fail(error: Error): void;
+  /** Grant has reached the exact native forwarding boundary. */
+  dispatchInference?(): void;
+  /** Wait for current capacity and seal withdrawal before native dispatch. */
+  prepareInputDispatch?(): Promise<void>;
+  /** Actual rejected native start receipt, never a timeout. */
+  rejectInference?(): void;
+}
+
+export interface RuntimeSubagentDefaults {
+  model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+  provider: RuntimeProvider;
+}
+
+export interface RunAgentOperationOptions {
+  operationId: string;
+  cwd: string;
+  prompt: string;
+  developerInstructions: string | null;
+  skillNames: string[];
+  outputSchema: Record<string, unknown>;
+  mutationMode: "read-only" | "write";
+  networkAccess: "none" | "restricted" | "unrestricted";
+  permissionProfileId: string | null;
+  timeoutMs: number;
+  model: RunAgentTurnOptions["model"];
+  mcpServers: McpServerConfiguration[];
+  provider: RuntimeProvider;
+}
+
+export interface AgentOperationResult {
+  threadId: string;
+  turnId: string;
+  text: string;
+  structuredResult: unknown;
+  measuredUsage: MeasuredAgentUsage;
+  status: "completed";
+}
+
+/** A materialized guest reference must never be passed to Host localImage. */
+export interface GuestRuntimeAttachment extends ChatAttachmentSummary {
+  guestPath: string;
+}
+
+export interface RuntimeChatAttachment extends ChatAttachmentSummary {
+  path: string;
+}
+
+export type GoalRuntimeOptions = Pick<
+  RunAgentTurnOptions,
+  | "cwd"
+  | "mcpServers"
+  | "model"
+  | "permissionProfileId"
+  | "provider"
+  | "threadId"
+> & {
+  chatId?: string;
+  projectId?: string | null;
+  taskOwned?: boolean;
+  taskGoalCycleId?: string | null;
+  taskGoalOrderEpoch?: number;
+  subagentDefaults?: RuntimeSubagentDefaults | null;
+  planMode?: PlanMode;
+};
+
+export interface NativeReplacementSettings {
+  sourceThreadId: string;
+  transportGeneration: string | null;
+  sourcePreparationVersion: number;
+  settings: NativeThreadSettings;
+}
+
+export interface PrepareManagedThreadOptions extends GoalRuntimeOptions {
+  /** Hold attachment before recovery/prewarm, including with missing checkpoint
+   * contents. Explicit restoration inspects the actual continuation separately. */
+  expectedSuspension?: NativeTurnSuspension;
+  /** Actual source Core settings, restored before replacement handoff. */
+  replacementSettings?: NativeReplacementSettings;
+  signal?: AbortSignal;
+  canonicalHistory?: boolean;
+  executionGate?: { runnerGeneration: string; inferenceOnly?: boolean };
+  executionProfile: RunAgentTurnOptions["executionProfile"];
+  subagentDefaults: RuntimeSubagentDefaults | null;
+  planMode: PlanMode;
+  intent: "configure" | "preserve";
+  /** Bind identity before later initialization can fail or a view can attach. */
+  onThreadIdentified?: (threadId: string) => void | Promise<void>;
+}
+
+export type PrepareImportedManagedThreadOptions = Omit<
+  PrepareManagedThreadOptions,
+  "threadId" | "intent" | "replacementSettings"
+> & { transfer: ManagedHistoryImport };
+
+export interface HydrateChatRelocationOptions extends GoalRuntimeOptions {
+  payload: ChatRelocationContextPayload;
+  planMode: PlanMode;
+  requiredSkillNames: string[];
+  onThreadStarted(threadId: string): Promise<void>;
+}
+
+export interface CodexSkill {
+  name: string;
+  description: string;
+  displayName: string | null;
+  path: string | null;
+}
+
+export type CompactAgentThreadOptions = Pick<
+  RunAgentTurnOptions,
+  "cwd" | "executionProfile" | "model" | "permissionProfileId" | "provider"
+> & {
+  threadId: string;
+};

@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import { streamingHttpRequest } from "./streaming-http-request.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 
 export async function chatMessageHttpRaces({
@@ -139,13 +139,19 @@ export async function chatMessageHttpRaces({
         committed: 1,
       });
     }
-    const duplicate = await protect(62, agent, [
+    const competingContent = [
       { type: "text", text: "SENTINEL competing idempotency writers" },
-    ]);
+    ];
+    const duplicate = await protect(62, agent, competingContent);
+    const conflicting = await protect(62, agent, competingContent);
+    assert.notDeepEqual(
+      duplicate.protectedContent,
+      conflicting.protectedContent,
+    );
     const pid = await lock("projects", project);
     const first = call(agent, duplicate);
     await waiting(pid, 1);
-    const second = call(agent, duplicate);
+    const second = call(agent, conflicting);
     await waiting(pid, 2);
     await release();
     const replies = await Promise.all([first, second]);

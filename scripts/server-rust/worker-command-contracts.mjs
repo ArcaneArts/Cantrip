@@ -27,6 +27,39 @@ function at(schema, path) {
 }
 export function registerWorkerCommandContracts(register) {
   register(
+    variant(
+      p.explorerOperationRequestContentSchema,
+      "type",
+      "explorer.binary.read",
+    ),
+    0,
+    "worker-command-binary-read",
+  );
+  register(p.explorerBinaryPageSchema, 0, "worker-command-binary-page");
+  register(p.binaryWriteReceiptSchema, 0, "worker-command-binary-receipt");
+  register(
+    p.terminalPrivateDirectorySchema.options[1].shape.path,
+    0,
+    "worker-command-private-directory",
+  );
+  register(
+    p.fileDocumentPrivateStateProtectedContentSchema.shape.path,
+    0,
+    "worker-command-nul-free",
+  );
+  register(
+    p.browserPrivateStateProtectedContentSchema.shape.url,
+    0,
+    "worker-command-private-http-url",
+  );
+  register(p.explorerEntryNameSchema, 0, "worker-command-explorer-name");
+  register(p.cantripOsPackageArtifactsSchema, 0, "cantrip-os-unique-packages");
+  register(
+    p.cantripOsPackageOperationCommandSchema,
+    0,
+    "cantrip-os-package-repair",
+  );
+  register(
     p.protectedSecretEnvelopeSchema,
     0,
     "worker-command-protected-bytes:2097152",
@@ -45,11 +78,6 @@ export function registerWorkerCommandContracts(register) {
     ]),
     0,
     "worker-command-unique",
-  );
-  register(
-    p.taskWorkerModelConfigurationSchema,
-    1,
-    "worker-command-task-model",
   );
   register(p.taskAutomaticRetrySchema, 0, "worker-command-retry");
   register(at(command("chat.steer"), []), 0, "worker-command-steer");
@@ -120,6 +148,16 @@ export function registerWorkerCommandContracts(register) {
     at(command("surface.attach"), []),
     0,
     "worker-command-surface-command",
+  );
+  register(
+    at(command("surface.desktop.os-prepare"), []),
+    0,
+    "worker-command-os-desktop-prepare",
+  );
+  register(
+    at(command("surface.tunnel.os-prepare"), []),
+    0,
+    "worker-command-os-tunnel-prepare",
   );
   register(
     p.terminalPrivateStateOpaqueSchema,
@@ -780,6 +818,8 @@ export function registerWorkerCommandContracts(register) {
     if (shape.branch) forwards.set(shape.branch, gitBranchNameInputSchema);
     forwards.set(shape.target, gitRevisionInputSchema);
   }
+  forwards.set(p.gitRecoveryPreviewSchema.shape.status, p.gitStatusSchema);
+  forwards.set(p.gitRecoveryResultSchema.shape.status, p.gitStatusSchema);
   for (const [lazy, target] of forwards) {
     if (
       lazy._zod.def.type !== "lazy" ||

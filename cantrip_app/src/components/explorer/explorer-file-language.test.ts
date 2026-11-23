@@ -30,6 +30,10 @@ describe("explorer file editing", () => {
     expect(defaultExplorerFileMode(".env")).toBe("edit");
     expect(defaultExplorerFileMode("scripts/setup.ps1")).toBe("edit");
     expect(defaultExplorerFileMode("Cantrip.csproj")).toBe("edit");
+    expect(defaultExplorerFileMode("daemon.log")).toBe("preview");
+    expect(defaultExplorerFileMode("logs/SERVER.LOG")).toBe("preview");
+    expect(defaultExplorerFileMode("logs/daemon.log.1")).toBe("preview");
+    expect(defaultExplorerFileMode("log.rs")).toBe("edit");
     expect(defaultExplorerFileMode("README.md")).toBe("preview");
     expect(defaultExplorerFileMode("docs/guide.mdx")).toBe("preview");
     expect(defaultExplorerFileMode("unrecognized.extension")).toBe("edit");

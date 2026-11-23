@@ -1,6 +1,15 @@
-import type { ModelProfileSummary } from "@cantrip/protocol";
+import {
+  isLanguageModelProfile,
+  modelProfileOperation,
+  type ModelOperation,
+  type ModelProfileSummary,
+} from "@cantrip/protocol";
 import { Check, ChevronsUpDown } from "lucide-react";
-import { useRef, useState, type Ref } from "react";
+import { defaultFilter } from "cmdk";
+import { useEffect, useMemo, useRef, useState, type Ref } from "react";
+import { modelSearchText, useConfiguredModelSearch } from "./model-search";
+export { modelSearchText, filterConfiguredModels } from "./model-search";
+import { ListPageControls } from "@/components/ui/list-page-controls";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,10 +28,12 @@ import {
 import { cn } from "@/lib/utils";
 
 export interface ModelComboboxProps {
+  operation?: ModelOperation;
   ariaLabel: string;
   className?: string;
   disabled?: boolean;
   emptyMessage?: string;
+  noneLabel?: string;
   getOptionDisabled?(model: ModelProfileSummary): boolean;
   getOptionNote?(model: ModelProfileSummary): string | null | undefined;
   models: ModelProfileSummary[];
@@ -32,30 +43,9 @@ export interface ModelComboboxProps {
   onValueChange(value: string): void;
 }
 
-export function modelSearchText(model: ModelProfileSummary): string {
-  return [
-    model.id,
-    model.name,
-    model.canonicalModelId,
-    ...model.routes.flatMap((route) => [route.providerName, route.modelName]),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLocaleLowerCase();
-}
-
-export function filterConfiguredModels(
-  models: ModelProfileSummary[],
-  query: string,
-): ModelProfileSummary[] {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  return normalizedQuery
-    ? models.filter((model) => modelSearchText(model).includes(normalizedQuery))
-    : models;
-}
-
 export function ModelComboboxMenu({
   emptyMessage = "No models found.",
+  noneLabel,
   getOptionDisabled,
   getOptionNote,
   inputRef,
@@ -67,6 +57,7 @@ export function ModelComboboxMenu({
   setQuery,
 }: {
   emptyMessage?: string;
+  noneLabel?: string;
   getOptionDisabled?(model: ModelProfileSummary): boolean;
   getOptionNote?(model: ModelProfileSummary): string | null | undefined;
   inputRef?: Ref<HTMLInputElement>;
@@ -77,27 +68,80 @@ export function ModelComboboxMenu({
   selectedValue: string | null;
   setQuery(query: string): void;
 }) {
+  const matches = useConfiguredModelSearch(models, query);
+  const [position, setPosition] = useState({ query, page: 0 });
+  const pageSize = 100;
+  const page = Math.min(
+    position.query === query ? position.page : 0,
+    Math.max(0, Math.ceil(matches.length / pageSize) - 1),
+  );
+  const visible = matches.slice(page * pageSize, (page + 1) * pageSize);
+  const choices: {
+    model: ModelProfileSummary | null;
+    value: string;
+    score: number;
+  }[] = [];
+  if (noneLabel) {
+    const score = query ? defaultFilter(noneLabel, query) : 1;
+    if (score > 0) choices.push({ model: null, value: noneLabel, score });
+  }
+  for (const model of visible) {
+    const value = modelSearchText(model);
+    choices.push({
+      model,
+      value,
+      score: query ? defaultFilter(value, query) : 1,
+    });
+  }
+  if (query) choices.sort((left, right) => right.score - left.score);
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (list.current) list.current.scrollTop = 0;
+    setPosition((previous) =>
+      previous.query === query ? previous : { query, page: 0 },
+    );
+  }, [query, page]);
   return (
-    <Command>
+    <Command shouldFilter={false}>
       <CommandInput
         ref={inputRef}
         aria-label="Search models"
         autoFocus
         placeholder={searchPlaceholder}
         value={query}
-        onValueChange={setQuery}
+        onValueChange={(value) => {
+          setPosition({ query: value, page: 0 });
+          setQuery(value);
+        }}
       />
-      <CommandList className="max-h-72">
+      <CommandList ref={list} className="max-h-72">
         <CommandEmpty>{emptyMessage}</CommandEmpty>
         <CommandGroup>
-          {models.map((model) => {
+          {choices.map(({ model, value }) => {
+            if (!model)
+              return (
+                <CommandItem
+                  key="none"
+                  value={value}
+                  onSelect={() => onSelect("")}
+                >
+                  <span className="flex-1">{noneLabel}</span>
+                  <Check
+                    aria-hidden="true"
+                    className={cn(
+                      "size-4",
+                      selectedValue ? "opacity-0" : "opacity-100",
+                    )}
+                  />
+                </CommandItem>
+              );
             const optionDisabled = getOptionDisabled?.(model) ?? false;
             const note = getOptionNote?.(model);
             return (
               <CommandItem
                 key={model.id}
                 disabled={optionDisabled}
-                value={modelSearchText(model)}
+                value={value}
                 onSelect={() => onSelect(model.id)}
               >
                 <span className="min-w-0 flex-1 truncate">{model.name}</span>
@@ -118,6 +162,13 @@ export function ModelComboboxMenu({
           })}
         </CommandGroup>
       </CommandList>
+      <ListPageControls
+        count={matches.length}
+        page={page}
+        pageSize={pageSize}
+        label="model results"
+        onPageChange={(page) => setPosition({ query, page })}
+      />
     </Command>
   );
 }
@@ -127,9 +178,11 @@ export function ModelCombobox({
   className,
   disabled = false,
   emptyMessage,
+  noneLabel,
   getOptionDisabled,
   getOptionNote,
   models,
+  operation = "language",
   onValueChange,
   placeholder = "Select a model",
   searchPlaceholder,
@@ -138,7 +191,16 @@ export function ModelCombobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const selectedModel = models.find((model) => model.id === value);
+  const operationModels = useMemo(
+    () =>
+      models.filter((model) =>
+        operation === "language"
+          ? isLanguageModelProfile(model)
+          : modelProfileOperation(model) === operation,
+      ),
+    [models, operation],
+  );
+  const selectedModel = operationModels.find((model) => model.id === value);
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -185,10 +247,11 @@ export function ModelCombobox({
       >
         <ModelComboboxMenu
           emptyMessage={emptyMessage}
+          noneLabel={noneLabel}
           getOptionDisabled={getOptionDisabled}
           getOptionNote={getOptionNote}
           inputRef={inputRef}
-          models={models}
+          models={operationModels}
           query={query}
           searchPlaceholder={searchPlaceholder}
           selectedValue={value}

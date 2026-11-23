@@ -189,12 +189,15 @@ export function MobileSurfacePicker({
                           className="size-4"
                           filled={active}
                           kind={
-                            surface.kind === "chat" &&
-                            surface.entity.experience === "task"
-                              ? "task"
-                              : surface.kind === "unresolved"
-                                ? surface.member.tabKind
-                                : surface.kind
+                            surface.kind === "builtin" &&
+                            surface.entity.definitionId === "project.alerts"
+                              ? "alerts"
+                              : surface.kind === "chat" &&
+                                  surface.entity.experience === "task"
+                                ? "task"
+                                : surface.kind === "unresolved"
+                                  ? surface.member.tabKind
+                                  : surface.kind
                           }
                         />
                       </span>

@@ -1,0 +1,1047 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "b350b74c3d50b60364b0feff1f3322e64d9a0e31",
+  "platform": "darwin-arm64",
+  "scope": "Real production-router HTTP and unchanged worker transport with controlled checkpoint/outcome facts, endpoint cryptography, actual SQL failure, worker-process replacement, server restart and canonical storage reopen. No actual native Core execution or final shipping claim.",
+  "reports": [
+    {
+      "suite": "native-recovery-public-http",
+      "databaseMode": "pglite",
+      "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+      "sha256": "241f4c20cf746a3c6cfc0866e9f46142b8221720eff5926c2b4cc74786507c42",
+      "pairedHttpObservations": 296,
+      "cryptographicProofs": 168
+    },
+    {
+      "suite": "native-recovery-public-http",
+      "databaseMode": "bundled-postgres",
+      "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+      "sha256": "5d69d650255f7f055f01fab55b761bab64c18b3436bc442f1634337a60f8fb52",
+      "pairedHttpObservations": 296,
+      "cryptographicProofs": 168
+    },
+    {
+      "suite": "native-recovery-public-http",
+      "databaseMode": "postgres",
+      "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+      "sha256": "f115dc7543496536a43e2c6ee1f439fb6b750deda30cc546796482b5d444ff92",
+      "pairedHttpObservations": 296,
+      "cryptographicProofs": 168
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+      "sha256": "88b922d9f6e58de61dff4fb8f7e618e5c16c1fbe669cbbd577ec268314dd6011",
+      "requests": 928
+    },
+    {
+      "path": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+      "sha256": "ab759fcc00388868c24ee905440619ee223694d70fd16ace320223d7d3cadb37",
+      "requests": 928
+    },
+    {
+      "path": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+      "sha256": "b91c1bd546b8322d7ff36d9ae85f6e74b51a4bd75b37a8ff648cc29b45a767bd",
+      "requests": 928
+    }
+  ],
+  "routeMappings": [
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/suspension-execution",
+      "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 27,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 65,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 332,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 371,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 644,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 683,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 27,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 65,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 332,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 371,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 644,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 683,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 27,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 65,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 332,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 371,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 644,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 683,
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/task-goal-cycle-dispatch",
+      "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 172,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 216,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 481,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 526,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 793,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 838,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 172,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 216,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 481,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 526,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 793,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 838,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 172,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 216,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 481,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 526,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 793,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 838,
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/internal/native-commands/task-goal-outcome",
+      "implementation": "cantrip_server_rs/src/http/native_admission.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 161,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 205,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 470,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 515,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 782,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.requests.json",
+            "index": 827,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 161,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 205,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 470,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 515,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 782,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.requests.json",
+            "index": 827,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 161,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 205,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 470,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 515,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 782,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.requests.json",
+            "index": 827,
+            "status": 200
+          }
+        }
+      ]
+    }
+  ],
+  "workerCommandMappings": [],
+  "durableTableMappings": [
+    {
+      "tableName": "tasks",
+      "exportName": "tasks",
+      "implementation": "cantrip_server_rs/src/tasks/",
+      "scope": "The complete current Task row and endpoint ciphertext remain unchanged when an older round publishes history, including SQL rollback, worker replacement, server restart and exact replay.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/0/rawState/task"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/1/rawState/task"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/0/rawState/task"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/1/rawState/task"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/0/rawState/task"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/1/rawState/task"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/0/rawState/task"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/1/rawState/task"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/0/rawState/task"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/1/rawState/task"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/0/rawState/task"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/1/rawState/task"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/0/rawState/task"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/1/rawState/task"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/0/rawState/task"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/1/rawState/task"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/0/rawState/task"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/1/rawState/task"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "task_planning_rounds",
+      "exportName": "taskPlanningRounds",
+      "implementation": "cantrip_server_rs/src/tasks/round_input_history.rs",
+      "scope": "Historical round receipt validation, atomic protected answer/terminal commit, history-only outcome digest, exact replay and canonical input replacement/deletion retirement; the current newer Task and released lane are preserved.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/0/rawState/rounds"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/1/rawState/rounds"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/0/rawState/rounds"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/1/rawState/rounds"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/0/rawState/rounds"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/1/rawState/rounds"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/0/rawState/rounds"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/1/rawState/rounds"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/0/rawState/rounds"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/1/rawState/rounds"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/0/rawState/rounds"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/1/rawState/rounds"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/0/rawState/rounds"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/0/cases/3/outputs/1/rawState/rounds"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/0/rawState/rounds"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/1/cases/3/outputs/1/rawState/rounds"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/0/rawState/rounds"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/2/cases/3/outputs/1/rawState/rounds"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "task_dispatch_cycles",
+      "exportName": "taskDispatchCycles",
+      "implementation": "cantrip_server_rs/src/tasks/goal_cycle_recovery.rs",
+      "scope": "Actual worker-authorized Goal-cycle scope dispatch and stable publication identity, original-source authority, atomic protected answer/terminal commit and digest, rollback, worker replacement, restart and exact replay.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/0/cases/2/outputs/0/rawState/cycles"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/0/cases/2/outputs/1/rawState/cycles"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/1/cases/2/outputs/0/rawState/cycles"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/1/cases/2/outputs/1/rawState/cycles"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/2/cases/2/outputs/0/rawState/cycles"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-pglite-v10.json",
+            "pointer": "/profiles/2/cases/2/outputs/1/rawState/cycles"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/cases/2/outputs/0/rawState/cycles"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/0/cases/2/outputs/1/rawState/cycles"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/cases/2/outputs/0/rawState/cycles"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/1/cases/2/outputs/1/rawState/cycles"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/cases/2/outputs/0/rawState/cycles"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-bundled-postgres-v10.json",
+            "pointer": "/profiles/2/cases/2/outputs/1/rawState/cycles"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/0/cases/2/outputs/0/rawState/cycles"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/0/cases/2/outputs/1/rawState/cycles"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/1/cases/2/outputs/0/rawState/cycles"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/1/cases/2/outputs/1/rawState/cycles"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/2/cases/2/outputs/0/rawState/cycles"
+          },
+          "rust": {
+            "report": ".qa/rust-native-recovery/native-recovery-http-postgres-v10.json",
+            "pointer": "/profiles/2/cases/2/outputs/1/rawState/cycles"
+          }
+        }
+      ]
+    }
+  ],
+  "liveResourceMappings": [],
+  "counts": {
+    "pairedHttpObservations": 888,
+    "cryptographicProofs": 504,
+    "tracedRequests": 2784,
+    "newRoutes": 3,
+    "newWorkerCommands": 0,
+    "newDurableTables": 3,
+    "newLiveResources": 0
+  },
+  "productionFixes": [
+    "Preserve reference suspension error messages while stale worker generations retain code-only responses.",
+    "Return the committed autonomous Goal receipt without a Rust-only awaited worker observation that could fail after the durable transaction succeeded; remove its unused helper.",
+    "Preserve the reference sanitized global500 for autonomous Goal-cycle publisher conflicts while ordinary round/Goal conflicts retain409 stale-task-input."
+  ],
+  "frozenExecutables": {
+    "baseCommit": "b350b74c3d50b60364b0feff1f3322e64d9a0e31",
+    "executables": [
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-native-recovery-http/Cantrip/.qa/rust-native-recovery/helpers-v4/cantrip-server",
+        "bytes": 179413008,
+        "sha256": "22d1d925b1150e11be52288784d59acb716d9a22a2f5a9e71709e7194c5bcc5d"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-native-recovery-http/Cantrip/.qa/rust-native-recovery/helpers-v4/project-repository-fixture",
+        "bytes": 181320416,
+        "sha256": "38d288c327d858b8d2e05021ab7dc8f8944d4970ff644fe74e712fb5bd563776"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-native-recovery-http/Cantrip/.qa/rust-native-recovery/helpers-v4/http-sql-fixture",
+        "bytes": 179667056,
+        "sha256": "c008f0eef937f6ebdc39f2816b0a7cbad91e8924265a41a1a11f91b7e2835947"
+      }
+    ],
+    "sourceSha256": {
+      "cantrip_server_rs/src/http/native_admission.rs": "75819ffafb11e8b46c9cd88a3d2de938d5960418c8fae95744a631151a82d0b9",
+      "cantrip_server_rs/src/chats/goals/synchronize.rs": "7b69a0a2a285852d09a1108eb515d91ee362f12752ff27987d43ac677d369865"
+    }
+  },
+  "fixedSourceSha256": {
+    "cantrip_server_rs/src/http/native_admission.rs": "75819ffafb11e8b46c9cd88a3d2de938d5960418c8fae95744a631151a82d0b9",
+    "cantrip_server_rs/src/chats/goals/synchronize.rs": "7b69a0a2a285852d09a1108eb515d91ee362f12752ff27987d43ac677d369865"
+  },
+  "harnessSource": [
+    {
+      "path": "scripts/server-rust/native-recovery-http-goal.mjs",
+      "sha256": "b3b447f9feb2dade8371c39a14d964f30e1cf407e6cea83f966415089bfa50de",
+      "bytes": 17687
+    },
+    {
+      "path": "scripts/server-rust/native-recovery-http-goal-content.mjs",
+      "sha256": "bd64b1f8caacd044f92fddeb10b94b57e425e3a3d7f29bc9a50a4aae646952d8",
+      "bytes": 6899
+    },
+    {
+      "path": "scripts/server-rust/native-recovery-http-compatibility.mjs",
+      "sha256": "902f2775a883a91d7d111ec6edc806c88cd20928a26d098ac4ec07ddc0eaf275",
+      "bytes": 5791
+    },
+    {
+      "path": "scripts/server-rust/native-recovery-http-round.mjs",
+      "sha256": "ed98634c8c7f568766024ec2db5bbc7f30fd31008547d675f3b6a562e16265d8",
+      "bytes": 12136
+    },
+    {
+      "path": "scripts/server-rust/native-recovery-http-suspension.mjs",
+      "sha256": "2b10743103be489a5bf10f56c4865988048515a9e0aa6d7ba07ace1543fe6c98",
+      "bytes": 12833
+    },
+    {
+      "path": "scripts/server-rust/native-recovery-http-content.mjs",
+      "sha256": "aba1b6f910c9e2e18a71493a8c8b1a64ecc6259f2ed08ffc9be7c89b308fd62d",
+      "bytes": 3080
+    },
+    {
+      "path": "cantrip_server_rs/src/http/native_admission.rs",
+      "sha256": "75819ffafb11e8b46c9cd88a3d2de938d5960418c8fae95744a631151a82d0b9",
+      "bytes": 21682
+    },
+    {
+      "path": "cantrip_server_rs/src/chats/goals/synchronize.rs",
+      "sha256": "7b69a0a2a285852d09a1108eb515d91ee362f12752ff27987d43ac677d369865",
+      "bytes": 11209
+    }
+  ],
+  "retainedFailures": [
+    "v1 initial offline-dispatch assumption",
+    "v2 four Rust suspension error-body differences",
+    "v3 actual terminal idle/suspended startup fence",
+    "v4 SQL fixture alias",
+    "v5 actual committed Goal delivery returned500; independent reopened-state and real HTTP publisher-conflict probe",
+    "v6 explicit Goal terminal located on original user message",
+    "v7 optional asynchronous Goal read count/status comparison; raw requests and independent lifecycle/context validation retained",
+    "Clippy v1 collapsible_if; corrected and v2 passed"
+  ],
+  "retainedEvidenceDirectory": "rust-server-native-recovery-delivery-20261110-v1",
+  "remaining": [
+    "Actual native Core/TUI execution, complete product/fault/coordination and final supported-platform/package acceptance remain separate. This controlled worker provides checkpoint and outcome facts over the unchanged production connection protocol.",
+    "Active-round scheduling/projection and all other Task writers retain their existing separate qualification; historical-round preservation does not establish all Task behavior.",
+    "Remaining worker-command, durable-table and Live identities, historical partial scopes and original-goal final acceptance remain open."
+  ],
+  "localChecks": {
+    "library": {
+      "name": "library-tests-v1",
+      "command": [
+        "node",
+        "scripts/server-rust/cargo.mjs",
+        "test",
+        "--lib",
+        "--",
+        "--test-threads=2"
+      ],
+      "exitCode": 0
+    },
+    "clippy": {
+      "name": "clippy-v2",
+      "command": [
+        "node",
+        "scripts/server-rust/cargo.mjs",
+        "clippy",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exitCode": 0
+    },
+    "rustfmt": {
+      "command": "cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check",
+      "exitCode": 0
+    },
+    "pnpmCheck": {
+      "command": ["pnpm", "check"],
+      "exitCode": 1,
+      "result": "744 worker tests passed,2 capacity/backoff failures and2 unhandled errors; standard aggregate not green."
+    },
+    "cleanPrimaryWorkerReproduction": {
+      "command": [
+        "pnpm",
+        "--filter",
+        "@cantrip/worker",
+        "exec",
+        "vitest",
+        "run",
+        "test/app-server.test.ts",
+        "-t",
+        "retries terminal model-capacity failures on the same Codex thread|interrupts a pending model-capacity backoff"
+      ],
+      "cwd": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip",
+      "head": "b350b74c3d50b60364b0feff1f3322e64d9a0e31",
+      "exitCode": 1,
+      "files": [
+        {
+          "path": "cantrip_worker/test/app-server.test.ts",
+          "workingSha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+          "primarySha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+          "identical": true
+        },
+        {
+          "path": "cantrip_worker/src/codex/app-server.ts",
+          "workingSha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+          "primarySha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+          "identical": true
+        }
+      ]
+    },
+    "fullFormat": {
+      "command": ["pnpm", "format:check"],
+      "exitCode": 1
+    },
+    "formatBaseline": [
+      {
+        "path": "cantrip_app/src/lib/client-session.ts",
+        "sha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+        "primarySha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+        "identical": true
+      },
+      {
+        "path": "cantrip_os/packages/remote/root/etc/cantrip-os/remote.json",
+        "sha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+        "primarySha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+        "identical": true
+      },
+      {
+        "path": "cantrip_os/tests/active-browser.html",
+        "sha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+        "primarySha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+        "identical": true
+      },
+      {
+        "path": "cantrip_server_rs/third-party/icu_collator/README.md",
+        "sha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+        "primarySha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+        "identical": true
+      },
+      {
+        "path": "cantrip_server_rs/third-party/pglite-rs/README.md",
+        "sha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+        "primarySha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+        "identical": true
+      },
+      {
+        "path": "cantrip_worker/src/computer-use/captures.ts",
+        "sha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+        "primarySha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+        "identical": true
+      },
+      {
+        "path": "cantrip_worker/test/project-repository-stats.test.ts",
+        "sha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+        "primarySha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+        "identical": true
+      },
+      {
+        "path": "docs/BROWSER_AGENT_CURSOR_ACCEPTANCE.md",
+        "sha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+        "primarySha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+        "identical": true
+      },
+      {
+        "path": "docs/COMPUTER_USE_EFFECTS.md",
+        "sha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+        "primarySha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+        "identical": true
+      },
+      {
+        "path": "docs/REMOTE_DESKTOP_ACCEPTANCE.md",
+        "sha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+        "primarySha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+        "identical": true
+      },
+      {
+        "path": "docs/WQA-2026-10-08.md",
+        "sha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+        "primarySha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+        "identical": true
+      },
+      {
+        "path": "scripts/qa/editor-reload-error.test.mjs",
+        "sha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+        "primarySha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+        "identical": true
+      }
+    ]
+  }
+}

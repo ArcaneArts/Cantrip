@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+  "candidateVersion": "1.1.2938",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "standaloneArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/cantrip-server-1.1.2938-darwin-arm64-5015c89a4.tar.gz",
+    "bytes": 66893960,
+    "sha256": "4c6fdf2072d0ddb3e1fd2d7785fe0a9838a67208855cbc92f909b9f261ba4668"
+  },
+  "result": "passed",
+  "productCells": 6,
+  "matchedSnapshotsAcrossPairs": 123,
+  "scope": "Browser SDK, real production processes, full Node worker and actual local ARM64 Docker guest. The PGlite peers ran separately, then all 41 normalized snapshots were compared. Node uses isolated external PostgreSQL for the bundled PostgreSQL comparison.",
+  "localQaImage": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+  "imageProof": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/foundation-local-qa-proof.json",
+    "bytes": 2156,
+    "sha256": "f7d7ed3cfeeb956985c153596b98a5a906a7bfe7085a9be2686d1f3d5da8613d"
+  },
+  "initialBundledPostgresNavigationFailure": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/bundled-postgres-root-system-navigation-failure.json",
+    "bytes": 646300,
+    "sha256": "68c3d8912e2a2610383d6d06017006cd429a9160ac6cf3890d9871bc804e0786"
+  },
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "matchedSnapshotsPerPair": 41,
+      "peers": [
+        {
+          "runtime": "node",
+          "productSteps": 16,
+          "snapshots": 41,
+          "authenticatedPrivateOutcomes": 5,
+          "workerStops": 6,
+          "intentionalServerCrashes": 2,
+          "intentionalWorkerCrashes": 1,
+          "rootEffects": {
+            "commits": 1,
+            "creates": 2,
+            "renames": 8,
+            "starts": 5,
+            "stops": 5
+          },
+          "guestReceipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-OaHJX9/node/os-guest/guest.json",
+            "bytes": 236218,
+            "sha256": "3307244bef8e0eced316842b7edfc4b1ebb1e955d3263b2ffbbde2e3f294b368"
+          }
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 16,
+          "snapshots": 41,
+          "authenticatedPrivateOutcomes": 5,
+          "workerStops": 6,
+          "intentionalServerCrashes": 2,
+          "intentionalWorkerCrashes": 1,
+          "rootEffects": {
+            "commits": 1,
+            "creates": 2,
+            "renames": 8,
+            "starts": 5,
+            "stops": 5
+          },
+          "guestReceipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-Vx7utO/rust/os-guest/guest.json",
+            "bytes": 236211,
+            "sha256": "5fbaea22ef568cc44a2a0004ee2ead554ab31da0e9cbbdc80efe15d27026cefe"
+          }
+        }
+      ],
+      "reports": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/pglite-node-rekeyed.json",
+          "bytes": 417504,
+          "sha256": "2dc9145e40b53531e952c2dbdadd165496813824dde28fc337be5aaf8bd11f94"
+        },
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/pglite-rust-rekeyed.json",
+          "bytes": 468800,
+          "sha256": "1b2b0c187d46e05c92e5c1326074fca1566cdab1b57eae81d236850f40079fba"
+        }
+      ]
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "matchedSnapshotsPerPair": 41,
+      "peers": [
+        {
+          "runtime": "node",
+          "productSteps": 16,
+          "snapshots": 41,
+          "authenticatedPrivateOutcomes": 5,
+          "workerStops": 6,
+          "intentionalServerCrashes": 2,
+          "intentionalWorkerCrashes": 1,
+          "rootEffects": {
+            "commits": 1,
+            "creates": 2,
+            "renames": 8,
+            "starts": 5,
+            "stops": 5
+          },
+          "guestReceipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-hEQWX0/node/os-guest/guest.json",
+            "bytes": 236202,
+            "sha256": "2e16f94ddb8da2ead415b49cea30ea6693f139b9b4839cfafb90325a795d9795"
+          }
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 16,
+          "snapshots": 41,
+          "authenticatedPrivateOutcomes": 5,
+          "workerStops": 6,
+          "intentionalServerCrashes": 2,
+          "intentionalWorkerCrashes": 1,
+          "rootEffects": {
+            "commits": 1,
+            "creates": 2,
+            "renames": 8,
+            "starts": 5,
+            "stops": 5
+          },
+          "guestReceipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-hEQWX0/rust/os-guest/guest.json",
+            "bytes": 236269,
+            "sha256": "7600f8530bf1300483391039c65ad8fa57428bcba7f73514d3e628941f5b25ba"
+          }
+        }
+      ],
+      "reports": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/bundled-postgres-root-system-paired.json",
+          "bytes": 956813,
+          "sha256": "384590a1561ae833d64a8980fc4c05aee536a962d2f9e16da79f6181cf601aef"
+        }
+      ]
+    },
+    {
+      "databaseMode": "postgres",
+      "matchedSnapshotsPerPair": 41,
+      "peers": [
+        {
+          "runtime": "node",
+          "productSteps": 16,
+          "snapshots": 41,
+          "authenticatedPrivateOutcomes": 5,
+          "workerStops": 6,
+          "intentionalServerCrashes": 2,
+          "intentionalWorkerCrashes": 1,
+          "rootEffects": {
+            "commits": 1,
+            "creates": 2,
+            "renames": 8,
+            "starts": 5,
+            "stops": 5
+          },
+          "guestReceipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-2bJQAs/node/os-guest/guest.json",
+            "bytes": 236184,
+            "sha256": "316a6d36817dc7faa889dcbbe4df4224c8fabd6b19404b830371c6e9ed6b7b3c"
+          }
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 16,
+          "snapshots": 41,
+          "authenticatedPrivateOutcomes": 5,
+          "workerStops": 6,
+          "intentionalServerCrashes": 2,
+          "intentionalWorkerCrashes": 1,
+          "rootEffects": {
+            "commits": 1,
+            "creates": 2,
+            "renames": 8,
+            "starts": 5,
+            "stops": 5
+          },
+          "guestReceipt": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-2bJQAs/rust/os-guest/guest.json",
+            "bytes": 236207,
+            "sha256": "9efb47d34e7281c96d03ffcaa2ea45456a0f73daf3089abed84a567e91e49393"
+          }
+        }
+      ],
+      "reports": [
+        {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/postgres-root-system-paired.json",
+          "bytes": 958287,
+          "sha256": "d92319ee7f03e168ceba8b48eda48057ac12ee347ee0137b05995313e87df9e9"
+        }
+      ]
+    }
+  ]
+}

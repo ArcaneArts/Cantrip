@@ -156,6 +156,12 @@ async fn apply(
                     tx.query("UPDATE queued_prompts SET state='removed',revision=revision+1,updated_at=$1 WHERE id=$2",&[&crate::auth::now(),&prompt_id]).await?;
                 }
                 "start" => {
+                    if super::super::goal_recovery::read(tx, &chat)
+                        .await?
+                        .is_some()
+                    {
+                        return reject("canonical-goal-recovery-pending");
+                    }
                     let chat_row = raw_one(
                         tx,
                         "SELECT to_jsonb(c)::text FROM chats c WHERE id=$1",

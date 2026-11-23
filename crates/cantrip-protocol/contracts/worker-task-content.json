@@ -1,0 +1,819 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "taskProtectedClassificationSchema": 0,
+    "taskProtectedContentSchema": 20,
+    "encryptedTaskProtectedContentSchema": 56,
+    "taskPlanningRoundProtectedClassificationSchema": 66,
+    "taskPlanningRoundProtectedContentSchema": 74,
+    "encryptedTaskPlanningRoundProtectedContentSchema": 86,
+    "taskMessageProtectedClassificationSchema": 91,
+    "taskMessageProtectedContentSchema": 97,
+    "encryptedTaskMessageProtectedContentSchema": 102,
+    "taskGoalObjectiveProtectedClassificationSchema": 107,
+    "taskGoalObjectiveProtectedContentSchema": 112,
+    "encryptedTaskGoalObjectiveSchema": 116,
+    "taskPlannerResultSchema": 121,
+    "taskFinalizerResultSchema": 123,
+    "boundedJsonObjectSchema": 126
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "taskProtectedClassificationSchema",
+      "shape": {
+        "state": 1,
+        "stableStateBeforeFailure": 2,
+        "activeOperationKind": 4,
+        "planAuthorship": 6,
+        "planningRound": 7,
+        "hasPlan": 8,
+        "hasQuestions": 9,
+        "hasFinalPlan": 10,
+        "hasGoalPrompt": 11,
+        "lastError": 12
+      },
+      "catchall": 19,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "taskStateSchema",
+      "values": [
+        "draft",
+        "planning",
+        "review",
+        "finalizing",
+        "implementing",
+        "paused",
+        "blocked",
+        "complete",
+        "failed"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 3, "checks": [] },
+    {
+      "type": "enum",
+      "name": "taskStableStateSchema",
+      "values": ["draft", "review"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 5, "checks": [] },
+    {
+      "type": "enum",
+      "name": "taskOperationKindSchema",
+      "values": ["direct", "initial-plan", "continue-plan", "finalize"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "taskPlanAuthorshipSchema",
+      "values": ["agent", "user-edited", "mixed"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 13, "checks": [] },
+    {
+      "type": "object",
+      "name": "taskProtectedLastErrorMetadataSchema",
+      "shape": { "code": 14, "operationKind": 15, "occurredAt": 17 },
+      "catchall": 18,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "taskFailureOperationKindSchema",
+      "options": [5, 16],
+      "checks": []
+    },
+    { "type": "literal", "values": ["implementation"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskProtectedContentSchema",
+      "shape": {
+        "version": 21,
+        "classification": 0,
+        "briefMarkdown": 22,
+        "planMarkdown": 23,
+        "currentQuestions": 25,
+        "currentAnswers": 40,
+        "additionalDirection": 47,
+        "finalPlanMarkdown": 48,
+        "goalPrompt": 50,
+        "lastError": 52
+      },
+      "catchall": 55,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "task-content-classification",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 24, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "name": "taskQuestionListSchema",
+      "element": 26,
+      "checks": [
+        { "check": "max_length", "maximum": 12, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "task-content-questions",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "taskQuestionSchema",
+      "shape": {
+        "id": 27,
+        "header": 28,
+        "question": 29,
+        "options": 30,
+        "recommendedOptionId": 35,
+        "allowFreeform": 37,
+        "required": 38
+      },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "task-content-question",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 80, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 2000, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 31,
+      "checks": [{ "check": "max_length", "maximum": 6, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "taskQuestionOptionSchema",
+      "shape": { "id": 32, "label": 33, "description": 34 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 120, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 36, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 39,
+      "defaultValue": true,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "name": "taskQuestionAnswerListSchema",
+      "element": 41,
+      "checks": [
+        { "check": "max_length", "maximum": 12, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "task-content-answers",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "taskQuestionAnswerSchema",
+      "shape": { "questionId": 42, "optionId": 43, "freeform": 45 },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "task-content-answer",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 44, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 46, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 49, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 51, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 53, "checks": [] },
+    {
+      "type": "object",
+      "name": "taskLastErrorSchema",
+      "shape": {
+        "code": 14,
+        "message": 54,
+        "operationKind": 15,
+        "occurredAt": 17
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedTaskProtectedContentSchema",
+      "shape": { "formatVersion": 57, "keyRevision": 58, "envelope": 59 },
+      "catchall": 65,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-task-envelope",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "number",
+      "name": "encryptionKeyRevisionSchema",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 2147483647, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "version": 60,
+        "algorithm": 61,
+        "keyRevision": 58,
+        "nonce": 62,
+        "ciphertext": 63
+      },
+      "catchall": 64,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "name": "encryptionEnvelopeVersionSchema",
+      "values": [1],
+      "checks": []
+    },
+    { "type": "literal", "values": ["AES-256-GCM"], "checks": [] },
+    {
+      "type": "string",
+      "name": "encryptionNonceSchema",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "length_equals", "length": 16, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 5592427, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskPlanningRoundProtectedClassificationSchema",
+      "shape": {
+        "ordinal": 67,
+        "kind": 5,
+        "status": 68,
+        "hasOutputPlan": 69,
+        "hasOutputQuestions": 70,
+        "hasOutputGoalPrompt": 71,
+        "error": 72
+      },
+      "catchall": 73,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "taskPlanningRoundStatusSchema",
+      "values": ["running", "completed", "failed", "interrupted"],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 13, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskPlanningRoundProtectedContentSchema",
+      "shape": {
+        "version": 75,
+        "classification": 66,
+        "inputBriefMarkdown": 76,
+        "inputPlanMarkdown": 77,
+        "inputQuestions": 25,
+        "inputAnswers": 40,
+        "additionalDirection": 79,
+        "outputPlanMarkdown": 80,
+        "outputQuestions": 25,
+        "outputGoalPrompt": 82,
+        "error": 84
+      },
+      "catchall": 85,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "task-round-content-classification",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 78, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 10000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 81, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 83, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 53, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedTaskPlanningRoundProtectedContentSchema",
+      "shape": { "formatVersion": 87, "keyRevision": 58, "envelope": 88 },
+      "catchall": 90,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-task-envelope",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 60,
+        "algorithm": 61,
+        "keyRevision": 58,
+        "nonce": 62,
+        "ciphertext": 89
+      },
+      "catchall": 64,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 8388630, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskMessageProtectedClassificationSchema",
+      "shape": { "role": 92, "mode": 93, "attachmentIds": 94 },
+      "catchall": 96,
+      "checks": []
+    },
+    { "type": "enum", "values": ["user", "assistant", "system"], "checks": [] },
+    { "type": "enum", "values": ["default", "plan", "goal"], "checks": [] },
+    {
+      "type": "array",
+      "element": 95,
+      "checks": [
+        { "check": "max_length", "maximum": 20, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-attachment-ids",
+          "messageAfterPath": true,
+          "message": "Task message attachment IDs must be unique."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskMessageProtectedContentSchema",
+      "shape": { "version": 98, "classification": 91, "content": 99 },
+      "catchall": 101,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "task-message-content-classification",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "array",
+      "element": 100,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "json", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedTaskMessageProtectedContentSchema",
+      "shape": { "formatVersion": 103, "keyRevision": 58, "envelope": 104 },
+      "catchall": 106,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-task-envelope",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 60,
+        "algorithm": 61,
+        "keyRevision": 58,
+        "nonce": 62,
+        "ciphertext": 105
+      },
+      "catchall": 64,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 2796224, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskGoalObjectiveProtectedClassificationSchema",
+      "shape": { "chatId": 108, "threadId": 109, "status": 110 },
+      "catchall": 111,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "taskGoalStatusSchema",
+      "values": [
+        "active",
+        "paused",
+        "blocked",
+        "usageLimited",
+        "budgetLimited",
+        "complete"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskGoalObjectiveProtectedContentSchema",
+      "shape": { "version": 113, "classification": 107, "objective": 114 },
+      "catchall": 115,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedTaskGoalObjectiveSchema",
+      "shape": { "formatVersion": 117, "keyRevision": 58, "envelope": 118 },
+      "catchall": 120,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-task-envelope",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 60,
+        "algorithm": 61,
+        "keyRevision": 58,
+        "nonce": 62,
+        "ciphertext": 119
+      },
+      "catchall": 64,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 699072, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "taskPlannerResultSchema",
+      "shape": { "planMarkdown": 122, "questions": 25 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "taskFinalizerResultSchema",
+      "shape": { "finalPlanMarkdown": 124, "goalPrompt": 125 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "task-content-goal-prompt",
+          "messageAfterPath": true,
+          "message": "The Task Goal prompt must be at most 2000 characters."
+        }
+      ]
+    },
+    { "type": "pipe", "in": 127, "out": 128, "checks": [] },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "transform",
+      "optionalIn": true,
+      "transformTag": "bounded-json-object",
+      "checks": []
+    }
+  ]
+}

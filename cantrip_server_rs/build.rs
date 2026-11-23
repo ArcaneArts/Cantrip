@@ -8,6 +8,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match env::var("CARGO_CFG_TARGET_OS")?.as_str() {
         "macos" => println!("cargo:rustc-link-arg=-Wl,-export_dynamic"),
         "linux" => println!("cargo:rustc-link-arg=-Wl,--export-dynamic"),
+        "windows" => {
+            println!("cargo:rerun-if-changed=windows.rc");
+            println!("cargo:rerun-if-changed=windows.manifest");
+            embed_resource::compile_for_everything("windows.rc", embed_resource::NONE)
+                .manifest_required()
+                .expect("embed Windows UTF-8 process manifest");
+        }
         _ => {}
     }
     let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join("..");

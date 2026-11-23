@@ -1,8 +1,8 @@
 diff --git a/codex-rs/analytics/src/client.rs b/codex-rs/analytics/src/client.rs
-index 15e6ddc866310bd87fe2fd467ffb61c9b9a4c88c..c2377415c32987da75d7b9076104a5f8afcce1f3 100644
+index 0c54d0167a94f49a1ec12822cd8ae92245de5d58..4eae81ab29effb076a08a44bbe218984411ea58b 100644
 --- a/codex-rs/analytics/src/client.rs
 +++ b/codex-rs/analytics/src/client.rs
-@@ -882,6 +882,7 @@ fn session_event_to_analytics_notification(
+@@ -902,6 +902,7 @@ fn session_event_to_analytics_notification(
          ),
          EventMsg::TurnStarted(started) => {
              ServerNotification::TurnStarted(TurnStartedNotification {
@@ -11,10 +11,10 @@ index 15e6ddc866310bd87fe2fd467ffb61c9b9a4c88c..c2377415c32987da75d7b9076104a5f8
                  turn: Turn {
                      started_at: started.started_at,
 diff --git a/codex-rs/app-server-protocol/src/protocol/item_builders_tests.rs b/codex-rs/app-server-protocol/src/protocol/item_builders_tests.rs
-index 5baccef85347a92c568912a6a4994ac8c19c2533..0873bf9e29ddb0ce59748fa620d6d7e31617274d 100644
+index 9a94b150011d6ac956b8e760421f63c45408dc63..5cef17fab949b51b59edad966f7aa4c62a242f81 100644
 --- a/codex-rs/app-server-protocol/src/protocol/item_builders_tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/item_builders_tests.rs
-@@ -109,6 +109,7 @@ fn guardian_stdin_reviews_preserve_parent_command_history() {
+@@ -110,6 +110,7 @@ fn guardian_stdin_reviews_preserve_parent_command_history() {
      let start_turn = |turn_id: &str| {
          RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
              turn_attribution: None,
@@ -23,10 +23,10 @@ index 5baccef85347a92c568912a6a4994ac8c19c2533..0873bf9e29ddb0ce59748fa620d6d7e3
              turn_id: turn_id.into(),
              root_turn_id: None,
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history.rs b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8efebb619e4 100644
+index b7137b5e7c3abd1f4f07a5826ba42dc6e89958ce..daa62a44ddcf19cd90d3a36924536e430c3f7dde 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history.rs
-@@ -2331,6 +2331,7 @@ mod tests {
+@@ -2556,6 +2556,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -34,7 +34,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -2400,6 +2401,7 @@ mod tests {
+@@ -2625,6 +2626,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -42,7 +42,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -2472,6 +2474,7 @@ mod tests {
+@@ -2711,6 +2713,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -50,7 +50,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -2568,6 +2571,7 @@ mod tests {
+@@ -2817,6 +2820,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -58,7 +58,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -2690,6 +2694,7 @@ mod tests {
+@@ -2941,6 +2945,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -66,7 +66,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -2794,6 +2799,7 @@ mod tests {
+@@ -3045,6 +3050,7 @@ mod tests {
          let items = vec![
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -74,7 +74,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
              canonical_items: false,
                  turn_id: "turn-image".into(),
                  root_turn_id: None,
-@@ -3194,6 +3200,7 @@ mod tests {
+@@ -3458,6 +3464,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -82,7 +82,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -3265,6 +3272,7 @@ mod tests {
+@@ -3529,6 +3536,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -90,7 +90,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3405,6 +3413,7 @@ mod tests {
+@@ -3669,6 +3677,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -98,7 +98,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3490,6 +3499,7 @@ mod tests {
+@@ -3754,6 +3763,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -106,7 +106,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3577,6 +3587,7 @@ mod tests {
+@@ -3841,6 +3851,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -114,7 +114,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3675,6 +3686,7 @@ mod tests {
+@@ -3939,6 +3950,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -122,7 +122,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3776,6 +3788,7 @@ mod tests {
+@@ -4045,6 +4057,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -130,7 +130,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-1".into(),
                  root_turn_id: None,
-@@ -3950,6 +3963,7 @@ mod tests {
+@@ -4221,6 +4234,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -138,7 +138,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -3978,6 +3992,7 @@ mod tests {
+@@ -4249,6 +4263,7 @@ mod tests {
              }),
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -146,7 +146,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-b".into(),
                  root_turn_id: None,
-@@ -4063,6 +4078,7 @@ mod tests {
+@@ -4334,6 +4349,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -154,7 +154,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -4091,6 +4107,7 @@ mod tests {
+@@ -4362,6 +4378,7 @@ mod tests {
              }),
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -162,7 +162,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-b".into(),
                  root_turn_id: None,
-@@ -4303,6 +4320,7 @@ mod tests {
+@@ -4574,6 +4591,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -170,7 +170,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -4374,6 +4392,7 @@ mod tests {
+@@ -4645,6 +4663,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -178,7 +178,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
-@@ -4445,6 +4464,7 @@ mod tests {
+@@ -4717,6 +4736,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -186,7 +186,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -4473,6 +4493,7 @@ mod tests {
+@@ -4745,6 +4765,7 @@ mod tests {
              }),
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -194,7 +194,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-b".into(),
                  root_turn_id: None,
-@@ -4534,6 +4555,7 @@ mod tests {
+@@ -4806,6 +4827,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -202,7 +202,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -4552,6 +4574,7 @@ mod tests {
+@@ -4824,6 +4846,7 @@ mod tests {
              }),
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -210,7 +210,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-b".into(),
                  root_turn_id: None,
-@@ -4645,6 +4668,7 @@ mod tests {
+@@ -4917,6 +4940,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -218,7 +218,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -4673,6 +4697,7 @@ mod tests {
+@@ -4945,6 +4969,7 @@ mod tests {
              }),
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -226,7 +226,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-b".into(),
                  root_turn_id: None,
-@@ -4724,6 +4749,7 @@ mod tests {
+@@ -4996,6 +5021,7 @@ mod tests {
          let items = vec![
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -234,7 +234,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-compact".into(),
                  root_turn_id: None,
-@@ -5039,6 +5065,7 @@ mod tests {
+@@ -5316,6 +5342,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -242,7 +242,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5106,6 +5133,7 @@ mod tests {
+@@ -5383,6 +5410,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -250,7 +250,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5169,6 +5197,7 @@ mod tests {
+@@ -5446,6 +5474,7 @@ mod tests {
          let events = vec![
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -258,7 +258,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5244,6 +5273,7 @@ mod tests {
+@@ -5521,6 +5550,7 @@ mod tests {
          let items = vec![
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -266,7 +266,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5308,6 +5338,7 @@ mod tests {
+@@ -5589,6 +5619,7 @@ mod tests {
          let mut builder = ThreadHistoryBuilder::new();
          builder.handle_event(&EventMsg::TurnStarted(TurnStartedEvent {
              turn_attribution: None,
@@ -274,7 +274,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
              canonical_items: false,
              turn_id: "turn-a".into(),
              root_turn_id: None,
-@@ -5429,6 +5460,7 @@ mod tests {
+@@ -5710,6 +5741,7 @@ mod tests {
          let items = vec![
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -282,7 +282,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: None,
-@@ -5595,6 +5627,7 @@ mod tests {
+@@ -5870,6 +5902,7 @@ mod tests {
          let start_changes = builder.handle_rollout_item_with_changes(&RolloutItem::EventMsg(
              EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -290,7 +290,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: Some("root-turn".into()),
-@@ -5716,6 +5749,7 @@ mod tests {
+@@ -5989,6 +6022,7 @@ mod tests {
          let changes = builder.handle_rollout_items_with_changes(&[
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -298,7 +298,7 @@ index 66c66f48b234fdc0b447c0cd6b7a5fae29d1f544..8e41b190583c7cd4da72c65f9a63d8ef
                  canonical_items: false,
                  turn_id: "turn-a".into(),
                  root_turn_id: Some("root-turn".into()),
-@@ -5760,6 +5794,7 @@ mod tests {
+@@ -6033,6 +6067,7 @@ mod tests {
          let changes = builder.handle_rollout_items_with_changes(&[
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -495,7 +495,7 @@ index 2ea196b17f975a6dc7cdf18b3a1e460978207e6f..8d251920ccda3236e0bba0735b753072
 +    }
 +}
 diff --git a/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs b/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
-index 5d46cea2026aeb344b09ebd74fc2c813804de93f..151eb64f8c093ac672c91002fa5e8740eb6f103b 100644
+index 21f7e94e3367f187d065f0345b7a48de189146ee..9b7583fb83049320cacfcd809e9e5e4b780e0fba 100644
 --- a/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/thread_history_projection_tests.rs
 @@ -27,6 +27,7 @@ fn projects_turn_lifecycle_without_prior_builder_state() {
@@ -507,10 +507,10 @@ index 5d46cea2026aeb344b09ebd74fc2c813804de93f..151eb64f8c093ac672c91002fa5e8740
              turn_id: "turn-1".to_string(),
              root_turn_id: Some("root-turn".into()),
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index cf0b720cb59a3616ce47256732391dfebee04ec3..e668ad140996d9fd97272158417058339f746cf1 100644
+index 1768540c8e6d83d2c97e81201c910d93f8b9ac1e..c25f985e26266f3e7b2fd36985a6028082361854 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2404,6 +2404,14 @@ pub struct ThreadHistoryMetadata {
+@@ -2432,6 +2432,14 @@ pub struct ThreadHistoryMetadata {
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
  pub struct ThreadHistoryTurnMetadata {
@@ -526,10 +526,10 @@ index cf0b720cb59a3616ce47256732391dfebee04ec3..e668ad140996d9fd9727215841705833
      /// Item identity: `canonical` for marked or paginated turns; otherwise `legacy`.
      pub source: String,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/turn.rs b/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
-index d71006b9b3e295b59a61961d3e1147f6d77cef8f..21f511fc213fb21b2071f9ef7ad5264e4841e0c4 100644
+index 5fe6f428637ca4950c2a13d0f5b4bb3a912744c8..0ab9645156201af73c6d88cc8ba1f0dbea7f37da 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
-@@ -564,6 +564,10 @@ impl UserInput {
+@@ -579,6 +579,10 @@ impl UserInput {
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]
  pub struct TurnStartedNotification {
@@ -541,18 +541,18 @@ index d71006b9b3e295b59a61961d3e1147f6d77cef8f..21f511fc213fb21b2071f9ef7ad5264e
      pub turn: Turn,
  }
 diff --git a/codex-rs/app-server/src/bespoke_event_handling.rs b/codex-rs/app-server/src/bespoke_event_handling.rs
-index c711d9e8185faf82dacb58f386f8d46fab6c73b5..90643a9e18ca34de2e06c4c44ef14c5b28236154 100644
+index 6bfac0ad7a8a3070f3d087adae04288c3aad1d86..25a8c0c9512633c9eaf9543d118f07b298c60ccb 100644
 --- a/codex-rs/app-server/src/bespoke_event_handling.rs
 +++ b/codex-rs/app-server/src/bespoke_event_handling.rs
-@@ -176,6 +176,7 @@ pub(crate) async fn apply_bespoke_event_handling(
-                 turn
+@@ -181,6 +181,7 @@ pub(crate) async fn apply_bespoke_event_handling(
+                 })
              };
              let notification = TurnStartedNotification {
 +                initial_settings: payload.initial_settings,
                  thread_id: conversation_id.to_string(),
                  turn,
              };
-@@ -3282,6 +3283,7 @@ mod tests {
+@@ -3316,6 +3317,7 @@ mod tests {
                  "turn-1",
                  &EventMsg::TurnStarted(codex_protocol::protocol::TurnStartedEvent {
                      turn_attribution: None,
@@ -560,7 +560,7 @@ index c711d9e8185faf82dacb58f386f8d46fab6c73b5..90643a9e18ca34de2e06c4c44ef14c5b
                      canonical_items: false,
                      turn_id: "turn-1".to_string(),
                      root_turn_id: None,
-@@ -3315,11 +3317,21 @@ mod tests {
+@@ -3349,11 +3351,21 @@ mod tests {
              conversation_id,
          );
  
@@ -582,7 +582,7 @@ index c711d9e8185faf82dacb58f386f8d46fab6c73b5..90643a9e18ca34de2e06c4c44ef14c5b
                      canonical_items: false,
                      turn_id: "turn-1".to_string(),
                      root_turn_id: None,
-@@ -3341,6 +3353,7 @@ mod tests {
+@@ -3375,6 +3387,7 @@ mod tests {
          let msg = recv_broadcast_notification(&mut rx).await?;
          match msg {
              ServerNotification::TurnStarted(n) => {
@@ -590,7 +590,7 @@ index c711d9e8185faf82dacb58f386f8d46fab6c73b5..90643a9e18ca34de2e06c4c44ef14c5b
                  assert_eq!(n.turn.id, "turn-1");
                  assert_eq!(n.turn.items_view, TurnItemsView::NotLoaded);
                  assert!(n.turn.items.is_empty());
-@@ -3596,6 +3609,7 @@ mod tests {
+@@ -3631,6 +3644,7 @@ mod tests {
                  &event_turn_id,
                  &EventMsg::TurnStarted(codex_protocol::protocol::TurnStartedEvent {
                      turn_attribution: None,
@@ -599,10 +599,10 @@ index c711d9e8185faf82dacb58f386f8d46fab6c73b5..90643a9e18ca34de2e06c4c44ef14c5b
                      turn_id: event_turn_id.clone(),
                      root_turn_id: None,
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-index 7838483f1fcd76aba49fddf30e373b67edbe4d35..4dd9a898df21a250f710547e1b9e55f2628048c7 100644
+index 1203484b84e817623de261e7de2a36ac2a77cec6..94b8efaa0dbb43437fe483f7471a659884b9c6a7 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-@@ -1203,6 +1203,7 @@ mod thread_processor_behavior_tests {
+@@ -1260,6 +1260,7 @@ mod thread_processor_behavior_tests {
                  "turn-1",
                  &EventMsg::TurnStarted(codex_protocol::protocol::TurnStartedEvent {
                      turn_attribution: None,
@@ -623,10 +623,10 @@ index a86569562770f4d8ff63d0a7cedbb67b590cd23d..b4549d4e5df3bec9dcdc32133c816992
              turn_id: "turn-1".to_string(),
              root_turn_id: None,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_fork.rs b/codex-rs/app-server/tests/suite/v2/thread_fork.rs
-index 029c8d17e92cdc45481c37b28fff1e41342236a2..b17471d2b372ca39cb3ab74af07aa4650b29821e 100644
+index dbd8d3abc6f8f383634f31577ed4b28d61a8f399..5de175d64dc1e3907621a0b5b78f1c713d69cb00 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_fork.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_fork.rs
-@@ -1260,6 +1260,7 @@ async fn thread_fork_can_cut_before_unfinished_stored_turn() -> Result<()> {
+@@ -1283,6 +1283,7 @@ async fn thread_fork_can_cut_before_unfinished_stored_turn() -> Result<()> {
          &source_path,
          &RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
              turn_attribution: None,
@@ -634,7 +634,7 @@ index 029c8d17e92cdc45481c37b28fff1e41342236a2..b17471d2b372ca39cb3ab74af07aa465
              canonical_items: false,
              turn_id: unfinished_turn_id.to_string(),
              root_turn_id: None,
-@@ -1540,6 +1541,7 @@ async fn thread_fork_creates_reference_backed_paginated_thread() -> Result<()> {
+@@ -1566,6 +1567,7 @@ async fn thread_fork_creates_reference_backed_paginated_thread() -> Result<()> {
      for item in [
          RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
              turn_attribution: None,
@@ -642,7 +642,7 @@ index 029c8d17e92cdc45481c37b28fff1e41342236a2..b17471d2b372ca39cb3ab74af07aa465
              canonical_items: false,
              turn_id: "turn-1".to_string(),
              root_turn_id: None,
-@@ -1875,6 +1877,7 @@ async fn assert_thread_fork_freezes_active_paginated_turn_as_interrupted(
+@@ -1931,6 +1933,7 @@ async fn thread_fork_freezes_active_paginated_turn_as_interrupted(
          source_path.as_path(),
          &RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
              turn_attribution: None,
@@ -651,10 +651,10 @@ index 029c8d17e92cdc45481c37b28fff1e41342236a2..b17471d2b372ca39cb3ab74af07aa465
              turn_id: "active-turn".to_string(),
              root_turn_id: Some("causal-root".to_string()),
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_read.rs b/codex-rs/app-server/tests/suite/v2/thread_read.rs
-index a383b88ac30b6177e08554051d6f71c2bb34578a..73417c96cd970aa72641ab775050a861d4e2dcc7 100644
+index 86429bf33643b6c6a21f3c45e8cb3f47ecd5f9d2..6aace8eed920a9bed60634ac2ebc97f6710dab75 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_read.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_read.rs
-@@ -2565,6 +2565,7 @@ async fn read_items_page(
+@@ -2644,6 +2644,7 @@ async fn read_items_page(
  fn paginated_turn_started(turn_id: &str) -> RolloutItem {
      RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
          turn_attribution: None,
@@ -663,10 +663,10 @@ index a383b88ac30b6177e08554051d6f71c2bb34578a..73417c96cd970aa72641ab775050a861
          turn_id: turn_id.to_string(),
          root_turn_id: None,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_resume.rs b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-index a2033be3db810f53c37307d063e1c9b461895a17..cd000a012ace5e5008d8dcc767395ee8da0f738b 100644
+index 7c68129939821889d7b40659603024cd82a4032d..04ad8291c450e9bca7726b3b22e3b6864494f81d 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_resume.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_resume.rs
-@@ -4152,6 +4152,7 @@ async fn cold_paginated_resume_restores_usage_without_loading_turns() -> Result<
+@@ -4359,6 +4359,7 @@ async fn cold_paginated_resume_restores_usage_without_loading_turns() -> Result<
          &path,
          &RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
              turn_attribution: None,
@@ -674,7 +674,7 @@ index a2033be3db810f53c37307d063e1c9b461895a17..cd000a012ace5e5008d8dcc767395ee8
              canonical_items: false,
              turn_id: canonical_turn_id.to_string(),
              root_turn_id: None,
-@@ -4266,6 +4267,7 @@ async fn cold_paginated_resume_omits_usage_when_its_turn_is_ambiguous() -> Resul
+@@ -4507,6 +4508,7 @@ async fn cold_paginated_resume_omits_usage_when_its_turn_is_ambiguous() -> Resul
          &path,
          &RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
              turn_attribution: None,
@@ -682,7 +682,7 @@ index a2033be3db810f53c37307d063e1c9b461895a17..cd000a012ace5e5008d8dcc767395ee8
              canonical_items: false,
              turn_id: interrupted_turn_id.to_string(),
              root_turn_id: None,
-@@ -4411,6 +4413,7 @@ async fn thread_resume_token_usage_replay_ignores_stale_interrupted_tail_turn()
+@@ -4652,6 +4654,7 @@ async fn thread_resume_token_usage_replay_ignores_stale_interrupted_tail_turn()
              "type": "event_msg",
              "payload": serde_json::to_value(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -690,7 +690,7 @@ index a2033be3db810f53c37307d063e1c9b461895a17..cd000a012ace5e5008d8dcc767395ee8
              canonical_items: false,
                  turn_id: stale_turn_id.to_string(),
                  root_turn_id: None,
-@@ -4502,6 +4505,7 @@ async fn thread_resume_token_usage_replay_can_belong_to_interrupted_turn() -> Re
+@@ -4743,6 +4746,7 @@ async fn thread_resume_token_usage_replay_can_belong_to_interrupted_turn() -> Re
              "type": "event_msg",
              "payload": serde_json::to_value(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -698,7 +698,7 @@ index a2033be3db810f53c37307d063e1c9b461895a17..cd000a012ace5e5008d8dcc767395ee8
              canonical_items: false,
                  turn_id: interrupted_turn_id.to_string(),
                  root_turn_id: None,
-@@ -4822,6 +4826,7 @@ async fn thread_resume_and_read_interrupt_incomplete_rollout_turn_when_thread_is
+@@ -5065,6 +5069,7 @@ async fn thread_resume_and_read_interrupt_incomplete_rollout_turn_when_thread_is
              "type": "event_msg",
              "payload": serde_json::to_value(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -707,10 +707,10 @@ index a2033be3db810f53c37307d063e1c9b461895a17..cd000a012ace5e5008d8dcc767395ee8
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_timeline.rs b/codex-rs/app-server/tests/suite/v2/thread_timeline.rs
-index 16eab92c3c9cbe10708ade23976854b3df93abda..e576afa74123770e3431ad68d757dec28abddda4 100644
+index 1ba5e2ba424fbc2f5885e389d4c899c7016bc6bc..8209e582ef608c58bcaf72138c35c9bc5b606263 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_timeline.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_timeline.rs
-@@ -99,6 +99,7 @@ async fn timeline_pages_mix_items_and_resolve_the_opening_realtime_session() ->
+@@ -100,6 +100,7 @@ async fn timeline_pages_mix_items_and_resolve_the_opening_realtime_session() ->
                  }),
                  RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
                      turn_attribution: None,
@@ -719,10 +719,10 @@ index 16eab92c3c9cbe10708ade23976854b3df93abda..e576afa74123770e3431ad68d757dec2
                      turn_id: "turn-1".to_string(),
                      root_turn_id: None,
 diff --git a/codex-rs/core/src/agent/control_tests.rs b/codex-rs/core/src/agent/control_tests.rs
-index 619bad192fdac77f3430b1e00a5e8b4f9da9b383..ada651d051af569254122840e62927620caf2231 100644
+index e50fe95bc41712334f050f85ec9870c022943b74..aac2d3281e2f4c35afa060b43098958e40580f44 100644
 --- a/codex-rs/core/src/agent/control_tests.rs
 +++ b/codex-rs/core/src/agent/control_tests.rs
-@@ -590,6 +590,7 @@ async fn get_status_returns_not_found_without_manager() {
+@@ -599,6 +599,7 @@ async fn get_status_returns_not_found_without_manager() {
  async fn on_event_updates_status_from_task_started() {
      let status = agent_status_from_event(&EventMsg::TurnStarted(TurnStartedEvent {
          turn_attribution: None,
@@ -859,10 +859,10 @@ index a73a85cc939111f3937cafd0eb002b15fa563d7f..ddc5e00bad7249a5a0579a6d038ac20d
 +    assert_eq!(initial.collaboration_mode, ModeKind::Plan);
 +}
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 9de1138ab0c5f743bd45dcfbf62a6e805e109b01..f97085d06529540dc5d59ad129e9bdacc9fbdd41 100644
+index 5b4f762dd2a474ba2b462dfef58a2a0aa8357d80..3747afd2752cd3e713b6855f650029016ff35e8b 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -2579,6 +2579,7 @@ impl Session {
+@@ -2673,6 +2673,7 @@ impl Session {
      pub(crate) async fn emit_turn_started(&self, turn_context: &TurnContext, task_kind: TaskKind) {
          let event = TurnStartedEvent {
              turn_attribution: (task_kind == TaskKind::Regular).then(|| turn_context.attribution()),
@@ -870,16 +870,16 @@ index 9de1138ab0c5f743bd45dcfbf62a6e805e109b01..f97085d06529540dc5d59ad129e9bdac
              canonical_items: false,
              turn_id: turn_context.sub_id.clone(),
              root_turn_id: Some(turn_context.root_turn_id()),
-@@ -2601,6 +2602,7 @@ impl Session {
+@@ -2695,6 +2696,7 @@ impl Session {
              .unwrap_or(false);
          if let EventMsg::TurnStarted(started) = &mut msg {
              started.canonical_items = canonical;
 +            started.initial_settings = Some(turn_context.initial_settings_snapshot());
          }
-         let legacy_source = msg.clone();
-         if let EventMsg::Error(error) = &legacy_source
+         if let Some((item_id, started_at_ms)) = msg.command_approval_start() {
+             // The client can see the command before execution. Keep its first start
 diff --git a/codex-rs/core/src/session/rollout_reconstruction_tests.rs b/codex-rs/core/src/session/rollout_reconstruction_tests.rs
-index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f754a5a5fd 100644
+index 45eb4fce669e5d7d73ec722585faafa767526fb4..f3523e2e7638de9689a0ec0137b1a088f6aa654a 100644
 --- a/codex-rs/core/src/session/rollout_reconstruction_tests.rs
 +++ b/codex-rs/core/src/session/rollout_reconstruction_tests.rs
 @@ -271,6 +271,7 @@ fn completed_user_turn_rollout(
@@ -1010,7 +1010,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: incomplete_turn_id,
                  root_turn_id: None,
-@@ -2103,6 +2119,7 @@ async fn reconstruct_history_legacy_compaction_without_replacement_history_clear
+@@ -2104,6 +2120,7 @@ async fn reconstruct_history_legacy_compaction_without_replacement_history_clear
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1018,7 +1018,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: current_turn_id.clone(),
                  root_turn_id: None,
-@@ -2178,6 +2195,7 @@ async fn record_initial_history_resumed_turn_context_after_compaction_reestablis
+@@ -2179,6 +2196,7 @@ async fn record_initial_history_resumed_turn_context_after_compaction_reestablis
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1026,7 +1026,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -2309,6 +2327,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
+@@ -2310,6 +2328,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1034,7 +1034,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -2344,6 +2363,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
+@@ -2345,6 +2364,7 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1042,7 +1042,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: aborted_turn_id,
                  root_turn_id: None,
-@@ -2449,6 +2469,7 @@ async fn record_initial_history_resumed_unmatched_abort_preserves_active_turn_fo
+@@ -2450,6 +2470,7 @@ async fn record_initial_history_resumed_unmatched_abort_preserves_active_turn_fo
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1050,7 +1050,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -2484,6 +2505,7 @@ async fn record_initial_history_resumed_unmatched_abort_preserves_active_turn_fo
+@@ -2485,6 +2506,7 @@ async fn record_initial_history_resumed_unmatched_abort_preserves_active_turn_fo
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1058,7 +1058,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: current_turn_id.clone(),
                  root_turn_id: None,
-@@ -2591,6 +2613,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
+@@ -2592,6 +2614,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1066,7 +1066,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -2626,6 +2649,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
+@@ -2627,6 +2650,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1074,7 +1074,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: incomplete_turn_id,
                  root_turn_id: None,
-@@ -2695,6 +2719,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_preserves_turn_
+@@ -2696,6 +2720,7 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_preserves_turn_
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1082,7 +1082,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: current_turn_id,
                  root_turn_id: None,
-@@ -2780,6 +2805,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
+@@ -2781,6 +2806,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1090,7 +1090,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: previous_turn_id.clone(),
                  root_turn_id: None,
-@@ -2815,6 +2841,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
+@@ -2816,6 +2842,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1098,7 +1098,7 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  canonical_items: false,
                  turn_id: compacted_incomplete_turn_id,
                  root_turn_id: None,
-@@ -2853,6 +2880,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
+@@ -2854,6 +2881,7 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1107,10 +1107,10 @@ index f1d87ba77dfe7e74035ca4a29d0fb5a5ef5f92f6..5ca826d2484a722e2ed30408381093f7
                  turn_id: replacing_turn_id,
                  root_turn_id: None,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 15066d08cbf1caad4bcc41285a477f28f0293f9c..01121586e9b8406f48632a16be3ee12fb8ccc04a 100644
+index a8700d4256e4333ae0cea8cb5c1425f47d266d55..9e8d3b840d229ed038c3507b3adcef569bf9171a 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -4618,6 +4618,7 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
+@@ -4773,6 +4773,7 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
          RolloutItem::EventMsg(EventMsg::TurnStarted(
              codex_protocol::protocol::TurnStartedEvent {
                  turn_attribution: None,
@@ -1119,10 +1119,10 @@ index 15066d08cbf1caad4bcc41285a477f28f0293f9c..01121586e9b8406f48632a16be3ee12f
                  turn_id: turn_id.clone(),
                  root_turn_id: None,
 diff --git a/codex-rs/core/src/session/turn_context.rs b/codex-rs/core/src/session/turn_context.rs
-index 40cf7657a6dbe96d2e5dc3bacbe3a0761b1e161e..83f77c6930a6e4998aa359ad334a3db9a3c3eac1 100644
+index a25dd60102b48b8a889a3ae80326e29dca7145ff..2a18cde50c5a0ae2fc59357be8cc6308c5e54bb9 100644
 --- a/codex-rs/core/src/session/turn_context.rs
 +++ b/codex-rs/core/src/session/turn_context.rs
-@@ -544,6 +544,22 @@ impl TurnContext {
+@@ -542,6 +542,22 @@ impl TurnContext {
          Arc::clone(&self.next_step_settings.load().model_info)
      }
  
@@ -1146,10 +1146,10 @@ index 40cf7657a6dbe96d2e5dc3bacbe3a0761b1e161e..83f77c6930a6e4998aa359ad334a3db9
      /// Step-scoped consumers should use their captured `StepContext::settings`.
      pub(crate) fn model_info(&self) -> &Arc<ModelInfo> {
 diff --git a/codex-rs/core/src/thread_manager_tests.rs b/codex-rs/core/src/thread_manager_tests.rs
-index bc3f428c65ea0ac25637527ce4fe4fdd7842e11d..aca9c0ea5d88fcd55a2c36b9eaf1316f7adc2c07 100644
+index cabaa5a2844fa9d746080bcb602e9e624a09d82e..c880759e4dbe8dceae0e9475b2dfe10b5b93efd0 100644
 --- a/codex-rs/core/src/thread_manager_tests.rs
 +++ b/codex-rs/core/src/thread_manager_tests.rs
-@@ -814,6 +814,7 @@ fn out_of_range_truncation_drops_pre_user_active_turn_prefix() {
+@@ -816,6 +816,7 @@ fn out_of_range_truncation_drops_pre_user_active_turn_prefix() {
          RolloutItem::ResponseItem(assistant_msg("a1").into()),
          RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
              turn_attribution: None,
@@ -1157,7 +1157,7 @@ index bc3f428c65ea0ac25637527ce4fe4fdd7842e11d..aca9c0ea5d88fcd55a2c36b9eaf1316f
              canonical_items: false,
              turn_id: "turn-2".to_string(),
              root_turn_id: None,
-@@ -3299,6 +3300,7 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
+@@ -3402,6 +3403,7 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
              initial_history: InitialHistory::Forked(vec![
                  RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
                      turn_attribution: None,
@@ -1190,10 +1190,10 @@ index 97c1b582dd9608c27a2984633f7d931c701697db..1b447fd966980a4d885497cb4fbdee54
                  turn_id: turn_id.clone(),
                  root_turn_id: None,
 diff --git a/codex-rs/exec/src/lib.rs b/codex-rs/exec/src/lib.rs
-index 53ea144df13ebae23c35e05cba53caabb8b21a33..f7b26d8909d3fec5b3e8f085a3ae1f69d3089a33 100644
+index 0497ee39a5e13e16a7867dbabcd0dd8172b241a4..f030fca16122ae0d8af1be09f46d7b65e8e07e84 100644
 --- a/codex-rs/exec/src/lib.rs
 +++ b/codex-rs/exec/src/lib.rs
-@@ -1285,6 +1285,7 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
+@@ -1293,6 +1293,7 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
              .map_err(anyhow::Error::msg)?;
              let _ = event_processor.process_server_notification(ServerNotification::TurnStarted(
                  TurnStartedNotification {
@@ -1202,10 +1202,10 @@ index 53ea144df13ebae23c35e05cba53caabb8b21a33..f7b26d8909d3fec5b3e8f085a3ae1f69
                      turn: response.turn.clone(),
                  },
 diff --git a/codex-rs/exec/tests/event_processor_with_json_output.rs b/codex-rs/exec/tests/event_processor_with_json_output.rs
-index c1cc8947495cff3e325d347e41299f486c1ac372..64314193386d6e17860eaf2d85b6682cbd503dae 100644
+index 4771e96c3e23a0672233893917372916686d13fb..ab2c7246e21506e3a0bf538a3038b5b888a95470 100644
 --- a/codex-rs/exec/tests/event_processor_with_json_output.rs
 +++ b/codex-rs/exec/tests/event_processor_with_json_output.rs
-@@ -142,6 +142,7 @@ fn turn_started_emits_turn_started_event() {
+@@ -143,6 +143,7 @@ fn turn_started_emits_turn_started_event() {
  
      let collected =
          processor.collect_thread_events(ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1214,7 +1214,7 @@ index c1cc8947495cff3e325d347e41299f486c1ac372..64314193386d6e17860eaf2d85b6682c
              turn: Turn {
                  id: "turn-1".to_string(),
 diff --git a/codex-rs/external-agent-migration/src/sessions/export.rs b/codex-rs/external-agent-migration/src/sessions/export.rs
-index 9d2f522889b237ab36ac2d4c7706fe34beca4e25..6675a765ae3f77068357af296d795c8c37a83614 100644
+index dea2e744de149ec5f21a08b1a0a095ff10ccaa40..f3cb87c369cdbc188a3c1ca40b8f5951ac8e4c6c 100644
 --- a/codex-rs/external-agent-migration/src/sessions/export.rs
 +++ b/codex-rs/external-agent-migration/src/sessions/export.rs
 @@ -106,6 +106,7 @@ pub(super) fn rollout_items_from_messages(messages: Vec<ConversationMessage>) ->
@@ -1226,10 +1226,10 @@ index 9d2f522889b237ab36ac2d4c7706fe34beca4e25..6675a765ae3f77068357af296d795c8c
                          turn_id: turn_id.clone(),
                          root_turn_id: None,
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 1387d00a6f81e5c59c8bbe7d0f64c8d38ddde25e..f3405e2680567ed9b40890bfed7ab905609f8348 100644
+index e708c465e9f25973c503236e76a3fdcd4cd339f8..662c8bbe45b545705fd1b79fdcc766bc39b8f836 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -2305,13 +2305,34 @@ pub struct TurnCompleteEvent {
+@@ -2413,13 +2413,34 @@ pub struct TurnCompleteEvent {
      pub time_to_first_token_ms: Option<i64>,
  }
  
@@ -1278,10 +1278,10 @@ index dc594ad569a6112999c07b5ce94e95f49779ad78..053a8b5b5a90ec5166c6b29a2d2de8ac
          turn_id: turn_id.to_string(),
          root_turn_id: None,
 diff --git a/codex-rs/thread-store/src/local/mod.rs b/codex-rs/thread-store/src/local/mod.rs
-index a92188bd8e9b7b9d17b8ff638efacd8ce649b471..7f21cd2f1b052a6ef9c2319a8b568d5bb1544d06 100644
+index 4d8f9c2115d8a855d1936a91c27da1bfb34a0299..b7731e53ae283d24cec2338aa542aab01a59df3f 100644
 --- a/codex-rs/thread-store/src/local/mod.rs
 +++ b/codex-rs/thread-store/src/local/mod.rs
-@@ -1167,6 +1167,7 @@ mod tests {
+@@ -1233,6 +1233,7 @@ mod tests {
              .append_items(&[RolloutItem::EventMsg(EventMsg::TurnStarted(
                  TurnStartedEvent {
                      turn_attribution: None,
@@ -1290,10 +1290,10 @@ index a92188bd8e9b7b9d17b8ff638efacd8ce649b471..7f21cd2f1b052a6ef9c2319a8b568d5b
                      turn_id: "turn-1".to_string(),
                      root_turn_id: None,
 diff --git a/codex-rs/thread-store/src/local/model_context_tests.rs b/codex-rs/thread-store/src/local/model_context_tests.rs
-index 73ffe1dd8a79e5fab22fdb30d7ee5c118d3edd88..323eb682637ff6059accd551166afdf364ea27ef 100644
+index 2dd881621c1c5e705bef3b96ec9e7e3c4cfc4904..7a3f4d8fcbf4e39f1472413dc464ec01fd00726a 100644
 --- a/codex-rs/thread-store/src/local/model_context_tests.rs
 +++ b/codex-rs/thread-store/src/local/model_context_tests.rs
-@@ -618,6 +618,7 @@ fn append_items(path: &Path, items: impl IntoIterator<Item = RolloutItem>) {
+@@ -675,6 +675,7 @@ fn append_items(path: &Path, items: impl IntoIterator<Item = RolloutItem>) {
  fn turn_started(turn_id: &str) -> RolloutItem {
      RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
          turn_attribution: None,
@@ -1302,10 +1302,10 @@ index 73ffe1dd8a79e5fab22fdb30d7ee5c118d3edd88..323eb682637ff6059accd551166afdf3
          turn_id: turn_id.to_string(),
          root_turn_id: None,
 diff --git a/codex-rs/thread-store/src/local/revert_thread_tests.rs b/codex-rs/thread-store/src/local/revert_thread_tests.rs
-index 3f278b9eade88772804319584938ecb6e731e335..71219047f8dbff39cafdb4c928751c1860b2b955 100644
+index 36977d654c091c79aafe3c20065c3678c7beb08d..93be7590b6f17cdcf19877c4eaed277dff49fe55 100644
 --- a/codex-rs/thread-store/src/local/revert_thread_tests.rs
 +++ b/codex-rs/thread-store/src/local/revert_thread_tests.rs
-@@ -322,6 +322,7 @@ async fn turn_ids(store: &LocalThreadStore, thread_id: ThreadId) -> Vec<String>
+@@ -323,6 +323,7 @@ async fn turn_ids(store: &LocalThreadStore, thread_id: ThreadId) -> Vec<String>
  fn turn_started(turn_id: &str) -> RolloutItem {
      RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
          turn_attribution: None,
@@ -1314,10 +1314,10 @@ index 3f278b9eade88772804319584938ecb6e731e335..71219047f8dbff39cafdb4c928751c18
          turn_id: turn_id.to_string(),
          root_turn_id: None,
 diff --git a/codex-rs/thread-store/src/local/rollout_migration/canonicalizer.rs b/codex-rs/thread-store/src/local/rollout_migration/canonicalizer.rs
-index 96f0f8e1ca18f01bc5f6b36ce24cc84a47ca6ccd..22b8a022e05840fcd350ab6d09ce67444c4abc9f 100644
+index d33a296d756843991ceabc49a95ff9f80e1fb409..df3a735e85adb685245042f27afef8e06c831449 100644
 --- a/codex-rs/thread-store/src/local/rollout_migration/canonicalizer.rs
 +++ b/codex-rs/thread-store/src/local/rollout_migration/canonicalizer.rs
-@@ -357,6 +357,7 @@ impl LegacyRolloutCanonicalizer {
+@@ -358,6 +358,7 @@ impl LegacyRolloutCanonicalizer {
              timestamp,
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -1326,10 +1326,10 @@ index 96f0f8e1ca18f01bc5f6b36ce24cc84a47ca6ccd..22b8a022e05840fcd350ab6d09ce6744
                  turn_id,
                  root_turn_id: None,
 diff --git a/codex-rs/thread-store/src/local/rollout_migration_tests.rs b/codex-rs/thread-store/src/local/rollout_migration_tests.rs
-index 1c8718e41890d0761d9ed38de5b49e758a1b70be..0d113eb7cca27aec32a4cf6b3b6180c4103d801c 100644
+index 0bd323f505c7e5332e4fae5d146c62d1042acf09..2311a759413ea7ea5cc8435dbbfbfd997c69b9c9 100644
 --- a/codex-rs/thread-store/src/local/rollout_migration_tests.rs
 +++ b/codex-rs/thread-store/src/local/rollout_migration_tests.rs
-@@ -230,6 +230,7 @@ fn item_completed(turn_id: &str, item_id: &str) -> RolloutItem {
+@@ -235,6 +235,7 @@ fn item_completed(turn_id: &str, item_id: &str) -> RolloutItem {
  fn started(turn_id: &str) -> RolloutItem {
      RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
          turn_attribution: None,
@@ -1338,10 +1338,10 @@ index 1c8718e41890d0761d9ed38de5b49e758a1b70be..0d113eb7cca27aec32a4cf6b3b6180c4
          turn_id: turn_id.to_string(),
          root_turn_id: None,
 diff --git a/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs b/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
-index 2ab5bd68bf9f231a75785279f7cb938b9bd717f3..055358c85e4d2273c95e05b3cbc1acdf1a8bb326 100644
+index 88316f09b5b91f34b53738ccdbd98bed33690d14..9408b47f31932493d7138e56a072802d7fcab36a 100644
 --- a/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
 +++ b/codex-rs/thread-store/src/local/thread_history_materialization_tests.rs
-@@ -2842,6 +2842,7 @@ async fn create_paginated_subagent_thread(
+@@ -3102,6 +3102,7 @@ async fn create_paginated_subagent_thread(
  fn turn_started(turn_id: &str) -> RolloutItem {
      RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
          turn_attribution: None,
@@ -1350,10 +1350,10 @@ index 2ab5bd68bf9f231a75785279f7cb938b9bd717f3..055358c85e4d2273c95e05b3cbc1acdf
          turn_id: turn_id.to_string(),
          root_turn_id: None,
 diff --git a/codex-rs/thread-store/src/thread_metadata_sync.rs b/codex-rs/thread-store/src/thread_metadata_sync.rs
-index 34cae3b9b33572bb417e3df251db6df803e70034..aebb65646636f2f90bf5a859f44b752cfa2064f0 100644
+index 2b73f48059d4da41754277a755e8dc493dfd0fe0..ba38d3fae07d3f96f2aa2b341f51826bb994be0a 100644
 --- a/codex-rs/thread-store/src/thread_metadata_sync.rs
 +++ b/codex-rs/thread-store/src/thread_metadata_sync.rs
-@@ -803,6 +803,7 @@ mod tests {
+@@ -805,6 +805,7 @@ mod tests {
              .observe_appended_items(&[RolloutItem::EventMsg(EventMsg::TurnStarted(
                  TurnStartedEvent {
                      turn_attribution: None,
@@ -1362,10 +1362,10 @@ index 34cae3b9b33572bb417e3df251db6df803e70034..aebb65646636f2f90bf5a859f44b752c
                      turn_id: "turn-1".to_string(),
                      root_turn_id: None,
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index efcb1f7c4a4e9034dd0e8d6fc9b6afb5e6f673de..259b3d97f6370d0657fb0ad19426f4718b80b00e 100644
+index 1729e58991d7eae026b424ea27ea63dd17a83a17..0751f8d5f8dbc301ad4a615ba58f4aac6afb2fa9 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -7376,6 +7376,7 @@ fn test_turn(turn_id: &str, status: TurnStatus, items: Vec<ThreadItem>) -> Turn
+@@ -7530,6 +7530,7 @@ fn test_turn(turn_id: &str, status: TurnStatus, items: Vec<ThreadItemPayload>) -
  
  fn turn_started_notification(thread_id: ThreadId, turn_id: &str) -> ServerNotification {
      ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1373,7 +1373,7 @@ index efcb1f7c4a4e9034dd0e8d6fc9b6afb5e6f673de..259b3d97f6370d0657fb0ad19426f471
          thread_id: thread_id.to_string(),
          turn: Turn {
              started_at: Some(0),
-@@ -8552,6 +8553,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
+@@ -8751,6 +8752,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
          for item in [
              RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
                  turn_attribution: None,
@@ -1382,10 +1382,10 @@ index efcb1f7c4a4e9034dd0e8d6fc9b6afb5e6f673de..259b3d97f6370d0657fb0ad19426f471
                  turn_id: turn_id.to_string(),
                  root_turn_id: None,
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 08652d4905d9065d497c1b87225a8e9a8c1a7781..c3cbad27dc60ad127b0c11fe2c69564c4ec8d2a9 100644
+index 876d663554325e7932b24c02500dc52f082c4b77..585f3b1d2732fb51154db16ba7bd33d6ed2f9090 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -2441,6 +2441,7 @@ async fn older_pagination_reconciles_review_prompts_across_page_boundaries() ->
+@@ -2542,6 +2542,7 @@ async fn older_pagination_reconciles_review_prompts_across_page_boundaries() ->
      ]);
      let events = std::iter::once(EventMsg::TurnStarted(TurnStartedEvent {
          turn_attribution: None,
@@ -1393,7 +1393,7 @@ index 08652d4905d9065d497c1b87225a8e9a8c1a7781..c3cbad27dc60ad127b0c11fe2c69564c
          canonical_items: false,
          turn_id: "cross-page-review-turn".to_string(),
          root_turn_id: None,
-@@ -2606,6 +2607,7 @@ async fn transcript_alt_beginning_loads_every_older_history_page() -> Result<()>
+@@ -2707,6 +2708,7 @@ async fn transcript_alt_beginning_loads_every_older_history_page() -> Result<()>
          .collect::<Result<Vec<_>, _>>()?;
      let events = std::iter::once(EventMsg::TurnStarted(TurnStartedEvent {
          turn_attribution: None,
@@ -1401,7 +1401,7 @@ index 08652d4905d9065d497c1b87225a8e9a8c1a7781..c3cbad27dc60ad127b0c11fe2c69564c
          canonical_items: false,
          turn_id: "multi-page-turn".to_string(),
          root_turn_id: None,
-@@ -3023,6 +3025,7 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
+@@ -3124,6 +3126,7 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
          .collect::<Result<Vec<_>, _>>()?;
      let events = std::iter::once(EventMsg::TurnStarted(TurnStartedEvent {
          turn_attribution: None,
@@ -1422,10 +1422,10 @@ index ec7e1e066b51ec373656cc29de6bf073bc928983..d02897db0464decb5f9f427ac565851c
          turn: Turn {
              id: turn_id.to_string(),
 diff --git a/codex-rs/tui/src/app/thread_events.rs b/codex-rs/tui/src/app/thread_events.rs
-index d7ef85824678159353739370a601239aca64b005..23c2b78c91a4d0ec0f077ef255c70d8825700dec 100644
+index f810d38745a57baeb05502a43852397b27b5e7b1..34200c332882ae5312d0c12329527d8aff0e43e9 100644
 --- a/codex-rs/tui/src/app/thread_events.rs
 +++ b/codex-rs/tui/src/app/thread_events.rs
-@@ -702,6 +702,7 @@ mod tests {
+@@ -721,6 +721,7 @@ mod tests {
  
      fn turn_started_notification(thread_id: ThreadId, turn_id: &str) -> ServerNotification {
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1434,10 +1434,10 @@ index d7ef85824678159353739370a601239aca64b005..23c2b78c91a4d0ec0f077ef255c70d88
              turn: Turn {
                  started_at: Some(0),
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index 2b60247804dfd79a7066b44a0bb1956df01c6843..38fc9b50c6277b208f27b15ec3dcb94096fc26d5 100644
+index 17e9620b62718c0d9139118f87d79d0422c9cdd7..f06319be3dfd65f314a754e0d1702068a245508d 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-@@ -162,6 +162,7 @@ fn start_safety_buffering_test_turn(
+@@ -194,6 +194,7 @@ fn start_safety_buffering_test_turn(
      chat.record_safety_buffering_turn(turn_id.to_string(), &turn);
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1445,7 +1445,7 @@ index 2b60247804dfd79a7066b44a0bb1956df01c6843..38fc9b50c6277b208f27b15ec3dcb940
              thread_id: thread_id.to_string(),
              turn: AppServerTurn {
                  id: turn_id.to_string(),
-@@ -875,6 +876,7 @@ async fn live_app_server_turn_completed_clears_working_status_after_answer_item(
+@@ -910,6 +911,7 @@ async fn live_app_server_turn_completed_clears_working_status_after_answer_item(
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1453,7 +1453,7 @@ index 2b60247804dfd79a7066b44a0bb1956df01c6843..38fc9b50c6277b208f27b15ec3dcb940
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -961,6 +963,7 @@ async fn live_app_server_turn_started_sets_feedback_turn_id() {
+@@ -997,6 +999,7 @@ async fn live_app_server_turn_started_sets_feedback_turn_id() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1461,7 +1461,7 @@ index 2b60247804dfd79a7066b44a0bb1956df01c6843..38fc9b50c6277b208f27b15ec3dcb940
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -1587,6 +1590,7 @@ async fn live_app_server_settings_rejection_preserves_running_turn() {
+@@ -1627,6 +1630,7 @@ async fn live_app_server_settings_rejection_preserves_running_turn() {
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1469,7 +1469,7 @@ index 2b60247804dfd79a7066b44a0bb1956df01c6843..38fc9b50c6277b208f27b15ec3dcb940
              thread_id: "thread-1".into(),
              turn: AppServerTurn {
                  id: "turn-1".into(),
-@@ -1658,6 +1662,7 @@ async fn live_app_server_failed_turn_does_not_duplicate_error_history() {
+@@ -1698,6 +1702,7 @@ async fn live_app_server_failed_turn_does_not_duplicate_error_history() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1477,7 +1477,7 @@ index 2b60247804dfd79a7066b44a0bb1956df01c6843..38fc9b50c6277b208f27b15ec3dcb940
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -1827,6 +1832,7 @@ async fn live_app_server_stream_recovery_restores_previous_status_header() {
+@@ -1908,6 +1913,7 @@ async fn live_app_server_stream_recovery_restores_previous_status_header() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1485,15 +1485,15 @@ index 2b60247804dfd79a7066b44a0bb1956df01c6843..38fc9b50c6277b208f27b15ec3dcb940
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -1905,6 +1911,7 @@ async fn live_app_server_server_overloaded_error_renders_error() {
+@@ -1995,6 +2001,7 @@ async fn live_app_server_server_overloaded_error_renders_error() {
  
-     chat.handle_server_notification(
-         ServerNotification::TurnStarted(TurnStartedNotification {
+         chat.handle_server_notification(
+             ServerNotification::TurnStarted(TurnStartedNotification {
 +            initial_settings: None,
-             thread_id: "thread-1".to_string(),
-             turn: AppServerTurn {
-                 id: "turn-1".to_string(),
-@@ -1949,6 +1956,7 @@ async fn live_app_server_cyber_policy_error_renders_dedicated_notice() {
+                 thread_id: "thread-1".to_string(),
+                 turn: AppServerTurn {
+                     id: "turn-1".to_string(),
+@@ -2047,6 +2054,7 @@ async fn live_app_server_cyber_policy_error_renders_dedicated_notice() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1502,10 +1502,10 @@ index 2b60247804dfd79a7066b44a0bb1956df01c6843..38fc9b50c6277b208f27b15ec3dcb940
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
 diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-index 9ce2635d3b32a8480cbff8eb308fcd1a7c437d34..7edc6d4742b62d68970e97546b189b6a6bcf52ec 100644
+index 3ac0a5b8114bb5ee033209735f158bbbeffbbee3..c8d4bbb6e7ef8a9e66a963caed8b0dd8994a258a 100644
 --- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-@@ -925,6 +925,7 @@ pub(super) fn replay_agent_message(
+@@ -930,6 +930,7 @@ pub(super) fn replay_agent_message(
  pub(super) fn replay_turn_started(chat: &mut ChatWidget, replay_kind: ReplayKind) {
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1513,7 +1513,7 @@ index 9ce2635d3b32a8480cbff8eb308fcd1a7c437d34..7edc6d4742b62d68970e97546b189b6a
              thread_id: thread_id(chat),
              turn: app_server_turn(
                  "turn-1",
-@@ -1146,6 +1147,7 @@ pub(super) fn app_server_turn(
+@@ -1152,6 +1153,7 @@ pub(super) fn app_server_turn(
  pub(super) fn handle_turn_started(chat: &mut ChatWidget, turn_id: &str) {
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1522,10 +1522,10 @@ index 9ce2635d3b32a8480cbff8eb308fcd1a7c437d34..7edc6d4742b62d68970e97546b189b6a
              turn: app_server_turn(
                  turn_id,
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 93662ffac475697d4f5a41c918b80de85e47b7b3..198212941accafd94c7838b3d26c20ce3572bf02 100644
+index 434aaa19cf819a771e41301afa6a081cb208d3c3..1f85f916bc1d16cdf85aa6ef49724af33d266b43 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-@@ -1159,6 +1159,7 @@ async fn replayed_retryable_app_server_error_keeps_turn_running() {
+@@ -1179,6 +1179,7 @@ async fn replayed_retryable_app_server_error_keeps_turn_running() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1533,7 +1533,7 @@ index 93662ffac475697d4f5a41c918b80de85e47b7b3..198212941accafd94c7838b3d26c20ce
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -1495,6 +1496,7 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
+@@ -1510,6 +1511,7 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1541,7 +1541,7 @@ index 93662ffac475697d4f5a41c918b80de85e47b7b3..198212941accafd94c7838b3d26c20ce
              thread_id: "thread-1".to_string(),
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
-@@ -1555,6 +1557,7 @@ async fn live_reasoning_summary_drops_empty_parts_without_losing_content() {
+@@ -1571,6 +1573,7 @@ async fn live_reasoning_summary_drops_empty_parts_without_losing_content() {
  
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1550,10 +1550,10 @@ index 93662ffac475697d4f5a41c918b80de85e47b7b3..198212941accafd94c7838b3d26c20ce
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
 diff --git a/codex-rs/tui/src/chatwidget/tests/plan_mode.rs b/codex-rs/tui/src/chatwidget/tests/plan_mode.rs
-index 2b3257073cdac1a9d6ec3bcb451c46bee5c79ba1..fd99945b8530ead01946cbaa3f68db7410b5112b 100644
+index 5b9ded0f4b5eb769dc96d85a128cb38c8b26e62f..db10c42f3fd284aac95ab0bc4631b4ee43c1a94f 100644
 --- a/codex-rs/tui/src/chatwidget/tests/plan_mode.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/plan_mode.rs
-@@ -1158,6 +1158,7 @@ async fn submit_user_message_queues_while_compaction_turn_is_running() {
+@@ -1153,6 +1153,7 @@ async fn submit_user_message_queues_while_compaction_turn_is_running() {
      chat.thread_id = Some(thread_id);
      chat.handle_server_notification(
          ServerNotification::TurnStarted(TurnStartedNotification {
@@ -1562,10 +1562,10 @@ index 2b3257073cdac1a9d6ec3bcb451c46bee5c79ba1..fd99945b8530ead01946cbaa3f68db74
              turn: AppServerTurn {
                  id: "turn-1".to_string(),
 diff --git a/codex-rs/tui/src/chatwidget/tests/review_mode.rs b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-index 014354ba63f2ea2f7b3a0492bf0cc1afe0aafdde..87e6c3cac88119ae95d0b3aa60390c0f9f0e2d23 100644
+index b4d78fa218b259132f61bc0a10ee33d7c140bc81..eafcebd50322d4d2ac1dda37cc353e448a5cb667 100644
 --- a/codex-rs/tui/src/chatwidget/tests/review_mode.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-@@ -1296,6 +1296,7 @@ async fn interrupted_turn_after_goal_budget_limited_uses_budget_message_snapshot
+@@ -1301,6 +1301,7 @@ async fn interrupted_turn_after_goal_budget_limited_uses_budget_message_snapshot
      chat.handle_server_notification(
          codex_app_server_protocol::ServerNotification::TurnStarted(
              codex_app_server_protocol::TurnStartedNotification {

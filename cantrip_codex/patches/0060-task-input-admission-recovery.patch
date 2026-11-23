@@ -1,0 +1,85 @@
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+index 922efca..ee04f13 100644
+--- a/codex-rs/cli/src/cantrip_inference_journal.rs
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -38,6 +38,33 @@ struct Recovery {
+     message_id: Option<String>,
+     thread_id: Option<String>,
+     turn_id: Option<String>,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    task_input: Option<TaskInput>,
++}
++
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct TaskInput {
++    operation_id: String,
++    chat_id: String,
++    client_message_id: String,
++    worker_id: String,
++    worktree_id: String,
++    execution_lane_id: String,
++    execution_lane_activated_at: String,
++    provider_id: String,
++    model_route_id: String,
++    provider_account_id: Option<String>,
++    dispatch: TaskDispatch,
++}
++
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct TaskDispatch {
++    cycle_id: String,
++    operation_id: String,
++    lease_owner: String,
++    fencing_token: u64,
+ }
+ 
+ #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+@@ -82,6 +109,10 @@ struct RecoveryReference {
+     key: String,
+     worker_generation: String,
+     revision: u64,
++    /// Set by the current worker only after canonical server reconciliation
++    /// revokes this Task input. A title can have used its old reservation.
++    #[serde(default)]
++    task_input_not_dispatched: bool,
+ }
+ 
+ #[derive(Deserialize)]
+@@ -297,10 +328,34 @@ impl Journal {
+                 let mut restored_order: Option<u64> = None;
+                 for reference in &previous {
+                     let old = self.recovered(reference, generation)?;
++                    let task_input_not_dispatched = reference.task_input_not_dispatched
++                        && identity
++                            .recovery
++                            .as_ref()
++                            .and_then(|r| r.task_input.as_ref())
++                            .zip(
++                                old.identity
++                                    .recovery
++                                    .as_ref()
++                                    .and_then(|r| r.task_input.as_ref()),
++                            )
++                            .is_some_and(|(current, previous)| {
++                                current.chat_id == previous.chat_id
++                                    && current.client_message_id == previous.client_message_id
++                                    && current.worker_id == previous.worker_id
++                                    && current.dispatch.cycle_id == previous.dispatch.cycle_id
++                                    && current.dispatch.operation_id
++                                        == previous.dispatch.operation_id
++                                    && current.dispatch.fencing_token
++                                        >= previous.dispatch.fencing_token
++                                    && previous.operation_id == old.identity.operation_id
++                                    && current.operation_id == identity.operation_id
++                            });
+                     anyhow::ensure!(
+                         (!old.ever_granted && old.state != State::Granted)
+                             || (old.state == State::Released
+-                                && old.outcome.as_deref() == Some("never-started")),
++                                && old.outcome.as_deref() == Some("never-started"))
++                            || task_input_not_dispatched,
+                         "recovery cannot replay potentially executed input"
+                     );
+                     anyhow::ensure!(

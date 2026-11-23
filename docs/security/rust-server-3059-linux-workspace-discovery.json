@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "completeReplacement": false,
+  "serverSourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+  "harnessCommit": "39103dd686eab9c1f91f6abf5294653355b28ae7",
+  "scope": "Exact Linux ARM64 and x64 OCI images under local Docker. The packaged Node worker and browser run on the macOS ARM64 host. The x64 server runs under emulation. The two Node reference controls and six combined Rust product runs cover browser discovery, opaque import, GitHub link, retained checkout and offline workspace removal, plus an approved initial commit and real Git push to a disposable local bare remote.",
+  "images": [
+    {
+      "target": "linux-arm64",
+      "imageId": "sha256:5ca1ee248797d385739b295faa1d057dfac17ae7f4426871e253cff969ac427c",
+      "serverSha256": "1fc14ed5abc8a8a3e2d2acc02e4da542f280256e81f0b6ca106b93e76fcf72cf",
+      "verifiedManifestFiles": 2558
+    },
+    {
+      "target": "linux-x64",
+      "imageId": "sha256:ab3d9ff71769e4f885cde41a104abf313b8b0d36ee4601fe649b47de3f315a9f",
+      "serverSha256": "50aa09c86bb87aba0ea01acad193a2cab25d1c1bb4abec741ebff09f877f16f4",
+      "verifiedManifestFiles": 2558
+    }
+  ],
+  "imageManifestProof": "docs/security/rust-server-3059-linux-full-product-restart.json#postClockFixPackages",
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/inputs.sha256",
+    "bytes": 1739,
+    "sha256": "4bd65301d750364334660de0ff10e3b250e9740740356e416decf4c6ac8efbd3"
+  },
+  "nodeControls": {
+    "pglite": {
+      "workspaceDiscovery": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/pglite.json",
+        "bytes": 565916,
+        "sha256": "902aea7a5bb59173d17723c7b7c3853be8b09388e273646f9d6908ccab076bfb"
+      },
+      "initialCommitAndPush": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/github-initial-push-3059.SY4gU9ux/pglite.json",
+        "bytes": 459247,
+        "sha256": "f4f427651a4fba345d419da6a8cf635da9fbab658b693a002b21c154d09ebdd4"
+      }
+    },
+    "bundled-postgres": {
+      "workspaceDiscovery": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/bundled-postgres.json",
+        "bytes": 567197,
+        "sha256": "a66e03e1179b49904c55623399b1a1dc5f28e966e7bb0edb61db837aee2dcc8c"
+      },
+      "initialCommitAndPush": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/github-initial-push-3059.SY4gU9ux/bundled-postgres.json",
+        "bytes": 459538,
+        "sha256": "ab038d4d5f6eb15dae30db6b24cf3c292dd7807d669e0ac4cb0961faf3b275ac"
+      }
+    },
+    "postgres": {
+      "workspaceDiscovery": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/postgres.json",
+        "bytes": 565365,
+        "sha256": "69ffd377fd38d01688651436dd8f417bf6e9069eaa377b5084f2450948cdbd01"
+      },
+      "initialCommitAndPush": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/github-initial-push-3059.SY4gU9ux/postgres.json",
+        "bytes": 458552,
+        "sha256": "5fd4cbf5e4f8b31a7588d303337e13260031b18431498bd78ed94aec9b70b733"
+      }
+    }
+  },
+  "cases": [
+    {
+      "target": "linux-arm64",
+      "databaseMode": "pglite",
+      "matchedNodeDiscoveryAndInitialPush": true,
+      "browserSteps": 18,
+      "approvedCommitsPushed": 1,
+      "cleanWorkerExits": 7,
+      "cleanServerExits": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/arm64/pglite/matrix.json",
+        "bytes": 415285,
+        "sha256": "a6ffbb62b4f89d2fc57e8e5f316de988912b4f0b0d14245d94b9586ef085a136"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/arm64/pglite/generations.jsonl",
+        "bytes": 4631,
+        "sha256": "5404eb6cb78a222177e0d4271f696be13e928a66bea34621d1f256fc3f89acf9"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/arm64/pglite/matrix.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "databaseMode": "pglite",
+      "matchedNodeDiscoveryAndInitialPush": true,
+      "browserSteps": 18,
+      "approvedCommitsPushed": 1,
+      "cleanWorkerExits": 7,
+      "cleanServerExits": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/x64/pglite/matrix.json",
+        "bytes": 418899,
+        "sha256": "8ca39a56101cb8dc12bd4b9cc1d45e63f09376183aab23ea42f4eb3bb23f1761"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/x64/pglite/generations.jsonl",
+        "bytes": 4657,
+        "sha256": "4ebd270b2d760b18b4e1f4f4f1a139f1bec7ac2f746307c444ae522404bd0edd"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/x64/pglite/matrix.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "linux-arm64",
+      "databaseMode": "bundled-postgres",
+      "matchedNodeDiscoveryAndInitialPush": true,
+      "browserSteps": 18,
+      "approvedCommitsPushed": 1,
+      "cleanWorkerExits": 7,
+      "cleanServerExits": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/arm64/bundled-postgres/matrix.json",
+        "bytes": 422361,
+        "sha256": "2555523da8d4aaaca8041f2c592b76035644eb118cb9e098c309c06c06e350d0"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/arm64/bundled-postgres/generations.jsonl",
+        "bytes": 4910,
+        "sha256": "b95ebfee55201ec542b34c8e0388abff64d27ca28172dedbeb47a5cfc03ec1d5"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/arm64/bundled-postgres/matrix.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "databaseMode": "bundled-postgres",
+      "matchedNodeDiscoveryAndInitialPush": true,
+      "browserSteps": 18,
+      "approvedCommitsPushed": 1,
+      "cleanWorkerExits": 7,
+      "cleanServerExits": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/x64/bundled-postgres/matrix.json",
+        "bytes": 417345,
+        "sha256": "333017fc1a177f08f0315e3e5792864b6617f74196efcb975e1356bb351377ac"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/x64/bundled-postgres/generations.jsonl",
+        "bytes": 4945,
+        "sha256": "b31c9f0538801194cfb19f46de9f9f3cac136a1d03aa0cd5ac04c2f91c7e451e"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/x64/bundled-postgres/matrix.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "linux-arm64",
+      "databaseMode": "postgres",
+      "matchedNodeDiscoveryAndInitialPush": true,
+      "browserSteps": 18,
+      "approvedCommitsPushed": 1,
+      "cleanWorkerExits": 7,
+      "cleanServerExits": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/arm64/postgres/matrix.json",
+        "bytes": 423149,
+        "sha256": "d9feacc313c264ab3c8d9f8de86bfbd0a687a9818199c959a631203f7bd1265e"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/arm64/postgres/generations.jsonl",
+        "bytes": 4688,
+        "sha256": "26579879caf5e73ea74ff88037f3d642c88150fa115d0f74095c8ae51f6ec069"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/arm64/postgres/matrix.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "databaseMode": "postgres",
+      "matchedNodeDiscoveryAndInitialPush": true,
+      "browserSteps": 18,
+      "approvedCommitsPushed": 1,
+      "cleanWorkerExits": 7,
+      "cleanServerExits": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/x64/postgres/matrix.json",
+        "bytes": 416925,
+        "sha256": "0f54b000e105cf2385a94dc14e1991b4be8f4421904f4fe450b4f0a5a1c1c35f"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/x64/postgres/generations.jsonl",
+        "bytes": 4720,
+        "sha256": "33706b813d15a8b230d69bb944a88f7c38a10c4e9899197a2825b7d5bafca36f"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-workspace-discovery-and-push.loCfeHoR/x64/postgres/matrix.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    }
+  ],
+  "totals": {
+    "browserSteps": 108,
+    "cleanWorkerExits": 42,
+    "cleanServerExits": 24
+  }
+}

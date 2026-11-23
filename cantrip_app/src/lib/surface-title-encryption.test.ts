@@ -53,6 +53,25 @@ describe("surface title encryption adapter", () => {
     };
     const adapter = fixture();
     const id = adapter.fileDocumentId(location);
+    const os = {
+      ...location,
+      cantripOsBindingId: "11111111-1111-4111-8111-111111111111",
+      cantripOsRuntimeGeneration: "22222222-2222-4222-8222-222222222222",
+    };
+    expect(adapter.fileDocumentId(os)).not.toBe(id);
+    expect(
+      adapter.fileDocumentId({
+        ...os,
+        cantripOsRuntimeGeneration: "33333333-3333-4333-8333-333333333333",
+      }),
+    ).not.toBe(adapter.fileDocumentId(os));
+    expect(
+      adapter.fileDocumentId({
+        ...location,
+        cantripOsBindingId: undefined,
+        cantripOsRuntimeGeneration: undefined,
+      }),
+    ).toBe(id);
     expect(fileDocumentCreateSchema.shape.id.parse(id)).toBe(id);
     expect(id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,

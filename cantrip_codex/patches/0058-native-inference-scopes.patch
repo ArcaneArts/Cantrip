@@ -1,0 +1,182 @@
+diff --git a/codex-rs/app-server/src/request_processors/managed_execution.rs b/codex-rs/app-server/src/request_processors/managed_execution.rs
+--- a/codex-rs/app-server/src/request_processors/managed_execution.rs
++++ b/codex-rs/app-server/src/request_processors/managed_execution.rs
+@@ -211,9 +211,12 @@
+         if let Some(gate) = inference_gate {
+             let thread_id = codex_protocol::ThreadId::from_string(&params.thread_id)
+                 .map_err(|_| invalid_params("invalid inference thread id"))?;
+-            if let Some(result) =
+-                gate.resolve_inference(thread_id, &params.attempt_id, params.allow)
+-            {
++            if let Some(result) = gate.resolve_inference(
++                thread_id,
++                &params.attempt_id,
++                params.operation_generation.as_deref(),
++                params.allow,
++            ) {
+                 result.map_err(invalid_params)?;
+                 return Ok(Some(
+                     ManagedExecutionResolveResponse { accepted: true }.into(),
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -43,7 +43,7 @@
+     startup_bindings: usize,
+     thread_binding_committed: bool,
+     attempts: HashMap<String, Attempt>,
+-    inference_requests: HashMap<String, (ThreadId, String, oneshot::Sender<bool>)>,
++    inference_requests: HashMap<String, (ThreadId, String, String, oneshot::Sender<bool>)>,
+ }
+ pub struct ManagedExecutionGate {
+     pub runner_generation: String,
+@@ -131,6 +131,7 @@
+         self: &Arc<Self>,
+         thread_id: ThreadId,
+         turn_id: &str,
++        scope_id: &str,
+         phase: &str,
+     ) -> Result<(), String> {
+         let attempt_id = uuid::Uuid::new_v4().to_string();
+@@ -143,20 +144,22 @@
+             if state.closed {
+                 return Err("inference owner is disconnected or invalidated".into());
+             }
+-            state
+-                .inference_requests
+-                .insert(attempt_id.clone(), (thread_id, turn_id.to_owned(), reply));
++            state.inference_requests.insert(
++                attempt_id.clone(),
++                (thread_id, turn_id.to_owned(), scope_id.to_owned(), reply),
++            );
+         }
+         let _pending = PendingInference {
+             gate: Arc::clone(self),
+             attempt_id: attempt_id.clone(),
+             thread_id,
+             turn_id: turn_id.to_owned(),
++            scope_id: scope_id.to_owned(),
+         };
+         self.events.send(ManagedExecutionEvent::Requested {
+             thread_id, runner_generation: self.runner_generation.clone(),
+             attempt_id, turn_id: turn_id.to_owned(), trigger: "inference".into(),
+-            input: serde_json::json!({"phase":phase,"rootThreadId":self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).thread_id.map(|id|id.to_string())}), goal_epoch: None,
++            input: serde_json::json!({"phase":phase,"scopeId":scope_id,"rootThreadId":self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).thread_id.map(|id|id.to_string())}), goal_epoch: None,
+         }).map_err(|_| "inference owner disconnected")?;
+         if receive.await.unwrap_or(false) {
+             Ok(())
+@@ -169,17 +172,25 @@
+         &self,
+         thread_id: ThreadId,
+         attempt_id: &str,
++        operation_generation: Option<&str>,
+         allow: bool,
+     ) -> Option<Result<(), String>> {
+         let mut state = self
+             .state
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        let (expected, _, _) = state.inference_requests.get(attempt_id)?;
++        let (expected, _, scope_id, _) = state.inference_requests.get(attempt_id)?;
+         if *expected != thread_id {
+             return Some(Err("foreign inference request".into()));
+         }
+-        let (_, _, reply) = state.inference_requests.remove(attempt_id).unwrap();
++        // The worker must acknowledge this physical scope, not merely its
++        // logical turn. Older peers cannot silently apply unscoped release.
++        if allow
++            && operation_generation != Some(format!("inference:{scope_id}:{attempt_id}").as_str())
++        {
++            return Some(Err("inference acknowledgement has no matching scope".into()));
++        }
++        let (_, _, _, reply) = state.inference_requests.remove(attempt_id).unwrap();
+         Some(
+             reply
+                 .send(allow)
+@@ -191,6 +202,7 @@
+         &self,
+         thread_id: ThreadId,
+         turn_id: &str,
++        scope_id: &str,
+         phase: &str,
+         cancelled_request: Option<&str>,
+     ) {
+@@ -200,7 +212,7 @@
+             attempt_id: uuid::Uuid::new_v4().to_string(),
+             turn_id: turn_id.to_owned(),
+             trigger: "inference".into(),
+-            input: serde_json::json!({"phase":phase,"requestId":cancelled_request}),
++            input: serde_json::json!({"phase":phase,"scopeId":scope_id,"requestId":cancelled_request}),
+             goal_epoch: None,
+         });
+     }
+@@ -446,9 +458,9 @@
+         };
+         // Cancellation and gate closure are committed under the same lock, so
+         // no new waiter can be inserted between draining and invalidation.
+-        for (attempt_id, (thread_id, turn_id, reply)) in inference_requests {
++        for (attempt_id, (thread_id, turn_id, scope_id, reply)) in inference_requests {
+             let _ = reply.send(false);
+-            self.notify_inference(thread_id, &turn_id, "cancel", Some(&attempt_id));
++            self.notify_inference(thread_id, &turn_id, &scope_id, "cancel", Some(&attempt_id));
+         }
+         for (id, attempt) in attempts {
+             self.declined(id, attempt, "managed runner invalidated");
+@@ -461,6 +473,7 @@
+     attempt_id: String,
+     thread_id: ThreadId,
+     turn_id: String,
++    scope_id: String,
+ }
+ impl Drop for PendingInference {
+     fn drop(&mut self) {
+@@ -476,6 +489,7 @@
+             self.gate.notify_inference(
+                 self.thread_id,
+                 &self.turn_id,
++                &self.scope_id,
+                 "cancel",
+                 Some(&self.attempt_id),
+             );
+diff --git a/codex-rs/core/src/managed_inference.rs b/codex-rs/core/src/managed_inference.rs
+--- a/codex-rs/core/src/managed_inference.rs
++++ b/codex-rs/core/src/managed_inference.rs
+@@ -14,6 +14,7 @@
+     gate: Option<Arc<ManagedExecutionGate>>,
+     thread_id: ThreadId,
+     turn_id: String,
++    scope_id: String,
+     cancellation: CancellationToken,
+     transport_cancellation: CancellationToken,
+     held: Mutex<bool>,
+@@ -166,6 +167,7 @@
+             gate,
+             thread_id,
+             turn_id,
++            scope_id: uuid::Uuid::new_v4().to_string(),
+             cancellation,
+             transport_cancellation,
+             held: Mutex::new(held),
+@@ -204,7 +206,7 @@
+             return Ok(());
+         };
+         tokio::select! {
+-            result = gate.request_inference(self.thread_id, &self.turn_id, phase) =>
++            result = gate.request_inference(self.thread_id, &self.turn_id, &self.scope_id, phase) =>
+                 result.map_err(|_| CodexErr::TurnAborted),
+             _ = self.cancellation.cancelled() => Err(CodexErr::TurnAborted),
+         }
+@@ -318,7 +320,13 @@
+ 
+     fn notify_finished(&self) {
+         if let Some(gate) = &self.gate {
+-            gate.notify_inference(self.thread_id, &self.turn_id, "finish", None);
++            gate.notify_inference(
++                self.thread_id,
++                &self.turn_id,
++                &self.scope_id,
++                "finish",
++                None,
++            );
+         }
+     }
+ 

@@ -1,5 +1,6 @@
 //! Durable account storage and application-payload bandwidth accounting.
 pub mod background;
+mod diagnostics;
 pub mod live_traffic;
 mod maintenance;
 pub mod meter;

@@ -1,0 +1,35 @@
+[workspace]
+resolver = "3"
+# A precise glob avoids Cargo 1.93 treating every nested vendored path as an
+# explicitly included member, which would override the third-party exclusion.
+members = ["cantrip_server_r[s]", "cantrip_worker_r[s]", "crates/*"]
+default-members = ["cantrip_server_rs"]
+exclude = [
+    "cantrip_app/src-tauri",
+    "cantrip_cli",
+    "cantrip_cua",
+    "cantrip_interaction",
+    "cantrip_codex/upstream/codex-rs",
+    "cantrip_codex/.build",
+    "cantrip_server_rs/third-party",
+    "cantrip_worker_rs/third-party/webrtc",
+    "cantrip_worker_rs/third-party/vt100",
+    "scripts/cantrip-cua/feasibility/javascript",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.93"
+publish = false
+
+[patch.crates-io]
+hyper = { path = "cantrip_server_rs/third-party/hyper" }
+matchit = { path = "cantrip_server_rs/third-party/matchit" }
+
+[profile.dev.package.sha2]
+# Logical profile export and restore hash all retained data in development too.
+opt-level = 3
+
+[profile.release]
+strip = "debuginfo"
+lto = "thin"

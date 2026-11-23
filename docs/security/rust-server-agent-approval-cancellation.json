@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "productBaseCommit": "1ce6545024db44a250ebe48f5dbf163b23b5fe3a",
+  "servingExecutableSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+  "unchangedProductionTreesAtProductBase": [
+    "cantrip_server_rs",
+    "cantrip_worker",
+    "packages",
+    "tests/reference-node-server"
+  ],
+  "platform": "darwin-arm64",
+  "workerRuntime": "Node v24.22.2",
+  "codexVersion": "0.166.0",
+  "postgresVersion": "18.6",
+  "authentication": "accounts",
+  "servingExecutable": {
+    "path": "current-binaries/cantrip-server",
+    "bytes": 94116304,
+    "sha256": "129dfce547025b0bdfaaaf57d7fb4b86dc5cdd075b20012348d96b0ab4a97bf4"
+  },
+  "offlineRepositoryFixture": {
+    "path": "current-binaries/project-repository-fixture",
+    "bytes": 70740960,
+    "sha256": "31842fbe6659019ec27ab657b2dc4f3567d9cadd2a316b6af399b98447ba3aa0"
+  },
+  "nodeReferenceEntrypoint": {
+    "path": "tests/reference-node-server/dist/index.js",
+    "bytes": 106,
+    "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+  },
+  "workerEntrypoint": {
+    "path": "cantrip_worker/dist/index.js",
+    "bytes": 391660,
+    "sha256": "ed0cd85f4756c5960b20b1283b680fb0c5701d54dc13e187a92c86923093beab"
+  },
+  "nativeCodexExecutable": {
+    "path": "codex-bundle/codex",
+    "bytes": 281161744,
+    "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+  },
+  "currentWorkerCommandCoverage": {
+    "mapped": 313,
+    "total": 323,
+    "remaining": [
+      "computer-use.effects.sync",
+      "computer-use.operation",
+      "computer-use.preview.open",
+      "computer-use.preview.stop",
+      "surface.desktop.os-prepare",
+      "surface.desktop.probe",
+      "surface.desktop.targets",
+      "surface.resume",
+      "surface.suspend",
+      "surface.tunnel.os-prepare"
+    ]
+  },
+  "product": [
+    {
+      "mode": "pglite",
+      "report": {
+        "path": "pglite-matrix-v2.json",
+        "bytes": 3714315,
+        "sha256": "562c9d71cdbd9d77c8d70036033ca6e31ad5cea0292fc2c1d34a270934bed055"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "canceledChatStatus": "failed",
+          "canceledWithoutRunning": true,
+          "failedApprovalAbsent": true,
+          "normalApprovalCompleted": true,
+          "sameWorkerFollowupInterrupted": true,
+          "sameChatRecoveredAfterWorkerRestart": true,
+          "resultsRetained": true,
+          "cancelDispatches": 1,
+          "modelPosts": 5,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        },
+        {
+          "kind": "rust",
+          "canceledChatStatus": "failed",
+          "canceledWithoutRunning": true,
+          "failedApprovalAbsent": true,
+          "normalApprovalCompleted": true,
+          "sameWorkerFollowupInterrupted": true,
+          "sameChatRecoveredAfterWorkerRestart": true,
+          "resultsRetained": true,
+          "cancelDispatches": 1,
+          "modelPosts": 5,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        }
+      ]
+    },
+    {
+      "mode": "bundled-postgres",
+      "report": {
+        "path": "bundled-postgres-matrix-v2.json",
+        "bytes": 3756970,
+        "sha256": "9c4cfcafccf4a9c033f5c93817854ed68e33a2ed13ea826996a2d4c41dd73e4d"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "canceledChatStatus": "failed",
+          "canceledWithoutRunning": true,
+          "failedApprovalAbsent": true,
+          "normalApprovalCompleted": true,
+          "sameWorkerFollowupInterrupted": true,
+          "sameChatRecoveredAfterWorkerRestart": true,
+          "resultsRetained": true,
+          "cancelDispatches": 1,
+          "modelPosts": 5,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        },
+        {
+          "kind": "rust",
+          "canceledChatStatus": "failed",
+          "canceledWithoutRunning": true,
+          "failedApprovalAbsent": true,
+          "normalApprovalCompleted": true,
+          "sameWorkerFollowupInterrupted": true,
+          "sameChatRecoveredAfterWorkerRestart": true,
+          "resultsRetained": true,
+          "cancelDispatches": 1,
+          "modelPosts": 5,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        }
+      ]
+    },
+    {
+      "mode": "postgres",
+      "report": {
+        "path": "postgres-matrix-v2.json",
+        "bytes": 3748623,
+        "sha256": "87a9fd0dfd8f342db64e291ed24f0fe221ae4d7960e9bb7b9cdbaad25508e51c"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "canceledChatStatus": "failed",
+          "canceledWithoutRunning": true,
+          "failedApprovalAbsent": true,
+          "normalApprovalCompleted": true,
+          "sameWorkerFollowupInterrupted": true,
+          "sameChatRecoveredAfterWorkerRestart": true,
+          "resultsRetained": true,
+          "cancelDispatches": 1,
+          "modelPosts": 5,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        },
+        {
+          "kind": "rust",
+          "canceledChatStatus": "failed",
+          "canceledWithoutRunning": true,
+          "failedApprovalAbsent": true,
+          "normalApprovalCompleted": true,
+          "sameWorkerFollowupInterrupted": true,
+          "sameChatRecoveredAfterWorkerRestart": true,
+          "resultsRetained": true,
+          "cancelDispatches": 1,
+          "modelPosts": 5,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        }
+      ]
+    }
+  ],
+  "observedSameWorkerFollowupInterruptions": [
+    {
+      "path": "pglite-matrix-v1.json",
+      "bytes": 1568113,
+      "sha256": "155c8b1349d1d54f03b6f38e9d548bde39f6db2107421dee7e28463e77c7a999"
+    },
+    {
+      "path": "bundled-postgres-matrix-v1.json",
+      "bytes": 1584313,
+      "sha256": "964e94bc35dd9ef7b20484a0127a00c6521ca7026c1e37791b3c6641a98888d4"
+    },
+    {
+      "path": "postgres-matrix-v1.json",
+      "bytes": 1588872,
+      "sha256": "7b9b90af9e16620341cf509d0d98f0c1dc0af93647a0088db80631bbb834bd8a"
+    },
+    {
+      "path": "postgres-rust-v2.json",
+      "bytes": 1522979,
+      "sha256": "6431ce21d17a0b5d7e03a079104d82bf82c09bbe40432abf30cc951413245e48"
+    }
+  ],
+  "localEvidenceDirectory": "rust-server-agent-approval-cancel-20261111-v1",
+  "fixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 665884225,
+    "sha256": "784e77e3403f5dc9ec6aa0c9a975a0fd8f3776bd70286ae2a654d4a15ed77339",
+    "verifiedRegularFiles": 93570,
+    "redactedServerProcessLogs": 36,
+    "excludedRebuildablePaths": [
+      "*/worker/managed-runtimes",
+      "*/worker/tools/codegraph/versions"
+    ]
+  },
+  "scope": "Production serving paths and full existing worker through the browser SDK, native Codex and scripted loopback Responses. The targeted SQL constraint is installed in the isolated database with the server stopped.",
+  "remaining": [
+    "The first follow-up in the same Agent on the same worker is interrupted before a model request on both peers. The worker-only restart recovers that Agent.",
+    "Other interaction types, standalone Chat, mixed or multi-server faults and supported shipping artifacts require separate evidence."
+  ]
+}

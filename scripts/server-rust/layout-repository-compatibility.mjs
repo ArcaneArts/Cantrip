@@ -26,9 +26,11 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-layout-repository-")),
 const report = {
   suite: "legacy-layout-repository",
   databaseMode,
+  root,
   completeReplacement: false,
   cases: [],
   snapshots: [],
+  cleanupFailures: [],
 };
 let pg, failure;
 const pair = [];
@@ -110,7 +112,7 @@ async function observe(name, changes = {}, options = {}) {
       repository.request(runtime ? nativeInput(request) : request),
     ),
   );
-  report.cases.push({ name, values });
+  report.cases.push({ name, input: request, values });
   for (const v of values)
     assert.equal(
       v.rejected,
@@ -723,7 +725,7 @@ try {
   await mutate("close grouped chat repairs remaining title", "close", {
     viewId: "chat:chat",
   });
-  await mutate("reopen existing chat through profile placement", "open", {
+  await mutate("reopen existing chat through default placement", "open", {
     surfaceRef: entity("project.agent", "chat"),
   });
   await mutate("close final center chat collapses branch", "close", {
@@ -733,15 +735,15 @@ try {
     `INSERT INTO user_settings(user_id,workspace_layout_profile) VALUES(${literal(localOwner)},'ide') ON CONFLICT(user_id) DO UPDATE SET workspace_layout_profile='ide'`,
   );
   const ideChat = await mutate(
-    "IDE profile opens agent in right region",
+    "retired IDE profile still opens agent in center",
     "open",
     { surfaceRef: entity("project.agent", "chat") },
   );
   assert.equal(
     ideChat.layout.panes.find((p) => p.id === ideChat.paneId).region,
-    "right",
+    "center",
   );
-  await mutate("close right profile placement", "close", {
+  await mutate("close default center placement", "close", {
     viewId: "chat:chat",
   });
   for (const id of [
@@ -814,17 +816,21 @@ try {
       await p.close();
     } catch (error) {
       failure ??= error;
+      report.cleanupFailures.push(error.stack);
     }
   try {
     await pg?.close();
   } catch (error) {
     failure ??= error;
+    report.cleanupFailures.push(error.stack);
   }
+  if (!failure) report.passed = true;
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(

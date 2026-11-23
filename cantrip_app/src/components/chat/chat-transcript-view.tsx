@@ -1,4 +1,8 @@
 import {
+  InferenceQueueNotice,
+  useChatInferenceQueue,
+} from "./inference-queue-notice";
+import {
   ArrowDown,
   FilePlus2,
   FolderOpen,
@@ -34,9 +38,9 @@ import { ContextUsageRing } from "@/components/chat/context-usage-ring";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatTurnPromptOverlay } from "@/components/chat/chat-turn-prompt-overlay";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
-import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { NativeSettingsStatus } from "@/components/chat/native-settings-status";
 import { NativeModelSettingsPicker } from "./native-model-settings-picker";
+import { ChatModelReasoningPicker } from "./chat-model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { ChatRelocationStatus } from "@/components/chat/chat-relocation-dialog";
 import { PlanPanel } from "@/components/chat/plan-panel";
@@ -60,6 +64,7 @@ import {
 } from "@/components/ui/empty-state";
 import { chatAttachmentContentUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { nativeSuspensionView } from "./native-suspension-view";
 import type { ChatTranscriptController } from "@/components/chat/use-chat-transcript-controller";
 
 export function ChatTranscriptView({
@@ -226,6 +231,15 @@ export function ChatTranscriptView({
     viewTurnTrajectory,
     viewingAttachment,
   } = controller;
+  const suspensionView = nativeSuspensionView(
+    chat.nativeSuspension,
+    setAutomationPaused.isPending ? setAutomationPaused.variables : undefined,
+  );
+  const inferenceQueue = useChatInferenceQueue({
+    chatId: chat.id,
+    workerId: chat.activeWorkerId,
+    enabled: Boolean(activeChatWorker?.online),
+  });
   const composerContainerRef = useRef<HTMLFormElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const reservedSidePanelWidth = `min(${sidePanelWidth}px, 100%)`;
@@ -389,18 +403,20 @@ export function ChatTranscriptView({
             }
           />
 
-          <ChatRunStatus
-            automationPaused={chat.automationPaused}
-            hasLiveActivity={latestLiveActivityGroupKey !== null}
-            hasStreamingResponse={hasStreamingResponse}
-            inferenceProgress={inferenceProgress.data}
-            syncingCodeGraph={syncingCodeGraph}
-            status={chat.status}
-            waitingForPlanAnswer={
-              capabilities.modes === "agent-modes" &&
-              Boolean(planState.data?.question)
-            }
-          />
+          {!suspensionView ? (
+            <ChatRunStatus
+              automationPaused={chat.automationPaused}
+              hasLiveActivity={latestLiveActivityGroupKey !== null}
+              hasStreamingResponse={hasStreamingResponse}
+              inferenceProgress={inferenceProgress.data}
+              syncingCodeGraph={syncingCodeGraph}
+              status={chat.status}
+              waitingForPlanAnswer={
+                capabilities.modes === "agent-modes" &&
+                Boolean(planState.data?.question)
+              }
+            />
+          ) : null}
         </div>
       </div>
 
@@ -589,16 +605,23 @@ export function ChatTranscriptView({
               ))}
             </div>
           ) : null}
-          {chat.automationPaused ? (
+          <InferenceQueueNotice
+            queue={inferenceQueue.data}
+            providers={settings?.providers}
+            onCancel={
+              effectiveInspectOnly ? undefined : () => interrupt.mutate()
+            }
+            cancelPending={interrupt.isPending}
+          />
+          {chat.automationPaused && !suspensionView ? (
             <div
               role="status"
               className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
             >
               <Pause className="size-3.5 shrink-0" />
               <span>
-                {chat.status === "running"
-                  ? "Paused. The current step will finish, then Codex will wait here until Resume."
-                  : "Paused. Queued prompts, goals, and automatic continuations will wait for Resume."}
+                Automatic work is paused. Queued prompts, goals, and automatic
+                continuations will wait for Resume.
               </span>
             </div>
           ) : null}
@@ -641,6 +664,7 @@ export function ChatTranscriptView({
               ) : null}
               <GoalPanel
                 key={chat.id}
+                waitingForInference={Boolean(inferenceQueue.data)}
                 automationPaused={chat.automationPaused}
                 executionFailed={chat.status === "failed"}
                 error={
@@ -675,6 +699,18 @@ export function ChatTranscriptView({
                 }}
               />
             </>
+          ) : null}
+          {suspensionView?.label === "Pausing" &&
+          interactionRequests.data?.some(
+            (request) => request.status === "pending",
+          ) ? (
+            <p
+              role="status"
+              className="mb-2 text-xs text-amber-700 dark:text-amber-300"
+            >
+              Resolve the pending request to finish pausing. Stop is still
+              available.
+            </p>
           ) : null}
           <AgentInteractionPanel
             requests={interactionRequests.data ?? []}
@@ -1058,7 +1094,11 @@ export function ChatTranscriptView({
                     disabled={relocationActive}
                   />
                 ) : (
-                  <ModelReasoningPicker
+                  <ChatModelReasoningPicker
+                    chatId={chat.id}
+                    workerId={chat.activeWorkerId}
+                    scratchRootId={chat.activeScratchRootId ?? null}
+                    contextKind={capabilities.context}
                     open={settingsPicker === "model"}
                     onOpenChange={(open) =>
                       setSettingsPicker((current) =>
@@ -1137,8 +1177,11 @@ export function ChatTranscriptView({
               agentStartedAtMs={resolveRunningAgentStartedAtMs(
                 messages.data ?? [],
                 chat.updatedAt,
+                chat.nativeSuspension,
               )}
               paused={chat.automationPaused}
+              nativeSuspension={chat.nativeSuspension}
+              pauseRequested={setAutomationPaused.variables}
               pausePending={setAutomationPaused.isPending}
               pauseDisabled={relocationActive || setAutomationPaused.isPending}
               stopPending={interrupt.isPending}

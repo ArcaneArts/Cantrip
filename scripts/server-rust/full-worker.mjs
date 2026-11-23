@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment } from "./process.mjs";
+import { terminateWindowsWorkerTree } from "./windows-worker-tree.mjs";
 
 export async function eventually(read, check, timeout = 30000) {
   const expires = Date.now() + timeout;
@@ -26,11 +27,18 @@ export function launchActualWorker(
   dataDirectory,
   {
     enrollmentCode,
+    startupTimeoutMs = 90_000,
     cliBinary,
     chromiumExecutable,
     chromiumTraceDirectory,
     workerId = "actual-catalog-worker",
     traceShutdown = false,
+    isolatedProcessGroup = false,
+    homeDirectory,
+    workerBinary = process.env.CANTRIP_TEST_WORKER_BINARY,
+    workerPackage = process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+      path.join(repositoryRoot, "tests/reference-node-worker"),
+    environment: extraEnvironment = {},
   } = {},
 ) {
   const environment = {
@@ -66,7 +74,24 @@ export function launchActualWorker(
     ...(process.env.CANTRIP_CODEX_BIN
       ? { CANTRIP_CODEX_BIN: process.env.CANTRIP_CODEX_BIN }
       : {}),
+    ...extraEnvironment,
   };
+  if (workerBinary) {
+    const home = homeDirectory ?? dataDirectory;
+    environment.HOME = home;
+    environment.USERPROFILE = home;
+  } else if (homeDirectory) {
+    environment.CANTRIP_TEST_WORKER_HOME = homeDirectory;
+    environment.NODE_OPTIONS = [
+      environment.NODE_OPTIONS,
+      "--import=" +
+        pathToFileURL(
+          path.join(repositoryRoot, "scripts/server-rust/worker-test-home.mjs"),
+        ).href,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
   if (traceShutdown)
     environment.NODE_OPTIONS = [
       environment.NODE_OPTIONS,
@@ -82,11 +107,12 @@ export function launchActualWorker(
       .join(" ");
   delete environment.CANTRIP_WORKER_TOKEN;
   const child = spawn(
-    process.execPath,
-    [path.join(repositoryRoot, "cantrip_worker/dist/index.js")],
+    workerBinary ? path.resolve(workerBinary) : process.execPath,
+    workerBinary ? [] : [path.join(workerPackage, "dist/index.js")],
     {
-      cwd: path.join(repositoryRoot, "cantrip_worker"),
+      cwd: workerBinary ? repositoryRoot : workerPackage,
       env: environment,
+      detached: isolatedProcessGroup && process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -123,24 +149,35 @@ export function launchActualWorker(
         (value) =>
           assert.ok(
             value.includes("Worker command channel connected"),
-            value.slice(-8000),
+            `Worker command channel did not connect within ${startupTimeoutMs}ms.\n${value.slice(-8000)}`,
           ),
-        90000,
+        startupTimeoutMs,
       );
       ready = true;
     },
     async close() {
       let forced = false;
-      if (child.exitCode === null && child.signalCode === null)
-        child.kill("SIGTERM");
+      let verifyTree;
+      const deadline = Date.now() + 30000;
       const timer = setTimeout(() => {
         forced = true;
         child.kill("SIGKILL");
       }, 30000);
       try {
+        if (child.exitCode === null && child.signalCode === null) {
+          if (process.platform === "win32") {
+            // TerminateProcess alone leaves native runtime descendants alive.
+            // End the owned tree before removing its disposable profile.
+            verifyTree = await terminateWindowsWorkerTree(child.pid, deadline);
+          } else child.kill("SIGTERM");
+        }
         const result = await completion;
+        // The shutdown timer guards worker exit. Windows verifies the owned
+        // descendants separately after the worker has already exited.
+        clearTimeout(timer);
+        if (verifyTree) result.treeTermination = await verifyTree();
         assert.equal(forced, false, `Worker shutdown timed out.\n${output}`);
-        // Windows TerminateProcess does not deliver Node signal handlers.
+        // Windows taskkill does not deliver Node signal handlers.
         // This exercises persisted-credential restart, not Windows graceful shutdown.
         if (!ready) return result;
         if (process.platform !== "win32") {
@@ -149,7 +186,14 @@ export function launchActualWorker(
             output.includes("Cantrip Worker stopped"),
             output.slice(-8000),
           );
-        } else assert.equal(result.signal, "SIGTERM");
+        } else {
+          assert.equal(
+            result.code,
+            1,
+            `Worker tree failed to stop.\n${output}`,
+          );
+          assert.equal(result.signal, null);
+        }
         return result;
       } finally {
         clearTimeout(timer);

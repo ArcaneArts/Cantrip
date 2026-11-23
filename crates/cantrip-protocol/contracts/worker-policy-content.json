@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "policyKeySchema": 0,
+    "policyProtectedSummaryContentSchema": 1,
+    "policyProtectedBodyContentSchema": 6,
+    "policyCliListResultSchema": 10,
+    "policyCliReadResultSchema": 24
+  },
+  "nodes": [
+    {
+      "type": "string",
+      "name": "policyKeySchema",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 80, "when": "length" },
+        {
+          "message": "Policy keys use lowercase letters, numbers, and single interior dashes.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "flags": "u",
+          "displayPattern": "/^[a-z0-9]+(?:-[a-z0-9]+)*$/u"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "policyProtectedSummaryContentSchema",
+      "shape": { "version": 2, "key": 0, "name": 3, "summary": 4 },
+      "catchall": 5,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "name": "policyNameSchema",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 120, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "name": "policySummaryTextSchema",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "policyProtectedBodyContentSchema",
+      "shape": { "version": 7, "bodyMarkdown": 8 },
+      "catchall": 9,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "string",
+      "name": "policyBodyMarkdownSchema",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100000, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "policyCliListResultSchema",
+      "shape": { "policies": 11 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 12,
+      "checks": [
+        { "check": "max_length", "maximum": 64, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "stdio-mcp-policy-keys",
+          "messageAfterPath": true,
+          "message": "Effective policies cannot contain duplicate keys."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "effectivePolicySummarySchema",
+      "shape": {
+        "key": 0,
+        "name": 3,
+        "summary": 4,
+        "mandatory": 13,
+        "sources": 14
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 15,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 501, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "effectivePolicySourceSchema",
+      "options": [16, 18, 21],
+      "discriminator": "type",
+      "checks": []
+    },
+    { "type": "object", "shape": { "type": 17 }, "checks": [] },
+    { "type": "literal", "values": ["mandatory"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 19, "workspaceId": 20 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["workspace"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 22, "projectId": 23 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["project"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "policyCliReadResultSchema",
+      "shape": { "policy": 25 },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "key": 0, "name": 3, "summary": 4, "bodyMarkdown": 8 },
+      "checks": []
+    }
+  ]
+}

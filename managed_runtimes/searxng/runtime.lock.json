@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "component": "searxng",
-  "bundleVersion": "2026.08.22.1",
+  "bundleVersion": "2026.11.22.1",
   "searxng": {
     "repository": "https://github.com/searxng/searxng",
     "commit": "9fea41204fdfa7a5cfa15b0ebd12904c520478ce",

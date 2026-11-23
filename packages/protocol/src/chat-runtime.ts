@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chatNativeSuspensionSchema } from "./native-suspensions.js";
 import {
   chatPlanOpaqueStateSchema,
   chatMessageOpaqueContentSchema,
@@ -345,6 +346,7 @@ export const chatPauseStateSchema = z.object({
 export const chatPauseRuntimeStateSchema = z
   .object({
     paused: z.boolean(),
+    nativeSuspension: chatNativeSuspensionSchema.optional(),
     active: z
       .object({
         threadId: z.string().min(1).max(500),

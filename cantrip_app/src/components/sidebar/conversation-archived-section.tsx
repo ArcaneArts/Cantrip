@@ -90,7 +90,16 @@ export function ConversationArchivedSection({
         label="Archived chat list"
       >
         {(chat) => (
-          <div key={chat.id} data-conversation-row="" className="px-1">
+          <div
+            key={chat.id}
+            data-conversation-row=""
+            data-elite-global-key={
+              visible
+                ? `conversation:archived:${projectId}:${chat.id}`
+                : undefined
+            }
+            className="px-1"
+          >
             <div className="flex items-center">
               <button
                 type="button"

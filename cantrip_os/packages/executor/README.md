@@ -1,0 +1,288 @@
+# Optional execution package
+
+The package supports captured project sources, native
+agent execution, product file operations, interactive Linux terminals, setup/Run,
+attachment/artifact delivery and explicit workspace GUI commands through the
+existing worker. Docker/installed-VM and distribution evidence is recorded in
+[acceptance](../../ACCEPTANCE.md#phase-3-acceptance-and-distribution-2026-11-04).
+Installing this package alone does not move an existing chat into Linux.
+
+The [Phase 5 distribution checkpoint](../../ACCEPTANCE.md#phase-5-distribution-acceptance-2026-11-07)
+records executor 0.12.0 with the refreshed AMD64 Docker/ISO, native execution,
+installed BIOS/UEFI and optional-package preservation results at its exact source.
+
+`cantrip-os-executor` depends on the workspace package. It runs the pinned,
+reviewed `codex-exec-server` as each selected workspace account, with its own
+empty `CODEX_HOME`. It installs no worker or model-provider credentials. Source
+preparation reuses the canonical Codex build with `--executor-only`; the output
+omits the CLI, code-mode host, responses proxy, and V8 binary archive. The native
+executor and bundled Linux sandbox helper retain their upstream protocol.
+
+From the repository root:
+
+```sh
+node cantrip_os/scripts/executor-package.mjs
+CANTRIP_OS_ARCH=amd64 node cantrip_os/scripts/executor-package.mjs
+CANTRIP_OS_EXECUTOR=1 pnpm os
+CANTRIP_OS_EXECUTOR=1 node cantrip_os/scripts/iso.mjs
+```
+
+Cold Rust builds take time. BuildKit caches source downloads and compilation;
+ordinary theme/package edits reuse the native build. The public Docker/ISO
+scripts include the optional executor by default. Set `CANTRIP_OS_EXECUTOR=0` to
+omit it. With `CANTRIP_OS_WORKSPACES=0`, it is also omitted unless explicitly
+requested.
+Workspace support remains enabled by default. Including the executor requires
+the workspace package; apt enforces that dependency.
+
+Output: `cantrip_os/artifacts/packages/cantrip-os-executor_0.21.0_<arch>.deb`.
+It contains the source/patch fingerprint manifest, binary hashes, licenses, and
+sandbox helper. Docker and ISO recipes install the same package.
+
+Inside Linux, after copying the package there:
+
+```sh
+sudo apt install ./cantrip-os-executor_0.21.0_arm64.deb  # amd64 for the VM edition
+sudo cantrip-executor enable
+sudo cantrip-executor status
+sudo cantrip-executor attach OWNER_ID WORKER_ID
+sudo cantrip-workspaces create work
+sudo cantrip-executor open work
+sudo cantrip-executor close work
+sudo cantrip-executor disable
+sudo apt remove cantrip-os-executor
+```
+
+`open` returns a public descriptor with persistent instance ID, owning
+attachment, current manager/executor generations, workspace identity and guest
+location. The root-only control socket supplies the bearer capability only to
+the package carrier; the descriptor does not print it. Repeated attach to the
+same owner/worker is idempotent. Changing either requires explicit `detach`,
+which stops managed executors but retains data.
+
+Each native listener binds an OS-loopback ephemeral port and authenticates
+every connection. Docker does not publish executor ports. The worker uses
+Docker's privileged exec carrier locally, or authenticated SSH with a pinned
+known-hosts file for an installed test VM. This is the execution connection,
+not a general Cantrip SSH/SFTP service feature. Neither the local desktop
+viewer nor its token authorizes executor access.
+
+`cantrip-executor connect WORKSPACE --expect '<descriptor JSON>'` bridges native
+JSON frames over that protected carrier. It requires the exact instance,
+owner/worker, workspace and runtime generations. It does not start an executor
+or select a fallback. Native `initialize`/`initialized` establishes the session;
+the native session ID supports explicit reconnect. Disconnect is not process
+cancellation: use native `process/terminate`. The carrier never replays requests.
+
+Version 0.11.0 configures detached-session retention through the root-owned
+`session_retention_seconds` setting in `/etc/cantrip-os/executor.json`.
+The default is 86400 seconds (24 hours), including when an older retained
+conffile omits the setting. `cantrip-executor status` reports the effective
+value. Values must be positive integers no greater than 4294967295. Restart
+the executor service to apply a change; this interrupts its existing processes
+and creates fresh runtime generations. Package upgrades preserve administrator
+conffiles using Debian's normal configuration handling.
+
+The package passes the policy through the trusted native startup option
+`--detached-session-retention-seconds`. Ordinary executor startup without this
+option retains its 30-second default. This is a recovery window for disconnected
+sessions on a still-running executor, not process persistence through a guest or
+executor restart. Reconnection retains exclusive session attachment and cannot
+extend another connection's authority. Expiration terminates the detached
+session's process tree; reconnect reports the original session as unavailable
+and never repeats its commands.
+
+Worker terminal carriers treat PTY hangup and stdin EOF as disconnection.
+Explicit terminal close and cancellation still terminate the selected guest
+process tree. A Worker restart can resume the recorded process during the
+recovery window; retained output remains subject to the separate bounds below.
+
+Version 0.10.0 adds optional `outputEvictedThroughSeq` metadata to native
+`process/read`. This is the last output sequence actually discarded by the
+executor, not an inference from gaps in the shared output/lifecycle sequence.
+Zero reports no eviction; an absent value means the backend does not report
+coverage. The retained buffer is bounded by 1 MiB and 50,000 chunks per process.
+Completed, closed processes expire after 30 seconds; reconnect does not make
+expired output or dead processes recoverable.
+
+Workers report actual missing output in terminals and Run output, keep Run
+truncation in the private admission journal, and continue observing the same
+admitted process. Fresh terminal/Run models replay retained output from the
+beginning; transport retries within a live reader retain its current cursor.
+An older executor remains usable, with an explicit coverage-unavailable notice
+when rebuilding a model after recovery. Read-only administrative observation
+never starts, writes to, or terminates a process, including on observation limits.
+
+The worker module `tests/reference-node-worker/src/os-executor/connection.ts` implements the
+carrier and preserves unknown delivery outcomes. Product callers must apply
+server admission and project binding in later cycles. Guest paths are not
+worker-local paths.
+
+The systemd unit supervises installed systems; Docker invokes the package-owned
+lifecycle. On installed systems, `enable`/`disable` also controls boot enablement,
+and explicit startup waits for the actual control endpoint. Executors are
+independent of desktops. Stopping a desktop leaves
+these commands running. Stopping the executor manager terminates its native
+servers and descendants, including detached children. A restart creates a new
+generation; old process handles are not replayed on a replacement server.
+
+Version 0.2.0 sets `CAP_KILL` on the native executor and enables reviewed Linux
+process-tree cleanup for individual command cancellation. It can signal sudo
+descendants and children which change session/process group while preserving
+independent native jobs. Ordinary commands retain their UID and do not inherit
+the capability. See the [source backend guide](../../SOURCES.md).
+
+Configuration: `/etc/cantrip-os/executor.json`. Persistent identity, attachment,
+enable preference and logs live under `/var/lib/cantrip-os-executor`, mounted
+in Docker at `<instance-name>-executor`. Workspace files remain in their
+existing volume. Remove/purge retain both; `os.mjs reset` explicitly deletes
+all three instance volumes. Service lifecycle logs go to Docker logs or the
+system journal.
+
+The opt-in real-runtime test requires a disposable instance with `exec-a` and
+`exec-b` workspace accounts and the executor package enabled:
+
+```sh
+CANTRIP_OS_TEST_CONTAINER=cantrip-os-executor-test \
+  pnpm --dir tests/reference-node-worker exec vitest run test/os-executor.integration.test.ts
+```
+
+For an installed VM, set `CANTRIP_OS_TEST_TRANSPORT` to a JSON file with `kind:
+"ssh"`, `host`, `port`, `user`, `identityFile`, and `knownHostsFile`. The SSH user
+needs passwordless sudo for package control. Obtain the disposable VM's host
+key through its trusted console; do not disable host-key checking. The test
+mutates its designated workspaces. Record runtime results in acceptance only
+after actually executing them.
+
+Version 0.3.0 added `file-operations.mjs`, a small Node child started through the
+native authenticated process API. It reuses the worker's filesystem semantics
+for Explorer, text/binary editing, and uploads. It has no listener, scheduler,
+conversation store, account key, or provider credential. Its temporary binary
+staging key is generated locally inside the workspace. Node is a declared
+package dependency; removing the executor removes this integration helper.
+
+Product file mutations record durable admissions and completion receipts. After
+uncertain transport delivery, recovery observes the saved operation and reports
+an unknown outcome when no completion exists. It does not resend the mutation.
+Older captured editors fail after a runtime change; verify the source and open
+it through a newly selected Linux agent. Their recoverable drafts remain intact.
+
+Interactive terminals use the native process API. Reviewed patch 0047 exposes
+its existing PTY resize implementation as `process/resize`, scoped to the
+initialized native session's process handle. The worker keeps durable process
+admissions before starting Bash and resumes known handles without replaying
+input. This package does not install the worker or a terminal scheduler.
+
+Version 0.5.0 adds `run-definitions.mjs`, a finite native child for the existing
+Run definition repository, static provider/path discovery, and Linux tool
+validation. It uses the actual guest account and a Debian executable search
+path. The owning Worker retains admissions and observes known native processes
+after uncertain delivery. No Worker environment, broker token, provider account,
+or model credential is sent into this helper. Run process lifecycle integration
+is a separate milestone.
+
+Version 0.6.0 adds the finite `run-plan.mjs` preparation helper and the small
+`process-owner` binary for managed Run generations. Preparation reuses shared
+provider, environment-file, and live Codex environment behavior in Linux. It
+receives only purpose-specific Run secret values; account and provider keys
+remain on the Worker. The Worker retains native process identities, output
+redaction, cancellation, and operation recovery.
+
+The process owner runs without extra privileges, adopts orphaned descendants,
+and remains alive until its command tree ends. This lets native termination
+also reach detached root children after `sudo`/`setsid` forks. Ordinary commands
+keep the selected workspace UID and unrestricted sudo. GCC is used only in the
+package build stage. No compiler, scheduler, or new daemon is added by this
+helper. This generation driver is an execution component; product Run routing
+are integrated with a combined Host/CantripOS configuration list.
+
+Version 0.7.0 adds revisioned definition deletion to the finite Linux helper.
+The Server reads the actual definition revision before stopping any Run, retires
+all Host/Linux runtimes that use that same source, and removes the file only after
+cleanup is confirmed. A separate Linux checkout with the same configuration UUID
+retains its independent source identity. Unknown cleanup preserves the definition
+and captured runtime; an explicit retry observes recorded native work.
+
+Version 0.8.0 materializes uploaded attachments in each workspace account's
+private data directory outside the checkout, and resolves chat file references
+inside the captured Linux source. Copies are content-addressed and checked on
+reuse. A changed or uncertain copy is reported without overwriting it or
+replaying an unconfirmed write. Original uploads and native model image input
+remain on the worker; Linux prompts contain the guest paths.
+
+Version 0.9.0 adds `cantrip-desktop command [args ...]`. Run it as the assigned
+workspace account, for example `cantrip-desktop pcmanfm .` or
+`cantrip-desktop xterm`. Open that workspace's desktop through the workspace
+selector first. The wrapper looks up the account's assigned display and home,
+keeps the current directory and UID, discards inherited X/Wayland/auth/session
+values, and creates a private D-Bus session. Current workspace X servers use
+local sockets with `-ac`, so no Xauthority cookie is required or inherited.
+The actual GUI command fails normally if its display is stopped; it never starts
+a desktop or uses the personal console as a fallback. Commands retain normal
+native executor cancellation. Ordinary shell commands receive no DISPLAY and
+continue independently of desktop lifetime. Root administration must explicitly
+choose the workspace account, e.g. `sudo -u ctw-work cantrip-desktop pcmanfm .`.
+
+For package-only iteration with an already tested native bundle, place the selected
+architecture's complete runtime under `<context>/executor/` and build with:
+
+```sh
+CANTRIP_OS_ARCH=arm64 CANTRIP_OS_EXECUTOR_RUNTIME_CONTEXT=/absolute/runtime-context \
+  node cantrip_os/scripts/executor-package.mjs
+```
+
+This explicit option rebuilds the shared file helpers and Debian package while
+reusing that supplied bundle. It never selects a previous binary automatically.
+Keep the bundle's build manifest and resources together and use the matching
+architecture. Omit the option to build the pinned native source normally. Changes
+to native executor code require the normal source build. This avoids waiting for
+the shared compiler cache when changing only Python services, scripts or desktop
+configuration; it is also usable by Docker/ISO builders through the same package
+preparation function.
+
+Version 0.12.0 installs the executor-owned offline clone hook. The OS installer
+and image preparation remove copied enrollment through this hook; workspace
+accounts, files, configuration and service preferences remain. First startup
+creates a fresh guest instance UUID. Ordinary restarts and same-instance private
+root recovery retain enrollment. Removing the package removes its clone hook.
+
+Version 0.13.0 adds `cantrip-os-run-definitions`, a native one-request child for
+the Rust worker. It runs as the admitted workspace account and shares the Host
+worker's Run definition code. Upgrade the guest package to this version for
+Linux Run definition operations from a Rust worker. The Node worker uses the
+JavaScript entry point during the worker migration.
+
+Version 0.14.0 adds native Run preparation to the helper. The worker
+selects it using the capability on the captured executor binding. The
+helper prepares the admitted Linux worktree, environment and launch commands.
+The worker still owns process start, output, stop and recovery. Older executor
+packages continue to use their shipped preparation helper during the transition.
+
+Version 0.15.0 adds the native Cantrip OS file helper for Explorer navigation,
+text documents and file and directory mutations from the Rust worker. It
+runs as the selected workspace account and reads the existing file operation
+receipts. After uncertain delivery, the worker asks the helper to observe the
+same admission. The package retains the JavaScript helper for Node worker
+compatibility during the migration.
+
+Version 0.16.0 adds binary pages, read-only text previews, log tailing and
+media chunks to the native Explorer helper. The Rust worker preserves the
+existing file versions and log cursors. Media requests stay in the same
+protected stream until the last chunk.
+
+Version 0.19.0 resolves protected chat references inside the admitted
+Linux workspace.
+
+Version 0.18.0 enables native Explorer imports across chunks. The
+workspace helper holds the temporary stage only while a drop is active.
+
+Version 0.17.0 adds streamed binary saves to the native Explorer helper.
+The staged chunks and upload receipts use the existing workspace cache key
+and encryption format. The helper verifies the entire upload before publishing
+it and can reopen a prepared save to determine its outcome.
+
+Version 0.20.0 materializes protected Chat attachments in the native file
+helper. Existing receipt identities and guest paths are preserved.
+
+Version 0.21.0 ships the native file and Run helpers exclusively and drops
+the executor package's Node.js dependency. Use it with the Rust worker.

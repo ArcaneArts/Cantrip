@@ -12,6 +12,22 @@ fn main() {
     {
         [] => run_default(),
         ["--backend", "fake"] => run(FakeBackend, std::io::stdin(), std::io::stdout()),
+        #[cfg(target_os = "linux")]
+        ["--x11-display", display, "--desktop-generation", generation] => {
+            cantrip_cua::linux::run(display, generation)
+        }
+        #[cfg(target_os = "linux")]
+        [
+            "--x11-display",
+            display,
+            "--desktop-generation",
+            generation,
+            "--ready-fd",
+            ready,
+        ] => match ready.parse::<i32>() {
+            Ok(fd) => cantrip_cua::linux::run_ready(display, generation, fd),
+            Err(_) => Err(std::io::Error::other("Invalid readiness descriptor")),
+        },
         ["--cursor-sprite"] => {
             use cantrip_interaction::cursor::{CursorAppearance, CursorState};
             use std::io::Read;
@@ -49,7 +65,7 @@ fn main() {
         }
         _ => {
             eprintln!(
-                "Usage: cantrip-cua [--backend fake | --cursor-sprite | --version | --installation-lock <path>]"
+                "Usage: cantrip-cua [--backend fake | --x11-display :N --desktop-generation <generation> | --cursor-sprite | --version | --installation-lock <path>]"
             );
             std::process::exit(2);
         }
@@ -68,7 +84,15 @@ fn run_default() -> std::io::Result<()> {
     {
         cantrip_cua::macos::run()
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        cantrip_cua::linux::run_host()
+    }
+    #[cfg(windows)]
+    {
+        cantrip_cua::windows::run()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         run(
             cantrip_cua::backend::UnavailableBackend,

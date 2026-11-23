@@ -226,6 +226,15 @@ export function activityLabel(activity: AgentActivity): string {
     case "reasoning":
       return activity.status === "running" ? "Reasoning" : "Reasoned";
     case "mcpToolCall":
+      if (activity.server.toLowerCase() === "cantrip") {
+        const actions: Record<string, string> = {
+          chat_list: "List project chats",
+          chat_read: "Read chat messages",
+          chat_send: "Send message to another agent",
+          chat_wait: "Wait for chat updates",
+        };
+        if (actions[activity.tool]) return actions[activity.tool]!;
+      }
       if (isCodeGraphActivity(activity)) {
         const query = codeGraphQuery(activity);
         return `CodeGraph${query ? ` · ${query}` : ""}`;
@@ -806,7 +815,7 @@ export function ActivityGroup({
 
   const latest = activities.at(-1);
   if (!latest) return null;
-  const failed = activities.some((activity) => activity.status === "failed");
+  const failed = latest.status === "failed";
   const label = active
     ? latestActivityLabel(latest)
     : activityGroupSummary(activities);

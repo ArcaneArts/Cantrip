@@ -1,0 +1,833 @@
+{
+  "queries": {
+    "target": {
+      "sql": "select \"project_worktrees\".\"worker_id\" from \"chats\" inner join \"projects\" on (\"projects\".\"id\" = \"chats\".\"project_id\" and \"projects\".\"owner_id\" = $1) inner join \"project_worktrees\" on \"project_worktrees\".\"id\" = \"chats\".\"active_worktree_id\" where (\"chats\".\"id\" = $2 and \"chats\".\"project_id\" = $3 and \"chats\".\"experience\" = $4) limit $5",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "constant": "agent",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "integer"
+        }
+      ]
+    },
+    "create": {
+      "sql": "insert into \"project_automations\" (\"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, default, default, default, $12, $13) returning \"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "protectedName",
+          "kind": "jsonb"
+        },
+        {
+          "key": "protectedPrompt",
+          "kind": "jsonb"
+        },
+        {
+          "key": "schedule",
+          "kind": "jsonb"
+        },
+        {
+          "key": "protectedCondition",
+          "kind": "jsonb"
+        },
+        {
+          "key": "enabled",
+          "kind": "boolean"
+        },
+        {
+          "constant": 1,
+          "kind": "integer"
+        },
+        {
+          "key": "nextRunAt",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        }
+      ]
+    },
+    "list": {
+      "sql": "select \"project_automations\".\"id\", \"project_automations\".\"owner_id\", \"project_automations\".\"project_id\", \"project_automations\".\"chat_id\", \"project_automations\".\"protected_name\", \"project_automations\".\"protected_prompt\", \"project_automations\".\"schedule\", \"project_automations\".\"protected_condition\", \"project_automations\".\"enabled\", \"project_automations\".\"revision\", \"project_automations\".\"next_run_at\", \"project_automations\".\"last_run_at\", \"project_automations\".\"last_status\", \"project_automations\".\"last_error\", \"project_automations\".\"created_at\", \"project_automations\".\"updated_at\", \"project_worktrees\".\"worker_id\" from \"project_automations\" inner join \"projects\" on (\"projects\".\"id\" = \"project_automations\".\"project_id\" and \"projects\".\"owner_id\" = $1) inner join \"chats\" on \"chats\".\"id\" = \"project_automations\".\"chat_id\" inner join \"project_worktrees\" on \"project_worktrees\".\"id\" = \"chats\".\"active_worktree_id\" where \"project_automations\".\"project_id\" = $2 order by \"project_automations\".\"created_at\" desc",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        }
+      ]
+    },
+    "list-worker": {
+      "sql": "select \"project_automations\".\"id\", \"project_automations\".\"owner_id\", \"project_automations\".\"project_id\", \"project_automations\".\"chat_id\", \"project_automations\".\"protected_name\", \"project_automations\".\"protected_prompt\", \"project_automations\".\"schedule\", \"project_automations\".\"protected_condition\", \"project_automations\".\"enabled\", \"project_automations\".\"revision\", \"project_automations\".\"next_run_at\", \"project_automations\".\"last_run_at\", \"project_automations\".\"last_status\", \"project_automations\".\"last_error\", \"project_automations\".\"created_at\", \"project_automations\".\"updated_at\" from \"project_automations\" inner join \"chats\" on (\"chats\".\"id\" = \"project_automations\".\"chat_id\" and \"project_automations\".\"owner_id\" = $1) inner join \"project_worktrees\" on (\"project_worktrees\".\"id\" = \"chats\".\"active_worktree_id\" and \"project_worktrees\".\"worker_id\" = $2) where \"project_automations\".\"enabled\" = $3 order by \"project_automations\".\"next_run_at\"",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "worker",
+          "kind": "text"
+        },
+        {
+          "key": "enabled",
+          "kind": "boolean"
+        }
+      ]
+    },
+    "get": {
+      "sql": "select \"project_automations\".\"id\", \"project_automations\".\"owner_id\", \"project_automations\".\"project_id\", \"project_automations\".\"chat_id\", \"project_automations\".\"protected_name\", \"project_automations\".\"protected_prompt\", \"project_automations\".\"schedule\", \"project_automations\".\"protected_condition\", \"project_automations\".\"enabled\", \"project_automations\".\"revision\", \"project_automations\".\"next_run_at\", \"project_automations\".\"last_run_at\", \"project_automations\".\"last_status\", \"project_automations\".\"last_error\", \"project_automations\".\"created_at\", \"project_automations\".\"updated_at\", \"project_worktrees\".\"worker_id\" from \"project_automations\" inner join \"projects\" on (\"projects\".\"id\" = \"project_automations\".\"project_id\" and \"projects\".\"owner_id\" = $1) inner join \"chats\" on \"chats\".\"id\" = \"project_automations\".\"chat_id\" inner join \"project_worktrees\" on \"project_worktrees\".\"id\" = \"chats\".\"active_worktree_id\" where \"project_automations\".\"id\" = $2 limit $3",
+      "bindings": [
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "integer"
+        }
+      ]
+    },
+    "update-0": {
+      "sql": "update \"project_automations\" set \"chat_id\" = $1, \"schedule\" = $2, \"enabled\" = $3, \"revision\" = $4, \"next_run_at\" = $5, \"last_error\" = $6, \"updated_at\" = $7 where (\"project_automations\".\"id\" = $8 and \"project_automations\".\"owner_id\" = $9 and \"project_automations\".\"revision\" = $10) returning \"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "schedule",
+          "kind": "jsonb"
+        },
+        {
+          "key": "enabled",
+          "kind": "boolean"
+        },
+        {
+          "key": "newRevision",
+          "kind": "integer"
+        },
+        {
+          "key": "nextRunAt",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": null,
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        }
+      ]
+    },
+    "update-1": {
+      "sql": "update \"project_automations\" set \"chat_id\" = $1, \"protected_name\" = $2, \"schedule\" = $3, \"enabled\" = $4, \"revision\" = $5, \"next_run_at\" = $6, \"last_error\" = $7, \"updated_at\" = $8 where (\"project_automations\".\"id\" = $9 and \"project_automations\".\"owner_id\" = $10 and \"project_automations\".\"revision\" = $11) returning \"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "protectedName",
+          "kind": "jsonb"
+        },
+        {
+          "key": "schedule",
+          "kind": "jsonb"
+        },
+        {
+          "key": "enabled",
+          "kind": "boolean"
+        },
+        {
+          "key": "newRevision",
+          "kind": "integer"
+        },
+        {
+          "key": "nextRunAt",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": null,
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        }
+      ]
+    },
+    "update-2": {
+      "sql": "update \"project_automations\" set \"chat_id\" = $1, \"protected_prompt\" = $2, \"schedule\" = $3, \"enabled\" = $4, \"revision\" = $5, \"next_run_at\" = $6, \"last_error\" = $7, \"updated_at\" = $8 where (\"project_automations\".\"id\" = $9 and \"project_automations\".\"owner_id\" = $10 and \"project_automations\".\"revision\" = $11) returning \"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "protectedPrompt",
+          "kind": "jsonb"
+        },
+        {
+          "key": "schedule",
+          "kind": "jsonb"
+        },
+        {
+          "key": "enabled",
+          "kind": "boolean"
+        },
+        {
+          "key": "newRevision",
+          "kind": "integer"
+        },
+        {
+          "key": "nextRunAt",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": null,
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        }
+      ]
+    },
+    "update-3": {
+      "sql": "update \"project_automations\" set \"chat_id\" = $1, \"protected_name\" = $2, \"protected_prompt\" = $3, \"schedule\" = $4, \"enabled\" = $5, \"revision\" = $6, \"next_run_at\" = $7, \"last_error\" = $8, \"updated_at\" = $9 where (\"project_automations\".\"id\" = $10 and \"project_automations\".\"owner_id\" = $11 and \"project_automations\".\"revision\" = $12) returning \"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "protectedName",
+          "kind": "jsonb"
+        },
+        {
+          "key": "protectedPrompt",
+          "kind": "jsonb"
+        },
+        {
+          "key": "schedule",
+          "kind": "jsonb"
+        },
+        {
+          "key": "enabled",
+          "kind": "boolean"
+        },
+        {
+          "key": "newRevision",
+          "kind": "integer"
+        },
+        {
+          "key": "nextRunAt",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": null,
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        }
+      ]
+    },
+    "update-4": {
+      "sql": "update \"project_automations\" set \"chat_id\" = $1, \"schedule\" = $2, \"protected_condition\" = $3, \"enabled\" = $4, \"revision\" = $5, \"next_run_at\" = $6, \"last_error\" = $7, \"updated_at\" = $8 where (\"project_automations\".\"id\" = $9 and \"project_automations\".\"owner_id\" = $10 and \"project_automations\".\"revision\" = $11) returning \"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "schedule",
+          "kind": "jsonb"
+        },
+        {
+          "key": "protectedCondition",
+          "kind": "jsonb"
+        },
+        {
+          "key": "enabled",
+          "kind": "boolean"
+        },
+        {
+          "key": "newRevision",
+          "kind": "integer"
+        },
+        {
+          "key": "nextRunAt",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": null,
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        }
+      ]
+    },
+    "update-5": {
+      "sql": "update \"project_automations\" set \"chat_id\" = $1, \"protected_name\" = $2, \"schedule\" = $3, \"protected_condition\" = $4, \"enabled\" = $5, \"revision\" = $6, \"next_run_at\" = $7, \"last_error\" = $8, \"updated_at\" = $9 where (\"project_automations\".\"id\" = $10 and \"project_automations\".\"owner_id\" = $11 and \"project_automations\".\"revision\" = $12) returning \"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "protectedName",
+          "kind": "jsonb"
+        },
+        {
+          "key": "schedule",
+          "kind": "jsonb"
+        },
+        {
+          "key": "protectedCondition",
+          "kind": "jsonb"
+        },
+        {
+          "key": "enabled",
+          "kind": "boolean"
+        },
+        {
+          "key": "newRevision",
+          "kind": "integer"
+        },
+        {
+          "key": "nextRunAt",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": null,
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        }
+      ]
+    },
+    "update-6": {
+      "sql": "update \"project_automations\" set \"chat_id\" = $1, \"protected_prompt\" = $2, \"schedule\" = $3, \"protected_condition\" = $4, \"enabled\" = $5, \"revision\" = $6, \"next_run_at\" = $7, \"last_error\" = $8, \"updated_at\" = $9 where (\"project_automations\".\"id\" = $10 and \"project_automations\".\"owner_id\" = $11 and \"project_automations\".\"revision\" = $12) returning \"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "protectedPrompt",
+          "kind": "jsonb"
+        },
+        {
+          "key": "schedule",
+          "kind": "jsonb"
+        },
+        {
+          "key": "protectedCondition",
+          "kind": "jsonb"
+        },
+        {
+          "key": "enabled",
+          "kind": "boolean"
+        },
+        {
+          "key": "newRevision",
+          "kind": "integer"
+        },
+        {
+          "key": "nextRunAt",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": null,
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        }
+      ]
+    },
+    "update-7": {
+      "sql": "update \"project_automations\" set \"chat_id\" = $1, \"protected_name\" = $2, \"protected_prompt\" = $3, \"schedule\" = $4, \"protected_condition\" = $5, \"enabled\" = $6, \"revision\" = $7, \"next_run_at\" = $8, \"last_error\" = $9, \"updated_at\" = $10 where (\"project_automations\".\"id\" = $11 and \"project_automations\".\"owner_id\" = $12 and \"project_automations\".\"revision\" = $13) returning \"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "protectedName",
+          "kind": "jsonb"
+        },
+        {
+          "key": "protectedPrompt",
+          "kind": "jsonb"
+        },
+        {
+          "key": "schedule",
+          "kind": "jsonb"
+        },
+        {
+          "key": "protectedCondition",
+          "kind": "jsonb"
+        },
+        {
+          "key": "enabled",
+          "kind": "boolean"
+        },
+        {
+          "key": "newRevision",
+          "kind": "integer"
+        },
+        {
+          "key": "nextRunAt",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": null,
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        }
+      ]
+    },
+    "delete": {
+      "sql": "delete from \"project_automations\" where (\"project_automations\".\"id\" = $1 and \"project_automations\".\"owner_id\" = $2) returning \"id\"",
+      "bindings": [
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        }
+      ]
+    },
+    "claim-automation": {
+      "sql": "select \"project_automations\".\"id\", \"project_automations\".\"owner_id\", \"project_automations\".\"project_id\", \"project_automations\".\"chat_id\", \"project_automations\".\"protected_name\", \"project_automations\".\"protected_prompt\", \"project_automations\".\"schedule\", \"project_automations\".\"protected_condition\", \"project_automations\".\"enabled\", \"project_automations\".\"revision\", \"project_automations\".\"next_run_at\", \"project_automations\".\"last_run_at\", \"project_automations\".\"last_status\", \"project_automations\".\"last_error\", \"project_automations\".\"created_at\", \"project_automations\".\"updated_at\", \"chats\".\"reasoning_effort\", \"project_worktrees\".\"worker_id\" from \"project_automations\" inner join \"chats\" on \"chats\".\"id\" = \"project_automations\".\"chat_id\" inner join \"project_worktrees\" on \"project_worktrees\".\"id\" = \"chats\".\"active_worktree_id\" where (\"project_automations\".\"id\" = $1 and \"project_automations\".\"owner_id\" = $2) limit $3 for update",
+      "bindings": [
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "integer"
+        }
+      ]
+    },
+    "claim-existing": {
+      "sql": "select \"id\", \"automation_id\", \"owner_id\", \"project_id\", \"chat_id\", \"worker_id\", \"automation_revision\", \"scheduled_for\", \"status\", \"dispatch_instance_id\", \"lease_token\", \"fencing_token\", \"lease_expires_at\", \"attempt_count\", \"reasoning_effort\", \"error_message\", \"claimed_at\", \"completed_at\", \"created_at\", \"updated_at\" from \"project_automation_runs\" where (\"project_automation_runs\".\"automation_id\" = $1 and \"project_automation_runs\".\"scheduled_for\" = $2) limit $3 for update",
+      "bindings": [
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "expected",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": 1,
+          "kind": "integer"
+        }
+      ]
+    },
+    "claim-insert": {
+      "sql": "insert into \"project_automation_runs\" (\"id\", \"automation_id\", \"owner_id\", \"project_id\", \"chat_id\", \"worker_id\", \"automation_revision\", \"scheduled_for\", \"status\", \"dispatch_instance_id\", \"lease_token\", \"fencing_token\", \"lease_expires_at\", \"attempt_count\", \"reasoning_effort\", \"error_message\", \"claimed_at\", \"completed_at\", \"created_at\", \"updated_at\") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, default, $16, default, $17, $18) returning \"id\", \"automation_id\", \"owner_id\", \"project_id\", \"chat_id\", \"worker_id\", \"automation_revision\", \"scheduled_for\", \"status\", \"dispatch_instance_id\", \"lease_token\", \"fencing_token\", \"lease_expires_at\", \"attempt_count\", \"reasoning_effort\", \"error_message\", \"claimed_at\", \"completed_at\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "newRunId",
+          "kind": "text"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "owner",
+          "kind": "text"
+        },
+        {
+          "key": "project",
+          "kind": "text"
+        },
+        {
+          "key": "chat",
+          "kind": "text"
+        },
+        {
+          "key": "worker",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        },
+        {
+          "key": "expected",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": "dispatching",
+          "kind": "text"
+        },
+        {
+          "key": "instance",
+          "kind": "text"
+        },
+        {
+          "key": "leaseToken",
+          "kind": "text"
+        },
+        {
+          "constant": 1,
+          "kind": "integer"
+        },
+        {
+          "key": "expires",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": 1,
+          "kind": "integer"
+        },
+        {
+          "key": "reasoningEffort",
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        }
+      ]
+    },
+    "claim-mark": {
+      "sql": "update \"project_automations\" set \"last_run_at\" = $1, \"last_status\" = $2, \"last_error\" = $3, \"updated_at\" = $4 where (\"project_automations\".\"id\" = $5 and \"project_automations\".\"revision\" = $6 and \"project_automations\".\"next_run_at\" = $7) returning \"id\", \"owner_id\", \"project_id\", \"chat_id\", \"protected_name\", \"protected_prompt\", \"schedule\", \"protected_condition\", \"enabled\", \"revision\", \"next_run_at\", \"last_run_at\", \"last_status\", \"last_error\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "expected",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": "dispatching",
+          "kind": "text"
+        },
+        {
+          "constant": null,
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        },
+        {
+          "key": "expected",
+          "kind": "timestamptz"
+        }
+      ]
+    },
+    "claim-renew": {
+      "sql": "update \"project_automation_runs\" set \"dispatch_instance_id\" = $1, \"lease_token\" = $2, \"fencing_token\" = $3, \"lease_expires_at\" = $4, \"attempt_count\" = $5, \"error_message\" = $6, \"claimed_at\" = $7, \"updated_at\" = $8 where (\"project_automation_runs\".\"id\" = $9 and \"project_automation_runs\".\"fencing_token\" = $10 and \"project_automation_runs\".\"lease_expires_at\" <= $11 and \"project_automation_runs\".\"status\" = $12) returning \"id\", \"automation_id\", \"owner_id\", \"project_id\", \"chat_id\", \"worker_id\", \"automation_revision\", \"scheduled_for\", \"status\", \"dispatch_instance_id\", \"lease_token\", \"fencing_token\", \"lease_expires_at\", \"attempt_count\", \"reasoning_effort\", \"error_message\", \"claimed_at\", \"completed_at\", \"created_at\", \"updated_at\"",
+      "bindings": [
+        {
+          "key": "instance",
+          "kind": "text"
+        },
+        {
+          "key": "leaseToken",
+          "kind": "text"
+        },
+        {
+          "key": "fence",
+          "kind": "integer"
+        },
+        {
+          "key": "expires",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "attempt",
+          "kind": "integer"
+        },
+        {
+          "constant": null,
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "runId",
+          "kind": "text"
+        },
+        {
+          "key": "oldFence",
+          "kind": "integer"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "constant": "dispatching",
+          "kind": "text"
+        }
+      ]
+    },
+    "finish-run": {
+      "sql": "update \"project_automation_runs\" set \"status\" = $1, \"error_message\" = $2, \"completed_at\" = $3, \"updated_at\" = $4 where (\"project_automation_runs\".\"id\" = $5 and \"project_automation_runs\".\"dispatch_instance_id\" = $6 and \"project_automation_runs\".\"lease_token\" = $7 and \"project_automation_runs\".\"fencing_token\" = $8 and \"project_automation_runs\".\"status\" = $9 and \"project_automation_runs\".\"lease_expires_at\" > $10) returning \"id\"",
+      "bindings": [
+        {
+          "key": "status",
+          "kind": "text"
+        },
+        {
+          "key": "error",
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "runId",
+          "kind": "text"
+        },
+        {
+          "key": "instance",
+          "kind": "text"
+        },
+        {
+          "key": "leaseToken",
+          "kind": "text"
+        },
+        {
+          "key": "fence",
+          "kind": "integer"
+        },
+        {
+          "constant": "dispatching",
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        }
+      ]
+    },
+    "finish-automation": {
+      "sql": "update \"project_automations\" set \"next_run_at\" = $1, \"last_run_at\" = $2, \"last_status\" = $3, \"last_error\" = $4, \"updated_at\" = $5 where (\"project_automations\".\"id\" = $6 and \"project_automations\".\"revision\" = $7 and \"project_automations\".\"next_run_at\" = $8)",
+      "bindings": [
+        {
+          "key": "nextRunAt",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "expected",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "status",
+          "kind": "text"
+        },
+        {
+          "key": "error",
+          "kind": "text"
+        },
+        {
+          "key": "now",
+          "kind": "timestamptz"
+        },
+        {
+          "key": "id",
+          "kind": "text"
+        },
+        {
+          "key": "revision",
+          "kind": "integer"
+        },
+        {
+          "key": "expected",
+          "kind": "timestamptz"
+        }
+      ]
+    }
+  }
+}

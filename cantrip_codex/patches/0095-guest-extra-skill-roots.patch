@@ -1,0 +1,448 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+index edc440b..40ccc0a 100644
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -2595,7 +2595,8 @@ mod tests {
+         let skills_extra_roots_set = ClientRequest::SkillsExtraRootsSet {
+             request_id: request_id(),
+             params: v2::SkillsExtraRootsSetParams {
+-                extra_roots: vec![absolute_path("/tmp/skills")],
++                extra_roots: Some(vec![absolute_path("/tmp/skills")]),
++                guest_roots: None,
+             },
+         };
+         assert_eq!(
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/plugin.rs b/codex-rs/app-server-protocol/src/protocol/v2/plugin.rs
+index ad368ab..e266cbd 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/plugin.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/plugin.rs
+@@ -39,7 +39,12 @@ pub struct SkillsListResponse {
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+ pub struct SkillsExtraRootsSetParams {
+-    pub extra_roots: Vec<AbsolutePathBuf>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(optional)]
++    pub extra_roots: Option<Vec<AbsolutePathBuf>>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[ts(optional)]
++    pub guest_roots: Option<Vec<AbsolutePathBuf>>,
+ }
+ 
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
+index 131ba36..ab6ff95 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
+@@ -3956,7 +3956,8 @@ fn skills_list_params_serialization_uses_force_reload() {
+ fn skills_extra_roots_set_params_serialization_uses_extra_roots() {
+     assert_eq!(
+         serde_json::to_value(SkillsExtraRootsSetParams {
+-            extra_roots: vec![absolute_path("tmp/skills")],
++            extra_roots: Some(vec![absolute_path("tmp/skills")]),
++            guest_roots: None,
+         })
+         .unwrap(),
+         json!({
+diff --git a/codex-rs/app-server/src/request_processors/catalog_processor.rs b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+index e5b11fb..66ea4ed 100644
+--- a/codex-rs/app-server/src/request_processors/catalog_processor.rs
++++ b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+@@ -680,12 +680,26 @@ impl CatalogRequestProcessor {
+         &self,
+         params: SkillsExtraRootsSetParams,
+     ) -> Result<SkillsExtraRootsSetResponse, JSONRPCErrorError> {
+-        let SkillsExtraRootsSetParams { extra_roots } = params;
+-        self.skills_watcher
+-            .register_runtime_extra_roots(&extra_roots);
+-        self.thread_manager
+-            .skills_service()
+-            .set_extra_roots(extra_roots);
++        let skills_service = self.thread_manager.skills_service();
++        match (params.extra_roots, params.guest_roots) {
++            (Some(extra_roots), None) => {
++                self.skills_watcher
++                    .register_runtime_extra_roots(&extra_roots);
++                skills_service.set_extra_roots(extra_roots);
++            }
++            (None, Some(guest_roots)) => {
++                let environment = self
++                    .thread_manager
++                    .environment_manager()
++                    .default_environment()
++                    .filter(|environment| environment.is_remote())
++                    .ok_or_else(|| {
++                        invalid_params("Guest skill roots require a remote environment.")
++                    })?;
++                skills_service.set_guest_extra_roots(environment.get_filesystem(), guest_roots);
++            }
++            _ => return Err(invalid_params("Specify either extraRoots or guestRoots.")),
++        }
+         self.outgoing
+             .send_server_notification(ServerNotification::SkillsChanged(
+                 codex_app_server_protocol::SkillsChangedNotification {},
+diff --git a/codex-rs/app-server/tests/suite/v2/host_skills.rs b/codex-rs/app-server/tests/suite/v2/host_skills.rs
+index e06ba6d..675cc4b 100644
+--- a/codex-rs/app-server/tests/suite/v2/host_skills.rs
++++ b/codex-rs/app-server/tests/suite/v2/host_skills.rs
+@@ -144,7 +144,8 @@ fn write_skill(root: &std::path::Path, name: &str, description: &str) -> Result<
+ async fn set_extra_roots(app_server: &mut TestAppServer, root: &std::path::Path) -> Result<()> {
+     let request_id = app_server
+         .send_skills_extra_roots_set_request(SkillsExtraRootsSetParams {
+-            extra_roots: vec![AbsolutePathBuf::from_absolute_path(root)?],
++            extra_roots: Some(vec![AbsolutePathBuf::from_absolute_path(root)?]),
++            guest_roots: None,
+         })
+         .await?;
+     let response: JSONRPCResponse = timeout(
+diff --git a/codex-rs/app-server/tests/suite/v2/skills_list.rs b/codex-rs/app-server/tests/suite/v2/skills_list.rs
+index 6aed8c3..3625a54 100644
+--- a/codex-rs/app-server/tests/suite/v2/skills_list.rs
++++ b/codex-rs/app-server/tests/suite/v2/skills_list.rs
+@@ -1241,7 +1241,10 @@ async fn skills_extra_roots_set_updates_process_runtime_roots() -> Result<()> {
+ 
+     let set_request_id = mcp
+         .send_skills_extra_roots_set_request(SkillsExtraRootsSetParams {
+-            extra_roots: vec![AbsolutePathBuf::from_absolute_path(&extra_skills_root)?],
++            extra_roots: Some(vec![AbsolutePathBuf::from_absolute_path(
++                &extra_skills_root,
++            )?]),
++            guest_roots: None,
+         })
+         .await?;
+     let _: SkillsExtraRootsSetResponse =
+@@ -1268,7 +1271,8 @@ async fn skills_extra_roots_set_updates_process_runtime_roots() -> Result<()> {
+     let missing_root = extra_root.path().join("missing-skills");
+     let reset_request_id = mcp
+         .send_skills_extra_roots_set_request(SkillsExtraRootsSetParams {
+-            extra_roots: vec![AbsolutePathBuf::from_absolute_path(&missing_root)?],
++            extra_roots: Some(vec![AbsolutePathBuf::from_absolute_path(&missing_root)?]),
++            guest_roots: None,
+         })
+         .await?;
+     let _: SkillsExtraRootsSetResponse =
+@@ -1294,7 +1298,8 @@ async fn skills_extra_roots_set_updates_process_runtime_roots() -> Result<()> {
+ 
+     let clear_request_id = mcp
+         .send_skills_extra_roots_set_request(SkillsExtraRootsSetParams {
+-            extra_roots: Vec::new(),
++            extra_roots: Some(Vec::new()),
++            guest_roots: None,
+         })
+         .await?;
+     let _: SkillsExtraRootsSetResponse =
+diff --git a/codex-rs/ext/skills/src/host_roots.rs b/codex-rs/ext/skills/src/host_roots.rs
+index 605dc4b..a8507eb 100644
+--- a/codex-rs/ext/skills/src/host_roots.rs
++++ b/codex-rs/ext/skills/src/host_roots.rs
+@@ -58,7 +58,7 @@ pub(crate) async fn resolve_skill_roots(
+     config_layer_stack: &ConfigLayerStack,
+     cwd: &AbsolutePathBuf,
+     plugin_skill_roots: Vec<PluginSkillRoot>,
+-    extra_skill_roots: Vec<AbsolutePathBuf>,
++    extra_skill_roots: Vec<HostSkillRoot>,
+     empty_remote_roots: Option<&Mutex<EmptyRemoteRootsCache>>,
+ ) -> Vec<HostSkillRoot> {
+     // Standalone Cantrip Chats register only the user skills admitted by Core.
+@@ -88,7 +88,7 @@ async fn resolve_skill_roots_with_home_dir(
+     cwd: &AbsolutePathBuf,
+     home_dir: Option<&AbsolutePathBuf>,
+     plugin_skill_roots: Vec<PluginSkillRoot>,
+-    extra_skill_roots: Vec<AbsolutePathBuf>,
++    extra_skill_roots: Vec<HostSkillRoot>,
+     empty_remote_roots: Option<&Mutex<EmptyRemoteRootsCache>>,
+ ) -> Vec<HostSkillRoot> {
+     let mut roots =
+@@ -98,11 +98,7 @@ async fn resolve_skill_roots_with_home_dir(
+             .into_iter()
+             .map(|root| HostSkillRoot::plugin(root, Arc::clone(&LOCAL_FS))),
+     );
+-    roots.extend(
+-        extra_skill_roots
+-            .into_iter()
+-            .map(|path| local_root(path, SkillScope::User)),
+-    );
++    roots.extend(extra_skill_roots);
+     roots.extend(
+         repo_agents_skill_roots(
+             repository_file_system,
+@@ -401,7 +397,12 @@ fn dirs_between_project_root_and_cwd(
+ 
+ fn dedupe_skill_roots_by_path(roots: &mut Vec<HostSkillRoot>) {
+     let mut seen = HashSet::new();
+-    roots.retain(|root| seen.insert(root.path.clone()));
++    roots.retain(|root| {
++        seen.insert((
++            root.path.clone(),
++            Arc::as_ptr(&root.file_system) as *const (),
++        ))
++    });
+ }
+ 
+ #[cfg(test)]
+diff --git a/codex-rs/ext/skills/src/host_roots_tests.rs b/codex-rs/ext/skills/src/host_roots_tests.rs
+index c6fb5ec..68b242b 100644
+--- a/codex-rs/ext/skills/src/host_roots_tests.rs
++++ b/codex-rs/ext/skills/src/host_roots_tests.rs
+@@ -391,7 +391,7 @@ async fn unique_extra_root_loads_as_recursive_user_root() {
+         &cwd,
+         /*home_dir*/ None,
+         Vec::new(),
+-        vec![extra_root.clone()],
++        vec![local_root(extra_root.clone(), SkillScope::User)],
+         /*empty_remote_roots*/ None,
+     )
+     .await;
+@@ -820,7 +820,7 @@ async fn resolved_config_and_repo_roots_preserve_order_and_dedupe_paths_not_name
+         &cwd,
+         Some(&home_folder),
+         Vec::new(),
+-        vec![user_skills],
++        vec![local_root(user_skills, SkillScope::User)],
+         /*empty_remote_roots*/ None,
+     )
+     .await;
+diff --git a/codex-rs/ext/skills/src/host_service.rs b/codex-rs/ext/skills/src/host_service.rs
+index d5f4790..ea032d7 100644
+--- a/codex-rs/ext/skills/src/host_service.rs
++++ b/codex-rs/ext/skills/src/host_service.rs
+@@ -86,13 +86,19 @@ pub struct HostSkillsService {
+     codex_home: AbsolutePathBuf,
+     restriction_product: Option<Product>,
+     extra_roots: RwLock<Vec<AbsolutePathBuf>>,
+-    cache_by_cwd: RwLock<HashMap<AbsolutePathBuf, HostSkillsSnapshot>>,
++    guest_extra_roots: RwLock<Option<GuestExtraRoots>>,
++    cache_by_cwd: RwLock<HashMap<(AbsolutePathBuf, FileSystemIdentity), HostSkillsSnapshot>>,
+     cache_by_config: RwLock<VecDeque<ConfigSkillsCacheEntry>>,
+     empty_remote_roots: Mutex<EmptyRemoteRootsCache>,
+     // Shared across cwds so root scheduling cannot multiply per-root I/O fanout.
+     root_scan_slots: Arc<Semaphore>,
+ }
+ 
++struct GuestExtraRoots {
++    filesystem: FileSystemIdentity,
++    paths: Vec<AbsolutePathBuf>,
++}
++
+ pub(crate) type RequestSkillRootSnapshots =
+     RwLock<HashMap<ConfigSkillRootCacheKey, Arc<OnceCell<HostSkillRootSnapshot>>>>;
+ 
+@@ -134,6 +140,7 @@ impl HostSkillsService {
+             codex_home,
+             restriction_product,
+             extra_roots: RwLock::new(Vec::new()),
++            guest_extra_roots: RwLock::new(None),
+             cache_by_cwd: RwLock::new(HashMap::new()),
+             cache_by_config: RwLock::new(VecDeque::new()),
+             empty_remote_roots: Mutex::default(),
+@@ -166,6 +173,22 @@ impl HostSkillsService {
+         self.clear_cache();
+     }
+ 
++    pub fn set_guest_extra_roots(
++        &self,
++        filesystem: Arc<dyn ExecutorFileSystem>,
++        paths: Vec<AbsolutePathBuf>,
++    ) {
++        *self
++            .guest_extra_roots
++            .write()
++            .unwrap_or_else(std::sync::PoisonError::into_inner) =
++            (!paths.is_empty()).then(|| GuestExtraRoots {
++                filesystem: FileSystemIdentity(Arc::downgrade(&filesystem)),
++                paths,
++            });
++        self.clear_cache();
++    }
++
+     /// Load skills for an already-constructed [`Config`], avoiding any additional config-layer
+     /// loading.
+     ///
+@@ -230,12 +253,13 @@ impl HostSkillsService {
+         if bundled_skills_enabled {
+             self.ensure_system_skills_installed();
+         }
++        let extra_roots = self.extra_roots(fs.as_ref());
+         let mut roots = resolve_skill_roots(
+             fs,
+             &input.config_layer_stack,
+             &input.cwd,
+             input.effective_skill_roots.clone(),
+-            self.extra_roots(),
++            extra_roots,
+             empty_remote_roots,
+         )
+         .await;
+@@ -257,10 +281,13 @@ impl HostSkillsService {
+             self.ensure_system_skills_installed();
+         }
+         let use_cwd_cache = fs.is_some();
+-        let cache_snapshot_by_cwd = use_cwd_cache && input.effective_skill_roots.is_empty();
+-        if cache_snapshot_by_cwd
++        let cwd_cache_key = fs
++            .as_ref()
++            .filter(|_| input.effective_skill_roots.is_empty())
++            .map(|fs| (input.cwd.clone(), FileSystemIdentity(Arc::downgrade(fs))));
++        if let Some(key) = cwd_cache_key.as_ref()
+             && !force_reload
+-            && let Some(snapshot) = self.cached_snapshot_for_cwd(&input.cwd)
++            && let Some(snapshot) = self.cached_snapshot_for_cwd(key)
+         {
+             return snapshot;
+         }
+@@ -271,12 +298,13 @@ impl HostSkillsService {
+                 .unwrap_or_else(std::sync::PoisonError::into_inner)
+                 .clear();
+         }
++        let extra_roots = self.extra_roots(fs.as_ref());
+         let mut roots = resolve_skill_roots(
+-            fs.clone(),
++            fs,
+             &input.config_layer_stack,
+             &input.cwd,
+             input.effective_skill_roots.clone(),
+-            self.extra_roots(),
++            extra_roots,
+             Some(&self.empty_remote_roots),
+         )
+         .await;
+@@ -305,12 +333,12 @@ impl HostSkillsService {
+                     .await,
+             ))
+         };
+-        if cache_snapshot_by_cwd {
++        if let Some(key) = cwd_cache_key {
+             let mut cache = self
+                 .cache_by_cwd
+                 .write()
+                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+-            cache.insert(input.cwd.clone(), snapshot.clone());
++            cache.insert(key, snapshot.clone());
+         }
+         snapshot
+     }
+@@ -414,18 +442,42 @@ impl HostSkillsService {
+         info!("skills cache cleared ({cleared} entries)");
+     }
+ 
+-    fn cached_snapshot_for_cwd(&self, cwd: &AbsolutePathBuf) -> Option<HostSkillsSnapshot> {
++    fn cached_snapshot_for_cwd(
++        &self,
++        key: &(AbsolutePathBuf, FileSystemIdentity),
++    ) -> Option<HostSkillsSnapshot> {
+         match self.cache_by_cwd.read() {
+-            Ok(cache) => cache.get(cwd).cloned(),
+-            Err(err) => err.into_inner().get(cwd).cloned(),
++            Ok(cache) => cache.get(key).cloned(),
++            Err(err) => err.into_inner().get(key).cloned(),
+         }
+     }
+ 
+-    fn extra_roots(&self) -> Vec<AbsolutePathBuf> {
+-        match self.extra_roots.read() {
+-            Ok(roots) => roots.clone(),
+-            Err(err) => err.into_inner().clone(),
++    fn extra_roots(&self, fs: Option<&Arc<dyn ExecutorFileSystem>>) -> Vec<HostSkillRoot> {
++        let mut roots = Vec::new();
++        if let Some(fs) = fs
++            && let Some(guest) = self
++                .guest_extra_roots
++                .read()
++                .unwrap_or_else(std::sync::PoisonError::into_inner)
++                .as_ref()
++            && guest.filesystem.0.ptr_eq(&Arc::downgrade(fs))
++        {
++            roots.extend(
++                guest.paths.iter().map(|path| {
++                    HostSkillRoot::host(path.clone(), SkillScope::Repo, Arc::clone(fs))
++                }),
++            );
+         }
++        roots.extend(
++            self.extra_roots
++                .read()
++                .unwrap_or_else(std::sync::PoisonError::into_inner)
++                .iter()
++                .map(|path| {
++                    HostSkillRoot::host(path.clone(), SkillScope::User, Arc::clone(&LOCAL_FS))
++                }),
++        );
++        roots
+     }
+ 
+     fn ensure_system_skills_installed(&self) {
+diff --git a/codex-rs/ext/skills/src/host_service_tests.rs b/codex-rs/ext/skills/src/host_service_tests.rs
+index fd8d450..12723bd 100644
+--- a/codex-rs/ext/skills/src/host_service_tests.rs
++++ b/codex-rs/ext/skills/src/host_service_tests.rs
+@@ -804,6 +804,70 @@ async fn skills_for_cwd_loads_repo_and_user_roots_with_local_fs() {
+     assert!(!std::ptr::eq(snapshot.outcome(), other_snapshot.outcome()));
+ }
+ 
++#[tokio::test]
++async fn guest_extra_roots_are_bound_to_the_selected_filesystem() {
++    let codex_home = tempfile::tempdir().expect("tempdir");
++    let cwd = tempfile::tempdir().expect("tempdir");
++    let guest_root = cwd.path().join("extra-skills");
++    let skill_dir = guest_root.join("extra");
++    fs::create_dir_all(&skill_dir).expect("create extra skill directory");
++    fs::write(
++        skill_dir.join("SKILL.md"),
++        "---\nname: guest-extra\ndescription: from a registered guest root\n---\n",
++    )
++    .expect("write extra skill");
++    let service = HostSkillsService::new(
++        codex_home.path().abs(),
++        /*bundled_skills_enabled*/ false,
++    );
++    let input =
++        HostSkillsLoadInput::new(cwd.path().abs(), Vec::new(), config_stack(&codex_home, ""));
++    let guest: Arc<dyn ExecutorFileSystem> =
++        Arc::new(codex_exec_server::LocalFileSystem::unsandboxed());
++    service.set_guest_extra_roots(Arc::clone(&guest), vec![guest_root.abs()]);
++    let request = service.for_request();
++    let snapshot = request
++        .snapshot_for_cwd(
++            &input,
++            /*force_reload*/ false,
++            Some(Arc::clone(&guest)),
++        )
++        .await;
++    assert!(
++        snapshot
++            .outcome()
++            .skills
++            .iter()
++            .any(|skill| skill.name == "guest-extra" && skill.scope == SkillScope::Repo)
++    );
++    let local = request
++        .snapshot_for_cwd(
++            &input,
++            /*force_reload*/ false,
++            Some(Arc::clone(&LOCAL_FS)),
++        )
++        .await;
++    assert!(
++        !local
++            .outcome()
++            .skills
++            .iter()
++            .any(|skill| skill.name == "guest-extra")
++    );
++    service.set_guest_extra_roots(Arc::clone(&guest), Vec::new());
++    let cleared = service
++        .for_request()
++        .snapshot_for_cwd(&input, /*force_reload*/ false, Some(guest))
++        .await;
++    assert!(
++        !cleared
++            .outcome()
++            .skills
++            .iter()
++            .any(|skill| skill.name == "guest-extra")
++    );
++}
++
+ #[tokio::test]
+ async fn skills_for_cwd_without_fs_skips_repo_roots() {
+     let codex_home = tempfile::tempdir().expect("tempdir");

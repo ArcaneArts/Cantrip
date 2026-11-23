@@ -35,8 +35,9 @@ cross the server only as opaque worker routing handles. See the
   turn; opt-in **Plan + Goal** Tasks run read-only planning, support question
   rounds and revision-safe plan edits, then finalize into Goal implementation
   on the same Codex thread. Every runnable cycle enters the durable
-  account-global scheduler and waits for an eligible configured Task Worker
-  with capacity. Task state survives tab changes, desktop pop-outs, worker
+  account-global scheduler with its own model and reasoning configuration.
+  Every model supports opt-in Plan + Goal, and runnable Tasks start without a
+  task-specific concurrency limit. Task state survives tab changes, desktop pop-outs, worker
   outages, archive/restore, server restarts, and—on Git-capable projects—safe
   relocation between compatible ready sources. See [the Tasks
   contract](docs/TASKS.md).
@@ -171,8 +172,8 @@ Cantrip is split into three deployable applications plus one shared protocol pac
 ```mermaid
 flowchart LR
     APP["cantrip_app<br/>React + Vite<br/>Browser / Tauri / Capacitor"]
-    SERVER["cantrip_server<br/>Fastify + PGlite/PostgreSQL<br/>Identity, configuration, history, routing"]
-    WORKER["cantrip_worker<br/>Node.js<br/>Codex, files, Git, PTYs, Chromium, desktop capture"]
+    SERVER["cantrip_server_rs<br/>Rust + PGlite/PostgreSQL<br/>Identity, configuration, history, routing"]
+    WORKER["cantrip_worker_rs<br/>Rust<br/>Codex, files, Git, PTYs, Chromium, desktop capture"]
     CODEX["Codex CLI / app-server"]
     FILES["Project source folders"]
 
@@ -192,21 +193,21 @@ mutations only through the server and never assumes project files exist on the
 client device. After server authorization, live feature bytes may use a scoped
 WorkerLink carrier directly between the app and worker, with relay fallback.
 
-### `cantrip_server`
+### `cantrip_server_rs`
 
 The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings and Policies, stores projects and durable conversation history, tracks worker presence, persists worktree observations plus project-wide logical branch leases, reconciles per-account logical storage and meters server-carried bandwidth, and authorizes operations on the correct worker checkout. It stores ChatGPT and Grok OAuth bundles only as opaque endpoint-encrypted envelopes. Authorized workers decrypt, refresh, and reseal them locally; the server authorizes revision-fenced envelope fetch/reseal and global sign-out.
 
-Local development uses embedded PGlite. Browser development stores it under `.cantrip/browser-dev/`; default desktop development uses `.cantrip/dev/`, and named desktop profiles use `.cantrip/dev-profiles/<name>/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
+Local development uses embedded PGlite. Browser development stores it under `.cantrip/browser-dev/`; default desktop development uses `.cantrip/dev/`, and named desktop profiles use `.cantrip/dev-profiles/<name>/`. A private PostgreSQL process can be selected with `CANTRIP_DATABASE_MODE=bundled-postgres`, and an external PostgreSQL `DATABASE_URL` retains its existing selection behavior. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 
-### `cantrip_worker`
+### `cantrip_worker_rs`
 
 The worker is the machine that actually performs work. It owns Cantrip-managed
 folder directories, managed and direct repository clones, placement ownership
 records, and physical Git worktrees; validates and operates attached user-owned
 folder and repository roots; runs Git and GitHub CLI operations where
 applicable; provides filesystem access; hosts PTY processes and supervised
-terminal services; supervises Codex runtimes; keeps the embedded Code server
-warm; runs Browser-tab Chromium sessions; and captures and controls its own
+terminal services; supervises Codex runtimes; runs Browser-tab Chromium
+sessions; and captures and controls its own
 desktop for Remote Desktop tabs. Provider URLs, repository paths, and
 Browser-tab addresses are resolved from the worker machine, which is important
 once the server and worker live on different hosts. Worker-local ChatGPT and
@@ -238,7 +239,7 @@ commands, limits, and threat controls are documented in
 
 ## Current deployment model
 
-The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately. A packaged Tauri desktop app carries its own production server, worker, Node.js runtime, and PGlite migrations. It starts those services on a private dynamic loopback port and stops them with the app.
+The current local mode has one anonymous Cantrip user and no Cantrip sign-in screen. `pnpm dev` or `pnpm devtop` starts the server and a local worker together, so the app connects immediately. The packaged Tauri desktop app carries the Rust server, its database assets, and the Rust worker. It starts those services on a private dynamic loopback port and stops them with the app.
 
 The account area in the main sidebar is also the server switcher. Its **Add server** action saves a named server origin in client bootstrap storage, tests `/api/bootstrap`, and switches every HTTP and WebSocket request after a reload. The built-in **Local** profile always selects the desktop-bundled stack in a release build and the normal development stack in `devtop`. Server profiles contain no credentials; hosted sessions remain in server-owned HttpOnly cookies.
 
@@ -379,8 +380,11 @@ writes follow the selected permission profile.
 Cantrip/
 ├── cantrip_app/       # React/Vite UI, Tauri shell, Capacitor configuration
 ├── cantrip_site/      # Public React/Vite marketing site
-├── cantrip_server/    # API, persistence, identity, and worker routing
-├── cantrip_worker/    # Codex runtime, terminals, files, Git, and GitHub access
+├── cantrip_server_rs/ # Rust API, persistence, identity, and worker routing
+├── cantrip_server/    # SQL migration chain embedded by the Rust server
+├── cantrip_worker_rs/ # Native Codex runtime, terminals, files, and Git access
+├── cantrip_worker/    # Rust worker development working directory
+├── tests/reference-node-worker/ # Retired worker for compatibility tests
 ├── cantrip_cli/       # Worker-authenticated Rust command-line interface
 ├── cantrip_codex/     # Pinned upstream Codex source and source manifest
 ├── packages/          # Protocol, crypto, logging, version, and shared UI packages
@@ -476,7 +480,7 @@ This starts the shared protocol watcher, Cantrip server, local worker, and Vite 
 - App: <http://127.0.0.1:5173>
 - Server: <http://127.0.0.1:4310>
 
-Vite hot module replacement updates the app as frontend files change. The Node server and worker also restart automatically when their source changes. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
+Vite hot module replacement updates the app as frontend files change. The development launchers rebuild and restart the Rust server and worker when their sources change. Run `pnpm worker:dev` to run the worker watcher on its own after development preparation. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
 
 Local database files, worker-owned repository clones, and managed project
 folders are stored under `.cantrip/browser-dev/` and are ignored by Git.
@@ -604,6 +608,8 @@ pnpm devtop
 
 `devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri starts its Vite hot-reload server on <http://127.0.0.1:1420>, separately from the browser-development port.
 
+When you pair the desktop with another server, `devtop` supplies the built Rust worker to the app. If you launch Tauri directly, set `CANTRIP_DEV_WORKER_BIN` to the native executable or make `cantrip-worker` available on `PATH`.
+
 Use the sidebar server switcher to select **Local**, a saved server such as
 **Winterhold**, or **Add server**. The selected server persists across reloads
 and restarts, so the development desktop can test hosted sign-in, pairing, and
@@ -686,12 +692,17 @@ pnpm bundle                  # native service/client archives for this platform
 pnpm package:all             # alias for pnpm bundle
 ```
 
+The Worker package contains the Rust worker, Codex, the Cantrip CLI and
+CUA. Desktop packaging defaults to the same native services. Add
+`--from-artifacts` to assemble desktop from the matching standalone Server
+and Worker packages.
+
 macOS packages set `CFBundleVersion` from the current Git commit count so
 Launch Services can distinguish successive builds. Set
 `CANTRIP_APP_BUILD_VERSION` to a positive one-to-three-component numeric build
 version when packaging needs an explicit reproducible override.
 
-Standalone service directories include a platform-matched Node.js runtime, compiled JavaScript, production dependencies, startup scripts, and a focused `.env.example`. Worker packages also include the native `cantrip` CLI. They do not require Node.js to be installed on the host. Copy `.env.example` to `.env`, create a short-lived worker link code while signed into the server, put it in the worker environment for its first start, then remove it after enrollment. The worker persists its unique credential in its data directory and initiates every connection through `CANTRIP_SERVER_URL`; no inbound worker port is exposed. The shared `CANTRIP_WORKER_TOKEN` path is limited to explicit loopback `pnpm dev` and embedded Tauri bootstraps.
+Standalone server directories contain the Rust executable, native PGlite and private PostgreSQL assets, startup scripts, and a focused `.env.example`. The packaged services launch their native executables directly. Copy `.env.example` to `.env`, create a short-lived worker link code while signed into the server, put it in the worker environment for its first start, then remove it after enrollment. The worker persists its unique credential in its data directory and initiates every connection through `CANTRIP_SERVER_URL`. The shared `CANTRIP_WORKER_TOKEN` path is limited to explicit loopback `pnpm dev` and embedded Tauri bootstraps.
 
 Settings → Workers provides the supported onboarding and management surface. The desktop app detects its bundled local worker automatically and offers **Add this machine** when connected to a hosted server; the authenticated app completes that machine's enrollment without making the user copy a link code. It shows internal and remote machines, presence, runtime capabilities, project-source associations, and credential activity. Remote workers can be renamed, rotated, revoked, unlinked, or relinked without deleting server-owned projects and conversations. Internal embedded/development workers are marked and protected from rename or removal. The desktop app can launch hidden at login, and closing its main window leaves its linked workers online through the system tray. On macOS, Command-Q closes Cantrip's windows without stopping those services; explicit Quit actions ask for confirmation before shutting the worker and server down.
 
@@ -773,17 +784,17 @@ pnpm typecheck
 pnpm test
 pnpm check:large-files
 pnpm --filter @cantrip/protocol test
-pnpm --filter @cantrip/server test
-pnpm --filter @cantrip/worker test
+pnpm server:test
+pnpm worker:rust:test
 pnpm --filter @cantrip/app test
 pnpm --filter @cantrip/site build
 ```
 
-The opt-in Z.ai end-to-end smoke test uses the bundled Codex runtime and only
+The opt-in Z.ai reference worker smoke test uses the bundled Codex runtime and
 runs when a real Coding Plan key is explicitly supplied:
 
 ```shell
-ZAI_CODING_PLAN_API_KEY=... pnpm --filter @cantrip/worker exec vitest run test/zai-live.test.ts
+ZAI_CODING_PLAN_API_KEY=... pnpm --filter @cantrip/worker-reference exec vitest run test/zai-live.test.ts
 ```
 
 Worktree-focused tests and manual PGlite/PostgreSQL checks are documented in
@@ -844,7 +855,7 @@ published if either mobile lane fails.
 See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md#mobile-release-lanes) for the
 required iOS Actions secrets.
 
-Browser-only and mobile clients cannot bootstrap a Node server or worker. They use the same server switcher to select a reachable standalone server. Tauri development keeps the root-orchestrated hot-reload stack, while a production desktop bundle supervises its internal server and worker automatically.
+Browser-only and mobile clients use the server switcher to select a reachable standalone server. Tauri development keeps the root-orchestrated hot-reload stack. A production desktop bundle automatically launches and supervises its internal Rust server and Rust worker.
 
 The mobile shell provides bottom navigation for project surfaces, native haptic
 feedback on tab press and long-press reset, safe-area-aware layouts, a terminal

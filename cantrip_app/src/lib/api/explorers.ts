@@ -58,6 +58,8 @@ export async function createExplorer(
     attachToTabLayout?: boolean;
     id?: string;
     initialViewState?: ExplorerViewStateUpdate;
+    cantripOsBindingId?: string;
+    cantripOsRuntimeGeneration?: string;
   } = {},
 ) {
   const id = options.id ?? crypto.randomUUID();
@@ -79,6 +81,12 @@ export async function createExplorer(
         id,
         titleProtection,
         stateProtection,
+        ...(options.cantripOsBindingId
+          ? {
+              cantripOsBindingId: options.cantripOsBindingId,
+              cantripOsRuntimeGeneration: options.cantripOsRuntimeGeneration,
+            }
+          : {}),
         ...(worktreeId ? { worktreeId } : {}),
         ...(paneId ? { paneId } : {}),
         ...(target ? { target } : {}),

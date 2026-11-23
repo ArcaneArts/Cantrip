@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "recordedAt": "2026-11-12T00:51:25.816527+00:00",
+  "scope": "Installed Capacitor mobile applications against actual packaged Rust services through a disposable loopback TLS proxy. Development validation ran locally.",
+  "integratedAppBase": "d8d0456096abbb28d190ef7675e0c369720ac7a3",
+  "androidSourceSha256": {
+    "cantrip_app/android/app/src/main/java/art/cantrip/CantripInstallationStorage.java": "df6d2f78ccd7be034dd20e5131534cd5e146350ed144e8a1fd06943e08468ae9",
+    "cantrip_app/android/app/src/androidTest/java/art/cantrip/CantripInstallationStorageKeystoreTest.java": "246b59e6342723bae5d6a62aede8830fb890d1be2d2a5dbf5b91a1051fa24494"
+  },
+  "server": {
+    "version": "1.1.2866",
+    "target": "darwin-arm64",
+    "binary": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/autonomous-goal-dependency/cantrip-server-darwin-arm64-final/bin/cantrip-server",
+      "bytes": 94199904,
+      "sha256": "17aa1bc9a5f63e753e454115bd96d3f7bb27aadcceb71921ef98056da0f60215"
+    },
+    "storageModes": ["pglite", "bundled-postgres"],
+    "authentication": "account",
+    "runtimePath": "/usr/bin:/bin:/usr/sbin:/sbin",
+    "processRestarts": 2,
+    "cleanProcessExits": 4
+  },
+  "clientVersion": "1.1.2867",
+  "android": {
+    "platform": "Android API 36 ARM64 emulator",
+    "baselineApk": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/cantrip-android-baseline.apk",
+      "bytes": 38973497,
+      "sha256": "d1bcf9cde9831c2a500f7d83dc68f64186aedc7e4cac00c02083d20843dbc5c4"
+    },
+    "repairedApk": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/cantrip-android-repaired.apk",
+      "bytes": 38995191,
+      "sha256": "ef7710f7325272f2a9564d6f8cf17f1b55010c5fa2254cbac7112573b0ca8886"
+    },
+    "testApk": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/cantrip-android-keystore-test.apk",
+      "bytes": 562563,
+      "sha256": "c43699d417267a3f6e246c06d9b25c2f06a186b2ab6f53c958661a55f03a44e7"
+    },
+    "baselineFailure": "Android Keystore rejected the caller-provided AES-GCM IV during native installation key creation.",
+    "originalInstallationRetained": true,
+    "before": {
+      "deviceKeys": 0,
+      "accountBindings": 0
+    },
+    "after": {
+      "deviceKeys": 1,
+      "accountBindings": 2
+    },
+    "realKeystoreTestsPassed": 1,
+    "installationUpdateTestsPassed": 2,
+    "nativeQr": {
+      "source": "QR rendered by the authenticated desktop browser client and supplied as an emulator camera frame",
+      "successfulExchanges": 1,
+      "responseStatus": 200,
+      "setCookies": [
+        {
+          "httpOnly": true,
+          "secure": true,
+          "partitioned": false,
+          "sameSite": "None"
+        },
+        {
+          "httpOnly": true,
+          "secure": true,
+          "partitioned": true,
+          "sameSite": "None"
+        }
+      ]
+    },
+    "transport": {
+      "origin": "https://localhost",
+      "afterRestart": {
+        "pglite": {
+          "authenticatedSessionResponses": 4,
+          "authenticatedAppLiveUpgrades": 2
+        },
+        "bundled-postgres": {
+          "authenticatedSessionResponses": 2,
+          "authenticatedAppLiveUpgrades": 1
+        }
+      }
+    }
+  },
+  "ios": {
+    "platform": "iOS 26.4 ARM64 iPhone 17 simulator",
+    "buildToolchain": "Xcode 27.0",
+    "simulatorAppArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/cantrip-ios-simulator-1.1.2867.zip",
+      "bytes": 4812222,
+      "sha256": "6c6ad852f953e01478c183f57805b15d861a43d57f9a5d7738b0d7a5c1236714"
+    },
+    "appBinarySha256": "cdec4577d0de56471366d20e9670f5cabf90763a3e5deafdc4471217d52ff8a6",
+    "adHocSignedWithApplicationIdentifier": true,
+    "originalInstallationRetained": true,
+    "after": {
+      "deviceKeys": 1,
+      "accountBindings": 2
+    },
+    "passingUiRuns": 2,
+    "transport": {
+      "origin": "capacitor://localhost",
+      "afterRestart": {
+        "pglite": {
+          "authenticatedSessionResponses": 2,
+          "authenticatedAppLiveUpgrades": 2
+        },
+        "bundled-postgres": {
+          "authenticatedSessionResponses": 3,
+          "authenticatedAppLiveUpgrades": 3
+        }
+      }
+    }
+  },
+  "installationContractSimulationsPassed": 7,
+  "evidence": [
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/android-key-before-native.log",
+      "bytes": 638,
+      "sha256": "7cb3c86991274d7320974ebf5e196d6edd928b16b0fb6cc73e93489051b03d04"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/android-recovered.json",
+      "bytes": 265,
+      "sha256": "1246961ac0befc017280bc10e663a2565b8933a20a7833d34cbc03c7f0857921"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/android-keystore-test.log",
+      "bytes": 822,
+      "sha256": "2bcdaf89b254d9c703f2fab7c7099221bae72c8cc74f0560ebb728438a968294"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/android-installation-update-results.xml",
+      "bytes": 630,
+      "sha256": "a942a24f560a4d3e2bfb1ef7e4d997618dd38945214de5a33814e484cd23e9eb"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/android-native-qr.json",
+      "bytes": 336,
+      "sha256": "8c9944391bbaf041709450668707edc2db98ef7b84c5cf7637ac33abbcad3a07"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/android-retained-after-server-restart.json",
+      "bytes": 285,
+      "sha256": "1a3cf09f241dfc3c370050e244ad8d578eedf9b4884d889afe54904800ebb214"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/ios-retained-switch-retest.log",
+      "bytes": 73186,
+      "sha256": "f55d9ba4b07ff9abe5643689dde6c8ffd0d44e6f3935c44b78e77a41a9d52d1c"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/ios-after-server-restart.log",
+      "bytes": 37263,
+      "sha256": "7a78a6c8a7e26171c766e2af663139db3627d7a7301e02bc5c9ace65c92d922e"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/InstalledCantripUITests.swift",
+      "bytes": 2212,
+      "sha256": "c780535deea6acbf2cb092353a4d96c539bc4a6a7938d5ebb7ccf607dff5512e"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/ios-simulator-entitlements.plist",
+      "bytes": 264,
+      "sha256": "582c2bd1d200e494d64c444bf2613cf6b7b8819eaf4b1871acc6f3897423fc80"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/installation-compatibility.log",
+      "bytes": 403,
+      "sha256": "c757b94868fe430078c6ca32933401114b9f29f9a74695b17880af5ce8e6ec9f"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/installed-mobile/http-witness.jsonl",
+      "bytes": 156154,
+      "sha256": "b5d6a0ee413bf40f91a6809d558c9fab0ab55eefd0604a797712db32a2149dac"
+    }
+  ],
+  "remaining": [
+    "Installed iOS QR sign-in and physical-camera runs on both mobile platforms.",
+    "Installed mobile acceptance with external PostgreSQL and exact shipping mobile packages.",
+    "Final desktop and standalone replacement acceptance."
+  ]
+}

@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "scope": "Packaged Rust Linux ARM64 and x64 peers with shared external PostgreSQL 18, accounts authentication, and authenticated TLS-only Redis 8.10.3 with a private CA. Mixed cells use the Node reference on the ARM64 macOS host. The Linux x64 Rust peer runs under Rosetta. WorkerLink acknowledgments come from controlled worker fixtures. This covers the listed coordination and revocation scenarios.",
+  "rustVersion": "1.1.3048",
+  "nodeReferenceVersion": "1.1.3051",
+  "runtimeSourceCommit": "358c5b3232e4ebf34a91f7c071f1af1b7cd8a794",
+  "harnessCommit": "1de0527ebe90bb4bef3dbbbc18464f1c663770cf",
+  "images": {
+    "linux-arm64": {
+      "imageId": "sha256:5dfe43dde5f19cc6b8fb5dc422b865af8cea80accc76fcd517604b7fb3ee89be",
+      "nativeExecutableSha256": "5007de3d68bd19747beb40ec234c90977448a924e91a0fc3e1bf4cb67383e448"
+    },
+    "linux-x64": {
+      "imageId": "sha256:950991f7cc58924f1fefcfa76dec8dfefb99f1f44d011aff5b3803485e04f6fc",
+      "nativeExecutableSha256": "25d9f10371b9aa63dea12cdf24daa30fce75764eef0e3db3d043663d03c355d2"
+    }
+  },
+  "matrixExit": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls-current/matrix.exit",
+    "bytes": 2,
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "driver": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls-current/redis-tls-run.mjs",
+    "bytes": 18672,
+    "sha256": "d9a8267d063e5fcab73b0417409b493452978b7e06a7d65721fcde3ada75e197"
+  },
+  "scenarioGroups": 42,
+  "retainedWorkerClaims": 12,
+  "exactAppLiveReplays": 24,
+  "newRemoteWorkerRequests": 12,
+  "cleanPeerShutdowns": 12,
+  "caseReports": [
+    {
+      "target": "linux-arm64",
+      "pair": "rust/rust",
+      "scenarioGroups": 7,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls-current/arm64-rust-rust.json",
+        "bytes": 4411,
+        "sha256": "df384b735636d65bcd2fa31e12499081c5ebeb63083f10ffe073822aea4dfc9e"
+      }
+    },
+    {
+      "target": "linux-arm64",
+      "pair": "node/rust",
+      "scenarioGroups": 7,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls-current/arm64-node-rust.json",
+        "bytes": 4187,
+        "sha256": "951b10d87aea3d7dbb41709901a89bd89c5be1d3e4839afdd8cfe7db968d093e"
+      }
+    },
+    {
+      "target": "linux-arm64",
+      "pair": "rust/node",
+      "scenarioGroups": 7,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls-current/arm64-rust-node.json",
+        "bytes": 4187,
+        "sha256": "64cd8290c78a08160a5a7fbde5c482bb20da328631f504f6bf9ff12b1acc2543"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "pair": "rust/rust",
+      "scenarioGroups": 7,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls-current/x64-rust-rust.json",
+        "bytes": 4406,
+        "sha256": "64b7505f1fb34ef6f10990839607e4a0aeebea8aacdfe49c91ba98e6f25d1b87"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "pair": "node/rust",
+      "scenarioGroups": 7,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls-current/x64-node-rust.json",
+        "bytes": 4185,
+        "sha256": "98e31bc5d8e45e46accc7123d90dff8a27dc42ff65d45d3413795beadf4c222c"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "pair": "rust/node",
+      "scenarioGroups": 7,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls-current/x64-rust-node.json",
+        "bytes": 4185,
+        "sha256": "fb0341ad9e936cac7713b066497aacc70f652c074aa98bcfca423ba385de74f3"
+      }
+    }
+  ],
+  "untrustedCertificateControls": [
+    {
+      "target": "linux-arm64",
+      "exitCode": 1,
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls-current/runtime-gkyKLC/cantrip-redis-tls-49538038-peer-0-untrusted.log",
+        "bytes": 1959,
+        "sha256": "e52a7563d2225d80cf0ff7adfd2c9bccf9329659ac6b2409ddd8cffe1e0fecf6"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "exitCode": 1,
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls-current/runtime-l1YkOh/cantrip-redis-tls-bea5fcc7-peer-0-untrusted.log",
+        "bytes": 1957,
+        "sha256": "3d47c0d103edbc6f04a38e031b1edb5220ea3198c9ae423638e3c496dde967f2"
+      }
+    }
+  ],
+  "initialAttempt": {
+    "scope": "The copied harness still required the previous 1.1.2881 version and stopped before testing the fault. The rerun asserted the two actual versions separately. The Redis, App Live, and WorkerLink assertions remained intact.",
+    "failures": [
+      {
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls/arm64-node-rust.json",
+          "bytes": 1722,
+          "sha256": "39deebdf53ab184ad2d9845f8a4ace8206752074222201a8ebe59a41a0756311"
+        }
+      },
+      {
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls/arm64-rust-node.json",
+          "bytes": 1722,
+          "sha256": "ba239eb286eecd2703ada4b8ad4e3c9ea0fb61167a43cf4a8b73d44db94d5cad"
+        }
+      },
+      {
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls/arm64-rust-rust.json",
+          "bytes": 1945,
+          "sha256": "e8e36a7ee06d08cc579dbb6d4d5ac0d8d75495ddb98bfc557d1c2de21af583f5"
+        }
+      },
+      {
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls/x64-node-rust.json",
+          "bytes": 1720,
+          "sha256": "df3c3907c44ee0be895e2a689587479f6a4e488b3a612dc6c26d091d796ac794"
+        }
+      },
+      {
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls/x64-rust-node.json",
+          "bytes": 1720,
+          "sha256": "d1f4c624496a5a53b107526d78de47d3adacd32aaf8a48ed688617d5bc9e474c"
+        }
+      },
+      {
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-358c5b323/redis-tls/x64-rust-rust.json",
+          "bytes": 1941,
+          "sha256": "66e006261ab452f8c2ae28e595848d6728236f86c61182d378450a5eb2ec2d1a"
+        }
+      }
+    ]
+  }
+}

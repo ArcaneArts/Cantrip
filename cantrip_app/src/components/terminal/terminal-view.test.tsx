@@ -211,6 +211,69 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 describe("Terminal process exit", () => {
+  it.each([true, false])(
+    "keeps a failed captured Linux attachment disconnected until explicit reconnect (ready=%s)",
+    async (ready) => {
+      await mount(undefined, ready, {
+        terminal: {
+          ...terminal,
+          cantripOsBindingId: "00000000-0000-4000-8000-000000000001",
+          cantripOsRuntimeGeneration: "00000000-0000-4000-8000-000000000002",
+        },
+      });
+      await act(async () => {
+        fixture.links[0]!.onClose();
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(fixture.links).toHaveLength(1);
+      expect(fixture.input!("must not be replayed")).toBe(false);
+      expect(fixture.protectInput).not.toHaveBeenCalled();
+      expect(JSON.stringify(renderer!.toJSON())).toContain(
+        "captured target has been retained",
+      );
+      expect(JSON.stringify(renderer!.toJSON())).not.toContain("Retrying");
+      const reconnect = renderer!.root
+        .findAllByType("button")
+        .find((button) => button.children.includes("Reconnect to Linux"));
+      await act(async () => {
+        reconnect!.props.onClick();
+        await settle();
+      });
+      expect(fixture.links).toHaveLength(2);
+      expect(fixture.protectInput).not.toHaveBeenCalled();
+    },
+  );
+
+  it("retains an unknown Linux outcome without retrying input and offers explicit reconnect", async () => {
+    const onExit = vi.fn();
+    await mount(onExit);
+    await act(async () => {
+      await fixture.links[0]!.onMessage({
+        type: "exit",
+        exitCode: 198,
+        signal: null,
+        executionOutcome: "unknown",
+      });
+      await settle();
+    });
+    expect(onExit).not.toHaveBeenCalled();
+    expect(fixture.renderers[0]!.text).toContain("command outcome unknown");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(fixture.links).toHaveLength(1);
+    const reconnect = renderer!.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Reconnect to Linux"));
+    expect(reconnect).toBeDefined();
+    await act(async () => {
+      reconnect!.props.onClick();
+      await settle();
+    });
+    expect(fixture.links).toHaveLength(2);
+    expect(fixture.protectInput).not.toHaveBeenCalled();
+  });
+
   it("hydrates a passive transfer destination without input or PTY resize, then activates in place", async () => {
     const staging = { onRestored: vi.fn(), onError: vi.fn() };
     const initialViewState = {

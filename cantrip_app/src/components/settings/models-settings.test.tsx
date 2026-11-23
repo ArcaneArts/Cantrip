@@ -5,7 +5,8 @@ import {
   type ModelProfileSummary,
 } from "@cantrip/protocol";
 import type { ComponentProps, ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup as renderStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
@@ -20,7 +21,31 @@ import {
   providerSetupDefaults,
   providerSetupFor,
   providerSetupOptions,
+  providerInstanceName,
 } from "./provider-setup";
+
+// Models settings now includes a query-backed inference usage panel. Supply
+// its real query context while keeping worker requests out of navigation tests.
+function queryClient() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+  });
+  client.setQueryData(["workers"], []);
+  return client;
+}
+function withQueries(children: ReactNode, client = queryClient()) {
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+function renderToStaticMarkup(children: ReactNode) {
+  return renderStaticMarkup(withQueries(children));
+}
+function createView(...args: Parameters<typeof TestRenderer.create>) {
+  const client = queryClient();
+  const view = TestRenderer.create(withQueries(args[0], client), args[1]);
+  const update = view.update.bind(view);
+  view.update = (element) => update(withQueries(element, client));
+  return view;
+}
 
 // Exercise menu callbacks without a browser portal; the real primitives are covered by UI QA.
 vi.mock("@radix-ui/react-context-menu", () => {
@@ -147,9 +172,7 @@ describe("Models provider navigation", () => {
     async (activeTab) => {
       let view!: TestRenderer.ReactTestRenderer;
       await act(async () => {
-        view = TestRenderer.create(
-          <ModelsSettings {...props({ activeTab })} />,
-        );
+        view = createView(<ModelsSettings {...props({ activeTab })} />);
       });
       const strip = view.root.findByProps({ role: "tablist" }).parent!;
       const classes = (strip.props.className as string).split(/\s+/);
@@ -167,7 +190,7 @@ describe("Models provider navigation", () => {
     const inputs = props();
     let view!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      view = TestRenderer.create(<ModelsSettings {...inputs} />, {
+      view = createView(<ModelsSettings {...inputs} />, {
         createNodeMock: (element) =>
           (element.props as { role?: string }).role === "tablist"
             ? { querySelector: () => ({ scrollIntoView }) }
@@ -226,7 +249,7 @@ describe("Models provider navigation", () => {
     const general = renderToStaticMarkup(<ModelsSettings {...props()} />);
     expect(general).toContain("Default model configuration");
     expect(general).toContain("Standalone Chat defaults");
-    expect(general).toContain("Unassigned models");
+    expect(general).toContain('aria-label="Unassigned language models"');
     expect(general).not.toContain('aria-label="Edit local-only"');
     const selected = renderToStaticMarkup(
       <ModelsSettings {...props({ activeTab: providerModelsTab("local") })} />,
@@ -244,20 +267,22 @@ describe("Models provider navigation", () => {
         <ModelsSettings {...props({ providers: [], models: [] })} />,
       ),
     ).toContain("Add a provider with +");
-    expect(
-      renderToStaticMarkup(
-        <ModelsSettings
-          {...props({ activeTab: "provider:local", models: [] })}
-        />,
-      ),
-    ).toContain("No models configured for");
+    const empty = renderToStaticMarkup(
+      <ModelsSettings
+        {...props({ activeTab: "provider:local", models: [] })}
+      />,
+    );
+    for (const operation of ["language", "embedding", "decision"]) {
+      expect(empty).toContain(`aria-label="Ollama ${operation} models"`);
+      expect(empty).toContain(`No ${operation} models configured.`);
+    }
   });
 
   it("preserves provider identity through rename and recovers after removal", async () => {
     const inputs = props({ activeTab: "provider:local" });
     let view!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      view = TestRenderer.create(<ModelsSettings {...inputs} />);
+      view = createView(<ModelsSettings {...inputs} />);
     });
     await act(async () => {
       view.update(
@@ -283,11 +308,36 @@ describe("Models provider navigation", () => {
     await act(async () => view.unmount());
   });
 
+  it("retains a saved provider tab while the provider list is still loading", async () => {
+    const inputs = props({
+      activeTab: "provider:local",
+      providers: [],
+      providersLoaded: false,
+    });
+    let view!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      view = createView(<ModelsSettings {...inputs} />);
+    });
+    expect(inputs.onTabChange).not.toHaveBeenCalled();
+    await act(async () => {
+      view.update(
+        <ModelsSettings {...inputs} providers={providers} providersLoaded />,
+      );
+    });
+    expect(inputs.onTabChange).not.toHaveBeenCalled();
+    expect(
+      view.root
+        .findAllByProps({ role: "tab" })
+        .find((tab) => tab.props["aria-selected"])?.props.title,
+    ).toBe(providers[0]!.name);
+    await act(async () => view.unmount());
+  });
+
   it("wires every add preset, per-tab Edit, and provider-scoped Add model", async () => {
     const inputs = props({ activeTab: "provider:local" });
     let view!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      view = TestRenderer.create(<ModelsSettings {...inputs} />);
+      view = createView(<ModelsSettings {...inputs} />);
     });
     const buttons = view.root.findAllByType("button");
     for (const setup of providerSetupOptions) {
@@ -305,10 +355,14 @@ describe("Models provider navigation", () => {
     );
     await act(async () => edits[1]!.props.onClick());
     expect(inputs.onEditProvider).toHaveBeenCalledWith(providers[1]);
-    await act(async () =>
-      view.root.findByProps({ "aria-label": "Add model" }).props.onClick(),
-    );
-    expect(inputs.onAddModel).toHaveBeenCalledWith("local");
+    for (const operation of ["language", "embedding", "decision"]) {
+      await act(async () =>
+        view.root
+          .findByProps({ "aria-label": `Add ${operation} model` })
+          .props.onClick(),
+      );
+      expect(inputs.onAddModel).toHaveBeenLastCalledWith("local", operation);
+    }
     await act(async () => view.unmount());
   });
 
@@ -319,7 +373,7 @@ describe("Models provider navigation", () => {
       const inputs = props({ providers: [...providers, accountProvider] });
       let view!: TestRenderer.ReactTestRenderer;
       await act(async () => {
-        view = TestRenderer.create(<ModelsSettings {...inputs} />);
+        view = createView(<ModelsSettings {...inputs} />);
       });
       const disabled = view.root
         .findAllByType("button")
@@ -369,7 +423,7 @@ describe("Models provider navigation", () => {
   it("supports arrow/Home/End tab navigation with activation and prevents page scrolling", async () => {
     let view!: TestRenderer.ReactTestRenderer;
     await act(async () => {
-      view = TestRenderer.create(<ModelsSettings {...props()} />);
+      view = createView(<ModelsSettings {...props()} />);
     });
     const tabs = [0, 1, 2].map(() => ({ focus: vi.fn(), click: vi.fn() }));
     const handler = view.root.findByProps({ role: "tablist" }).props.onKeyDown;
@@ -419,9 +473,29 @@ describe("Models provider navigation", () => {
 });
 
 describe("provider setup presets", () => {
+  it("chooses a distinct editable instance name without renaming existing providers", () => {
+    const existing = [
+      { name: "ollama" },
+      { name: "Ollama 2" },
+      { name: "Ollama — GPU Server" },
+    ];
+    expect(providerInstanceName("Ollama", existing)).toBe("Ollama 3");
+    expect(providerInstanceName("LM Studio", existing)).toBe("LM Studio");
+    expect(existing.map(({ name }) => name)).toEqual([
+      "ollama",
+      "Ollama 2",
+      "Ollama — GPU Server",
+    ]);
+  });
   it("offers every supported provider setup with distinct IDs and matching dialog defaults", () => {
     expect(providerSetupOptions.map(({ id }) => id)).toEqual([
       "ollama",
+      "lm-studio",
+      "llama-cpp",
+      "vllm",
+      "unsloth",
+      "litellm",
+      "mlx-lm",
       "openrouter",
       "zai",
       "xai",

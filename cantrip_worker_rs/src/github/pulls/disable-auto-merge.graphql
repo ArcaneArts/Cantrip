@@ -1,0 +1,6 @@
+
+  mutation CantripDisableAutoMerge($pullRequestId: ID!) {
+    disablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId }) {
+      pullRequest { id }
+    }
+  }

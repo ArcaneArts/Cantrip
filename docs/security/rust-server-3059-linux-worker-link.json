@@ -1,0 +1,591 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "linuxImageSourceCommit": "f924d0fe74a86c8eed6e7a8cd1a816bd1b049699",
+  "harnessCommit": "38d2ca62b88191a17ce3b55c8ead93f9db244332",
+  "driverNodeVersion": "v24.22.1",
+  "scope": "Production Rust Linux ARM64 and x64 images and historical Node 1.1.2739 Linux x64 image. The x64 images ran through Rosetta on the ARM64 host. The fixture uses production worker transport and gateway objects, public sessions and grants, and controlled opaque resource adapters.",
+  "performanceScope": "One sequential observation per image and store on the shared host. The Node reference uses a separate PostgreSQL process for its bundled PostgreSQL comparison. The measurements do not establish a platform throughput ceiling.",
+  "checksPerCase": {
+    "downloadPayloadBytes": 67108864,
+    "echoPayloadBytes": 67108864,
+    "endpointFrameBytesExact": true,
+    "echoCreditsFullyReturned": true,
+    "scopedRevocationPreservedSibling": true,
+    "slowConsumerCloseCode": 1013,
+    "replacementEndpointRetainedEnrollment": true,
+    "serverKillExitCode": 137,
+    "serverRestartRetainedProfile": true,
+    "staleSessionHttpStatus": 404,
+    "quotaPayloadFrames": 4079,
+    "orderlyExitCode": 0,
+    "finalChannelsGrantsAndSessions": 0
+  },
+  "casesPassed": 9,
+  "rustCasesPassed": 6,
+  "matrixDriver": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/run.sh",
+    "bytes": 943,
+    "sha256": "098e88a0433283137a1f9c2d64d44dfe49f5c6da9429972190c0b787fe4ff7c4"
+  },
+  "driverInputChecksums": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/driver-inputs.sha256",
+    "bytes": 599,
+    "sha256": "e3338f452089a2a723f1f1aa8db89b2dcba2b1ed29a7419ac87b9f7dfd4931dc"
+  },
+  "exit": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/matrix.exit",
+    "bytes": 2,
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "cells": [
+    {
+      "target": "rust-arm64",
+      "databaseMode": "pglite",
+      "effectiveDatabase": "pglite",
+      "serverVersion": "1.1.3059",
+      "downloadMiBPerSecond": 81.87,
+      "echoMiBPerSecond": 42.94,
+      "serverRecoveryMs": 2447.73,
+      "pausedServerRssKiB": 145388,
+      "slowConsumerReceivedFrames": 292,
+      "endpointRetiredDuringSendLoop": false,
+      "staleGrantRejection": "unauthorized",
+      "imageId": "sha256:3e985d86d6c0f09cbf9136c99cdb03a778d9ffc1d0f09a56daa686c66bf2f2da",
+      "runningProcessEvidence": [
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/7"],
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "8c4388b8303c5d126cc9e4789397fa467041a24ccebd344d3bdd9b6daf8bca4b",
+          "bytes": 106258176,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-arm64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        },
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/7"],
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "8c4388b8303c5d126cc9e4789397fa467041a24ccebd344d3bdd9b6daf8bca4b",
+          "bytes": 106258176,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-arm64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-arm64/pglite/acceptance/rust/runs/1794688262591-52025/report.json",
+        "bytes": 10273,
+        "sha256": "21916eac0f247898fe2bf1bd5ffb2f8a304bc07b40193885bc8063f08ba870f6"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-arm64/pglite.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "rust-arm64",
+      "databaseMode": "bundled-postgres",
+      "effectiveDatabase": "bundled-postgres",
+      "serverVersion": "1.1.3059",
+      "downloadMiBPerSecond": 77.03,
+      "echoMiBPerSecond": 48.84,
+      "serverRecoveryMs": 2110.21,
+      "pausedServerRssKiB": 432792,
+      "slowConsumerReceivedFrames": 304,
+      "endpointRetiredDuringSendLoop": true,
+      "staleGrantRejection": "unauthorized",
+      "imageId": "sha256:3e985d86d6c0f09cbf9136c99cdb03a778d9ffc1d0f09a56daa686c66bf2f2da",
+      "runningProcessEvidence": [
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/13", "/proc/7"],
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "8c4388b8303c5d126cc9e4789397fa467041a24ccebd344d3bdd9b6daf8bca4b",
+          "bytes": 106258176,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-arm64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        },
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/13", "/proc/7"],
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "8c4388b8303c5d126cc9e4789397fa467041a24ccebd344d3bdd9b6daf8bca4b",
+          "bytes": 106258176,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-arm64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-arm64/bundled-postgres/acceptance/rust/runs/1794688299159-54563/report.json",
+        "bytes": 16056,
+        "sha256": "33098408a1132392ec984adb4d1944edb0a9ed84a02dabb867ad84fd70e3bdf3"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-arm64/bundled-postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "rust-arm64",
+      "databaseMode": "postgres",
+      "effectiveDatabase": "external PostgreSQL",
+      "serverVersion": "1.1.3059",
+      "downloadMiBPerSecond": 96.65,
+      "echoMiBPerSecond": 51.89,
+      "serverRecoveryMs": 1848.57,
+      "pausedServerRssKiB": 95740,
+      "slowConsumerReceivedFrames": 308,
+      "endpointRetiredDuringSendLoop": true,
+      "staleGrantRejection": "unauthorized",
+      "imageId": "sha256:3e985d86d6c0f09cbf9136c99cdb03a778d9ffc1d0f09a56daa686c66bf2f2da",
+      "runningProcessEvidence": [
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/7"],
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "8c4388b8303c5d126cc9e4789397fa467041a24ccebd344d3bdd9b6daf8bca4b",
+          "bytes": 106258176,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-arm64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        },
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/7"],
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "8c4388b8303c5d126cc9e4789397fa467041a24ccebd344d3bdd9b6daf8bca4b",
+          "bytes": 106258176,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-arm64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-arm64/postgres/acceptance/rust/runs/1794688332399-55773/report.json",
+        "bytes": 10485,
+        "sha256": "447112034ef40e186cd0687642576f17053434f80007103adea0e0676f14ffa0"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-arm64/postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "rust-x64",
+      "databaseMode": "pglite",
+      "effectiveDatabase": "pglite",
+      "serverVersion": "1.1.3059",
+      "downloadMiBPerSecond": 93.63,
+      "echoMiBPerSecond": 52.67,
+      "serverRecoveryMs": 4104.17,
+      "pausedServerRssKiB": 185316,
+      "slowConsumerReceivedFrames": 296,
+      "endpointRetiredDuringSendLoop": false,
+      "staleGrantRejection": "unauthorized",
+      "imageId": "sha256:d2a43e692d43417756d2de4452e1a35e21c91f842b9ddfb5ae340d6320a6cdad",
+      "runningProcessEvidence": [
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/7"],
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "mappedInode": "34861525",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+          "bytes": 110945768,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-x64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        },
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/7"],
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "mappedInode": "34861525",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+          "bytes": 110945768,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-x64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-x64/pglite/acceptance/rust/runs/1794688365886-57149/report.json",
+        "bytes": 10307,
+        "sha256": "019fbcf787290e1041e629c1f57df10656891de4d1aacf7671a5a0a5978ffe0b"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-x64/pglite.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "rust-x64",
+      "databaseMode": "bundled-postgres",
+      "effectiveDatabase": "bundled-postgres",
+      "serverVersion": "1.1.3059",
+      "downloadMiBPerSecond": 71.46,
+      "echoMiBPerSecond": 41.72,
+      "serverRecoveryMs": 4009.49,
+      "pausedServerRssKiB": 556420,
+      "slowConsumerReceivedFrames": 303,
+      "endpointRetiredDuringSendLoop": true,
+      "staleGrantRejection": "unauthorized",
+      "imageId": "sha256:d2a43e692d43417756d2de4452e1a35e21c91f842b9ddfb5ae340d6320a6cdad",
+      "runningProcessEvidence": [
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/13", "/proc/7"],
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "mappedInode": "34861525",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+          "bytes": 110945768,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-x64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        },
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/13", "/proc/7"],
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "mappedInode": "34861525",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+          "bytes": 110945768,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-x64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-x64/bundled-postgres/acceptance/rust/runs/1794688404801-59391/report.json",
+        "bytes": 16123,
+        "sha256": "3939cf3c468d1a198dc59bab36de48356386357f87df969c6ac71b7e856a3c8a"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-x64/bundled-postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "rust-x64",
+      "databaseMode": "postgres",
+      "effectiveDatabase": "external PostgreSQL",
+      "serverVersion": "1.1.3059",
+      "downloadMiBPerSecond": 92.15,
+      "echoMiBPerSecond": 52.31,
+      "serverRecoveryMs": 2842.01,
+      "pausedServerRssKiB": 131372,
+      "slowConsumerReceivedFrames": 295,
+      "endpointRetiredDuringSendLoop": false,
+      "staleGrantRejection": "unauthorized",
+      "imageId": "sha256:d2a43e692d43417756d2de4452e1a35e21c91f842b9ddfb5ae340d6320a6cdad",
+      "runningProcessEvidence": [
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/7"],
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "mappedInode": "34861525",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+          "bytes": 110945768,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-x64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        },
+        {
+          "processExecutable": "/proc/7/exe",
+          "serverProcessDirectories": ["/proc/7"],
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "mappedInode": "34861525",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "481879df22e62d54a3db4fd320d35f49d5342f22150012c1149dc3b08cf10854",
+          "bytes": 110945768,
+          "verifiedArtifactFiles": 2558,
+          "artifactTarget": "linux-x64",
+          "artifactVersion": {
+            "major": 1,
+            "minor": 1,
+            "patch": 3059,
+            "version": "1.1.3059",
+            "synthetic": false,
+            "commitSha": null,
+            "builtAt": null,
+            "buildId": null,
+            "overlayDigest": null
+          }
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-x64/postgres/acceptance/rust/runs/1794688445242-61217/report.json",
+        "bytes": 10546,
+        "sha256": "0a7450e8cbe58a4a60ed1b6b6756791a791a5ccf4a3ce985453971205893640d"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/rust-x64/postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "node-x64",
+      "databaseMode": "pglite",
+      "effectiveDatabase": "pglite",
+      "serverVersion": "1.1.2739",
+      "downloadMiBPerSecond": 53.59,
+      "echoMiBPerSecond": 35.1,
+      "serverRecoveryMs": 7127.96,
+      "pausedServerRssKiB": 1131040,
+      "slowConsumerReceivedFrames": 213,
+      "endpointRetiredDuringSendLoop": false,
+      "staleGrantRejection": "unauthorized",
+      "imageId": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8",
+      "runningProcessEvidence": [
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        },
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/node-x64/pglite/acceptance/node/runs/1794688481199-62635/report.json",
+        "bytes": 9222,
+        "sha256": "7dca146b85aabe232f93ef2c8bbd8a5d968c123774171de2202945439960185a"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/node-x64/pglite.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "node-x64",
+      "databaseMode": "bundled-postgres",
+      "effectiveDatabase": "external PostgreSQL",
+      "serverVersion": "1.1.2739",
+      "downloadMiBPerSecond": 58.72,
+      "echoMiBPerSecond": 38.59,
+      "serverRecoveryMs": 9327.68,
+      "pausedServerRssKiB": 598680,
+      "slowConsumerReceivedFrames": 227,
+      "endpointRetiredDuringSendLoop": true,
+      "staleGrantRejection": "unauthorized",
+      "imageId": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8",
+      "runningProcessEvidence": [
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        },
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/node-x64/bundled-postgres/acceptance/node/runs/1794688529470-65609/report.json",
+        "bytes": 9447,
+        "sha256": "fc7d59feffc85b189d681219c8d41e69eaa733a39d98b8992cefa949d841422d"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/node-x64/bundled-postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "target": "node-x64",
+      "databaseMode": "postgres",
+      "effectiveDatabase": "external PostgreSQL",
+      "serverVersion": "1.1.2739",
+      "downloadMiBPerSecond": 40.93,
+      "echoMiBPerSecond": 25.29,
+      "serverRecoveryMs": 7346.55,
+      "pausedServerRssKiB": 581160,
+      "slowConsumerReceivedFrames": 274,
+      "endpointRetiredDuringSendLoop": false,
+      "staleGrantRejection": "unauthorized",
+      "imageId": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8",
+      "runningProcessEvidence": [
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        },
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/node-x64/postgres/acceptance/node/runs/1794688583708-69300/report.json",
+        "bytes": 9426,
+        "sha256": "4427a6bf0f93c19fbe97a4ba13a2fa9b785ca5cacc924b99308f7ae4650f4ad8"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-worker-link-production.4g6jR3Wi/node-x64/postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    }
+  ]
+}

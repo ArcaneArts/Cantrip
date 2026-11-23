@@ -5,6 +5,7 @@ import type {
 } from "@/components/editor/document-session";
 import type { EditorHistoryState } from "@/components/editor/input-history";
 import type { ExplorerTransferState } from "./explorer-view";
+import { validateNbtViewState } from "@/lib/nbt/view-state";
 
 export interface ExplorerTransferScope {
   documentId?: string;
@@ -153,6 +154,13 @@ export function validateExplorerTransfer(
   );
   const mode = explorerFileModeSchema.safeParse(state.fileMode);
   if (!mode.success) return invalid();
+  if (
+    state.fileViewer !== undefined &&
+    state.fileViewer !== null &&
+    (typeof state.fileViewer !== "string" ||
+      !/^[a-z][a-z0-9-]{0,63}$/u.test(state.fileViewer))
+  )
+    invalid();
   const selectedPath =
     state.selectedPath === null ? null : string(state.selectedPath);
   if (selectedPath === "") invalid();
@@ -163,7 +171,13 @@ export function validateExplorerTransfer(
     workerId: scope.workerId,
     worktreeId: scope.worktreeId,
     fileMode: mode.data,
+    ...(state.fileViewer !== undefined
+      ? { fileViewer: state.fileViewer as string | null }
+      : {}),
     selectedPath,
+    ...(state.viewerState === undefined
+      ? {}
+      : { viewerState: validateNbtViewState(state.viewerState) }),
     documents: { scope: accountScope, documents },
   };
 }

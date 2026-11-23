@@ -1,0 +1,403 @@
+diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
+--- a/codex-rs/cli/src/main.rs
++++ b/codex-rs/cli/src/main.rs
+@@ -55,6 +55,7 @@
+ 
+ #[cfg(any(target_os = "macos", target_os = "windows"))]
+ mod app_cmd;
++mod cantrip_inference_journal;
+ mod cantrip_runtime_owner;
+ mod config_override_args;
+ mod daemon_install;
+diff --git a/codex-rs/cli/src/cantrip_runtime_owner.rs b/codex-rs/cli/src/cantrip_runtime_owner.rs
+--- a/codex-rs/cli/src/cantrip_runtime_owner.rs
++++ b/codex-rs/cli/src/cantrip_runtime_owner.rs
+@@ -70,7 +70,7 @@
+     Ok(file)
+ }
+ 
+-fn write_json(path: &Path, value: &impl Serialize) -> anyhow::Result<()> {
++pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> anyhow::Result<()> {
+     let parent = path.parent().context("ownership path has no parent")?;
+     let mut temporary = tempfile::Builder::new()
+         .prefix(".write-")
+@@ -205,11 +205,13 @@
+             self.acknowledge()?;
+             // This pipe is owned by the Node worker, not a UI or WebSocket. EOF
+             // fences all its native processes before releasing worker ownership.
+-            io::copy(&mut io::stdin().lock(), &mut io::sink())?;
++            let journal = crate::cantrip_inference_journal::serve(&self.scope, &self.generation);
++            // Even malformed IPC or failed metadata reads revoke native authority.
++            // Do not leave executions alive because a journal operation failed.
+             let _registry = open_lock(&self.scope.join("registry.lock"))?;
+             write_json(&self.scope.join("generation.json"), &String::new())?;
+             retire_all(&self.scope)?;
+-            return Ok(());
++            return journal;
+         }
+         self.acknowledge()
+     }
+@@ -271,12 +273,31 @@
+     );
+     let lease = open_lock(&scope.join("runtimes").join(format!("{runtime}.lock")))?;
+     let (changed, changes) = mpsc::sync_channel(1);
++    let intent_name = format!("{runtime}.json");
++    let scope_name = scope
++        .file_name()
++        .context("invalid ownership scope")?
++        .to_os_string();
+     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+         // Coalesce filesystem changes. A failed watcher cannot retain authority.
+         match event {
+             Ok(event) if matches!(event.kind, notify::EventKind::Access(_)) => {}
+-            Ok(_) => {
+-                let _ = changed.try_send(());
++            Ok(event) => {
++                // Journal writes must not wake every native runtime. Match
++                // names within the two watched directories; this also works
++                // when an OS watcher resolves a symlinked scope path.
++                if event.paths.is_empty()
++                    || event.paths.iter().any(|path| {
++                        path.file_name().is_some_and(|name| {
++                            name == std::ffi::OsStr::new("generation.json")
++                                || name == std::ffi::OsStr::new(&intent_name)
++                                || name == scope_name.as_os_str()
++                                || name == std::ffi::OsStr::new("runtimes")
++                        })
++                    })
++                {
++                    let _ = changed.try_send(());
++                }
+             }
+             Err(_) => std::process::exit(1),
+         }
+diff --git a/codex-rs/cli/src/cantrip_inference_journal.rs b/codex-rs/cli/src/cantrip_inference_journal.rs
+new file mode 100644
+--- /dev/null
++++ b/codex-rs/cli/src/cantrip_inference_journal.rs
+@@ -0,0 +1,325 @@
++//! Admission metadata only. The lifetime keeper is the sole writer while it
++//! owns owner.lock, so a retired Node generation cannot overwrite its successor.
++//! A durable grant precedes any worker lease resolution. Never-granted entries
++//! therefore prove no inference was admitted. Ever-granted entries need canonical
++//! reconciliation, including entries waiting to resume an already-started turn.
++use crate::cantrip_runtime_owner::write_json;
++use anyhow::Context;
++use serde::Deserialize;
++use serde::Serialize;
++use serde_json::Value;
++use std::collections::BTreeMap;
++use std::fs;
++use std::io;
++use std::io::BufRead;
++use std::io::Read;
++use std::io::Write;
++use std::path::Path;
++
++const COMPLETED_HISTORY: usize = 512;
++
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct Identity {
++    operation_id: String,
++    provider_id: String,
++    runtime_generation: String,
++    recovery_key: Option<String>,
++    recovery: Option<Recovery>,
++    chat_id: Option<String>,
++    project_id: Option<String>,
++}
++
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct Recovery {
++    command_id: Option<String>,
++    command_generation: Option<String>,
++    message_id: Option<String>,
++    thread_id: Option<String>,
++    turn_id: Option<String>,
++}
++
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase")]
++enum State {
++    Waiting,
++    Granted,
++    Released,
++}
++
++#[derive(Clone, Deserialize, Serialize)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct Operation {
++    key: String,
++    identity: Identity,
++    worker_generation: String,
++    state: State,
++    order: u64,
++    revision: u64,
++    ever_granted: bool,
++    outcome: Option<String>,
++}
++
++#[derive(Clone, Deserialize, Serialize)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct Journal {
++    version: u8,
++    revision: u64,
++    operations: BTreeMap<String, Operation>,
++}
++
++#[derive(Deserialize)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++struct Request {
++    request_id: String,
++    command: Value,
++}
++
++#[derive(Deserialize)]
++#[serde(tag = "action", rename_all = "camelCase", deny_unknown_fields)]
++enum Command {
++    Snapshot,
++    Batch { commands: Vec<Command> },
++    Enqueue { key: String, identity: Identity },
++    Grant { key: String },
++    Requeue { key: String },
++    Release { key: String, outcome: String },
++}
++
++impl Journal {
++    fn read(path: &Path) -> anyhow::Result<Self> {
++        match fs::read(path) {
++            Ok(bytes) => {
++                let journal: Self = serde_json::from_slice(&bytes)?;
++                anyhow::ensure!(
++                    journal.version == 1,
++                    "unsupported admission journal version"
++                );
++                anyhow::ensure!(
++                    journal.revision <= 9_007_199_254_740_991,
++                    "admission journal revision overflow"
++                );
++                for (key, operation) in &journal.operations {
++                    anyhow::ensure!(
++                        key == &operation.key
++                            && key.len() == 64
++                            && key.bytes().all(|byte| byte.is_ascii_hexdigit()),
++                        "invalid admission journal key"
++                    );
++                    anyhow::ensure!(
++                        operation.order > 0
++                            && operation.order <= operation.revision
++                            && operation.revision <= journal.revision,
++                        "invalid admission journal order"
++                    );
++                    anyhow::ensure!(
++                        operation.state != State::Granted || operation.ever_granted,
++                        "invalid admission grant evidence"
++                    );
++                }
++                Ok(journal)
++            }
++            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Self {
++                version: 1,
++                revision: 0,
++                operations: BTreeMap::new(),
++            }),
++            Err(error) => Err(error.into()),
++        }
++    }
++
++    fn next(&mut self) -> anyhow::Result<u64> {
++        anyhow::ensure!(
++            self.revision < 9_007_199_254_740_991,
++            "admission journal revision overflow"
++        );
++        self.revision += 1;
++        Ok(self.revision)
++    }
++
++    fn operation(&mut self, key: &str, generation: &str) -> anyhow::Result<&mut Operation> {
++        let operation = self
++            .operations
++            .get_mut(key)
++            .context("unknown admission journal operation")?;
++        anyhow::ensure!(
++            operation.worker_generation == generation,
++            "stale admission journal owner"
++        );
++        Ok(operation)
++    }
++
++    fn apply(&mut self, command: Command, generation: &str) -> anyhow::Result<Value> {
++        match command {
++            Command::Snapshot => Ok(serde_json::to_value(&self)?),
++            Command::Batch { commands } => {
++                anyhow::ensure!(commands.len() <= 32, "admission batch exceeds its bound");
++                let mut results = Vec::with_capacity(commands.len());
++                for command in commands {
++                    let result = if matches!(&command, Command::Snapshot | Command::Batch { .. }) {
++                        Err(anyhow::anyhow!("invalid admission mutation"))
++                    } else {
++                        self.apply(command, generation)
++                    };
++                    results.push(match result {
++                        Ok(result) => serde_json::json!({ "ok": true, "result": result }),
++                        Err(_) => serde_json::json!({ "ok": false }),
++                    });
++                }
++                Ok(serde_json::to_value(results)?)
++            }
++            Command::Enqueue { key, identity } => {
++                anyhow::ensure!(
++                    key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit()),
++                    "invalid admission key"
++                );
++                anyhow::ensure!(
++                    !identity.operation_id.is_empty()
++                        && !identity.provider_id.is_empty()
++                        && !identity.runtime_generation.is_empty(),
++                    "missing admission identity"
++                );
++                if let Some(previous) = self.operations.get(&key) {
++                    anyhow::ensure!(
++                        previous.worker_generation == generation
++                            && previous.identity == identity
++                            && previous.state != State::Released,
++                        "admission identity was changed or settled"
++                    );
++                    return Ok(serde_json::to_value(previous)?);
++                }
++                let order = self.next()?;
++                let operation = Operation {
++                    key: key.clone(),
++                    identity,
++                    worker_generation: generation.to_owned(),
++                    state: State::Waiting,
++                    order,
++                    revision: order,
++                    ever_granted: false,
++                    outcome: None,
++                };
++                let result = serde_json::to_value(&operation)?;
++                self.operations.insert(key, operation);
++                Ok(result)
++            }
++            Command::Grant { key } => {
++                let revision = self.next()?;
++                let operation = self.operation(&key, generation)?;
++                anyhow::ensure!(
++                    operation.state != State::Released,
++                    "admission operation was settled"
++                );
++                operation.state = State::Granted;
++                operation.ever_granted = true;
++                operation.revision = revision;
++                Ok(serde_json::to_value(operation)?)
++            }
++            Command::Requeue { key } => {
++                let revision = self.next()?;
++                let operation = self.operation(&key, generation)?;
++                anyhow::ensure!(
++                    operation.state != State::Released,
++                    "admission operation was settled"
++                );
++                if operation.state != State::Waiting {
++                    operation.state = State::Waiting;
++                    operation.order = revision;
++                    operation.revision = revision;
++                }
++                Ok(serde_json::to_value(operation)?)
++            }
++            Command::Release { key, outcome } => {
++                anyhow::ensure!(
++                    matches!(
++                        outcome.as_str(),
++                        "completed"
++                            | "failed"
++                            | "interrupted"
++                            | "runtime-exited"
++                            | "never-started"
++                            | "cancelled"
++                    ),
++                    "invalid admission settlement"
++                );
++                let revision = self.next()?;
++                let operation = self.operation(&key, generation)?;
++                if operation.state != State::Released {
++                    operation.state = State::Released;
++                    operation.outcome = Some(outcome);
++                    operation.revision = revision;
++                }
++                Ok(serde_json::to_value(operation)?)
++            }
++        }
++    }
++
++    fn compact(&mut self) {
++        let mut completed: Vec<_> = self
++            .operations
++            .values()
++            .filter(|operation| {
++                operation.state == State::Released
++                    && matches!(operation.outcome.as_deref(), Some("completed" | "failed"))
++            })
++            .map(|operation| (operation.revision, operation.key.clone()))
++            .collect();
++        completed.sort_unstable();
++        let remove = completed.len().saturating_sub(COMPLETED_HISTORY);
++        for (_, key) in completed.into_iter().take(remove) {
++            self.operations.remove(&key);
++        }
++    }
++}
++
++/// Runs only in the existing owner keeper. EOF retains ordered admission
++/// metadata, then the caller fences/drains its real native processes.
++pub(crate) fn serve(scope: &Path, generation: &str) -> anyhow::Result<()> {
++    let path = scope.join("admission.json");
++    let mut journal = Journal::read(&path)?;
++    let stdin = io::stdin();
++    let mut input = stdin.lock();
++    loop {
++        // Metadata frames contain identifiers only. Keep malformed input bounded.
++        let mut line = String::new();
++        let mut bounded = input.by_ref().take(65_537);
++        let length = bounded.read_line(&mut line)?;
++        if length == 0 {
++            return Ok(());
++        }
++        anyhow::ensure!(
++            length <= 65_536 && line.ends_with('\n'),
++            "invalid admission journal frame"
++        );
++        let request: Request = serde_json::from_str(&line)?;
++        let command = serde_json::from_value::<Command>(request.command);
++        let result = command.map_err(anyhow::Error::from).and_then(|command| {
++            let snapshot = matches!(&command, Command::Snapshot);
++            let mut next = journal.clone();
++            let result = next.apply(command, generation)?;
++            if !snapshot {
++                next.compact();
++                // The reply is sent only after the actual durable write succeeds.
++                write_json(&path, &next)?;
++                journal = next;
++            }
++            Ok(result)
++        });
++        let response = match result {
++            Ok(result) => {
++                serde_json::json!({ "requestId": request.request_id, "ok": true, "result": result })
++            }
++            Err(_) => {
++                // An atomic rename may have committed before a later fsync error.
++                // Re-read actual state before accepting any following mutation.
++                journal = Journal::read(&path)?;
++                serde_json::json!({ "requestId": request.request_id, "ok": false, "error": "admission journal operation failed" })
++            }
++        };
++        let mut output = io::stdout().lock();
++        serde_json::to_writer(&mut output, &response)?;
++        writeln!(output)?;
++        output.flush()?;
++    }
++}

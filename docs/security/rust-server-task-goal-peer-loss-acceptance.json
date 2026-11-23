@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceBase": "bf22e840ac6295329660774db68d900be6a29ea3",
+  "artifactVersion": "1.1.2869",
+  "platform": "darwin-arm64",
+  "postgres": "postgres (PostgreSQL) 18.6 (Homebrew)",
+  "redis": "Redis server v=8.10.3 sha=5a56d658:0 malloc=libc bits=64 build=e6ccec1f7cce9a95",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/shared-task-goal-peer-loss-2892",
+  "scope": "Two Rust peers share PostgreSQL and Redis. An existing Chromium browser and full worker with Core stay alive while a participating server is killed after commit and replaced at the same origin.",
+  "cases": [
+    {
+      "crashedPeer": "client",
+      "workerConnectionChanged": false,
+      "heldResponseDelivered": true,
+      "serverExitSignal": "SIGKILL",
+      "productSteps": 16,
+      "destinationModelRequests": 2,
+      "committedGoalOutcomes": 2,
+      "report": {
+        "path": "candidate-client-peer.json",
+        "bytes": 956469,
+        "sha256": "b0181010fc08ea9d144120d408d53ff9173f81382add7fa0d287a8743045af34"
+      },
+      "handoffTrace": {
+        "path": "candidate-client-peer-handoff.jsonl",
+        "bytes": 922,
+        "sha256": "cce0c339c067480d6743f798937d39f8e15f6d2496a1a35351d14e2e590dce21"
+      },
+      "receiptTrace": {
+        "path": "candidate-client-peer-receipts.jsonl",
+        "bytes": 9856,
+        "sha256": "65f2a935c5b0d7861b9c89ef9e042756e10ce28fba556fc296c511953076e60e"
+      },
+      "nativeTrace": {
+        "path": "candidate-client-peer-native.jsonl",
+        "bytes": 61887,
+        "sha256": "e8e374557cbc092cc957ff3ea25e316fd1cb593e0fd5923b0765e8dfa4266cb1"
+      },
+      "publicationTrace": {
+        "path": "candidate-client-peer-publisher.jsonl",
+        "bytes": 694,
+        "sha256": "65685fbdf9b8b9920cd7c668347e7c6f3cf893ea72a6a33c43670d097d43592a"
+      }
+    },
+    {
+      "crashedPeer": "worker",
+      "workerConnectionChanged": true,
+      "heldResponseDelivered": true,
+      "serverExitSignal": "SIGKILL",
+      "productSteps": 16,
+      "destinationModelRequests": 2,
+      "committedGoalOutcomes": 2,
+      "report": {
+        "path": "candidate-worker-peer.json",
+        "bytes": 945307,
+        "sha256": "9632194861836937cd3dfc99999ed0d16666ce192b083e56d08d7e0a2929b998"
+      },
+      "handoffTrace": {
+        "path": "candidate-worker-peer-handoff.jsonl",
+        "bytes": 1057,
+        "sha256": "f383b8a4ad81cd3c2ad48a47d9bd4af1d420e747a04310248e02d9e61056cc7f"
+      },
+      "receiptTrace": {
+        "path": "candidate-worker-peer-receipts.jsonl",
+        "bytes": 9856,
+        "sha256": "3071b5d3b37418e2e7f505d618eba66aecb353bbe750656a4e09b76a8bc38706"
+      },
+      "nativeTrace": {
+        "path": "candidate-worker-peer-native.jsonl",
+        "bytes": 60819,
+        "sha256": "b4f04747a0481e80ecb3637d4fd5dcd278d522bdf2242a33178381a1a054a026"
+      },
+      "publicationTrace": {
+        "path": "candidate-worker-peer-publisher.jsonl",
+        "bytes": 694,
+        "sha256": "30ad99e3275ff9c699b9436fe083591706052cb4f7adc848ce58d11aafb1884d"
+      }
+    }
+  ],
+  "server": {
+    "path": "task-autonomous-transfer-interruption-2869/candidate/cantrip-server",
+    "bytes": 179777168,
+    "sha256": "4895c9b089d168787d9363a9339ec1dfeee734050df1ed90b4aa90568e09f05f"
+  },
+  "workerHandoffClient": {
+    "path": "shared-autonomous-goal-transfer-2891/candidate/worker/dist/native-runtime-handoff-client.js",
+    "bytes": 5048,
+    "sha256": "f40d5c357a15f854c0f5031c48c7b0e3d319c0333ebc6e8ae8d0b5dbe15996c4"
+  },
+  "nativeCore": {
+    "path": "shared-autonomous-goal-transfer-2891/candidate/worker/bin/codex",
+    "bytes": 281161744,
+    "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+  },
+  "verifier": {
+    "path": "verify-peer-loss.py",
+    "bytes": 9133,
+    "sha256": "cdee24e3a4896d7bc1e9b0ba7005ea2a5b90759ab53db36da8a01f21dbfd6c5e"
+  },
+  "source": [
+    {
+      "path": "scripts/server-rust/actual-folder-client.mjs",
+      "bytes": 78205,
+      "sha256": "1a960c151156da2ef9af83acc6054e73171eb9aadf0141563c1cf077f4f9ea53"
+    },
+    {
+      "path": "scripts/server-rust/actual-task-goal-provider-transfer.mjs",
+      "bytes": 16102,
+      "sha256": "e9dfd809c8b3db6c9c76c54fb63de5ff42033c5abf1af6fe86293504efe31da3"
+    },
+    {
+      "path": "scripts/server-rust/task-goal-transfer-dependency-outage.mjs",
+      "bytes": 3366,
+      "sha256": "c8056495d530556b17619d3cb41b26cb13f0ae86c67ae576474f1fd278972b0f"
+    },
+    {
+      "path": "scripts/server-rust/task-goal-transfer-peer-outage.mjs",
+      "bytes": 1975,
+      "sha256": "43d7806a3c72044b3fe292f24b8fd0322c7b40e8a9d80e04c99214b5a82619a8"
+    },
+    {
+      "path": "scripts/server-rust/shared-product-fixture.mjs",
+      "bytes": 7714,
+      "sha256": "c9967d9f6e9d064c65ab3b1c57e0756521dff245f63409dd42dc9c1355387b91"
+    },
+    {
+      "path": "scripts/server-rust/worker-task-goal-handoff-fault.mjs",
+      "bytes": 2600,
+      "sha256": "ada0f793a940e3ab2ef1692a7daac71ae9d1f07d30d58e83eca18eaf67b00005"
+    }
+  ]
+}

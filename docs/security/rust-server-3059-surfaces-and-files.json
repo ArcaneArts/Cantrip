@@ -1,0 +1,307 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "driverSourceCommit": "8173daea9702ff45e4d672e609b1c4b47855616f",
+  "platform": "darwin-arm64",
+  "scope": "MacOS ARM64 packaged Rust executable and Node reference with browser SDK, Chromium, real PTY and full packaged Node worker. Isolated test profiles. The browser SDK runs through Vite. Desktop inventory covers discovery without physical capture.",
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/surfaces-and-files-3059/inputs.sha256",
+    "bytes": 1609,
+    "sha256": "be28280d9ddef65a92ac7ec212681c00194894727195d4014faf9985e10e282a"
+  },
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "runtimes": [
+        {
+          "runtime": "node",
+          "steps": 28,
+          "terminalSnapshots": 3,
+          "workerStops": 5,
+          "serverShutdowns": 2,
+          "terminalWorkerLink": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true
+          },
+          "terminalLegacyRelay": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true,
+            "orderedOutput": true
+          },
+          "fileDocuments": {
+            "locationRejected": true,
+            "replayRejected": true,
+            "staleWriteRejected": true
+          },
+          "legacyBrowserSurface": {
+            "completed": true,
+            "deleted": true,
+            "aadRejected": true,
+            "retainedExactEnvelopes": true
+          },
+          "workerLinkBrowserSurface": {
+            "completed": true,
+            "authenticatedInitialState": true,
+            "authenticatedControlReload": true,
+            "authenticatedSavedStateUpdate": true,
+            "deletedWithActiveGrant": true,
+            "released": true
+          },
+          "desktopInventory": {
+            "workers": 1,
+            "healthy": 1,
+            "partial": false,
+            "truncated": false
+          }
+        },
+        {
+          "runtime": "rust",
+          "steps": 28,
+          "terminalSnapshots": 3,
+          "workerStops": 5,
+          "serverShutdowns": 2,
+          "terminalWorkerLink": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true
+          },
+          "terminalLegacyRelay": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true,
+            "orderedOutput": true
+          },
+          "fileDocuments": {
+            "locationRejected": true,
+            "replayRejected": true,
+            "staleWriteRejected": true
+          },
+          "legacyBrowserSurface": {
+            "completed": true,
+            "deleted": true,
+            "aadRejected": true,
+            "retainedExactEnvelopes": true
+          },
+          "workerLinkBrowserSurface": {
+            "completed": true,
+            "authenticatedInitialState": true,
+            "authenticatedControlReload": true,
+            "authenticatedSavedStateUpdate": true,
+            "deletedWithActiveGrant": true,
+            "released": true
+          },
+          "desktopInventory": {
+            "workers": 1,
+            "healthy": 1,
+            "partial": false,
+            "truncated": false
+          }
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/surfaces-and-files-3059/pglite.json",
+        "bytes": 912085,
+        "sha256": "0affdd3cef1c57c683ee31129ac0f8b752c016ebef05f072de3394fbc931bfb4"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/surfaces-and-files-3059/pglite.log",
+        "bytes": 2998,
+        "sha256": "ab48d70698bc9e181fbbb34b88364a86fe1f8cb70b8918d11c390b54f89e5780"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "runtimes": [
+        {
+          "runtime": "node",
+          "steps": 28,
+          "terminalSnapshots": 3,
+          "workerStops": 5,
+          "serverShutdowns": 2,
+          "terminalWorkerLink": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true
+          },
+          "terminalLegacyRelay": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true,
+            "orderedOutput": true
+          },
+          "fileDocuments": {
+            "locationRejected": true,
+            "replayRejected": true,
+            "staleWriteRejected": true
+          },
+          "legacyBrowserSurface": {
+            "completed": true,
+            "deleted": true,
+            "aadRejected": true,
+            "retainedExactEnvelopes": true
+          },
+          "workerLinkBrowserSurface": {
+            "completed": true,
+            "authenticatedInitialState": true,
+            "authenticatedControlReload": true,
+            "authenticatedSavedStateUpdate": true,
+            "deletedWithActiveGrant": true,
+            "released": true
+          },
+          "desktopInventory": {
+            "workers": 1,
+            "healthy": 1,
+            "partial": false,
+            "truncated": false
+          }
+        },
+        {
+          "runtime": "rust",
+          "steps": 28,
+          "terminalSnapshots": 3,
+          "workerStops": 5,
+          "serverShutdowns": 2,
+          "terminalWorkerLink": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true
+          },
+          "terminalLegacyRelay": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true,
+            "orderedOutput": true
+          },
+          "fileDocuments": {
+            "locationRejected": true,
+            "replayRejected": true,
+            "staleWriteRejected": true
+          },
+          "legacyBrowserSurface": {
+            "completed": true,
+            "deleted": true,
+            "aadRejected": true,
+            "retainedExactEnvelopes": true
+          },
+          "workerLinkBrowserSurface": {
+            "completed": true,
+            "authenticatedInitialState": true,
+            "authenticatedControlReload": true,
+            "authenticatedSavedStateUpdate": true,
+            "deletedWithActiveGrant": true,
+            "released": true
+          },
+          "desktopInventory": {
+            "workers": 1,
+            "healthy": 1,
+            "partial": false,
+            "truncated": false
+          }
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/surfaces-and-files-3059/bundled-postgres.json",
+        "bytes": 981349,
+        "sha256": "5b066001c7e2b45749887ab9a7dc3e50a714c8f089fa46acb4de4f6685700e62"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/surfaces-and-files-3059/bundled-postgres.log",
+        "bytes": 3181,
+        "sha256": "47822f0ae54f560e1dc47b41322d6be265a51e36e41fee7366124e49ed4716b1"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "runtimes": [
+        {
+          "runtime": "node",
+          "steps": 28,
+          "terminalSnapshots": 3,
+          "workerStops": 5,
+          "serverShutdowns": 2,
+          "terminalWorkerLink": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true
+          },
+          "terminalLegacyRelay": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true,
+            "orderedOutput": true
+          },
+          "fileDocuments": {
+            "locationRejected": true,
+            "replayRejected": true,
+            "staleWriteRejected": true
+          },
+          "legacyBrowserSurface": {
+            "completed": true,
+            "deleted": true,
+            "aadRejected": true,
+            "retainedExactEnvelopes": true
+          },
+          "workerLinkBrowserSurface": {
+            "completed": true,
+            "authenticatedInitialState": true,
+            "authenticatedControlReload": true,
+            "authenticatedSavedStateUpdate": true,
+            "deletedWithActiveGrant": true,
+            "released": true
+          },
+          "desktopInventory": {
+            "workers": 1,
+            "healthy": 1,
+            "partial": false,
+            "truncated": false
+          }
+        },
+        {
+          "runtime": "rust",
+          "steps": 28,
+          "terminalSnapshots": 3,
+          "workerStops": 5,
+          "serverShutdowns": 2,
+          "terminalWorkerLink": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true
+          },
+          "terminalLegacyRelay": {
+            "encryptedInputExecuted": true,
+            "encryptedOutputOpened": true,
+            "orderedOutput": true
+          },
+          "fileDocuments": {
+            "locationRejected": true,
+            "replayRejected": true,
+            "staleWriteRejected": true
+          },
+          "legacyBrowserSurface": {
+            "completed": true,
+            "deleted": true,
+            "aadRejected": true,
+            "retainedExactEnvelopes": true
+          },
+          "workerLinkBrowserSurface": {
+            "completed": true,
+            "authenticatedInitialState": true,
+            "authenticatedControlReload": true,
+            "authenticatedSavedStateUpdate": true,
+            "deletedWithActiveGrant": true,
+            "released": true
+          },
+          "desktopInventory": {
+            "workers": 1,
+            "healthy": 1,
+            "partial": false,
+            "truncated": false
+          }
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/surfaces-and-files-3059/postgres.json",
+        "bytes": 979514,
+        "sha256": "a81c1e563c4117bb9a7ba0deb87fc12c6c571953e2000b9921adfda37645873c"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/surfaces-and-files-3059/postgres.log",
+        "bytes": 3060,
+        "sha256": "e3e103c769837d1c2a27a61092f96984ecfc2de0ed5aee59b1e46bd7ea5c2380"
+      }
+    }
+  ]
+}

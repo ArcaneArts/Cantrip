@@ -11,13 +11,13 @@ export function nextExplorerEntryReplayKey(
   return active && !wasActive ? current + 1 : current;
 }
 
-export function confirmExplorerDiscard(
+export async function confirmExplorerDiscard(
   actions: ExplorerLifecycleActions | null | undefined,
   confirmDiscard: () => boolean,
-): boolean {
+): Promise<boolean> {
   if (!actions?.dirty) return true;
   if (!confirmDiscard()) return false;
-  actions.discard?.();
+  await actions.discard?.();
   return true;
 }
 
@@ -25,7 +25,8 @@ export async function prepareExplorerRebind(
   actions: ExplorerLifecycleActions | null | undefined,
   confirmDiscard: () => boolean,
 ): Promise<ExplorerPreparationResult> {
-  if (!confirmExplorerDiscard(actions, confirmDiscard)) return "cancelled";
+  if (!(await confirmExplorerDiscard(actions, confirmDiscard)))
+    return "cancelled";
   if (actions && !(await actions.flushViewState())) return "state-failed";
   return "ready";
 }

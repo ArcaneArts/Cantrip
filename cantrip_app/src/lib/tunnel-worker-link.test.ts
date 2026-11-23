@@ -189,6 +189,25 @@ function setup(route: WorkerLinkRoute = "local") {
 }
 
 describe("Tunnel WorkerLink client", () => {
+  it("sends a nonempty raw heartbeat only for a signed guest listener", async () => {
+    const fixture = setup();
+    fixture.activeGrant.grant.binding.operations.push("stream:guest-listen");
+    const connection = await openTunnelWorkerLink(
+      {
+        attachmentId,
+        workerId: "worker-1",
+        onClose: vi.fn(),
+        onFrame: vi.fn(),
+      },
+      fixture.dependencies,
+    );
+    connection.activate();
+    expect(connection.keepAlive?.()).toBe(true);
+    expect(fixture.stream.writes).toEqual([Uint8Array.of(0)]);
+    connection.close();
+    expect(connection.keepAlive?.()).toBe(false);
+  });
+
   it("turns source opens into authorized connects and returns credit after delivery", async () => {
     const fixture = setup();
     const received: Uint8Array[] = [];

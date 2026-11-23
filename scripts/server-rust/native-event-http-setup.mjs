@@ -7,7 +7,7 @@ import {
   settingsWorker as worker,
 } from "./native-settings-http-fixture.mjs";
 import { literal, json, label } from "./project-target-state.mjs";
-import { createWorkerCredential } from "../../cantrip_server/src/workers/credentials.ts";
+import { createWorkerCredential } from "../../tests/reference-node-server/src/workers/credentials.ts";
 export const rejectedEventCredentials = ["scope", "revoked", "expired"].map(
   (reason) => ({ reason, ...createWorkerCredential() }),
 );
@@ -97,7 +97,7 @@ export async function prepareEventCommands(h) {
       threadId,
       projectId,
     };
-    if (chat !== agent) {
+    if (chat === task) {
       assert.equal(admitted.receipt.status, "rejected");
       assert.equal(
         admitted.receipt.rejectionCode,
@@ -108,7 +108,7 @@ export async function prepareEventCommands(h) {
     }
     assert.equal(admitted.receipt.status, "accepted");
     const replay = await h.visit(
-      "HTTP native admission replay",
+      "HTTP native admission replay " + chat,
       "POST",
       "/api/internal/native-commands/admit",
       { ...auth, json: admission },
@@ -119,7 +119,15 @@ export async function prepareEventCommands(h) {
       replay.computerUseAuthority,
       admitted.computerUseAuthority,
     );
-    assert.equal(admitted.computerUseAuthority.chatId, agent);
+    assert.equal(admitted.computerUseAuthority.chatId, chat);
+    assert.equal(
+      admitted.computerUseAuthority.contextKind,
+      session.contextKind,
+    );
+    assert.equal(
+      admitted.computerUseAuthority.placementId,
+      session.placementId,
+    );
     assert.equal(
       admitted.computerUseAuthority.executionLaneId,
       admitted.receipt.executionLaneId,
@@ -134,7 +142,7 @@ export async function prepareEventCommands(h) {
       session,
     };
     const bound = await h.visit(
-      "HTTP native preparation",
+      "HTTP native preparation " + chat,
       "POST",
       "/api/internal/native-commands/bind-preparation",
       { ...auth, json: dispatch },
@@ -144,7 +152,7 @@ export async function prepareEventCommands(h) {
       dispatch.operationGeneration,
     );
     const dispatched = await h.visit(
-      "HTTP native dispatch",
+      "HTTP native dispatch " + chat,
       "POST",
       "/api/internal/native-commands/dispatch",
       { ...auth, json: dispatch },

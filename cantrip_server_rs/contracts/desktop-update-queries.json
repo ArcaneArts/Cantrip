@@ -1,0 +1,64 @@
+{
+  "queries": {
+    "activeChats": {
+      "sql": "select count(*)::int from \"chats\" inner join \"projects\" on (\"projects\".\"id\" = \"chats\".\"project_id\" and \"projects\".\"owner_id\" = $1) where (\"chats\".\"archived_at\" is null and \"chats\".\"status\" in ($2, $3))",
+      "params": ["owner", "running", "waiting-for-approval"]
+    },
+    "queuedPrompts": {
+      "sql": "select count(*)::int from \"queued_prompts\" inner join \"chats\" on \"chats\".\"id\" = \"queued_prompts\".\"chat_id\" inner join \"projects\" on (\"projects\".\"id\" = \"chats\".\"project_id\" and \"projects\".\"owner_id\" = $1)",
+      "params": ["owner"]
+    },
+    "terminalServices": {
+      "sql": "select count(*)::int from \"terminals\" inner join \"projects\" on (\"projects\".\"id\" = \"terminals\".\"project_id\" and \"projects\".\"owner_id\" = $1) where \"terminals\".\"service_enabled\" = $2",
+      "params": ["owner", true]
+    },
+    "projectReplicaJobs": {
+      "sql": "select count(*)::int from \"project_replica_jobs\" where (\"project_replica_jobs\".\"owner_id\" = $1 and \"project_replica_jobs\".\"state\" in ($2, $3, $4))",
+      "params": ["owner", "queued", "running", "blocked"]
+    },
+    "chatRelocationJobs": {
+      "sql": "select count(*)::int from \"chat_relocation_jobs\" where (\"chat_relocation_jobs\".\"owner_id\" = $1 and \"chat_relocation_jobs\".\"state\" in ($2, $3, $4, $5, $6, $7, $8, $9))",
+      "params": [
+        "owner",
+        "queued",
+        "waiting-for-idle",
+        "validating",
+        "preparing-replica",
+        "transferring-attachments",
+        "hydrating-runtime",
+        "ready-to-commit",
+        "blocked"
+      ]
+    },
+    "chatImportJobs": {
+      "sql": "select count(*)::int from \"chat_import_jobs\" where (\"chat_import_jobs\".\"owner_id\" = $1 and \"chat_import_jobs\".\"state\" in ($2, $3, $4, $5, $6, $7))",
+      "params": [
+        "owner",
+        "queued",
+        "reading",
+        "importing",
+        "awaiting-hydration",
+        "hydrating",
+        "blocked"
+      ]
+    },
+    "projectAutomationRuns": {
+      "sql": "select count(*)::int from \"project_automation_runs\" where (\"project_automation_runs\".\"owner_id\" = $1 and \"project_automation_runs\".\"status\" in ($2, $3, $4))",
+      "params": ["owner", "dispatching", "started", "queued"]
+    },
+    "gitOperations": {
+      "sql": "select count(*)::int from \"git_operations\" where (\"git_operations\".\"owner_id\" = $1 and \"git_operations\".\"state\" in ($2, $3, $4, $5))",
+      "params": [
+        "owner",
+        "queued",
+        "running",
+        "conflicted",
+        "awaiting-user-action"
+      ]
+    },
+    "runConfigurationRuntimes": {
+      "sql": "select count(*)::int from \"run_configuration_runtimes\" where (\"run_configuration_runtimes\".\"owner_id\" = $1 and \"run_configuration_runtimes\".\"state\" in ($2, $3, $4))",
+      "params": ["owner", "starting", "running", "stopping"]
+    }
+  }
+}

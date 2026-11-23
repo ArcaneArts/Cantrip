@@ -4,7 +4,7 @@ import { request as httpRequest } from "node:http";
 import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 async function until(read, label) {
   const end = Date.now() + 12000;

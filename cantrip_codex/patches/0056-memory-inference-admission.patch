@@ -1,0 +1,324 @@
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -707,6 +707,22 @@
+     ) -> Option<Arc<crate::managed_execution::ManagedExecutionGate>> {
+         self.session.managed_execution_gate().await
+     }
++    /// Admission for a genuinely independent helper, including one owned by a
++    /// child session. Root-input eligibility is not the inference authority.
++    pub async fn begin_independent_inference(
++        &self,
++        operation: String,
++    ) -> CodexResult<Option<crate::managed_inference::IndependentInference>> {
++        match self.session.managed_inference_gate().await {
++            Some(gate) => {
++                crate::managed_inference::begin_independent(gate, self.session.thread_id, operation)
++                    .await
++                    .map(Some)
++            }
++            None => Ok(None),
++        }
++    }
++
+     pub async fn bind_managed_execution_gate(
+         &self,
+         gate: Arc<crate::managed_execution::ManagedExecutionGate>,
+diff --git a/codex-rs/memories/write/src/lib.rs b/codex-rs/memories/write/src/lib.rs
+--- a/codex-rs/memories/write/src/lib.rs
++++ b/codex-rs/memories/write/src/lib.rs
+@@ -84,6 +84,7 @@
+         codex_protocol::openai_models::ReasoningEffort::Low;
+     pub(super) const CONCURRENCY_LIMIT: usize = 8;
+     pub(super) const JOB_LEASE_SECONDS: i64 = 3_600;
++    pub(super) const JOB_HEARTBEAT_SECONDS: u64 = 90;
+     pub(super) const JOB_RETRY_DELAY_SECONDS: i64 = 3_600;
+     pub(super) const THREAD_SCAN_LIMIT: usize = 5_000;
+     pub(super) const PRUNE_BATCH_SIZE: usize = 200;
+diff --git a/codex-rs/memories/write/src/phase1.rs b/codex-rs/memories/write/src/phase1.rs
+--- a/codex-rs/memories/write/src/phase1.rs
++++ b/codex-rs/memories/write/src/phase1.rs
+@@ -24,6 +24,8 @@
+ use futures::StreamExt;
+ use std::path::Path;
+ use std::sync::Arc;
++use std::time::Duration;
++use tokio::sync::Semaphore;
+ use tracing::info;
+ use tracing::warn;
+ 
+@@ -37,6 +39,7 @@
+     SucceededWithOutput,
+     SucceededNoOutput,
+     Failed,
++    Skipped,
+ }
+ 
+ struct Stats {
+@@ -44,6 +47,7 @@
+     succeeded_with_output: usize,
+     succeeded_no_output: usize,
+     failed: usize,
++    skipped: usize,
+     total_token_usage: Option<TokenUsage>,
+ }
+ 
+@@ -83,12 +87,13 @@
+     let counts = aggregate_stats(outcomes);
+     emit_metrics(&stage_one_context, &counts);
+     info!(
+-        "memory stage-1 extraction complete: {} job(s) claimed, {} succeeded ({} with output, {} no output), {} failed",
++        "memory stage-1 extraction complete: {} job(s) claimed, {} succeeded ({} with output, {} no output), {} failed, {} skipped",
+         counts.claimed,
+         counts.succeeded_with_output + counts.succeeded_no_output,
+         counts.succeeded_with_output,
+         counts.succeeded_no_output,
+-        counts.failed
++        counts.failed,
++        counts.skipped
+     );
+ }
+ 
+@@ -176,22 +181,93 @@
+     claimed_candidates: Vec<codex_state::Stage1JobClaim>,
+     stage_one_context: StageOneRequestContext,
+ ) -> Vec<JobResult> {
++    // Every claimed job must be polled to renew its lease, including those
++    // waiting for the local preparation bound. Provider capacity is separate.
++    let claimed_count = claimed_candidates.len().max(1);
++    let preparation = Arc::new(Semaphore::new(crate::stage_one::CONCURRENCY_LIMIT));
+     futures::stream::iter(claimed_candidates)
+         .map(|claim| {
+             let context = Arc::clone(&context);
+             let config = Arc::clone(&config);
+             let stage_one_context = stage_one_context.clone();
++            let preparation = Arc::clone(&preparation);
+             async move {
+-                job::run(context.as_ref(), config.as_ref(), claim, &stage_one_context).await
++                job::run_with_lease(
++                    context.as_ref(),
++                    config.as_ref(),
++                    claim,
++                    &stage_one_context,
++                    &preparation,
++                )
++                .await
+             }
+         })
+-        .buffer_unordered(crate::stage_one::CONCURRENCY_LIMIT)
++        .buffer_unordered(claimed_count)
+         .collect::<Vec<_>>()
+         .await
+ }
+ 
+ mod job {
+     use super::*;
++
++    fn skipped() -> JobResult {
++        JobResult {
++            outcome: JobOutcome::Skipped,
++            token_usage: None,
++        }
++    }
++
++    pub(crate) async fn run_with_lease(
++        context: &MemoryStartupContext,
++        config: &Config,
++        claim: codex_state::Stage1JobClaim,
++        stage_one_context: &StageOneRequestContext,
++        preparation: &Semaphore,
++    ) -> JobResult {
++        let Some(db) = context.memory_store().await else {
++            return skipped();
++        };
++        let thread_id = claim.thread.id;
++        let token = claim.ownership_token.clone();
++        let execution = async {
++            let Ok(_preparation) = preparation.acquire().await else {
++                return skipped();
++            };
++            run(context, config, claim, stage_one_context).await
++        };
++        tokio::pin!(execution);
++        let termination = context.wait_until_terminated();
++        tokio::pin!(termination);
++        let mut heartbeat =
++            tokio::time::interval(Duration::from_secs(crate::stage_one::JOB_HEARTBEAT_SECONDS));
++        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
++        loop {
++            tokio::select! {
++                biased;
++                _ = &mut termination => return skipped(),
++                result = &mut execution => return result,
++                _ = heartbeat.tick() => {
++                    match db.heartbeat_stage1_job(
++                        thread_id, &token, crate::stage_one::JOB_LEASE_SECONDS,
++                    ).await {
++                        Ok(true) => {},
++                        Ok(false) => {
++                            // The canonical token actually changed. Dropping
++                            // execution cancels this wait/response; its native
++                            // transport owner retains capacity through teardown.
++                            warn!("memory stage-1 claim lost for thread {thread_id}");
++                            return skipped();
++                        },
++                        Err(error) => {
++                            // A failed DB observation cannot prove native death.
++                            // Keep ownership and retry the real CAS heartbeat.
++                            warn!("memory stage-1 lease renewal failed for thread {thread_id}: {error}");
++                        },
++                    }
++                },
++            }
++        }
++    }
+ 
+     pub(crate) async fn run(
+         context: &MemoryStartupContext,
+@@ -212,6 +288,15 @@
+         {
+             Ok(output) => output,
+             Err(reason) => {
++                if reason.downcast_ref::<CodexErr>().is_some_and(|error| {
++                    matches!(
++                        error.details(),
++                        codex_protocol::error::CodexErrorDetails::TurnAborted
++                            | codex_protocol::error::CodexErrorDetails::Interrupted
++                    )
++                }) {
++                    return skipped();
++                }
+                 result::failed(
+                     context,
+                     claimed_thread.id,
+@@ -479,6 +564,7 @@
+     let mut succeeded_with_output = 0;
+     let mut succeeded_no_output = 0;
+     let mut failed = 0;
++    let mut skipped = 0;
+     let mut total_token_usage = TokenUsage::default();
+     let mut has_token_usage = false;
+ 
+@@ -487,6 +573,7 @@
+             JobOutcome::SucceededWithOutput => succeeded_with_output += 1,
+             JobOutcome::SucceededNoOutput => succeeded_no_output += 1,
+             JobOutcome::Failed => failed += 1,
++            JobOutcome::Skipped => skipped += 1,
+         }
+ 
+         if let Some(token_usage) = outcome.token_usage {
+@@ -500,6 +587,7 @@
+         succeeded_with_output,
+         succeeded_no_output,
+         failed,
++        skipped,
+         total_token_usage: has_token_usage.then_some(total_token_usage),
+     }
+ }
+@@ -536,6 +624,13 @@
+             MEMORY_PHASE_ONE_JOBS,
+             counts.failed as i64,
+             &[("status", "failed")],
++        );
++    }
++    if counts.skipped > 0 {
++        context.counter(
++            MEMORY_PHASE_ONE_JOBS,
++            counts.skipped as i64,
++            &[("status", "skipped_cancelled_or_unowned")],
+         );
+     }
+     if let Some(token_usage) = counts.total_token_usage.as_ref() {
+diff --git a/codex-rs/memories/write/src/runtime.rs b/codex-rs/memories/write/src/runtime.rs
+--- a/codex-rs/memories/write/src/runtime.rs
++++ b/codex-rs/memories/write/src/runtime.rs
+@@ -243,6 +243,10 @@
+         );
+     }
+ 
++    pub(crate) async fn wait_until_terminated(&self) {
++        self.thread.wait_until_terminated().await;
++    }
++
+     pub(crate) async fn memory_store(&self) -> Option<MemoryStore> {
+         match self
+             .thread
+@@ -343,7 +347,16 @@
+             Vec::new(),
+         );
+ 
++        // Parallel extraction is independent of the parent turn. Never borrow
++        // its reservation, even when it is waiting for a helper at limit one.
++        let inference = self
++            .thread
++            .begin_independent_inference(format!("memory-extraction:{}", uuid::Uuid::new_v4()))
++            .await?;
+         let mut client_session = model_client.new_session();
++        if let Some(inference) = &inference {
++            inference.bind_session(&mut client_session);
++        }
+         let window_id = format!("{}:0", self.thread_id);
+         let responses_metadata = detached_memory_responses_metadata(
+             &self.thread_manager,
+@@ -406,13 +419,16 @@
+             thread_id, thread, ..
+         } = self
+             .thread_manager
+-            .start_thread(StartThreadOptions {
+-                session_source: Some(SessionSource::Internal(
+-                    InternalSessionSource::MemoryConsolidation,
+-                )),
+-                thread_source: Some(ThreadSource::MemoryConsolidation),
+-                ..StartThreadOptions::new(config)
+-            })
++            .spawn_internal_session(
++                self.thread_id,
++                StartThreadOptions {
++                    session_source: Some(SessionSource::Internal(
++                        InternalSessionSource::MemoryConsolidation,
++                    )),
++                    thread_source: Some(ThreadSource::MemoryConsolidation),
++                    ..StartThreadOptions::new(config)
++                },
++            )
+             .await?;
+ 
+         // Cancellation or a shutdown timeout must not release workspace ownership
+diff --git a/codex-rs/state/src/runtime/memories.rs b/codex-rs/state/src/runtime/memories.rs
+--- a/codex-rs/state/src/runtime/memories.rs
++++ b/codex-rs/state/src/runtime/memories.rs
+@@ -1254,6 +1254,34 @@
+         Ok(rows_affected > 0)
+     }
+ 
++    /// Renew the actual stage-1 claim while it waits for provider admission or
++    /// executes. A false result proves that this token no longer owns the job;
++    /// an IO error is not proof of ownership loss or inference settlement.
++    pub async fn heartbeat_stage1_job(
++        &self,
++        thread_id: ThreadId,
++        ownership_token: &str,
++        lease_seconds: i64,
++    ) -> anyhow::Result<bool> {
++        let lease_until = Utc::now().timestamp().saturating_add(lease_seconds.max(0));
++        let rows_affected = sqlx::query(
++            r#"
++UPDATE jobs
++SET lease_until = ?
++WHERE kind = ? AND job_key = ?
++  AND status = 'running' AND ownership_token = ?
++            "#,
++        )
++        .bind(lease_until)
++        .bind(JOB_KIND_MEMORY_STAGE1)
++        .bind(thread_id.to_string())
++        .bind(ownership_token)
++        .execute_with_busy_retry(self.pool.as_ref())
++        .await?
++        .rows_affected();
++        Ok(rows_affected > 0)
++    }
++
+     /// Marks the owned running global phase-2 job as succeeded.
+     ///
+     /// Query behavior:

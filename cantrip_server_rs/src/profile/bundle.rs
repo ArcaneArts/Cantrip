@@ -38,14 +38,16 @@ pub struct ProfileReceipt {
     pub file_bytes: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub database: Option<RestoreReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<&'static str>,
 }
-struct Stage {
-    owner: TempDir,
-    payload: PathBuf,
+pub(super) struct Stage {
+    pub(super) owner: TempDir,
+    pub(super) payload: PathBuf,
     destination: PathBuf,
 }
 impl Stage {
-    fn new(destination: &Path) -> Result<Self> {
+    pub(super) fn new(destination: &Path) -> Result<Self> {
         let destination = std::path::absolute(destination)?;
         let parent = destination.parent().context("Profile destination parent")?;
         files::private_directory(parent)?;
@@ -89,9 +91,10 @@ fn receipt(
         file_count: manifest.files.iter().filter(|e| !e.directory).count(),
         file_bytes,
         database,
+        runtime: None,
     })
 }
-fn finish_bundle(
+pub(super) fn finish_bundle(
     stage: Stage,
     source: &Path,
     mode: DatabaseMode,
@@ -244,6 +247,22 @@ impl RestoreStage {
     pub fn data_directory(&self) -> &Path {
         &self.stage.payload
     }
+    pub(super) fn working_directory(&self) -> &Path {
+        self.stage.owner.path()
+    }
+    pub(super) fn verified_sql(&self) -> &Path {
+        &self.sql
+    }
+    pub(super) fn publish_legacy(self) -> Result<ProfileReceipt> {
+        let mut result = receipt(
+            &self.bundle.manifest,
+            self.bundle.digest.clone(),
+            DatabaseMode::Pglite,
+            None,
+        )?;
+        result.runtime = Some("legacy-javascript-pglite");
+        self.publish_receipt(result)
+    }
     pub async fn restore(&self, database: &Database) -> Result<RestoreReceipt> {
         // Include the entire manifest digest in the durable operation key, so a
         // different file set cannot accidentally reuse a previous import.
@@ -263,14 +282,18 @@ impl RestoreStage {
         config: &ServerConfig,
         database: RestoreReceipt,
     ) -> Result<ProfileReceipt> {
+        remember_database(config).map_err(|e| failure(e, "publishing the restored profile"))?;
+        let result = receipt(
+            &self.bundle.manifest,
+            self.bundle.digest.clone(),
+            config.database_mode,
+            Some(database),
+        )
+        .map_err(|e| failure(e, "publishing the restored profile"))?;
+        self.publish_receipt(result)
+    }
+    fn publish_receipt(self, result: ProfileReceipt) -> Result<ProfileReceipt> {
         let result = (|| {
-            remember_database(config)?;
-            let result = receipt(
-                &self.bundle.manifest,
-                self.bundle.digest.clone(),
-                config.database_mode,
-                Some(database),
-            )?;
             files::write_private(
                 &self.stage.payload.join("server-profile-receipt.json"),
                 &serde_json::to_vec(&result)?,

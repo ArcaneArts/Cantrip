@@ -1,0 +1,832 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "2ec06de47a6bdd58439c0ad04cfaea0e3922d995",
+  "candidateVersion": "1.1.2819",
+  "guest": {
+    "os": "Windows 11",
+    "build": 27754,
+    "architecture": "arm64",
+    "executableArchitecture": "x64",
+    "execution": "Windows x64 emulation"
+  },
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "standalone": {
+    "target": "win32-x64",
+    "filesVerified": 2278,
+    "binary": {
+      "path": "bin/cantrip-server.exe",
+      "bytes": 110538477,
+      "sha256": "a3ef1a84ef2dde31e1766f3e3bcb212d31bf7cffabc7519e8d3e8bb7621b6b96"
+    },
+    "archive": {
+      "path": "share/cantrip-server-1.1.2819-win32-x64.tar.gz",
+      "bytes": 97086832,
+      "sha256": "8e88b781e8731625659342586c6aecf23b5daaa687ae082ea5367fa790dd4abc"
+    },
+    "nodeAbsentFromRuntimePath": true,
+    "localAndHosted": true,
+    "configurationPrecedence": true,
+    "spacesAndEmojiPaths": true,
+    "utf8BatchLaunchers": true,
+    "embeddedRuntimeFallback": true
+  },
+  "desktopSupervisor": {
+    "serverOnly": true,
+    "actualWorker": false,
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "serverIdentityAndSettingsRetained": true,
+    "abruptSupervisorLossRecovered": true,
+    "childrenReaped": true
+  },
+  "legacyProfile": {
+    "publishedNodeRelease": "1.1.2397",
+    "publishedArchiveSha256": "15aed1c9c0ecc90819d6f058e606faf3b07567dd75a9d33e23d5a4ca8dfaedf1",
+    "databaseMode": "pglite",
+    "upgradeCasesPassed": 8,
+    "caseNames": [
+      "actual-converter-spawn-failure-retains-original",
+      "production-launcher-converts-and-restarts-without-converter",
+      "post-write-reverse-migration-observed-by-real-node",
+      "fresh-and-unmarked-native-profiles-upgrade-without-node",
+      "explicit-native-open-not-gated-by-irrelevant-invalid-metadata",
+      "actual-migration-failure-never-invokes-legacy-converter",
+      "missing-completed-profile-never-becomes-empty-installation",
+      "real-converter-stops-after-owner-sigkill-original-retained"
+    ],
+    "originalFileCount": 1660,
+    "originalBackupVerified": true,
+    "postWriteRollbackReadByPublishedNode": true,
+    "nodeWriteSurvivesNativeReupgrade": true,
+    "observedConverterDescendantPids": [1324, 5612],
+    "bothConverterDescendantsExitedAfterOwnerKill": true
+  },
+  "fullWorkerAttempt": {
+    "status": "failed-before-enrollment",
+    "publishedRelease": "1.1.2397",
+    "archiveSha256": "fa69104e63477d8bd4254d132924162e453d6043e1fda0f09268dee86f34ba71",
+    "isolatedModule": "@noble/curves/esm/nist.js",
+    "isolatedError": "Cannot find square root",
+    "sameModuleSha256InCurrentWorker": "0cf0fcc0532ce67de1a7f4abce92a30d3a7c651719d4cb45b686ffbdb7275b78",
+    "verifiedCryptoModuleCount": 125,
+    "officialAndPublishedX64NodeImportExit": 1,
+    "jitlessX64NodeImportExit": 1,
+    "nativeWindowsArm64NodeImportExit": 0,
+    "nativeMacosArm64NodeImportExit": 0
+  },
+  "hostedDevelopmentRuns": 0,
+  "retainedEvidenceDirectory": "rust-server-current-windows-20261110-v1",
+  "evidence": [
+    {
+      "path": "archive-verification.json",
+      "bytes": 413,
+      "sha256": "b0be9c7524428f8497b85a102e808059d824baf37235de6d52688f54ad9f51d3"
+    },
+    {
+      "path": "qualification-source-manifest.json",
+      "bytes": 1198,
+      "sha256": "bd76ac15d15618502ebc1f49b6a09d6e4429ec9c33c91d7d620962ee4b6b7613"
+    },
+    {
+      "path": "share/packaged-server-acceptance.json",
+      "bytes": 2713,
+      "sha256": "fbf2f7e3695e38b811efd37417c093f4ac386cbf654a6fc986017e4168b535d1"
+    },
+    {
+      "path": "share/package-receipt.json",
+      "bytes": 340,
+      "sha256": "2ba355e435dddedd3257f820d257cf4972e6082a0bde2cf9e46c82b1d74cb6bb"
+    },
+    {
+      "path": "share/desktop-supervisor-acceptance-v1.json",
+      "bytes": 861,
+      "sha256": "42a9e53df263306a93dc3adebebfcd0403ee7aa0c14d4d358d02b7d6cf0c172c"
+    },
+    {
+      "path": "share/desktop-supervisor-acceptance-v2.json",
+      "bytes": 1216,
+      "sha256": "70ae2ce1afc507dd5b37a4f5e2b9c44d3e841bba584a37e320f3518c3b964879"
+    },
+    {
+      "path": "share/legacy-upgrade-acceptance-v1.json",
+      "bytes": 2255,
+      "sha256": "579843d516bab0022a8a3e980856fd64f6820dca606435f2e5250c5a0ed3eb03"
+    },
+    {
+      "path": "share/legacy-upgrade-acceptance-v2.json",
+      "bytes": 1162,
+      "sha256": "c15d269e8372e36f2e150763dfd7532ffde65393e185d933ed74deef9cb42027"
+    },
+    {
+      "path": "share/full-profile-acceptance-v1.json",
+      "bytes": 629,
+      "sha256": "2010a36408374f80c3424e82f7080d50f59b63c7b231a585515e4a658a3d7de7"
+    },
+    {
+      "path": "share/full-profile-acceptance-v2.json",
+      "bytes": 1439,
+      "sha256": "7c24ac96ffb476369e40e381a504f2cf0a708eb72c5cea8c0065bbdf0cf6c009"
+    },
+    {
+      "path": "share/full-profile-acceptance-v3.json",
+      "bytes": 2044,
+      "sha256": "f3a803a68073aaaa873a96e40be993453299d4437ce344a340d82c6ebfbda1c2"
+    },
+    {
+      "path": "share/full-profile-acceptance-v4.json",
+      "bytes": 1229,
+      "sha256": "08130644ef8cf81cae3d4c546f754ed76023982b09c6e0154c9118cbd2da880d"
+    },
+    {
+      "path": "guest-full-profile-acceptance-v4.log",
+      "bytes": 1600,
+      "sha256": "50162c3ed3a2bd905a6a3a9f08bca4fd2e0c36c1871f2f234a33715add259424"
+    },
+    {
+      "path": "windows-profile-fixture-clippy.log",
+      "bytes": 7937,
+      "sha256": "4c50080bc5679a42c0d0dc0cd77d027f6f96301e961d8d6490519f31ba44f990"
+    },
+    {
+      "path": "share/worker-loader-observed.json",
+      "bytes": 66238,
+      "sha256": "62f1c3039176dc182c907189fbcc9351c7f6804386c130b3b9d3824c841c0764"
+    },
+    {
+      "path": "share/worker-crypto-verification.json",
+      "bytes": 168,
+      "sha256": "dc00dcefaeb381565d1254c4381c5fd85ab9f3b49b82ace370df00e3d5e72b10"
+    },
+    {
+      "path": "share/node-emulation-control.json",
+      "bytes": 88,
+      "sha256": "64a0aebb3ed5e7dd198e453c494890dcb93c1c7f8aa17e5224fcccc69274dbda"
+    },
+    {
+      "path": "share/node-native-control.json",
+      "bytes": 157,
+      "sha256": "161abde413941dddb109942797779676c88aebc92223810c6699f1f6ec93926f"
+    },
+    {
+      "path": "share/node-published-control.json",
+      "bytes": 152,
+      "sha256": "8ab2de1b4940dff26894683ba2640fe58cf219a3f96846c8c74bf7f0d2974b92"
+    },
+    {
+      "path": "macos-node-crypto-control.log",
+      "bytes": 50,
+      "sha256": "12e9b8884de62b3a160b48c7a83c5aec707df5465bb3aa3054d6380a1fd7a341"
+    },
+    {
+      "path": "profile-archive-verification.json",
+      "bytes": 360,
+      "sha256": "2ad092036dbc213285541c037c754a7e607e89a8f2e0eb1b72a228bce378e7cb"
+    },
+    {
+      "path": "share/guest-retained-evidence.json",
+      "bytes": 324,
+      "sha256": "95d2d83835f272f53875f014cbc32f1addc2f3db047817de912ebab2e67c4581"
+    },
+    {
+      "path": "host-final-focused-tests.log",
+      "bytes": 1131,
+      "sha256": "4d66803114729ff032aa087fff2423c510c96d835f695826b8c7ae331efb05af"
+    },
+    {
+      "path": "rust-format-v2.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "windows-cross-build.log",
+      "bytes": 7710,
+      "sha256": "dfd60d99d2af798ff2c40a717d27375d47953c96426ae4021beb42971af13ea7"
+    },
+    {
+      "path": "windows-desktop-probe-build.log",
+      "bytes": 1782,
+      "sha256": "13cc6de9494dc4175587ff59e299350db52a4f558b35325fc2a28b6a4aa808b9"
+    },
+    {
+      "path": "windows-profile-fixture-native-observer-build-v2.log",
+      "bytes": 1349,
+      "sha256": "1f79af4f893ef8057406fd9ab6bc3a7d703830881ac86ab5e5db69d5b3d582ad"
+    }
+  ],
+  "scope": "Windows-kernel x64 native-server execution in an ARM64 guest. The complete current-worker desktop, installer/update, broader platform/product/recovery matrix and original replacement acceptance remain open.",
+  "profileArchive": {
+    "path": "share/guest-profile-evidence.tar.gz",
+    "bytes": 872098649,
+    "sha256": "392ce59f354e5682d70b2646b40a05dab60a4ff9303fa622306a514286d89a40",
+    "originalProfileDigestVerified": true
+  },
+  "localValidation": {
+    "focusedNodeTests": {
+      "passed": 11,
+      "skipped": 1,
+      "skipScope": "Windows-only worker-tree execution on the macOS host"
+    },
+    "windowsReferenceShutdownTestsPassed": 2,
+    "strictWindowsProfileFixtureClippy": true,
+    "rustFormatting": true,
+    "scopedPrettier": true
+  },
+  "currentRefresh": {
+    "sourceCommit": "81d9282a94833ba218fb4f2cb23b543c17a5530a",
+    "candidateVersion": "1.1.2833",
+    "retainedEvidenceDirectory": "rust-server-windows-worker-20261111-v1",
+    "guest": {
+      "os": "Windows 11 ARM64",
+      "build": 27754,
+      "serverExecutableArchitecture": "x64"
+    },
+    "standalone": {
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "manifestFilesVerified": 2278,
+      "server": {
+        "path": "bin/cantrip-server.exe",
+        "bytes": 110554465,
+        "sha256": "c4f48fc97246f617dbe7e433cbdc38a317cb6c8213b6bedd4c6b76785b1ecb92"
+      },
+      "archive": {
+        "path": "share/cantrip-server-1.1.2833-win32-x64.tar.gz",
+        "bytes": 97089058,
+        "sha256": "cc75b6d22c9f442c0e82c1650c76d7a3521a56a538b86a1d090413dd3ca86c1f"
+      },
+      "report": {
+        "path": "share/current-standalone-acceptance.json",
+        "bytes": 2705,
+        "sha256": "c0f3f435e247dc310c86a4e1b7cee4125360cf5c289af6fe6a16a288964aed7b"
+      },
+      "nodeAbsentFromRuntimePath": true
+    },
+    "pgliteCache": {
+      "passed": true,
+      "report": {
+        "path": "share/current-pglite-cache-acceptance.json",
+        "bytes": 586,
+        "sha256": "0a9676528e97ba800464087a764d6d62861ee4f72b35eeac414a3f3ac60fa329"
+      }
+    },
+    "workerControls": {
+      "verifiedCryptoModuleHashes": 125,
+      "node24X64ImportsFailed": [
+        "v24.22.1-win-x64 normal",
+        "v24.22.1-win-x64 jitless",
+        "v24.22.2-win-x64 normal",
+        "v24.22.2-win-x64 jitless"
+      ],
+      "node24Arm64ImportsPassed": ["v24.22.1-win-arm64", "v24.22.2-win-arm64"],
+      "x64Node24222BigIntExit": "0xc0000095",
+      "x64Node22234CryptoAndArithmeticPassed": true,
+      "directCurrentX64WorkerPaired": true,
+      "directCurrentX64WorkerVersion": "1.1.2833",
+      "reports": [
+        {
+          "path": "share/node-worker-crypto-matrix.json",
+          "bytes": 14030,
+          "sha256": "d57c9e9222d5a45d417fa13572ace5869066374a051ab529757f272da3ad83ae"
+        },
+        {
+          "path": "share/modular-squares-only.json",
+          "bytes": 835,
+          "sha256": "479ec5d3b04d02e902f9acc707c2887b664bc40ba3a965e06391c19062f09672"
+        },
+        {
+          "path": "share/node22-x64-control.json",
+          "bytes": 937,
+          "sha256": "d8f2c1365d1614275b46fc9c0c9e617a6a007f05b91ab8aaae0147094582fcda"
+        },
+        {
+          "path": "share/current-direct-pair.json",
+          "bytes": 7945,
+          "sha256": "27cc56c8ea16e2a474b2abdbb06d86fc285b0b9231c35e70c4ce54506306ac3d"
+        }
+      ]
+    },
+    "installerAndUpdaterAccepted": false,
+    "hostedDevelopmentRuns": 0,
+    "desktopSupervisorAttempts": [
+      {
+        "report": {
+          "path": "share/current-desktop-worker-x64-acceptance.json",
+          "bytes": 873,
+          "sha256": "28c5b84d6fcdb38a73824500218a1355dd141aa8aabd7c9f904bf0d5da76bdc3"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-arm64-acceptance.json",
+          "bytes": 927,
+          "sha256": "f2781c97eafe479fc09774627a082623af528f59c3b6d52928ab64aac17f9404"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-interactive-acceptance.json",
+          "bytes": 881,
+          "sha256": "8d85747d1d27146bf07f6bfe350016621338b1371c258f7c3cd07aba0c0f656d"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-native-home-acceptance.json",
+          "bytes": 885,
+          "sha256": "b4b2b5ab1ef41338763647c72b3844e5fca41305a06cbee19e4dd121358305b3"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-current-probe-acceptance.json",
+          "bytes": 903,
+          "sha256": "7c4cf777095af6d70b74db84bbf935cca1a461c55fc5858b63210b7e0cfe465c"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-stdin-fix-arm64.json",
+          "bytes": 919,
+          "sha256": "01542571920d2dc61948057948b894d2aaaadac973c4d6de93fe60ccffb745df"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      },
+      {
+        "report": {
+          "path": "share/current-desktop-worker-production-fix-arm64.json",
+          "bytes": 941,
+          "sha256": "c1f2d45fa4555c2a5cbb71ae804fdf3ac42f9a5a7cd3f9ef250457f52c788355"
+        },
+        "modesPassed": [],
+        "failure": "[]"
+      }
+    ],
+    "productionDesktopLauncher": {
+      "runtime": "win32-x64 Node 22.23.4",
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "currentWorkerJavaScript": true,
+      "reusedNativeWorkerToolsVersion": "1.1.2397",
+      "fullWorkerRunsPassed": 2,
+      "standardHarnessPassed": true,
+      "matchedStdinControl": {
+        "path": "share/current-desktop-worker-null-stdin-acceptance.json",
+        "bytes": 1344,
+        "sha256": "753230a08ba3adb2773fbbb6daaa9820c702b3259de758308905cebf30db23d8"
+      },
+      "reports": [
+        {
+          "path": "share/current-desktop-worker-stdin-fix-x64.json",
+          "bytes": 1354,
+          "sha256": "c46b276aaf3bc8e605d76fc759fef3ec85b7a30f2ba021c90639a44b1398fa9c"
+        },
+        {
+          "path": "share/current-desktop-worker-production-fix-x64.json",
+          "bytes": 1360,
+          "sha256": "6c9adf1ffcaf67f883c98bb9af495f1c49df30f9c44a41fc10458e0767c3ea79"
+        }
+      ],
+      "launcherSourceSha256": "1093ab897c213809de5f3b8afe7c232420d0dc72f1267071b5c5e6def7be6e26",
+      "nativeProbe": {
+        "path": "share/desktop_runtime_probe_windows_stdin_fix.exe",
+        "bytes": 821808,
+        "sha256": "d345af996114f1167b91f7e478bae0b1134edc71ebf6acc5526baf274684fe64"
+      }
+    },
+    "serverOnlyControl": {
+      "path": "share/current-desktop-server-control.json",
+      "bytes": 1243,
+      "sha256": "8cc32830b4a756935f0589909ccf0f8c85557dd86630e678c5dc23f141ee1082"
+    },
+    "focusedWindowsTestsPassed": 5
+  },
+  "cleanX64PostgresPackaging": {
+    "candidateVersion": "1.1.2834",
+    "sourceCommit": "275cf854fa1b0051b5b3a313f2a3b71448b0cb62",
+    "guest": "Windows 11 Enterprise Evaluation x64, build 26300.9457, QEMU TCG",
+    "retainedEvidenceDirectory": "rust-server-windows-installer-20261111-v1",
+    "postgresqlVersion": "18.6",
+    "baselineLoaderStatus": "0xC0000135",
+    "systemCrtInstalledForTest": false,
+    "packagedCrtDlls": [
+      "vcruntime140.dll",
+      "vcruntime140_1.dll",
+      "msvcp140.dll"
+    ],
+    "archive": {
+      "path": "exported-native/cantrip-server-1.1.2834-win32-x64.tar.gz",
+      "bytes": 97237531,
+      "sha256": "7a1462a344e8f190a15ecc315fe45ceeefb969f5a532bd3d617bea7905a51e57",
+      "manifestFilesVerified": 2281
+    },
+    "nativePackagerExit": 0,
+    "freshPostgresFixtureStarted": true,
+    "node24ArithmeticAndWorkerCryptoImportPassed": true,
+    "directFreshPglite": {
+      "listenMs": 96759,
+      "readyStatus": 200,
+      "exitCode": 0
+    },
+    "standaloneFullMatrixPassed": true,
+    "standaloneGuestCpuModel": "Westmere-v1",
+    "standaloneStartupObservationMs": 240000,
+    "desktopInstallerPassed": true,
+    "freshDesktopReadinessPassed": false,
+    "historicalDesktopConversionPassed": false,
+    "workerVisualCppRuntimePackagerPassed": true,
+    "desktopInstallerAndUpdaterPassed": false,
+    "reports": {
+      "archiveVerification": {
+        "path": "exported-native/archive-verification.json",
+        "sha256": "1a554acf63bd2f3273533cc6aa039546b846696e2f4109044d5dd1611c5efe91"
+      },
+      "node24": {
+        "path": "node-runtime-after-first-logon.json",
+        "sha256": "b901401329e6f6cdd57bdcc769d4eb11f5fd139b196c7b11daed1397947fa186"
+      },
+      "standaloneStartupTimeout": {
+        "path": "current-windows-x64-standalone-after-dotenv-fix.json",
+        "sha256": "c8dca9096ec6298563ea1e38031405c6b5367227d7e44de8c788cee87ab72230"
+      },
+      "directFreshPglite": {
+        "path": "pglite-direct-observation-v1.json",
+        "sha256": "8956e222c4562fd6041bd73a71679cbe4d0f8b14d59b06910722bc487babb802"
+      },
+      "standaloneFullMatrix": {
+        "path": "current-windows-x64-standalone-tcg-v2-westmere.json",
+        "sha256": "40c5f6e7ec600c3bab86df55b3095289bcab7b1258608712f49c35709fc82bd8"
+      },
+      "desktopInstaller": {
+        "path": "current-windows-x64-native-nsis-install-westmere.json",
+        "sha256": "8d426f7f7bb2db22614b78e2222433076a1b2e6666144bd8457fef877baca9ce"
+      },
+      "installedFileVerification": {
+        "path": "westmere-native-installed-files.json",
+        "sha256": "52bd218c9b1ad170ac75bfb2462b6f6076f96b5db478fedf610aa7fabaad51d4"
+      },
+      "historicalDesktopConversion": {
+        "path": "current-windows-x64-desktop-historical-profile-westmere.json",
+        "sha256": "7d963a2943a787a7d16a693c4774c63fdd213b37ac28ea572dc55280c1e51006"
+      },
+      "freshDesktopReadiness": {
+        "path": "current-windows-x64-desktop-readiness-westmere.json",
+        "sha256": "7cc7db04ac1d172a19b96d8d03b0c788352e1a3512b54e4be6328d4b2fa22fb7"
+      },
+      "workerVisualCppRuntimePackager": {
+        "path": "current-windows-x64-worker-crt-packager-proof-westmere.json",
+        "sha256": "de6e65ac4567a9f407511afce96c6179aa35597091124d7078d854b70fc8dc5a"
+      }
+    }
+  },
+  "currentInstalledDesktop": {
+    "sourceCommit": "5f4d4691d1b83b8216e9d0f194c7f9d3217aa298",
+    "integratedVerificationCommit": "68e3133edfa6ddb39f146b760a07fc1518704a86",
+    "version": "1.1.2845",
+    "target": "win32-x64",
+    "guest": {
+      "os": "Windows 11",
+      "architecture": "x64",
+      "execution": "QEMU x64 software emulation on macOS ARM64"
+    },
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/installers/1.1.2845/Cantrip_1.1.2845_x64-setup.exe",
+      "bytes": 256553335,
+      "sha256": "b5fe9148c290367a0fcf0240fdcd0480ce7f7c00ec6c46d9e988d2403b709241"
+    },
+    "updaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/installers/1.1.2845/Cantrip_1.1.2845_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "9a301d7cc47763fcb1891abe9338130e211baf5bef9691702db70fdb61858990"
+    },
+    "updaterSignatureVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/installers/1.1.2845/minisign-verification.log",
+      "bytes": 115,
+      "sha256": "ce04eafc6c58d282165834fff9d41aa8bcf5f9818ceeff1dc17ca689f931b22e"
+    },
+    "signedPayloadManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/installers/1.1.2845/nsis-embedded-runtime-manifest.json",
+      "bytes": 2505850,
+      "sha256": "ca9d9008c41fe96b466dba5f0201ed26ce3a81fc4858b378d2902b5e1fdef75a"
+    },
+    "installedApp": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/installers/1.1.2845/cantrip-app-from-signed-nsis.exe",
+      "bytes": 25049600,
+      "sha256": "7fe9c6deda4f5b2d4a8af3cb944fa780b4677b95167238c8bfe43dafffc0c85a"
+    },
+    "installedServer": {
+      "bytes": 109879261,
+      "sha256": "bf5616e9d515205cc2be240d0ccc122eae164cb56da9bdf06dafa4636e8eda88"
+    },
+    "installedWorkerEntry": {
+      "bytes": 391696,
+      "sha256": "79bdbd422dcaa65f4294ec22fd090096091bcd074f4d64f472bd088f9717b0cd"
+    },
+    "installedFilesVerified": 14090,
+    "signedUpdate": {
+      "baselineVersion": "1.1.2841",
+      "candidateVersion": "1.1.2845",
+      "signatureRejection": "update_signature_invalid",
+      "signingKey": "disposable loopback updater fixture",
+      "databaseMode": "pglite",
+      "identitySettingAndWorkerRetained": true,
+      "retainedProfileReopenedAfterGuestRestart": true,
+      "retainedProfileAppExit": 0,
+      "retainedProfileServicesReaped": true,
+      "originalObservation": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/signed-update-stopped-checkpoint.json",
+        "bytes": 4543,
+        "sha256": "c134e162e749b813f26ad8e9100ca832ae01c441891d3716a7c55aa89c66b205"
+      },
+      "initialObserverIssue": "The expected app digest came from before Tauri patched the NSIS payload. The installed bytes match the signed payload."
+    },
+    "desktopMatrix": [
+      {
+        "mode": "pglite",
+        "engine": "pglite",
+        "freshAppExit": 0,
+        "reopenedAppExit": 0,
+        "workerVersion": "1.1.2845",
+        "retainedIdentityAndSetting": true,
+        "servicesReapedOnBothRuns": true,
+        "rustShutdownLoggedOnBothRuns": true
+      },
+      {
+        "mode": "bundled-postgres",
+        "engine": "postgres",
+        "freshAppExit": 0,
+        "reopenedAppExit": 0,
+        "workerVersion": "1.1.2845",
+        "retainedIdentityAndSetting": true,
+        "servicesReapedOnBothRuns": true,
+        "rustShutdownLoggedOnBothRuns": true,
+        "reopenConfiguration": "persisted-profile",
+        "ownedPostmasterStoppedOnBothRuns": true
+      },
+      {
+        "mode": "postgres",
+        "engine": "postgres",
+        "freshAppExit": 0,
+        "reopenedAppExit": 0,
+        "workerVersion": "1.1.2845",
+        "retainedIdentityAndSetting": true,
+        "servicesReapedOnBothRuns": true,
+        "rustShutdownLoggedOnBothRuns": true,
+        "reopenConfiguration": "persisted-profile",
+        "externalPostmasterSurvivedBothAppExits": true
+      }
+    ],
+    "verifiedTrayQuitRuns": 7,
+    "diskVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/verified-current-installed-desktop.json",
+      "bytes": 13425,
+      "sha256": "c2fc8ab31c60349f9cc1376c660880d7964a8ab84aef05b31853b02f144a4120"
+    },
+    "desktopSerialReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/guest-serial.jsonl",
+      "bytes": 21111,
+      "sha256": "fe4411ce23b20056aa1f2912dec5edb037ac7b55527c18d99b831c39c40bb3d7"
+    },
+    "fixtureObserverDiagnostics": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-windows-desktop/bundled-scalar-receipt-next.json",
+      "bytes": 1620,
+      "sha256": "fffb1c48ee98c2f1c3d00ecda78682cad68c83193d894fffe2cb397b71e29a95"
+    },
+    "hostedDevelopmentRuns": 0
+  },
+  "currentNativeStandalone": {
+    "sourceCommit": "5f4d4691d1b83b8216e9d0f194c7f9d3217aa298",
+    "version": "1.1.2845",
+    "target": "win32-x64",
+    "rustBuildTarget": "x86_64-pc-windows-gnu",
+    "rustVersion": "1.95.0",
+    "guest": "Windows 11 x64 QEMU with Westmere-v1 software emulation",
+    "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "verifiedFiles": 2281,
+    "serverRuntimePathHasNoNode": true,
+    "windowsLauncherEncodingVerified": true,
+    "embeddedRuntimeFallback": true,
+    "migrationExportRestartAndHostedReopen": true,
+    "configurationPrecedence": true,
+    "shutdownMethod": "supervision-stdin-close",
+    "readinessObservationMs": 240000,
+    "packagerExit": 0,
+    "archive": {
+      "path": "current-windows-desktop/native-package/cantrip-server-1.1.2845-win32-x64.tar.gz",
+      "bytes": 97238326,
+      "sha256": "9788eff0158fe3f94002a161d7cad0289e25639b9fa5e65afbafb5d162f75af1"
+    },
+    "binary": {
+      "path": "current-windows-desktop/cantrip-server-1.1.2845.exe",
+      "bytes": 109879261,
+      "sha256": "bf5616e9d515205cc2be240d0ccc122eae164cb56da9bdf06dafa4636e8eda88"
+    },
+    "manifest": {
+      "path": "current-windows-desktop/native-package/guest-manifest.json",
+      "bytes": 407860,
+      "sha256": "746e6f3c3701f4f5519c4e9c4ef41b47d502f93ed395845b674d8094ce847ff4"
+    },
+    "archiveVerification": {
+      "path": "current-windows-desktop/native-package/archive-verification.json",
+      "bytes": 78,
+      "sha256": "7fbbe91c86bcd7b2268a7db389ac8a5cab630ed3b8b7e64b21781e9e974760f0"
+    },
+    "guestReceipt": {
+      "path": "current-windows-desktop/native-package/standalone-2845-receipt.json",
+      "bytes": 2330,
+      "sha256": "64ea063c33a5f77579cdc2febff461f7e58d248e4c2ca24ac8136f3956a82dc0"
+    },
+    "serialReceipt": {
+      "path": "current-windows-desktop/standalone-serial-terminal.json",
+      "bytes": 3175,
+      "sha256": "d0e4bd1cf7d7b87355e6583930f123f5ba3d400aaa8eb06abecd4cbe0a0056b3"
+    },
+    "report": {
+      "path": "current-windows-desktop/native-package/standalone-2845.json",
+      "bytes": 2721,
+      "sha256": "85f01b2e6d4a9c1b2a26fd2479c4319c5a60235537b89b9634294c0cbc1b0147"
+    },
+    "diskVerification": {
+      "path": "current-windows-desktop/native-package/standalone-disk-verification.json",
+      "bytes": 1473,
+      "sha256": "326e846e5baf9a57363412c94f512e5046ee31c500724f6efcaff97f7e8cbe43"
+    },
+    "sqlExports": {
+      "pglite": {
+        "path": "current-windows-desktop/native-package/pglite-export.sql",
+        "bytes": 492951,
+        "sha256": "89b4383654c5cf079fa0fa218abbb9f727b43e205c86e86a0792c28dc23dd7b7"
+      },
+      "bundled-postgres": {
+        "path": "current-windows-desktop/native-package/bundled-postgres-export.sql",
+        "bytes": 493177,
+        "sha256": "e0d4167a9284864ab8d4b4b7a70f6b518acc4528d1dbd91c2213410200d38379"
+      },
+      "postgres": {
+        "path": "current-windows-desktop/native-package/postgres-export.sql",
+        "bytes": 493177,
+        "sha256": "05b0a31231c13cdc7f6e5968ac28b90cb6bb18c36d62c4b3a3e506916f53927b"
+      }
+    },
+    "initialPackagerError": {
+      "path": "current-windows-desktop/guest-checkpoint-native-packager.stderr",
+      "bytes": 2271,
+      "sha256": "4e5c3c8a681203d8823280942d3159264b65baffc5ed4f361777c0b9de25ef8e"
+    },
+    "guestArchiveExport": {
+      "path": "current-windows-desktop/native-package/snapshot-export.json",
+      "bytes": 746,
+      "sha256": "dd9aa8c9bfc5faa51c6070bcad5be34e5fced97f582166ab42d038d764314121"
+    },
+    "localFocusedChecksPassed": 32,
+    "hostedDevelopmentRuns": 0
+  },
+  "installedX64SignedUpdate": {
+    "sourceCommit": "fd3f4840683cdef4a5a71ba642c602d27c04d8e9",
+    "appVersion": "1.1.2841",
+    "baselineAppVersion": "1.1.2839",
+    "serverVersion": "1.1.2834",
+    "workerVersion": "1.1.2834",
+    "guest": {
+      "os": "Windows 11",
+      "build": 26100,
+      "architecture": "x64",
+      "execution": "QEMU software emulation (Westmere-v1)"
+    },
+    "evidenceDirectory": "rust-server-windows-installer-20261111-v1",
+    "databaseMode": "pglite",
+    "installedFilesVerified": 14090,
+    "coldStartWorkerCommandPassed": true,
+    "updaterTamperCode": "update_signature_invalid",
+    "signedUpdateRelaunchPassed": true,
+    "sameIdentityAfterUpdate": true,
+    "retainedSettingAfterUpdate": "dark",
+    "historicalProfile": {
+      "result": "passed",
+      "databaseSelection": {
+        "version": 1,
+        "runtime": "rust",
+        "databaseMode": "pglite"
+      },
+      "sameProcessAfterInitialObservationTimeout": true,
+      "originalFilesVerified": 1660,
+      "originalFilesSha256": "69804e2f30030adbc6763c18a64ea0ba903dc8f3019f9d36c791eedefcbc3f40",
+      "workerCommandPassed": true,
+      "retainedSetting": "dark"
+    },
+    "artifacts": {
+      "installer": {
+        "path": "installers/1.1.2841/Cantrip_1.1.2841_x64-setup.exe",
+        "bytes": 256512153,
+        "sha256": "f791f246238346331360884a99596ddf32fbcb4ace185664fc634be70ed08b78"
+      },
+      "updaterSignature": {
+        "path": "installers/1.1.2841/Cantrip_1.1.2841_x64-setup.exe.sig",
+        "bytes": 420,
+        "sha256": "b6f93e26809b774d4ca3204c2221b9fb9cfbe7fe10d8af207d2f1926eb67045a"
+      },
+      "installedApp": {
+        "path": "installers/1.1.2841/cantrip-app.exe",
+        "bytes": 25049600,
+        "sha256": "581500a8497c88ed31d3808a999976cc899609a6e1807ff3ddef3da7bf522369"
+      },
+      "historicalNodeProfile": {
+        "path": "windows-installed-2841-historical-media/archived-node-profile-win32-x64.tar.gz",
+        "bytes": 7174407,
+        "sha256": "df83e6f77fe3741ec956503e143d59c9c4acdea2827e563c7dad17f025e5dcb5"
+      }
+    },
+    "reports": {
+      "baselineColdStart": {
+        "path": "current-windows-x64-installed-cold-worker-2839-final.json",
+        "bytes": 2617,
+        "sha256": "533fa1b0fa2e5c6c93177412912f591b42bdd39ede1a4e239be79ee8c1f02148"
+      },
+      "signedUpdate": {
+        "path": "current-windows-x64-signed-update-1.1.2841-observation-final.json",
+        "bytes": 1724,
+        "sha256": "df65d3b4938cc679e135f33fee00db93cdb962ac91924e7701b1d08d43d64bd1"
+      },
+      "installedFileVerification": {
+        "path": "installers/1.1.2841/installed-runtime-verification-final.json",
+        "bytes": 199,
+        "sha256": "9c2afc5aba2aaef36e5ffd89022472b6ee4a39560a8080fa17171d36e532abe9"
+      },
+      "historicalProfileInitialObserver": {
+        "path": "current-windows-x64-installed-historical-profile-2841-initial-timeout.json",
+        "bytes": 535,
+        "sha256": "63a4af0a9d6b2fcb5eab71d7262b4122e6cba7a9e7e8fbd78d7ae006d1f018e5"
+      },
+      "historicalProfileContinuedObserver": {
+        "path": "current-windows-x64-installed-historical-profile-2841-final.json",
+        "bytes": 1011,
+        "sha256": "f25897773d3824c874da8104cf96b9d4681c19401439d472272f356342231a05"
+      },
+      "historicalProfileOriginalByteComparison": {
+        "path": "westmere-v5-historical-original-byte-comparison.json",
+        "bytes": 289,
+        "sha256": "610fa750ad1225cd8cdeb5c08db055616cf5682bf78008e92d3ac2fb29629565"
+      }
+    },
+    "scope": "Exact installed x64 PGlite app with a local updater signing key and TLS fixture. Emulated startup times are diagnostic. The separately recorded PostgreSQL runs exercise the same installed app."
+  },
+  "installedX64PostgresModes": {
+    "sourceCommit": "fd3f4840683cdef4a5a71ba642c602d27c04d8e9",
+    "appVersion": "1.1.2841",
+    "installedAppSha256": "581500a8497c88ed31d3808a999976cc899609a6e1807ff3ddef3da7bf522369",
+    "serverVersion": "1.1.2834",
+    "workerVersion": "1.1.2834",
+    "guest": {
+      "os": "Windows 11",
+      "build": 26100,
+      "architecture": "x64",
+      "execution": "QEMU software emulation (Westmere-v1)"
+    },
+    "evidenceDirectory": "rust-server-windows-installer-20261111-v1",
+    "bundledPostgres": {
+      "initialObserver": {
+        "path": "current-windows-x64-installed-2841-bundled-postgres-initial.json",
+        "bytes": 539,
+        "sha256": "51e42cc1b14b7a206f93186f63d652f788a2b3ca8721f1e063c550a61a6b30d1"
+      },
+      "independentObservations": {
+        "path": "current-windows-x64-installed-2841-bundled-postgres-composite.json",
+        "bytes": 2242,
+        "sha256": "ca5b66255ed298d5229abb22774a5271af8ec5baa5bf667440ac957bcadce541"
+      },
+      "sameAppProcess": true,
+      "packagedPostmasterOpenedProfile": true,
+      "settingsWriteAndReadback": true,
+      "workerCommandPassed": true,
+      "trayQuitAndNativeServerShutdown": true,
+      "combinedObserverCompleted": false
+    },
+    "externalPostgres": {
+      "report": {
+        "path": "current-windows-x64-installed-2841-postgres-final.json",
+        "bytes": 615,
+        "sha256": "c9c615d4d21151ae9f435834f8390a8f7817404c69dcd584a08437478cfe8c37"
+      },
+      "result": "passed",
+      "independentDatabaseConnectionObserved": true,
+      "settingsWriteAndReadback": true,
+      "workerCommandPassed": true,
+      "serialAndDiskReportMatch": true
+    },
+    "retainedSelections": {
+      "path": "westmere-v5-postgres-modes-after-guest-exit.json",
+      "bytes": 29657,
+      "sha256": "025bdb263a339513c36d0f7b2000dcfd577dfe9cfceea2114a97701379c7d374"
+    },
+    "scope": "Existing signed x64 installation on Windows 11 under local emulation. Fresh bundled and external PostgreSQL profiles, with persisted backend selections observed on the stopped disk. PGlite-only signed update and historical migration retain their separate scope."
+  }
+}

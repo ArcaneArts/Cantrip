@@ -3,6 +3,7 @@ import {
   chatAttachmentOpaqueSummarySchema,
 } from "../../packages/protocol/dist/index.js";
 import { settingsSnapshot } from "./native-settings-fixtures.mjs";
+import { record as suspension } from "./native-suspension-oracle.mjs";
 export const pendingId = "456789ab-1234-4234-8234-000000000001",
   promptId = "456789ab-1234-4234-8234-000000000002";
 export function retainedPrompt({
@@ -102,9 +103,29 @@ export function settlementWireFixtures(timestamp) {
         },
         reconciliation: { nativeTurnId: "turn", runtimeGeneration: "runtime" },
       },
+      {
+        ...input,
+        workerGeneration: pendingId,
+        durableSuspension: true,
+        suspensionEvidence: suspension.checkpoint,
+      },
+      ...["completed", "failed", "interrupted"].map((terminalStatus) => ({
+        ...input,
+        executionComplete: true,
+        reconciliation: {
+          nativeTurnId: "turn",
+          runtimeGeneration: "runtime",
+          terminalStatus,
+        },
+      })),
     ],
     nativeCommandTerminalEvidenceSchema: [
       { nativeTurnId: "turn", runtimeGeneration: "runtime" },
+      ...["completed", "failed", "interrupted"].map((terminalStatus) => ({
+        nativeTurnId: "turn",
+        runtimeGeneration: "runtime",
+        terminalStatus,
+      })),
     ],
     queuedPromptOpaqueContentSchema: [prompt],
     encryptedQueuedPromptSchema: [

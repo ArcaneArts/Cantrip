@@ -1,0 +1,443 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "workerInferenceJournalSnapshotSchema": 0,
+    "workerInferenceJournalIdentitySchema": 7,
+    "workerInferenceJournalRecordSchema": 5
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "shape": { "version": 1, "revision": 2, "operations": 3 },
+      "catchall": 68,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "record", "keyType": 4, "valueType": 5, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "object",
+      "name": "inferenceJournalRecordSchema",
+      "shape": {
+        "key": 6,
+        "identity": 7,
+        "workerGeneration": 56,
+        "state": 57,
+        "order": 58,
+        "revision": 59,
+        "everGranted": 60,
+        "nativeExecution": 61,
+        "outcome": 65
+      },
+      "catchall": 67,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "inferenceJournalIdentitySchema",
+      "shape": {
+        "operationId": 8,
+        "providerId": 8,
+        "runtimeGeneration": 9,
+        "recoveryKey": 10,
+        "recovery": 11,
+        "chatId": 53,
+        "projectId": 54
+      },
+      "catchall": 55,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4096, "when": "length" },
+        {
+          "message": "Admission identifiers must be valid Unicode.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[^\\uD800-\\uDFFF]*$",
+          "flags": "u",
+          "displayPattern": "/^[^\\uD800-\\uDFFF]*$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 8, "checks": [] },
+    { "type": "nullable", "innerType": 12, "checks": [] },
+    {
+      "type": "object",
+      "name": "inferenceRecoveryIdentitySchema",
+      "shape": {
+        "commandId": 13,
+        "commandGeneration": 15,
+        "messageId": 17,
+        "threadId": 19,
+        "turnId": 21,
+        "autonomousGoal": 23,
+        "taskInput": 28,
+        "taskGoalCycle": 46
+      },
+      "catchall": 52,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 16,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 18,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 20,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 22,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 8, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 24,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "goalEpoch": 8, "orderEpoch": 25 },
+      "catchall": 27,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 26,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 29,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 30, "checks": [] },
+    {
+      "type": "object",
+      "name": "taskInferenceInputReceiptSchema",
+      "shape": {
+        "operationId": 31,
+        "kind": 32,
+        "queueOrderEpoch": 34,
+        "chatId": 36,
+        "clientMessageId": 36,
+        "workerId": 36,
+        "worktreeId": 36,
+        "executionLaneId": 36,
+        "executionLaneActivatedAt": 37,
+        "providerId": 36,
+        "modelRouteId": 36,
+        "providerAccountId": 38,
+        "dispatch": 39
+      },
+      "catchall": 45,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 33,
+      "checks": []
+    },
+    { "type": "literal", "values": ["goal"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 35,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 36, "checks": [] },
+    {
+      "type": "object",
+      "name": "taskDispatchFenceSchema",
+      "shape": {
+        "cycleId": 40,
+        "operationId": 41,
+        "leaseOwner": 42,
+        "fencingToken": 43
+      },
+      "catchall": 44,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 47,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "taskGoalCycleIdentitySchema",
+      "shape": {
+        "cycleId": 48,
+        "goalEpoch": 48,
+        "scopeId": 48,
+        "gateAttemptId": 48,
+        "runnerGeneration": 48,
+        "modelRouteId": 48,
+        "providerAccountId": 49,
+        "orderEpoch": 50
+      },
+      "catchall": 51,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4096, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 48, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 8, "checks": [] },
+    { "type": "nullable", "innerType": 8, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["waiting", "granted", "released"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 62,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "inferenceNativeExecutionSchema",
+      "shape": { "threadId": 63, "turnId": 63, "scopeId": 63 },
+      "catchall": 64,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 4096, "when": "length" },
+        {
+          "message": "Admission identifiers must be valid Unicode.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[^\\uD800-\\uDFFF]*$",
+          "flags": "u",
+          "displayPattern": "/^[^\\uD800-\\uDFFF]*$/u"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 66, "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "completed",
+        "failed",
+        "interrupted",
+        "runtime-exited",
+        "never-started",
+        "cancelled"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] }
+  ]
+}

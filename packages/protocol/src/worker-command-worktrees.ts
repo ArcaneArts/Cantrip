@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
 import { surfaceStreamWireRequestSchema } from "./surface-stream.js";
 import { fileDocumentPrivateStateOpaqueSchema } from "./surface-private-state.js";
 import { modelProviderKindSchema } from "./providers.js";
@@ -27,7 +28,7 @@ export const workerWorktreeCommandSchemas = [
       projectId: z.string().min(1),
       worktreeId: z.string().min(1),
       workerId: z.string().min(1),
-      root: z.string().min(1),
+      root: z.union([z.string().min(1), cantripOsExecutionSchema]),
       stateProtection: fileDocumentPrivateStateOpaqueSchema,
     })
     .extend(surfaceStreamWireRequestSchema.shape)
@@ -110,7 +111,7 @@ export const workerWorktreeCommandSchemas = [
       type: z.literal("explorer.operation"),
       explorerId: z.string().min(1).max(200),
       serverId: z.string().min(1).max(2_000),
-      root: z.string().min(1),
+      root: z.union([z.string().min(1), cantripOsExecutionSchema]),
     })
     .extend(surfaceStreamWireRequestSchema.shape)
     .strict(),

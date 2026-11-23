@@ -1,3 +1,4 @@
+import { OpenAsMenu } from "@/components/files/open-as-menu";
 import {
   explorerEntryNameSchema,
   type ExplorerEntry,
@@ -189,6 +190,7 @@ function SidebarFileRow({
   createPending = false,
   onOpenGraph,
   onOpenHistory,
+  onOpenAs,
   onOpenNative,
   onOpen,
   onOpenTerminal,
@@ -213,6 +215,7 @@ function SidebarFileRow({
   createPending?: boolean;
   onOpenGraph?(): void;
   onOpenHistory?(): void;
+  onOpenAs?(viewer: string | null): void;
   onOpenNative?(localFolder: boolean): void;
   onOpen(): void;
   onOpenTerminal?(): void;
@@ -225,7 +228,7 @@ function SidebarFileRow({
   renameValue: string;
   revealLabel?: string;
 }) {
-  const openable = entry.kind === "directory" || entry.viewable;
+  const openable = entry.kind === "directory" || entry.kind === "file";
   const renameInputRef = useRef<HTMLInputElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const cancelRenameOnBlurRef = useRef(false);
@@ -358,6 +361,9 @@ function SidebarFileRow({
           className="min-w-48"
           onCloseAutoFocus={fileNameAction.onCloseAutoFocus}
         >
+          {entry.kind === "file" && onOpenAs ? (
+            <OpenAsMenu onSelect={onOpenAs} />
+          ) : null}
           {entry.kind === "file" && onOpenHistory ? (
             <StyledContextMenuItem onSelect={onOpenHistory}>
               <FileClock className="size-4" />
@@ -455,6 +461,7 @@ function SidebarDirectoryNode({
   onDelete,
   onOpenGraph,
   onOpenHistory,
+  onOpenAs,
   onOpenNative,
   onPreview,
   onOpenTerminal,
@@ -490,6 +497,7 @@ function SidebarDirectoryNode({
   onOpenHistory(path: string): void;
   onOpenNative?(entry: ExplorerEntry, localFolder: boolean): void;
   onPreview(entry: ExplorerEntry): void;
+  onOpenAs?(entry: ExplorerEntry, viewer: string | null): void;
   onOpenTerminal?(entry: ExplorerEntry): void;
   onPin(entry: ExplorerEntry): void;
   onRename(entry: ExplorerEntry): void;
@@ -630,6 +638,7 @@ function SidebarDirectoryNode({
                   onDelete={onDelete}
                   onOpenGraph={onOpenGraph}
                   onOpenHistory={onOpenHistory}
+                  onOpenAs={onOpenAs}
                   onOpenNative={onOpenNative}
                   onPreview={onPreview}
                   onOpenTerminal={onOpenTerminal}
@@ -664,6 +673,9 @@ function SidebarDirectoryNode({
                   }
                   onOpen={() => onPreview(child)}
                   onOpenHistory={() => onOpenHistory(child.path)}
+                  onOpenAs={
+                    onOpenAs ? (viewer) => onOpenAs(child, viewer) : undefined
+                  }
                   onPin={() => onPin(child)}
                   onRename={() => onRename(child)}
                   onRenameCancel={onRenameCancel}
@@ -704,6 +716,7 @@ export function ProjectSidebarFileTree({
   onOpenNative,
   onOpenNativeRoot,
   onPreview,
+  onOpenAs,
   onOpenTerminal,
   onPin,
   onRename,
@@ -736,6 +749,7 @@ export function ProjectSidebarFileTree({
   onOpenNative?(entry: ExplorerEntry, localFolder: boolean): void;
   onOpenNativeRoot?(localFolder: boolean): void;
   onPreview(entry: ExplorerEntry): void;
+  onOpenAs?(entry: ExplorerEntry, viewer: string | null): void;
   onOpenTerminal?(entry: ExplorerEntry): void;
   onPin(entry: ExplorerEntry): void;
   onRename(
@@ -1151,6 +1165,7 @@ export function ProjectSidebarFileTree({
                       onDelete={setDeleteTarget}
                       onOpenGraph={onOpenGraph}
                       onOpenHistory={openFileHistory}
+                      onOpenAs={onOpenAs}
                       onOpenNative={onOpenNative}
                       onPreview={onPreview}
                       onOpenTerminal={onOpenTerminal}
@@ -1185,6 +1200,11 @@ export function ProjectSidebarFileTree({
                       }
                       onOpen={() => onPreview(entry)}
                       onOpenHistory={() => openFileHistory(entry.path)}
+                      onOpenAs={
+                        onOpenAs
+                          ? (viewer) => onOpenAs(entry, viewer)
+                          : undefined
+                      }
                       onPin={() => onPin(entry)}
                       onRename={() => beginRename(entry)}
                       onRenameCancel={cancelRename}

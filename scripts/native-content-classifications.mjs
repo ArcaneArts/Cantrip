@@ -34,6 +34,60 @@ const control = (rationale) =>
   classified("intentionally-public-control-plane", rationale);
 
 export function nativeRouteContentClassification({ path }) {
+  if (path === "/api/chats/:chatId/interrupt")
+    return protectedContract(
+      "owner-scoped Chat/Task control without prompt content; canonical pause revision and actual native settlement govern Task interruption, while existing protected runtime metadata stays endpoint-owned",
+    );
+  if (
+    /^\/api\/cantrip-os\/:instanceId\/(?:power|power-operations(?:\/:operationId(?:\/observe)?)?)$/u.test(
+      path,
+    )
+  )
+    return control(
+      "owner-resolved retained Docker power target, operation identity, action and observed lifecycle metadata; no prompt or private file content is carried",
+    );
+  if (
+    path.startsWith("/api/cantrip-os/backup") ||
+    path === "/api/cantrip-os/:instanceId/backup-operations"
+  )
+    return protectedContract(
+      "owner-resolved backup operations carry endpoint-encrypted request/result envelopes; instance, operation, revision and phase are routing metadata, and archives remain on authorized endpoints",
+    );
+  if (path === "/api/internal/native-commands/task-goal-cycle-dispatch")
+    return control(
+      "worker-authenticated current owner/server/process and canonical Task cycle, Goal epoch, route and FIFO identity; accepted metadata only, without Goal text, prompt replay or server-owned capacity",
+    );
+  if (path === "/api/internal/native-commands/suspension-execution")
+    return protectedContract(
+      "worker-authenticated exact native suspension and session identities with a digest and protected payload; the actual admitted native checkpoint governs resumption, not copied plaintext tool or prompt content",
+    );
+  if (path === "/api/tasks/:chatId/inference-route")
+    return classified(
+      "minimized-operational-metadata",
+      "owner-scoped canonical Task input, revision, destination route/account and worker settlement; Task text, attachments and private account labels remain endpoint protected",
+    );
+  if (
+    path === "/api/projects/:projectId/cantrip-os/bindings/:bindingId/provision"
+  )
+    return protectedContract(
+      "owner-scoped source provisioning with operation and binding generations; repository URLs and private placement intent remain in the protectedRequest envelope",
+    );
+  if (
+    [
+      "/api/cantrip-os",
+      "/api/cantrip-os/inspect",
+      "/api/cantrip-os/attach",
+      "/api/cantrip-os/:instanceId/recovery",
+      "/api/cantrip-os/:instanceId/refresh",
+      "/api/cantrip-os/:instanceId/workspaces",
+      "/api/projects/:projectId/cantrip-os/bindings",
+      "/api/projects/:projectId/cantrip-os/bindings/:bindingId/recover",
+      "/api/projects/:projectId/cantrip-os/bindings/:bindingId/verify",
+    ].includes(path)
+  )
+    return control(
+      "owner-scoped OS attachment, workspace and source-binding routing, generations and worker-observed receipts; provisioning intent remains endpoint protected",
+    );
   if (path === "/api/chats/:chatId/preparation")
     return control(
       "owner-scoped chat preparation IDs, phase and generation; no CLI output or synthetic prompt",
@@ -92,6 +146,14 @@ export function nativeRouteContentClassification({ path }) {
     return protectedContract(
       "worker-authenticated owned queue; encrypted prompt/input/source/result envelopes with revision, claim and native-removal acknowledgement metadata",
     );
+  if (path === "/api/internal/native-commands/task-input-dispatch")
+    return control(
+      "worker-authenticated owner, server and current process generation; canonical Task round/input and dispatch-fence identities plus accepted/dispatch phase only; prompt content remains in the existing endpoint-encrypted Task round",
+    );
+  if (path === "/api/internal/native-commands/inference-recovery")
+    return control(
+      "worker-authenticated owner and current process generation; strict admission journal identities, lifecycle outcomes and recovery disposition only; prompt inputs remain in their existing endpoint-encrypted queues",
+    );
   if (
     /^\/api\/internal\/native-commands\/(?:pending|permission-transition)$/u.test(
       path,
@@ -112,6 +174,72 @@ export function nativeRouteContentClassification({ path }) {
 }
 
 export function nativeWorkerCommandContentClassification(command) {
+  if (command === "chat.interrupt")
+    return control(
+      "owned Chat interruption and optional canonical Task pause/order revision; no model credentials are required and legacy provider payloads are ignored rather than decrypted",
+    );
+  if (
+    ["cantrip-os.power.status", "cantrip-os.power.operation"].includes(command)
+  )
+    return control(
+      "server-derived owner/worker/guest scope, retained Docker carrier generation and operation/action identity; actual container lifecycle remains worker-owned",
+    );
+  if (command === "task.goal.source")
+    return protectedContract(
+      "owned chat/project/thread, provider route, canonical Task cycle and optional unused first-input receipt identities only; the worker captures actual keeper metadata and endpoint-encrypted native settings without granting inference or replaying the applied Goal setter",
+    );
+  if (
+    [
+      "cantrip-os.backup.capture",
+      "cantrip-os.backup.restore",
+      "cantrip-os.backup.rollback",
+      "cantrip-os.backup.reset",
+    ].includes(command)
+  )
+    return protectedContract(
+      "server-derived owned instance/workspace dispatch and operation identities accompany endpoint-encrypted private backup intent and results; archive contents and native execution remain worker-local",
+    );
+  if (/^cantrip-os\.(?:packages|system)\./u.test(command))
+    return protectedContract(
+      "owner-resolved guest target, generation and immutable package/system admission; lifecycle catalogs are control metadata and detailed operation diagnostics and receipts use endpoint-encrypted result envelopes",
+    );
+  if (/^cantrip-os\.desktop\./u.test(command))
+    return control(
+      "server-owned guest account/display/generation admission and lifecycle observation; the same-named private remote-surface target and desktop pixels remain endpoint-owned",
+    );
+  if (command === "chat.suspension.stop")
+    return control(
+      "owner/chat/thread-bound native suspension and exact command/activation identities stop an existing admission; no private prompt or new inference grant",
+    );
+  if (command === "cantrip-os.backup.observe")
+    return protectedContract(
+      "owned backup scope and operation identity select observation or recovery of an existing operation; result details remain in the endpoint-protected result envelope",
+    );
+  if (command === "chat.goal.claim-recover")
+    return protectedContract(
+      "owner-bound original Goal claim and managed session retain protected provider/MCP configuration; the worker recovers the actual native claim without replaying a Goal setter or prompt",
+    );
+  if (command === "task.goal.recover")
+    return protectedContract(
+      "canonical Task Goal recovery and FIFO identities plus protected model/MCP configuration; no Goal setter or prompt is replayed, and only the owning worker may obtain a provider ticket",
+    );
+  if (command === "cantrip-os.source.provision")
+    return protectedContract(
+      "server-derived owned source scope and durable admission accompany an opaque repository provision request; private intent is opened only by the authorized worker",
+    );
+  if (
+    [
+      "cantrip-os.inspect",
+      "cantrip-os.attach",
+      "cantrip-os.workspaces.list",
+      "cantrip-os.workspaces.create",
+      "cantrip-os.source.inspect",
+      "cantrip-os.operation.inspect",
+    ].includes(command)
+  )
+    return control(
+      "authorized OS transport and workspace routing, canonical source scopes, lifecycle generations and receipts; source provision content uses a separate protected request",
+    );
   if (
     [
       "chat.account-defaults",

@@ -1,0 +1,222 @@
+diff --git a/cjs/src/connection.js b/cjs/src/connection.js
+--- a/cjs/src/connection.js
++++ b/cjs/src/connection.js
+@@ -95,6 +95,7 @@
+     , rows = 0
+     , serverSignature = null
+     , nextWriteTimer = null
++    , reconnectTimer = null
+     , terminated = false
+     , incomings = null
+     , results = null
+@@ -111,6 +112,7 @@
+     queue: queues.closed,
+     idleTimer,
+     connect(query) {
++      terminated = false
+       initial = query
+       reconnect()
+     },
+@@ -333,9 +335,18 @@
+   }
+ 
+   async function connect() {
+-    terminated = false
++    if (terminated)
++      return
++
+     backendParameters = {}
+-    socket || (socket = await createSocket())
++    if (!socket) {
++      const candidate = await createSocket()
++      if (terminated) {
++        candidate && (candidate.removeListener('close', closed), candidate.destroy())
++        return
++      }
++      socket = candidate
++    }
+ 
+     if (!socket)
+       return
+@@ -359,7 +370,11 @@
+   }
+ 
+   function reconnect() {
+-    setTimeout(connect, closedTime ? Math.max(0, closedTime + delay - performance.now()) : 0)
++    clearTimeout(reconnectTimer)
++    reconnectTimer = setTimeout(() => {
++      reconnectTimer = null
++      connect()
++    }, closedTime ? Math.max(0, closedTime + delay - performance.now()) : 0)
+   }
+ 
+   function connected() {
+@@ -421,6 +436,8 @@
+ 
+   function terminate() {
+     terminated = true
++    clearTimeout(reconnectTimer)
++    reconnectTimer = null
+     if (stream || query || initial || sent.length)
+       error(Errors.connection('CONNECTION_DESTROYED', options))
+ 
+@@ -428,7 +445,10 @@
+     if (socket) {
+       socket.removeListener('data', data)
+       socket.removeListener('connect', connected)
+-      socket.readyState === 'open' && socket.end(b().X().end())
++      if (socket.readyState === 'open')
++        socket.end(b().X().end())
++      else
++        socket.destroy()
+     }
+     ended && (ended(), ending = ended = null)
+   }
+@@ -447,7 +467,7 @@
+     socket.removeAllListeners()
+     socket = null
+ 
+-    if (initial)
++    if (initial && !terminated)
+       return reconnect()
+ 
+     !hadError && (query || sent.length) && error(Errors.connection('CONNECTION_CLOSED', options, socket))
+diff --git a/cjs/src/index.js b/cjs/src/index.js
+--- a/cjs/src/index.js
++++ b/cjs/src/index.js
+@@ -51,6 +51,7 @@
+       , subscribe = options.no_subscribe || Subscribe(Postgres, { ...options })
+ 
+   let ending = false
++    , destroyed = false
+ 
+   const queries = Queue()
+       , connecting = Queue()
+@@ -382,6 +383,7 @@
+   }
+ 
+   async function destroy(resolve) {
++    destroyed = true
+     await Promise.all(connections.map(c => c.terminate()))
+     while (queries.length)
+       queries.shift().reject(Errors.connection('CONNECTION_DESTROYED', options))
+@@ -423,7 +425,7 @@
+     c.reserved = null
+     c.onclose && (c.onclose(e), c.onclose = null)
+     options.onclose && options.onclose(c.id)
+-    queries.length && connect(c, queries.shift())
++    !destroyed && queries.length && connect(c, queries.shift())
+   }
+ }
+ 
+diff --git a/src/connection.js b/src/connection.js
+--- a/src/connection.js
++++ b/src/connection.js
+@@ -95,6 +95,7 @@
+     , rows = 0
+     , serverSignature = null
+     , nextWriteTimer = null
++    , reconnectTimer = null
+     , terminated = false
+     , incomings = null
+     , results = null
+@@ -111,6 +112,7 @@
+     queue: queues.closed,
+     idleTimer,
+     connect(query) {
++      terminated = false
+       initial = query
+       reconnect()
+     },
+@@ -333,9 +335,18 @@
+   }
+ 
+   async function connect() {
+-    terminated = false
++    if (terminated)
++      return
++
+     backendParameters = {}
+-    socket || (socket = await createSocket())
++    if (!socket) {
++      const candidate = await createSocket()
++      if (terminated) {
++        candidate && (candidate.removeListener('close', closed), candidate.destroy())
++        return
++      }
++      socket = candidate
++    }
+ 
+     if (!socket)
+       return
+@@ -359,7 +370,11 @@
+   }
+ 
+   function reconnect() {
+-    setTimeout(connect, closedTime ? Math.max(0, closedTime + delay - performance.now()) : 0)
++    clearTimeout(reconnectTimer)
++    reconnectTimer = setTimeout(() => {
++      reconnectTimer = null
++      connect()
++    }, closedTime ? Math.max(0, closedTime + delay - performance.now()) : 0)
+   }
+ 
+   function connected() {
+@@ -421,6 +436,8 @@
+ 
+   function terminate() {
+     terminated = true
++    clearTimeout(reconnectTimer)
++    reconnectTimer = null
+     if (stream || query || initial || sent.length)
+       error(Errors.connection('CONNECTION_DESTROYED', options))
+ 
+@@ -428,7 +445,10 @@
+     if (socket) {
+       socket.removeListener('data', data)
+       socket.removeListener('connect', connected)
+-      socket.readyState === 'open' && socket.end(b().X().end())
++      if (socket.readyState === 'open')
++        socket.end(b().X().end())
++      else
++        socket.destroy()
+     }
+     ended && (ended(), ending = ended = null)
+   }
+@@ -447,7 +467,7 @@
+     socket.removeAllListeners()
+     socket = null
+ 
+-    if (initial)
++    if (initial && !terminated)
+       return reconnect()
+ 
+     !hadError && (query || sent.length) && error(Errors.connection('CONNECTION_CLOSED', options, socket))
+diff --git a/src/index.js b/src/index.js
+--- a/src/index.js
++++ b/src/index.js
+@@ -51,6 +51,7 @@
+       , subscribe = options.no_subscribe || Subscribe(Postgres, { ...options })
+ 
+   let ending = false
++    , destroyed = false
+ 
+   const queries = Queue()
+       , connecting = Queue()
+@@ -382,6 +383,7 @@
+   }
+ 
+   async function destroy(resolve) {
++    destroyed = true
+     await Promise.all(connections.map(c => c.terminate()))
+     while (queries.length)
+       queries.shift().reject(Errors.connection('CONNECTION_DESTROYED', options))
+@@ -423,7 +425,7 @@
+     c.reserved = null
+     c.onclose && (c.onclose(e), c.onclose = null)
+     options.onclose && options.onclose(c.id)
+-    queries.length && connect(c, queries.shift())
++    !destroyed && queries.length && connect(c, queries.shift())
+   }
+ }
+ 

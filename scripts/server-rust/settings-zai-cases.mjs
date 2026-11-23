@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ZAI_CODEX_MODELS } from "../../cantrip_server/src/models/zai-catalog.ts";
+import { ZAI_CODEX_MODELS } from "../../tests/reference-node-server/src/models/zai-catalog.ts";
 
 export async function zaiCases({ seed, compare, unchanged, literal }) {
   await compare("built-in Z.ai catalog exactly matches the actual source", {

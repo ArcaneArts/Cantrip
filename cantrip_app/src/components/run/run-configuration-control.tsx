@@ -1,5 +1,6 @@
+import { linuxRunDefinitionApi } from "@/lib/run-definition-source";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import type { ProjectWorktreeSummary, WorkerSummary } from "@cantrip/protocol";
+import type { WorkerSummary } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -25,7 +26,14 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { RunConfigurationEditor } from "@/components/run/run-configuration-editor";
+import { RunConfigurationCatalogEditor } from "./run-configuration-catalog-editor";
+import {
+  buildRunConfigurationCatalogModel,
+  reconcileCatalogSelection,
+  runConfigurationCatalogKey,
+  type RunConfigurationCatalog,
+  type CatalogRunConfigurationItem,
+} from "@/lib/run-configuration-catalog";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -60,19 +68,17 @@ import {
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-menu";
 import {
-  deleteRunConfiguration,
   operateRunConfigurationRuntime,
+  deleteRunConfiguration,
   type RunConfigurationListInventory,
 } from "@/lib/run-configuration-api";
 import {
-  buildRunConfigurationControlModel,
   runConfigurationPrimaryOperation,
-  type RunConfigurationControlItem,
   type RunConfigurationTargetControl,
+  type RunConfigurationWorktree,
 } from "@/lib/run-configuration-control-model";
 import {
   readRunConfigurationSelection,
-  reconcileRunConfigurationSelection,
   writeRunConfigurationSelection,
 } from "@/lib/run-configuration-selection";
 import { scopedClientStorageKey } from "@/lib/client-session";
@@ -80,7 +86,7 @@ import { runConfigurationRuntimeIsActive } from "@/lib/run-terminal-model";
 import { cn } from "@/lib/utils";
 
 type LifecycleInput = {
-  item: RunConfigurationControlItem;
+  item: CatalogRunConfigurationItem;
   operation: "start" | "restart" | "stop";
   target: RunConfigurationTargetControl;
 };
@@ -125,7 +131,8 @@ function LifecycleButtons({
   onOperate(operation: "start" | "restart" | "stop"): void;
 }) {
   const [tooltipsSuppressed, setTooltipsSuppressed] = useState(false);
-  const active = runConfigurationRuntimeIsActive(runtime);
+  const uncertain = Boolean(runtime?.osDefinition && runtime.state === "lost");
+  const active = runConfigurationRuntimeIsActive(runtime) || uncertain;
   const stopping = runtime?.state === "stopping";
   const operate = (operation: "start" | "restart" | "stop") => {
     setTooltipsSuppressed(true);
@@ -173,7 +180,7 @@ function LifecycleButtons({
           "grid place-items-center rounded text-emerald-600 hover:bg-emerald-500/10 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-400",
           compact ? "size-7" : "size-8",
         )}
-        disabled={disabled || pending || stopping}
+        disabled={disabled || pending || stopping || uncertain}
         onClick={(event) => {
           event.stopPropagation();
           operate("restart");
@@ -196,7 +203,9 @@ function LifecycleButtons({
           "grid place-items-center rounded text-red-600 hover:bg-red-500/10 disabled:pointer-events-none disabled:opacity-40 dark:text-red-400",
           compact ? "size-7" : "size-8",
         )}
-        disabled={stopDisabled || pending || stopping}
+        disabled={
+          stopDisabled || pending || (stopping && !runtime?.osDefinition)
+        }
         onClick={(event) => {
           event.stopPropagation();
           operate("stop");
@@ -219,6 +228,7 @@ function LifecycleButtons({
 
 export function RunConfigurationControl({
   compact = false,
+  additionalCatalogs = [],
   editorConfigurationId,
   error,
   inventory,
@@ -232,6 +242,7 @@ export function RunConfigurationControl({
   onFocusTerminal,
 }: {
   compact?: boolean;
+  additionalCatalogs?: readonly RunConfigurationCatalog[];
   editorConfigurationId: string | "new" | null;
   error?: string | null;
   inventory: RunConfigurationListInventory | null | undefined;
@@ -240,29 +251,47 @@ export function RunConfigurationControl({
   renderEditor?: boolean;
   runtimes: readonly RunConfigurationRuntime[];
   workers: readonly WorkerSummary[];
-  worktrees: readonly ProjectWorktreeSummary[];
+  worktrees: readonly RunConfigurationWorktree[];
   onEditorConfigurationChange(configurationId: string | "new" | null): void;
   onFocusTerminal(terminalId: string): void;
 }) {
   const queryClient = useQueryClient();
-  const model = useMemo(
-    () =>
-      buildRunConfigurationControlModel({
+  const selectionScopeId = projectId;
+  const catalogs: RunConfigurationCatalog[] = useMemo(
+    () => [
+      {
+        key: "host",
+        label: "Host",
         inventory,
         runtimes,
-        workers,
         worktrees,
-      }),
-    [inventory, runtimes, workers, worktrees],
+        available: true,
+        loading,
+        error,
+      },
+      ...additionalCatalogs,
+    ],
+    [inventory, runtimes, worktrees, loading, error, additionalCatalogs],
   );
+  const model = useMemo(
+    () => buildRunConfigurationCatalogModel(catalogs, workers),
+    [catalogs, workers],
+  );
+  const inventoryReady = catalogs.some((catalog) => catalog.inventory != null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(() =>
-    reconcileRunConfigurationSelection(
-      readRunConfigurationSelection(projectId, scopedClientStorageKey),
-      model.configurations.map(({ id }) => id),
-    ),
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const preferred = readRunConfigurationSelection(
+      selectionScopeId,
+      scopedClientStorageKey,
+    );
+    return inventoryReady
+      ? reconcileCatalogSelection(
+          preferred,
+          model.configurations.map(({ id }) => id),
+        )
+      : preferred;
+  });
   const [worktreeConfigurationId, setWorktreeConfigurationId] = useState<
     string | null
   >(null);
@@ -272,31 +301,27 @@ export function RunConfigurationControl({
 
   const ids = model.configurations.map(({ id }) => id);
   const idsKey = ids.join("\0");
-  const selectionProjectRef = useRef(projectId);
+  const selectionProjectRef = useRef(selectionScopeId);
   useEffect(() => {
-    const projectChanged = selectionProjectRef.current !== projectId;
+    if (!inventoryReady) return;
+    const projectChanged = selectionProjectRef.current !== selectionScopeId;
     const preferred = projectChanged
-      ? readRunConfigurationSelection(projectId, scopedClientStorageKey)
+      ? readRunConfigurationSelection(selectionScopeId, scopedClientStorageKey)
       : selectedId;
-    selectionProjectRef.current = projectId;
-    const reconciled = reconcileRunConfigurationSelection(preferred, ids);
+    selectionProjectRef.current = selectionScopeId;
+    const reconciled = reconcileCatalogSelection(preferred, ids);
     if (reconciled !== selectedId) setSelectedId(reconciled);
     writeRunConfigurationSelection(
-      projectId,
+      selectionScopeId,
       reconciled,
       scopedClientStorageKey,
     );
     // The joined identity list is the stable inventory dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsKey, projectId, selectedId]);
+  }, [idsKey, inventoryReady, selectionScopeId, selectedId]);
 
   const selected =
     model.configurations.find(({ id }) => id === selectedId) ?? null;
-  const editorEntry =
-    editorConfigurationId && editorConfigurationId !== "new"
-      ? (inventory?.entries.find(({ id }) => id === editorConfigurationId) ??
-        null)
-      : null;
   const worktreeItem =
     model.configurations.find(({ id }) => id === worktreeConfigurationId) ??
     null;
@@ -305,7 +330,6 @@ export function RunConfigurationControl({
 
   const refreshConfigurations = () =>
     queryClient.invalidateQueries({
-      exact: true,
       queryKey: ["run-configurations", projectId],
     });
   const refresh = async () => {
@@ -325,13 +349,30 @@ export function RunConfigurationControl({
       operateRunConfigurationRuntime({
         operation,
         projectId,
-        configurationId: item.id,
+        configurationId: item.configurationId,
+        ...(item.catalog.selection
+          ? {
+              osSource:
+                operation === "stop" && target.runtime
+                  ? { kind: "runtime" as const, runtimeId: target.runtime.id }
+                  : item.catalog.selection,
+            }
+          : {}),
         targetWorktreeId: target.worktree.isPrimary ? null : target.worktree.id,
       }),
-    onSuccess: async (result, { operation }) => {
+    onSuccess: async (result, { operation, item, target }) => {
       if (result.runtime) {
+        const title = target.worktree.isPrimary
+          ? item.name
+          : `${item.name} · ${target.label}`;
+        queryClient.setQueryData<Record<string, string>>(
+          ["run-terminal-titles", projectId],
+          (current = {}) => ({ ...current, [result.runtime!.id]: title }),
+        );
         queryClient.setQueryData<RunConfigurationRuntime[]>(
-          ["run-configuration-runtimes", projectId],
+          item.catalog.key === "host"
+            ? ["run-configuration-runtimes", projectId]
+            : ["run-configuration-runtimes", projectId, item.catalog.key],
           (current = []) => [
             ...current.filter(({ id }) => id !== result.runtime!.id),
             result.runtime!,
@@ -344,10 +385,13 @@ export function RunConfigurationControl({
     },
   });
   const remove = useMutation({
-    mutationFn: async (item: RunConfigurationControlItem) => {
-      const result = await deleteRunConfiguration(
+    mutationFn: async (item: CatalogRunConfigurationItem) => {
+      const remove = item.catalog.binding
+        ? linuxRunDefinitionApi(item.catalog.binding).deleteRunConfiguration
+        : deleteRunConfiguration;
+      const result = await remove(
         projectId,
-        item.id,
+        item.configurationId,
         item.revision,
       );
       if (result.outcome === "revision-mismatch") {
@@ -360,13 +404,40 @@ export function RunConfigurationControl({
       }
       return result;
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, item) => {
+      // A confirmed deletion is distinct from an unavailable captured epoch.
+      // Remove only this definition's cache entry and select a remaining row.
+      queryClient.setQueryData<RunConfigurationListInventory>(
+        item.catalog.key === "host"
+          ? ["run-configurations", projectId]
+          : ["run-configurations", projectId, item.catalog.key],
+        (current) =>
+          current
+            ? {
+                ...current,
+                entries: current.entries.filter(
+                  (entry) => entry.id !== item.configurationId,
+                ),
+                validations: current.validations.filter(
+                  (entry) => entry.configurationId !== item.configurationId,
+                ),
+              }
+            : current,
+      );
       setDeleteConfigurationId(null);
       await refresh();
+      setSelectedId((current) =>
+        current === item.id
+          ? (model.configurations.find(
+              (candidate) =>
+                candidate.id !== item.id && candidate.catalog.available,
+            )?.id ?? null)
+          : current,
+      );
     },
   });
   const operate = (
-    item: RunConfigurationControlItem,
+    item: CatalogRunConfigurationItem,
     target: RunConfigurationTargetControl | null,
     operation: LifecycleInput["operation"],
   ) => {
@@ -374,7 +445,7 @@ export function RunConfigurationControl({
     setSelectedId(item.id);
     lifecycle.mutate({ item, operation, target });
   };
-  const selectAndRunPrimary = (item: RunConfigurationControlItem) => {
+  const selectAndRunPrimary = (item: CatalogRunConfigurationItem) => {
     setSelectedId(item.id);
     setMenuOpen(false);
     if (item.primary?.available) {
@@ -382,7 +453,7 @@ export function RunConfigurationControl({
     }
   };
   const pendingFor = (
-    item: RunConfigurationControlItem,
+    item: CatalogRunConfigurationItem,
     target: RunConfigurationTargetControl | null,
   ) =>
     lifecycle.isPending &&
@@ -404,7 +475,17 @@ export function RunConfigurationControl({
       ) : (
         <ListVideo className="size-4" />
       )}
-      <span className="truncate">{selected?.name ?? "Run Configurations"}</span>
+      <span className="truncate">
+        {selected?.name ??
+          (selectedId?.startsWith("linux:")
+            ? "Run configuration unavailable"
+            : "Run Configurations")}
+      </span>
+      {selected?.catalog.binding ? (
+        <span className="truncate text-xs text-muted-foreground">
+          CantripOS
+        </span>
+      ) : null}
       <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
     </>
   );
@@ -524,6 +605,11 @@ export function RunConfigurationControl({
                           <span className="truncate font-medium">
                             {item.name}
                           </span>
+                          {item.catalog.binding ? (
+                            <span className="truncate text-[11px] text-muted-foreground">
+                              {item.catalog.label}
+                            </span>
+                          ) : null}
                           {item.id === selectedId ? (
                             <Check className="size-3.5 shrink-0" />
                           ) : null}
@@ -591,6 +677,7 @@ export function RunConfigurationControl({
                               <Pencil className="size-4" /> Edit
                             </StyledDropdownMenuItem>
                             <StyledDropdownMenuItem
+                              disabled={!item.catalog.available}
                               className="text-destructive focus:text-destructive"
                               onSelect={() => {
                                 setMenuOpen(false);
@@ -681,18 +768,18 @@ export function RunConfigurationControl({
         </TooltipButton>
       ) : null}
 
-      {renderEditor ? (
-        <RunConfigurationEditor
-          creating={editorConfigurationId === "new"}
-          entry={editorEntry}
-          open={editorConfigurationId !== null}
+      {renderEditor && editorConfigurationId !== null ? (
+        <RunConfigurationCatalogEditor
+          key={editorConfigurationId}
+          catalogs={catalogs}
+          configurationKey={editorConfigurationId}
           projectId={projectId}
-          onOpenChange={(open) => {
-            if (!open) onEditorConfigurationChange(null);
-          }}
-          onSaved={(saved) => {
+          onClose={() => onEditorConfigurationChange(null)}
+          onSaved={(catalog, saved) => {
             queryClient.setQueryData<RunConfigurationListInventory>(
-              ["run-configurations", projectId],
+              catalog.key === "host"
+                ? ["run-configurations", projectId]
+                : ["run-configurations", projectId, catalog.key],
               (current) => ({
                 directory: current?.directory ?? ".cantrip/run-configurations",
                 diagnostics: current?.diagnostics ?? [],
@@ -709,10 +796,11 @@ export function RunConfigurationControl({
               }),
             );
             if (saved.id) {
-              setSelectedId(saved.id);
+              const key = runConfigurationCatalogKey(catalog.key, saved.id);
+              setSelectedId(key);
               writeRunConfigurationSelection(
-                projectId,
-                saved.id,
+                selectionScopeId,
+                key,
                 scopedClientStorageKey,
               );
             }

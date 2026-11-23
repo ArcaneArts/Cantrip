@@ -1,0 +1,21 @@
+diff --git a/codex-rs/ext/skills/src/host_roots.rs b/codex-rs/ext/skills/src/host_roots.rs
+--- a/codex-rs/ext/skills/src/host_roots.rs
++++ b/codex-rs/ext/skills/src/host_roots.rs
+@@ -61,8 +61,15 @@ pub(crate) async fn resolve_skill_roots(
+     extra_skill_roots: Vec<AbsolutePathBuf>,
+     empty_remote_roots: Option<&Mutex<EmptyRemoteRootsCache>>,
+ ) -> Vec<HostSkillRoot> {
+-    let home_dir =
+-        home_dir().and_then(|path| AbsolutePathBuf::from_absolute_path_checked(path).ok());
++    // Standalone Cantrip Chats register only the user skills admitted by Core.
++    // Keep normal managed, bundled, and admitted workspace skills available.
++    let home_dir = if std::env::var_os("CANTRIP_CODEX_ISOLATE_USER_SKILLS").as_deref()
++        == Some(std::ffi::OsStr::new("1"))
++    {
++        None
++    } else {
++        home_dir().and_then(|path| AbsolutePathBuf::from_absolute_path_checked(path).ok())
++    };
+     resolve_skill_roots_with_home_dir(
+         repository_file_system,
+         config_layer_stack,

@@ -3,7 +3,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 
 const serverRequire = createRequire(
-  new URL("../cantrip_server/package.json", import.meta.url),
+  new URL("../tests/reference-node-server/package.json", import.meta.url),
 );
 const { PGlite } = serverRequire("@electric-sql/pglite");
 

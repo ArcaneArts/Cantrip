@@ -1,0 +1,204 @@
+diff --git a/codex-rs/app-server/src/request_processors/catalog_processor.rs b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+--- a/codex-rs/app-server/src/request_processors/catalog_processor.rs
++++ b/codex-rs/app-server/src/request_processors/catalog_processor.rs
+@@ -154,10 +154,16 @@
+             params.input,
+             params.reasoning_effort,
+         );
+-        let text = tokio::time::timeout(std::time::Duration::from_secs(25), request)
+-            .await
+-            .map_err(|_| crate::error_code::internal_error("Inference timed out"))?
+-            .map_err(|_| crate::error_code::internal_error("Inference failed"))?;
++        // Core owns the execution deadline and drains its actual transport
++        // before returning, so neither timeout nor early failure frees the
++        // worker's reservation while native inference can continue.
++        let text = request.await.map_err(|error| {
++            crate::error_code::internal_error(if error.is::<tokio::time::error::Elapsed>() {
++                "Inference timed out"
++            } else {
++                "Inference failed"
++            })
++        })?;
+         Ok(Some(
+             codex_app_server_protocol::CantripInferenceResponse { text }.into(),
+         ))
+diff --git a/codex-rs/core/src/cantrip_inference.rs b/codex-rs/core/src/cantrip_inference.rs
+--- a/codex-rs/core/src/cantrip_inference.rs
++++ b/codex-rs/core/src/cantrip_inference.rs
+@@ -25,6 +25,36 @@
+     instructions: String,
+     input: String,
+     effort: Option<ReasoningEffort>,
++) -> anyhow::Result<String> {
++    // The worker already owns this RPC's provider reservation. The deadline
++    // bounds inference, not physical cleanup: reply only after cancellation
++    // has stopped every retained dispatch/body/socket task.
++    let lifetime = crate::managed_inference::ManagedInferenceTurn::externally_admitted();
++    let result = tokio::time::timeout(
++        std::time::Duration::from_secs(25),
++        infer_with_owner(
++            config,
++            auth,
++            model,
++            instructions,
++            input,
++            effort,
++            &lifetime.0,
++        ),
++    )
++    .await;
++    lifetime.finish_and_drain().await;
++    result?
++}
++
++async fn infer_with_owner(
++    config: &Config,
++    auth: Arc<AuthManager>,
++    model: &ModelInfo,
++    instructions: String,
++    input: String,
++    effort: Option<ReasoningEffort>,
++    owner: &Arc<crate::managed_inference::ManagedInferenceTurn>,
+ ) -> anyhow::Result<String> {
+     // This ID only correlates the transport request. No thread or rollout is created.
+     let id = ThreadId::new();
+@@ -84,6 +114,7 @@
+     let metadata =
+         CodexResponsesMetadata::new(String::new(), id.to_string(), id.to_string(), String::new());
+     let mut session = client.new_session();
++    owner.bind_session(&mut session);
+     let mut stream = session
+         .stream(
+             &prompt,
+diff --git a/codex-rs/core/src/managed_inference.rs b/codex-rs/core/src/managed_inference.rs
+--- a/codex-rs/core/src/managed_inference.rs
++++ b/codex-rs/core/src/managed_inference.rs
+@@ -11,7 +11,7 @@
+ use tokio_util::sync::CancellationToken;
+ 
+ pub(crate) struct ManagedInferenceTurn {
+-    gate: Arc<ManagedExecutionGate>,
++    gate: Option<Arc<ManagedExecutionGate>>,
+     thread_id: ThreadId,
+     turn_id: String,
+     cancellation: CancellationToken,
+@@ -83,6 +83,29 @@
+     }
+ }
+ 
++impl InferenceLifetime {
++    /// Close the scope and wait for its actual IO resources. A terminal RPC
++    /// reply must not let the worker release an externally held reservation
++    /// while a response task can still execute.
++    pub(crate) async fn finish_and_drain(self) {
++        let owner = Arc::clone(&self.0);
++        drop(self);
++        loop {
++            let changed = owner.transport_changed.notified();
++            if owner
++                .transports
++                .lock()
++                .unwrap_or_else(PoisonError::into_inner)
++                .active
++                == 0
++            {
++                return;
++            }
++            changed.await;
++        }
++    }
++}
++
+ pub(crate) struct SamplingActivity(Arc<ManagedInferenceTurn>);
+ impl Drop for SamplingActivity {
+     fn drop(&mut self) {
+@@ -115,20 +138,7 @@
+         cancellation: CancellationToken,
+         independent: bool,
+     ) -> CodexResult<InferenceLifetime> {
+-        let transport_cancellation = cancellation.child_token();
+-        let turn = Arc::new(Self {
+-            gate,
+-            thread_id,
+-            turn_id,
+-            cancellation,
+-            transport_cancellation,
+-            held: Mutex::new(false),
+-            sampling: AtomicUsize::new(0),
+-            waits: AtomicUsize::new(0),
+-            finished: AtomicBool::new(false),
+-            transports: StdMutex::new(TransportState::default()),
+-            transport_changed: Notify::new(),
+-        });
++        let turn = Self::new(Some(gate), thread_id, turn_id, cancellation, false);
+         // Own cleanup before awaiting the grant: cancellation can win after
+         // the worker grants but before Core receives that exact reply.
+         let lifetime = InferenceLifetime(turn);
+@@ -144,6 +154,42 @@
+         Ok(lifetime)
+     }
+ 
++    fn new(
++        gate: Option<Arc<ManagedExecutionGate>>,
++        thread_id: ThreadId,
++        turn_id: String,
++        cancellation: CancellationToken,
++        held: bool,
++    ) -> Arc<Self> {
++        let transport_cancellation = cancellation.child_token();
++        Arc::new(Self {
++            gate,
++            thread_id,
++            turn_id,
++            cancellation,
++            transport_cancellation,
++            held: Mutex::new(held),
++            sampling: AtomicUsize::new(0),
++            waits: AtomicUsize::new(0),
++            finished: AtomicBool::new(false),
++            transports: StdMutex::new(TransportState::default()),
++            transport_changed: Notify::new(),
++        })
++    }
++
++    /// The stateless cantrip/inference RPC is already admitted by its worker
++    /// caller, including compound title/response ownership. Retain and drain
++    /// its IO without asking for a nested ticket at provider limit one.
++    pub(crate) fn externally_admitted() -> InferenceLifetime {
++        InferenceLifetime(Self::new(
++            None,
++            ThreadId::new(),
++            "stateless-inference".into(),
++            CancellationToken::new(),
++            true,
++        ))
++    }
++
+     pub(crate) async fn begin_independent_turn(
+         gate: Arc<ManagedExecutionGate>,
+         thread_id: ThreadId,
+@@ -154,8 +200,11 @@
+     }
+ 
+     async fn phase(&self, phase: &str) -> CodexResult<()> {
++        let Some(gate) = &self.gate else {
++            return Ok(());
++        };
+         tokio::select! {
+-            result = self.gate.request_inference(self.thread_id, &self.turn_id, phase) =>
++            result = gate.request_inference(self.thread_id, &self.turn_id, phase) =>
+                 result.map_err(|_| CodexErr::TurnAborted),
+             _ = self.cancellation.cancelled() => Err(CodexErr::TurnAborted),
+         }
+@@ -268,8 +317,9 @@
+     }
+ 
+     fn notify_finished(&self) {
+-        self.gate
+-            .notify_inference(self.thread_id, &self.turn_id, "finish", None);
++        if let Some(gate) = &self.gate {
++            gate.notify_inference(self.thread_id, &self.turn_id, "finish", None);
++        }
+     }
+ 
+     fn maybe_suspend(self: &Arc<Self>) {

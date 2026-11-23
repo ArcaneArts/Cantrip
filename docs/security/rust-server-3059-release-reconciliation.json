@@ -1,0 +1,444 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "reviewedIntegratedCommit": "453fa36242a715298a6fc9847ca320988bc3a294",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "completeReplacement": false,
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "productionRuntime": {
+    "server": "Rust",
+    "worker": "Node.js",
+    "formerNodeServerDirectoryContents": ["README.md", "drizzle"],
+    "developmentReference": "tests/reference-node-server",
+    "standaloneReport": "docs/security/rust-server-3059-platform-acceptance.json",
+    "windowsNodeFreeStandaloneReport": "docs/security/rust-server-3059-windows-standalone-retry.json"
+  },
+  "sourceContinuity": {
+    "linuxArtifactSourceCommit": "f924d0fe74a86c8eed6e7a8cd1a816bd1b049699",
+    "comparedPaths": [
+      "cantrip_server_rs",
+      "cantrip_server/drizzle",
+      "cantrip_worker",
+      "packages/protocol",
+      "deploy",
+      ".github/workflows"
+    ],
+    "productionSourceDiffEmptyAcrossReviewedCommits": true,
+    "scope": "The Windows desktop supervisor and test drivers have separate changes and artifact revisions."
+  },
+  "generatedContracts": {
+    "matching": 17,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/current-3059-release-audit.tnZGrDUt/generated-contracts.json",
+      "bytes": 4648,
+      "sha256": "3f7c28519e09a784a96ccb1227db539d141fa9bb413d84d0739d3df698efb7ee"
+    }
+  },
+  "routeDiscovery": {
+    "platform": "darwin-arm64",
+    "database": "pglite",
+    "driverNodeVersion": "v24.22.1",
+    "routesPerRuntime": 584,
+    "unexpectedGenericRustFallbacks": 0,
+    "rustExecutableSha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3",
+    "exitCodes": [0, 0],
+    "scope": "Real HTTP requests to all inventory routes with empty or missing-resource inputs, plus selected error and capability-query assertions. WebSocket entries receive non-upgrade requests. The rebuilt Node reference uses the current checkout version metadata. The Rust archive is 1.1.3059. This is route discovery.",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/current-3059-release-audit.tnZGrDUt/http-route-discovery.json",
+      "bytes": 2451954,
+      "sha256": "17517dd2d122e5e6787ba5e02e999788ccb384e3479bb61adba9c2674c06a70e"
+    }
+  },
+  "postClockFixRouteDiscovery": {
+    "sourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+    "platform": "darwin-arm64",
+    "databaseMode": "pglite",
+    "routeResponsesPerRuntime": 584,
+    "equalStatusAndContentType": 584,
+    "unexpectedGenericRustFallbacks": 0,
+    "rustExecutableSha256": "50053d92ddee4786043bdda1b12287fd438b12d6cc4b761ed7171124b2835818",
+    "scope": "Local requests for every inventory route with missing resource identities and empty JSON bodies. WebSocket entries received ordinary HTTP requests. Runtime-generated values and version fields differ. The comparison covers route discovery, HTTP status and Content-Type, with route-specific behavior tracked separately.",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-full-product-goal-retry.VqMal1QS/integrated-route-inventory/matrix.json",
+      "bytes": 2451789,
+      "sha256": "6737bd182e815fb9158f1fb7530ffb9c43ef6975e66c9b2bccf09ecd14fd1893"
+    }
+  },
+  "backgroundServices": {
+    "platform": "darwin-arm64",
+    "database": "postgres",
+    "authMode": "accounts",
+    "scope": "Paired Node comparison and the packaged 1.1.3059 Rust standalone server with a separate fixture-owned PostgreSQL server. Worker provider replies are controlled.",
+    "approvalExpiry": {
+      "pairedStages": 4,
+      "heldUpdateDrainedOnShutdown": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/current-3059-release-audit.tnZGrDUt/approval-expiry.json",
+        "bytes": 77174,
+        "sha256": "fced25dc59b086b91d4655c8ca126102ec11f14d9661f3056880cc81775ddce0"
+      }
+    },
+    "credentialReconnect": {
+      "paired": {
+        "http": 4,
+        "commands": 60,
+        "summaries": 6,
+        "stages": 4
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/current-3059-release-audit.tnZGrDUt/credential-reconnect.json",
+        "bytes": 224713,
+        "sha256": "aa388e31bd6979862d91a82c09e325342b6845833cb01eec1cd781144fc642ea"
+      }
+    },
+    "catalogReconnect": {
+      "paired": {
+        "commands": 25,
+        "stages": 4,
+        "http": 4
+      },
+      "heldQuotaInsertDrainedOnShutdown": true,
+      "scope": "Connection-triggered refresh and quota persistence, including controlled quota failure and recovery.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/current-3059-release-audit.tnZGrDUt/catalog-reconnect.json",
+        "bytes": 163914,
+        "sha256": "db837681489bab33177b942f29f72c83eb5d308ee401dd11e3ef2625504f04f5"
+      }
+    },
+    "catalogPeriodic": {
+      "scope": "Production 15-minute schedule, with both servers observed through the actual timer. Reconnect, controlled quota failure, recovery and held database write during shutdown ran in the same paired test.",
+      "minimumProductionTimerMs": 900000,
+      "paired": {
+        "commands": 30,
+        "stages": 5,
+        "http": 4
+      },
+      "peers": [
+        {
+          "runtime": "node",
+          "quotaReads": 3,
+          "firstQuotaReadElapsedMs": 911706,
+          "lastQuotaReadElapsedMs": 911706,
+          "persistedPeriodicRows": 6
+        },
+        {
+          "runtime": "rust",
+          "quotaReads": 3,
+          "firstQuotaReadElapsedMs": 902011,
+          "lastQuotaReadElapsedMs": 902012,
+          "persistedPeriodicRows": 6
+        }
+      ],
+      "cleanServerExits": 2,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/catalog-periodic-3059.mkIAF0Yx/acceptance.json",
+        "bytes": 223764,
+        "sha256": "e22d0b2343f76520a29dc23bd7db1dd3fb920b1a1c71310e45e8620f67b32d0d"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/catalog-periodic-3059.mkIAF0Yx/acceptance.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    "linuxPackaged": {
+      "report": "docs/security/rust-server-3059-linux-background-compatibility.json",
+      "targets": ["linux-arm64", "linux-x64"],
+      "authMode": "accounts",
+      "database": "postgres",
+      "rustContainerExits": 10,
+      "scope": "Approval expiry, reconnect catalog, normal credential recovery and the actual capture deadline passed on both Linux images.",
+      "periodicCatalogReport": "docs/security/rust-server-3059-linux-catalog-periodic.json"
+    }
+  },
+  "artifactEvidence": {
+    "macosStandaloneSignedDesktopAndPerformance": "docs/security/rust-server-3059-platform-acceptance.json",
+    "macosPostClockFixPackageAndChatControls": "docs/security/rust-server-3059-macos-package-refresh.json",
+    "macosPostClockFixTaskGoalWorkerLoss": "docs/security/rust-server-3059-macos-task-goal-worker-loss.json",
+    "macosSignedUpdateWithMatchingWorker": "docs/security/rust-server-3059-macos-worker-version-acceptance.json",
+    "macosPreparedCantripOsCaptureAbandonment": "docs/security/rust-server-3059-macos-system-abandonment.json",
+    "macosSharedReplicaRedisRecovery": "docs/security/rust-server-3059-macos-replica-redis.json",
+    "linuxArm64X64OciAndWinterhold": "docs/security/rust-server-3059-platform-acceptance.json",
+    "linuxFullProductRestart": "docs/security/rust-server-3059-linux-full-product-restart.json",
+    "linuxPostClockFixImagesAndWinterhold": "docs/security/rust-server-3059-linux-full-product-restart.json#postClockFixPackages",
+    "linuxPostClockFixTaskGoalWorkerLoss": "docs/security/rust-server-3059-linux-task-goal-worker-loss.json",
+    "linuxCrossPeerRedisRecovery": "docs/security/rust-server-3059-linux-redis-outage.json",
+    "linuxShutdownWithRedisOffline": "docs/security/rust-server-3059-linux-redis-offline-shutdown.json",
+    "macosAndLinuxLongPostgresOutage": "docs/security/rust-server-3059-postgres-long-outage.json",
+    "macosAndLinuxOverlappingServerPostgresLoss": "docs/security/rust-server-3059-overlapping-server-postgres-loss.json",
+    "windowsStandalonePostgresRecovery": "docs/security/rust-server-3059-windows-postgres-recovery.json",
+    "windowsStandalone": "docs/security/rust-server-3059-windows-standalone-retry.json",
+    "windowsPostClockFixStandaloneAndDesktopPayload": "docs/security/rust-server-3059-windows-post-clock-package.json",
+    "windowsDesktopPglite": {
+      "checkedAppAndRuntimeFiles": 14085,
+      "appBuildSourceCommit": "34d4b14ed492b02cde8c1d5108a6eb35ac7bc0a2",
+      "desktopShutdownMergeCommit": "1c7cf29b506b7d0110e8cba92a1d2b28dc1eb54c",
+      "installer": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/Cantrip_1.1.3059_x64-setup.exe",
+        "bytes": 256894213,
+        "sha256": "b7cddc1fec2feb4a7270a49cc22c36dedee06388ff71414a6d4ec17c96a8ccd1"
+      },
+      "qaUpdaterSignature": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/Cantrip_1.1.3059_x64-setup.exe.sig",
+        "bytes": 420,
+        "sha256": "4f6006c2d4e1a74300b1be83f6fd407717285190a6d0cd9ab449a60e52605958"
+      },
+      "manifestVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/nsis-verified.json",
+        "bytes": 182,
+        "sha256": "9ce64a43ec9fd4f65d35a5c4ff14830bb9b9e5df93f05d4cd78d23e9f0d2636b"
+      },
+      "profileReopenRetainedIdentityAndSetting": true,
+      "workerVersion": "1.1.3059",
+      "cleanTrayShutdowns": 2,
+      "guestReceipts": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/current-3059-release-audit.tnZGrDUt/windows-pglite-desktop-receipts.json",
+        "bytes": 2331,
+        "sha256": "7a0951dcde43fb4c3f5b0e51c1d3cd93df7cb9994f4e26f710d95f4640571737"
+      },
+      "scope": "Windows 11 x64 under QEMU software emulation on macOS ARM64. Initial installation and retained PGlite profile reopening, both with the 1.1.3059 worker. The signed updater and published installer comparison have separate evidence."
+    },
+    "historicalProfileUpgradeAndPostWriteRollback": "docs/security/rust-server-3059-historical-profile.json",
+    "macosNativeExecutionPostWriteRollback": "docs/security/rust-server-3059-macos-profile-rollback.json",
+    "linuxAccountProtection": "docs/security/rust-server-3059-linux-account-protection.json",
+    "linuxModelOperationBoundaries": "docs/security/rust-server-3059-linux-model-boundaries.json",
+    "linuxWorkerLinkBinaryRelayAndRecovery": "docs/security/rust-server-3059-linux-worker-link.json",
+    "macosFreshPgliteReadiness": "docs/security/rust-server-3059-macos-fresh-pglite.json",
+    "macosNativeQueueWire": "docs/security/rust-server-3059-macos-native-queue-wire.json",
+    "macosAndLinuxNativeQueueDelivery": "docs/security/rust-server-3059-native-queue-delivery.json",
+    "macosAndLinuxEmbeddedQueueDelivery": "docs/security/rust-server-3059-embedded-queue-delivery.json",
+    "macosSharedQueueRecovery": "docs/security/rust-server-3059-macos-shared-queue-recovery.json",
+    "macosRetainedChatQueueRecovery": "docs/security/rust-server-3059-macos-retained-chat-queue.json",
+    "macosConcurrentQueueResume": "docs/security/rust-server-3059-macos-queue-resume-race.json",
+    "macosQueueWorkerOwnerLoss": "docs/security/rust-server-3059-macos-queue-owner-loss.json",
+    "macosQueueResumeAcknowledgment": "docs/security/rust-server-3059-macos-resume-ack.json",
+    "linuxSharedQueueAndAutomations": "docs/security/rust-server-3059-linux-shared-queue.json",
+    "scheduledAutomationDispatchRecovery": "docs/security/rust-server-3059-scheduled-automation-recovery.json",
+    "scheduledAutomationLinuxAndWorkerHandoff": "docs/security/rust-server-3059-scheduled-automation-handoff.json",
+    "directGitImportRelocation": "docs/security/rust-server-3059-relocation-source-revision.json",
+    "linuxProjectAutomations": "docs/security/rust-server-3059-linux-project-automations.json",
+    "macosSharedProjectAutomations": "docs/security/rust-server-3059-shared-project-automations.json",
+    "mobile": "docs/security/rust-server-3059-mobile-qualification.json",
+    "existingFileChecksumsReverified": 33,
+    "windowsDesktopCurrentWorker": {
+      "scope": "Windows 11 x64 under software QEMU on macOS ARM64. All six runs used the same shutdown-grace installer and current worker. Listener timings are specific to the emulated guest.",
+      "appBuildSourceCommit": "34d4b14ed492b02cde8c1d5108a6eb35ac7bc0a2",
+      "desktopShutdownMergeCommit": "1c7cf29b506b7d0110e8cba92a1d2b28dc1eb54c",
+      "installer": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/Cantrip_1.1.3059_x64-setup.exe",
+        "bytes": 256894213,
+        "sha256": "b7cddc1fec2feb4a7270a49cc22c36dedee06388ff71414a6d4ec17c96a8ccd1"
+      },
+      "qaUpdaterSignature": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/Cantrip_1.1.3059_x64-setup.exe.sig",
+        "bytes": 420,
+        "sha256": "4f6006c2d4e1a74300b1be83f6fd407717285190a6d0cd9ab449a60e52605958"
+      },
+      "manifestVerification": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/nsis-verified.json",
+        "bytes": 182,
+        "sha256": "9ce64a43ec9fd4f65d35a5c4ff14830bb9b9e5df93f05d4cd78d23e9f0d2636b"
+      },
+      "checkedAppAndRuntimeFiles": 14085,
+      "appSha256": "d65a47949658ac5eee8ff80a35d064676216151758752554c836ad3db9ec367d",
+      "serverSha256": "c2bee345723f75ec694d21ca9dbfe1e4d0bf34ad4ba5f4566511af5f408d1114",
+      "workerVersion": "1.1.3059",
+      "workerSha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+      "cases": [
+        {
+          "databaseMode": "pglite",
+          "reopen": false,
+          "configurationSource": "explicit-initial-configuration",
+          "secondsToListener": 482.621,
+          "appExit": 0,
+          "cleanTrayShutdown": true,
+          "ownedServicesReaped": true,
+          "settingsWriteReadBack": true
+        },
+        {
+          "databaseMode": "pglite",
+          "reopen": true,
+          "configurationSource": "persisted-profile",
+          "secondsToListener": 135.934,
+          "appExit": 0,
+          "cleanTrayShutdown": true,
+          "ownedServicesReaped": true,
+          "identityAndSettingRetained": true
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "reopen": false,
+          "configurationSource": "explicit-initial-configuration",
+          "secondsToListener": 508.477,
+          "appExit": 0,
+          "cleanTrayShutdown": true,
+          "ownedServicesReaped": true,
+          "settingsWriteReadBack": true,
+          "managedPostgresStopped": true
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "reopen": true,
+          "configurationSource": "persisted-profile",
+          "secondsToListener": 192.34,
+          "appExit": 0,
+          "cleanTrayShutdown": true,
+          "ownedServicesReaped": true,
+          "identityAndSettingRetained": true,
+          "managedPostgresStopped": true
+        },
+        {
+          "databaseMode": "postgres",
+          "reopen": false,
+          "configurationSource": "explicit-initial-configuration",
+          "secondsToListener": 249.367,
+          "appExit": 0,
+          "cleanTrayShutdown": true,
+          "ownedServicesReaped": true,
+          "settingsWriteReadBack": true,
+          "externalPostgresSurvivedAppQuit": true
+        },
+        {
+          "databaseMode": "postgres",
+          "reopen": true,
+          "configurationSource": "persisted-profile",
+          "secondsToListener": 145.571,
+          "appExit": 0,
+          "cleanTrayShutdown": true,
+          "ownedServicesReaped": true,
+          "identityAndSettingRetained": true,
+          "externalPostgresSurvivedAppQuit": true
+        }
+      ],
+      "guestReceipts": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/installed-matrix-accepted-receipts.json",
+        "bytes": 7900,
+        "sha256": "3ae1da18d1491c633412268ce0c559a7f589578144664ae50e06e7b6e0ef3599"
+      },
+      "driver": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/media/observe-installed.ps1",
+        "bytes": 18254,
+        "sha256": "aaf1f475fc824d0b2760cd9aff4509f41b22b0798491456955c55cdf2fed7da7"
+      },
+      "matrixExit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-shutdown-grace.Llwucnkj/installed-matrix.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "authenticodeVerified": false
+    },
+    "windowsDesktopSignedUpdate": {
+      "report": "docs/security/rust-server-3059-windows-signed-update.json",
+      "databaseMode": "pglite",
+      "baselineVersion": "1.1.2938",
+      "scope": "The QA-signed updater rejected modified bytes, installed the exact current-worker package, and reopened the retained PGlite profile. A manual tray quit on the same upgraded process produced a Rust shutdown-completed event after the automated observer timed out. The candidate and latest published installers both have empty PE certificate tables. Both use a separate Tauri updater signature."
+    },
+    "linuxJsonWire": {
+      "report": "docs/security/rust-server-3059-linux-json-wire.json",
+      "pairedHttpCases": 312,
+      "pairedWebSocketCases": 162,
+      "cleanRustExits": 12,
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"]
+    },
+    "macosPostClockFixWorkspaceDiscoveryAndWorkerClose": "docs/security/rust-server-3059-macos-workspace-discovery.json",
+    "macosPostClockFixManagedFolderInitialPush": "docs/security/rust-server-3059-macos-github-initial-push.json",
+    "windowsPostClockFixInstalledDesktop": "docs/security/rust-server-3059-windows-post-clock-package.json#installedDesktop",
+    "windowsPostClockFixSignedUpdater": "docs/security/rust-server-3059-windows-post-clock-signed-update.json",
+    "linuxPostClockFixWorkspaceDiscoveryAndInitialPush": "docs/security/rust-server-3059-linux-workspace-discovery.json",
+    "macosPostClockFixSharedWorkspaceDiscoveryAndInitialPush": "docs/security/rust-server-3059-shared-workspace-discovery.json"
+  },
+  "remainingAcceptance": [
+    "Verify the macOS notarized release artifact and production updater signatures when the release credentials and artifacts are available.",
+    "Exercise the installed iOS native QR flow and physical mobile sign-in, and verify the Android distribution-signed build.",
+    "Reconcile the remaining route, protocol, recovery and platform scopes in the coverage ledger."
+  ],
+  "cantripOsLifecycle": {
+    "platform": "darwin-arm64",
+    "harnessCommit": "453fa36242a715298a6fc9847ca320988bc3a294",
+    "productCells": 6,
+    "scope": "Existing browser SDK, packaged 1.1.3059 Rust executable, full packaged Node worker reporting 1.1.2976 and owned Docker guests. In the bundled PostgreSQL comparison, the Rust runtime manages the local PostgreSQL 18 binaries and the Node reference uses an isolated external PostgreSQL database.",
+    "localQaImage": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+    "guestImageProvenance": "docs/security/rust-server-2938-darwin-arm64-goal-cantripos.json#cantripOsLifecycle",
+    "verifiedInputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-lifecycle-3059.lRfmxh5i/inputs.sha256",
+      "bytes": 1453,
+      "sha256": "1f60999b8accd3632991d16b06e89c1673cdbe3c5c9bf50447194fe019950e83"
+    },
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "matchedSnapshotsPerPair": 48,
+        "productStepsPerPeer": 15,
+        "workerStopsPerPeer": 4,
+        "authenticatedPrivatePackageOutcomesPerPeer": 2,
+        "intentionalServerCrashesPerPeer": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-lifecycle-3059.lRfmxh5i/pglite.json",
+          "bytes": 702050,
+          "sha256": "7932b27d1d86a6a63a07b4d1ad1b670d35a63d287d47a5fae74dc3ff6328daf4"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-lifecycle-3059.lRfmxh5i/pglite.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "matchedSnapshotsPerPair": 48,
+        "productStepsPerPeer": 15,
+        "workerStopsPerPeer": 4,
+        "authenticatedPrivatePackageOutcomesPerPeer": 2,
+        "intentionalServerCrashesPerPeer": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-lifecycle-3059.lRfmxh5i/bundled-postgres.json",
+          "bytes": 780288,
+          "sha256": "cb16ac0953d22536d7d2cc5b1bd989f2e38766e4cb61c745021f848104c7c18c"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-lifecycle-3059.lRfmxh5i/bundled-postgres.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "matchedSnapshotsPerPair": 48,
+        "productStepsPerPeer": 15,
+        "workerStopsPerPeer": 4,
+        "authenticatedPrivatePackageOutcomesPerPeer": 2,
+        "intentionalServerCrashesPerPeer": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-lifecycle-3059.lRfmxh5i/postgres.json",
+          "bytes": 771852,
+          "sha256": "45c49eb99381a620466dc517ab76136cafe554537917f52ab617df177c5d6434"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-lifecycle-3059.lRfmxh5i/postgres.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      }
+    ]
+  },
+  "integratedLocalCheck": {
+    "commit": "453fa36242a715298a6fc9847ca320988bc3a294",
+    "command": "pnpm check",
+    "node": "v24.22.1",
+    "rustServerTestsPassed": 88,
+    "appTestsPassed": 4597,
+    "appTestsSkipped": 9,
+    "workerTestsPassed": 2958,
+    "workerTestsSkipped": 269,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/integrated-check-453fa3624.vLnuQvu8/check.log",
+      "bytes": 447706,
+      "sha256": "1a6dde365f36b4882391f94e6b25e237d4f0a2c4519e23c0350879d8dc67d49b"
+    },
+    "exit": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/integrated-check-453fa3624.vLnuQvu8/check.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    }
+  }
+}

@@ -1,0 +1,61 @@
+diff --git a/codex-rs/core/src/session/security_transitions.rs b/codex-rs/core/src/session/security_transitions.rs
+--- a/codex-rs/core/src/session/security_transitions.rs
++++ b/codex-rs/core/src/session/security_transitions.rs
+@@ -147,2 +147,40 @@
++/// Retains the tree's actual execution admission lock through export.
++/// Provider ticket suspension does not establish native tree quiescence.
++pub(crate) struct HistoryExportGuard<'a> {
++    _state: tokio::sync::MutexGuard<'a, TransitionState>,
++}
++
+ impl SecurityTransitions {
++    pub(crate) async fn history_export_guard(&self) -> CodexResult<HistoryExportGuard<'_>> {
++        let state = self.state.lock().await;
++        if !state.active.is_empty() {
++            return Err(CodexErr::InvalidRequest(
++                "cannot migrate history while the native agent tree is executing".into(),
++            ));
++        }
++        if state
++            .operations
++            .iter()
++            .any(|operation| operation.phase == ThreadSettingsOperationPhase::Pending)
++        {
++            return Err(CodexErr::InvalidRequest(
++                "cannot migrate history with pending native security settings".into(),
++            ));
++        }
++        if state.sessions.values().filter_map(Weak::upgrade).any(|session| {
++            session
++                .services
++                .thread_extension_data
++                .get::<crate::session::durable_suspension::DurableSuspension>()
++                .is_some_and(|suspension| {
++                    suspension.frozen.load(std::sync::atomic::Ordering::Acquire)
++                })
++        }) {
++            return Err(CodexErr::InvalidRequest(
++                "cannot migrate history while a native tree continuation is suspended".into(),
++            ));
++        }
++        Ok(HistoryExportGuard { _state: state })
++    }
++
+     pub(crate) async fn register(
+diff --git a/codex-rs/core/src/session/managed_context.rs b/codex-rs/core/src/session/managed_context.rs
+--- a/codex-rs/core/src/session/managed_context.rs
++++ b/codex-rs/core/src/session/managed_context.rs
+@@ -7,4 +7,13 @@
+         &self,
+         expected_last_turn_id: Option<&str>,
+     ) -> CodexResult<codex_thread_store::PortableThreadHistory> {
++        // Native execution leases cover children, auxiliary producers and final
++        // hooks even after the root clears active_turn. Keep admission locked
++        // through the actual history/settings capture, not an earlier read.
++        let _tree = self
++            .services
++            .local_agent_runtime
++            .security_transitions
++            .history_export_guard()
++            .await?;
+         let active = self.active_turn.lock().await;

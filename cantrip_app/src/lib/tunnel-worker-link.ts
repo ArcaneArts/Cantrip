@@ -31,7 +31,9 @@ export interface TunnelWorkerLinkConnection {
   readonly bufferedAmount: number;
   readonly route: WorkerLinkRoute;
   readonly tunnelRoute: WorkerLinkTunnelRoute;
+  readonly ssh?: WorkerLinkTunnelGrant["ssh"];
   activate(): void;
+  keepAlive?(): boolean;
   close(code?: WorkerLinkChannelCloseCode): void;
   send(frame: Uint8Array): boolean;
 }
@@ -162,6 +164,10 @@ class ActiveTunnelWorkerLink implements TunnelWorkerLinkConnection {
     this.#scheduleRenewal(issued.grant.binding.lease);
   }
 
+  get ssh() {
+    return this.issued.ssh;
+  }
+
   get route(): WorkerLinkRoute {
     return this.#route;
   }
@@ -201,6 +207,14 @@ class ActiveTunnelWorkerLink implements TunnelWorkerLinkConnection {
     this.#outboundBytes += encoded.byteLength;
     this.#drainOutbound();
     return true;
+  }
+
+  keepAlive(): boolean {
+    return (
+      !this.#closed &&
+      this.issued.grant.binding.operations.includes("stream:guest-listen") &&
+      this.stream.write(Uint8Array.of(0), "raw")
+    );
   }
 
   close(code: WorkerLinkChannelCloseCode = "normal"): void {

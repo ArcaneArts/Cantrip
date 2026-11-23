@@ -1,0 +1,6 @@
+#!/usr/bin/python3
+import json
+import os
+from pathlib import Path
+config = json.loads(Path('/etc/cantrip-os/workspaces.json').read_text())
+os.execl('/usr/local/bin/cantrip-browser', 'cantrip-browser', f"http://127.0.0.1:{config.get('viewer_port',6081)}/")

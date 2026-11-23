@@ -6,6 +6,7 @@ import path from "node:path";
 import { repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment, startServer } from "./process.mjs";
 import { observeAuditCompletion } from "./audit-observations.mjs";
+import { registerHttpTraceOrigin } from "./http-request-trace.mjs";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -32,6 +33,7 @@ export class HttpFixture {
     root,
     name,
     databaseMode,
+    startupTimeoutMs,
     environment = {},
     workerIngress = false,
     providerAuthDrain = false,
@@ -39,18 +41,21 @@ export class HttpFixture {
     responseObservations = false,
     observeHttpClocks = false,
     observeTunnelExpiry = false,
+    liveSqlFixture = false,
   }) {
     Object.assign(this, {
       kind,
       executable,
       name,
       databaseMode,
+      startupTimeoutMs,
       workerIngress,
       providerAuthDrain,
       auditObservations,
       responseObservations,
       observeHttpClocks,
       observeTunnelExpiry,
+      liveSqlFixture,
     });
     this.environment = {
       ...fixtureEnvironment(path.join(root, name, kind)),
@@ -97,8 +102,13 @@ export class HttpFixture {
               ...(this.responseObservations ? ["--observe-responses"] : []),
               ...(this.observeHttpClocks ? ["--observe-http-clocks"] : []),
               ...(this.observeTunnelExpiry ? ["--observe-tunnel-expiry"] : []),
+              ...(this.liveSqlFixture ? ["--live-sql-fixture"] : []),
             ],
-            { cwd: repositoryRoot, env: this.environment },
+            {
+              cwd: repositoryRoot,
+              env: this.environment,
+              startupTimeoutMs: this.startupTimeoutMs,
+            },
           )
         : await startServer(
             this.executable,
@@ -109,8 +119,18 @@ export class HttpFixture {
               this.databaseMode,
               "--shutdown-on-stdin-close",
             ],
-            { cwd: repositoryRoot, env: this.environment },
+            {
+              cwd: repositoryRoot,
+              env: this.environment,
+              startupTimeoutMs: this.startupTimeoutMs,
+            },
           );
+    registerHttpTraceOrigin(this.server.origin, {
+      kind: this.kind,
+      databaseMode: this.databaseMode,
+      profile: this.environment.CANTRIP_AUTH_MODE,
+      name: this.name,
+    });
   }
   async close(options) {
     const server = this.server;
@@ -121,6 +141,37 @@ export class HttpFixture {
       error.message = `${this.name}/${this.kind}: ${error.message}`;
       throw error;
     }
+  }
+  async sql(statements, queries = []) {
+    const client = this.client();
+    const response = await fetch(this.server.origin + "/__fixture/sql", {
+      method: "POST",
+      headers: {
+        origin,
+        "content-type": "application/json",
+        cookie: [...client.cookies].map(([k, v]) => `${k}=${v}`).join("; "),
+        ...(client.csrf ? { "x-cantrip-csrf": client.csrf } : {}),
+      },
+      body: JSON.stringify({ statements, queries }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await response.text();
+    assert.equal(
+      response.status,
+      200,
+      `${this.name}/${this.kind}/SQL setup: ${body}`,
+    );
+    const result = JSON.parse(body);
+    assert.deepEqual(
+      Object.keys(result).sort(),
+      queries.length ? ["ok", "values"] : ["ok"],
+    );
+    assert.equal(result.ok, true);
+    if (queries.length) {
+      assert.equal(result.values.length, queries.length);
+      return result.values;
+    }
+    return [];
   }
   normalize(value, key = "") {
     if (Array.isArray(value)) return value.map((v) => this.normalize(v));

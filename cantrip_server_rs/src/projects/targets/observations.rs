@@ -10,6 +10,21 @@ fn text<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
     value[key].as_str().context("Observation path field")
 }
 impl TargetRepository {
+    pub async fn status_snapshot(
+        &self,
+        owner: &str,
+        project: &str,
+        worktree: &str,
+    ) -> Result<Option<Value>> {
+        let rows = self.database.query("SELECT w.status_snapshot::text FROM project_worktrees w JOIN project_sources s ON s.id=w.project_source_id JOIN projects p ON p.id=s.project_id AND p.owner_id=$1 WHERE p.id=$2 AND w.id=$3 AND s.removed_at IS NULL LIMIT 1", &[&owner,&project,&worktree]).await?;
+        rows.first()
+            .map(|row| row.get::<Option<String>>(0))
+            .transpose()?
+            .flatten()
+            .map(|raw| Ok(serde_json::from_str(&raw)?))
+            .transpose()
+    }
+
     pub async fn observation_context(
         &self,
         owner: &str,
@@ -42,28 +57,9 @@ impl TargetRepository {
         project: &str,
         worktree: &str,
     ) -> Result<Option<Value>> {
-        let rows = self.database.query("SELECT to_jsonb(g)::text FROM git_operations g INNER JOIN projects p ON p.id=g.project_id AND p.owner_id=$1 WHERE g.project_id=$2 AND g.worktree_id=$3 AND g.state IN ('queued','running','conflicted','awaiting-user-action') ORDER BY g.updated_at DESC LIMIT 1", &[&owner,&project,&worktree]).await?;
-        let Some(row) = rows.first() else {
-            return Ok(None);
-        };
-        let operation: Value = serde_json::from_str(&row.get::<String>(0)?)?;
-        let mut context = Value::Object(Default::default());
-        for (key, column) in [
-            ("type", "type"),
-            ("originalHead", "original_head"),
-            ("sourceRef", "source_ref"),
-            ("sourceRevision", "source_revision"),
-            ("targetRef", "target_ref"),
-            ("targetRevision", "target_revision"),
-            ("pendingCommits", "pending_commits"),
-            ("totalSteps", "total_steps"),
-            ("checkpointRef", "checkpoint_ref"),
-        ] {
-            context[key] = operation[column].clone();
-        }
-        Ok(Some(
-            json!({"id":operation["id"],"workerId":operation["worker_id"],"context":context}),
-        ))
+        Ok(super::super::git_operations::Repository::new(self.database.clone())
+            .active(owner, project, worktree).await?
+            .map(|operation| json!({"id":operation["id"],"workerId":operation["workerId"],"context":super::super::git_operations::context(&operation)})))
     }
 
     pub async fn observation_targets(

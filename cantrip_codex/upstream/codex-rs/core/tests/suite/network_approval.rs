@@ -1,5 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
+use codex_config::test_support::CloudConfigBundleFixture;
 use codex_config::types::ApprovalsReviewer;
 use codex_core::EnvironmentConfig;
 use codex_core::EnvironmentNetworkPolicy;
@@ -14,6 +15,10 @@ use codex_exec_server::CreateDirectoryOptions;
 use codex_exec_server::LOCAL_ENVIRONMENT_ID;
 use codex_exec_server::REMOTE_ENVIRONMENT_ID;
 use codex_exec_server::RemoveOptions;
+use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::ToolFinishInput;
+use codex_extension_api::ToolLifecycleContributor;
+use codex_extension_api::ToolLifecycleFuture;
 use codex_features::Feature;
 use codex_history::RolloutItem;
 #[cfg(unix)]
@@ -111,19 +116,33 @@ use tokio::io::AsyncWriteExt;
 const NETWORK_TEST_HOST: &str = "codex-network-test.invalid";
 const NETWORK_TEST_TARGET: &str = "http://codex-network-test.invalid:80";
 
+#[test_case("experimental_network"; "legacy_requirements")]
+#[test_case("network_proxy"; "proxy_requirements")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[cfg_attr(
     not(target_os = "linux"),
     ignore = "requires the trusted Linux proxy bridge"
 )]
-async fn guardian_network_approval_preserves_action_and_outcome_routing() -> Result<()> {
+async fn guardian_network_approval_preserves_action_and_outcome_routing(
+    requirements_table: &str,
+) -> Result<()> {
     skip_if_target_windows!(Ok(()), "uses the POSIX/Python network fixture");
     skip_if_host_windows!(Ok(()));
     skip_if_no_network!(Ok(()));
     skip_if_sandbox!(Ok(()));
 
     let server = start_mock_server().await;
-    let test = managed_network_unified_exec_test(&server).await?;
+    let test = managed_network_unified_exec_builder(&[])?
+        .with_cloud_config_bundle(
+            CloudConfigBundleFixture::loader_with_enterprise_requirement(format!(
+                "[{requirements_table}]\nenabled = true\nallow_local_binding = true\n"
+            )),
+        )
+        .build_with_remote_and_local_env(&server)
+        .await?;
+    assert!(test.config.managed_network_requirements_enabled());
+    assert!(test.config.permissions.network.is_some());
+    assert!(test.session_configured.network_proxy.is_some());
     let first_call_id = "guardian-network-approved";
     let second_call_id = "guardian-network-denied";
     let first_command = network_fetch_args(LOCAL_ENVIRONMENT_ID)["cmd"]
@@ -665,10 +684,34 @@ async fn timed_out_guardian_network_review_uses_timeout_outcome_without_user_fal
     skip_if_no_network!(Ok(()));
     skip_if_sandbox!(Ok(()));
 
-    let server = start_mock_server().await;
-    let test = managed_network_unified_exec_test(&server).await?;
+    struct HoldExecResult {
+        call_id: &'static str,
+        release: tokio::sync::Notify,
+    }
+
+    impl ToolLifecycleContributor for HoldExecResult {
+        fn on_tool_finish<'a>(&'a self, input: ToolFinishInput<'a>) -> ToolLifecycleFuture<'a> {
+            Box::pin(async move {
+                if input.call_id == self.call_id {
+                    self.release.notified().await;
+                }
+            })
+        }
+    }
+
     let call_id = "guardian-network-timeout";
     let poll_call_id = "guardian-network-timeout-poll";
+    let hold_result = Arc::new(HoldExecResult {
+        call_id,
+        release: tokio::sync::Notify::new(),
+    });
+    let mut extensions = ExtensionRegistryBuilder::new();
+    extensions.tool_lifecycle_contributor(hold_result.clone());
+    let server = start_mock_server().await;
+    let test = managed_network_unified_exec_builder(&[])?
+        .with_extensions(Arc::new(extensions.build()))
+        .build_with_remote_and_local_env(&server)
+        .await?;
     mount_sse_once_match(
         &server,
         |request: &wiremock::Request| {
@@ -700,7 +743,9 @@ async fn timed_out_guardian_network_review_uses_timeout_outcome_without_user_fal
     mount_sse_once_match(
         &server,
         |request: &wiremock::Request| {
-            !is_guardian_request(request) && request_body_contains(request, call_id)
+            !is_guardian_request(request)
+                && request_body_contains(request, call_id)
+                && request_body_contains(request, "Process running with session ID 1000")
         },
         sse(vec![
             ev_response_created("resp-guardian-timeout-parent-followup"),
@@ -720,7 +765,7 @@ async fn timed_out_guardian_network_review_uses_timeout_outcome_without_user_fal
     let parent_final = mount_sse_once_match(
         &server,
         |request: &wiremock::Request| {
-            !is_guardian_request(request) && request_body_contains(request, poll_call_id)
+            !is_guardian_request(request) && request_body_contains(request, call_id)
         },
         sse(vec![
             ev_response_created("resp-guardian-timeout-parent-final"),
@@ -742,12 +787,33 @@ async fn timed_out_guardian_network_review_uses_timeout_outcome_without_user_fal
     tokio::time::pause();
     tokio::time::advance(Duration::from_secs(91)).await;
     tokio::time::resume();
+
+    // The clock jump expires the review, but cancellation and output drainage
+    // still run asynchronously. Hold the tool result until its terminal event
+    // so the model cannot poll before the final failure is available.
+    let completion = tokio::time::timeout(
+        Duration::from_secs(/*secs*/ 10),
+        wait_for_event(&test.codex, |event| match event {
+            EventMsg::ExecCommandEnd(event) => event.call_id == call_id,
+            EventMsg::ExecApprovalRequest(_) | EventMsg::TurnComplete(_) => true,
+            _ => false,
+        }),
+    )
+    .await;
+    // notify_one retains a permit if the tool-finish callback has not run yet.
+    hold_result.release.notify_one();
+    let completion = completion.context("timed out waiting for the network command to finish")?;
+    assert!(
+        matches!(completion, EventMsg::ExecCommandEnd(_)),
+        "unexpected event before command completion: {completion:?}"
+    );
     wait_for_completion_without_network_prompt(&test).await;
 
-    let tool_output = parent_final
-        .requests()
-        .iter()
-        .find_map(|request| request.function_call_output_text(poll_call_id))
+    let request = parent_final.single_request();
+    // If the initial exec call already returned its final error, no poll is needed.
+    let tool_output = request
+        .function_call_output_text(poll_call_id)
+        .or_else(|| request.function_call_output_text(call_id))
         .context("expected timed-out Guardian tool output")?;
     assert!(
         tool_output.contains(concat!(
@@ -1115,7 +1181,7 @@ async fn user_network_approval_once_session_and_denial_semantics() -> Result<()>
     assert_eq!(approval.cwd, test.config.cwd.clone().into());
     assert_eq!(
         approval.reason.as_deref(),
-        Some("codex-network-test.invalid is not in the allowed_domains")
+        Some("Network access to codex-network-test.invalid requires approval")
     );
     test.codex
         .submit(Op::ExecApproval {
@@ -1751,6 +1817,7 @@ async fn unattributed_network_request_uses_active_turn_environment_fallback(
             .environment_ready(
                 &selection,
                 EnvironmentConfig {
+                    environment_hooks: Default::default(),
                     allow_login_shell: test.config.permissions.allow_login_shell,
                     workspace_roots: selection.workspace_roots.clone(),
                     permission_profile: PermissionProfileSnapshot::legacy(
@@ -2728,6 +2795,7 @@ async fn owner_network_policy_follows_the_selected_remote_command() -> Result<()
                     PermissionProfile::from_runtime_permissions(&filesystem, network);
             }
             let owner_config = EnvironmentConfig {
+                environment_hooks: Default::default(),
                 allow_login_shell: test.config.permissions.allow_login_shell,
                 workspace_roots: remote.workspace_roots.clone(),
                 permission_profile: PermissionProfileSnapshot::legacy(permission_profile),
@@ -2745,6 +2813,7 @@ async fn owner_network_policy_follows_the_selected_remote_command() -> Result<()
             };
             let mut primary = local(test.cwd.path().abs());
             primary.config = EnvironmentConfigState::Ready(EnvironmentConfig {
+                environment_hooks: Default::default(),
                 workspace_roots: primary.workspace_roots.clone(),
                 permission_profile: PermissionProfileSnapshot::legacy(PermissionProfile::Disabled),
                 network_policy: None,
@@ -2950,6 +3019,7 @@ async fn escalated_owner_network_terminal_requires_stdin_approval(
     let mut proxy = NetworkProxyConfig::default();
     proxy.set_allowed_domains(vec!["owner-only.invalid".to_string()]);
     remote.config = EnvironmentConfigState::Ready(EnvironmentConfig {
+        environment_hooks: Default::default(),
         allow_login_shell: test.config.permissions.allow_login_shell,
         workspace_roots: remote.workspace_roots.clone(),
         permission_profile: PermissionProfileSnapshot::legacy(

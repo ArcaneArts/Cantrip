@@ -4,11 +4,11 @@ import { createRequire } from "node:module";
 import { writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { accountStorageMeasurementQuery } from "../../cantrip_server/src/db/account-resource-usage.ts";
+import { accountStorageMeasurementQuery } from "../../tests/reference-node-server/src/db/account-resource-usage.ts";
 import {
   STORAGE_ACCOUNTING_BASIS_VERSION,
   STORAGE_ACCOUNTING_MANIFEST,
-} from "../../cantrip_server/src/account-usage/storage-manifest.ts";
+} from "../../tests/reference-node-server/src/account-usage/storage-manifest.ts";
 import {
   ACCOUNT_LIVE_TRAFFIC_MAX_SAMPLES,
   ACCOUNT_LIVE_TRAFFIC_SAMPLE_INTERVAL_SECONDS,
@@ -17,9 +17,9 @@ import {
 import {
   ACCOUNT_RESOURCE_USAGE_LIVE_COALESCE_MS,
   ACCOUNT_RESOURCE_USAGE_LIVE_TIMER_LIMIT,
-} from "../../cantrip_server/src/app/shared/constants.ts";
+} from "../../tests/reference-node-server/src/app/shared/constants.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { getTableName } = require("drizzle-orm");
 export function usageContracts() {

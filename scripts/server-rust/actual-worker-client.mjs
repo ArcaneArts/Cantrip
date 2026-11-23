@@ -10,7 +10,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
-import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { loadStoredWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { buildRustServer, buildWorkerCli, repositoryRoot } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";

@@ -4,10 +4,12 @@ use anyhow::{Context, Result};
 use cantrip_server::{
     auth::{repository::AuthRepository, service::AuthService},
     config::{DatabaseMode, Environment, ServerConfig},
+    coordination::{Options as CoordinationOptions, RedisCoordinator, RelayCoordinator},
     database::Database,
     http,
     managed_postgres::ManagedPostgres,
     migrations::migrate,
+    operations::log_runtime,
 };
 use clap::{Parser, ValueEnum};
 use serde_json::json;
@@ -27,6 +29,15 @@ macro_rules! shutdown_step {
 #[derive(Parser)]
 #[command(about = "Cantrip Rust server (replacement implementation in progress)")]
 struct Arguments {
+    /// Read Node-compatible dotenv data without overriding the process environment.
+    #[arg(long)]
+    env_file_if_exists: Option<PathBuf>,
+    /// Write this executable's PGlite assets into a new directory and exit.
+    #[arg(long)]
+    materialize_pglite_runtime: Option<PathBuf>,
+    /// Distribution PGlite assets, used when PGLITE_RUNTIME_DIR is unset.
+    #[arg(long)]
+    bundled_pglite_runtime_dir: Option<PathBuf>,
     #[arg(long)]
     host: Option<String>,
     #[arg(long)]
@@ -39,8 +50,30 @@ struct Arguments {
     database_url: Option<String>,
     #[arg(long)]
     postgres_bin_dir: Option<PathBuf>,
+    /// Distribution PostgreSQL assets, used only when no configured path exists.
+    #[arg(long)]
+    bundled_postgres_bin_dir: Option<PathBuf>,
     #[arg(long)]
     migrate_only: bool,
+    /// Prepare an existing stopped profile for the native runtime, retaining its original.
+    #[arg(long, requires="migrate_only", group="legacy_profile_operation", conflicts_with_all=["restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database","activate_profile","recover_profile_activation","materialize_profile","publish_profile"])]
+    upgrade_profile: bool,
+    /// PostgreSQL 18 tools built for the legacy PGlite storage ABI.
+    #[arg(long, requires = "legacy_profile_operation")]
+    legacy_postgres_bin_dir: Option<PathBuf>,
+    /// Export an existing stopped legacy PGlite profile to a new logical bundle.
+    #[arg(long, requires_all=["migrate_only","data_dir","legacy_postgres_bin_dir"], group="legacy_profile_operation", conflicts_with_all=["restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database","activate_profile","recover_profile_activation","materialize_profile","publish_profile","upgrade_source_probe"])]
+    export_legacy_profile: Option<PathBuf>,
+    /// Restore a logical bundle to a new legacy PGlite profile for rollback.
+    #[arg(long, requires_all=["migrate_only","data_dir","legacy_postgres_bin_dir"], group="legacy_profile_operation", conflicts_with_all=["restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database","activate_profile","recover_profile_activation","materialize_profile","publish_profile","upgrade_source_probe"])]
+    restore_legacy_profile: Option<PathBuf>,
+    #[arg(
+        long,
+        hide = true,
+        requires = "migrate_only",
+        conflicts_with = "upgrade_profile"
+    )]
+    upgrade_source_probe: bool,
     /// Save the selected database connection privately after successful setup.
     #[arg(long, requires = "migrate_only", conflicts_with = "export_sql")]
     remember_database: bool,
@@ -59,6 +92,12 @@ struct Arguments {
     materialize_profile: Option<PathBuf>,
     #[arg(long, hide=true, requires_all=["data_dir","migrate_only"], conflicts_with_all=["materialize_profile","restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database"])]
     publish_profile: Option<PathBuf>,
+    /// Activate a prepared, stopped profile and retain the previous directory.
+    #[arg(long, requires_all=["data_dir","migrate_only"], group="profile_activation", conflicts_with_all=["materialize_profile","publish_profile","restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database"])]
+    activate_profile: Option<PathBuf>,
+    /// Finish an interrupted profile-directory activation without discarding data.
+    #[arg(long, requires_all=["data_dir","migrate_only"], group="profile_activation", conflicts_with_all=["materialize_profile","publish_profile","restore_profile","export_profile","restore_sql","export_sql","pack_profile","remember_database"])]
+    recover_profile_activation: bool,
     /// Restore trusted INSERT-format pg_dump SQL and pending migrations, then exit.
     #[arg(long, requires = "migrate_only")]
     restore_sql: Option<PathBuf>,
@@ -72,30 +111,203 @@ struct Arguments {
     shutdown_on_stdin_close: bool,
 }
 
-async fn shutdown() {
+impl Arguments {
+    fn legacy_profile_transfer(&self) -> bool {
+        self.export_legacy_profile.is_some() || self.restore_legacy_profile.is_some()
+    }
+}
+
+async fn shutdown() -> &'static str {
     #[cfg(unix)]
     {
         match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
             Ok(mut terminate) => {
-                tokio::select! { _=tokio::signal::ctrl_c()=>{}, _=terminate.recv()=>{} }
+                tokio::select! { _=tokio::signal::ctrl_c()=>"sigint", _=terminate.recv()=>"sigterm" }
             }
             Err(_) => {
                 let _ = tokio::signal::ctrl_c().await;
+                "sigint"
             }
         }
     }
     #[cfg(not(unix))]
     {
         let _ = tokio::signal::ctrl_c().await;
+        "sigint"
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    if cantrip_server::managed_postgres::run_owner_if_requested().await? {
+fn main() -> Result<()> {
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new(
+            "--internal-native-legacy-profile-export",
+        ))
+    {
+        return tokio::runtime::Runtime::new()?
+            .block_on(cantrip_server::profile::upgrade::run_native_legacy_export());
+    }
+    // The pipe-owned private database process has its own argument parser.
+    #[cfg(unix)]
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new("--internal-postgres-owner"))
+    {
+        tokio::runtime::Runtime::new()?
+            .block_on(cantrip_server::managed_postgres::run_owner_if_requested())?;
         return Ok(());
     }
     let arguments = Arguments::parse();
+    if let Some(path) = &arguments.env_file_if_exists {
+        // SAFETY: this executable has not created Tokio or database threads yet.
+        unsafe {
+            cantrip_server::env_file::load_if_exists(path)?;
+        }
+    }
+    if let Some(directory) = &arguments.materialize_pglite_runtime {
+        pglite::materialize_runtime(directory).context("materialize bundled PGlite runtime")?;
+        println!("{}", json!({"event":"pglite.runtime.materialized"}));
+        return Ok(());
+    }
+    if let Some(directory) = &arguments.bundled_pglite_runtime_dir
+        && std::env::var_os("PGLITE_RUNTIME_DIR").is_none()
+    {
+        // SAFETY: startup is synchronous, before Tokio/database threads exist.
+        unsafe {
+            std::env::set_var("PGLITE_RUNTIME_DIR", directory);
+        }
+    }
+    // Finish all startup environment mutation before creating owner or runtime
+    // threads. The owner duplicates stdin before any native database opens.
+    if arguments.migrate_only
+        && arguments.shutdown_on_stdin_close
+        && !arguments.legacy_profile_transfer()
+    {
+        cantrip_server::profile::upgrade::watch_operation_owner()?;
+    }
+    let probe = arguments.upgrade_source_probe;
+    let result = tokio::runtime::Runtime::new()?.block_on(async {
+        let mut profile_lease = None;
+        let result = run(arguments, &mut profile_lease).await;
+        log_runtime::finish(result.as_ref().err()).await;
+        // Directory activation must also wait for accepted log writes and the
+        // final shutdown record, after the database has finished closing.
+        drop(profile_lease);
+        result
+    });
+    if probe
+        && result
+            .as_ref()
+            .is_err_and(|error| error.is::<cantrip_server::database::NativePgliteOpenFailure>())
+    {
+        eprintln!("{}", json!({"event":"profile.upgrade.native-open.failed"}));
+        std::process::exit(cantrip_server::profile::upgrade::LEGACY_POSTGRES_REQUIRED_EXIT);
+    }
+    if let Some(required) = result.as_ref().err().and_then(|error| {
+        error.downcast_ref::<cantrip_server::profile::upgrade::LegacyPostgresRequired>()
+    }) {
+        eprintln!("{required}");
+        std::process::exit(cantrip_server::profile::upgrade::LEGACY_POSTGRES_REQUIRED_EXIT);
+    }
+    result
+}
+
+async fn transfer_legacy_profile(arguments: &Arguments) -> Result<()> {
+    let profile = std::path::absolute(
+        arguments
+            .data_dir
+            .as_ref()
+            .context("legacy profile directory")?,
+    )?;
+    let binaries = std::path::absolute(
+        arguments
+            .legacy_postgres_bin_dir
+            .as_ref()
+            .context("legacy PostgreSQL binary directory")?,
+    )?;
+    let owner = if arguments.shutdown_on_stdin_close {
+        Some(cantrip_host::process::pipe_closed(
+            os_pipe::dup_stdin()?,
+            "legacy-profile-owner",
+        )?)
+    } else {
+        None
+    };
+    let transfer = async {
+        let (event, receipt) = if let Some(output) = &arguments.export_legacy_profile {
+            let _lease = cantrip_server::profile::lease(&profile)?;
+            (
+                "profile.export.completed",
+                cantrip_server::profile::export_legacy_profile(&profile, output, &binaries).await?,
+            )
+        } else {
+            let _lease = cantrip_server::profile::exclusive_lease(&profile)?;
+            let bundle = arguments
+                .restore_legacy_profile
+                .as_ref()
+                .context("legacy profile bundle")?;
+            (
+                "profile.restore.completed",
+                cantrip_server::profile::restore_legacy_profile(bundle, &profile, &binaries)
+                    .await?,
+            )
+        };
+        println!("{}", json!({"event":event,"receipt":receipt}));
+        Ok(())
+    };
+    let parent_closed = async {
+        if let Some(owner) = owner {
+            let _ = owner.await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    };
+    tokio::select! {
+        biased;
+        _ = shutdown() => Ok(()),
+        _ = parent_closed => Ok(()),
+        result = transfer => result,
+    }
+}
+
+async fn run(
+    arguments: Arguments,
+    profile_lease: &mut Option<cantrip_server::profile::ProfileLease>,
+) -> Result<()> {
+    if arguments.legacy_profile_transfer() {
+        return transfer_legacy_profile(&arguments).await;
+    }
+    if let Some(prepared) = &arguments.activate_profile {
+        let receipt = cantrip_server::profile::activate_profile_with_progress(
+            prepared,
+            arguments
+                .data_dir
+                .as_ref()
+                .context("active profile destination")?,
+            |step| {
+                eprintln!(
+                    "{}",
+                    json!({"event":"profile.activation.progress","step":step})
+                )
+            },
+        )?;
+        println!(
+            "{}",
+            json!({"event":"profile.activation.completed","receipt":receipt})
+        );
+        return Ok(());
+    }
+    if arguments.recover_profile_activation {
+        let receipt = cantrip_server::profile::recover_profile_activation(
+            arguments
+                .data_dir
+                .as_ref()
+                .context("active profile destination")?,
+        )?;
+        println!(
+            "{}",
+            json!({"event":"profile.activation.recovered","receipt":receipt})
+        );
+        return Ok(());
+    }
     if let Some(root) = &arguments.materialize_profile {
         let receipt = cantrip_server::profile::Bundle::open(root)?
             .stage(
@@ -186,6 +398,36 @@ async fn main() -> Result<()> {
     }
     // Resolve every path before native PostgreSQL can change the process cwd.
     let cwd = std::env::current_dir()?;
+    // Finish an actual pending directory switch before reading its saved backend
+    // selection or creating/opening any database. Shared leases permit multiple
+    // native external-database instances; activation holds the exclusive lease.
+    if arguments.upgrade_profile {
+        let executable = std::env::current_exe()?;
+        let receipt =
+            cantrip_server::profile::upgrade::prepare(cantrip_server::profile::upgrade::Options {
+                environment: &environment,
+                cwd: &cwd,
+                executable: &executable,
+                legacy_postgres: arguments.legacy_postgres_bin_dir.as_deref(),
+            })?;
+        println!(
+            "{}",
+            json!({"event":"profile.upgrade.completed","upgraded":receipt.is_some(),"receipt":receipt})
+        );
+        return Ok(());
+    }
+    let profile_root = ServerConfig::data_directory(&environment, &cwd);
+    let startup_started = std::time::Instant::now();
+    *profile_lease = Some(if arguments.restore_profile.is_some() {
+        cantrip_server::profile::exclusive_lease(&profile_root)?
+    } else {
+        cantrip_server::profile::lease(&profile_root)?
+    });
+    // Recovery may publish a profile into an absent destination. Creating its
+    // logs directory first would obstruct that real directory switch.
+    if !arguments.migrate_only {
+        log_runtime::initialize(&profile_root, &environment, &cwd).await;
+    }
     let bundle = arguments
         .restore_profile
         .as_ref()
@@ -196,13 +438,42 @@ async fn main() -> Result<()> {
     } else {
         cantrip_server::profile::apply_database(&mut environment, &cwd)?;
     }
+    // An installation's saved configuration is explicit configuration too.
+    // Supply distribution assets only after environment/CLI/profile selection.
+    let mut bundled_postgres_path = false;
+    if let Some(directory) = arguments.bundled_postgres_bin_dir
+        && let std::collections::hash_map::Entry::Vacant(entry) =
+            environment.entry("CANTRIP_POSTGRES_BIN_DIR".into())
+    {
+        bundled_postgres_path = true;
+        entry.insert(
+            directory
+                .to_str()
+                .context("bundled PostgreSQL path must be valid UTF-8")?
+                .into(),
+        );
+    }
     let mut config = ServerConfig::read(&environment, &cwd)?;
+    if !arguments.migrate_only {
+        log_runtime::startup_started(&config);
+    }
     let profile_stage = bundle
         .map(|bundle| bundle.stage(&config.data_directory))
         .transpose()?;
     if let Some(stage) = &profile_stage {
         config.data_directory = stage.data_directory().to_owned();
     }
+    let mut persisted_config = config.clone();
+    if bundled_postgres_path {
+        persisted_config.postgres_bin_directory = None;
+    }
+    // Give the serving process one identity shared by coordination and HTTP.
+    let instance_id = (!arguments.migrate_only).then(|| {
+        config
+            .server_instance_id
+            .get_or_insert_with(|| uuid::Uuid::new_v4().to_string())
+            .clone()
+    });
     let config = Arc::new(config);
     let restore_sql = arguments
         .restore_sql
@@ -239,30 +510,40 @@ async fn main() -> Result<()> {
     } else {
         None
     };
-    let mut managed = None;
-    let database = match config.database_mode {
-        DatabaseMode::Pglite => {
-            // Use the existing root name. The native engine must report actual
-            // format errors; it must never select a fresh database as fallback.
-            Database::pglite(&config.data_directory.join("server-db")).await?
-        }
-        DatabaseMode::Postgres => {
-            let url = config
-                .database_url
-                .as_deref()
-                .context("postgres mode requires DATABASE_URL or --database-url")?;
-            Database::postgres_url(url).await?
-        }
-        DatabaseMode::BundledPostgres => {
-            let bin = config.postgres_bin_directory.as_ref().context("bundled-postgres mode requires --postgres-bin-dir until runtime packaging is integrated")?;
-            let runtime =
-                ManagedPostgres::start(&config.data_directory.join("postgres"), bin).await?;
-            let database = Database::postgres(runtime.configuration()).await?;
-            managed = Some(runtime);
-            database
-        }
+    let mut connected = if arguments.migrate_only {
+        None
+    } else {
+        Some(cantrip_server::database::startup::connect(&config).await?)
     };
-    let database = Arc::new(database);
+    let mut managed = connected
+        .as_mut()
+        .and_then(|connection| connection.managed.take());
+    let database = if let Some(connection) = &connected {
+        connection.database.clone()
+    } else {
+        Arc::new(match config.database_mode {
+            DatabaseMode::Pglite => {
+                // Use the existing root name. The native engine must report actual
+                // format errors; it must never select a fresh database as fallback.
+                Database::pglite(&config.data_directory.join("server-db")).await?
+            }
+            DatabaseMode::Postgres => {
+                let url = config
+                    .database_url
+                    .as_deref()
+                    .context("postgres mode requires DATABASE_URL or --database-url")?;
+                Database::postgres_url(url).await?
+            }
+            DatabaseMode::BundledPostgres => {
+                let bin = config.postgres_bin_directory.as_ref().context("bundled-postgres mode requires --postgres-bin-dir until runtime packaging is integrated")?;
+                let runtime =
+                    ManagedPostgres::start(&config.data_directory.join("postgres"), bin).await?;
+                let database = Database::postgres(runtime.configuration()).await?;
+                managed = Some(runtime);
+                database
+            }
+        })
+    };
     let mut profile_database = None;
     let prepared: Result<()> = async {
         if let Some(file) = export_profile {
@@ -294,12 +575,20 @@ async fn main() -> Result<()> {
         if let Some(stage) = &profile_stage {
             profile_database = Some(stage.restore(&database).await?);
         }
-        migrate(&database).await?;
+        if connected.is_none() {
+            migrate(&database).await?;
+        }
         if arguments.migrate_only && !restoring {
             AuthRepository::new(database.clone()).local_user().await?;
         }
         if arguments.remember_database {
-            cantrip_server::profile::remember_database(&config)?;
+            cantrip_server::profile::remember_database(&persisted_config)?;
+        } else if !arguments.migrate_only {
+            // Ordinary serving still performs the actual open/migrations if a
+            // read-only configuration record cannot be updated.
+            if cantrip_server::profile::remember_database(&persisted_config).is_err() {
+                eprintln!("{}", json!({"level":"warn","event":"profile.database-configuration.write.failed"}));
+            }
         }
         Ok(())
     }.await;
@@ -319,11 +608,44 @@ async fn main() -> Result<()> {
         owned_closed.context("close owned PostgreSQL after setup failure")?;
         return Err(error);
     }
-    if !arguments.migrate_only {
-        let service = AuthService::initialize(database.clone(), config.clone()).await?;
+    if let Some(instance_id) = instance_id {
+        log_runtime::database_ready(database.engine(), startup_started);
+        let coordination: Option<Arc<dyn RelayCoordinator>> = if let Some(url) = &config.redis_url {
+            let mut options = CoordinationOptions::new(url.clone(), instance_id);
+            options.maximum_instances = config.coordination_max_instances;
+            options.presence_ttl_ms = config.coordination_presence_ttl_ms;
+            options.logger = cantrip_server::operations::logging::server_logger();
+            let coordinator = RedisCoordinator::new(options)?;
+            RedisCoordinator::start(&coordinator).await?;
+            Some(coordinator)
+        } else {
+            None
+        };
+        let service = match AuthService::with_prepared_database(
+            connected
+                .take()
+                .context("prepared serving database")?
+                .prepared,
+            config.clone(),
+            coordination.clone(),
+        )
+        .await
+        {
+            Ok(service) => service,
+            Err(cause) => {
+                if let Some(coordinator) = &coordination {
+                    let _ = coordinator.close().await;
+                }
+                return Err(cause);
+            }
+        };
         let port = arguments.port.unwrap_or(config.port as u16);
         let listener = tokio::net::TcpListener::bind((config.host.as_str(), port)).await?;
         service.usage.start();
+        service.logical_completion_delivery.start();
+        service.history_publication_delivery.start();
+        service.execution.start();
+        log_runtime::ready(database.engine(), coordination.is_some(), startup_started);
         use std::io::Write;
         writeln!(
             parent_output,
@@ -343,26 +665,39 @@ async fn main() -> Result<()> {
             });
         }
         let shutdown_service = service.clone();
+        let shutdown_coordination = coordination.clone();
         axum::serve(
             listener,
             http::router(service.clone())
                 .into_make_service_with_connect_info::<std::net::SocketAddr>(),
         )
         .with_graceful_shutdown(async move {
-            tokio::select! { _=shutdown()=>{}, _=receiver, if watch_parent=>{} }
+            let reason = tokio::select! { reason=shutdown()=>reason, _=receiver, if watch_parent=>"parent-closed" };
+            log_runtime::begin_shutdown(reason);
             eprintln!("{}", json!({"event":"server.shutdown.started"}));
+            if let Some(coordinator) = &shutdown_coordination {
+                coordinator.begin_shutdown();
+            }
+            shutdown_service.execution.stop();
+            shutdown_service.history_publication_delivery.stop();
             shutdown_service.live.transports.pre_close();
             shutdown_service.workers.pre_close();
         })
         .await?;
-        // Pre-close interrupts sockets with their normal disconnect semantics.
-        // Finish active HTTP requests before permanently closing the bridge,
+        // Pre-close queues socket CLOSE frames. Physical peer closure retains
+        // normal disconnect semantics. Finish HTTP before closing the bridge,
         // disabling publications, or draining service/database owners.
+        service.logical_completion_delivery.stop();
+        service.managed_preparation.stop();
         service.folder_setup.stop();
         service.project_replicas.stop();
+        service.chat_relocations.stop();
+        service.chat_imports.stop();
         service.github_conversion.stop();
         service.workspace_discovery.stop();
         service.scratch_roots.stop();
+        service.interaction_expiry.stop();
+        service.worker_catalog_refresh.stop();
         service.worker_maintenance.stop();
         service.tunnel_leases.stop();
         shutdown_step!(
@@ -375,11 +710,25 @@ async fn main() -> Result<()> {
         service.tunnel_runtime.close();
         service.live.close();
         shutdown_step!(
+            "native-history-publications",
+            service.history_publication_delivery.drained().await
+        );
+        shutdown_step!(
             "direct-attachments-close",
             service.direct_attachments.close().await
         );
-        shutdown_step!("worker-links-close", service.worker_links.close().await);
-        shutdown_step!("worker-bridge-close", service.workers.close());
+        shutdown_step!("worker-links-close", service.worker_links.close().await)?;
+        service.computer_use_revocations.stop();
+        shutdown_step!(
+            "computer-use-revocations",
+            service.computer_use_revocations.drained().await
+        );
+        shutdown_step!("worker-bridge-close", service.workers.close().await)?;
+        shutdown_step!("execution", service.execution.drained().await);
+        shutdown_step!(
+            "logical-completions",
+            service.logical_completion_delivery.drained().await
+        );
         // Observation commands are background work, and may still be awaiting
         // a worker's normal reconnect grace after socket pre-close. As in the
         // reference shutdown, close the bridge before waiting for those
@@ -399,7 +748,7 @@ async fn main() -> Result<()> {
         shutdown_step!("worker-handshakes", service.workers.drained().await?);
         shutdown_step!(
             "worker-link-callbacks",
-            service.worker_links.local.drained().await
+            service.worker_links.drained().await
         );
         shutdown_step!(
             "provider-accounts",
@@ -411,6 +760,10 @@ async fn main() -> Result<()> {
                 json!({"level":"warn","event":"provider.catalog.background-persistence-failed","message":"Provider catalog background persistence failed during shutdown"})
             );
         }
+        shutdown_step!(
+            "managed-chat-preparation",
+            service.managed_preparation.drained().await
+        );
         shutdown_step!("worker-commands", service.workers.commands.drained().await);
         shutdown_step!(
             "direct-attachments-drain",
@@ -420,6 +773,11 @@ async fn main() -> Result<()> {
         shutdown_step!("tunnel-runtime", service.tunnel_runtime.drained().await);
         shutdown_step!("folder-jobs", service.folder_setup.drained().await);
         shutdown_step!("scratch-root-jobs", service.scratch_roots.drained().await);
+        shutdown_step!(
+            "chat-relocation-jobs",
+            service.chat_relocations.drained().await
+        );
+        shutdown_step!("chat-import-jobs", service.chat_imports.drained().await);
         shutdown_step!("replica-jobs", service.project_replicas.drained().await);
         shutdown_step!(
             "github-conversion-jobs",
@@ -434,7 +792,27 @@ async fn main() -> Result<()> {
             service.worker_maintenance.drained().await
         );
         shutdown_step!("mutation-audits", service.mutation_audits.drained().await);
+        // Detached native/HTTP callbacks can enqueue routing work after their
+        // caller disconnects. Drain their producers before these final reads.
+        shutdown_step!(
+            "chat-live-mutations",
+            service.chat_mutations.drained().await
+        );
+        // Socket and HTTP producers have finished, and closing the worker
+        // bridge has settled commands without deadlines. Persist their final
+        // handoff diagnostics before closing the database.
+        shutdown_step!(
+            "chat-account-failover",
+            service.account_failover.drained().await
+        );
+        shutdown_step!(
+            "native-runtime-handoffs",
+            service.native_handoffs.drained().await
+        );
         shutdown_step!("usage", service.usage.close().await);
+        if let Some(coordinator) = &coordination {
+            shutdown_step!("coordination", coordinator.close().await)?;
+        }
     }
     shutdown_step!("database", database.close().await?);
     if let Some(runtime) = managed {
@@ -445,7 +823,7 @@ async fn main() -> Result<()> {
         // embedded database closes. Release it before publishing the profile.
         std::env::set_current_dir(&cwd)?;
         let receipt = stage.publish(
-            &config,
+            &persisted_config,
             profile_database.context("restored profile database receipt")?,
         )?;
         use std::io::Write;

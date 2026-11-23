@@ -142,6 +142,24 @@ test("builds an allowlisted hosted environment without deployment credentials", 
   assert.equal("CANTRIP_WORKER_TOKEN" in environment, false);
 });
 
+test("forwards configured Redis TLS settings to the systemd service", () => {
+  const secrets = productionSecrets();
+  const unconfigured = buildProductionEnvironment(secrets, config);
+  assert.equal(unconfigured.REDIS_URL, undefined);
+  assert.equal(unconfigured.NODE_EXTRA_CA_CERTS, undefined);
+
+  const url = "rediss://:fixture%23password@redis.example.invalid:6379/2";
+  const ca = "/usr/local/share/cantrip/redis-ca.pem";
+  secrets.set("REDIS_URL", url);
+  secrets.set("NODE_EXTRA_CA_CERTS", ca);
+  const environment = buildProductionEnvironment(secrets, config);
+  assert.equal(environment.REDIS_URL, url);
+  assert.equal(environment.NODE_EXTRA_CA_CERTS, ca);
+  const environmentFile = serializeSystemdEnvironment(environment);
+  assert.ok(environmentFile.includes('REDIS_URL="' + url + '"\n'));
+  assert.ok(environmentFile.includes('NODE_EXTRA_CA_CERTS="' + ca + '"\n'));
+});
+
 test("requires every production secret and the configured public origins", () => {
   const missing = productionSecrets();
   missing.delete("DATABASE_URL");
@@ -225,6 +243,33 @@ test("passes the release commit count into the production Docker build", () => {
   );
 });
 
+test("selects the native distribution through the existing production build path", () => {
+  for (const runtime of [undefined, "rust"]) {
+    const selected = { ...config, serverRuntime: runtime };
+    validateDeploymentConfig(selected);
+    const args = productionServerBuildArguments(
+      selected,
+      "/tmp/native-output",
+      "2739",
+    );
+    assert.equal(
+      args[args.indexOf("--file") + 1],
+      path.join("deploy", "docker", "server.Dockerfile"),
+    );
+    assert.ok(args.includes("type=local,dest=/tmp/native-output"));
+    assert.ok(args.includes("CANTRIP_VERSION_PATCH=2739"));
+  }
+  assert.throws(
+    () =>
+      productionServerBuildArguments(
+        { ...config, serverRuntime: "other" },
+        "/tmp/output",
+        "2739",
+      ),
+    /serverRuntime must be rust/u,
+  );
+});
+
 test("strips macOS metadata from the uploaded production server archive", async () => {
   const root = await mkdtemp(
     path.join(os.tmpdir(), "cantrip-production-archive-test-"),
@@ -266,22 +311,42 @@ test("strips macOS metadata from the uploaded production server archive", async 
   }
 });
 
-test("copies every server workspace dependency into the Docker build", async () => {
+test("builds the canonical server image without the Node server workspace", async () => {
   const dockerfile = await readFile(
     new URL("../deploy/docker/server.Dockerfile", import.meta.url),
     "utf8",
   );
   for (const source of [
     "version.json",
-    "packages/logging",
-    "packages/protocol",
-    "packages/version",
     "policy_templates",
-    "cantrip_server",
+    "cantrip_server_rs",
+    "cantrip_interaction",
+    "cantrip_server/drizzle",
   ]) {
     assert.match(dockerfile, new RegExp(`^COPY ${source}`, "mu"));
   }
   assert.match(dockerfile, /^ARG CANTRIP_VERSION_PATCH$/mu);
+  assert.doesNotMatch(dockerfile, /^COPY cantrip_server \.\/cantrip_server$/mu);
+});
+
+test("includes the shared Rust build module in both Linux server build contexts", async () => {
+  for (const file of ["server.Dockerfile", "server-rust.Dockerfile"]) {
+    const dockerfile = await readFile(
+      new URL(`../deploy/docker/${file}`, import.meta.url),
+      "utf8",
+    );
+    const stages = dockerfile
+      .split(/^FROM /mu)
+      .filter((stage) => /^\S+ AS (build|package)\n/u.test(stage));
+    assert.equal(stages.length, 2, file);
+    for (const stage of stages) {
+      assert.match(
+        stage,
+        /^COPY .*scripts\/build-rust-executable\.mjs .*\.\/scripts\/$/mu,
+        file,
+      );
+    }
+  }
 });
 
 test("requires explicit commit-count versions for hosted Docker services", async () => {

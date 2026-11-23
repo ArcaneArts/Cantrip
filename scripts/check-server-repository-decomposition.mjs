@@ -1,13 +1,13 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  readServerRepositorySourceCorpus,
-  serverRepositoryLineBudgetFailures,
-} from "./server-repository-source-corpus.mjs";
+import { serverRepositoryLineBudgetFailures } from "./server-repository-source-corpus.mjs";
+import { readRustServerSources } from "./rust-server-source-corpus.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const sources = await readServerRepositorySourceCorpus(repositoryRoot);
+const sources = (await readRustServerSources(repositoryRoot)).filter(
+  ({ file }) => /\/repository(?:\/|\.rs$)/u.test(file),
+);
 const failures = serverRepositoryLineBudgetFailures(sources);
 
 if (failures.length > 0) {

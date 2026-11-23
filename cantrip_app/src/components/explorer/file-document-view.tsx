@@ -121,6 +121,7 @@ interface FileDocumentViewProps {
   tabId: string;
   document: FileDocument;
   mode: ExplorerFileMode;
+  fileViewer?: string | null;
   onModeChange(mode: ExplorerFileMode): void | Promise<void>;
   onOpenFile(path: string): void;
   appearance: CodeAppearance;

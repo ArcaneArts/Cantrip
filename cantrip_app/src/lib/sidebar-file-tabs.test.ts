@@ -37,6 +37,38 @@ function layout(...explorerIds: string[]): ProjectTabLayoutSummary {
 }
 
 describe("sidebar file tabs", () => {
+  it("keeps host and captured Linux views distinct for the same linked worktree", () => {
+    const host = explorer("host", "linked");
+    const os = {
+      ...explorer("os", "linked"),
+      cantripOsBindingId: "binding",
+      cantripOsRuntimeGeneration: "generation",
+    };
+    const explorers = [host, os];
+    expect(
+      preferredSidebarExplorer({
+        desiredWorktreeId: "linked",
+        layout: undefined,
+        explorers,
+      }),
+    ).toBe(host);
+    expect(
+      preferredSidebarExplorer({
+        desiredWorktreeId: "linked",
+        layout: undefined,
+        explorers,
+        desiredOsPlacement: os,
+      }),
+    ).toBe(os);
+    expect(
+      preferredSidebarExplorer({
+        desiredWorktreeId: "linked",
+        layout: undefined,
+        explorers,
+        desiredOsPlacement: { ...os, cantripOsRuntimeGeneration: "changed" },
+      }),
+    ).toBeNull();
+  });
   it("follows the selected file document's worktree", () => {
     expect(
       surfaceWorktreeId({

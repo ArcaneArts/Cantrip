@@ -548,12 +548,13 @@ export function AgentInteractionPanel({
       }
     >
       {visible.map((request) => (
-        <InteractionRequestCard
-          key={request.id}
-          request={request}
-          disabled={pendingRequestId !== null}
-          onRespond={onRespond}
-        />
+        <div key={request.id} data-interaction-request-id={request.id}>
+          <InteractionRequestCard
+            request={request}
+            disabled={pendingRequestId !== null}
+            onRespond={onRespond}
+          />
+        </div>
       ))}
       {pendingRequestId ? (
         <p className="flex items-center gap-1 text-xs text-muted-foreground">

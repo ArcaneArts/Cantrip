@@ -383,5 +383,27 @@ export function liveHubCases() {
     ...ready(),
     { op: "frame", raw: '{"type":"ping","nonce":"number","extra":1e999}' },
   ]);
+  add("server bootstrap resource preserves owner fanout and unsubscribe", [
+    ...ready(),
+    subscribe(),
+    ...ready("other", "owner-two"),
+    subscribe("other-user", [user], "other"),
+    publish("owner-one", user, { resource: "server", payload: null }),
+    publish("owner-two", user, {
+      resource: "server",
+      entityId: "other-server",
+      payload: null,
+    }),
+    frame({ type: "unsubscribe", requestId: "leave", scopes: [user] }),
+    publish("owner-one", user, { resource: "server", payload: null }),
+  ]);
+  add("server bootstrap resource preserves owner-scoped replay", [
+    publish("owner-one", user, { resource: "server", payload: null }),
+    publish("owner-two", user, { resource: "server", payload: null }),
+    attach(),
+    frame(initialize({ serverEpoch: "oracle-epoch", cursor: 0 })),
+    subscribe(),
+    publish("owner-one", user, { resource: "server", payload: null }),
+  ]);
   return cases;
 }

@@ -1,0 +1,440 @@
+import { randomUUID } from "node:crypto";
+
+import {
+  chatComposerDraftOpaqueStateSchema,
+  encryptedChatComposerDraftWireStateSchema,
+} from "@cantrip/protocol";
+import type {
+  ChatComposerDraftOpaqueState,
+  ChatWireSummary,
+  ChatWorktreeUpdate,
+  ContextualChatWireSummary,
+  EncryptedChatComposerDraftWireState,
+  EncryptedChatUpdate,
+  PrivateDisplayLabelOpaque,
+} from "@cantrip/protocol";
+import { and, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
+
+import * as schema from "../schema.js";
+import {
+  ExecutionLaneConflictError,
+  chatIsExecuting,
+  requiredProjectChatProjectId,
+} from "./chat-execution-lanes.js";
+import {
+  toChatWireSummary,
+  toContextualChatWireSummary,
+} from "./chat-mappers.js";
+import {
+  firstOrThrow,
+  toISOString,
+  type RepositoryDatabase,
+} from "./database.js";
+import type { ProjectWorktreeExecutionContext } from "./projects.js";
+
+export interface ChatStateRepositoryCollaborators {
+  getProjectWorktreeContext(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+  ): Promise<ProjectWorktreeExecutionContext | null>;
+}
+
+export class ChatStateRepository {
+  constructor(
+    private readonly database: RepositoryDatabase,
+    private readonly collaborators: ChatStateRepositoryCollaborators,
+  ) {}
+
+  async claimAutomaticTitle(
+    ownerId: string,
+    chatId: string,
+    messageId?: string,
+  ) {
+    const claimId = randomUUID();
+    const rows = await this.database
+      .update(schema.chats)
+      .set({ autoTitlePending: false, autoTitleClaim: claimId })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          isNull(schema.chats.archivedAt),
+          eq(schema.chats.autoTitlePending, true),
+          isNull(schema.chats.autoTitleClaim),
+          ...(messageId
+            ? [
+                sql`not exists (select 1 from ${schema.chatMessages} where ${schema.chatMessages.chatId} = ${chatId} and ${schema.chatMessages.role} = 'user' and ${schema.chatMessages.id} <> ${messageId})`,
+              ]
+            : []),
+        ),
+      )
+      .returning();
+    return rows[0] ? { chat: rows[0], claimId } : null;
+  }
+
+  async finishAutomaticTitle(
+    ownerId: string,
+    chatId: string,
+    claimId: string,
+    title: PrivateDisplayLabelOpaque | null,
+    emptyInput = false,
+  ) {
+    const rows = await this.database
+      .update(schema.chats)
+      .set({
+        autoTitleClaim: null,
+        autoTitlePending: emptyInput,
+        ...(title ? { protectedLabel: title, updatedAt: new Date() } : {}),
+      })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          eq(schema.chats.autoTitleClaim, claimId),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .returning();
+    return rows[0] ? toContextualChatWireSummary(rows[0]) : null;
+  }
+
+  async updateChat(
+    ownerId: string,
+    chatId: string,
+    input: EncryptedChatUpdate,
+  ): Promise<ContextualChatWireSummary | null> {
+    const owned = await this.database
+      .select({ id: schema.chats.id })
+      .from(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .limit(1);
+    if (!owned[0]) return null;
+    const result = await this.database
+      .update(schema.chats)
+      .set({
+        protectedLabel: input.titleProtection,
+        autoTitlePending: false,
+        autoTitleClaim: null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
+      .returning();
+    return result[0] ? toContextualChatWireSummary(result[0]) : null;
+  }
+
+  async getChatComposerDraftWireState(
+    ownerId: string,
+    chatId: string,
+  ): Promise<EncryptedChatComposerDraftWireState | null> {
+    const rows = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .limit(1);
+    const chat = rows[0]?.chat;
+    return chat
+      ? encryptedChatComposerDraftWireStateSchema.parse({
+          chatId: chat.id,
+          state: chat.protectedComposerDraft,
+          updatedAt: chat.composerDraftUpdatedAt
+            ? toISOString(chat.composerDraftUpdatedAt)
+            : null,
+        })
+      : null;
+  }
+
+  async updateChatComposerDraft(
+    ownerId: string,
+    chatId: string,
+    state: ChatComposerDraftOpaqueState | null,
+  ): Promise<EncryptedChatComposerDraftWireState | null> {
+    const parsed = state
+      ? chatComposerDraftOpaqueStateSchema.parse(state)
+      : null;
+    const updatedAt = new Date();
+    const rows = await this.database
+      .update(schema.chats)
+      .set({
+        protectedComposerDraft: parsed,
+        composerDraftUpdatedAt: updatedAt,
+      })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          isNull(schema.chats.archivedAt),
+          eq(schema.chats.ownerId, ownerId),
+        ),
+      )
+      .returning({ id: schema.chats.id });
+    return rows[0]
+      ? encryptedChatComposerDraftWireStateSchema.parse({
+          chatId: rows[0].id,
+          state: parsed,
+          updatedAt: toISOString(updatedAt),
+        })
+      : null;
+  }
+
+  async setChatAutomationPaused(
+    ownerId: string,
+    chatId: string,
+    paused: boolean,
+  ): Promise<ContextualChatWireSummary | null> {
+    return this.database.transaction(async (tx) => {
+      const rows = await tx
+        .update(schema.chats)
+        .set({
+          automationPaused: paused,
+          managedInputRevision: sql`CASE WHEN ${schema.chats.experience} = 'task' THEN ${schema.chats.managedInputRevision}+1 ELSE ${schema.chats.managedInputRevision} END`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+        )
+        .returning();
+      if (rows[0]?.experience === "task")
+        await tx
+          .insert(schema.managedQueueStates)
+          .values({ chatId, revision: 1 })
+          .onConflictDoUpdate({
+            target: schema.managedQueueStates.chatId,
+            set: {
+              revision: sql`${schema.managedQueueStates.revision}+1`,
+              notificationDueAt: sql`now()`,
+            },
+          });
+      else if (rows[0])
+        await tx
+          .update(schema.managedQueueStates)
+          .set({ revision: sql`${schema.managedQueueStates.revision}+1` })
+          .where(eq(schema.managedQueueStates.chatId, chatId));
+      return rows[0] ? toContextualChatWireSummary(rows[0]) : null;
+    });
+  }
+
+  async updateChatWorktree(
+    ownerId: string,
+    chatId: string,
+    input: ChatWorktreeUpdate,
+    expectedWorktreeId?: string,
+  ): Promise<ChatWireSummary | null> {
+    const rows = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    const chat = rows[0]?.chat;
+    if (!chat) return null;
+    if (
+      expectedWorktreeId !== undefined &&
+      (chat.activeWorktreeId !== expectedWorktreeId ||
+        chat.worktreeMode !== input.mode)
+    )
+      throw new ExecutionLaneConflictError(
+        "The Task placement changed during recovery. Please retry.",
+      );
+    const projectId = requiredProjectChatProjectId(chat.projectId);
+    const target = await this.collaborators.getProjectWorktreeContext(
+      ownerId,
+      projectId,
+      input.worktreeId,
+    );
+    if (!target || target.worktree.lifecycleState !== "ready") return null;
+
+    const changingWorktree = chat.activeWorktreeId !== target.worktree.id;
+    if (
+      changingWorktree &&
+      chat.activeWorkerId !== null &&
+      chat.activeWorkerId !== target.workerId
+    ) {
+      throw new ExecutionLaneConflictError(
+        "Moving a chat to another worker requires a durable relocation.",
+      );
+    }
+    if (
+      changingWorktree &&
+      chatIsExecuting(chat.status as ChatWireSummary["status"])
+    ) {
+      throw new ExecutionLaneConflictError(
+        "Wait for the active chat turn before switching worktrees.",
+      );
+    }
+    if (changingWorktree) {
+      const [activeLanes, reservations, consoles] = await Promise.all([
+        this.database
+          .select({ id: schema.chatExecutionLanes.id })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.state, "active"),
+            ),
+          ),
+        this.database
+          .select({ chatId: schema.chatExecutionLanes.chatId })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.worktreeId, target.worktree.id),
+              eq(schema.chatExecutionLanes.exclusive, true),
+              ne(schema.chatExecutionLanes.state, "released"),
+            ),
+          ),
+        this.database
+          .select({ terminal: schema.terminals })
+          .from(schema.terminals)
+          .where(eq(schema.terminals.linkedChatId, chatId)),
+      ]);
+      if (activeLanes.length > 0) {
+        throw new ExecutionLaneConflictError(
+          "Finish the active chat execution before switching worktrees.",
+        );
+      }
+      const owner = reservations.find(
+        ({ chatId: ownerId }) => ownerId !== chatId,
+      );
+      if (owner) {
+        throw new ExecutionLaneConflictError(
+          `Worktree is exclusively leased to chat ${owner.chatId}.`,
+        );
+      }
+      if (consoles.some(({ terminal }) => terminal.status === "running")) {
+        throw new ExecutionLaneConflictError(
+          "Stop the linked Codex console before switching worktrees.",
+        );
+      }
+    }
+
+    return this.database.transaction(async (transaction) => {
+      await transaction
+        .insert(schema.chatRuntimeSessions)
+        .values({
+          id: randomUUID(),
+          chatId,
+          workerId: target.workerId,
+          worktreeId: target.worktree.id,
+        })
+        .onConflictDoNothing({
+          target: [
+            schema.chatRuntimeSessions.chatId,
+            schema.chatRuntimeSessions.workerId,
+            schema.chatRuntimeSessions.worktreeId,
+          ],
+          where: isNotNull(schema.chatRuntimeSessions.worktreeId),
+        });
+      const runtimes = await transaction
+        .select()
+        .from(schema.chatRuntimeSessions)
+        .where(
+          and(
+            eq(schema.chatRuntimeSessions.chatId, chatId),
+            eq(schema.chatRuntimeSessions.workerId, target.workerId),
+            eq(schema.chatRuntimeSessions.worktreeId, target.worktree.id),
+          ),
+        )
+        .limit(1);
+      const runtime = firstOrThrow(runtimes, "selecting a worktree runtime");
+      const existingLanes = await transaction
+        .select()
+        .from(schema.chatExecutionLanes)
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.chatId, chatId),
+            eq(schema.chatExecutionLanes.worktreeId, target.worktree.id),
+            ne(schema.chatExecutionLanes.state, "released"),
+          ),
+        )
+        .orderBy(desc(schema.chatExecutionLanes.createdAt))
+        .limit(1);
+      if (!existingLanes[0]) {
+        await transaction.insert(schema.chatExecutionLanes).values({
+          id: randomUUID(),
+          chatId,
+          worktreeId: target.worktree.id,
+          workerId: target.workerId,
+          acquiringActor: "user",
+          exclusive: !target.worktree.isPrimary,
+          purpose: "Selected by user",
+          state: "suspended",
+          startingHead: target.worktree.head,
+          runtimeSessionId: runtime.id,
+          codexThreadId: runtime.codexThreadId,
+        });
+      } else {
+        await transaction
+          .update(schema.chatExecutionLanes)
+          .set({
+            runtimeSessionId: runtime.id,
+            codexThreadId: runtime.codexThreadId,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.chatExecutionLanes.id, existingLanes[0].id));
+      }
+      if (changingWorktree) {
+        await transaction
+          .update(schema.terminals)
+          .set({
+            activeWorkerId: target.workerId,
+            worktreeId: target.worktree.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.terminals.linkedChatId, chatId));
+      }
+      const updated = await transaction
+        .update(schema.chats)
+        .set({
+          activeWorkerId: target.workerId,
+          activeWorktreeId: target.worktree.id,
+          ...(changingWorktree
+            ? {
+                placementRevision: sql`${schema.chats.placementRevision} + 1`,
+              }
+            : {}),
+          worktreeMode: input.mode,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            ...(expectedWorktreeId !== undefined
+              ? [
+                  eq(schema.chats.activeWorktreeId, expectedWorktreeId),
+                  eq(schema.chats.placementRevision, chat.placementRevision),
+                  chat.worktreeMode === null
+                    ? isNull(schema.chats.worktreeMode)
+                    : eq(schema.chats.worktreeMode, chat.worktreeMode),
+                  eq(schema.chats.automationPaused, chat.automationPaused),
+                  eq(schema.chats.status, chat.status),
+                ]
+              : []),
+          ),
+        )
+        .returning();
+      if (!updated[0] && expectedWorktreeId !== undefined)
+        throw new ExecutionLaneConflictError(
+          "The Task placement changed during recovery. Please retry.",
+        );
+      return updated[0] ? toChatWireSummary(updated[0]) : null;
+    });
+  }
+}

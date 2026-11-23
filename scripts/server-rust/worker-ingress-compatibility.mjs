@@ -12,12 +12,12 @@ import { SocketProbe } from "./worker-sockets.mjs";
 import * as protocol from "../../packages/protocol/dist/index.js";
 import commandFixtures from "./worker-command-fixtures.json" with { type: "json" };
 import { heartbeat } from "./security-fixtures.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { enrollWorker } from "../../cantrip_worker/src/enrollment.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { enrollWorker } from "../../tests/reference-node-worker/src/enrollment.ts";
 import {
   createHeartbeat,
   sendHeartbeat,
-} from "../../cantrip_worker/src/heartbeat.ts";
+} from "../../tests/reference-node-worker/src/heartbeat.ts";
 
 const option = (name) => {
   const i = process.argv.indexOf(name);
@@ -127,7 +127,7 @@ async function flow(fixture) {
     assert.deepEqual(offline, {
       ok: false,
       message: "Worker offline-fixture-worker is offline.",
-      code: null,
+      code: "worker-command-not-sent",
     });
     commandAdmission.offline = offline;
     const connect = () =>

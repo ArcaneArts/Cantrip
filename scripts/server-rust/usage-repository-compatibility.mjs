@@ -6,13 +6,17 @@ import path from "node:path";
 import { buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
+import { verifyGuestStorage } from "./usage-guest-storage.mjs";
+import { storedStateClocks } from "./stored-state-clocks.mjs";
 const option = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? undefined : process.argv[i + 1];
 };
 const databaseMode = option("--database") ?? "pglite",
   reportPath = option("--report");
-const executable = await buildRustExample("usage-repository-fixture");
+const executable =
+  process.env.CANTRIP_RUST_USAGE_REPOSITORY_BINARY ??
+  (await buildRustExample("usage-repository-fixture"));
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-usage-repository-"));
 const report = {
   suite: "actual-usage-repository-differential",
@@ -20,6 +24,8 @@ const report = {
   completeReplacement: false,
   root,
   cases: [],
+  startedAt: Date.now(),
+  stages: [],
 };
 const owner = "usage-owner",
   other = "usage-other",
@@ -46,6 +52,7 @@ async function compare(
   assert.equal(actual.rejected, expected.rejected, label);
   if (!rejected)
     assert.deepEqual(normalize(actual.value), normalize(expected.value), label);
+  if (process.argv.includes("--canonical-state")) await snapshots(label);
   return expected.value;
 }
 const entry = (ownerId, bytes = "9007199254740993", bucketStart = stamp) => ({
@@ -74,19 +81,31 @@ const history = (kind, principal = owner, resolution = "hour") => ({
 });
 const snapshotSql =
   "SELECT jsonb_build_object('current',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('logical_bytes',logical_bytes::text,'row_count',row_count::text) ORDER BY owner_id,storage_class,category) FROM account_storage_usage_current t),'snapshots',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('logical_bytes',logical_bytes::text,'row_count',row_count::text) ORDER BY owner_id,bucket_start,resolution,storage_class,category) FROM account_storage_usage_snapshots t),'bandwidth',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('bytes',bytes::text,'operation_count',operation_count::text) ORDER BY owner_id,bucket_start,resolution,channel,direction) FROM account_bandwidth_usage_buckets t),'receipts',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('bytes',bytes::text,'sequence',sequence::text) ORDER BY meter_id,sequence) FROM account_bandwidth_flushes t),'leases',(SELECT jsonb_agg(to_jsonb(t) ORDER BY key) FROM account_storage_reconciliation_leases t)) AS result";
-async function snapshots() {
-  return Promise.all(
+async function snapshots(label = "raw snapshot") {
+  const values = await Promise.all(
     pair.map(async (f) => {
       const result = await f.request({ op: "query-json", sql: snapshotSql });
       assert.equal(result.rejected, false, result.diagnostic);
       return result.value;
     }),
   );
+  if (process.argv.includes("--canonical-state")) {
+    const canonical = values.map((value) =>
+      storedStateClocks(value, report.startedAt),
+    );
+    report.stages.push({ label, values, canonical });
+    assert.deepEqual(
+      canonical[1],
+      canonical[0],
+      label + ": complete accounting rows",
+    );
+  }
+  return values;
 }
 async function noWrites(label, operation) {
-  const before = await snapshots();
+  const before = await snapshots(label + " before");
   await compare(label, operation, true);
-  const after = await snapshots();
+  const after = await snapshots(label + " after");
   before.forEach((value, index) =>
     assert.deepEqual(
       after[index],
@@ -147,6 +166,152 @@ try {
     assert.equal(row.rowCount, "1");
     assert.ok(BigInt(row.logicalBytes) > 0n);
   }
+  for (const principal of [owner, other])
+    await seed(
+      `INSERT INTO projects(id,owner_id,protected_label,github_repository_blind_index,created_at,updated_at) VALUES(${literal("usage-alert-" + principal)},${literal(principal)},'{}',${literal("usage-alert-" + principal)},${literal(stamp)},${literal(stamp)});`,
+    );
+  const alertBaseline = await compare("project storage before alert episodes", {
+    op: "measure",
+  });
+  for (const principal of [owner, other])
+    await seed(
+      `INSERT INTO project_alerts(id,owner_id,project_id,source,source_id,episode_id,source_revision,kind,priority,target,created_at,updated_at) VALUES(${literal("usage-alert-" + principal)},${literal(principal)},${literal("usage-alert-" + principal)},'interaction','usage-request','usage-episode',1,'permission',1,'{"kind":"interaction","chatId":null,"requestId":"usage-request"}',${literal(stamp)},${literal(stamp)});`,
+    );
+  const alertUsage = await compare(
+    "project alert episodes contribute to their authenticated owner's project storage",
+    { op: "measure" },
+  );
+  for (const principal of [owner, other]) {
+    const projectRow = (rows) =>
+      rows.find(
+        (row) =>
+          row.ownerId === principal &&
+          row.storageClass === "server" &&
+          row.category === "projects",
+      );
+    assert.equal(projectRow(alertBaseline).rowCount, "1");
+    assert.equal(projectRow(alertUsage).rowCount, "2");
+    assert.ok(
+      BigInt(projectRow(alertUsage).logicalBytes) >
+        BigInt(projectRow(alertBaseline).logicalBytes),
+    );
+  }
+  for (const principal of [owner, other]) {
+    await seed(
+      `INSERT INTO workers(id,owner_id,name,platform,architecture,started_at,last_seen_at,created_at,updated_at) VALUES(${literal("usage-goal-" + principal)},${literal(principal)},'Usage worker','linux','x64',${literal(stamp)},${literal(stamp)},${literal(stamp)},${literal(stamp)});`,
+    );
+    await seed(
+      `INSERT INTO project_sources(id,project_id,worker_id,source_kind,absolute_path,display_path,created_at,updated_at) VALUES(${literal("usage-goal-" + principal)},${literal("usage-alert-" + principal)},${literal("usage-goal-" + principal)},'git','/usage','/usage',${literal(stamp)},${literal(stamp)});`,
+    );
+    await seed(
+      `INSERT INTO project_worktrees(id,project_source_id,worker_id,name,absolute_path,display_path,is_primary,origin,lifecycle_state,created_at,updated_at) VALUES(${literal("usage-goal-" + principal)},${literal("usage-goal-" + principal)},${literal("usage-goal-" + principal)},'main','/usage','/usage',true,'cantrip','ready',${literal(stamp)},${literal(stamp)});`,
+    );
+    await seed(
+      `INSERT INTO chats(id,owner_id,project_id,active_worker_id,active_worktree_id,protected_label,created_at,updated_at) VALUES(${literal("usage-goal-" + principal)},${literal(principal)},${literal("usage-alert-" + principal)},${literal("usage-goal-" + principal)},${literal("usage-goal-" + principal)},'{}',${literal(stamp)},${literal(stamp)});`,
+    );
+  }
+  const goalBaseline = await compare(
+    "conversation storage before Goal observation",
+    {
+      op: "measure",
+    },
+  );
+  await seed(
+    `INSERT INTO chat_goal_observations(chat_id,thread_id,source_generation,source_revision,snapshot,updated_at) VALUES(${literal("usage-goal-" + owner)},'usage-native-thread','11111111-1111-4111-8111-111111111111',1,'{"kind":"chat-encrypted","goal":null}',${literal(stamp)});`,
+  );
+  const goalUsage = await compare(
+    "Goal observation is charged only to its Chat project owner",
+    {
+      op: "measure",
+    },
+  );
+  const conversationRow = (rows, principal) =>
+    rows.find(
+      (row) =>
+        row.ownerId === principal &&
+        row.storageClass === "server" &&
+        row.category === "conversations",
+    );
+  assert.equal(
+    BigInt(conversationRow(goalUsage, owner).rowCount),
+    BigInt(conversationRow(goalBaseline, owner).rowCount) + 1n,
+  );
+  assert.ok(
+    BigInt(conversationRow(goalUsage, owner).logicalBytes) >
+      BigInt(conversationRow(goalBaseline, owner).logicalBytes),
+  );
+  assert.deepEqual(
+    conversationRow(goalUsage, other),
+    conversationRow(goalBaseline, other),
+  );
+  await verifyGuestStorage({ owners: [owner, other], seed, compare, literal });
+  const beforeOwnedRows = await compare(
+    "storage before inference catalog and revocation rows",
+    { op: "measure" },
+  );
+  await seed(
+    `INSERT INTO provider_inference_catalogs(owner_id) VALUES(${literal(owner)});`,
+  );
+  await seed(
+    `INSERT INTO inference_resource_revocations(id,owner_id,worker_id,target) VALUES('usage-revocation',${literal(owner)},${literal("usage-goal-" + owner)},'{}');`,
+  );
+  const ownedRows = await compare(
+    "inference catalog and revocation storage remains tenant scoped",
+    { op: "measure" },
+  );
+  for (const [category, table] of [
+    ["configuration", "provider_inference_catalogs"],
+    ["conversations", "inference_resource_revocations"],
+  ]) {
+    const row = (rows) =>
+      rows.find(
+        (entry) =>
+          entry.ownerId === owner &&
+          entry.category === category &&
+          entry.storageClass === "server",
+      );
+    const expectedBytes = await compare(category + " inference row bytes", {
+      op: "query-json",
+      sql: `SELECT jsonb_build_object('bytes', pg_column_size(t.*)::text) result FROM ${table} t WHERE owner_id=${literal(owner)}`,
+    });
+    assert.equal(
+      BigInt(row(ownedRows).rowCount) -
+        BigInt(row(beforeOwnedRows)?.rowCount ?? 0),
+      1n,
+    );
+    assert.equal(
+      BigInt(row(ownedRows).logicalBytes) -
+        BigInt(row(beforeOwnedRows)?.logicalBytes ?? 0),
+      BigInt(expectedBytes.bytes),
+    );
+  }
+  assert.deepEqual(
+    ownedRows.filter((entry) => entry.ownerId === other),
+    beforeOwnedRows.filter((entry) => entry.ownerId === other),
+  );
+  await seed(
+    `DELETE FROM provider_inference_catalogs WHERE owner_id=${literal(owner)};`,
+  );
+  await seed(
+    "DELETE FROM inference_resource_revocations WHERE id='usage-revocation';",
+  );
+  for (const principal of [owner, other]) {
+    await seed(
+      `DELETE FROM chats WHERE id=${literal("usage-goal-" + principal)};`,
+    );
+    await seed(
+      `DELETE FROM projects WHERE id=${literal("usage-alert-" + principal)};`,
+    );
+    await seed(
+      `DELETE FROM workers WHERE id=${literal("usage-goal-" + principal)};`,
+    );
+  }
+  assert.deepEqual(
+    await compare("deleted project alert episodes leave no retained storage", {
+      op: "measure",
+    }),
+    conversationUsage,
+  );
   await compare("empty current projection", { op: "current", owner });
   const entries = [
     entry(owner),
@@ -329,12 +494,12 @@ try {
     "DROP TRIGGER fixture_usage_lease_loss ON account_storage_reconciliation_leases;",
   );
   await seed("DROP FUNCTION fixture_usage_lease_loss();");
-  const retained = await snapshots();
+  const retained = await snapshots("before actual store reopen");
   await Promise.all(pair.map((f) => f.close()));
   pair.length = 0;
   for (const options of fixtureOptions)
     pair.push(await repositoryFixture(options));
-  const reopened = await snapshots();
+  const reopened = await snapshots("after actual store reopen");
   reopened.forEach((value, index) =>
     assert.deepEqual(
       value,

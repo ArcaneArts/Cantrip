@@ -1,3 +1,4 @@
+import { useChatInferenceQueue } from "@/components/chat/inference-queue-notice";
 import type {
   ChatSummary,
   TaskAssociatedPullRequest,
@@ -47,6 +48,8 @@ import { taskCanBeDeleted } from "./task-deletion";
 import { TaskInteractionRequests } from "./task-interaction-requests";
 import { TaskListBackButton } from "./task-list-back-button";
 import { TaskOverviewSummary } from "./task-overview-summary";
+import { TaskQueuedProviderTransfer } from "./task-queued-provider-transfer";
+import { TaskGoalProviderTransfer } from "./task-goal-provider-transfer";
 import { TaskRetryStatus, taskRetryFailureLabel } from "./task-retry-status";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
@@ -127,7 +130,9 @@ export function taskImplementationStatusDescription(
   if (label === "Running") return "Implementation is running.";
   if (label === "Reconnecting")
     return "Worker disconnected; execution status is not yet confirmed.";
-  if (label === "Queued") return "Waiting for an available Task Worker.";
+  if (label === "Queued") return "Waiting to run with the selected model.";
+  if (label === "Recovering")
+    return "Waiting for runtime preparation to recover automatically.";
   if (label === "Needs approval") return "Waiting for your approval.";
   return task.planGoalEnabled
     ? "Waiting for implementation status; completion has not been confirmed."
@@ -333,7 +338,12 @@ export function TaskImplementationDashboard({
     pause.error ?? resume.error ?? stop.error ?? recover.error;
   const controlPending =
     pause.isPending || resume.isPending || stop.isPending || recover.isPending;
-  const statusLabel = taskImplementationStatusLabel(
+  const inferenceQueue = useChatInferenceQueue({
+    chatId: chat.id,
+    workerId: chat.activeWorkerId,
+    enabled: visible && chat.status !== "offline",
+  });
+  const executionStatusLabel = taskImplementationStatusLabel(
     task,
     goal,
     active,
@@ -342,6 +352,13 @@ export function TaskImplementationDashboard({
     chat.automationPaused,
     task.planGoalEnabled && chat.status === "offline",
   );
+  const statusLabel =
+    inferenceQueue.data &&
+    ["Running", "Starting"].includes(executionStatusLabel)
+      ? inferenceQueue.data.recovering
+        ? "Recovering"
+        : "Queued"
+      : executionStatusLabel;
   const showResume =
     statusLabel === "Paused" &&
     taskImplementationCanResume(task, goal, chat.automationPaused);
@@ -364,7 +381,9 @@ export function TaskImplementationDashboard({
   const showStop =
     active &&
     !chat.automationPaused &&
-    ["Running", "Needs approval", "Starting"].includes(statusLabel);
+    ["Running", "Needs approval", "Starting", "Queued", "Recovering"].includes(
+      statusLabel,
+    );
   const placement = dashboard.data?.placement;
   const directFolder = placement?.kind === "folder";
 
@@ -555,6 +574,22 @@ export function TaskImplementationDashboard({
           ) : null}
         </section>
 
+        {!task.planGoalEnabled ? (
+          <TaskQueuedProviderTransfer
+            chatId={chat.id}
+            revision={task.rowVersion}
+            queued={
+              Boolean(inferenceQueue.data) || task.dispatch?.state === "queued"
+            }
+            visible={visible}
+          />
+        ) : (
+          <TaskGoalProviderTransfer
+            chatId={chat.id}
+            queued={Boolean(inferenceQueue.data)}
+            visible={visible}
+          />
+        )}
         <TaskOverviewSummary
           chat={chat}
           task={task}

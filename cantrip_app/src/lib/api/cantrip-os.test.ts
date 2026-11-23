@@ -1,0 +1,255 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import type {
+  CantripOsSourceBindingSummary,
+  CantripOsInstanceSummary,
+} from "@cantrip/protocol";
+const identity = {
+  accountId: "owner",
+  connectionId: "connection",
+  generation: 1,
+  incarnationId: "incarnation",
+  serverId: "server",
+  serverUrl: null,
+  userId: "owner",
+};
+const mocks = vi.hoisted(() => ({
+  request: vi.fn(),
+  protect: vi.fn(),
+  grant: vi.fn(),
+  workers: vi.fn(),
+  matches: vi.fn(),
+}));
+vi.mock("@/lib/api-client", async (original) => ({
+  ...(await original<typeof import("@/lib/api-client")>()),
+  request: mocks.request,
+}));
+vi.mock("@/lib/client-session", () => ({
+  getClientSessionIdentitySnapshot: () => identity,
+  clientSessionIdentityMatches: mocks.matches,
+}));
+vi.mock("@/lib/repository-worker-encryption", () => ({
+  ensureRepositoryWorkerEncryption: mocks.grant,
+}));
+vi.mock("@/lib/repository-operation-encryption", () => ({
+  protectRepositoryOperationContent: mocks.protect,
+}));
+vi.mock("./worker-wire", () => ({
+  getWorkers: mocks.workers,
+  refreshWorkerEncryption: vi.fn(),
+}));
+import {
+  prepareCantripOsProvision,
+  recoverCantripOsBinding,
+  recoverCantripOsInstance,
+  createCantripOsWorkspace,
+  getCantripOsInstances,
+  executeCantripOsRunDefinition,
+} from "./cantrip-os";
+const operation = {
+  operationId: "00000000-0000-4000-8000-000000000005",
+  state: "unknown",
+  error: "Response lost",
+  receipt: null,
+  startedAt: "2026-11-04T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
+};
+const binding = {
+  id: "binding",
+  projectId: "project/id",
+  worktreeId: "tree",
+  workerId: "worker",
+  instanceId: "instance",
+  workspaceId: "workspace",
+  bindingGeneration: "00000000-0000-4000-8000-000000000006",
+} as CantripOsSourceBindingSummary;
+const opaque = {
+  formatVersion: 1,
+  keyRevision: 1,
+  envelope: {
+    version: 1,
+    algorithm: "AES-256-GCM",
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
+};
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.matches.mockReturnValue(true);
+  mocks.workers.mockResolvedValue([{ workerId: "worker" }]);
+  mocks.protect.mockResolvedValue(opaque);
+});
+it("seals provisioning once and retains the identical admission after response loss", async () => {
+  const intent = {
+    mode: "linux-owned" as const,
+    source: { kind: "folder" as const },
+  };
+  const provision = await prepareCantripOsProvision(binding, intent);
+  mocks.request.mockRejectedValueOnce(new TypeError("response lost"));
+  await expect(provision()).rejects.toThrow("response lost");
+  mocks.request.mockResolvedValue(operation);
+  await expect(provision()).resolves.toEqual(operation);
+  expect(mocks.request.mock.calls[0]).toEqual(mocks.request.mock.calls[1]);
+  expect(mocks.request.mock.calls[0]![0]).toBe(
+    "/api/projects/project%2Fid/cantrip-os/bindings/binding/provision",
+  );
+  expect(mocks.request.mock.calls[0]![2]).toEqual({
+    expectedIdentity: identity,
+    allowCsrfRecovery: false,
+  });
+  const body = JSON.parse(mocks.request.mock.calls[0]![1].body);
+  expect(body).toEqual({
+    operationId: expect.any(String),
+    bindingGeneration: binding.bindingGeneration,
+    protectedRequest: opaque,
+  });
+  expect(mocks.protect).toHaveBeenCalledExactlyOnceWith({
+    context: {
+      projectId: "project/id",
+      worktreeId: "tree",
+      operationId: body.operationId,
+      direction: "request",
+    },
+    schema: expect.anything(),
+    content: {
+      type: "cantrip-os.source.provision",
+      instanceId: "instance",
+      workspaceId: "workspace",
+      bindingId: "binding",
+      bindingGeneration: binding.bindingGeneration,
+      intent,
+    },
+  });
+  expect(mocks.grant).toHaveBeenCalledTimes(1);
+});
+it("rejects an account change during preparation before dispatching any mutation", async () => {
+  mocks.protect.mockImplementation(async () => {
+    mocks.matches.mockReturnValue(false);
+    return opaque;
+  });
+  await expect(
+    prepareCantripOsProvision(binding, {
+      mode: "linux-owned",
+      source: { kind: "folder" },
+    }),
+  ).rejects.toThrow("account or server changed");
+  expect(mocks.request).not.toHaveBeenCalled();
+});
+it("observes existing admissions without creating another operation", async () => {
+  mocks.request.mockResolvedValue(operation);
+  await expect(
+    recoverCantripOsBinding("project/id", "binding/id"),
+  ).resolves.toEqual(operation);
+  expect(mocks.request).toHaveBeenCalledExactlyOnceWith(
+    "/api/projects/project%2Fid/cantrip-os/bindings/binding%2Fid/recover",
+    { method: "POST", body: "{}" },
+    { expectedIdentity: identity, allowCsrfRecovery: false },
+  );
+  expect(mocks.protect).not.toHaveBeenCalled();
+});
+it("preserves an explicit workspace operation identity", async () => {
+  mocks.request.mockResolvedValue(operation);
+  await createCantripOsWorkspace("instance/id", {
+    guestWorkspaceId: "work",
+    operationId: operation.operationId,
+  });
+  expect(JSON.parse(mocks.request.mock.calls[0]![1].body)).toEqual({
+    guestWorkspaceId: "work",
+    operationId: operation.operationId,
+  });
+});
+it("validates actual server data rather than accepting a partial instance", async () => {
+  mocks.request.mockResolvedValue([{ id: "incomplete" }]);
+  await expect(getCantripOsInstances()).rejects.toThrow();
+});
+it("captures the Linux Run source and preserves the operation identity without transport replay", async () => {
+  const id = "00000000-0000-4000-8000-000000000010";
+  const source = {
+    ...binding,
+    id,
+    projectId: id,
+    projectSourceId: id,
+    bindingGeneration: id,
+    provisionedAttachmentGeneration: id,
+    provisionedRuntimeGeneration: id,
+  };
+  const request = {
+    type: "project.run-configuration-definitions.capabilities" as const,
+    projectId: id,
+    operationId: id,
+  };
+  mocks.request.mockRejectedValueOnce(new TypeError("reply lost"));
+  await expect(executeCantripOsRunDefinition(source, request)).rejects.toThrow(
+    "reply lost",
+  );
+  mocks.request.mockResolvedValue({
+    source: {
+      bindingId: id,
+      worktreeId: id,
+      projectSourceId: id,
+      runtimeGeneration: id,
+      guestPath: "/home/linux/primary",
+    },
+    result: {
+      operation: "capabilities",
+      projectId: id,
+      operationId: id,
+      capabilities: [],
+    },
+  });
+  await executeCantripOsRunDefinition(source, request);
+  expect(mocks.request.mock.calls[0]).toEqual(mocks.request.mock.calls[1]);
+  expect(mocks.request.mock.calls[0]![2]).toEqual({
+    expectedIdentity: identity,
+    allowCsrfRecovery: false,
+  });
+  expect(JSON.parse(mocks.request.mock.calls[0]![1].body)).toEqual({
+    bindingGeneration: id,
+    attachmentGeneration: id,
+    runtimeGeneration: id,
+    request,
+  });
+});
+
+it("checks recovery for the selected attachment without accepting a replacement destination", async () => {
+  const instance: CantripOsInstanceSummary = {
+    id: "instance/id",
+    ownerId: "owner",
+    workerId: "worker",
+    guestInstanceId: "00000000-0000-4000-8000-000000000001",
+    attachmentGeneration: "00000000-0000-4000-8000-000000000002",
+    runtimeGeneration: "old-runtime",
+    name: "Linux",
+    status: "unknown",
+    lastError: null,
+    lastObservedAt: null,
+    createdAt: "2026-11-05T00:00:00.000Z",
+    updatedAt: "2026-11-05T00:00:00.000Z",
+  };
+  const observed = {
+    instance,
+    workspaces: [],
+    recovery: {
+      kind: "unavailable",
+      previousRuntimeGeneration: "old-runtime",
+      observedRuntimeGeneration: null,
+      workerContinuity: "unavailable",
+      previousWorkerProcessGeneration: null,
+      observedWorkerProcessGeneration: null,
+      message: "The OS could not be verified.",
+    },
+  };
+  mocks.request.mockResolvedValue(observed);
+  await expect(recoverCantripOsInstance(instance)).resolves.toEqual(observed);
+  expect(mocks.request).toHaveBeenCalledExactlyOnceWith(
+    "/api/cantrip-os/instance%2Fid/recovery",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        attachmentGeneration: instance.attachmentGeneration,
+        runtimeGeneration: "old-runtime",
+      }),
+    },
+    { expectedIdentity: identity, allowCsrfRecovery: false },
+  );
+});

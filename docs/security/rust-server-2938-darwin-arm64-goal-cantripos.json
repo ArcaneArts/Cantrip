@@ -1,0 +1,305 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "5015c89a47c1dfd9b87448553b607aeee8c37286",
+  "candidateVersion": "1.1.2938",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "standaloneArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/cantrip-server-1.1.2938-darwin-arm64-5015c89a4.tar.gz",
+    "bytes": 66893960,
+    "sha256": "4c6fdf2072d0ddb3e1fd2d7785fe0a9838a67208855cbc92f909b9f261ba4668"
+  },
+  "taskGoalFirstInputOrdering": {
+    "result": "passed",
+    "productCells": 12,
+    "scope": "Browser Task APIs, full packaged worker and native Core with controlled model responses. The bundled PostgreSQL Node reference uses its own isolated external PostgreSQL database. Held claim and dispatch replies force the earlier autonomous Goal begin.",
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "heldPhase": "claim",
+        "peers": [
+          {
+            "runtime": "node",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/node-pglite-claim.json",
+              "bytes": 860396,
+              "sha256": "b1cb189c63a40d1ac6bb55683951bce98ea05054190b836ea6c17151d1e99726"
+            }
+          },
+          {
+            "runtime": "rust",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/rust-pglite-claim.json",
+              "bytes": 694101,
+              "sha256": "aac6dc71c781d1b5bbe31092ad4efae888004c41d95c8bbd7ace7dcb30d9eb9f"
+            }
+          }
+        ]
+      },
+      {
+        "databaseMode": "pglite",
+        "heldPhase": "dispatch",
+        "peers": [
+          {
+            "runtime": "node",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/node-pglite-dispatch.json",
+              "bytes": 852968,
+              "sha256": "d5add689e85c47b41b3fa0cd82ecb63cdecd9e1d9289e9550cc9cc8165ef09cf"
+            }
+          },
+          {
+            "runtime": "rust",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/rust-pglite-dispatch.json",
+              "bytes": 683952,
+              "sha256": "b1f4d5d6fe3c85b2ff0b5bd410cba6dc49edc68f80a78f541270e121979334b0"
+            }
+          }
+        ]
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "heldPhase": "claim",
+        "peers": [
+          {
+            "runtime": "node",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/node-bundled-postgres-claim.json",
+              "bytes": 934805,
+              "sha256": "b53bedcb3ad883e670b86bf9f8a4b8180495265d217829ddb3386bb360414884"
+            }
+          },
+          {
+            "runtime": "rust",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/claim.json",
+              "bytes": 697457,
+              "sha256": "5d9d9f7674a5608bc074e87fce02b4a977c0d2734d243d0167c069ee83604033"
+            }
+          }
+        ]
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "heldPhase": "dispatch",
+        "peers": [
+          {
+            "runtime": "node",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/node-bundled-postgres-dispatch.json",
+              "bytes": 919176,
+              "sha256": "840ddc39f7e0c13af7eae7243af755267d68325858aefb218f37906715318f29"
+            }
+          },
+          {
+            "runtime": "rust",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/dispatch.json",
+              "bytes": 690024,
+              "sha256": "a144a09f5897bc273c07db65a7804a717c563588af5019e91b724e3a76ee44a5"
+            }
+          }
+        ]
+      },
+      {
+        "databaseMode": "postgres",
+        "heldPhase": "claim",
+        "peers": [
+          {
+            "runtime": "node",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/node-postgres-claim.json",
+              "bytes": 935273,
+              "sha256": "788f6f4aefa0b5cd3c1641a53c9cca6aaf8987ebe5e1a9fd82f5b576de44f2c8"
+            }
+          },
+          {
+            "runtime": "rust",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/rust-postgres-claim.json",
+              "bytes": 691883,
+              "sha256": "72e00efd4e482be60e9eaac0f586d75fcd2f90514460d22a7710f99b69d6101d"
+            }
+          }
+        ]
+      },
+      {
+        "databaseMode": "postgres",
+        "heldPhase": "dispatch",
+        "peers": [
+          {
+            "runtime": "node",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/node-postgres-dispatch.json",
+              "bytes": 927565,
+              "sha256": "f8c59abb02aa98b74c7a9c9738f60d115a2b34ecde7d9005145fa6f5d7393091"
+            }
+          },
+          {
+            "runtime": "rust",
+            "productSteps": 16,
+            "workerStops": 5,
+            "firstInputBoundToSeparateTurn": true,
+            "laterAutonomousTurnRetained": true,
+            "modelRequests": 10,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/rust-postgres-dispatch.json",
+              "bytes": 690660,
+              "sha256": "1ed100fb9e50ee6879854fbf6a3237fc868a8762be5b83e373fb7b2627de7a54"
+            }
+          }
+        ]
+      }
+    ],
+    "executables": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-goal-first-input/executables.sha256",
+      "bytes": 755,
+      "sha256": "bb565a619858e37f979b2df3b2606e083322cf97429b99193dae16f129c66a78"
+    }
+  },
+  "cantripOsLifecycle": {
+    "result": "passed",
+    "productCells": 6,
+    "scope": "Browser SDK, full worker, actual Docker guest and isolated production server processes. Each pair compares all 44 normalized lifecycle snapshots. The local guest image is recreated from the original layer data with the separately recorded snapshot recovery.",
+    "localQaImage": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+    "originalFoundationImage": "sha256:0f167ee073c93b20e56a10742776b6487a9f66190124f98fb169fffd834692a4",
+    "imageProof": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/lifecycle-foundation-proof.json",
+      "bytes": 2156,
+      "sha256": "f7d7ed3cfeeb956985c153596b98a5a906a7bfe7085a9be2686d1f3d5da8613d"
+    },
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "matchedSnapshotsPerPeer": 44,
+        "productStepsPerPeer": 15,
+        "workerStopsPerPeer": 4,
+        "authenticatedPrivatePackageOutcomesPerPeer": 2,
+        "intentionalServerCrashesPerPeer": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/pglite-lifecycle-paired.json",
+          "bytes": 578878,
+          "sha256": "4b0585f376eb70bc10f2401802af514dfcba502d591579c80ad167c011caf34c"
+        },
+        "guestReceipts": [
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-ZI0EQv/node/os-guest/guest.json",
+            "bytes": 125595,
+            "sha256": "c0536be8773fe6edeb02e16480404dbdf58823f01b959d90718c7bca0e24f0dc"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-ZI0EQv/rust/os-guest/guest.json",
+            "bytes": 125601,
+            "sha256": "5936c725a86f0c44736767fc8d012e96c259fc0dbc28c48d74f946124b8fb60b"
+          }
+        ]
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "matchedSnapshotsPerPeer": 44,
+        "productStepsPerPeer": 15,
+        "workerStopsPerPeer": 4,
+        "authenticatedPrivatePackageOutcomesPerPeer": 2,
+        "intentionalServerCrashesPerPeer": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/bundled-postgres-lifecycle-paired.json",
+          "bytes": 651104,
+          "sha256": "48908527a4dd98bb06add3b9b6be4316450323622c065e8a03bf488935360088"
+        },
+        "guestReceipts": [
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-UZHM5H/node/os-guest/guest.json",
+            "bytes": 125605,
+            "sha256": "61563e50605a09f478f344b2aded243955772a905f774f8eeb53eae224f00d02"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-UZHM5H/rust/os-guest/guest.json",
+            "bytes": 125577,
+            "sha256": "9e1d7840bbe088fc298abd850bb9c1b3d701345284db886d9424a40e8cf89787"
+          }
+        ]
+      },
+      {
+        "databaseMode": "postgres",
+        "matchedSnapshotsPerPeer": 44,
+        "productStepsPerPeer": 15,
+        "workerStopsPerPeer": 4,
+        "authenticatedPrivatePackageOutcomesPerPeer": 2,
+        "intentionalServerCrashesPerPeer": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/postgres-lifecycle-paired.json",
+          "bytes": 648791,
+          "sha256": "290442a47f16e96b42cef6abc74c0315258b76b9be8ddbc0ca0117a077ab7635"
+        },
+        "guestReceipts": [
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-cvuud6/node/os-guest/guest.json",
+            "bytes": 125577,
+            "sha256": "0420297ed143c436631b9185ec3d36203a2fd8fa4c0d14f325e1af0e5c436ca5"
+          },
+          {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/macos-2938-cantrip-os/tmp/cantrip-actual-folder-cvuud6/rust/os-guest/guest.json",
+            "bytes": 125605,
+            "sha256": "68147aca77aa80f0730b9e71f5f7b6d5ed77727c01124f79078039f8cddbcf43"
+          }
+        ]
+      }
+    ]
+  }
+}

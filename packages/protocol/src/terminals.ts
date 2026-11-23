@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cantripOsExecutionSchema } from "./worker-command-cantrip-os.js";
 import {
   surfaceStreamOpaqueSchema,
   surfaceStreamWireRequestSchema,
@@ -16,6 +17,8 @@ import {
 const terminalPlacementSchema = z
   .object({
     worktreeId: z.string().min(1).optional(),
+    cantripOsBindingId: z.uuid().optional(),
+    cantripOsRuntimeGeneration: z.uuid().optional(),
     ...projectPaneDestinationShape,
     target: executionTargetSchema.optional(),
   })
@@ -34,7 +37,16 @@ const terminalPlacementSchema = z
         path: ["paneId"],
       });
     }
-  });
+  })
+  .refine(
+    (input) =>
+      Boolean(input.cantripOsBindingId) ===
+      Boolean(input.cantripOsRuntimeGeneration),
+    {
+      message:
+        "OS terminal placement requires both binding and runtime generation.",
+    },
+  );
 
 export const terminalCreateSchema = terminalPlacementSchema.safeExtend({
   directoryPath: repositoryRelativePathSchema.optional(),
@@ -112,7 +124,10 @@ export const terminalServiceRuntimeConfigurationSchema = z
   .object({
     terminalId: z.string().min(1),
     serverId: z.string().min(1).max(255),
-    worktreePath: z.string().min(1).max(8_192),
+    worktreePath: z.union([
+      z.string().min(1).max(8_192),
+      cantripOsExecutionSchema,
+    ]),
     stateProtection: terminalPrivateStateOpaqueSchema,
   })
   .strict();
@@ -124,6 +139,8 @@ export const terminalKindSchema = z.enum([
 ]);
 
 const terminalSummaryBaseSchema = z.object({
+  cantripOsBindingId: z.uuid().optional(),
+  cantripOsRuntimeGeneration: z.uuid().optional(),
   id: z.string().min(1),
   projectId: z.string().min(1),
   kind: terminalKindSchema,
@@ -301,6 +318,12 @@ export const terminalHydrationMetadataSchema = z.discriminatedUnion("format", [
   }),
 ]);
 
+const terminalExecutionOutcomeSchema = z.enum([
+  "exited",
+  "interrupted",
+  "unknown",
+]);
+
 export const terminalServerMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ready") }),
   z.object({
@@ -312,6 +335,7 @@ export const terminalServerMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("exit"),
+    executionOutcome: terminalExecutionOutcomeSchema.optional(),
     exitCode: z.number().int(),
     signal: z.number().int().nullable(),
   }),
@@ -322,6 +346,7 @@ export const terminalOpenResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("detached") }),
   z.object({
     status: z.literal("exited"),
+    executionOutcome: terminalExecutionOutcomeSchema.optional(),
     exitCode: z.number().int(),
     signal: z.number().int().nullable(),
   }),
@@ -330,6 +355,7 @@ export const terminalOpenResultSchema = z.discriminatedUnion("status", [
 export const terminalSnapshotResultSchema = z.object({
   terminalId: z.string().min(1).max(200),
   status: z.enum(["running", "restarting", "exited", "not-running"]),
+  executionOutcome: terminalExecutionOutcomeSchema.optional(),
   data: z.string().max(100_000),
   truncated: z.boolean(),
   exitCode: z.number().int().nullable(),

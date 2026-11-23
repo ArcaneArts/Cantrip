@@ -1,0 +1,319 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "driverSourceCommit": "1b5b3e2667dc6ce2605ad5c7a21aa9b450f6a4f1",
+  "platform": "darwin-arm64",
+  "scope": "Packaged Rust executable and Node reference with the existing browser SDK and a packaged Node worker. The test seeds disposable repository and tunnel fixtures and uses an actual local TCP endpoint and worker files.",
+  "workerVersion": "1.1.2976",
+  "inputs": [
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/bin/cantrip",
+      "bytes": 1342656,
+      "sha256": "45e20cf3027b13938e705bb400830273c3458dd8ad2f3760f350ce619f639b3d"
+    },
+    {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    {
+      "path": "rust-server-worker-remaining-contracts-20261110-v1/current-binaries/project-repository-fixture",
+      "bytes": 70740960,
+      "sha256": "31842fbe6659019ec27ab657b2dc4f3567d9cadd2a316b6af399b98447ba3aa0"
+    }
+  ],
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "runtimes": [
+        {
+          "runtime": "node",
+          "steps": 21,
+          "workspaceDraftRetained": true,
+          "shareTransfers": [
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "legacy",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40031,
+              "sha256": "cfd81088df398a035a437be1984130482dda2102fd3c34af0a5a2616b03a3b91",
+              "authenticatedWrite": true,
+              "listing": true
+            }
+          ],
+          "retainedFilesAfterLiveWorkerServerRestart": true,
+          "revokedGrantsAndAttachments": true,
+          "encryptedTcpHalfClose": true,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        },
+        {
+          "runtime": "rust",
+          "steps": 21,
+          "workspaceDraftRetained": true,
+          "shareTransfers": [
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "legacy",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40031,
+              "sha256": "cfd81088df398a035a437be1984130482dda2102fd3c34af0a5a2616b03a3b91",
+              "authenticatedWrite": true,
+              "listing": true
+            }
+          ],
+          "retainedFilesAfterLiveWorkerServerRestart": true,
+          "revokedGrantsAndAttachments": true,
+          "encryptedTcpHalfClose": true,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shares-and-tunnels-3059.f7ZLZE9J/pglite.json",
+        "bytes": 650697,
+        "sha256": "0fab3b47148a38ee67f844b217ce56a5572765786dc90fd93928049a6ee41b8a"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shares-and-tunnels-3059.f7ZLZE9J/pglite.log",
+        "bytes": 10603,
+        "sha256": "daaeae55a818764e8ad22b97d7c986f540e0902d800b83760a9130c96f7d0eeb"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "runtimes": [
+        {
+          "runtime": "node",
+          "steps": 21,
+          "workspaceDraftRetained": true,
+          "shareTransfers": [
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "legacy",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40031,
+              "sha256": "cfd81088df398a035a437be1984130482dda2102fd3c34af0a5a2616b03a3b91",
+              "authenticatedWrite": true,
+              "listing": true
+            }
+          ],
+          "retainedFilesAfterLiveWorkerServerRestart": true,
+          "revokedGrantsAndAttachments": true,
+          "encryptedTcpHalfClose": true,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        },
+        {
+          "runtime": "rust",
+          "steps": 21,
+          "workspaceDraftRetained": true,
+          "shareTransfers": [
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "legacy",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40031,
+              "sha256": "cfd81088df398a035a437be1984130482dda2102fd3c34af0a5a2616b03a3b91",
+              "authenticatedWrite": true,
+              "listing": true
+            }
+          ],
+          "retainedFilesAfterLiveWorkerServerRestart": true,
+          "revokedGrantsAndAttachments": true,
+          "encryptedTcpHalfClose": true,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shares-and-tunnels-3059.f7ZLZE9J/bundled-postgres.json",
+        "bytes": 722014,
+        "sha256": "17ea7033eddeb43b77da7f8fa4d92013e278792f99d08b13f8b2500bd20d06e3"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shares-and-tunnels-3059.f7ZLZE9J/bundled-postgres.log",
+        "bytes": 10929,
+        "sha256": "048fcdc9fd3ee082beac79c5136cc014ecfb740776c88e0429f09a76df1ab42a"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "runtimes": [
+        {
+          "runtime": "node",
+          "steps": 21,
+          "workspaceDraftRetained": true,
+          "shareTransfers": [
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "legacy",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40031,
+              "sha256": "cfd81088df398a035a437be1984130482dda2102fd3c34af0a5a2616b03a3b91",
+              "authenticatedWrite": true,
+              "listing": true
+            }
+          ],
+          "retainedFilesAfterLiveWorkerServerRestart": true,
+          "revokedGrantsAndAttachments": true,
+          "encryptedTcpHalfClose": true,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        },
+        {
+          "runtime": "rust",
+          "steps": 21,
+          "workspaceDraftRetained": true,
+          "shareTransfers": [
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "legacy",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40026,
+              "sha256": "d7560e7b09edaa3b7eaa62390d86102b9b59edd0ac779d6f6ac3f13d33a0bce0",
+              "authenticatedWrite": true,
+              "listing": true
+            },
+            {
+              "kind": "link",
+              "bytes": 40031,
+              "sha256": "cfd81088df398a035a437be1984130482dda2102fd3c34af0a5a2616b03a3b91",
+              "authenticatedWrite": true,
+              "listing": true
+            }
+          ],
+          "retainedFilesAfterLiveWorkerServerRestart": true,
+          "revokedGrantsAndAttachments": true,
+          "encryptedTcpHalfClose": true,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shares-and-tunnels-3059.f7ZLZE9J/postgres.json",
+        "bytes": 714955,
+        "sha256": "04917d01a38cea6aaf77d17fa8e5542db6b00ec1ca7d239c1eda2e1899d8e268"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shares-and-tunnels-3059.f7ZLZE9J/postgres.log",
+        "bytes": 12614,
+        "sha256": "9393063c44124c6d1a25b2598828358b690edf2c7cf4360e904604932b7544dc"
+      }
+    }
+  ]
+}

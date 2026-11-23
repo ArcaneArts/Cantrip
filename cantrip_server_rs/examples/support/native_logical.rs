@@ -7,6 +7,11 @@ use cantrip_server::{
 use futures::FutureExt;
 use std::sync::Arc;
 pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
+    if input["op"] == "native-command-logical-managed-finish" {
+        return super::managed_gui_finish::run(database, input)
+            .boxed()
+            .await;
+    }
     let repository = Repository::new(database.clone());
     let owner = input["owner"].as_str().context("Command fixture owner")?;
     let worker = input["worker"].as_str().unwrap_or("");
@@ -63,12 +68,24 @@ pub async fn run(database: Arc<Database>, input: &Value) -> Result<Value> {
                 .unwrap_or(Value::Null),
             "native-command-logical-finish" => Value::Bool(
                 repository
-                    .finish_logical_gui(
+                    .finish_logical_gui_with_transport(
                         owner,
                         worker,
                         operation,
                         input["generation"].as_str().context("Logical generation")?,
                         input["status"].as_str().context("Logical status")?,
+                        input["transportEnded"].as_bool().unwrap_or(false),
+                    )
+                    .boxed()
+                    .await?,
+            ),
+            "native-command-logical-transport-pending" => Value::Bool(
+                repository
+                    .pending_logical_gui_after_transport_loss(
+                        owner,
+                        worker,
+                        operation,
+                        input["generation"].as_str().context("Logical generation")?,
                     )
                     .boxed()
                     .await?,

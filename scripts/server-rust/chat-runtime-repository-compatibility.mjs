@@ -26,12 +26,17 @@ const databaseMode = option("--database") ?? "pglite",
   reportPath = option("--report"),
   started = Date.now();
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-chat-runtime-"));
+// Each fixture owns its extracted runtime; concurrent tests cannot retire it.
+process.env.PGLITE_RUNTIME_DIR = path.join(root, "native-runtime");
 const report = {
   suite: "chat-runtime-repository",
   databaseMode,
+  root,
+  scope: option("--scope") ?? "all",
   completeReplacement: false,
   cases: [],
   snapshots: [],
+  cleanupFailures: [],
 };
 const pair = [],
   urls = [],
@@ -176,6 +181,9 @@ try {
   await seed(
     `INSERT INTO chat_execution_lanes(id,chat_id,worker_id,worktree_id,scratch_root_id,acquiring_actor,state,created_at,updated_at) VALUES('lane','chat','alpha','github-alpha-main',NULL,'fixture','active',${literal(stamp)},${literal(stamp)}),('scratch-lane',${literal(standalone)},'alpha',NULL,${literal(scratch)},'fixture','active',${literal(stamp)},${literal(stamp)});`,
   );
+  // Migration 0235 gives this field a live default. Both isolated stores must
+  // start with the same input; retain exact snapshot comparisons of the field.
+  await seed(`UPDATE chats SET last_used_at=${literal(stamp)}`);
   for (const id of ["missing", "disabled-model", "foreign-model"])
     assert.equal(await model("unavailable model " + id, { model: id }), null);
   assert.equal(await model("missing chat", { chat: "missing" }), null);
@@ -374,6 +382,7 @@ try {
     json,
     standalone,
     stamp,
+    heldOnly: option("--scope") === "held-console",
   });
   if (databaseMode === "postgres")
     await chatRuntimeLocks({ pair, urls, owner, report, standalone });
@@ -404,16 +413,20 @@ try {
       [...(failure ? [failure] : []), ...errors],
       "Runtime repository scenario/cleanup failed",
     );
-  await rm(root, { recursive: true, force: true });
+  report.cleanupFailures = errors.map((error) => error.stack ?? String(error));
+  report.passed = !failure;
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 console.log(
   JSON.stringify({
     suite: report.suite,
     databaseMode,
+    scope: report.scope,
     cases: report.cases.length,
     snapshots: report.snapshots.length,
     error: report.error?.message,

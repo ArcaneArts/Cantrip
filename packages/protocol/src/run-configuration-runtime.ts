@@ -1,3 +1,4 @@
+import { cantripOsRunSelectionSchema } from "./cantrip-os-run-selection.js";
 import { z } from "zod";
 
 import {
@@ -74,6 +75,8 @@ export const runConfigurationRuntimeIdentitySchema = z
 
 export const runConfigurationRuntimeSchema = z
   .object({
+    osDefinition: cantripOsRunSelectionSchema.options[0].optional(),
+    osTargetGuestPath: z.string().min(1).optional(),
     id: z.string().uuid(),
     ...runConfigurationRuntimeIdentitySchema.shape,
     workerId: z.string().trim().min(1).max(200),
@@ -94,6 +97,7 @@ export const runConfigurationRuntimeSchema = z
   .strict();
 
 const runConfigurationLifecycleRequestFields = {
+  osSource: cantripOsRunSelectionSchema.optional(),
   operationId: runConfigurationOperationIdSchema,
   projectId: runConfigurationRuntimeIdentitySchema.shape.projectId,
   configurationId: runConfigurationRuntimeIdentitySchema.shape.configurationId,
@@ -125,6 +129,8 @@ export const runConfigurationRuntimeLifecycleRequestSchema =
 
 export const runConfigurationRuntimeStatusQuerySchema = z
   .object({
+    runtimeId: z.uuid().optional(),
+    osSource: cantripOsRunSelectionSchema.optional(),
     operationId: runConfigurationOperationIdSchema,
     projectId: runConfigurationRuntimeIdentitySchema.shape.projectId,
     configurationId:
@@ -142,6 +148,7 @@ export const runConfigurationRuntimeStatusQuerySchema = z
 
 export const runConfigurationRuntimeOutputQuerySchema = z
   .object({
+    osSource: cantripOsRunSelectionSchema.optional(),
     operationId: runConfigurationOperationIdSchema,
     ...runConfigurationRuntimeIdentitySchema.shape,
     tail: z

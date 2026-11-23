@@ -5,6 +5,7 @@ import {
   CUA_CONTROL_BYTES,
   CUA_MAX_CHUNKS,
   CUA_REQUIRED_OPERATIONS,
+  CUA_MAX_CLIPBOARD_BYTES,
   computerUseActionSchema,
   computerUseChunkEventSchema,
   computerUseHttpResultSchema,
@@ -91,6 +92,93 @@ const capabilities = {
   maxSessions: 16,
   maxImageBytes: CUA_CHUNK_BYTES * CUA_MAX_CHUNKS,
 };
+
+describe("scoped Linux desktop operations", () => {
+  const scope = { sessionId: "session", ...targetRef };
+  it("bounds clipboard bytes and requires exact session/target identity", () => {
+    expect(
+      computerUseActionSchema.parse({
+        operation: "clipboard.write",
+        ...scope,
+        text: "日本語 café 🦀\n",
+      }),
+    ).toMatchObject({ text: "日本語 café 🦀\n" });
+    for (const text of [
+      "x".repeat(CUA_MAX_CLIPBOARD_BYTES + 1),
+      "🦀".repeat(CUA_MAX_CLIPBOARD_BYTES / 4 + 1),
+      "\ud800",
+    ])
+      expect(
+        computerUseActionSchema.safeParse({
+          operation: "clipboard.write",
+          ...scope,
+          text,
+        }).success,
+      ).toBe(false);
+    expect(
+      computerUseActionSchema.safeParse({ operation: "clipboard.read" })
+        .success,
+    ).toBe(false);
+    expect(
+      computerUseActionSchema.safeParse({
+        operation: "clipboard.read",
+        ...scope,
+        workerId: "other",
+      }).success,
+    ).toBe(false);
+    expect(
+      computerUseResultContentSchema.safeParse({
+        status: "ok",
+        operation: "clipboard.read",
+        data: { session, text: "日本語" },
+        chunkCount: 0,
+      }).success,
+    ).toBe(true);
+    expect(
+      computerUseResultContentSchema.safeParse({
+        status: "ok",
+        operation: "clipboard.read",
+        data: { session },
+        chunkCount: 0,
+      }).success,
+    ).toBe(false);
+  });
+  it("keeps resize and pointer movement explicit and bounded", () => {
+    expect(
+      computerUseActionSchema.parse({
+        operation: "desktop.resize",
+        ...scope,
+        width: 1280,
+        height: 720,
+      }).operation,
+    ).toBe("desktop.resize");
+    for (const width of [0, 31, 8193, 100.5, Infinity])
+      expect(
+        computerUseActionSchema.safeParse({
+          operation: "desktop.resize",
+          ...scope,
+          width,
+          height: 720,
+        }).success,
+      ).toBe(false);
+    expect(
+      cuaInputCommandSchema.parse({ kind: "move", point: { x: 321, y: 234 } }),
+    ).toEqual({ kind: "move", point: { x: 321, y: 234 } });
+    expect(
+      cuaInputCommandSchema.safeParse({ kind: "move", point: { x: NaN, y: 0 } })
+        .success,
+    ).toBe(false);
+    expect(
+      cuaSessionSchema.safeParse({
+        ...session,
+        cursor: {
+          ...session.cursor,
+          action: { atMs: 0, method: "background-move", outcome: "dispatched" },
+        },
+      }).success,
+    ).toBe(true);
+  });
+});
 
 const agentCaptured = {
   ...session,

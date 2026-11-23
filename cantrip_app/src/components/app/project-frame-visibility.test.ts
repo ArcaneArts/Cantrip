@@ -33,6 +33,13 @@ describe("project frame visibility", () => {
     });
   });
 
+  it("keeps panes and rails visible behind the Overview dialog", () => {
+    const state = { ...visibleProjectFrame, showProjectOverview: true };
+    expect(
+      projectFrameVisibility({ ...state, workspaceDestination: "surface" }),
+    ).toEqual({ docked: true, railsVisible: true });
+  });
+
   it("shows the pane workspace and rails for a selected project surface", () => {
     expect(
       projectFrameVisibility({
@@ -42,7 +49,7 @@ describe("project frame visibility", () => {
     ).toEqual({ docked: true, railsVisible: true });
   });
 
-  it.each(["showSettings", "showProjectSettings", "showProjectOverview"])(
+  it.each(["showSettings", "showProjectSettings"])(
     "hides panes and rails while %s owns the content area",
     (setting) => {
       expect(

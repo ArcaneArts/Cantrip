@@ -1,8 +1,8 @@
 diff --git a/codex-rs/model-provider/src/capabilities.rs b/codex-rs/model-provider/src/capabilities.rs
-index f8e8891fb048278e9d890cff7124910cb9be0e32..0f8b6e9b930f0e343e04cde8b8ff77423a6bea13 100644
+index 311a83fe459c2e15e7e9d2690dd78f45cd062af0..2642f58d8ec820db9d32696277b107c47dee7b89 100644
 --- a/codex-rs/model-provider/src/capabilities.rs
 +++ b/codex-rs/model-provider/src/capabilities.rs
-@@ -29,10 +29,11 @@ impl Default for ProviderCapabilities {
+@@ -32,10 +32,11 @@ impl Default for ProviderCapabilities {
  
  impl ProviderCapabilities {
      pub(crate) fn from_config(info: &ModelProviderInfo) -> Self {
@@ -18,10 +18,10 @@ index f8e8891fb048278e9d890cff7124910cb9be0e32..0f8b6e9b930f0e343e04cde8b8ff7742
              } else {
                  RemoteCompactionSupport::Unsupported
 diff --git a/codex-rs/model-provider/src/provider.rs b/codex-rs/model-provider/src/provider.rs
-index f8f0790dde816a26b9e10b38df5d3030d4fc2f95..05f854038819f7c3630c10e4aacb51612b774c9f 100644
+index f455ab60b6fef1929f69ab56137892f0fb756727..1c3dc1fc3b467260bbbb6ed240c0a948e7c86f2a 100644
 --- a/codex-rs/model-provider/src/provider.rs
 +++ b/codex-rs/model-provider/src/provider.rs
-@@ -725,6 +725,27 @@ mod tests {
+@@ -910,6 +910,27 @@ mod tests {
          );
      }
  

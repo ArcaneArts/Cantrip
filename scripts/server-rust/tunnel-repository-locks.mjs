@@ -10,7 +10,7 @@ import {
   tunnelExpiry,
 } from "./tunnel-state.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const deferred = () => {
   let resolve, reject;

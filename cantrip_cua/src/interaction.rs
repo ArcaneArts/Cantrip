@@ -1,11 +1,11 @@
 //! Trusted worker participant adapter. Remote grants are verified by the worker;
 //! this endpoint is not exposed to JavaScript and never fabricates agent authority.
 use crate::{
-    backend::CaptureBackend,
+    backend::{CaptureBackend, RemoteMonitorInput},
     cancellation::Cancellation,
     cursor::{CursorAppearance, CursorState},
     error::{CuaError, ErrorCode, Result},
-    target::{MAX_SEQUENCE, Target, TargetKind, validate_id},
+    target::{MAX_SEQUENCE, Point, Target, TargetKind, validate_id},
 };
 use cantrip_interaction::{
     input::{InputEvent, InputScope},
@@ -14,6 +14,9 @@ use cantrip_interaction::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+
+pub(crate) const MAX_HOST_CLIPBOARD_UNITS: usize = 1_000_000;
+pub(crate) const MAX_HOST_CLIPBOARD_BYTES: usize = 3 * MAX_HOST_CLIPBOARD_UNITS;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -55,6 +58,13 @@ pub enum Request {
         sequence: u64,
         event: InputEvent,
     },
+    /// Cosmetic position only; never posts input or advances its sequence.
+    Present {
+        binding: Binding,
+        handle: u64,
+        sequence: u64,
+        point: Point,
+    },
     Close {
         binding: Binding,
         handle: u64,
@@ -63,6 +73,15 @@ pub enum Request {
     CloseBinding {
         binding: Binding,
     },
+    ClipboardRead {
+        binding: Binding,
+        handle: u64,
+    },
+    ClipboardCopy {
+        binding: Binding,
+        handle: u64,
+        sequence: u64,
+    },
 }
 struct Participant {
     binding: Binding,
@@ -70,6 +89,8 @@ struct Participant {
     target: Target,
     cursor: CursorState,
     sequence: u64,
+    presentation: CursorState,
+    presentation_sequence: u64,
 }
 #[derive(Default)]
 pub struct Participants {
@@ -114,7 +135,11 @@ impl Participants {
                     participant_id: state.native_id.clone(),
                     appearance_identity: state.binding.participant_id.clone(),
                     target: Some(state.target.clone()),
-                    cursor: state.cursor.clone(),
+                    cursor: if state.presentation_sequence > 0 {
+                        state.presentation.clone()
+                    } else {
+                        state.cursor.clone()
+                    },
                 })
                 .collect(),
         );
@@ -127,6 +152,18 @@ impl Participants {
         cancel: &Cancellation,
         now: u64,
     ) -> Result<Value> {
+        let closed: Vec<_> = self
+            .live
+            .iter()
+            .filter_map(|(&handle, state)| {
+                backend
+                    .remote_input_closed(&state.native_id)
+                    .then_some(handle)
+            })
+            .collect();
+        for handle in closed {
+            self.close(backend, handle)?;
+        }
         match request {
             Request::Open {
                 binding,
@@ -144,11 +181,27 @@ impl Participants {
                 }
                 let target = backend.resolve_target(&target_id, target_generation, cancel)?;
                 target.validate()?;
-                if target.kind != TargetKind::Window {
-                    return Err(CuaError::new(
-                        ErrorCode::Unsupported,
-                        "Independent input requires a window target; global input is not substituted.",
-                    ));
+                if target.kind == TargetKind::Monitor {
+                    match backend.remote_monitor_input() {
+                        RemoteMonitorInput::Unsupported => {
+                            return Err(CuaError::new(
+                                ErrorCode::Unsupported,
+                                "This display is view-only.",
+                            ));
+                        }
+                        RemoteMonitorInput::ExclusiveHost
+                            if self
+                                .live
+                                .values()
+                                .any(|state| state.target.kind == TargetKind::Monitor) =>
+                        {
+                            return Err(CuaError::new(
+                                ErrorCode::OwnershipMismatch,
+                                "Another viewer controls the Host display.",
+                            ));
+                        }
+                        _ => {}
+                    }
                 }
                 if target.id != target_id || target.generation != target_generation {
                     return Err(CuaError::new(
@@ -157,14 +210,23 @@ impl Participants {
                     ));
                 }
                 cancel.check()?;
-                self.next_handle = self
+                let handle = self
                     .next_handle
                     .checked_add(1)
                     .filter(|v| *v <= MAX_SEQUENCE)
                     .ok_or_else(|| {
                         CuaError::new(ErrorCode::Capacity, "Interaction handles exhausted.")
                     })?;
-                let handle = self.next_handle;
+                let native_id = format!("remote\0{handle}");
+                match target.kind {
+                    TargetKind::Monitor => {
+                        backend.open_remote_monitor(&binding, &native_id, &target, cancel)?;
+                    }
+                    TargetKind::Window => {
+                        backend.open_remote_window(&native_id, &target, cancel)?
+                    }
+                }
+                self.next_handle = handle;
                 let cursor = CursorState {
                     appearance: CursorAppearance::for_identity(&binding.participant_id),
                     ..CursorState::default()
@@ -174,16 +236,19 @@ impl Participants {
                     handle,
                     Participant {
                         binding,
-                        native_id: format!("remote\0{handle}"),
+                        native_id,
                         target,
+                        presentation: cursor.clone(),
                         cursor,
                         sequence: 0,
+                        presentation_sequence: 0,
                     },
                 );
                 Ok(result)
             }
             Request::CloseBinding { binding } => {
                 binding.validate()?;
+                backend.cancel_remote_monitor_open(&binding);
                 let handles: Vec<_> = self
                     .live
                     .iter()
@@ -205,6 +270,98 @@ impl Participants {
                 // Cleanup is allowed even if the originating request was cancelled.
                 self.close(backend, handle)?;
                 Ok(json!({"closed":true}))
+            }
+            Request::ClipboardRead { binding, handle } => {
+                let state = self.get(handle, &binding)?;
+                cancel.check()?;
+                if backend.remote_monitor_input() != RemoteMonitorInput::AssignedGuest
+                    || state.target.kind != TargetKind::Monitor
+                {
+                    return Err(CuaError::new(
+                        ErrorCode::Unsupported,
+                        "Participant clipboard access requires an assigned guest display.",
+                    ));
+                }
+                let target = backend.resolve_interaction_target(&state.target, cancel)?;
+                if target.id != state.target.id || target.generation != state.target.generation {
+                    return Err(CuaError::new(
+                        ErrorCode::StaleTarget,
+                        "Interaction target was replaced.",
+                    ));
+                }
+                Ok(json!({"text":backend.clipboard_read(&target,cancel)?}))
+            }
+            Request::ClipboardCopy {
+                binding,
+                handle,
+                sequence,
+            } => {
+                let state = self.get(handle, &binding)?;
+                if sequence > MAX_SEQUENCE || sequence.saturating_sub(1) <= state.sequence {
+                    return Err(CuaError::invalid("Stale clipboard copy sequence."));
+                }
+                if state.target.kind == TargetKind::Monitor
+                    && backend.remote_monitor_input() != RemoteMonitorInput::ExclusiveHost
+                {
+                    return Err(CuaError::new(
+                        ErrorCode::Unsupported,
+                        "Clipboard copy requires a selected window.",
+                    ));
+                }
+                self.live.get_mut(&handle).unwrap().sequence = sequence;
+                let state = self.live.get(&handle).unwrap();
+                let target = backend.resolve_interaction_target(&state.target, cancel)?;
+                target.validate()?;
+                if target.id != state.target.id
+                    || target.generation != state.target.generation
+                    || target.process_id != state.target.process_id
+                    || target.kind != state.target.kind
+                {
+                    return Err(CuaError::new(
+                        ErrorCode::StaleTarget,
+                        "Interaction target was replaced.",
+                    ));
+                }
+                cancel.check()?;
+                let text = backend.copy_selection_text(
+                    &state.native_id,
+                    &target,
+                    state.cursor.position,
+                    sequence,
+                    cancel,
+                )?;
+                cancel.check()?;
+                if text.as_ref().is_some_and(|text| {
+                    text.len() > MAX_HOST_CLIPBOARD_BYTES
+                        || text.encode_utf16().count() > MAX_HOST_CLIPBOARD_UNITS
+                }) {
+                    return Err(CuaError::new(
+                        ErrorCode::Capacity,
+                        "Clipboard text exceeds the supported limit.",
+                    ));
+                }
+                Ok(json!({"handle":handle,"sequence":sequence,"text":text}))
+            }
+            Request::Present {
+                binding,
+                handle,
+                sequence,
+                point,
+            } => {
+                let state = self.get(handle, &binding)?;
+                if sequence == 0
+                    || sequence > MAX_SEQUENCE
+                    || sequence <= state.presentation_sequence
+                {
+                    return Err(CuaError::invalid("Stale cursor presentation sequence."));
+                }
+                cancel.check()?;
+                let state = self.live.get_mut(&handle).unwrap();
+                state
+                    .presentation
+                    .move_to(point, &state.target.bounds, now)?;
+                state.presentation_sequence = sequence;
+                Ok(json!({"handle":handle,"sequence":sequence}))
             }
             Request::Input {
                 binding,
@@ -235,7 +392,9 @@ impl Participants {
                     if target.id != state.target.id
                         || target.generation != state.target.generation
                         || target.process_id != state.target.process_id
-                        || target.kind != TargetKind::Window
+                        || target.kind != state.target.kind
+                        || (target.kind == TargetKind::Monitor
+                            && backend.remote_monitor_input() == RemoteMonitorInput::Unsupported)
                     {
                         return Err(CuaError::new(
                             ErrorCode::StaleTarget,
@@ -267,6 +426,13 @@ impl Participants {
                         state
                             .cursor
                             .mark_action("remote-pointer", "dispatched", now);
+                        // Only flash a dispatched click if the live pointer is
+                        // still there. A delayed receipt cannot rewind it.
+                        if state.presentation.position == state.cursor.position {
+                            state
+                                .presentation
+                                .mark_action("remote-pointer", "dispatched", now);
+                        }
                     }
                     Ok(
                         json!({"handle":handle,"sequence":sequence,"outcome":"dispatched","windowDelivery":"unverified","cursor":state.cursor}),

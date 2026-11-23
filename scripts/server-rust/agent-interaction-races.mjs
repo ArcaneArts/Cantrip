@@ -11,7 +11,7 @@ import {
   protectedInteractionResponse,
 } from "./agent-interaction-fixtures.mjs";
 const require = createRequire(
-    new URL("../../cantrip_server/package.json", import.meta.url),
+    new URL("../../tests/reference-node-server/package.json", import.meta.url),
   ),
   postgres = require("postgres");
 async function waiters(sql, count) {

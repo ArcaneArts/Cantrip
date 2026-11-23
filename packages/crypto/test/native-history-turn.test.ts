@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { protectNativeHistoryTurnMetadata } from "../../../cantrip_worker/src/native-history-turn-content.js";
+import { protectNativeHistoryTurnMetadata } from "../../../tests/reference-node-worker/src/native-history-turn-content.js";
 import { decryptNativeHistoryTurn } from "../src/native-history-turn.js";
 const binding = {
   id: "binding",

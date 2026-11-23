@@ -45,7 +45,7 @@ pub fn route_availability(runtime: &Value, availability: &[Value], worker: &str)
 pub fn route_availability_for_worker(
     runtime: &Value,
     availability: &[Value],
-    worker: &Value,
+    _worker: &Value,
 ) -> Value {
     let provider = &runtime["provider"];
     let model = &runtime["model"];
@@ -53,17 +53,6 @@ pub fn route_availability_for_worker(
         || account_provider(&provider["kind"])
     {
         None
-    } else if provider["kind"] == "ollama" {
-        (!availability
-            .iter()
-            .find(|entry| entry.get("workerId") == Some(worker))
-            .is_some_and(|entry| entry["state"] == "available"))
-        .then(|| {
-            format!(
-                "{} is not available on this worker",
-                display(&model["name"])
-            )
-        })
     } else if provider["kind"] == "openai-compatible"
         && provider["baseUrl"]
             .as_str()

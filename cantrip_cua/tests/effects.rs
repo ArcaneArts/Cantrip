@@ -35,6 +35,7 @@ fn session(id: &str) -> SessionState {
             pixel_width: 1600,
             pixel_height: 1200,
             scale_factor: 2.0,
+            access: None,
             focused: None,
             minimized: None,
         }),

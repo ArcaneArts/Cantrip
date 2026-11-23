@@ -1,3 +1,4 @@
+import { AlertInbox } from "@/components/alerts/alert-inbox";
 import { PanelToolbar } from "@/components/workspace/panel-toolbar";
 import {
   UnresolvedProjectSurface,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { Suspense, type ReactNode } from "react";
 import { EmptyWorkspace } from "./empty-workspace";
+import { CantripLoading } from "@/components/ui/cantrip-loading";
 import { RunTerminalView } from "@/components/app/application-shell-surfaces";
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
 import {
@@ -32,7 +34,6 @@ import { MobileBottomNavigation } from "@/components/mobile/mobile-bottom-naviga
 import { MobileProjectSelector } from "@/components/mobile/mobile-project-selector";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
-import { ProjectOverviewWorkspace } from "./project-overview-workspace";
 import { ProjectTasksDashboard } from "@/components/projects/project-tasks-dashboard";
 import { ProjectCreateMenu } from "@/components/projects/project-create-menu";
 import { RepositoryImporter } from "@/components/projects/repository-importer";
@@ -249,11 +250,10 @@ export function GlobalContentHost({
   const queryClient = untypedQueryClient as QueryClient;
   return (
     <>
-      {bindings.showProjectOverview && selectedProject ? (
-        <ProjectOverviewWorkspace bindings={bindings} />
-      ) : mobileProjectSelectorOpen ? (
+      {mobileProjectSelectorOpen ? (
         <MobileProjectSelector
           activeWorkspace={activeProjectWorkspace}
+          alertCounts={bindings.projectAlertCounts}
           currentUserName={
             bootstrap.data?.auth.currentUser?.displayName ?? "Cantrip User"
           }
@@ -452,6 +452,9 @@ export function GlobalContentHost({
           onOpenTunnelOwner={openTunnelOwner}
           onOpenImportedChat={(chatId) =>
             openCreatedTab(selectedProject.id, "chat", chatId)
+          }
+          onOpenDesktop={(desktopId) =>
+            openCreatedTab(selectedProject.id, "remote-desktop", desktopId)
           }
           onOpenPolicySettings={(policyId) => {
             setSettingsPolicyId(policyId ?? null);
@@ -655,6 +658,7 @@ export function GlobalContentHost({
               }
             >
               <RunTerminalView
+                onEditConfiguration={setRunConfigurationEditorId}
                 definitionAvailable={selectedRunDefinitionAvailable}
                 definitionProblem={
                   runConfigurations.isError
@@ -681,7 +685,11 @@ export function GlobalContentHost({
             </Suspense>
           ) : selectedTerminal ? null : selectedChat ? null : selectedProject ? (
             <ProjectOverviewHost>
-              {selectedProject.setupStatus !== "ready" ? (
+              {selectedProject.setupStatus !== "ready" &&
+              !(
+                projectOverviewSelected &&
+                activeProjectOverviewSection === "alerts"
+              ) ? (
                 <EmptyState>
                   <EmptyStateContent>
                     <EmptyStateIcon>
@@ -820,6 +828,50 @@ export function GlobalContentHost({
                 </EmptyState>
               ) : projectOverviewSelected ? (
                 <div className="flex min-h-0 flex-1 flex-col">
+                  {activeProjectOverviewSection === "alerts" ? (
+                    <AlertInbox
+                      key={selectedProject.id}
+                      projectId={selectedProject.id}
+                      activeCount={
+                        bindings.projectAlertCounts?.get(selectedProject.id) ??
+                        0
+                      }
+                      chats={chats.data ?? []}
+                      workers={workers.data ?? []}
+                      settings={settings.data}
+                      onRename={(chatId, title) =>
+                        renameChatMutation.mutate({ chatId, title })
+                      }
+                      onOpenChat={async (chat) => {
+                        if (chat.experience === "task") {
+                          const opened = await openProjectTask(
+                            chat.projectId,
+                            chat.id,
+                          );
+                          if (opened === false)
+                            throw new Error(
+                              "The originating task could not be opened.",
+                            );
+                          return;
+                        }
+                        const focused = await bindings.openOrFocusSurface(
+                          chat.projectId,
+                          {
+                            kind: "entity",
+                            definitionId: "project.agent",
+                            resourceId: chat.id,
+                          },
+                          undefined,
+                          undefined,
+                          { revealDock: true },
+                        );
+                        if (focused === false)
+                          throw new Error(
+                            "The originating chat could not be opened.",
+                          );
+                      }}
+                    />
+                  ) : null}
                   <div
                     className={cn(
                       "min-h-0 flex-1 flex-col",
@@ -837,9 +889,6 @@ export function GlobalContentHost({
                       settings={settings.data}
                       taskCreationError={newTask.error}
                       workers={workers.data ?? []}
-                      onConfigureWorkers={() =>
-                        openCompactRootSettings("tasks")
-                      }
                       onCreateTask={() =>
                         newTask.mutate({ projectId: selectedProject.id })
                       }
@@ -935,7 +984,8 @@ export function GlobalContentHost({
                       }
                     />
                   </div>
-                  {activeProjectOverviewSection !== "tasks" ? (
+                  {activeProjectOverviewSection !== "tasks" &&
+                  activeProjectOverviewSection !== "alerts" ? (
                     <ProjectOverview
                       compact={compactShell}
                       creatingKinds={creatingSurfaceKinds}
@@ -987,10 +1037,51 @@ export function GlobalContentHost({
                     />
                   ) : null}
                 </div>
+              ) : bindings.workspaceConnection?.loading ||
+                (isPopout && !tabLayout.isSuccess) ? (
+                <CantripLoading />
               ) : (
                 <EmptyWorkspace projectName={selectedProject?.name} />
               )}
             </ProjectOverviewHost>
+          ) : projects.isError ? (
+            <EmptyState>
+              <EmptyStateContent>
+                <EmptyStateIcon>
+                  <CircleAlert className="size-5" />
+                </EmptyStateIcon>
+                <EmptyStateTitle as="h1">
+                  Could not load projects
+                </EmptyStateTitle>
+                <EmptyStateDescription>
+                  {errorText(projects.error)}
+                </EmptyStateDescription>
+                <EmptyStateActions>
+                  <Button
+                    variant="outline"
+                    onClick={() => void projects.refetch()}
+                  >
+                    <RefreshCw className="size-4" />
+                    Retry
+                  </Button>
+                </EmptyStateActions>
+              </EmptyStateContent>
+            </EmptyState>
+          ) : appMode === null ||
+            projects.isPending ||
+            (!isPopout && (projects.data?.length ?? 0) > 0) ? (
+            <CantripLoading />
+          ) : isPopout ? (
+            <EmptyState>
+              <EmptyStateContent>
+                <EmptyStateTitle as="h1">
+                  Project is unavailable
+                </EmptyStateTitle>
+                <EmptyStateDescription>
+                  This window’s project is no longer available.
+                </EmptyStateDescription>
+              </EmptyStateContent>
+            </EmptyState>
           ) : (
             <EmptyState>
               <EmptyStateContent>
@@ -1020,7 +1111,6 @@ export function GlobalContentHost({
       {appMode === "ide" &&
       compactShell &&
       selectedProject &&
-      !bindings.showProjectOverview &&
       !showImporter &&
       !showSettings &&
       !showServerAdmin &&

@@ -1,13 +1,17 @@
 // Test oracle: the actual Node service, listening on an OS-assigned port.
-import { buildApp } from "../../cantrip_server/src/app.ts";
-import { readServerConfig } from "../../cantrip_server/src/config.ts";
-import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
-import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.ts";
+import { buildApp } from "../../tests/reference-node-server/src/app.ts";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.ts";
+import { connectDatabase } from "../../tests/reference-node-server/src/db/index.ts";
+import { WorkerBridge } from "../../tests/reference-node-server/src/workers/bridge.ts";
 import { installWorkerIngressFixture } from "./worker-ingress-node-fixture.mjs";
 import { startOperationClock } from "./operation-clock.mjs";
+import { observeCompletionPersistence } from "./completion-persistence-observer.mjs";
+import { observeHistoryPersistence } from "./history-persistence-observer.mjs";
 
 const config = readServerConfig();
 const database = await connectDatabase(config);
+observeCompletionPersistence(database);
+observeHistoryPersistence(database);
 const drainAuthNotifications = process.argv.includes(
   "--drain-auth-notifications",
 );
@@ -127,12 +131,37 @@ if (drainAuthNotifications) {
     return subscribe(worker, wrappers.get(listener));
   };
 }
+const workerLinkControl =
+  process.env.CANTRIP_WORKER_LINK_HTTP_FIXTURE === "true"
+    ? await import("./worker-link-http-node-control.mjs").then((m) =>
+        m.prepareWorkerLinkHttpControl(config),
+      )
+    : undefined;
+const sharedRuntime =
+  process.env.CANTRIP_SHARED_RUNTIME_FIXTURE === "true"
+    ? await import("./shared-runtime-node.mjs").then((m) =>
+        m.prepareSharedRuntime(config, database),
+      )
+    : undefined;
 const app = await buildApp({
   config,
   database,
   logger: process.env.CANTRIP_FIXTURE_LOGGING === "true",
   ...(ingressBridge ? { workerBridge: ingressBridge } : {}),
+  ...(workerLinkControl ? { coordinator: workerLinkControl.coordinator } : {}),
+  ...(sharedRuntime
+    ? {
+        coordinator: sharedRuntime.coordinator,
+        workerBridge: sharedRuntime.workerBridge,
+      }
+    : {}),
 });
+workerLinkControl?.install(app);
+sharedRuntime?.install(app);
+if (process.argv.includes("--live-sql-fixture")) {
+  const { installLiveSqlFixture } = await import("./live-sql-node-fixture.mjs");
+  installLiveSqlFixture(app, database);
+}
 if (process.argv.includes("--observe-http-clocks")) {
   const clocks = new WeakMap();
   app.addHook("onRequest", (request, _reply, done) => {

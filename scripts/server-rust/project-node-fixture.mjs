@@ -2,26 +2,41 @@
 import { createInterface } from "node:readline";
 import { createRequire } from "node:module";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql } = require("drizzle-orm");
-import { readServerConfig } from "../../cantrip_server/src/config.ts";
-import { connectDatabase } from "../../cantrip_server/src/db/index.ts";
-import { buildExecutionTargetCatalog } from "../../cantrip_server/src/execution-targets/catalog.ts";
-import { lockNativeCommandChat } from "../../cantrip_server/src/db/repository/native-command-lock.ts";
-import { assertNativeRuntimeWritable } from "../../cantrip_server/src/db/repository/native-runtime-handoff-guard.ts";
+import { readServerConfig } from "../../tests/reference-node-server/src/config.ts";
+import { connectDatabase } from "../../tests/reference-node-server/src/db/index.ts";
+import { buildExecutionTargetCatalog } from "../../tests/reference-node-server/src/execution-targets/catalog.ts";
+import { lockNativeCommandChat } from "../../tests/reference-node-server/src/db/repository/native-command-lock.ts";
+import { assertNativeRuntimeWritable } from "../../tests/reference-node-server/src/db/repository/native-runtime-handoff-guard.ts";
 import { managedConsoleFixture } from "./managed-console-node-fixture.mjs";
-import { gitManagedOperationContext } from "../../cantrip_server/src/app/shared/git-managed-operations.ts";
+import { projectStateFixture } from "./project-state-node-fixture.mjs";
+import { resourceStateFixture } from "./resource-state-node-fixture.mjs";
+import { gitManagedOperationContext } from "../../tests/reference-node-server/src/app/shared/git-managed-operations.ts";
 import { worktreeCoordinatorFixture } from "./worktree-coordinator-node-fixture.mjs";
 import { conversionFixture } from "./conversion-node-fixture.mjs";
+import { chatRelocationFixture } from "./chat-relocation-node-fixture.mjs";
+import { chatImportFixture } from "./chat-import-node-fixture.mjs";
 import { discoveryFixture } from "./discovery-node-fixture.mjs";
 import { scratchRootFixture } from "./scratch-root-node-fixture.mjs";
 import { chatForkFixture } from "./chat-fork-node-fixture.mjs";
 import { chatMessageFixture } from "./chat-message-node-fixture.mjs";
 import { nativeCommandFixture } from "./native-command-node-fixture.mjs";
-import { NativeCommandError } from "../../cantrip_server/src/db/repository/native-command-errors.ts";
-import { ExecutionLaneConflictError } from "../../cantrip_server/src/db/repository/chat-execution-lanes.ts";
-import { AgentInteractionConflictError } from "../../cantrip_server/src/db/repository/agent-interactions.ts";
+import { nativeHistoryFixture } from "./native-history-node-fixture.mjs";
+import { startOperationClock } from "./operation-clock.mjs";
+import { managedPreparationFixture } from "./managed-preparation-node-fixture.mjs";
+import { NativeCommandError } from "../../tests/reference-node-server/src/db/repository/native-command-errors.ts";
+import { ExecutionLaneConflictError } from "../../tests/reference-node-server/src/db/repository/chat-execution-lanes.ts";
+import { AgentInteractionConflictError } from "../../tests/reference-node-server/src/db/repository/agent-interactions.ts";
+import { projectAutomationFixture } from "./project-automation-node-fixture.mjs";
+import { identityStateFixture } from "./identity-state-node-fixture.mjs";
+// readline also recognizes Unicode line separators. Keep replies one record
+// without changing any decoded string, including lone UTF-16 surrogates.
+const replyJson = (value) =>
+  JSON.stringify(value)
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
 console.error(JSON.stringify({ event: "repository-fixture.database.opening" }));
 const database = await connectDatabase(readServerConfig());
 console.error(JSON.stringify({ event: "repository-fixture.database.ready" }));
@@ -36,11 +51,33 @@ try {
   for await (const line of createInterface({ input: process.stdin })) {
     const request = JSON.parse(line);
     const consoleTrace = [];
+    const finishClock =
+      request.observeOperationClock === true ? startOperationClock() : null;
     try {
       // Seeding owns only this disposable fixture. Runtime TS private storage is
       // used solely to exercise the actual connector on both PostgreSQL and PGlite.
       let value;
-      if (request.op.startsWith("console-")) {
+      if (request.op.startsWith("resource-state-")) {
+        value = await resourceStateFixture(database.repository, request);
+      } else if (request.op.startsWith("project-state-")) {
+        value = await projectStateFixture(database.repository, request);
+      } else if (request.op.startsWith("identity-state-")) {
+        value = await identityStateFixture(database.repository, request);
+      } else if (request.op.startsWith("chat-import-")) {
+        value = await chatImportFixture(
+          database.repository.chatImportJobs,
+          request,
+        );
+      } else if (request.op.startsWith("relocation-")) {
+        value = await chatRelocationFixture(
+          database.repository.chatRelocationJobs,
+          request,
+        );
+      } else if (request.op.startsWith("automation-")) {
+        value = await projectAutomationFixture(database.repository, request);
+      } else if (request.op.startsWith("preparation-")) {
+        value = await managedPreparationFixture(database.repository, request);
+      } else if (request.op.startsWith("console-")) {
         value = await managedConsoleFixture(
           database.repository,
           request,
@@ -59,6 +96,8 @@ try {
         value = await chatMessageFixture(database.repository, request);
       } else if (request.op.startsWith("native-command-")) {
         value = await nativeCommandFixture(database.repository, request);
+      } else if (request.op.startsWith("native-history-")) {
+        value = await nativeHistoryFixture(database.repository, request);
       } else if (request.op.startsWith("scratch-")) {
         value = await scratchRootFixture(
           database.repository.standaloneChatRootJobs,
@@ -759,6 +798,53 @@ try {
           request.inventory,
           request.created,
         );
+      } else if (request.op === "git-operation-create") {
+        value = await database.repository.createGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.worker,
+          request.context,
+        );
+      } else if (request.op === "git-operation-active") {
+        value = await database.repository.getActiveGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+        );
+      } else if (request.op === "git-operation-latest") {
+        value = await database.repository.getLatestGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+        );
+      } else if (request.op === "git-operation-get") {
+        value = await database.repository.getGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.operationId,
+        );
+      } else if (request.op === "git-operation-running") {
+        value = await database.repository.markGitOperationRunning(
+          request.operationId,
+        );
+      } else if (request.op === "git-operation-update") {
+        value = await database.repository.updateGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.operationId,
+          request.state,
+        );
+      } else if (request.op === "git-operation-fail") {
+        value = await database.repository.failGitOperation(
+          request.owner,
+          request.project,
+          request.worktree,
+          request.operationId,
+          request.error,
+        );
       } else if (request.op === "observation-context") {
         value = await database.repository.getProjectWorktreeObservationContext(
           request.owner,
@@ -867,16 +953,31 @@ try {
                   )
                 : false;
       } else value = await database.repository.listProjects(request.owner);
-      console.log(JSON.stringify({ id: request.id, rejected: false, value }));
+      console.log(
+        replyJson({
+          id: request.id,
+          rejected: false,
+          value,
+          ...(finishClock ? { operationClock: finishClock() } : {}),
+        }),
+      );
     } catch (error) {
       console.log(
-        JSON.stringify({
+        replyJson({
           id: request.id,
           rejected: true,
+          ...(error.name === "TaskDispatchConflictError"
+            ? { taskLeaseError: error.code }
+            : {}),
+          ...(finishClock ? { operationClock: finishClock() } : {}),
           ...(error instanceof AgentInteractionConflictError
             ? { interactionError: "AgentInteractionConflictError" }
             : {}),
-          ...(request.op.startsWith("native-command-lane-") &&
+          ...((request.op.startsWith("native-command-lane-") ||
+            [
+              "native-command-gui-placement",
+              "native-command-gui-worktree",
+            ].includes(request.op)) &&
           error instanceof ExecutionLaneConflictError
             ? { laneError: error.constructor.name }
             : {}),
@@ -884,9 +985,14 @@ try {
           error instanceof NativeCommandError
             ? { commandError: error.code, commandStatus: error.statusCode }
             : {}),
-          ...(request.op.startsWith("message-") &&
+          ...((request.op.startsWith("message-") ||
+            request.op.startsWith("native-history-")) &&
           error.name === "NativeHistoryError"
-            ? { historyError: error.code, historyStatus: error.statusCode }
+            ? {
+                historyError: error.code,
+                historyStatus: error.statusCode,
+                ...(error.rejection ? { rejection: error.rejection } : {}),
+              }
             : {}),
           ...(request.op.startsWith("fork-")
             ? {
@@ -902,6 +1008,7 @@ try {
               }
             : {}),
           ...((request.op === "sql" ||
+            request.op.startsWith("chat-import-") ||
             request.op.startsWith("project-surface-") ||
             request.op.startsWith("discovery-") ||
             request.op.startsWith("tunnel-") ||
@@ -912,7 +1019,8 @@ try {
             request.op.startsWith("scratch-") ||
             request.op.startsWith("fork-") ||
             request.op.startsWith("message-") ||
-            request.op.startsWith("native-command-")) &&
+            request.op.startsWith("native-command-") ||
+            request.op.startsWith("native-history-")) &&
           error.cause?.code
             ? { databaseCode: error.cause.code }
             : {}),
@@ -933,6 +1041,9 @@ try {
               }
             : {}),
           diagnostic:
+            // Automation routes expose the ORM error, so the comparison must
+            // retain it rather than this driver's generic cause-only view.
+            request.op.startsWith("automation-") ||
             request.op.startsWith("project-surface-") ||
             request.op.startsWith("terminal-") ||
             request.op.startsWith("browser-") ||
@@ -946,6 +1057,12 @@ try {
             : {}),
           ...(request.op.startsWith("conversion-")
             ? { conversionError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("relocation-")
+            ? { relocationError: error.constructor.name }
+            : {}),
+          ...(request.op.startsWith("chat-import-")
+            ? { importError: error.constructor.name }
             : {}),
           ...(request.op.startsWith("scratch-")
             ? { scratchError: error.constructor.name }

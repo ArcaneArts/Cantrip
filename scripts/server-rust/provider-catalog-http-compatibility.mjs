@@ -10,6 +10,11 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { heartbeat } from "./security-fixtures.mjs";
 import { policyEnvelope } from "./policy-wire-fixtures.mjs";
+import { endpointInventoryModel } from "./endpoint-provider-wire-fixtures.mjs";
+import {
+  endpointCatalogHttpCases,
+  seedEndpointCatalogProviders,
+} from "./endpoint-catalog-http-cases.mjs";
 
 const option = (key) => {
   const i = process.argv.indexOf(key);
@@ -51,10 +56,11 @@ const catalog = (provider, query = "") =>
   `/api/settings/providers/${provider}/catalog${query}`;
 let postgresOwner, failure;
 try {
-  const executable = await buildRustServer(),
-    repositoryExecutable = await buildRustExample(
-      "settings-repository-fixture",
-    );
+  const executable =
+      process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
+    repositoryExecutable =
+      process.env.CANTRIP_RUST_SETTINGS_REPOSITORY_BINARY ??
+      (await buildRustExample("settings-repository-fixture"));
   if (databaseMode !== "pglite")
     postgresOwner = await postgresFixture(path.join(root, "postgres"));
   for (const mode of ["accounts", "none"]) {
@@ -115,6 +121,7 @@ try {
         releaseHeld,
         heldSeen;
       let controlledFailure = false;
+      const endpointState = { providers: new Map() };
       let completedCancel = false;
       const pendingCatalog = (provider) =>
         catalog(provider, `?workerId=${encodeURIComponent(workerId)}`);
@@ -207,6 +214,7 @@ try {
           await repository.seed(
             `INSERT INTO model_providers(id,owner_id,name,kind,base_url) VALUES(${literal(id)},${literal(who)},${literal(id)},${literal(family)},${literal(url)})`,
           );
+        await seedEndpointCatalogProviders(repository, literal, owner);
         for (const [id, provider] of [
           ["11111111-1111-4111-8111-111111111111", "catalog-chatgpt"],
           ["22222222-2222-4222-8222-222222222222", "catalog-grok"],
@@ -255,17 +263,25 @@ try {
           catalog("catalog-zai", "/refresh"),
           { json: { ignored: true } },
         );
-        await visit(
-          "custom provider conflict",
+        const customWithoutWorker = await visit(
+          "custom provider discovery requires a worker",
           "GET",
           catalog("catalog-custom"),
-          { status: 409 },
+          { status: 503 },
         );
-        await visit(
-          "custom provider refresh conflict",
+        assert.equal(
+          customWithoutWorker.error,
+          "No worker is available for OpenAI compatible discovery.",
+        );
+        const customRefreshWithoutWorker = await visit(
+          "custom provider refresh requires a worker",
           "POST",
           catalog("catalog-custom", "/refresh"),
-          { status: 409, json: null },
+          { status: 503, json: null },
+        );
+        assert.equal(
+          customRefreshWithoutWorker.error,
+          "No worker is available for OpenAI compatible discovery.",
         );
         if (mode === "accounts")
           await visit(
@@ -322,6 +338,53 @@ try {
           query: `workerId=${encodeURIComponent(workerId)}&connectionGeneration=${generation}`,
           credential: fixture.records.get("paired").credential,
           onRequest(frame, socket) {
+            if (frame.command.type === "model.endpoint.catalog") {
+              result.commands.push(frame.command);
+              const second = frame.command.provider.id.endsWith("-b");
+              const configuration = endpointState.providers.get(
+                frame.command.provider.id,
+              ) ?? {
+                loaded: second,
+                contextWindow: second ? 8192 : 4096,
+                fail: false,
+              };
+              const state = { ...configuration };
+              const reply = () =>
+                socket.send(
+                  JSON.stringify({
+                    kind: "response",
+                    requestId: frame.requestId,
+                    ok: !state.fail,
+                    ...(state.fail
+                      ? {
+                          error: {
+                            code: "fixture-endpoint",
+                            message: "Controlled endpoint offline.",
+                          },
+                        }
+                      : {
+                          result: {
+                            models: [
+                              {
+                                ...endpointInventoryModel,
+                                nativeModelId: "shared-model",
+                                loaded: state.loaded,
+                                contextWindow: state.contextWindow,
+                              },
+                            ],
+                            observedAt: "2026-11-04T00:00:00.000Z",
+                          },
+                        }),
+                  }),
+                );
+              if (configuration.pause) {
+                const pause = configuration.pause;
+                configuration.pause = undefined;
+                pause.release = reply;
+                pause.received();
+              } else reply();
+              return true;
+            }
             if (frame.command.type !== "model.ollama.catalog") return false;
             result.commands.push(frame.command);
             const reply = (name = "base-model") =>
@@ -361,6 +424,25 @@ try {
         await worker.open();
         assert.equal((await worker.message()).state, "pending");
         assert.equal((await worker.message()).state, "ready");
+        const custom = await visit(
+          "custom endpoint discovers models on the worker",
+          "GET",
+          pendingCatalog("catalog-custom"),
+        );
+        assert.equal(custom.models[0].nativeModelId, "shared-model");
+        const customCommand = result.commands.findLast(
+          (command) => command.provider.id === "catalog-custom",
+        );
+        assert.equal(customCommand.type, "model.endpoint.catalog");
+        assert.equal(customCommand.provider.name, "OpenAI compatible");
+        await endpointCatalogHttpCases({
+          visit,
+          result,
+          state: endpointState,
+          pendingCatalog,
+          refresh,
+          mode,
+        });
         await visit(
           "actual refresh SQL failure",
           "POST",

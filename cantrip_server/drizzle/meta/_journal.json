@@ -1653,6 +1653,377 @@
       "when": 1793361000000,
       "tag": "0235_conversation_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1793624400000,
+      "tag": "0236_direct_task_models",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1793626292580,
+      "tag": "0237_codex_0_166_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1793634800000,
+      "tag": "0238_project_alert_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1793636800000,
+      "tag": "0239_project_alert_interactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1793637500000,
+      "tag": "0240_project_alert_task_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1793637600000,
+      "tag": "0241_alert_inbox_surface",
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1793725732058,
+      "tag": "0242_computer_use_cantrip_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1793753376000,
+      "tag": "0243_cantrip_os_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 244,
+      "version": "7",
+      "when": 1793768580000,
+      "tag": "0244_cantrip_os_admissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1793774400000,
+      "tag": "0245_cantrip_os_chat_placements",
+      "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1793780318146,
+      "tag": "0246_cantrip_os_file_placements",
+      "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1793786906758,
+      "tag": "0247_cantrip_os_terminal_placements",
+      "breakpoints": true
+    },
+    {
+      "idx": 248,
+      "version": "7",
+      "when": 1793805840552,
+      "tag": "0248_cantrip_os_run_placements",
+      "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1793813543080,
+      "tag": "0249_cantrip_os_run_terminal_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1793816000000,
+      "tag": "0250_provider_inference_admission",
+      "breakpoints": true
+    },
+    {
+      "idx": 251,
+      "version": "7",
+      "when": 1793816000001,
+      "tag": "0251_project_source_identity_lock_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1793816000002,
+      "tag": "0252_task_inference_input_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1793816000003,
+      "tag": "0253_provider_connection_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 254,
+      "version": "7",
+      "when": 1793816000004,
+      "tag": "0254_task_goal_inference_input",
+      "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1793816000005,
+      "tag": "0255_cantrip_os_desktop_capture",
+      "breakpoints": true
+    },
+    {
+      "idx": 256,
+      "version": "7",
+      "when": 1793871723891,
+      "tag": "0256_task_goal_message_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1793871723892,
+      "tag": "0257_cantrip_os_tunnels",
+      "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1793871723893,
+      "tag": "0258_provider_inference_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 259,
+      "version": "7",
+      "when": 1793871723894,
+      "tag": "0259_task_round_outcome_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 260,
+      "version": "7",
+      "when": 1793871723895,
+      "tag": "0260_task_round_history_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 261,
+      "version": "7",
+      "when": 1793871723896,
+      "tag": "0261_inference_command_timing",
+      "breakpoints": true
+    },
+    {
+      "idx": 262,
+      "version": "7",
+      "when": 1793871723897,
+      "tag": "0262_inference_resource_revocations",
+      "breakpoints": true
+    },
+    {
+      "idx": 263,
+      "version": "7",
+      "when": 1793894255505,
+      "tag": "0263_cantrip_os_guest_listeners",
+      "breakpoints": true
+    },
+    {
+      "idx": 264,
+      "version": "7",
+      "when": 1793894255506,
+      "tag": "0264_queued_route_handoffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 265,
+      "version": "7",
+      "when": 1793904217693,
+      "tag": "0265_task_inference_route_changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 266,
+      "version": "7",
+      "when": 1793915700000,
+      "tag": "0266_native_turn_suspensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 267,
+      "version": "7",
+      "when": 1793917085000,
+      "tag": "0267_managed_goal_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 268,
+      "version": "7",
+      "when": 1793918392563,
+      "tag": "0268_cantrip_os_worker_continuity",
+      "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1793925600000,
+      "tag": "0269_task_goal_cycle_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1793929800000,
+      "tag": "0270_goal_claim_control_retirement",
+      "breakpoints": true
+    },
+    {
+      "idx": 271,
+      "version": "7",
+      "when": 1793930400000,
+      "tag": "0271_applied_goal_first_cycle_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 272,
+      "version": "7",
+      "when": 1793931417082,
+      "tag": "0272_cantrip_os_backup_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 273,
+      "version": "7",
+      "when": 1793939103653,
+      "tag": "0273_cantrip_os_existing_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 274,
+      "version": "7",
+      "when": 1793940000000,
+      "tag": "0274_task_goal_provider_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 275,
+      "version": "7",
+      "when": 1793944659217,
+      "tag": "0275_cantrip_os_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 276,
+      "version": "7",
+      "when": 1793952136638,
+      "tag": "0276_task_goal_empty_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 277,
+      "version": "7",
+      "when": 1793960519615,
+      "tag": "0277_cantrip_os_desktop",
+      "breakpoints": true
+    },
+    {
+      "idx": 278,
+      "version": "7",
+      "when": 1793972121944,
+      "tag": "0278_cantrip_os_workspace_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 279,
+      "version": "7",
+      "when": 1793978078734,
+      "tag": "0279_cantrip_os_workspace_resets",
+      "breakpoints": true
+    },
+    {
+      "idx": 280,
+      "version": "7",
+      "when": 1793992330777,
+      "tag": "0280_cantrip_os_packages",
+      "breakpoints": true
+    },
+    {
+      "idx": 281,
+      "version": "7",
+      "when": 1794010817764,
+      "tag": "0281_model_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 282,
+      "version": "7",
+      "when": 1794011217215,
+      "tag": "0282_model_operation_suppressions",
+      "breakpoints": true
+    },
+    {
+      "idx": 283,
+      "version": "7",
+      "when": 1794011808859,
+      "tag": "0283_model_operation_routes",
+      "breakpoints": true
+    },
+    {
+      "idx": 284,
+      "version": "7",
+      "when": 1794012930837,
+      "tag": "0284_cantrip_os_systems",
+      "breakpoints": true
+    },
+    {
+      "idx": 285,
+      "version": "7",
+      "when": 1794020129861,
+      "tag": "0285_model_operation_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 286,
+      "version": "7",
+      "when": 1794021851091,
+      "tag": "0286_partial_model_discovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 287,
+      "version": "7",
+      "when": 1794437252033,
+      "tag": "0287_task_output_finalization",
+      "breakpoints": true
+    },
+    {
+      "idx": 288,
+      "version": "7",
+      "when": 1794457027747,
+      "tag": "0288_task_provider_transfer_eligibility",
+      "breakpoints": true
     }
   ]
 }

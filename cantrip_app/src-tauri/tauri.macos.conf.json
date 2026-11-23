@@ -4,6 +4,7 @@
       {
         "label": "main",
         "title": "Cantrip",
+        "dragDropEnabled": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "transparent": true,

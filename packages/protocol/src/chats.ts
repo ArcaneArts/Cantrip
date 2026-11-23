@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { chatNativeSuspensionSchema } from "./native-suspensions.js";
+import { modelConfigurationSchema } from "./model-configuration.js";
 import { taskOpaqueContentSchema, taskOpaqueSummarySchema } from "./tasks.js";
 import { taskPrioritySchema } from "./task-scheduling.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
@@ -21,6 +23,17 @@ const chatPlacementCreateSchema = z
   .object(chatPlacementCreateFields)
   .strict()
   .superRefine((input, context) => {
+    if (
+      Reflect.get(input, "cantripOsBindingId") &&
+      (input.worktreeId || input.target)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "An OS binding already selects its exact worktree; do not also supply another target.",
+        path: ["cantripOsBindingId"],
+      });
+    }
     if (input.worktreeId && input.target) {
       context.addIssue({
         code: "custom",
@@ -39,6 +52,7 @@ const chatPlacementCreateSchema = z
 
 export const chatCreateSchema = chatPlacementCreateSchema
   .safeExtend({
+    cantripOsBindingId: z.uuid().optional(),
     attachToTabLayout: z.boolean().optional(),
     title: z.string().trim().min(1).max(200).default("New agent"),
     githubAgentContext: githubAgentWorkflowContextSchema.optional(),
@@ -47,6 +61,7 @@ export const chatCreateSchema = chatPlacementCreateSchema
 
 export const encryptedChatCreateSchema = chatPlacementCreateSchema
   .safeExtend({
+    cantripOsBindingId: z.uuid().optional(),
     attachToTabLayout: z.boolean().optional(),
     id: z.string().uuid(),
     titleProtection: privateDisplayLabelOpaqueSchema,
@@ -68,7 +83,7 @@ const taskCreateBaseSchema = chatPlacementCreateSchema.safeExtend({
   chatId: z.string().uuid(),
   planGoalEnabled: z.boolean().default(false),
   priority: taskPrioritySchema.default(0),
-  requestedTaskWorkerId: z.string().uuid().nullable().default(null),
+  modelConfiguration: modelConfigurationSchema.optional(),
   task: taskOpaqueContentSchema,
 });
 
@@ -368,6 +383,8 @@ export const standaloneChatScratchReconciliationResultSchema = z
   .strict();
 
 const chatSummaryBaseSchema = z.object({
+  cantripOsBindingId: z.uuid().optional(),
+  cantripOsRuntimeGeneration: z.uuid().optional(),
   id: z.string().min(1),
   experience: z.enum(["agent", "task"]).default("agent"),
   position: z.number().int().nonnegative(),
@@ -390,6 +407,7 @@ const chatSummaryBaseSchema = z.object({
   hasPendingPlanQuestion: z.boolean(),
   hasUnreadCompletion: z.boolean().default(false),
   automationPaused: z.boolean().default(false),
+  nativeSuspension: chatNativeSuspensionSchema.optional(),
   githubAgentContext: githubAgentWorkflowContextSchema.nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

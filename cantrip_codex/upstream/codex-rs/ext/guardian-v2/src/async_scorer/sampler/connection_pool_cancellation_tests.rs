@@ -63,8 +63,8 @@ async fn cancelled_classifiers_interrupt_and_reuse_only_completed_streams() -> R
         config.metrics = Some(metrics.clone());
         let sampler = Arc::new(connect_sampler(config).await?);
         let pending_sampler = Arc::clone(&sampler);
-        let pending =
-            tokio::spawn(async move { pending_sampler.sample(sample_request("stale")).await });
+        let request = sample_request("stale");
+        let pending = tokio::spawn(async move { pending_sampler.sample(request).await });
         tokio::time::timeout(
             Duration::from_secs(2),
             server.wait_for_request(/*connection_index*/ 0, /*request_index*/ 0),
@@ -72,6 +72,7 @@ async fn cancelled_classifiers_interrupt_and_reuse_only_completed_streams() -> R
         .await?;
         pending.abort();
         assert!(pending.await.unwrap_err().is_cancelled());
+        metrics.assert_outcome("cancelled", /*attempts*/ 1, "cancelled");
         let interrupt = tokio::time::timeout(
             Duration::from_secs(2),
             server.wait_for_request(/*connection_index*/ 0, /*request_index*/ 1),

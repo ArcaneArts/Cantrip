@@ -648,7 +648,7 @@ impl DailyJsonlWriter {
         let mut record = DiskServiceLogRecord {
             cursor: self.cursor,
             timestamp: timestamp_now(),
-            system: "client".into(),
+            system: self.source.clone(),
             level,
             message: sanitize_text(&message),
             context: context.map(|context| sanitize_context(context, 0)),
@@ -819,6 +819,7 @@ impl DailyJsonlWriter {
 pub struct LocalServiceLogs {
     archive_root: PathBuf,
     client: Mutex<DailyJsonlWriter>,
+    server: Mutex<Option<DailyJsonlWriter>>,
     client_directory: PathBuf,
     server_directory: PathBuf,
     worker_directory: PathBuf,
@@ -826,6 +827,46 @@ pub struct LocalServiceLogs {
 }
 
 impl LocalServiceLogs {
+    pub fn server_output(&self, line: &str) {
+        let record = serde_json::from_str::<Value>(line).ok();
+        let level = match record.as_ref().and_then(|r| r["level"].as_str()) {
+            Some("trace") => ServiceLogLevel::Trace,
+            Some("debug") => ServiceLogLevel::Debug,
+            Some("warn") => ServiceLogLevel::Warn,
+            Some("fatal") => ServiceLogLevel::Fatal,
+            None if line.starts_with("Error:")
+                || line.contains("FATAL:")
+                || line.contains("PANIC:")
+                || line.contains("ERROR:") =>
+            {
+                ServiceLogLevel::Error
+            }
+            Some("error") => ServiceLogLevel::Error,
+            _ => ServiceLogLevel::Info,
+        };
+        let message = record
+            .as_ref()
+            .and_then(|r| r["message"].as_str().or_else(|| r["event"].as_str()))
+            .unwrap_or(line);
+        if let Ok(mut writer) = self.server.lock() {
+            let result = (|| {
+                if writer.is_none() {
+                    *writer = Some(DailyJsonlWriter::new(
+                        self.server_directory.clone(),
+                        "server",
+                    )?);
+                }
+                writer
+                    .as_mut()
+                    .unwrap()
+                    .append(level, message.to_owned(), record.clone())
+            })();
+            if let Err(error) = result {
+                eprintln!("Could not persist native server log: {error}");
+            }
+        }
+    }
+
     pub fn append_client(&self, level: &str, message: String, source: Option<String>) {
         let level = match level {
             "trace" | "debug" => ServiceLogLevel::Debug,
@@ -950,6 +991,7 @@ pub fn build(app: &App) -> Result<LocalServiceLogs, String> {
     )?;
 
     Ok(LocalServiceLogs {
+        server: Mutex::new(None),
         archive_root,
         client: Mutex::new(DailyJsonlWriter::new(client_directory.clone(), "client")?),
         client_directory,
@@ -1152,24 +1194,32 @@ fn create_log_dump_directory(downloads: &Path) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn read_local_service_logs(
+pub async fn read_local_service_logs(
+    app: AppHandle,
     request: LocalServiceLogReadRequest,
-    logs: State<'_, LocalServiceLogs>,
-    workers: State<'_, DesktopWorkers>,
 ) -> Result<LocalServiceLogReadResult, String> {
-    let (directory, source) = match request.source {
-        LocalLogSource::Client => (logs.client_directory.clone(), "client"),
-        LocalLogSource::Server => (logs.server_directory.clone(), "server"),
-        LocalLogSource::Worker => (logs.worker_directory.clone(), "worker"),
-        LocalLogSource::LinkedWorker => {
-            let worker_id = request
-                .worker_id
-                .as_deref()
-                .ok_or_else(|| "Choose a linked worker.".to_string())?;
-            (workers.service_log_path(worker_id)?, "worker")
-        }
-    };
-    logs.read_archive(directory, source, &request)
+    // The first read hydrates the tail from disk, including decompression and
+    // sanitization. A synchronous command runs that work on the UI thread;
+    // keep both archive initialization and later refreshes on the blocking pool.
+    tauri::async_runtime::spawn_blocking(move || {
+        let logs = app.state::<LocalServiceLogs>();
+        let workers = app.state::<DesktopWorkers>();
+        let (directory, source) = match request.source {
+            LocalLogSource::Client => (logs.client_directory.clone(), "client"),
+            LocalLogSource::Server => (logs.server_directory.clone(), "server"),
+            LocalLogSource::Worker => (logs.worker_directory.clone(), "worker"),
+            LocalLogSource::LinkedWorker => {
+                let worker_id = request
+                    .worker_id
+                    .as_deref()
+                    .ok_or_else(|| "Choose a linked worker.".to_string())?;
+                (workers.service_log_path(worker_id)?, "worker")
+            }
+        };
+        logs.read_archive(directory, source, &request)
+    })
+    .await
+    .map_err(|error| format!("Could not read local service logs: {error}"))?
 }
 
 fn sanitize_text(value: &str) -> String {
@@ -1372,6 +1422,43 @@ mod tests {
         assert_eq!(record.message, "client failed");
         assert!(contents.len() < MAX_RECORD_BYTES);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn native_server_output_uses_the_server_archive_and_redacts_credentials() {
+        let root = tempfile::tempdir().unwrap();
+        let server = root.path().join("server");
+        let logs = super::LocalServiceLogs {
+            archive_root: root.path().to_path_buf(),
+            client: std::sync::Mutex::new(
+                super::DailyJsonlWriter::new(root.path().join("client"), "client").unwrap(),
+            ),
+            server: std::sync::Mutex::new(None),
+            client_directory: root.path().join("client"),
+            server_directory: server.clone(),
+            worker_directory: root.path().join("worker"),
+            tails: std::sync::Mutex::new(std::collections::HashMap::new()),
+        };
+        logs.server_output(r#"{"level":"warn","message":"native server event","context":{"password":"private-value"}}"#);
+        logs.server_output("Error: database startup failed: token=private-token");
+        logs.server_output("PostgreSQL stand-alone backend 17.5");
+        let file = super::managed_archive_files(&server, "server")
+            .unwrap()
+            .remove(0)
+            .path;
+        let output = std::fs::read_to_string(file).unwrap();
+        assert!(!output.contains("private-value"));
+        assert!(!output.contains("private-token"));
+        let records = output
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 3);
+        assert_eq!(records[2]["level"], "info");
+        assert_eq!(records[0]["system"], "server");
+        assert_eq!(records[0]["level"], "warn");
+        assert_eq!(records[1]["system"], "server");
+        assert_eq!(records[1]["level"], "error");
     }
 
     #[test]

@@ -3,16 +3,16 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
-import { detachProjectTab } from "../../cantrip_server/src/db/tab-layouts.ts";
-import { removeResourceWorkspaceViews } from "../../cantrip_server/src/db/workspace-resource-removal.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
+import { detachProjectTab } from "../../tests/reference-node-server/src/db/tab-layouts.ts";
+import { removeResourceWorkspaceViews } from "../../tests/reference-node-server/src/db/workspace-resource-removal.ts";
 import {
   workspaceState,
   workspaceSplit,
   workspaceLeaf,
 } from "./workspace-wire-fixtures.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy"),
   { getTableColumns } = require("drizzle-orm");

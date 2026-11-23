@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "completeReplacement": false,
+  "serverSourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+  "driverSourceCommit": "ec06c614e6c522e550fce633dac50feacd869804",
+  "target": "darwin-arm64",
+  "workerVersion": "1.1.3059",
+  "database": "external PostgreSQL 18",
+  "coordination": "Redis 8.10.3",
+  "scope": "Four pairs of real production servers on one host, with private PostgreSQL and Redis per pair. The existing browser connects to one server and the original packaged Node worker connects to the other. The worker runs actual shell conditions and native Codex. Model HTTP responses are controlled.",
+  "artifactInputs": {
+    "cantrip-server": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+    },
+    "index.js": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    "codex": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/bin/codex",
+      "bytes": 279545328,
+      "sha256": "b2dbabe42d7fde4147ae5e45cc9bd99fe2101cdd95e0b4b2b640962ce71278d4"
+    },
+    "redis-server": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/replica-relay-claim-fencing/redis-bottle/redis/8.10.3/bin/redis-server",
+      "bytes": 2354784,
+      "sha256": "638f08672983dbb03f2527193dd93d575521c495d8f6d0d196030de9010980cd"
+    }
+  },
+  "report": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-project-automations.UytyeK9B/matrix.json",
+    "bytes": 2611284,
+    "sha256": "34d1a460f63b0fb6ccf9f507207ae5677cb0817cd926062ada8a43772c9c8d71"
+  },
+  "log": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-shared-project-automations.UytyeK9B/matrix.log",
+    "bytes": 1892,
+    "sha256": "c78277dba7772d17da427ffda2a52c9e2eeece74918616714938326715fa528c"
+  },
+  "totals": {
+    "browserSteps": 56,
+    "cleanServerExits": 40,
+    "cleanWorkerExits": 24
+  },
+  "cases": [
+    {
+      "browserPeer": {
+        "runtime": "node",
+        "cleanServerExits": 5
+      },
+      "workerPeer": {
+        "runtime": "node",
+        "cleanServerExits": 5
+      },
+      "browserSteps": 14,
+      "cleanWorkerExits": 6,
+      "projectAutomations": {
+        "completed": true,
+        "actualScheduler": true,
+        "actualScriptConditions": [0, 7],
+        "started": 1,
+        "skipped": 1,
+        "completedNativeTurns": 1,
+        "retainedAfterTwoRestarts": true,
+        "deleted": true,
+        "additionalModelRequests": 1
+      }
+    },
+    {
+      "browserPeer": {
+        "runtime": "node",
+        "cleanServerExits": 5
+      },
+      "workerPeer": {
+        "runtime": "rust",
+        "cleanServerExits": 5
+      },
+      "browserSteps": 14,
+      "cleanWorkerExits": 6,
+      "projectAutomations": {
+        "completed": true,
+        "actualScheduler": true,
+        "actualScriptConditions": [0, 7],
+        "started": 1,
+        "skipped": 1,
+        "completedNativeTurns": 1,
+        "retainedAfterTwoRestarts": true,
+        "deleted": true,
+        "additionalModelRequests": 1
+      }
+    },
+    {
+      "browserPeer": {
+        "runtime": "rust",
+        "cleanServerExits": 5
+      },
+      "workerPeer": {
+        "runtime": "node",
+        "cleanServerExits": 5
+      },
+      "browserSteps": 14,
+      "cleanWorkerExits": 6,
+      "projectAutomations": {
+        "completed": true,
+        "actualScheduler": true,
+        "actualScriptConditions": [0, 7],
+        "started": 1,
+        "skipped": 1,
+        "completedNativeTurns": 1,
+        "retainedAfterTwoRestarts": true,
+        "deleted": true,
+        "additionalModelRequests": 1
+      }
+    },
+    {
+      "browserPeer": {
+        "runtime": "rust",
+        "cleanServerExits": 5
+      },
+      "workerPeer": {
+        "runtime": "rust",
+        "cleanServerExits": 5
+      },
+      "browserSteps": 14,
+      "cleanWorkerExits": 6,
+      "projectAutomations": {
+        "completed": true,
+        "actualScheduler": true,
+        "actualScriptConditions": [0, 7],
+        "started": 1,
+        "skipped": 1,
+        "completedNativeTurns": 1,
+        "retainedAfterTwoRestarts": true,
+        "deleted": true,
+        "additionalModelRequests": 1
+      }
+    }
+  ],
+  "remaining": [
+    "Competing workers, interrupted automation dispatch, and shared qualification on Linux and Windows have separate acceptance."
+  ]
+}

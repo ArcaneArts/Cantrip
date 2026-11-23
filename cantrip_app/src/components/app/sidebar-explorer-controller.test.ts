@@ -1,9 +1,12 @@
+import { getCantripOsBindings } from "@/lib/api/cantrip-os";
+vi.mock("@/lib/api/cantrip-os", () => ({ getCantripOsBindings: vi.fn() }));
 import type {
   ChatSummary,
   ExplorerSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
+  RemoteDesktopSummary,
 } from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
 import type { ProjectSurface } from "@/lib/project-surface";
@@ -75,6 +78,45 @@ describe("owned file lifecycle registration", () => {
 });
 
 describe("project file opening", () => {
+  it("opens Linux chat links with their captured binding and never resolves another worktree on the host", async () => {
+    const openOwnedFile = vi.fn(async () => {}),
+      showAppToast = vi.fn();
+    const chat = {
+      projectId: project.id,
+      activeWorktreeId: "linux-tree",
+      activeWorkerId: "worker",
+      cantripOsBindingId: "binding",
+      cantripOsRuntimeGeneration: "generation",
+    } as ChatSummary;
+    vi.mocked(getCantripOsBindings).mockResolvedValue([
+      { id: "binding", worktreeId: "linux-tree", guestPath: "/linux/source" },
+    ] as Awaited<ReturnType<typeof getCantripOsBindings>>);
+    const { openChatFileLink } = createProjectExplorerFileOpening({
+      openOwnedFile,
+      queryClient: new QueryClient(),
+      selectedProject: project,
+      showAppToast,
+      worktrees: [],
+    });
+    openChatFileLink(chat, "/linux/source/main.py:12");
+    await vi.waitFor(() =>
+      expect(openOwnedFile).toHaveBeenCalledExactlyOnceWith(
+        project.id,
+        "linux-tree",
+        "main.py",
+        {
+          cantripOsBindingId: "binding",
+          cantripOsRuntimeGeneration: "generation",
+          workerId: "worker",
+        },
+      ),
+    );
+    openOwnedFile.mockClear();
+    openChatFileLink(chat, "main.py", "other-tree");
+    await vi.waitFor(() => expect(showAppToast).toHaveBeenCalled());
+    expect(openOwnedFile).not.toHaveBeenCalled();
+  });
+
   it("reports a removed checkout failure without retrying the chat's current checkout", async () => {
     const openOwnedFile = vi.fn(async () => {
       throw new Error("Project or available worktree not found.");
@@ -285,6 +327,106 @@ describe("sidebar Explorer provisioning", () => {
 });
 
 describe("sidebar tree ownership", () => {
+  it("keeps desktop focus on its captured Linux files, including unavailable runtimes and unresolved queries", async () => {
+    const host = { id: "host", worktreeId: "primary" } as ExplorerSummary;
+    const hostAtLinuxTree = {
+      ...host,
+      id: "host-linux-tree",
+      worktreeId: "linux-tree",
+    };
+    const linux = {
+      ...hostAtLinuxTree,
+      id: "linux",
+      cantripOsBindingId: "binding",
+      cantripOsRuntimeGeneration: "old-runtime",
+    };
+    const newRuntime = {
+      ...linux,
+      id: "new-runtime",
+      cantripOsRuntimeGeneration: "new-runtime",
+    };
+    const selectedSurface = {
+      kind: "remote-desktop",
+      projectId: project.id,
+      entity: { id: "desktop", projectId: project.id, worktreeId: null },
+    } as ProjectSurface;
+    const desktop = {
+      id: "desktop",
+      projectId: project.id,
+      workerId: "linux-worker",
+      status: "unavailable",
+      osSource: {
+        worktreeId: "linux-tree",
+        bindingId: "binding",
+        runtimeGeneration: "old-runtime",
+      },
+    } as unknown as RemoteDesktopSummary;
+    let model!: ReturnType<typeof useSidebarExplorerModel>;
+    function Probe({
+      remoteDesktop,
+    }: {
+      remoteDesktop?: RemoteDesktopSummary;
+    }) {
+      model = useSidebarExplorerModel({
+        unavailablePaneIds: new Set(),
+        environment: {
+          explorerFileTarget: null,
+          popoutTarget: null,
+          projectOverviewPopoutTarget: null,
+        },
+        explorers: [host, hostAtLinuxTree, newRuntime, linux],
+        openCreatedTab: vi.fn(),
+        selectedProjectId: project.id,
+        selectedSurface,
+        remoteDesktop,
+        tabLayout: undefined,
+        worktrees: [
+          { id: "primary", isPrimary: true },
+        ] as ProjectWorktreeSummary[],
+      });
+      return null;
+    }
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(createElement(Probe));
+    });
+    const details = () =>
+      sidebarExplorerProvisioningDetails({
+        ...model,
+        onlineWorkerIds: new Set(["worker-project", "linux-worker"]),
+        selectedProject: project,
+        selectedProjectWorkerId: "worker-project",
+      });
+    expect(model.sidebarExplorer).toBeNull();
+    expect(model.sidebarFileDestinationError).toContain("unavailable");
+    expect(details().sidebarExplorerCreationInput).toBeNull();
+    await act(async () =>
+      renderer.update(createElement(Probe, { remoteDesktop: desktop })),
+    );
+    expect(model.sidebarExplorer).toBe(linux);
+    expect(model.sidebarDesiredWorktreeId).toBe("linux-tree");
+    expect(details()).toMatchObject({
+      sidebarFileWorkerId: "linux-worker",
+      sidebarExplorerCreationInput: {
+        projectId: project.id,
+        worktreeId: "linux-tree",
+        cantripOsBindingId: "binding",
+        cantripOsRuntimeGeneration: "old-runtime",
+      },
+    });
+    // A previous query result must not turn another unresolved desktop into Host.
+    await act(async () =>
+      renderer.update(
+        createElement(Probe, {
+          remoteDesktop: { ...desktop, id: "other-desktop" },
+        }),
+      ),
+    );
+    expect(model.sidebarExplorer).toBeNull();
+    expect(details().sidebarExplorerCreationInput).toBeNull();
+    await act(async () => renderer.unmount());
+  });
+
   it("never repurposes a tabbed Explorer as the sidebar tree under Strict Mode", async () => {
     const pinned = {
       id: "explorer-pinned",

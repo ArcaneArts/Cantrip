@@ -1,10 +1,11 @@
 //! Serialized worker-owned worktree mutations and catalog recovery.
+use crate::workers::transport::WorkerTransport;
 mod removal;
 use super::{coordinator::Coordinator, targets::TargetRepository};
 use crate::{
     database::Database,
     wire::{JsString, Value, coercion::truthy, value::json},
-    workers::{bridge::WorkerBridge, command_bus::LimitedCommandBus},
+    workers::command_bus::LimitedCommandBus,
 };
 use anyhow::{Context, Result, bail};
 use futures::{FutureExt, future::BoxFuture};
@@ -54,7 +55,7 @@ fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str> {
 
 pub struct Service {
     repository: TargetRepository,
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     commands: Arc<LimitedCommandBus>,
     coordinator: Arc<Coordinator>,
 }
@@ -92,7 +93,7 @@ impl Service {
     }
     pub fn new(
         database: Arc<Database>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         commands: Arc<LimitedCommandBus>,
         coordinator: Arc<Coordinator>,
     ) -> Arc<Self> {

@@ -34,7 +34,9 @@ pub fn prefix_len<'a>(targets: impl IntoIterator<Item = &'a Target>) -> Result<u
         let bytes = serde_json::to_vec(&budget)
             .map_err(|_| CuaError::invalid("Invalid target metadata."))?
             .len()
-            + 1;
+            + 1
+            // Service adds bounded application-access metadata to each result.
+            + 100;
         if count == MAX_TARGETS || used + bytes > MAX_PAGE_BYTES {
             if count == 0 {
                 return Err(CuaError::new(

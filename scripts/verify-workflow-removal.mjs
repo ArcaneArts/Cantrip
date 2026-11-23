@@ -14,33 +14,33 @@ export const removedWorkflowArtifactPaths = [
   "cantrip_app/src/lib/workflow-encryption.ts",
   "cantrip_app/src/lib/workflow-trigger-encryption.test.ts",
   "cantrip_app/src/lib/workflow-trigger-encryption.ts",
-  "cantrip_server/src/app/routes/workflow-definitions.ts",
-  "cantrip_server/src/app/routes/workflow-runs.ts",
-  "cantrip_server/src/app/routes/workflow-trigger-delivery.ts",
-  "cantrip_server/src/app/routes/workflow-trigger-management.ts",
-  "cantrip_server/src/app/routes/project-workflow-registry.ts",
-  "cantrip_server/src/app/runtime/workflow-scheduling-runtime.ts",
-  "cantrip_server/src/db/workflow-run-transitions.ts",
-  "cantrip_server/src/db/workflow-runs.ts",
-  "cantrip_server/src/db/workflow-triggers.ts",
-  "cantrip_server/src/db/workflows.ts",
-  "cantrip_server/src/workflows",
-  "cantrip_server/test/workflow-catalog-encryption.test.ts",
-  "cantrip_server/test/workflow-catalog-migration.test.ts",
-  "cantrip_server/test/workflow-definition-api.test.ts",
-  "cantrip_server/test/workflow-domain-migration.test.ts",
-  "cantrip_server/test/workflow-event-minimization.test.ts",
-  "cantrip_server/test/workflow-execution.test.ts",
-  "cantrip_server/test/workflow-executor-coordination.test.ts",
-  "cantrip_server/test/workflow-generation-api.test.ts",
-  "cantrip_server/test/workflow-repository-api.test.ts",
-  "cantrip_server/test/workflow-run-api.test.ts",
-  "cantrip_server/test/workflow-values.test.ts",
-  "cantrip_worker/src/workflow-execution-encryption.ts",
-  "cantrip_worker/src/workflow-repository.ts",
-  "cantrip_worker/test/workflow-execution-encryption.test.ts",
-  "cantrip_worker/test/workflow-repository.test.ts",
-  "cantrip_worker/test/workflow-trigger-encryption.test.ts",
+  "tests/reference-node-server/src/app/routes/workflow-definitions.ts",
+  "tests/reference-node-server/src/app/routes/workflow-runs.ts",
+  "tests/reference-node-server/src/app/routes/workflow-trigger-delivery.ts",
+  "tests/reference-node-server/src/app/routes/workflow-trigger-management.ts",
+  "tests/reference-node-server/src/app/routes/project-workflow-registry.ts",
+  "tests/reference-node-server/src/app/runtime/workflow-scheduling-runtime.ts",
+  "tests/reference-node-server/src/db/workflow-run-transitions.ts",
+  "tests/reference-node-server/src/db/workflow-runs.ts",
+  "tests/reference-node-server/src/db/workflow-triggers.ts",
+  "tests/reference-node-server/src/db/workflows.ts",
+  "tests/reference-node-server/src/workflows",
+  "tests/reference-node-server/test/workflow-catalog-encryption.test.ts",
+  "tests/reference-node-server/test/workflow-catalog-migration.test.ts",
+  "tests/reference-node-server/test/workflow-definition-api.test.ts",
+  "tests/reference-node-server/test/workflow-domain-migration.test.ts",
+  "tests/reference-node-server/test/workflow-event-minimization.test.ts",
+  "tests/reference-node-server/test/workflow-execution.test.ts",
+  "tests/reference-node-server/test/workflow-executor-coordination.test.ts",
+  "tests/reference-node-server/test/workflow-generation-api.test.ts",
+  "tests/reference-node-server/test/workflow-repository-api.test.ts",
+  "tests/reference-node-server/test/workflow-run-api.test.ts",
+  "tests/reference-node-server/test/workflow-values.test.ts",
+  "tests/reference-node-worker/src/workflow-execution-encryption.ts",
+  "tests/reference-node-worker/src/workflow-repository.ts",
+  "tests/reference-node-worker/test/workflow-execution-encryption.test.ts",
+  "tests/reference-node-worker/test/workflow-repository.test.ts",
+  "tests/reference-node-worker/test/workflow-trigger-encryption.test.ts",
   "packages/crypto/src/workflow-content.ts",
   "packages/crypto/test/workflow-content.test.ts",
   "packages/protocol/src/workflow-content.ts",
@@ -55,7 +55,7 @@ export const removedWorkflowArtifactPaths = [
 export const workflowRemovalMigrationPath =
   "cantrip_server/drizzle/0191_wakeful_vector.sql";
 export const workflowRemovalMigrationTestPath =
-  "cantrip_server/test/workflow-removal-migration.test.ts";
+  "tests/reference-node-server/test/workflow-removal-migration.test.ts";
 
 const removedWorkflowTables = [
   "workflow_trigger_deliveries",
@@ -79,11 +79,13 @@ const scanTargets = [
   "README.md",
   "cantrip_app/src",
   "cantrip_cli/src",
-  "cantrip_server/src",
-  "cantrip_server/test",
+  "cantrip_server_rs/src",
+  "crates",
+  "tests/reference-node-server/src",
+  "tests/reference-node-server/test",
   "cantrip_site/src",
-  "cantrip_worker/src",
-  "cantrip_worker/test",
+  "tests/reference-node-worker/src",
+  "tests/reference-node-worker/test",
   "deploy",
   "distribution",
   "docs",
@@ -126,9 +128,13 @@ const selfPaths = new Set([
   "scripts/verify-workflow-removal.test.mjs",
 ]);
 
-const githubActionsSqlFieldPaths = new Set([
-  "cantrip_worker/src/github.ts",
-  "cantrip_worker/test/github.test.ts",
+const githubActionsResponsePaths = new Set([
+  "tests/reference-node-worker/src/github.ts",
+  "tests/reference-node-worker/test/github.test.ts",
+]);
+const githubActionsFixturePaths = new Set([
+  "scripts/worker-rust/github-operations-compatibility.mjs",
+  "scripts/worker-rust/github-operations-fixture.mjs",
 ]);
 
 const forbiddenPatterns = [
@@ -141,8 +147,11 @@ const forbiddenPatterns = [
     name: "retired workflow table",
     expression:
       /\bworkflow_(?:definitions|revisions|revision_nodes|revision_edges|runs|run_nodes|run_node_dependencies|run_node_items|node_attempts|worktree_leases|run_events|approval_gates|automation_triggers|trigger_deliveries)\b/gu,
-    isAllowed: ({ file, value }) =>
-      value === "workflow_runs" && githubActionsSqlFieldPaths.has(file),
+    isAllowed: ({ file, value, sourceText, offset }) =>
+      value === "workflow_runs" &&
+      (githubActionsResponsePaths.has(file) ||
+        (githubActionsFixturePaths.has(file) &&
+          /^\s*:/u.test(sourceText.slice(offset + value.length)))),
   },
   {
     name: "retired workflow HTTP surface",
@@ -219,9 +228,11 @@ export function forbiddenWorkflowReferences(files) {
     for (const pattern of forbiddenPatterns) {
       pattern.expression.lastIndex = 0;
       for (const match of sourceText.matchAll(pattern.expression)) {
-        if (pattern.isAllowed?.({ file, value: match[0] })) continue;
+        const offset = match.index ?? 0;
+        if (pattern.isAllowed?.({ file, value: match[0], sourceText, offset }))
+          continue;
         violations.push(
-          `${file}:${lineForOffset(sourceText, match.index ?? 0)}: ${pattern.name}: ${match[0]}`,
+          `${file}:${lineForOffset(sourceText, offset)}: ${pattern.name}: ${match[0]}`,
         );
       }
     }

@@ -1,0 +1,278 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2869",
+  "fixtureSourceBase": "305709b2927964e8f48cb9e4f332f6da527cd5cc",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/current-goal-provider-transfer-2869",
+  "platform": "darwin-arm64",
+  "scope": "The existing browser client uses real HTTP against a locally rebuilt Rust development binary. The packaged worker application and Codex Core run through their normal transports. The two disposable model HTTP endpoints provide controlled inference replies.",
+  "server": {
+    "path": "lock-fixed-native/cantrip-server",
+    "bytes": 179775136,
+    "sha256": "a4caa019f564b04bfbb7543b4fb3dd37e482ae88f90eb0d0a67216d3afc0d303"
+  },
+  "worker": {
+    "version": "1.1.2869",
+    "entrypoint": {
+      "path": "dist/index.js",
+      "bytes": 391958,
+      "sha256": "d83bb59a3a681b9bbd885519935a167029e969fc7241804bcfbe563cc4367e2b"
+    },
+    "coreVersion": "0.166.0",
+    "core": {
+      "path": "bin/codex",
+      "bytes": 281161744,
+      "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+    },
+    "coreManifest": {
+      "path": "bin/codex-runtime.json",
+      "bytes": 1434,
+      "sha256": "4f337b848fd1bbdc8ad23d98f0dbe31989230d09e49c07d6b673440d7d24d69e"
+    }
+  },
+  "runs": [
+    {
+      "databaseMode": "pglite",
+      "productSteps": 16,
+      "cleanWorkerStops": 5,
+      "workerHttpSuccesses": 7,
+      "report": {
+        "path": "lock-fixed-final-pglite.json",
+        "bytes": 871267,
+        "sha256": "53601b0e8f24c41b917b669bd1f423c03526fb763ec4c32a61116117cfd6be69"
+      },
+      "workerHttpTrace": {
+        "path": "lock-fixed-final-pglite-worker-http.jsonl",
+        "bytes": 705,
+        "sha256": "9568c442cb16a5680c55b6a0c9a5b42316414a256ce4c05d64bded8314d65a22"
+      },
+      "workerReceiptTrace": {
+        "path": "lock-fixed-final-pglite-worker-receipts.jsonl",
+        "bytes": 15284,
+        "sha256": "a67105f0ac5b74df16e8ea75508956fdfcd44847983cdeae6f08fdaaadf8cc85"
+      },
+      "workerPlan": {
+        "path": "tmp/cantrip-actual-folder-yMc582/rust/worker/managed-runtime-handoffs/69f3d3501ff7a6a865d099d594db43c5c146701042da15106c265711b8e8a247/0c878ff8-39e0-44b0-baac-7dd0beda874d/plan.json",
+        "bytes": 738,
+        "sha256": "8d875928b4585a9df13c47d73a464406052dbd1ac6faa06c85262919ea25fd68"
+      },
+      "workerExportReceipt": {
+        "path": "tmp/cantrip-actual-folder-yMc582/rust/worker/managed-runtime-handoffs/69f3d3501ff7a6a865d099d594db43c5c146701042da15106c265711b8e8a247/0c878ff8-39e0-44b0-baac-7dd0beda874d/export.json",
+        "bytes": 440,
+        "sha256": "dc7d3c1a99c61942f1f10e0ddcaf42c3b3352e813d45f858f07b849d54920796"
+      },
+      "workerExport": {
+        "path": "tmp/cantrip-actual-folder-yMc582/rust/worker/codex-home/managed-history-exports/0c878ff8-39e0-44b0-baac-7dd0beda874d.json",
+        "bytes": 73781,
+        "sha256": "83eec8103d26d8dd5db63acef6724eb2c48d16ade8ff1a7c889a920ad53a4067"
+      },
+      "destinationRollout": {
+        "path": "tmp/cantrip-actual-folder-yMc582/rust/worker/managed-native-namespaces/a2e0759f03fbea0fdc9bf0f593cc5f8d185337fa6d92ac6147dfbe7a1b1cbb23/6248a39d4b85ebbde96ef3e26abb12d0450f44e039debf33da506e9f250fb632/homes/0c878ff8-39e0-44b0-baac-7dd0beda874d/sessions/managed-tree-0c878ff8-39e0-44b0-baac-7dd0beda874d/rollout-2026-11-12T04-47-43-01a1ce15-4708-76c1-99eb-d9b64d09637e.jsonl",
+        "bytes": 176108,
+        "sha256": "c7686247731eb9ee16bf584eddf6ef5961433304f398ae2caae3d46fccf634ef"
+      },
+      "destinationSelection": {
+        "path": "tmp/cantrip-actual-folder-yMc582/rust/worker/managed-native-namespaces/a2e0759f03fbea0fdc9bf0f593cc5f8d185337fa6d92ac6147dfbe7a1b1cbb23/6248a39d4b85ebbde96ef3e26abb12d0450f44e039debf33da506e9f250fb632/selections/0c878ff8-39e0-44b0-baac-7dd0beda874d.json",
+        "bytes": 435,
+        "sha256": "1bff0635eb7b800bd5eae670cb550d3efb1ec7384e36e08d05077b995cea4a10"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "productSteps": 16,
+      "cleanWorkerStops": 5,
+      "workerHttpSuccesses": 7,
+      "report": {
+        "path": "lock-fixed-final-bundled-postgres.json",
+        "bytes": 874398,
+        "sha256": "9606d25a5d995da894d58c8e56c73debec0e2970b5d3cdb7fde3bdbd21bacaba"
+      },
+      "workerHttpTrace": {
+        "path": "lock-fixed-final-bundled-postgres-worker-http.jsonl",
+        "bytes": 705,
+        "sha256": "0a2b592b0b3be292ec997559a8bff439bd56f8c3aeac810a00955d6d59480ad0"
+      },
+      "workerReceiptTrace": {
+        "path": "lock-fixed-final-bundled-postgres-worker-receipts.jsonl",
+        "bytes": 15680,
+        "sha256": "5ee44bfdb82f13df4cf2e472435e687e87dd768f1d28de633c006c3c15fa873d"
+      },
+      "workerPlan": {
+        "path": "tmp/cantrip-actual-folder-r3xl5Z/rust/worker/managed-runtime-handoffs/d710fccc9e58f6ac974034ae9cb5bfbb6d241783bcecf36c7af4c4b65dfdbd8d/753750df-b069-42af-b181-d437f30a4574/plan.json",
+        "bytes": 738,
+        "sha256": "9fb8e99f56a091392735a6d0ae8778c3e37a27709c226a59a701952602794797"
+      },
+      "workerExportReceipt": {
+        "path": "tmp/cantrip-actual-folder-r3xl5Z/rust/worker/managed-runtime-handoffs/d710fccc9e58f6ac974034ae9cb5bfbb6d241783bcecf36c7af4c4b65dfdbd8d/753750df-b069-42af-b181-d437f30a4574/export.json",
+        "bytes": 440,
+        "sha256": "59da7bd0c7fd2df81a5e6fedf28a49e7a7fca929cff8e14032d266c4ef84bdf1"
+      },
+      "workerExport": {
+        "path": "tmp/cantrip-actual-folder-r3xl5Z/rust/worker/codex-home/managed-history-exports/753750df-b069-42af-b181-d437f30a4574.json",
+        "bytes": 73781,
+        "sha256": "b4f48bc9b985b823becdb32fff3592df133dbf953654f219586d79f55a5da070"
+      },
+      "destinationRollout": {
+        "path": "tmp/cantrip-actual-folder-r3xl5Z/rust/worker/managed-native-namespaces/9b983c52eb4dd8c9780bd848c544bf8a393075fa947ac45d0da6565c2c9bd843/3603a78caa5391df1bf1873cd54bb4aac76048e09a864f0569425458dc931629/homes/753750df-b069-42af-b181-d437f30a4574/sessions/managed-tree-753750df-b069-42af-b181-d437f30a4574/rollout-2026-11-12T04-48-33-01a1ce16-0ca0-7b83-a943-d2cc1b3aae71.jsonl",
+        "bytes": 176111,
+        "sha256": "c8ee16baedac31ebd511d643a777794cba26fa3250483083d0605facd2415d8e"
+      },
+      "destinationSelection": {
+        "path": "tmp/cantrip-actual-folder-r3xl5Z/rust/worker/managed-native-namespaces/9b983c52eb4dd8c9780bd848c544bf8a393075fa947ac45d0da6565c2c9bd843/3603a78caa5391df1bf1873cd54bb4aac76048e09a864f0569425458dc931629/selections/753750df-b069-42af-b181-d437f30a4574.json",
+        "bytes": 435,
+        "sha256": "4fb93f9d0c3133f17cd943de1e9675a91e441e460ad4fe231cee70c27db3466d"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "productSteps": 16,
+      "cleanWorkerStops": 5,
+      "workerHttpSuccesses": 7,
+      "report": {
+        "path": "lock-fixed-final-postgres.json",
+        "bytes": 866103,
+        "sha256": "fc0367f0b5eb39516d91d0b59f97aaee8ed1e222d6c65e61dd633bb1852d61ad"
+      },
+      "workerHttpTrace": {
+        "path": "lock-fixed-final-postgres-worker-http.jsonl",
+        "bytes": 705,
+        "sha256": "571714c917e89372b1c343ae10c179306738bfd110fc337ef49c0305f204f719"
+      },
+      "workerReceiptTrace": {
+        "path": "lock-fixed-final-postgres-worker-receipts.jsonl",
+        "bytes": 15286,
+        "sha256": "64a5850d8df4edabb7984015ebf0bac2b00d970700f0375e485bdcb7b3d97d4c"
+      },
+      "workerPlan": {
+        "path": "tmp/cantrip-actual-folder-h00zZH/rust/worker/managed-runtime-handoffs/adc6357a39633c501910b0d771e7214610f8453ac63b9a32d862fd39e8379633/e010ad89-c3da-4b90-a263-25ce5b807fc2/plan.json",
+        "bytes": 738,
+        "sha256": "341f9567d481996462cb9ac9cd1a25c93f4cf92cc3e41e07076a8209babacc79"
+      },
+      "workerExportReceipt": {
+        "path": "tmp/cantrip-actual-folder-h00zZH/rust/worker/managed-runtime-handoffs/adc6357a39633c501910b0d771e7214610f8453ac63b9a32d862fd39e8379633/e010ad89-c3da-4b90-a263-25ce5b807fc2/export.json",
+        "bytes": 440,
+        "sha256": "66f36225f17a9fbd33f1bd80117abd58ed0756d2b359c99e2a8017264a16fea9"
+      },
+      "workerExport": {
+        "path": "tmp/cantrip-actual-folder-h00zZH/rust/worker/codex-home/managed-history-exports/e010ad89-c3da-4b90-a263-25ce5b807fc2.json",
+        "bytes": 73780,
+        "sha256": "ff0d5b94a133d1d0f148489e7cbf4a1151b1cb3585823bc86a7ecfa3f928a0b5"
+      },
+      "destinationRollout": {
+        "path": "tmp/cantrip-actual-folder-h00zZH/rust/worker/managed-native-namespaces/209c9f3b44ab1fb89e74fe1748db317065ed99bf5590acbaca02369263ec477b/ab2e89b79f07615b4cb7b0595529579e24918a6d2121a1c42cf58f6732e076e4/homes/e010ad89-c3da-4b90-a263-25ce5b807fc2/sessions/managed-tree-e010ad89-c3da-4b90-a263-25ce5b807fc2/rollout-2026-11-12T04-49-33-01a1ce16-f364-7791-b3ea-6b3e63f6fcdc.jsonl",
+        "bytes": 176108,
+        "sha256": "4ae4dff9c2641f1a625cfa8eb1bf5582c653979e99d7a28731b970e5711bf201"
+      },
+      "destinationSelection": {
+        "path": "tmp/cantrip-actual-folder-h00zZH/rust/worker/managed-native-namespaces/209c9f3b44ab1fb89e74fe1748db317065ed99bf5590acbaca02369263ec477b/ab2e89b79f07615b4cb7b0595529579e24918a6d2121a1c42cf58f6732e076e4/selections/e010ad89-c3da-4b90-a263-25ce5b807fc2.json",
+        "bytes": 435,
+        "sha256": "bd8237560df0cb36a8a38b467e67b83c02c77014655e884c6a5bebbf1ded311e"
+      }
+    }
+  ],
+  "populatedPgliteUpgrade": {
+    "path": "existing-profile-0288-verification.json",
+    "bytes": 440,
+    "sha256": "640a485a0bf23f6d8dc4a227f5ea91e554e0d4a09129b1cffd49d6a84bdaabbe"
+  },
+  "historicalUpgradeAndRollback": {
+    "path": "historical-roundtrip-0288-verification.json",
+    "bytes": 1243,
+    "sha256": "2b27e1905800604c366b9b50ca91ad9036b6aaad7772d073e211c0e715eb4f07"
+  },
+  "postgresLockOrder": {
+    "before": {
+      "path": "tmp/cantrip-actual-folder-W4zNmP/postgres/postgres.log",
+      "bytes": 10154,
+      "sha256": "2d13478bd8dbf0c605436e0f1bbd20c2e5350ed14933c3b4ddbba3f7517a248c",
+      "deadlocks": 6
+    },
+    "after": {
+      "path": "tmp/cantrip-actual-folder-uRhrQh/postgres/postgres.log",
+      "bytes": 1369,
+      "sha256": "5872abf101338cd5f2a0ce82a96eb2e6d0a79e333728bbe46cef80e5dbd1d28a",
+      "deadlocks": 0
+    },
+    "lockCompatibilityProof": {
+      "path": "owner-lock-proof.json",
+      "bytes": 237,
+      "sha256": "92764ff300f4d58760adb396941e7aa3fcf3dd95a4a4a99360ff5448776f2d4c"
+    }
+  },
+  "reproductions": {
+    "untypedTimestamp": {
+      "path": "pglite-diagnostic.json",
+      "bytes": 195429,
+      "sha256": "5294c3e9b6c86d2320491ddba25117cde194c6417cae93f1ebde329a84e8a2ca"
+    },
+    "rejectedEligibilityCode": {
+      "path": "pglite-fixed-diagnostic.json",
+      "bytes": 193187,
+      "sha256": "379f29e60bfba08c33c3344c42c1ab305dff5341c45cf19f8a66a10348463c45"
+    },
+    "initialNodeCaptureFailure": {
+      "path": "pglite-reference.json",
+      "bytes": 422335,
+      "sha256": "3a18cdcfbc375be9bdc3cfbfa053a1d0e5155fca126c107b05d2129342b71394"
+    }
+  },
+  "sources": [
+    {
+      "path": "cantrip_server/drizzle/0288_task_provider_transfer_eligibility.sql",
+      "bytes": 713,
+      "sha256": "10243e1e11dde0744ad40b25e7c588bbc4a75ac5eda1b6da32831b66b01fe62f"
+    },
+    {
+      "path": "cantrip_server_rs/src/native_handoffs/task_goal_input.rs",
+      "bytes": 5905,
+      "sha256": "ab6e730bf8337d4330c5db254024f5387f62ac664f140c693d59cb8c35736822"
+    },
+    {
+      "path": "cantrip_server_rs/src/tasks/rows.rs",
+      "bytes": 8898,
+      "sha256": "048e96a06d513007a49c708fa7b1fc33313dc7e6a5d159ada48fb08300c37a77"
+    },
+    {
+      "path": "cantrip_server_rs/src/tasks/goal_inference_inputs.rs",
+      "bytes": 51450,
+      "sha256": "7baeed511525c3f82c83bad0ecc4e9f2893840340823d7c9a90a367a66bf8f8e"
+    },
+    {
+      "path": "scripts/server-rust/actual-task-goal-provider-transfer.mjs",
+      "bytes": 10111,
+      "sha256": "f7d2b8f388b1d77e060896a1dc2da4f5cd507deaa8ac36a9ba334ac3f57382e2"
+    },
+    {
+      "path": "scripts/server-rust/actual-task-client.mjs",
+      "bytes": 23225,
+      "sha256": "722d6b48e5a3ee4f0e951a92be3dca56f62e1bd4226d8033028416b0730c10a5"
+    },
+    {
+      "path": "scripts/server-rust/historical-product-profile-acceptance.mjs",
+      "bytes": 26524,
+      "sha256": "ba25a599e36b2d616c7033a5e35bbc9e7e5eda7ff9d383e549b5e7f1f04bc70a"
+    }
+  ],
+  "nodeComparison": {
+    "databaseMode": "pglite",
+    "handoffCompleted": true,
+    "destinationReceivedOriginalInput": true,
+    "productStepsBeforeFailure": 11,
+    "remainingFailure": "The frozen Node reference left the Task in implementing after the transferred input reached the destination. The trace contains no later Goal cycle dispatch.",
+    "report": {
+      "path": "keeper-reference.json",
+      "bytes": 414334,
+      "sha256": "578bc788b3bdd7bdcaa92f41e2935e7b925f08698f3dc46f0aa8d5006bced527"
+    },
+    "handoffTrace": {
+      "path": "keeper-reference-worker-http.jsonl",
+      "bytes": 705,
+      "sha256": "5fdb38edcfc6f61eaaab20d2a646f71db7552cbbd424466ea48c19f6ebeaab59"
+    },
+    "receiptTrace": {
+      "path": "keeper-reference-worker-receipts.jsonl",
+      "bytes": 8350,
+      "sha256": "4c238148dde90985d576347c979a2c60a720e494b42035f8e76d8b52b8471106"
+    }
+  }
+}

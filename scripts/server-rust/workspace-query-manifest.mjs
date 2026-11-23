@@ -3,15 +3,15 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
 import * as protocol from "../../packages/protocol/dist/index.js";
-import { WorkspaceLayoutRepository } from "../../cantrip_server/src/db/workspace-layouts.ts";
-import { resolveEntitySurface } from "../../cantrip_server/src/db/tab-layouts.ts";
-import { validateWorkspaceDocumentMigration } from "../../cantrip_server/src/db/workspace-document-migration.ts";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
+import { WorkspaceLayoutRepository } from "../../tests/reference-node-server/src/db/workspace-layouts.ts";
+import { resolveEntitySurface } from "../../tests/reference-node-server/src/db/tab-layouts.ts";
+import { validateWorkspaceDocumentMigration } from "../../tests/reference-node-server/src/db/workspace-document-migration.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
 import { workspaceState, workspaceTab } from "./workspace-wire-fixtures.mjs";
 import { projectLabel } from "./security-fixtures.mjs";
 
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 const { getTableColumns, getTableName } = require("drizzle-orm");

@@ -1,0 +1,39 @@
+#!/bin/sh
+set -eu
+
+case "${1:-}" in
+    initialize)
+        # Preserve existing installed machines, including older Docker editions
+        # that stored only the D-Bus identity. New templates contain neither ID.
+        if [ ! -s /etc/machine-id ]; then
+            if [ -s /var/lib/dbus/machine-id ]; then
+                machine_identity=$(dbus-uuidgen --get=/var/lib/dbus/machine-id)
+                printf '%s\n' "$machine_identity" > /etc/machine-id
+            else
+                rm -f /etc/machine-id
+                dbus-uuidgen --ensure=/etc/machine-id
+            fi
+        fi
+        dbus-uuidgen --get=/etc/machine-id >/dev/null
+        install -d /var/lib/dbus
+        ln -sfn /etc/machine-id /var/lib/dbus/machine-id
+        # The optional OpenSSH server's host keys were removed for an offline
+        # clone. Generate them before ssh.service starts, when it is installed.
+        if [ -x /usr/sbin/sshd ]; then ssh-keygen -A; fi
+        ;;
+    prepare-clone)
+        # Only for an offline copied root or an image build. Do not operate a
+        # live service here: an installer's /run may belong to the live medium.
+        if [ -d /usr/lib/cantrip-os/clone-hooks.d ]; then
+            run-parts --exit-on-error /usr/lib/cantrip-os/clone-hooks.d
+        fi
+        rm -f /etc/machine-id /var/lib/dbus/machine-id /etc/ssh/ssh_host_*
+        install -d /var/lib/dbus
+        ln -s /etc/machine-id /var/lib/dbus/machine-id
+        ;;
+    *)
+        echo 'Usage: cantrip-os-identity initialize|prepare-clone' >&2
+        echo 'prepare-clone is only for an offline copied root or image build.' >&2
+        exit 2
+        ;;
+esac

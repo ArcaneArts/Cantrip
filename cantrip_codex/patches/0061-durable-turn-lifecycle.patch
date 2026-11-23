@@ -1,0 +1,1641 @@
+diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+index bdfc0285429d481da99d2cd39f9fd42850017958..21652f7680a752e0b6328afe0c92199080274df3 100644
+--- a/codex-rs/app-server/src/request_processors/turn_processor.rs
++++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
+@@ -519,21 +519,30 @@ impl TurnRequestProcessor {
+                     .await
+                     .map_err(|error| internal_error(error.to_string()))?;
+                 let state = self.thread_state_manager.thread_state(thread_uuid).await;
+-                let seeded = state.lock().await.seed_suspended_turn(&history);
++                state.lock().await.seed_suspended_turn(&history);
+                 // The old native start is rehydrated internally, never emitted
+                 // again as a start lifecycle or appended to persisted history.
+                 let outgoing = Arc::clone(&self.outgoing);
+                 let watcher = self.thread_watch_manager.clone();
+                 let request_id = request_id.clone();
+                 tokio::spawn(async move {
+-                    if seeded {
+-                        watcher.note_turn_started(&expected.thread_id).await;
+-                    }
+                     match thread
+                         .resume_durable_suspension_at_epoch(&expected, epoch)
+                         .await
+                     {
+                         Ok(codex_core::StartIfIdleSubmission::Started { .. }) => {
++                            // Event reduction takes this same state lock before
++                            // reporting terminal status. A fast completion must
++                            // never be followed by an older running update.
++                            let current = state.lock().await;
++                            if current.active_turn_id() == Some(expected.turn_id.as_str())
++                                && thread.agent_status().await
++                                    == codex_protocol::protocol::AgentStatus::Running
++                                && thread.active_turn_root(&expected.turn_id).await.is_some()
++                            {
++                                watcher.note_turn_started(&expected.thread_id).await;
++                            }
++                            drop(current);
+                             outgoing
+                                 .send_response(
+                                     request_id,
+@@ -545,18 +554,9 @@ impl TurnRequestProcessor {
+                                 .await;
+                         }
+                         result => {
+-                            if seeded
+-                                && thread.agent_status().await
+-                                    != codex_protocol::protocol::AgentStatus::Running
+-                                && state
+-                                    .lock()
+-                                    .await
+-                                    .clear_failed_suspension_restore(&expected.turn_id)
+-                            {
+-                                watcher
+-                                    .note_turn_completed(&expected.thread_id, false)
+-                                    .await;
+-                            }
++                            // The original turn is still unfinished and held.
++                            // Preserve its metadata; failed preparation is not
++                            // a turn start or a terminal lifecycle.
+                             let message = match result {
+                                 Ok(codex_core::StartIfIdleSubmission::NotSubmitted { reason }) => {
+                                     format!("native suspension was not resumed: {reason:?}")
+@@ -1880,23 +1880,31 @@ impl TurnRequestProcessor {
+         } = params;
+         let (thread_uuid, thread) = self.load_thread(&thread_id).await?;
+         let thread_state = self.thread_state_manager.thread_state(thread_uuid).await;
+-        let thread_state = thread_state.lock().await;
+-        let Some(active_turn) = thread_state.active_turn_snapshot() else {
+-            return Err(invalid_request("no active turn to pause"));
+-        };
+-        if active_turn.id != turn_id {
+-            return Err(invalid_request(format!(
+-                "expected active turn id {turn_id} but found {}",
+-                active_turn.id
+-            )));
+-        }
+-        drop(thread_state);
+         if !paused && thread.has_live_durable_suspension() {
++            let epoch = thread.durable_suspension_epoch();
++            let history = thread
++                .load_continuation_history()
++                .await
++                .map_err(|error| internal_error(error.to_string()))?;
++            thread_state.lock().await.seed_suspended_turn(&history);
+             let outgoing = Arc::clone(&self.outgoing);
++            let watcher = self.thread_watch_manager.clone();
+             let request_id = request_id.clone();
+             tokio::spawn(async move {
+-                match thread.resume_live_suspended_turn(&turn_id).await {
++                match thread
++                    .resume_live_suspended_turn_at_epoch(&turn_id, epoch)
++                    .await
++                {
+                     Ok(()) => {
++                        let current = thread_state.lock().await;
++                        if current.active_turn_id() == Some(turn_id.as_str())
++                            && thread.agent_status().await
++                                == codex_protocol::protocol::AgentStatus::Running
++                            && thread.active_turn_root(&turn_id).await.is_some()
++                        {
++                            watcher.note_turn_started(&thread_id).await;
++                        }
++                        drop(current);
+                         outgoing
+                             .send_response(request_id, TurnPauseResponse { paused: false })
+                             .await
+@@ -1910,6 +1918,17 @@ impl TurnRequestProcessor {
+             });
+             return Ok(None);
+         }
++        let thread_state = thread_state.lock().await;
++        let Some(active_turn) = thread_state.active_turn_snapshot() else {
++            return Err(invalid_request("no active turn to pause"));
++        };
++        if active_turn.id != turn_id {
++            return Err(invalid_request(format!(
++                "expected active turn id {turn_id} but found {}",
++                active_turn.id
++            )));
++        }
++        drop(thread_state);
+         self.submit_core_op(request_id, thread.as_ref(), Op::SetTurnPaused { paused })
+             .await
+             .map_err(|err| internal_error(format!("failed to update turn pause state: {err}")))?;
+diff --git a/codex-rs/app-server/src/thread_state.rs b/codex-rs/app-server/src/thread_state.rs
+index 54e7597cc6ed1721514c40fc17e1fdc1d6ccdfc5..78e0cc08c3777afad68930e7586d28846bde21cf 100644
+--- a/codex-rs/app-server/src/thread_state.rs
++++ b/codex-rs/app-server/src/thread_state.rs
+@@ -220,15 +220,6 @@ impl ThreadState {
+         true
+     }
+ 
+-    pub(crate) fn clear_failed_suspension_restore(&mut self, turn_id: &str) -> bool {
+-        if self.active_turn_id() == Some(turn_id) {
+-            self.current_turn_history.reset();
+-            self.turn_summary = TurnSummary::default();
+-            return true;
+-        }
+-        false
+-    }
+-
+     pub(crate) fn active_turn_snapshot(&self) -> Option<Turn> {
+         self.current_turn_history.active_turn_snapshot()
+     }
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+index 74622294d60c7dbfafc3954a5f67977486713f8a..0c75331d0ee8a3e48e220454f5486312a531138c 100644
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -36,7 +36,7 @@ use std::sync::atomic::AtomicBool;
+ use std::sync::atomic::AtomicU64;
+ use std::sync::atomic::Ordering;
+ 
+-pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v2");
++pub(crate) const RUNTIME: &str = concat!(env!("CARGO_PKG_VERSION"), "/cantrip-suspension-v3");
+ 
+ #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+@@ -147,6 +147,9 @@ async fn environments(session: &Session) -> Vec<SavedEnvironment> {
+ #[derive(Clone, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ pub(crate) struct SavedTurn {
++    /// Stable confirmed checkpoint revision. Store revisions also advance for
++    /// preparation attempts, without changing this continuation's identity.
++    capture_revision: u64,
+     pub(super) loop_state: TurnLoopState,
+     pub(super) mcp: McpStartupRequirements,
+     pub(super) diff: TurnDiffSnapshot,
+@@ -174,6 +177,7 @@ pub(crate) struct SavedTurn {
+ /// An OS lock prevents another process restoring its checkpoint concurrently.
+ #[derive(Default)]
+ pub(crate) struct DurableSuspension {
++    control: Mutex<()>,
+     epoch: AtomicU64,
+     requested: AtomicBool,
+     pub(crate) frozen: AtomicBool,
+@@ -184,7 +188,8 @@ pub(crate) struct DurableSuspension {
+ }
+ 
+ pub(crate) struct LiveResume {
+-    epoch: u64,
++    pub(crate) epoch: u64,
++    pub(crate) identity: Option<NativeSuspension>,
+     ready: tokio::sync::watch::Sender<Option<std::result::Result<(), String>>>,
+ }
+ 
+@@ -234,7 +239,7 @@ pub(super) async fn restore_gate_on_load(session: &Session) {
+         let Some(record) = owner.read(session).await? else {
+             return Ok(false);
+         };
+-        if record.state != CheckpointState::Suspended {
++        if !record.state.retains_continuation() {
+             return Ok(false);
+         }
+         let live = session
+@@ -243,7 +248,17 @@ pub(super) async fn restore_gate_on_load(session: &Session) {
+         let history = live.load_continuation_history().await.map_err(io)?;
+         if validate_unfinished(&history, &record.identity.turn_id).is_err() {
+             // Actual terminal/replacement history wins over an old checkpoint.
+-            owner.settle(session, CheckpointState::Invalidated).await?;
++            owner
++                .invalidate_record(session, descriptor(&record))
++                .await?;
++            return Ok(false);
++        }
++        if continuation_history_advanced(&record, &history)? {
++            // Execution after a prior Resume makes that older safe boundary
++            // stale. Preserve ordinary interruption behavior without reviving it.
++            owner
++                .invalidate_record(session, descriptor(&record))
++                .await?;
+             return Ok(false);
+         }
+         Ok::<_, CodexErr>(true)
+@@ -275,7 +290,10 @@ pub(crate) fn descriptor(record: &Checkpoint<SavedTurn>) -> NativeSuspension {
+         thread_id: record.identity.thread_id.clone(),
+         turn_id: record.identity.turn_id.clone(),
+         checkpoint_id: record.identity.checkpoint_id.clone(),
+-        revision: record.revision,
++        revision: record
++            .continuation
++            .as_ref()
++            .map_or(record.revision, |saved| saved.capture_revision),
+     }
+ }
+ 
+@@ -288,6 +306,12 @@ fn history_digest(items: &[RolloutItem]) -> Result<String> {
+ }
+ 
+ impl DurableSuspension {
++    fn control(&self) -> std::sync::MutexGuard<'_, ()> {
++        self.control
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++    }
++
+     async fn with_store<T: Send + 'static>(
+         self: &Arc<Self>,
+         session: &Session,
+@@ -316,6 +340,7 @@ impl DurableSuspension {
+     }
+ 
+     pub(crate) fn release_live_gate(&self) {
++        let _control = self.control();
+         self.cancel_live_resume("native resumption was stopped or superseded");
+         self.epoch.fetch_add(1, Ordering::AcqRel);
+         self.requested.store(false, Ordering::Release);
+@@ -328,13 +353,15 @@ impl DurableSuspension {
+         }
+     }
+ 
+-    pub(crate) fn request(&self) {
++    pub(crate) fn request(&self) -> u64 {
++        let _control = self.control();
+         self.cancel_live_resume("native resumption was superseded by another pause");
+-        self.epoch.fetch_add(1, Ordering::AcqRel);
++        let epoch = self.epoch.fetch_add(1, Ordering::AcqRel) + 1;
+         self.requested.store(true, Ordering::Release);
+         if let Ok(mut boundary) = self.boundary.lock() {
+             *boundary = None;
+         }
++        epoch
+     }
+ 
+     pub(crate) fn has_live_suspension(&self) -> bool {
+@@ -350,6 +377,14 @@ impl DurableSuspension {
+     }
+ 
+     pub(crate) fn begin_live_resume(&self) -> Result<Arc<LiveResume>> {
++        self.begin_live_resume_at_epoch(self.epoch.load(Ordering::Acquire))
++    }
++
++    fn begin_live_resume_at_epoch(&self, epoch: u64) -> Result<Arc<LiveResume>> {
++        let _control = self.control();
++        if self.epoch.load(Ordering::Acquire) != epoch {
++            return Err(invalid("native resumption was superseded"));
++        }
+         let mut pending = self.live_resume.lock().map_err(io)?;
+         if let Some(pending) = pending.as_ref()
+             && pending.epoch == self.epoch.load(Ordering::Acquire)
+@@ -360,15 +395,28 @@ impl DurableSuspension {
+         let epoch = self.epoch.fetch_add(1, Ordering::AcqRel) + 1;
+         let resume = Arc::new(LiveResume {
+             epoch,
++            identity: self.boundary().ok(),
+             ready: tokio::sync::watch::channel(None).0,
+         });
+         *pending = Some(Arc::clone(&resume));
+-        *self.boundary.lock().map_err(io)? = None;
+         Ok(resume)
+     }
+ 
+-    pub(crate) fn complete_live_resume(&self, result: std::result::Result<(), String>) {
++    pub(crate) fn current_live_resume(&self) -> Option<Arc<LiveResume>> {
++        let _control = self.control();
++        self.live_resume.lock().ok()?.clone()
++    }
++
++    pub(crate) fn complete_live_resume(
++        &self,
++        attempt: &LiveResume,
++        result: std::result::Result<(), String>,
++    ) {
++        let _control = self.control();
+         if let Ok(mut pending) = self.live_resume.lock()
++            && pending
++                .as_ref()
++                .is_some_and(|pending| pending.epoch == attempt.epoch)
+             && let Some(pending) = pending.take()
+         {
+             if pending.epoch == self.epoch.load(Ordering::Acquire) {
+@@ -391,6 +439,17 @@ impl DurableSuspension {
+             .map_err(invalid)
+     }
+ 
++    fn confirm_pause_epoch(&self, epoch: u64) -> Result<()> {
++        let _control = self.control();
++        if self.epoch.load(Ordering::Acquire) != epoch
++            || !self.requested.load(Ordering::Acquire)
++            || !self.frozen.load(Ordering::Acquire)
++        {
++            return Err(invalid("native pause confirmation was superseded"));
++        }
++        Ok(())
++    }
++
+     pub(crate) async fn capture(
+         self: &Arc<Self>,
+         session: &Session,
+@@ -400,21 +459,31 @@ impl DurableSuspension {
+         diff: &SharedTurnDiffTracker,
+         pending_step: Option<&super::step_settings::ResolvedStepSettings>,
+     ) {
+-        if !self.requested.load(Ordering::Acquire)
+-            || self
+-                .boundary
+-                .lock()
+-                .is_ok_and(|boundary| boundary.is_some())
+-        {
+-            return;
+-        }
+-        let epoch = self.epoch.load(Ordering::Acquire);
++        let epoch = {
++            let _control = self.control();
++            if !self.requested.load(Ordering::Acquire)
++                || self
++                    .boundary
++                    .lock()
++                    .is_ok_and(|boundary| boundary.is_some())
++            {
++                return;
++            }
++            self.epoch.load(Ordering::Acquire)
++        };
+         let captured = self
+             .capture_inner(session, turn, state, mcp, diff, pending_step, epoch)
+             .await;
++        let _control = self.control();
+         if self.epoch.load(Ordering::Acquire) != epoch {
+             return;
+         }
++        if let Ok(suspension) = &captured
++            && let Ok(mut expected) = self.expected.lock()
++            && expected.is_some()
++        {
++            *expected = Some(suspension.clone());
++        }
+         if let Ok(mut boundary) = self.boundary.lock() {
+             *boundary = Some(captured.map_err(|error| error.to_string()));
+         }
+@@ -481,6 +550,7 @@ impl DurableSuspension {
+                     "answer outstanding native interactions before durable pause",
+                 ));
+             }
++            let _control = self.control();
+             if self.epoch.load(Ordering::Acquire) != epoch
+                 || !self.requested.load(Ordering::Acquire)
+             {
+@@ -515,6 +585,7 @@ impl DurableSuspension {
+         validate_unfinished(&history, &turn.sub_id)?;
+         let history_binding = history_digest(&history)?;
+         let saved = SavedTurn {
++            capture_revision: 0,
+             loop_state: loop_state.clone(),
+             mcp: mcp.clone(),
+             diff: diff.lock().await.snapshot(),
+@@ -563,16 +634,19 @@ impl DurableSuspension {
+             }
+             let previous = store.read(RUNTIME).map_err(io)?;
+             let expected = previous.as_ref().map(|old| old.revision);
++            let revision = expected
++                .unwrap_or(0)
++                .checked_add(1)
++                .ok_or_else(|| invalid("checkpoint revision exhausted"))?;
++            let mut saved = saved;
++            saved.capture_revision = revision;
+             let record = Checkpoint {
+                 identity: CheckpointIdentity {
+                     thread_id,
+                     turn_id,
+                     checkpoint_id: uuid::Uuid::now_v7().to_string(),
+                 },
+-                revision: expected
+-                    .unwrap_or(0)
+-                    .checked_add(1)
+-                    .ok_or_else(|| invalid("checkpoint revision exhausted"))?,
++                revision,
+                 runtime_version: RUNTIME.into(),
+                 history_binding,
+                 state: CheckpointState::Suspended,
+@@ -597,7 +671,7 @@ impl DurableSuspension {
+         if let Some(expected) = expected.as_ref() {
+             let record = record
+                 .ok_or_else(|| invalid("expected native suspension checkpoint is missing"))?;
+-            if record.state != CheckpointState::Suspended || &descriptor(record) != expected {
++            if !record.state.retains_continuation() || &descriptor(record) != expected {
+                 return Err(invalid(
+                     "expected native suspension identity is no longer suspended",
+                 ));
+@@ -606,32 +680,220 @@ impl DurableSuspension {
+         Ok(())
+     }
+ 
+-    pub(crate) async fn settle(
++    async fn invalidate_record(
+         self: &Arc<Self>,
+         session: &Session,
+-        state: CheckpointState,
++        expected: NativeSuspension,
+     ) -> Result<()> {
+         self.with_store(session, move |store| {
+             if let Some(mut record) = store.read(RUNTIME).map_err(io)? {
+-                if record.state == CheckpointState::Suspended {
++                if record.state.retains_continuation() && descriptor(&record) == expected {
+                     let revision = record.revision;
+                     record.revision = revision
+                         .checked_add(1)
+                         .ok_or_else(|| invalid("checkpoint revision exhausted"))?;
+-                    record.state = state;
++                    record.state = CheckpointState::Invalidated;
+                     record.continuation = None;
+                     store.commit(Some(revision), &record).map_err(io)?;
+                 }
+             }
+             Ok(())
+         })
+-        .await?;
+-        self.frozen.store(false, Ordering::Release);
++        .await
++    }
++
++    /// Commit preparation without deleting the only recovery copy. A failed
++    /// directory sync can leave this record installed; the same confirmed
++    /// capture identity remains retryable in a fresh process.
++    pub(crate) async fn prepare_admission(
++        self: &Arc<Self>,
++        session: &Session,
++        expected: &NativeSuspension,
++        epoch: u64,
++    ) -> Result<()> {
++        let expected = expected.clone();
++        let owner = Arc::clone(self);
++        self.with_store(session, move |store| {
++            let mut record = store
++                .read(RUNTIME)
++                .map_err(io)?
++                .ok_or_else(|| invalid("native suspension checkpoint is missing"))?;
++            if owner.epoch.load(Ordering::Acquire) != epoch {
++                return Err(invalid("native resumption was superseded before admission"));
++            }
++            if !record.state.retains_continuation() || descriptor(&record) != expected {
++                return Err(invalid("native resumption no longer owns this checkpoint"));
++            }
++            let revision = record.revision;
++            record.revision = revision
++                .checked_add(1)
++                .ok_or_else(|| invalid("checkpoint revision exhausted"))?;
++            record.state = CheckpointState::Resuming;
++            store.commit(Some(revision), &record).map_err(io)
++        })
++        .await
++    }
++
++    /// Admit only the current task and control generation after actual storage
++    /// and fresh runtime admission succeeded. Stop and replacement take the same
++    /// active-turn lock; pause/resume generations share the short control lock.
++    async fn finish_admission(
++        &self,
++        session: &Session,
++        turn_id: &str,
++        epoch: u64,
++        ready: impl FnOnce() -> bool + Send,
++    ) -> Result<()> {
++        let active = session.active_turn.lock().await;
++        let _control = self.control();
++        if self.epoch.load(Ordering::Acquire) != epoch
++            || active
++                .as_ref()
++                .and_then(|active| active.task.as_ref())
++                .is_none_or(|task| task.turn_context.sub_id != turn_id)
++        {
++            return Err(invalid(
++                "native resumption lost its task or control generation",
++            ));
++        }
++        let mut expected = self.expected.lock().map_err(io)?;
++        if !ready() {
++            return Err(invalid(
++                "native resumption no longer owns its readiness reply",
++            ));
++        }
+         self.requested.store(false, Ordering::Release);
+-        *self.expected.lock().map_err(io)? = None;
++        self.frozen.store(false, Ordering::Release);
++        *expected = None;
++        session.set_turn_paused(false);
+         Ok(())
+     }
+ 
++    pub(crate) async fn finish_live_admission(
++        &self,
++        session: &Session,
++        turn_id: &str,
++        attempt: &LiveResume,
++    ) -> Result<()> {
++        self.finish_admission(session, turn_id, attempt.epoch, || {
++            let mut pending = self
++                .live_resume
++                .lock()
++                .unwrap_or_else(std::sync::PoisonError::into_inner);
++            if pending
++                .as_ref()
++                .is_none_or(|pending| pending.epoch != attempt.epoch)
++            {
++                return false;
++            }
++            *pending = None;
++            attempt.ready.send_replace(Some(Ok(())));
++            true
++        })
++        .await
++    }
++
++    async fn finish_restored_admission(
++        &self,
++        session: &Session,
++        turn_id: &str,
++        restored: &RestoredContinuation,
++    ) -> Result<()> {
++        self.finish_admission(session, turn_id, restored.epoch, || {
++            restored.resumed.store(true, Ordering::Release);
++            session
++                .agent_status
++                .send_replace(super::AgentStatus::Running);
++            restored.ready.send_replace(Some(Ok(())));
++            true
++        })
++        .await
++    }
++
++    pub(crate) fn fail_live_resume(&self, session: &Session, attempt: &LiveResume, reason: String) {
++        {
++            let _control = self.control();
++            if self.epoch.load(Ordering::Acquire) == attempt.epoch {
++                session.set_turn_paused(true);
++            }
++        }
++        self.complete_live_resume(attempt, Err(reason));
++    }
++
++    pub(crate) fn preserve_unclaimed_pause(&self, session: &Session) {
++        let _control = self.control();
++        if self.frozen.load(Ordering::Acquire)
++            && self
++                .live_resume
++                .lock()
++                .is_ok_and(|pending| pending.is_none())
++        {
++            session.set_turn_paused(true);
++        }
++    }
++
++    pub(crate) async fn apply_bound_pause(
++        &self,
++        session: &Session,
++        turn_id: &str,
++        epoch: u64,
++        paused: bool,
++    ) -> Result<bool> {
++        let mut active = session.active_turn.lock().await;
++        let _control = self.control();
++        if self.epoch.load(Ordering::Acquire) != epoch
++            || active
++                .as_ref()
++                .and_then(|active| active.task.as_ref())
++                .is_none_or(|task| task.turn_context.sub_id != turn_id)
++        {
++            return Err(invalid(
++                "the suspension control no longer owns this native turn",
++            ));
++        }
++        if paused
++            && let Some(task) = active.as_ref().and_then(|active| active.task.as_ref())
++            && task
++                .turn_context
++                .extension_data
++                .get::<RestoredContinuation>()
++                .is_some_and(|restored| !restored.did_resume())
++        {
++            // No execution was admitted. Remove this reservation as well as
++            // cancelling it: a cancelled task cannot service another Resume.
++            // Its saved boundary remains the authority, without a terminal event.
++            let task = active.take().and_then(|mut turn| turn.task.take());
++            session.set_turn_paused(true);
++            drop(_control);
++            drop(active);
++            if let Some(task) = task {
++                task.cancellation_token.cancel();
++                task.handle.abort();
++                let _ = task.handle.await;
++                session.finish_security_execution(&task.turn_context).await;
++            }
++            return Ok(true);
++        }
++        session.set_turn_paused(paused);
++        Ok(false)
++    }
++
++    async fn hold_restoration(&self, session: &Session, epoch: u64) -> Result<()> {
++        let active = session.active_turn.lock().await;
++        let _control = self.control();
++        if self.epoch.load(Ordering::Acquire) != epoch || active.is_some() {
++            return Err(invalid("native restoration lost its idle reservation"));
++        }
++        self.frozen.store(true, Ordering::Release);
++        Ok(())
++    }
++
++    fn fence_stop(&self) {
++        let _control = self.control();
++        self.cancel_live_resume("native resumption was stopped");
++        self.epoch.fetch_add(1, Ordering::AcqRel);
++    }
++
+     async fn retire_if_terminal(self: &Arc<Self>, session: &Session) -> Result<bool> {
+         let epoch = self.epoch.load(Ordering::Acquire);
+         let live = session
+@@ -663,7 +925,7 @@ impl DurableSuspension {
+                     if !ended_turns.contains(&record.identity.turn_id) {
+                         return Ok(false);
+                     }
+-                    if record.state == CheckpointState::Suspended {
++                    if record.state.retains_continuation() {
+                         let revision = record.revision;
+                         record.revision = revision
+                             .checked_add(1)
+@@ -762,19 +1024,37 @@ pub(crate) fn validate_record_history(
+     record: &Checkpoint<SavedTurn>,
+     history: &[RolloutItem],
+ ) -> Result<()> {
+-    if record.state != CheckpointState::Suspended {
++    validate_unfinished(history, &record.identity.turn_id)?;
++    if continuation_history_advanced(record, history)? {
++        return Err(invalid(
++            "native execution history advanced past its suspension boundary",
++        ));
++    }
++    Ok(())
++}
++
++fn continuation_history_advanced(
++    record: &Checkpoint<SavedTurn>,
++    history: &[RolloutItem],
++) -> Result<bool> {
++    if !record.state.retains_continuation() {
+         return Err(invalid("this checkpoint is no longer suspended"));
+     }
+     let saved = record
+         .continuation
+         .as_ref()
+         .ok_or_else(|| invalid("suspension continuation is missing"))?;
++    if saved.capture_revision == 0
++        || saved.capture_revision > record.revision
++        || (record.state == CheckpointState::Suspended && saved.capture_revision != record.revision)
++    {
++        return Err(invalid("the confirmed checkpoint revision is invalid"));
++    }
+     if saved.context.turn_id.as_deref() != Some(record.identity.turn_id.as_str()) {
+         return Err(invalid(
+             "suspended context does not identify the checkpoint's native turn",
+         ));
+     }
+-    validate_unfinished(history, &record.identity.turn_id)?;
+     let prefix = history
+         .get(..saved.history_items)
+         .ok_or_else(|| invalid("native history is shorter than its suspension boundary"))?;
+@@ -783,7 +1063,7 @@ pub(crate) fn validate_record_history(
+             "native history changed before its suspension boundary",
+         ));
+     }
+-    if history[saved.history_items..]
++    Ok(history[saved.history_items..]
+         .iter()
+         .any(|item| match item {
+             RolloutItem::ResponseItem(_)
+@@ -799,13 +1079,7 @@ pub(crate) fn validate_record_history(
+                     | EventMsg::TurnAborted(_)
+             ),
+             _ => false,
+-        })
+-    {
+-        return Err(invalid(
+-            "native execution history advanced past its suspension boundary",
+-        ));
+-    }
+-    Ok(())
++        }))
+ }
+ 
+ pub(crate) async fn validate_saved(
+@@ -848,6 +1122,7 @@ impl SavedTurn {
+ 
+ pub(crate) struct RestoredContinuation {
+     saved: SavedTurn,
++    identity: NativeSuspension,
+     resumed: AtomicBool,
+     epoch: u64,
+     owner: Arc<DurableSuspension>,
+@@ -868,9 +1143,15 @@ impl Drop for RestoreAttemptGuard {
+ }
+ 
+ impl RestoredContinuation {
+-    fn new(saved: SavedTurn, owner: Arc<DurableSuspension>, epoch: u64) -> Self {
++    fn new(
++        saved: SavedTurn,
++        identity: NativeSuspension,
++        owner: Arc<DurableSuspension>,
++        epoch: u64,
++    ) -> Self {
+         Self {
+             saved,
++            identity,
+             epoch,
+             owner,
+             resumed: AtomicBool::new(false),
+@@ -953,9 +1234,14 @@ pub(crate) async fn preserve_failed_restoration(
+     if active
+         .as_ref()
+         .and_then(|turn| turn.task.as_ref())
+-        .is_none_or(|task| task.turn_context.sub_id != context.sub_id)
++        .is_none_or(|task| !std::ptr::eq(task.turn_context.as_ref(), context))
+     {
+-        return false;
++        // This attempt no longer owns the task. Its error must not finish a
++        // newer restoration of the same native turn or alter its observer state.
++        restored.ready.send_replace(Some(Err(error.to_string())));
++        drop(active);
++        session.finish_security_execution(context).await;
++        return true;
+     }
+     if let Some(mut turn) = active.take() {
+         if let Some(task) = turn.task.take() {
+@@ -966,6 +1252,8 @@ pub(crate) async fn preserve_failed_restoration(
+         .agent_status
+         .send_replace(super::AgentStatus::Interrupted);
+     restored.ready.send_replace(Some(Err(error.to_string())));
++    drop(active);
++    session.finish_security_execution(context).await;
+     true
+ }
+ 
+@@ -973,37 +1261,42 @@ impl crate::CodexThread {
+     /// Opt in before requesting pause; the boundary acknowledgement alone remains
+     /// the legacy live gate. The descriptor is returned only after store commit.
+     pub async fn pause_turn_durably(&self, turn_id: &str) -> Result<NativeSuspension> {
+-        {
++        let owner = coordinator(&self.session);
++        let (epoch, stored_only) = {
+             let active = self.session.active_turn.lock().await;
+-            if active
+-                .as_ref()
+-                .and_then(|active| active.task.as_ref())
+-                .is_none_or(|task| task.turn_context.sub_id != turn_id)
++            if active.as_ref().is_none_or(|active| active.task.is_none())
++                && owner.frozen.load(Ordering::Acquire)
+             {
+-                return Err(invalid(
+-                    "durable pause does not identify the active native turn",
+-                ));
++                // With no task, native history identifies the held turn. Do
++                // not let a foreign turn ID fence its pending Resume.
++                let history = self.load_continuation_history().await.map_err(io)?;
++                validate_unfinished(&history, turn_id)?;
++                (owner.request(), true)
++            } else {
++                if active
++                    .as_ref()
++                    .and_then(|active| active.task.as_ref())
++                    .is_none_or(|task| task.turn_context.sub_id != turn_id)
++                {
++                    return Err(invalid(
++                        "durable pause does not identify the active native turn",
++                    ));
++                }
++                (owner.request(), false)
+             }
++        };
++        // Fence even a repeated pause before waiting for checkpoint IO. An
++        // older Resume may already be blocked on that IO outside the SQ.
++        if stored_only {
++            let suspension = self.confirm_stored_pause(turn_id).await?;
++            owner.confirm_pause_epoch(epoch)?;
++            return Ok(suspension);
+         }
+-        let owner = coordinator(&self.session);
+-        if owner.frozen.load(Ordering::Acquire)
+-            && let Ok(suspension) = owner.boundary()
+-        {
+-            let committed = owner
+-                .read(&self.session)
+-                .await?
+-                .ok_or_else(|| invalid("the committed suspension is missing"))?;
+-            owner.validate_expected(Some(&committed))?;
+-            validate_saved(&self.session, &committed).await?;
+-            if descriptor(&committed) != suspension {
+-                return Err(invalid("the committed suspension identity changed"));
+-            }
++        if self.set_suspended_turn_paused(turn_id, epoch, true).await? {
++            let suspension = self.confirm_stored_pause(turn_id).await?;
++            owner.confirm_pause_epoch(epoch)?;
+             return Ok(suspension);
+         }
+-        self.session.set_turn_pause_boundary_reached(false);
+-        owner.request();
+-        self.submit(codex_protocol::protocol::Op::SetTurnPaused { paused: true })
+-            .await?;
+         self.wait_until_turn_pause_boundary().await?;
+         let suspension = owner.boundary()?;
+         let committed = owner
+@@ -1011,25 +1304,70 @@ impl crate::CodexThread {
+             .await?
+             .ok_or_else(|| invalid("the committed suspension is missing"))?;
+         validate_saved(&self.session, &committed).await?;
+-        if suspension.turn_id != turn_id {
++        if suspension.turn_id != turn_id || descriptor(&committed) != suspension {
+             return Err(invalid("durable pause belongs to a replaced native turn"));
+         }
++        owner.confirm_pause_epoch(epoch)?;
++        Ok(suspension)
++    }
++
++    async fn confirm_stored_pause(&self, turn_id: &str) -> Result<NativeSuspension> {
++        let suspension = self
++            .read_durable_suspension()
++            .await?
++            .ok_or_else(|| invalid("the stored suspension is missing"))?;
++        if suspension.turn_id != turn_id {
++            return Err(invalid("the stored pause belongs to another native turn"));
++        }
+         Ok(suspension)
+     }
+ 
++    async fn set_suspended_turn_paused(
++        &self,
++        turn_id: &str,
++        epoch: u64,
++        paused: bool,
++    ) -> Result<bool> {
++        let (reply, result) = tokio::sync::oneshot::channel();
++        self.submit(codex_protocol::protocol::Op::SetSuspendedTurnPaused {
++            turn_id: turn_id.into(),
++            epoch,
++            paused,
++            reply,
++        })
++        .await?;
++        result.await.map_err(io)?.map_err(invalid)
++    }
++
+     /// Reads and validates an actual committed checkpoint. Acquires ownership,
+     /// starts no model execution and leaves suspended input untouched.
+     pub async fn read_durable_suspension(&self) -> Result<Option<NativeSuspension>> {
+         let owner = coordinator(&self.session);
++        let epoch = {
++            let active = self.session.active_turn.lock().await;
++            let _control = owner.control();
++            if active.as_ref().is_some_and(|active| active.task.is_some())
++                && !owner.frozen.load(Ordering::Acquire)
++                && !*self.session.subscribe_turn_pause_state().borrow()
++            {
++                return Ok(None);
++            }
++            owner.epoch.load(Ordering::Acquire)
++        };
+         let record = owner.read(&self.session).await?;
+         owner.validate_expected(record.as_ref())?;
+         let Some(record) = record else {
+             return Ok(None);
+         };
+-        if record.state != CheckpointState::Suspended {
++        if !record.state.retains_continuation() {
+             return Ok(None);
+         }
+         validate_saved(&self.session, &record).await?;
++        let _active = self.session.active_turn.lock().await;
++        let _control = owner.control();
++        if owner.epoch.load(Ordering::Acquire) != epoch {
++            return Err(invalid("native suspension inspection was superseded"));
++        }
+         owner.frozen.store(true, Ordering::Release);
+         Ok(Some(descriptor(&record)))
+     }
+@@ -1063,6 +1401,7 @@ impl crate::CodexThread {
+                     ));
+                 }
+             }
++            let _control = owner.control();
+             owner.frozen.store(true, Ordering::Release);
+             *owner.expected.lock().map_err(io)? = Some(expected.clone());
+         }
+@@ -1087,9 +1426,35 @@ impl crate::CodexThread {
+             if active != turn_id {
+                 return Err(invalid("another native turn owns this thread"));
+             }
+-            owner.release_live_gate();
+             drop(active_guard);
+-            self.submit(codex_protocol::protocol::Op::Interrupt).await?;
++            let (reply, result) = tokio::sync::oneshot::channel();
++            self.submit(codex_protocol::protocol::Op::InterruptTurn {
++                turn_id: turn_id.into(),
++                reply,
++            })
++            .await?;
++            let stopped = result.await.map_err(io)?;
++            let live = self
++                .session
++                .live_thread_for_persistence("confirm suspended turn cancellation")
++                .map_err(io)?;
++            // Cancellation is acknowledged only after actual terminal history
++            // is flushed. A queued named Stop cannot interrupt a successor.
++            live.flush().await.map_err(io)?;
++            let history = live.load_continuation_history().await.map_err(io)?;
++            if !history.iter().any(|item| match item {
++                RolloutItem::EventMsg(EventMsg::TurnComplete(event)) => event.turn_id == turn_id,
++                RolloutItem::EventMsg(EventMsg::TurnAborted(event)) => {
++                    event.turn_id.as_deref() == Some(turn_id)
++                }
++                _ => false,
++            }) {
++                return Err(invalid(if stopped {
++                    "native cancellation has no committed terminal event"
++                } else {
++                    "the named Stop no longer owns this native turn"
++                }));
++            }
+         } else {
+             let live = self
+                 .session
+@@ -1107,7 +1472,7 @@ impl crate::CodexThread {
+             validate_unfinished(&history, turn_id)?;
+             // Fence a deferred Resume immediately, but retain the pause gate if
+             // persisting Stop fails. Only committed terminal history releases it.
+-            owner.epoch.fetch_add(1, Ordering::AcqRel);
++            owner.fence_stop();
+             let started = history.iter().rev().find_map(|item| match item {
+                 RolloutItem::EventMsg(EventMsg::TurnStarted(event)) if event.turn_id == turn_id => {
+                     Some(event)
+@@ -1147,14 +1512,6 @@ impl crate::CodexThread {
+             drop(active_guard);
+             self.session.deliver_event_raw(event).await;
+         }
+-        // Native terminal history is the cancellation authority. Retain an
+-        // undecodable checkpoint for inspection instead of deleting its bytes.
+-        if let Err(error) = owner
+-            .settle(&self.session, CheckpointState::Invalidated)
+-            .await
+-        {
+-            tracing::warn!(%error, "cancelled turn retained its unreadable suspension checkpoint");
+-        }
+         Ok(())
+     }
+ 
+@@ -1162,10 +1519,37 @@ impl crate::CodexThread {
+         coordinator(&self.session).has_live_suspension()
+     }
+ 
+-    /// The shared live loop consumes its checkpoint only after fresh capacity
+-    /// returns. Persistence failures keep the actual task paused and retryable.
++    /// The shared live loop prepares its retained continuation only after fresh
++    /// capacity returns. Persistence failures leave it paused and retryable.
+     pub async fn resume_live_suspended_turn(&self, turn_id: &str) -> Result<()> {
++        self.resume_live_suspended_turn_at_epoch(turn_id, self.durable_suspension_epoch())
++            .await
++    }
++
++    pub async fn resume_live_suspended_turn_at_epoch(
++        &self,
++        turn_id: &str,
++        resume_epoch: u64,
++    ) -> Result<()> {
+         let active = self.session.active_turn.lock().await;
++        let owner = coordinator(&self.session);
++        if owner.epoch.load(Ordering::Acquire) != resume_epoch {
++            return Err(invalid("native resumption was superseded"));
++        }
++        if active.as_ref().is_none_or(|active| active.task.is_none()) {
++            drop(active);
++            let expected = self.confirm_stored_pause(turn_id).await?;
++            return match Box::pin(self.resume_durable_suspension_at_epoch(&expected, resume_epoch))
++                .await?
++            {
++                codex_protocol::turn_input::StartIfIdleSubmission::Started { .. } => Ok(()),
++                codex_protocol::turn_input::StartIfIdleSubmission::NotSubmitted { reason } => {
++                    Err(invalid(format!(
++                        "the stored native turn was not resumed: {reason:?}"
++                    )))
++                }
++            };
++        }
+         if active
+             .as_ref()
+             .and_then(|turn| turn.task.as_ref())
+@@ -1175,11 +1559,34 @@ impl crate::CodexThread {
+                 "the live suspension belongs to a replaced native turn",
+             ));
+         }
+-        let owner = coordinator(&self.session);
+-        let resume = owner.begin_live_resume()?;
++        if let Some(restored) = active
++            .as_ref()
++            .and_then(|active| active.task.as_ref())
++            .and_then(|task| {
++                task.turn_context
++                    .extension_data
++                    .get::<RestoredContinuation>()
++            })
++            && !restored.did_resume()
++        {
++            let mut ready = restored.ready.subscribe();
++            drop(active);
++            loop {
++                if let Some(result) = ready.borrow().clone() {
++                    return result.map_err(invalid);
++                }
++                ready.changed().await.map_err(io)?;
++            }
++        }
++        let resume = owner.begin_live_resume_at_epoch(resume_epoch)?;
+         drop(active);
+-        self.submit(codex_protocol::protocol::Op::SetTurnPaused { paused: false })
+-            .await?;
++        if let Err(error) = self
++            .set_suspended_turn_paused(turn_id, resume.epoch, false)
++            .await
++        {
++            owner.fail_live_resume(&self.session, &resume, error.to_string());
++            return Err(error);
++        }
+         resume.wait().await
+     }
+ 
+@@ -1214,6 +1621,18 @@ impl crate::CodexThread {
+         if &descriptor(&record) != expected {
+             return Err(invalid("the suspension identity or revision changed"));
+         }
++        {
++            let active = self.session.active_turn.lock().await;
++            if active
++                .as_ref()
++                .and_then(|active| active.task.as_ref())
++                .is_some_and(|task| task.turn_context.sub_id == expected.turn_id)
++                && !owner.frozen.load(Ordering::Acquire)
++                && !*self.session.subscribe_turn_pause_state().borrow()
++            {
++                return Err(invalid("the native turn is already running"));
++            }
++        }
+         validate_saved(&self.session, &record).await?;
+         let live_root = {
+             let active = self.session.active_turn.lock().await;
+@@ -1253,7 +1672,8 @@ impl crate::CodexThread {
+             if !*self.session.subscribe_turn_pause_state().borrow() {
+                 return Err(invalid("the native turn is already running"));
+             }
+-            self.resume_live_suspended_turn(&turn_id).await?;
++            self.resume_live_suspended_turn_at_epoch(&turn_id, resume_epoch)
++                .await?;
+             return Ok(codex_protocol::turn_input::StartIfIdleSubmission::Started {
+                 turn_id,
+                 root_turn_id,
+@@ -1286,6 +1706,7 @@ impl crate::CodexThread {
+             .clone();
+         init.insert(RestoredContinuation::new(
+             saved.clone(),
++            expected.clone(),
+             Arc::clone(&owner),
+             resume_epoch,
+         ));
+@@ -1296,7 +1717,7 @@ impl crate::CodexThread {
+             .subscribe();
+         self.ensure_execution_capacity_for_turn_start(self.session.services.agent_control.as_ref())
+             .await?;
+-        owner.frozen.store(true, Ordering::Release);
++        owner.hold_restoration(&self.session, resume_epoch).await?;
+         let submitted = self
+             .io
+             .submit_recover_turn(
+@@ -1453,27 +1874,32 @@ pub(crate) async fn run_restored_turn(
+         .await;
+     context.next_step_settings.store(Arc::new(next_settings));
+     let step = step?;
+-    let world_state = session
+-        .record_step_world_state_if_changed(step.as_ref())
+-        .await?;
++    let world_state = Arc::new(
++        session
++            .build_world_state_for_step(step.as_ref(), /*new_window*/ false)
++            .await?,
++    );
+     let client = session.services.model_client.new_session();
+     let diff = Arc::new(tokio::sync::Mutex::new(
+         crate::turn_diff_tracker::TurnDiffTracker::from_snapshot(saved.diff.clone()),
+     ));
+-    session
+-        .agent_status
+-        .send_replace(super::AgentStatus::Running);
+     let owner = coordinator(&session);
+-    // This is execution admission, after the user's explicit Resume. Consuming
+-    // the checkpoint must succeed before any new model request or tool work.
++    // This is execution admission, after the user's explicit Resume. Retain
++    // the continuation through all preparation writes and readiness handoff.
+     if !restored.is_current() || cancellation_token.is_cancelled() {
+         return Err(invalid(
+             "native restoration was superseded before execution admission",
+         ));
+     }
+-    owner.settle(&session, CheckpointState::Consumed).await?;
+-    restored.resumed.store(true, Ordering::Release);
+-    restored.ready.send_replace(Some(Ok(())));
++    owner
++        .prepare_admission(&session, &restored.identity, restored.epoch)
++        .await?;
++    owner
++        .finish_restored_admission(&session, &context.sub_id, &restored)
++        .await?;
++    let world_state = session
++        .record_prepared_step_world_state(step.as_ref(), world_state)
++        .await;
+     super::turn::run_turn_loop(
+         session,
+         context,
+diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
+index 902ecc23c73a1d6798cafcfc6519e3e40b20f7d8..3d73d73ccc0c8f61f1befc823c407cc8a3b37324 100644
+--- a/codex-rs/core/src/session/handlers.rs
++++ b/codex-rs/core/src/session/handlers.rs
+@@ -529,6 +529,26 @@ pub(super) async fn submission_loop(
+                         .await;
+                     false
+                 }
++                Op::InterruptTurn { turn_id, reply } => {
++                    let stopped = sess
++                        .abort_turn_if_active(&turn_id, TurnAbortReason::Interrupted, None)
++                        .await;
++                    let _ = reply.send(stopped);
++                    false
++                }
++                Op::SetSuspendedTurnPaused {
++                    turn_id,
++                    epoch,
++                    paused,
++                    reply,
++                } => {
++                    let result = super::durable_suspension::coordinator(&sess)
++                        .apply_bound_pause(&sess, &turn_id, epoch, paused)
++                        .await
++                        .map_err(|error| error.to_string());
++                    let _ = reply.send(result);
++                    false
++                }
+                 Op::SetTurnPaused { paused } => {
+                     let suspension = super::durable_suspension::coordinator(&sess);
+                     if !paused && suspension.has_live_suspension() {
+@@ -545,6 +565,9 @@ pub(super) async fn submission_loop(
+                             }
+                         }
+                     } else {
++                        if paused && suspension.has_live_suspension() {
++                            suspension.request();
++                        }
+                         sess.set_turn_paused(paused);
+                     }
+                     false
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index ca71964024da6b4144cf045680bc5cd397eae814..f9cf5c6cf23ce9955b8facf73df724938a682ac8 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -4195,11 +4195,23 @@ impl Session {
+         &self,
+         step_context: &step_context::StepContext,
+     ) -> CodexResult<Arc<WorldState>> {
+-        let turn_context = step_context.turn.as_ref();
+         // Render model-visible state from the same step used to build and run tools.
+         let world_state = self
+             .build_world_state_for_step(step_context, /*new_window*/ false)
+             .await?;
++        Ok(self
++            .record_prepared_step_world_state(step_context, Arc::new(world_state))
++            .await)
++    }
++
++    /// Publish a previously built step view only once execution is admitted.
++    /// Cold restoration can prepare the view without advancing native history.
++    pub(crate) async fn record_prepared_step_world_state(
++        &self,
++        step_context: &step_context::StepContext,
++        world_state: Arc<WorldState>,
++    ) -> Arc<WorldState> {
++        let turn_context = step_context.turn.as_ref();
+         let (world_state_snapshot, fragments, world_state_item) = self
+             .state
+             .lock()
+@@ -4222,7 +4234,7 @@ impl Session {
+             self.persist_rollout_items(&[RolloutItem::WorldState(world_state_item)])
+                 .await;
+         }
+-        Ok(Arc::new(world_state))
++        world_state
+     }
+ 
+     /// Retains the step captured for execution.
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+index 54e2be2de9e2cd289c8ad3cd8da0b557b7e0b0ba..61a04c957881a7fcb405684f3581972749e5f2bd 100644
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -225,20 +225,30 @@ async fn wait_for_turn_resume(
+         // Return only after rechecking the actual watch state following the grant.
+         if !*turn_pause_state.borrow() {
+             let suspension = super::durable_suspension::coordinator(sess);
+-            if suspension.frozen.load(Ordering::Acquire)
+-                && let Err(error) = suspension
+-                    .settle(sess, codex_turn_checkpoint::CheckpointState::Consumed)
+-                    .await
+-            {
+-                if cancellation_token.is_cancelled() {
+-                    return Err(CodexErr::TurnAborted);
++            if let Some(attempt) = suspension.current_live_resume() {
++                let result = async {
++                    if let Some(identity) = &attempt.identity {
++                        suspension
++                            .prepare_admission(sess, identity, attempt.epoch)
++                            .await?;
++                    }
++                    suspension
++                        .finish_live_admission(sess, &turn_context.sub_id, &attempt)
++                        .await
++                }
++                .await;
++                if let Err(error) = result {
++                    if cancellation_token.is_cancelled() {
++                        return Err(CodexErr::TurnAborted);
++                    }
++                    suspension.fail_live_resume(sess, &attempt, error.to_string());
++                    tracing::warn!(%error, "native resume retained its paused task after admission failure");
++                    continue;
+                 }
+-                sess.set_turn_paused(true);
+-                suspension.complete_live_resume(Err(error.to_string()));
+-                tracing::warn!(%error, "native resume retained its paused task after persistence failure");
++            } else if suspension.frozen.load(Ordering::Acquire) {
++                suspension.preserve_unclaimed_pause(sess);
+                 continue;
+             }
+-            suspension.complete_live_resume(Ok(()));
+             sess.set_turn_pause_boundary_reached(false);
+             return Ok(());
+         }
+diff --git a/codex-rs/core/src/session/turn_tests.rs b/codex-rs/core/src/session/turn_tests.rs
+index d526cc911310c1d3259f64a494dea550e8ca079d..2dd49d01174c729504394a8821e89b97d076a2f3 100644
+--- a/codex-rs/core/src/session/turn_tests.rs
++++ b/codex-rs/core/src/session/turn_tests.rs
+@@ -66,7 +66,7 @@ fn post_sampling_token_estimate_is_disabled_by_always_on_sinks() {
+ 
+ #[tokio::test]
+ async fn paused_turn_waits_for_resume_at_boundary() {
+-    let (session, _) = crate::session::tests::make_session_and_context().await;
++    let (session, turn_context) = crate::session::tests::make_session_and_context().await;
+     let session = Arc::new(session);
+     session.set_turn_paused(true);
+     let mut pause_rx = session.subscribe_turn_pause_state();
+@@ -74,7 +74,22 @@ async fn paused_turn_waits_for_resume_at_boundary() {
+     let cancellation_token = CancellationToken::new();
+     let waiting_session = Arc::clone(&session);
+     let wait = tokio::spawn(async move {
+-        wait_for_turn_resume(&waiting_session, &mut pause_rx, &cancellation_token).await
++        let state = TurnLoopState::default();
++        let mcp = McpStartupRequirements::default();
++        let diff = SharedTurnDiffTracker::default();
++        wait_for_turn_resume(
++            &waiting_session,
++            &turn_context,
++            &mut pause_rx,
++            &cancellation_token,
++            TurnPauseBoundary {
++                state: &state,
++                mcp: &mcp,
++                diff: &diff,
++                pending_step: None,
++            },
++        )
++        .await
+     });
+ 
+     tokio::time::timeout(std::time::Duration::from_secs(1), async {
+@@ -86,7 +101,7 @@ async fn paused_turn_waits_for_resume_at_boundary() {
+         }
+     })
+     .await
+-    .expect("pause gate should acknowledge its durable boundary");
++    .expect("pause gate should acknowledge its live boundary");
+     assert!(!wait.is_finished());
+     session.set_turn_paused(false);
+ 
+diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
+index bc1ff1ef18387271351ea0b9ea2435cea0b9e893..3ac543812f19074e1d0c470d311af7457c39468d 100644
+--- a/codex-rs/core/src/tasks/mod.rs
++++ b/codex-rs/core/src/tasks/mod.rs
+@@ -675,6 +675,14 @@ impl Session {
+                 ) {
+                     self.mark_interrupted();
+                 }
++                self.set_turn_paused(false);
++                if let Some(suspension) =
++                    self.services
++                        .thread_extension_data
++                        .get::<crate::session::durable_suspension::DurableSuspension>()
++                {
++                    suspension.release_live_gate();
++                }
+                 active.take()
+             } else {
+                 None
+@@ -683,15 +691,6 @@ impl Session {
+         let Some(active_turn) = active_turn else {
+             return false;
+         };
+-        self.set_turn_paused(false);
+-        if let Some(suspension) = self
+-            .services
+-            .thread_extension_data
+-            .get::<crate::session::durable_suspension::DurableSuspension>()
+-        {
+-            suspension.release_live_gate();
+-        }
+-
+         self.finish_turn_abort(active_turn, reason, error).await;
+         true
+     }
+@@ -721,6 +720,16 @@ impl Session {
+         turn_context: Arc<TurnContext>,
+         task_result: SessionTaskResult,
+     ) {
++        if self
++            .active_turn
++            .lock()
++            .await
++            .as_ref()
++            .and_then(|active| active.task.as_ref())
++            .is_none_or(|task| !Arc::ptr_eq(&task.turn_context, &turn_context))
++        {
++            return;
++        }
+         let (last_agent_message, abort_reason) = match task_result {
+             Ok(last_agent_message) => (last_agent_message, None),
+             Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
+@@ -752,6 +761,13 @@ impl Session {
+         let turn_state = {
+             let mut active = self.active_turn.lock().await;
+             active.as_mut().and_then(|active_turn| {
++                if active_turn
++                    .task
++                    .as_ref()
++                    .is_none_or(|task| !Arc::ptr_eq(&task.turn_context, &turn_context))
++                {
++                    return None;
++                }
+                 let task = active_turn.task.take()?;
+                 task.handle.detach();
+                 active_turn.finishing = Some(finishing);
+@@ -965,6 +981,14 @@ impl Session {
+                 && active_turn.task.is_none()
+                 && Arc::ptr_eq(&active_turn.turn_state, &turn_state)
+             {
++                self.set_turn_paused(false);
++                if let Some(suspension) =
++                    self.services
++                        .thread_extension_data
++                        .get::<crate::session::durable_suspension::DurableSuspension>()
++                {
++                    suspension.release_live_gate();
++                }
+                 *active = None;
+                 true
+             } else {
+@@ -976,14 +1000,6 @@ impl Session {
+             self.send_event(turn_context.as_ref(), event).await;
+         }
+         if cleared_active_turn {
+-            self.set_turn_paused(false);
+-            if let Some(suspension) =
+-                self.services
+-                    .thread_extension_data
+-                    .get::<crate::session::durable_suspension::DurableSuspension>()
+-            {
+-                suspension.release_live_gate();
+-            }
+             self.emit_thread_idle_lifecycle_if_idle(idle_cause).await;
+         }
+         // Private reviewers already flushed the terminal event before delivering it.
+diff --git a/codex-rs/core/src/thread_manager/durable_suspension.rs b/codex-rs/core/src/thread_manager/durable_suspension.rs
+index d1c45bafb25991fccab146265f9bd4e6d91e92f4..c2169d6b11c9d36f2e3cfaee566160bc8baf1275 100644
+--- a/codex-rs/core/src/thread_manager/durable_suspension.rs
++++ b/codex-rs/core/src/thread_manager/durable_suspension.rs
+@@ -12,7 +12,6 @@ use codex_protocol::error::Result;
+ use codex_protocol::protocol::ThreadHistoryMode;
+ use codex_thread_store::LoadThreadHistoryParams;
+ use codex_thread_store::ReadThreadParams;
+-use codex_turn_checkpoint::CheckpointState;
+ use codex_turn_checkpoint::LockedCheckpoint;
+ use std::path::Path;
+ 
+@@ -50,7 +49,7 @@ impl ThreadManager {
+         let Some(record) = record else {
+             return Ok(None);
+         };
+-        if record.state != CheckpointState::Suspended {
++        if !record.state.retains_continuation() {
+             return Ok(None);
+         }
+         let stored = self
+diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
+index 3449a90bbf3d90cb7e9cb18766d45809b3637f03..d5c0001be384eabdf8e5d986ec1468994ef961b8 100644
+--- a/codex-rs/protocol/src/protocol.rs
++++ b/codex-rs/protocol/src/protocol.rs
+@@ -703,6 +703,13 @@ pub enum Op {
+     /// This server sends [`EventMsg::TurnAborted`] in response.
+     Interrupt,
+ 
++    /// Stop only the named task and acknowledge after native cancellation.
++    #[debug("InterruptTurn {{ turn_id: {turn_id:?} }}")]
++    InterruptTurn {
++        turn_id: String,
++        reply: oneshot::Sender<bool>,
++    },
++
+     /// Interrupt the named turn only if no input is queued for it.
+     /// The decision is acknowledged before cancellation finishes.
+     #[debug("InterruptIfNoPendingInput {{ turn_id: {turn_id:?} }}")]
+@@ -714,6 +721,15 @@ pub enum Op {
+     /// Hold the active turn at the next model/tool boundary until resumed.
+     SetTurnPaused { paused: bool },
+ 
++    /// Apply a suspension control only to its task and coordinator generation.
++    #[debug("SetSuspendedTurnPaused {{ turn_id: {turn_id:?}, paused: {paused:?} }}")]
++    SetSuspendedTurnPaused {
++        turn_id: String,
++        epoch: u64,
++        paused: bool,
++        reply: oneshot::Sender<Result<bool, String>>,
++    },
++
+     /// Terminate all running background terminal processes for this thread.
+     /// Use this when callers intentionally want to stop long-lived background shells.
+     CleanBackgroundTerminals,
+@@ -1099,8 +1115,10 @@ impl Op {
+     pub fn kind(&self) -> &'static str {
+         match self {
+             Self::Interrupt => "interrupt",
++            Self::InterruptTurn { .. } => "interrupt_turn",
+             Self::InterruptIfNoPendingInput { .. } => "interrupt_if_no_pending_input",
+             Self::SetTurnPaused { .. } => "set_turn_paused",
++            Self::SetSuspendedTurnPaused { .. } => "set_suspended_turn_paused",
+             Self::CleanBackgroundTerminals => "clean_background_terminals",
+             Self::RealtimeConversationStart(_) => "realtime_conversation_start",
+             Self::RealtimeConversationAttach { .. } => "realtime_conversation_attach",
+diff --git a/codex-rs/turn-checkpoint/src/lib.rs b/codex-rs/turn-checkpoint/src/lib.rs
+index 4373b60cb8b45bbed6a75017a7faf1aa0ecb5a36..30e69da947265ac561ba041d2bca0783f4c578c8 100644
+--- a/codex-rs/turn-checkpoint/src/lib.rs
++++ b/codex-rs/turn-checkpoint/src/lib.rs
+@@ -34,10 +34,20 @@ pub struct CheckpointIdentity {
+ #[serde(rename_all = "camelCase")]
+ pub enum CheckpointState {
+     Suspended,
++    /// Explicit resumption was prepared. Recovery still needs the continuation
++    /// until native history proves execution advanced or the turn ended.
++    Resuming,
+     Consumed,
+     Invalidated,
+ }
+ 
++impl CheckpointState {
++    /// This describes stored data, not execution permission or valid history.
++    pub fn retains_continuation(self) -> bool {
++        matches!(self, Self::Suspended | Self::Resuming)
++    }
++}
++
+ /// The payload must contain continuation data or references to already durable
+ /// native history. Callers must never include credentials or execution grants.
+ #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+@@ -136,9 +146,7 @@ impl<T: Serialize + DeserializeOwned> LockedCheckpoint<T> {
+         let metadata = self.decode_metadata(&encoded)?;
+         // Check the runtime before trying its continuation schema. An upgrade
+         // must report incompatibility even when that schema has changed.
+-        if metadata.state == CheckpointState::Suspended
+-            && metadata.runtime_version != runtime_version
+-        {
++        if metadata.state.retains_continuation() && metadata.runtime_version != runtime_version {
+             return Err(invalid(&format!(
+                 "checkpoint runtime version is unsupported: requires {}, current {}",
+                 metadata.runtime_version, runtime_version
+@@ -230,7 +238,7 @@ impl<T: Serialize + DeserializeOwned> LockedCheckpoint<T> {
+             || record.runtime_version.is_empty()
+             || record.history_binding.is_empty()
+             || record.revision == 0
+-            || (record.state == CheckpointState::Suspended) != record.continuation.is_some()
++            || record.state.retains_continuation() != record.continuation.is_some()
+         {
+             return Err(invalid(
+                 "checkpoint identity, revision or lifecycle is invalid",
+@@ -262,9 +270,9 @@ impl<T: Serialize + DeserializeOwned> LockedCheckpoint<T> {
+         }
+         if let Some(previous) = &previous {
+             // A terminal tombstone cannot be reopened by an old suspension.
+-            if previous.state != CheckpointState::Suspended
++            if !previous.state.retains_continuation()
+                 && previous.identity.checkpoint_id == record.identity.checkpoint_id
+-                && record.state == CheckpointState::Suspended
++                && record.state.retains_continuation()
+             {
+                 return Err(invalid("a terminal checkpoint cannot be suspended again"));
+             }
+diff --git a/codex-rs/turn-checkpoint/src/tests.rs b/codex-rs/turn-checkpoint/src/tests.rs
+index 078db503b5910de818b70928315fec8ace32d233..fad74d56bbb32b0f70e70de4628203333bc439e9 100644
+--- a/codex-rs/turn-checkpoint/src/tests.rs
++++ b/codex-rs/turn-checkpoint/src/tests.rs
+@@ -89,6 +89,46 @@ fn terminal_tombstones_reject_reopening_and_allow_a_new_suspension() {
+     }
+ }
+ 
++#[test]
++fn prepared_continuations_survive_retries_and_keep_runtime_validation() {
++    let directory = tempfile::tempdir().unwrap();
++    let owner = store(directory.path());
++    owner.commit(None, &checkpoint(1)).unwrap();
++    let mut prepared = checkpoint(2);
++    prepared.state = CheckpointState::Resuming;
++    owner.commit(Some(1), &prepared).unwrap();
++    drop(owner);
++    let typed =
++        LockedCheckpoint::<String>::acquire(directory.path(), "thread/with/unsafe/path").unwrap();
++    assert!(
++        typed
++            .read("different-runtime")
++            .unwrap_err()
++            .to_string()
++            .contains("runtime version")
++    );
++    assert_eq!(
++        typed.read_metadata().unwrap().unwrap().state,
++        CheckpointState::Resuming
++    );
++    drop(typed);
++    let owner = store(directory.path());
++    assert_eq!(owner.read("fixture-runtime-1").unwrap(), Some(prepared));
++    let mut retry = checkpoint(3);
++    retry.state = CheckpointState::Resuming;
++    owner.commit(Some(2), &retry).unwrap();
++    let mut invalid = checkpoint(4);
++    invalid.state = CheckpointState::Resuming;
++    invalid.continuation = None;
++    assert!(owner.commit(Some(3), &invalid).is_err());
++    assert_eq!(owner.read("fixture-runtime-1").unwrap(), Some(retry));
++    invalid.state = CheckpointState::Invalidated;
++    owner.commit(Some(3), &invalid).unwrap();
++    let mut stale = checkpoint(5);
++    stale.state = CheckpointState::Resuming;
++    assert!(owner.commit(Some(4), &stale).is_err());
++}
++
+ #[test]
+ fn rejects_a_foreign_settlement_and_invalid_payload_lifecycles() {
+     let directory = tempfile::tempdir().unwrap();
+@@ -259,6 +299,11 @@ fn checkpoint_lock_child() {
+     };
+     let owner = store(Path::new(&path));
+     owner.commit(None, &checkpoint(1)).unwrap();
++    if std::env::var_os("CANTRIP_CHECKPOINT_RESUMING_CHILD").as_deref() == Some("1".as_ref()) {
++        let mut prepared = checkpoint(2);
++        prepared.state = CheckpointState::Resuming;
++        owner.commit(Some(1), &prepared).unwrap();
++    }
+     println!("CHECKPOINT_COMMITTED");
+     std::io::stdout().flush().unwrap();
+     loop {
+@@ -268,10 +313,23 @@ fn checkpoint_lock_child() {
+ 
+ #[test]
+ fn a_killed_process_releases_ownership_and_leaves_a_readable_checkpoint() {
++    killed_owner_record(false);
++}
++
++#[test]
++fn a_killed_process_retains_a_prepared_continuation() {
++    killed_owner_record(true);
++}
++
++fn killed_owner_record(resuming: bool) {
+     let directory = tempfile::tempdir().unwrap();
+     let mut child = Command::new(std::env::current_exe().unwrap())
+         .args(["--exact", "tests::checkpoint_lock_child", "--nocapture"])
+         .env("CANTRIP_CHECKPOINT_LOCK_CHILD", directory.path())
++        .env(
++            "CANTRIP_CHECKPOINT_RESUMING_CHILD",
++            if resuming { "1" } else { "0" },
++        )
+         .stdout(Stdio::piped())
+         .spawn()
+         .unwrap();
+@@ -293,9 +351,13 @@ fn a_killed_process_releases_ownership_and_leaves_a_readable_checkpoint() {
+     child.kill().unwrap();
+     child.wait().unwrap();
+     assert!(competing.is_err());
++    let mut expected = checkpoint(if resuming { 2 } else { 1 });
++    if resuming {
++        expected.state = CheckpointState::Resuming;
++    }
+     assert_eq!(
+         store(directory.path()).read("fixture-runtime-1").unwrap(),
+-        Some(checkpoint(1))
++        Some(expected)
+     );
+ }
+ 

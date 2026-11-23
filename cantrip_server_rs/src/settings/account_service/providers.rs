@@ -33,10 +33,9 @@ impl AccountService {
                 .as_array()
                 .context("stored providers")?
             {
-                if matches!(
-                    provider["kind"].as_str(),
-                    Some("ollama" | "chatgpt" | "grok")
-                ) {
+                if matches!(provider["kind"].as_str(), Some("chatgpt" | "grok"))
+                    || super::super::endpoint_providers::worker_catalog_provider(provider)
+                {
                     // load admits its owned task synchronously. Dropping the
                     // receiver neither delays this response nor cancels work.
                     drop(service.catalogs.load(catalog(
@@ -61,6 +60,7 @@ impl AccountService {
                 .repository
                 .create_model_provider(&owner, &input)
                 .await?;
+            service.synchronize_inference_workers(&owner).await;
             let request = catalog(
                 &owner,
                 provider["id"].as_str().context("provider ID")?,
@@ -68,7 +68,7 @@ impl AccountService {
             );
             if crate::settings::zai::is_coding_plan_provider(&provider) {
                 service.catalogs.load(request).await?;
-            } else if provider["kind"] == "ollama" {
+            } else if super::super::endpoint_providers::worker_catalog_provider(&provider) {
                 drop(service.catalogs.load(request));
             }
             Ok(provider)
@@ -83,24 +83,57 @@ impl AccountService {
     ) -> BoxFuture<'static, Result<Option<Json>>> {
         let (owner, provider) = (owner.to_owned(), provider.to_owned());
         self.launch(move |service| async move {
-            service
-                .catalogs
-                .hydrator
-                .invalidate(&provider.clone().into());
+            let current = service
+                .repository
+                .get_model_provider(&owner, &provider)
+                .await?;
+            let base = super::super::providers::normalize_responses_base_url(
+                input["baseUrl"].as_str().context("provider base URL")?,
+            )?;
+            let native_configuration_changed = current
+                .as_ref()
+                .is_none_or(|current| current["baseUrl"] != base)
+                || input.get("protectedApiKey").is_some();
+            if native_configuration_changed {
+                service
+                    .catalogs
+                    .hydrator
+                    .invalidate(&provider.clone().into());
+            }
+
             let updated = service
                 .repository
                 .update_model_provider(&owner, &provider, &input)
                 .await?;
-            if let Some(updated) = &updated {
+            if updated.is_some() && input.get("maxConcurrentInference").is_some() {
+                service.synchronize_inference_workers(&owner).await;
+            }
+
+            if let Some(updated) = &updated
+                && native_configuration_changed
+            {
                 let request = catalog(&owner, &provider, true);
                 if crate::settings::zai::is_coding_plan_provider(updated) {
                     service.catalogs.load(request).await?;
-                } else if updated["kind"] == "ollama" {
+                } else if super::super::endpoint_providers::worker_catalog_provider(updated) {
                     drop(service.catalogs.load(request));
                 }
             }
             Ok(updated)
         })
+    }
+
+    pub fn synchronize_inference(
+        self: &Arc<Self>,
+        owner: &str,
+        worker: &str,
+    ) -> BoxFuture<'static, Result<()>> {
+        self.queue_inference_delivery(owner, Some(worker));
+        Box::pin(async { Ok(()) })
+    }
+
+    async fn synchronize_inference_workers(self: &Arc<Self>, owner: &str) {
+        self.queue_inference_delivery(owner, None);
     }
 
     pub fn delete_provider(
@@ -153,10 +186,14 @@ impl AccountService {
                 .catalogs
                 .hydrator
                 .invalidate(&provider.clone().into());
-            service
+            let deleted = service
                 .repository
                 .delete_model_provider(&owner, &provider)
-                .await
+                .await?;
+            if deleted {
+                service.synchronize_inference_workers(&owner).await;
+            }
+            Ok(deleted)
         })
     }
 }

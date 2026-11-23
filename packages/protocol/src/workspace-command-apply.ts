@@ -60,6 +60,36 @@ function focus(
   ];
 }
 
+/** Sidebar conversations are temporary content, not hidden rail-tab fallbacks. */
+function retireConversation(
+  layout: WorkspaceOwnership,
+  pane: WorkspacePane,
+  tabId: string,
+) {
+  if (pane.conversationView && pane.conversationView.id !== tabId) {
+    if (
+      layout.pendingTransfers?.some((transfer) =>
+        transfer.tabIds.includes(pane.conversationView!.id),
+      )
+    )
+      throw new WorkspaceCommandError(
+        "invalid",
+        "Conversation is reserved for a pending transfer.",
+      );
+    pane.conversationView = null;
+  }
+}
+
+function navigate(
+  layout: WorkspaceOwnership,
+  window: WorkspaceWindow,
+  pane: WorkspacePane,
+  tabId: string,
+) {
+  retireConversation(layout, pane, tabId);
+  focus(window, pane, tabId);
+}
+
 function removePane(window: WorkspaceWindow, pane: WorkspacePane) {
   window.panes = window.panes.filter((candidate) => candidate.id !== pane.id);
   window.centerRoot = removeWorkspacePaneLeaf(window.centerRoot, pane.id);
@@ -686,6 +716,19 @@ export function applyWorkspaceCommand(
           "invalid",
           "Source pane membership changed during transfer preparation.",
         );
+      // Match the pane that is leaving the pop-out, before a single-view
+      // return assigns a new destination pane identity or removes its source.
+      const previous = window.returnPlacement;
+      const original =
+        transfer.returnSplitId &&
+        previous?.sourceWindowId === destination.id &&
+        (previous.detachedPaneId === source.id ||
+          (previous.wholePane && previous.sourcePaneId === source.id) ||
+          (previous.detachedPaneId === undefined &&
+            !previous.wholePane &&
+            window.panes.length === 1))
+          ? previous
+          : undefined;
       let moved: WorkspacePane;
       if (transfer.wholePane) {
         moved = source;
@@ -720,35 +763,42 @@ export function applyWorkspaceCommand(
         };
       }
       if (transfer.returnSplitId) {
-        const previous = window.returnPlacement;
-        const original =
-          previous?.sourceWindowId === destination.id &&
-          (previous.detachedPaneId === moved.id ||
-            (previous.wholePane && previous.sourcePaneId === moved.id))
-            ? previous
-            : undefined;
         const originalPane =
           original &&
           !original.wholePane &&
           (original.sourcePlacement.viewKind === "conversation"
             ? moved.conversationView && moved.tabs.length === 0
             : !moved.conversationView)
-            ? destination.panes.find(
+            ? (destination.panes.find(
                 (p) =>
                   p.id === original.sourcePaneId &&
                   (original.sourcePlacement.viewKind !== "conversation" ||
                     (p.region === "center" && !p.conversationView)),
-              )
+              ) ??
+              // A tab returns to a tab bar, even if its old pane was closed
+              // and recreated while detached. Whole-pane moves keep geometry.
+              (original.sourcePlacement.viewKind !== "conversation"
+                ? (destination.panes.find(
+                    (p) =>
+                      p.id === destination.focusedPaneId &&
+                      p.region === original.sourcePlacement.region,
+                  ) ??
+                  destination.panes.find(
+                    (p) => p.region === original.sourcePlacement.region,
+                  ))
+                : undefined))
             : undefined;
         if (originalPane) {
           if (original!.sourcePlacement.viewKind === "conversation") {
             originalPane.conversationView = moved.conversationView;
           } else
             originalPane.tabs.splice(
-              Math.min(
-                original!.sourcePlacement.tabPosition,
-                originalPane.tabs.length,
-              ),
+              originalPane.id === original!.sourcePaneId
+                ? Math.min(
+                    original!.sourcePlacement.tabPosition,
+                    originalPane.tabs.length,
+                  )
+                : originalPane.tabs.length,
               0,
               ...moved.tabs,
             );
@@ -838,7 +888,7 @@ export function applyWorkspaceCommand(
       break;
     case "select": {
       const { pane, tab } = tabById(action.tabId);
-      focus(window, pane, tab.id);
+      navigate(layout, window, pane, tab.id);
       break;
     }
     case "close-tab": {
@@ -851,6 +901,9 @@ export function applyWorkspaceCommand(
       const wasFocused =
         window.focusedPaneId === pane.id &&
         workspaceSelectedViewId(pane) === tab.id;
+      // Old snapshots may still hide a sidebar chat behind the selected tab.
+      if (pane.selection?.kind === "tab")
+        retireConversation(layout, pane, workspaceSelectedViewId(pane)!);
       takeTab(window, pane, tab);
       const next = window.panes.find(
         (candidate) => candidate.id === window.focusedPaneId,
@@ -987,7 +1040,7 @@ export function applyWorkspaceCommand(
           );
         }
       }
-      focus(window, target, tab.id);
+      navigate(layout, window, target, tab.id);
       break;
     }
     case "reorder": {
@@ -1020,7 +1073,7 @@ export function applyWorkspaceCommand(
         else pane.tabs.splice(pane.tabs.indexOf(tab), 1);
       } else takeTab(window, pane, tab);
       target.tabs.splice(action.position, 0, tab);
-      focus(window, target, tab.id);
+      navigate(layout, window, target, tab.id);
       break;
     }
     case "split": {
@@ -1071,7 +1124,7 @@ export function applyWorkspaceCommand(
         0,
         newPane,
       );
-      focus(window, newPane, tab.id);
+      navigate(layout, window, newPane, tab.id);
       break;
     }
     case "resize": {
@@ -1100,7 +1153,24 @@ export function applyWorkspaceCommand(
         // A permanent open promotes the existing preview in place. A preview
         // open never demotes an already pinned view, including in another window.
         if (!action.tab.preview) existing.tab.preview = false;
-        focus(existing.owner, existing.pane, existing.tab.id);
+        if (action.tab.fileViewer !== undefined) {
+          if (
+            (existing.tab.fileViewer !== action.tab.fileViewer ||
+              (action.tab.fileMode !== undefined &&
+                existing.tab.fileMode !== action.tab.fileMode)) &&
+            layout.pendingTransfers?.some((transfer) =>
+              transfer.tabIds.includes(existing.tab.id),
+            )
+          )
+            throw new WorkspaceCommandError(
+              "invalid",
+              "File view is reserved for a pending transfer.",
+            );
+          existing.tab.fileViewer = action.tab.fileViewer;
+          if (action.tab.fileMode !== undefined)
+            existing.tab.fileMode = action.tab.fileMode;
+        }
+        navigate(layout, existing.owner, existing.pane, existing.tab.id);
         if (existing.owner.id !== window.id) focusWindowId = existing.owner.id;
         break;
       }
@@ -1134,7 +1204,7 @@ export function applyWorkspaceCommand(
             );
           target.tabs.splice(target.tabs.indexOf(replacing.tab), 1, action.tab);
         } else target.tabs.push(action.tab);
-        focus(window, target, action.tab.id);
+        navigate(layout, window, target, action.tab.id);
       } else {
         if (action.replacePreviewTabId)
           throw new WorkspaceCommandError(
@@ -1160,7 +1230,7 @@ export function applyWorkspaceCommand(
                 second: { kind: "pane", paneId: target.id },
               }
             : { kind: "pane", paneId: target.id };
-        focus(window, target, action.tab.id);
+        navigate(layout, window, target, action.tab.id);
       }
       break;
     }

@@ -1,0 +1,1321 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "fc406ffb26586d69723a0cdef5b3725ff0cd3567",
+  "platform": "darwin-arm64",
+  "productionRustChanges": [
+    "cantrip_server_rs/src/native_commands/queued_prompt.rs",
+    "cantrip_server_rs/src/native_commands/queued_prompt/changes.rs",
+    "cantrip_server_rs/src/native_commands/queued_prompt/queries.rs",
+    "cantrip_server_rs/contracts/queued-prompt-queries.json"
+  ],
+  "referenceCorrections": [],
+  "scope": "Production HTTP/Live/unchanged WorkerConnection with actual three-store SQL, real worker queue codec/endpoint cryptography, held responses, caller loss, worker replacement and actual notification deadlines. Native interruption replies are controlled; no worker rewrite or final artifact/platform qualification.",
+  "counts": {
+    "pairedCells": 9,
+    "pairedHttpCaseObservations": 531,
+    "tracedRequests": 2916,
+    "commandWitnesses": 612,
+    "cryptoProofs": 2376,
+    "originalMutationDigestBindings": 216,
+    "stableQueueIdentityBindings": 180,
+    "sqlErrorBindings": 36,
+    "callerDisappearances": 36,
+    "workerReplacements": 36,
+    "actualNotificationDeadlines": 36,
+    "exactRawReopens": 36,
+    "rawDurableStates": 648,
+    "rawQueueStates": 216,
+    "newWorkerCommands": 3,
+    "newLiveResources": 0,
+    "newDurableTables": 0,
+    "independentEndpointCryptoProofs": 2376,
+    "independentlyOpenedPayloads": 792
+  },
+  "reports": [
+    {
+      "path": ".qa/rust-native-controls/controls-pglite-v5.json",
+      "sha256": "53cfaca4789069b8bae1333171997bae10abaa24bb1449784c9ee997eb008ffb",
+      "databaseMode": "pglite"
+    },
+    {
+      "path": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+      "sha256": "d698a4ad9e832f50beb628cef6ba44688832de855cb89a6585ce7a5b51da9cb3",
+      "databaseMode": "bundled-postgres"
+    },
+    {
+      "path": ".qa/rust-native-controls/controls-postgres-v5.json",
+      "sha256": "255f155ad6d64add4ee2ca6a65a398edf6d8a9026488c4897054178b8deacda2",
+      "databaseMode": "postgres"
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-native-controls/controls-pglite-v5.requests.json",
+      "sha256": "7e15da6c7580f1d7f394b96e1073467a833035cc676197f47544f34906508312",
+      "requests": 972
+    },
+    {
+      "path": ".qa/rust-native-controls/controls-bundled-postgres-v5.requests.json",
+      "sha256": "6bb7e9fbf4c1f6d127721b4551a0ffe2908c390a742ad94932bd1f443c0ba93a",
+      "requests": 972
+    },
+    {
+      "path": ".qa/rust-native-controls/controls-postgres-v5.requests.json",
+      "sha256": "ef6519dd3f616ad37ddd25953c1e2ecacb5baea42f99ba0336b889c0cfe22dad",
+      "requests": 972
+    }
+  ],
+  "sources": [
+    {
+      "path": "scripts/server-rust/native-control-http-compatibility.mjs",
+      "sha256": "5fe026ee4d45e37fc78b04d270a911f4449296497610bea20da00544533bda7c"
+    },
+    {
+      "path": "scripts/server-rust/native-control-http-state.mjs",
+      "sha256": "d8810c2f85783d4d01e46602a67777cc2efce59126e6050dd190919347bb298e"
+    },
+    {
+      "path": "scripts/server-rust/native-control-http-cases.mjs",
+      "sha256": "7d09a32bca8dabd78d5332477383770e1760d7b60a727d85bd65125aa6fb8775"
+    },
+    {
+      "path": "scripts/server-rust/native-control-queue-cases.mjs",
+      "sha256": "19e334cfc927aee68bd55e234b20b901f795db3ec91e757c9783c3b22f5b5a3f"
+    },
+    {
+      "path": "scripts/server-rust/queued-prompt-query-manifest.mjs",
+      "sha256": "ff7a9d43a91ed5d2aea479dee6271e59411ca9276091e2e8c64ce79221788064"
+    },
+    {
+      "path": "scripts/server-rust/native-settings-http-fixture.mjs",
+      "sha256": "e94c2f77d7eddb5b04f6e89d5290e0ae71969465855443c10199929ba034c1e9"
+    },
+    {
+      "path": "cantrip_worker/src/managed-queue-input.ts",
+      "sha256": "c036df238c32257688c85d3de09c810a65df15591966ca217711a7654586e1d4"
+    },
+    {
+      "path": "cantrip_worker/src/chat-message-encryption.ts",
+      "sha256": "69dbaac3e963636da8c8b081359257df78a12b779593942e34ed84514d0db1a4"
+    },
+    {
+      "path": "cantrip_server_rs/src/native_commands/queued_prompt.rs",
+      "sha256": "e19cd191818891f07bf11cf8723dc2a42fa05f73466e1df465079c33bb9b7a9f"
+    },
+    {
+      "path": "cantrip_server_rs/src/native_commands/queued_prompt/changes.rs",
+      "sha256": "ba64ec8b50193bdb97e111fca9489d7269e7f1fb2beeba7d99e024fd1e3e0230"
+    },
+    {
+      "path": "cantrip_server_rs/src/native_commands/queued_prompt/queries.rs",
+      "sha256": "87cf584cbb348aa0338cd892d004df016813fab19a47b562de9f8ef0b42f8b54"
+    },
+    {
+      "path": "cantrip_server_rs/contracts/queued-prompt-queries.json",
+      "sha256": "0c60e6aa33d6d6b76c3b05aaac9d8a1cd9079c669109db33c694a2f1f1e33ead"
+    },
+    {
+      "path": "packages/version/dist/index.js",
+      "sha256": "5ca3954a3d62fa45650c5cf2cc87bf379f8da7af420ddd18cf880d9d9613cdbc"
+    },
+    {
+      "path": "packages/version/dist/version.json",
+      "sha256": "4b13bf5c40fc572985ebd6ba204ee233546f30daeb04a7551800046afc47d9d1"
+    }
+  ],
+  "workerCommandMappings": [
+    {
+      "command": "chat.interrupt",
+      "implementation": "cantrip_server_rs/src/http/chat_execution/interrupt.rs",
+      "newMapping": true,
+      "status": "partial",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [5, 6, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [5, 6, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [5, 6, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [4, 5, 20, 21]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.native-logical.cancel",
+      "implementation": "cantrip_server_rs/src/http/chat_execution/interrupt.rs",
+      "newMapping": true,
+      "status": "partial",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [9, 10, 11, 12, 13, 18, 24, 25, 26, 27, 28, 33]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.queue.prepare",
+      "implementation": "cantrip_server_rs/src/http/chat_execution/changes.rs",
+      "newMapping": true,
+      "status": "partial",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [35, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [35, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 50]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 50]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 46, 47, 48, 49, 50]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 46, 47, 48, 49, 50]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 45, 46, 47, 48, 49, 50]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 48, 49, 50]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.native-control",
+      "implementation": "cantrip_server_rs/src/http/chat_execution/interrupt.rs",
+      "newMapping": false,
+      "status": "partial",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [7, 8, 22, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [6, 7, 22, 23]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [7, 8, 22, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [7, 8, 22, 23]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [7, 8, 22, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-pglite-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [6, 8, 22, 23]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [7, 8, 22, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [6, 8, 22, 23]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [7, 8, 22, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [6, 8, 22, 23]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [7, 8, 22, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-bundled-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [6, 8, 22, 23]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [7, 8, 22, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [6, 8, 22, 23]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [7, 8, 22, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [6, 8, 22, 23]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [7, 8, 22, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-native-controls/controls-postgres-v5.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [6, 8, 22, 23]
+          }
+        }
+      ]
+    }
+  ],
+  "independentVerification": {
+    "matrix": ".qa/rust-native-controls/matrix-verification-v5.json",
+    "cryptography": ".qa/rust-native-controls/crypto-verification-v5.json",
+    "payloads": 792,
+    "proofs": 2376
+  },
+  "artifacts": {
+    "baseCommit": "fc406ffb26586d69723a0cdef5b3725ff0cd3567",
+    "command": [
+      "/Users/cyberpwn/.codex/tmp/cantrip-node-24.22.1/node-v24.22.1-darwin-arm64/bin/node",
+      "scripts/server-rust/cargo.mjs",
+      "build",
+      "--bin",
+      "cantrip-server",
+      "--example",
+      "http-sql-fixture",
+      "--example",
+      "project-repository-fixture",
+      "--example",
+      "database-fixture"
+    ],
+    "exitCode": 0,
+    "log": "/Users/cyberpwn/.codex/worktrees/rust-native-control-recovery/Cantrip/.qa/rust-native-controls/build-helpers-v2.log",
+    "logSha256": "b3bb8c516b46788492ddd60881792369966db2657d58707bf54d90d7ec199013",
+    "target": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip/.git/cantrip/rust-server-target",
+    "targetTriple": "aarch64-apple-darwin",
+    "incremental": "0",
+    "jobs": "2",
+    "debug": "0",
+    "productionSourceSha256": {
+      "cantrip_server_rs/src/native_commands/queued_prompt.rs": "e19cd191818891f07bf11cf8723dc2a42fa05f73466e1df465079c33bb9b7a9f",
+      "cantrip_server_rs/src/native_commands/queued_prompt/changes.rs": "ba64ec8b50193bdb97e111fca9489d7269e7f1fb2beeba7d99e024fd1e3e0230",
+      "cantrip_server_rs/src/native_commands/queued_prompt/queries.rs": "87cf584cbb348aa0338cd892d004df016813fab19a47b562de9f8ef0b42f8b54",
+      "cantrip_server_rs/contracts/queued-prompt-queries.json": "0c60e6aa33d6d6b76c3b05aaac9d8a1cd9079c669109db33c694a2f1f1e33ead"
+    },
+    "executables": [
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-native-control-recovery/Cantrip/.qa/rust-native-controls/helpers-v2/cantrip-server",
+        "bytes": 179439264,
+        "sha256": "5652610ccdc5e03af8e9ad1cec9397c9eb3157be947d4351d0df52798ece5cb0"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-native-control-recovery/Cantrip/.qa/rust-native-controls/helpers-v2/http-sql-fixture",
+        "bytes": 179688128,
+        "sha256": "83a447eee7c3df20f6e74fbb8208e8d397133fbf49d4d5cd686863f55e410c1b"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-native-control-recovery/Cantrip/.qa/rust-native-controls/helpers-v2/project-repository-fixture",
+        "bytes": 181341456,
+        "sha256": "c32ca8b120ff3a5e37a589e6f1ff4908bd06b38de71485c7cee41e01828cba5d"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-native-control-recovery/Cantrip/.qa/rust-native-controls/helpers-v2/database-fixture",
+        "bytes": 176780976,
+        "sha256": "02e23f902d69fc8eab2237f49c52637d6d5a7a812de2984efa13fd7bd2aa6f87"
+      }
+    ]
+  },
+  "referenceVersion": {
+    "head": "fc406ffb26586d69723a0cdef5b3725ff0cd3567",
+    "version": {
+      "major": 1,
+      "minor": 1,
+      "patch": 2808,
+      "version": "1.1.2808",
+      "synthetic": false,
+      "commitSha": null,
+      "builtAt": null,
+      "buildId": null,
+      "overlayDigest": null
+    },
+    "files": [
+      {
+        "path": "packages/version/dist/index.js",
+        "sha256": "5ca3954a3d62fa45650c5cf2cc87bf379f8da7af420ddd18cf880d9d9613cdbc"
+      },
+      {
+        "path": "packages/version/dist/version.json",
+        "sha256": "4b13bf5c40fc572985ebd6ba204ee233546f30daeb04a7551800046afc47d9d1"
+      }
+    ],
+    "reason": "Rebuilt current @cantrip/version after fixed Rust compilation; archived reference package had pre-merge 1.1.2807, whereas the actual current source/build is 1.1.2808. No version assertion weakened."
+  },
+  "localChecks": {
+    "native": [
+      {
+        "name": "rustfmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--manifest-path",
+          "cantrip_server_rs/Cargo.toml",
+          "--",
+          "--check"
+        ],
+        "exitCode": 0,
+        "log": ".qa/rust-native-controls/check-rustfmt-v1.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "clippy",
+        "command": [
+          "node",
+          "scripts/server-rust/cargo.mjs",
+          "clippy",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exitCode": 0,
+        "log": ".qa/rust-native-controls/check-clippy-v1.log",
+        "sha256": "1e508776b896321b6dffe373cb4fbc87ea46b1f48552b576b4779deb25faa1d7"
+      },
+      {
+        "name": "rust-lib",
+        "command": ["node", "scripts/server-rust/cargo.mjs", "test", "--lib"],
+        "exitCode": 0,
+        "log": ".qa/rust-native-controls/check-rust-lib-v1.log",
+        "sha256": "13ff5831a699b82fc2b3eda9ada45240224748fffd73cb0e2ed7a3993948c8b2"
+      }
+    ],
+    "requiredRepository": {
+      "command": ["pnpm", "check"],
+      "exitCode": 1,
+      "log": ".qa/rust-native-controls/pnpm-check-v1.log",
+      "sha256": "e40d6eefaad7a74b7278b276285b34618cb70f46d2f9590f31046c69033637b8"
+    },
+    "unchangedWorkerBaseline": {
+      "verified": true,
+      "earlierReproduction": "PR2821 independently reproduced these same two capacity-backoff failures on clean main c65da5e2ea2f6bcd89d99111e3c511545a67aa18; source bytes remain identical at current fc406ffb2.",
+      "failures": [
+        "retries terminal model-capacity failures on the same Codex thread",
+        "interrupts a pending model-capacity backoff"
+      ],
+      "files": [
+        {
+          "path": "cantrip_worker/test/app-server.test.ts",
+          "sha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+          "matchesBaseline": true
+        },
+        {
+          "path": "cantrip_worker/src/codex/app-server.ts",
+          "sha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+          "matchesBaseline": true
+        }
+      ]
+    },
+    "repositoryFormatting": {
+      "command": ["pnpm", "format:check"],
+      "exitCode": 1,
+      "log": ".qa/rust-native-controls/format-check-v1.log",
+      "sha256": "995edc3e0fff73686d6ec1767adf1fcf24143a46e4e1e193529a193f465bf619"
+    },
+    "unchangedFormatBaseline": {
+      "verified": true,
+      "files": [
+        {
+          "path": "cantrip_app/src/lib/client-session.ts",
+          "sha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+          "identicalToBase": true
+        },
+        {
+          "path": "cantrip_os/packages/remote/root/etc/cantrip-os/remote.json",
+          "sha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+          "identicalToBase": true
+        },
+        {
+          "path": "cantrip_os/tests/active-browser.html",
+          "sha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+          "identicalToBase": true
+        },
+        {
+          "path": "cantrip_server_rs/third-party/icu_collator/README.md",
+          "sha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+          "identicalToBase": true
+        },
+        {
+          "path": "cantrip_server_rs/third-party/pglite-rs/README.md",
+          "sha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+          "identicalToBase": true
+        },
+        {
+          "path": "cantrip_worker/src/computer-use/captures.ts",
+          "sha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+          "identicalToBase": true
+        },
+        {
+          "path": "cantrip_worker/test/project-repository-stats.test.ts",
+          "sha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+          "identicalToBase": true
+        },
+        {
+          "path": "docs/BROWSER_AGENT_CURSOR_ACCEPTANCE.md",
+          "sha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+          "identicalToBase": true
+        },
+        {
+          "path": "docs/COMPUTER_USE_EFFECTS.md",
+          "sha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+          "identicalToBase": true
+        },
+        {
+          "path": "docs/REMOTE_DESKTOP_ACCEPTANCE.md",
+          "sha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+          "identicalToBase": true
+        },
+        {
+          "path": "docs/WQA-2026-10-08.md",
+          "sha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+          "identicalToBase": true
+        },
+        {
+          "path": "scripts/qa/editor-reload-error.test.mjs",
+          "sha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+          "identicalToBase": true
+        }
+      ]
+    }
+  },
+  "retainedReproduction": {
+    "report": ".qa/rust-native-controls/controls-pglite-none-v3.json",
+    "sources": ".qa/rust-native-controls/sources-v3.json",
+    "result": "Both peers complete 51 HTTP observations. All other compared command, SQL/reopen and crypto results match; the actual failed opaque queue UPDATE exposes a different public SQL error body. The failure was preserved, not normalized away.",
+    "referenceVersionMismatch": ".qa/rust-native-controls/controls-pglite-none-pilot-v4.json"
+  },
+  "remaining": [
+    "Actual native Core interruption/logical cancellation cleanup, attachments and other queue actions/consumers require their separate product/recovery qualification.",
+    "The 43 still-unmapped worker-command identities and historical partial scopes remain open; scoped mappings do not mean complete command behavior.",
+    "Final current desktop/container/service artifacts across supported platforms, complete product/fault/shared-instance acceptance, upgrades, post-write rollback and performance reconciliation remain required."
+  ],
+  "currentPackagedColdStop": {
+    "platform": "darwin-arm64",
+    "sourceBaseline": "d70b97f9b68ba78b6db82001872526ee63bc59ba",
+    "nativeSourceCommit": "cb41197c6bacb199427bdd050c8ef8507bd3d06f",
+    "nativeArtifactVersion": "1.1.2881",
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/cantrip-server-1.1.2881-cb41197c6-darwin-arm64.native.tar.gz",
+      "bytes": 66871813,
+      "sha256": "7038df56ee151cbbf53e922fbb3a611f80948174e6908dcaa8d6cf7b274b17e4"
+    },
+    "nativeBinarySha256": "704a20e13ed16165fb808055b8a16bdeca58bdca2588d3fb5c8cd344bfdd3ee2",
+    "workerEntry": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-worker-darwin-arm64/dist/index.js",
+      "bytes": 391601,
+      "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
+    },
+    "workerCli": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-worker-darwin-arm64/bin/cantrip",
+      "bytes": 1332160,
+      "sha256": "7825db54c7c8cfbcac6c5c45fc0c3b19b860d137813764cfa946a17050458236"
+    },
+    "workerCore": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-worker-darwin-arm64/bin/codex",
+      "bytes": 281161744,
+      "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+    },
+    "peerScenariosPassed": 12,
+    "cases": {
+      "pglite": {
+        "chat": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-pglite-cold-stop.json",
+            "bytes": 37934,
+            "sha256": "6cb483bcfab27ec9b27955a720ff7b65b4594a225caab6dc266db76057a0f51d"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        },
+        "task": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-pglite-task-cold-stop.json",
+            "bytes": 71786,
+            "sha256": "4bf6b89aa94f9bea3650e27ab6b3a6030116a73e5646d53708ef7db5b399dc53"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        }
+      },
+      "bundled-postgres": {
+        "chat": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-bundled-postgres-cold-stop.json",
+            "bytes": 35551,
+            "sha256": "79db501865c6a8c0dd30a4f1c8c6cc1a23243f9fd4cf7b60cb4f53b85af82db6"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        },
+        "task": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-bundled-postgres-task-cold-stop.json",
+            "bytes": 73040,
+            "sha256": "4c2db8924667a3eddd31e2ba4f1aecfa523fa4220c73ba9fb904de366d4d42ba"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        }
+      },
+      "postgres": {
+        "chat": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-postgres-cold-stop.json",
+            "bytes": 36558,
+            "sha256": "ea2f1e2771e9b5053fd5e52a34acaeebad873533e45d0f177eeafb8fe740748e"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            }
+          ]
+        },
+        "task": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-postgres-task-cold-stop.json",
+            "bytes": 71340,
+            "sha256": "7f919e114342e3341021c49ea94fb1b26c86ee2bf2c964f7679c6cfbfaefaced"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            }
+          ]
+        }
+      }
+    },
+    "fixtureSetupFailures": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/rust-pglite-cold-stop.dependencies-failure.log",
+        "bytes": 1384,
+        "sha256": "4eda2702844cc31c93d3bbbaa54f4f0836c01509c66be662961d7b04d9af8770"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-pglite-cold-stop.policy-templates-failure.json",
+        "bytes": 2757,
+        "sha256": "1a7dd2108247ae11f6b147d77cf9e7853100266fc8a2e551196d2e301b8f6232"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-bundled-postgres-cold-stop.bin-path-failure.json",
+        "bytes": 648,
+        "sha256": "624f0e0f17bad5d02586c79ee40e9761d95871efcae70ae1f3450218313be3e9"
+      }
+    ],
+    "scope": "Actual Chromium SDK, packaged worker, native runtime, and production server sockets. The model HTTP responses are controlled. These are single-server worker-restart cases."
+  },
+  "currentPackagedLiveStop": {
+    "platform": "darwin-arm64",
+    "sourceBaseline": "667608c57bed3d2a008e342d6504207eca472ef3",
+    "nativeSourceCommit": "cb41197c6bacb199427bdd050c8ef8507bd3d06f",
+    "nativeArtifactVersion": "1.1.2881",
+    "artifactEvidence": "#currentPackagedColdStop",
+    "rustScenariosPassed": 9,
+    "nodeScenariosPassed": 7,
+    "cases": {
+      "pglite": {
+        "chatMountedActive": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-pglite-mounted-active-stop.json",
+            "bytes": 35829,
+            "sha256": "d23c9138ba2fd9f1114eff0b0d6d61507b9d19d441974823161db446a6e5c973"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        },
+        "taskRunning": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-pglite-task-running-stop.json",
+            "bytes": 51459,
+            "sha256": "1bb5ca2baf4111d66463e84479d9182aaa1a0f5e1516a6dbfaebf0c9386fdcdf"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 0
+            },
+            {
+              "runtime": "rust",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 0
+            }
+          ]
+        },
+        "taskRestoring": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-pglite-task-stop-restoring.json",
+            "bytes": 90326,
+            "sha256": "1a6566bf2a3f6ca8ebe0255f38d8169e2dc0940f3e953ca025f0228839eadea5"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "pglite",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        }
+      },
+      "bundled-postgres": {
+        "chatMountedActive": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-bundled-postgres-mounted-active-stop.json",
+            "bytes": 34963,
+            "sha256": "790f8bd07906f3b5e80ff0dca0481ab78782b4772cf549c5a81beadc57c17b48"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        },
+        "taskRunning": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-bundled-postgres-task-running-stop.json",
+            "bytes": 51474,
+            "sha256": "68c3bb07c78b6562a32571c0d4e0588d0d50fc5a6c52b4620a3f415d36218c3d"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 0
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": false,
+              "workerRestarts": 0
+            }
+          ]
+        },
+        "taskRestoring": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/rust-bundled-postgres-task-stop-restoring.json",
+            "bytes": 45041,
+            "sha256": "263b028623dcf59707193f0e732e1c41dc97d7f65960fc450d27f069ba42efc0"
+          },
+          "peers": [
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": false,
+              "workerRestarts": 1
+            }
+          ]
+        }
+      },
+      "postgres": {
+        "chatMountedActive": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-postgres-mounted-active-stop.json",
+            "bytes": 34975,
+            "sha256": "1c21a2028b422a4e1b9bf1022264641e51fe3ac5bd67481e48fb6d0a70d00060"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            }
+          ]
+        },
+        "taskRunning": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-postgres-task-running-stop.json",
+            "bytes": 51466,
+            "sha256": "e7d01335dd6d56d689dd99f09ce78ab863b0fc21134d1f083e3239d8e05bbb59"
+          },
+          "peers": [
+            {
+              "runtime": "node",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 0
+            },
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 0
+            }
+          ]
+        },
+        "taskRestoring": {
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/rust-postgres-task-stop-restoring.json",
+            "bytes": 45334,
+            "sha256": "f3af4814deb1f97bf0b5e09ed5faa3b9b8d4925bb27bd6b1dccfa89f9eb41516"
+          },
+          "peers": [
+            {
+              "runtime": "rust",
+              "engine": "postgres",
+              "external": true,
+              "workerRestarts": 1
+            }
+          ]
+        }
+      }
+    },
+    "referenceFailures": [
+      {
+        "databaseMode": "bundled-postgres",
+        "runtime": "node",
+        "databaseEngine": "postgres",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-bundled-postgres-task-stop-restoring.json",
+          "bytes": 52144,
+          "sha256": "07a981395a1e2816777324479933efd6c93830de3995d96a1321cb4626c19051"
+        },
+        "phase": "stop",
+        "responseStatus": 502,
+        "postgresDeadlocks": 3,
+        "databaseLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/node-bundled-postgres-task-stop-restoring-deadlock.postgres.log",
+          "bytes": 7517,
+          "sha256": "4a4c2c5d1f80c588beeb4cbd81bf776daaf369a4b767ccce97224af49c911cc3"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "runtime": "node",
+        "databaseEngine": "postgres",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/paired-postgres-task-stop-restoring.json",
+          "bytes": 53066,
+          "sha256": "02c5c21971fd0c2dca2b16b7a34a33df31cee6573d5eab2765f3b979e48f7849"
+        },
+        "phase": "teardown",
+        "connectionError": "CONNECTION_ENDED"
+      },
+      {
+        "databaseMode": "postgres",
+        "runtime": "node",
+        "databaseEngine": "postgres",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/node-postgres-task-stop-restoring-repeat.json",
+          "bytes": 51773,
+          "sha256": "2fc305b981b79f29838a1f1a9126e6f08196eedb4c63c0608011b9cd2a8b1b58"
+        },
+        "phase": "stop",
+        "responseStatus": 502,
+        "postgresDeadlocks": 3,
+        "databaseLog": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/durable-interruption/node-postgres-task-stop-restoring-deadlock.postgres.log",
+          "bytes": 7517,
+          "sha256": "276a22f564aca9c1d961ff3fa4c07c71f64867cf021486ccd5a5a5f82522a7c6"
+        }
+      }
+    ],
+    "scope": "Single-server macOS ARM64 cases using the mounted Chromium Chat UI or browser SDK, production HTTP sockets, the packaged worker, and the actual native runtime. Model HTTP responses and capacity are controlled."
+  }
+}

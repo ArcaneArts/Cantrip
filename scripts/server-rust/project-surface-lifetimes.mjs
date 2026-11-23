@@ -20,7 +20,7 @@ import {
   state,
 } from "./project-target-state.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 const reportOption = process.argv.indexOf("--report"),
   reportPath = reportOption < 0 ? undefined : process.argv[reportOption + 1];

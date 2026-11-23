@@ -30,6 +30,8 @@ fn native_command_contracts_match_actual_protocol() -> Result<()> {
         "chatAttachmentOpaqueSummarySchema",
         "nativeCommandSessionSchema",
         "nativeCommandAdmissionSchema",
+        "nativeSuspensionExecutionAdmissionSchema",
+        "nativeSuspensionExecutionAdmissionResultSchema",
         "nativeCommandIntentSchema",
         "nativeCommandReceiptSchema",
         "nativeCommandDispatchSchema",

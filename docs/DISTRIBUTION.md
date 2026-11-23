@@ -5,10 +5,9 @@ backup/restore, TURN, and rolling-upgrade operations are documented in
 [Hosted deployment and recovery](HOSTED_DEPLOYMENT.md).
 
 Cantrip produces Server, Worker, Desktop, Android, and iOS release outputs. The
-Server and Worker are Node.js deployment trees. Desktop is a native Tauri
-bundle containing the frontend plus those same service trees and the Node.js
-runtime used to build it. Android produces a signed Capacitor App Bundle for
-Google Play and a signed APK for direct testing; both are attached to the
+Server and Worker are native Rust service packages. Desktop is a native Tauri
+bundle containing the frontend and the same service binaries. Android produces
+a signed Capacitor App Bundle for Google Play and a signed APK for direct testing; both are attached to the
 GitHub release. The signed Capacitor iOS archive is uploaded directly to App
 Store Connect for TestFlight processing rather than attached publicly.
 
@@ -45,9 +44,9 @@ active only after the DNS records requested by App Platform have propagated.
 
 ## Build matrix
 
-Run service packaging on the target operating system; the packaging script
-rejects cross-target requests. The Worker additionally contains native PTY,
-screen-capture, and image modules.
+Build the Worker on a host matching its target operating system and
+architecture. The Worker includes native PTY, screen-capture, and image
+components.
 
 | Command                        | Output                                                            | Host requirement                                                    |
 | ------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -60,14 +59,10 @@ screen-capture, and image modules.
 | `pnpm deploy:server`           | Builds and deploys the current production server                  | Clean synchronized `main`, Docker, Infisical, and SSH               |
 | `pnpm release`                 | Promotes `release`, deploys App Platform, and deploys the Server  | Same as `deploy:server`, plus `doctl` and push access               |
 
-Every Worker package must contain the regular entry file
-`dist/mcp/stdio.js` and its production MCP SDK dependencies. Standalone Worker
-trees also contain `runtime/node` on macOS/Linux or `runtime/node.exe` on
-Windows. `package-distributions.mjs` verifies the entry and invokes it with the
-bundled runtime, expecting the bounded missing-`--connection` startup error;
-this proves that the packaged module graph loads without requiring a live
-worker credential or server. Native release CI repeats the check on both
-`darwin-arm64` and `win32-x64` before creating the Worker archives. Operators
+Worker packaging runs the bundled `cantrip-worker` executable and checks its
+`mcp` and `cua-mcp` subcommands. Both must return the expected
+missing-`--connection` error with an empty `PATH`. Native release CI repeats
+the check on both `darwin-arm64` and `win32-x64` before creating the Worker archives. Operators
 can repeat it with:
 
 ```console
@@ -80,13 +75,13 @@ Desktop client from those exact service trees. Final archives and native
 installers are collected under `artifacts/bundles/<os>-<arch>/`; it does not
 create a GitHub release.
 
-The only GitHub Actions release trigger is a push to `release`; pull requests,
-ordinary `main` pushes, and manual dispatches do not run native packaging. The
-workflow uses Blacksmith's Apple Silicon macOS 15 and Windows Server 2025 x64
-runners for the service and desktop lanes. Server, Worker, Android, and iOS
-jobs start in parallel. Desktop jobs then download the exact native service
-archives, embed them alongside the runner's Node.js runtime, and build a signed
-and notarized macOS DMG or a Windows NSIS installer. Android builds a signed
+The native release workflow runs on pushes to `release`. The workflow uses
+Blacksmith's Apple Silicon macOS 15 and Windows Server 2025 x64 runners for the
+service and desktop lanes. Server, Worker, Android, and iOS jobs start in
+parallel. Desktop jobs extract the native service archives into `artifacts/`
+and stage them with `pnpm package:app --target <target> --from-artifacts`.
+The resulting signed macOS DMG and Windows NSIS installer launch the Rust
+services directly. Node.js runs the build tooling. Android builds a signed
 App Bundle and APK while iOS archives and uploads to TestFlight. A final job
 waits for every lane, creates a GitHub release tagged
 `v<major>.<minor>.<commit-count>`, and uploads the DMG, NSIS executable, Android
@@ -351,11 +346,9 @@ for the requested platform before packaging. `macos-*` and
 `windows-*` are accepted aliases for the runtime target names `darwin-*` and
 `win32-*`.
 
-The Server and Worker archives each include the platform-matched Node runtime
-used to build their native dependencies. Their startup scripts invoke only that
-packaged executable, so a separate host Node installation is not required.
-Desktop removes those duplicate per-service runtimes while staging and uses its
-single shared bundled Node executable instead.
+The Server and Worker archives start their platform-matched Rust executables.
+Desktop stages the same native worker and the PostgreSQL compatibility tools
+that upgrade existing desktop profiles. Node is used by build tooling.
 
 The native code editor is part of the client. Worker and desktop packages do
 not include a separate editor server, extension host, or editor distribution.
@@ -363,8 +356,8 @@ Workers provide encrypted file operations to the same editor on every client.
 
 ## Standalone server
 
-Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
-`--env-file-if-exists` support. Important variables are:
+Copy the packaged `.env.example` to `.env`. The native server loads that file
+at startup. Important variables are:
 
 - `CANTRIP_SERVER_HOST` and `CANTRIP_SERVER_PORT`: listening address.
 - `CANTRIP_DATA_DIR`: PGlite data and durable server state.

@@ -313,6 +313,7 @@ impl SessionInner {
             cell_id: expected_cell_id.as_str().to_string(),
             wait_id: wait_id.clone(),
             yield_time_ms: request.yield_time_ms,
+            max_output_tokens: None,
         };
         let mut client = self.client();
         let watcher = preempt.map(|signal| {
@@ -331,7 +332,7 @@ impl SessionInner {
         drop(watcher);
         cancellation.disarm();
         self.prune_wait_slots();
-        let outcome = conversion::wait_outcome(response?.into_inner())?;
+        let outcome = conversion::wait_outcome(response?)?;
         self.validate_wait_cell(&expected_cell_id, outcome).await
     }
 
@@ -368,10 +369,10 @@ impl SessionInner {
             client.terminate(self.request(grpc::TerminateRequest {
                 session_id: self.id.clone(),
                 cell_id: cell_id.as_str().to_string(),
+                max_output_tokens: None,
             })),
         )
-        .await?
-        .into_inner();
+        .await?;
         let outcome = conversion::wait_outcome(response)?;
         self.validate_wait_cell(&cell_id, outcome).await
     }

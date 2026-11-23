@@ -28,16 +28,20 @@ export async function snapshot(database) {
       )
     ).rows[0];
   }
-  const probe = {
-    functionValue: (
-      await database.query("SELECT public.migration_literal_probe() AS value")
-    ).rows[0].value,
-    nullKinds: (
-      await database.query(
-        "SELECT jsonb_agg(jsonb_build_object('id',id,'sqlNull',metadata IS NULL,'jsonType',jsonb_typeof(metadata)) ORDER BY id)::text AS value FROM public.migration_probe",
-      )
-    ).rows[0].value,
-  };
+  const probe = tables["public.migration_probe"]
+    ? {
+        functionValue: (
+          await database.query(
+            "SELECT public.migration_literal_probe() AS value",
+          )
+        ).rows[0].value,
+        nullKinds: (
+          await database.query(
+            "SELECT jsonb_agg(jsonb_build_object('id',id,'sqlNull',metadata IS NULL,'jsonType',jsonb_typeof(metadata)) ORDER BY id)::text AS value FROM public.migration_probe",
+          )
+        ).rows[0].value,
+      }
+    : null;
   return { tables, sequences, probe };
 }
 export function assertImportedProfile(
@@ -47,6 +51,7 @@ export function assertImportedProfile(
   manifest,
   before,
   after,
+  { migrationsApplied = 0 } = {},
 ) {
   const expected = structuredClone(source);
   const key = `profile-import:${receipt.bundleId}:${receipt.manifestSha256}`;
@@ -62,7 +67,7 @@ export function assertImportedProfile(
   assert.deepEqual(row.value, {
     bytes: manifest.sqlBytes,
     sha256: manifest.sqlSha256,
-    migrationsApplied: 0,
+    migrationsApplied,
   });
   assert.deepEqual(receipt.database, row.value);
   const time = Date.parse(row.updated_at);

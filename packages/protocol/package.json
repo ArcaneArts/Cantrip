@@ -4,6 +4,18 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./cantrip-os-system": {
+      "types": "./src/cantrip-os-system.ts",
+      "import": "./dist/cantrip-os-system.js"
+    },
+    "./cantrip-os-backup-operations": {
+      "types": "./src/cantrip-os-backup-operations.ts",
+      "import": "./dist/cantrip-os-backup-operations.js"
+    },
+    "./cantrip-os-backup": {
+      "types": "./src/cantrip-os-backup.ts",
+      "import": "./dist/cantrip-os-backup.js"
+    },
     "./computer-use-preferences": {
       "types": "./src/computer-use-preferences.ts",
       "import": "./dist/computer-use-preferences.js"

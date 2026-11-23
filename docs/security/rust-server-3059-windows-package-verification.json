@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "win32-x64",
+  "candidateVersion": "1.1.3059",
+  "sourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "scope": "Local Windows 11 x64 guest package creation and host archive and installer verification. Runtime acceptance is tracked separately.",
+  "standalone": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/extracted/cantrip-server-1.1.3059-win32-x64.tar.gz",
+      "bytes": 97804519,
+      "sha256": "19298d402d00820b9f658645834b5b8d9423513cb507811a04c46040649d5f3f"
+    },
+    "manifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/extracted/native-server.json",
+      "bytes": 407860,
+      "sha256": "575971e7e8c8d5da366d184dfa713e3afe97f160f47bc8b5d68f5578544be8ab"
+    },
+    "archiveContentsVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/extracted/archive-contents-verification.json",
+      "bytes": 285,
+      "sha256": "0af23f1d614ae2b5d9443468c2ff94bb4bf112f545082c2c6fa73468439bc678"
+    },
+    "verifiedManifestFiles": 2281,
+    "serverSha256": "c2bee345723f75ec694d21ca9dbfe1e4d0bf34ad4ba5f4566511af5f408d1114",
+    "initialRun": {
+      "result": "failed",
+      "startupTimeoutMs": 60000,
+      "stage": "PGlite database connection before readiness",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/extracted/first-acceptance-failure.json",
+        "bytes": 1555,
+        "sha256": "9baf2d763e24bb36e7f02a63bceeff9ef6b4c1e57ae769526f23948bdaa7b760"
+      }
+    }
+  },
+  "desktop": {
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/Cantrip_1.1.3059_x64-setup.exe",
+      "bytes": 256896288,
+      "sha256": "ee83370565dbbcef360ad2e1872d60956a9328d369ee9bfe033f57bd0ca895ff"
+    },
+    "updaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/Cantrip_1.1.3059_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "729cfda9ad308feff7b7eff250ff340589842b6b908c3bc5c45dc96812108694"
+    },
+    "updaterSignatureVerified": true,
+    "authenticodeVerified": false,
+    "verifiedFiles": 14092,
+    "runtimeManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/desktop-nsis-runtime-manifest.json",
+      "bytes": 2506190,
+      "sha256": "1ca0c127804486c0ab7f1eebdc473f1d5d4350c71afbe381312c41395b42a8bf"
+    },
+    "bundleMarkerVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/desktop-bundle-type-verification.json",
+      "bytes": 217,
+      "sha256": "afeaf1bc5fd306eedc1f7b9f628dd30a04a1cf9cde4b8d706ca6722bfb713461"
+    },
+    "appSha256": "114d4530406b82bda4cf2d27356a9086764f4a17b6c7d29fe8fd864af5f1ea5d",
+    "serverSha256": "c2bee345723f75ec694d21ca9dbfe1e4d0bf34ad4ba5f4566511af5f408d1114",
+    "workerVersion": "1.1.2976",
+    "workerSha256": "dbe9866bec05f69098695957e183aa9c5c0a95daa9504b31a3e17f461cc89a39"
+  },
+  "harnessValidation": {
+    "platform": "darwin-arm64",
+    "startupTimeoutMs": 600000,
+    "verifiedManifestFiles": 1762,
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/acceptance-budget-validation/report.json",
+      "bytes": 3545,
+      "sha256": "55cad68d7aa2291baa5e2728b3d88da27a489ee623e4347e644d5b79af357859"
+    }
+  }
+}

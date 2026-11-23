@@ -1,0 +1,1953 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "58d6bb70e06d1412fe01c90e6d0bee8f79359df4",
+  "platform": "darwin-arm64",
+  "productionRustChanges": false,
+  "actualLeafExecution": false,
+  "scope": "Production Rust HTTP executable and reference HTTP server, unchanged worker connections and App Live; controlled folder/replica facts, actual SQL state/locks/renewal and shutdown, restart, two native-store opens and original admission fingerprint proofs.",
+  "counts": {
+    "pairedHttpObservations": 1119,
+    "rawStoreReopenComparisons": 36,
+    "verifiedAdmissionFingerprints": 108,
+    "receivedFolderCommands": 198,
+    "receivedReplicaCommands": 342,
+    "qualifiedLiveEvents": 1116,
+    "tracedRequests": 4361,
+    "newWorkerCommands": 5,
+    "newDurableTables": 3,
+    "newLiveResources": 3
+  },
+  "reports": [
+    {
+      "family": "folder",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+      "sha256": "f2c0f0785f0d633f0e13f27f6843df20c32c6611c56550fcaadbc1ee3869e3dd",
+      "pairedHttpObservations": 154
+    },
+    {
+      "family": "folder",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+      "sha256": "460a7c46c739fa36f4c2b97db716b33d4c47037abbee25fae665cdbffb1d61ec",
+      "pairedHttpObservations": 154
+    },
+    {
+      "family": "folder",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+      "sha256": "b7725a1086e1b696158f6023c43d3dd07fc9e6c87f15e943476bcc5920f35efa",
+      "pairedHttpObservations": 157
+    },
+    {
+      "family": "replica",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+      "sha256": "c35b67b025696c1bbfc4b6d0f4d57dbd7b6155928cf7c2c0dfa77f5d08d317f2",
+      "pairedHttpObservations": 218
+    },
+    {
+      "family": "replica",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+      "sha256": "31a821ed5c8b3cb6d68b5bd263372c59f1a7287407ade4a05f8f4904607c1602",
+      "pairedHttpObservations": 218
+    },
+    {
+      "family": "replica",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+      "sha256": "aff1cace83b80c64c66258d3cf86570d301ef54f6888141bae2e974828ff5b43",
+      "pairedHttpObservations": 218
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-provisioning-state/folder-pglite-v2.requests.json",
+      "sha256": "a8cddd8edf25bc92da91b9b053a5c3f3fa01cfdda33f0cf80049cdb139c81749",
+      "requests": 479
+    },
+    {
+      "path": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.requests.json",
+      "sha256": "07e9559180e2ed892f35b7bb98a0185a2107a6c48de49e851c49c5fd642ad1e7",
+      "requests": 495
+    },
+    {
+      "path": ".qa/rust-provisioning-state/folder-postgres-v2.requests.json",
+      "sha256": "ac643ab3d650ab84afac448f1d0d15bdd5aa7ed209052b5eae403c87ee61161c",
+      "requests": 511
+    },
+    {
+      "path": ".qa/rust-provisioning-state/replica-pglite-v3.requests.json",
+      "sha256": "b162cd693bc90e8b7891dd43ed677b779ef0f06c7039351e07149307518b3b93",
+      "requests": 939
+    },
+    {
+      "path": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.requests.json",
+      "sha256": "8605d8642cf1cf3402569a68e312f27c264544ed96727e46b29565aa27b53932",
+      "requests": 969
+    },
+    {
+      "path": ".qa/rust-provisioning-state/replica-postgres-v3.requests.json",
+      "sha256": "6f2ca2587d4859f6bf86b48bf566f862b79ccb5c5c1cd209dfe7d399e8800e31",
+      "requests": 968
+    }
+  ],
+  "workerCommandMappings": [
+    {
+      "command": "project.replica.provision",
+      "implementation": "cantrip_server_rs/src/projects/replicas/execute.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [0, 3, 8, 11]
+          }
+        }
+      ]
+    },
+    {
+      "command": "project.replica.synchronize",
+      "implementation": "cantrip_server_rs/src/projects/replicas/execute.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [2, 5, 6, 7, 9, 10]
+          }
+        }
+      ]
+    },
+    {
+      "command": "project.replica.remove",
+      "implementation": "cantrip_server_rs/src/projects/replicas/execute.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [4]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [4]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [4]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [4]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [4]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [4]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [4]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [4]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [4]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [4]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [4]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [4]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [4]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [4]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [4]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [4]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [4]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [4]
+          }
+        }
+      ]
+    },
+    {
+      "command": "project.replica.link.repair",
+      "implementation": "cantrip_server_rs/src/http/replicas.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [1]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [1]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [1]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [1]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [1]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [1]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [1]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [1]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [1]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [1]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [1]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [1]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [1]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [1]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [1]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [1]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [1]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [1]
+          }
+        }
+      ]
+    },
+    {
+      "command": "project.folder.delete",
+      "implementation": "cantrip_server_rs/src/projects/replicas/execute.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [12, 13]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [12, 13]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [12, 13]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [12, 13]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [12, 13]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [12, 13]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [12, 13]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [12, 13]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [12, 13]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [12, 13]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [12, 13]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [12, 13]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/commands",
+            "indexes": [12, 13]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/commands",
+            "indexes": [12, 13]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/commands",
+            "indexes": [12, 13]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/commands",
+            "indexes": [12, 13]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/commands",
+            "indexes": [12, 13]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/commands",
+            "indexes": [12, 13]
+          }
+        }
+      ]
+    }
+  ],
+  "durableTableMappings": [
+    {
+      "tableName": "projects",
+      "exportName": "projects",
+      "field": "projects",
+      "implementation": "cantrip_server_rs/src/projects/folders/mod.rs",
+      "witnesses": [
+        {
+          "family": "folder",
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/projects"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/projects"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/projects",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/projects"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "project_folder_setup_jobs",
+      "exportName": "projectFolderSetupJobs",
+      "field": "folderJobs",
+      "implementation": "cantrip_server_rs/src/projects/folders/jobs.rs",
+      "witnesses": [
+        {
+          "family": "folder",
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/folderJobs",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/folderJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/folderJobs",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/folderJobs"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/folderJobs",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/folderJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/folderJobs",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/folderJobs"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/folderJobs",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/folderJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/folderJobs",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/folderJobs"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/folderJobs",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/folderJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/folderJobs",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/folderJobs"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/folderJobs",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/folderJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/folderJobs",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/folderJobs"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/folderJobs",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/folderJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/folderJobs",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/folderJobs"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/folderJobs",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/folderJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/folderJobs",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/folderJobs"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/folderJobs",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/folderJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/folderJobs",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/folderJobs"
+          }
+        },
+        {
+          "family": "folder",
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/folderJobs",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/folderJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/folderJobs",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/folderJobs"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "project_replica_jobs",
+      "exportName": "projectReplicaJobs",
+      "field": "replicaJobs",
+      "implementation": "cantrip_server_rs/src/projects/replicas/admission.rs",
+      "witnesses": [
+        {
+          "family": "replica",
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/replicaJobs",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/replicaJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/replicaJobs",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/replicaJobs"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/replicaJobs",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/replicaJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/replicaJobs",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/replicaJobs"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/replicaJobs",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/replicaJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/replicaJobs",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/replicaJobs"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/replicaJobs",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/replicaJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/replicaJobs",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/replicaJobs"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/replicaJobs",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/replicaJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/replicaJobs",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/replicaJobs"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/replicaJobs",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/replicaJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/replicaJobs",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/replicaJobs"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/durableState/raw/replicaJobs",
+            "reopened": "/profiles/0/runtimes/0/durableState/reopened/replicaJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/durableState/raw/replicaJobs",
+            "reopened": "/profiles/0/runtimes/1/durableState/reopened/replicaJobs"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/durableState/raw/replicaJobs",
+            "reopened": "/profiles/1/runtimes/0/durableState/reopened/replicaJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/durableState/raw/replicaJobs",
+            "reopened": "/profiles/1/runtimes/1/durableState/reopened/replicaJobs"
+          }
+        },
+        {
+          "family": "replica",
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/durableState/raw/replicaJobs",
+            "reopened": "/profiles/2/runtimes/0/durableState/reopened/replicaJobs"
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/durableState/raw/replicaJobs",
+            "reopened": "/profiles/2/runtimes/1/durableState/reopened/replicaJobs"
+          }
+        }
+      ]
+    }
+  ],
+  "liveResourceMappings": [
+    {
+      "resource": "project",
+      "implementation": "cantrip_server_rs/src/projects/folders/service.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/0/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/1/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/0/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/1/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/0/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/1/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/events",
+            "indexes": [1, 4, 6, 7, 9, 12, 15, 18, 21, 24, 27]
+          }
+        }
+      ]
+    },
+    {
+      "resource": "project-folder-setup-job",
+      "implementation": "cantrip_server_rs/src/projects/folders/service.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/0/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/0/runtimes/1/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/0/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/1/runtimes/1/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/0/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-pglite-v2.json",
+            "pointer": "/profiles/2/runtimes/1/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-bundled-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/0/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/0/runtimes/1/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/0/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/1/runtimes/1/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/0/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/folder-postgres-v2.json",
+            "pointer": "/profiles/2/runtimes/1/events",
+            "indexes": [0, 3, 5, 8, 11, 14, 17, 20, 23, 26]
+          }
+        }
+      ]
+    },
+    {
+      "resource": "project-replica-job",
+      "implementation": "cantrip_server_rs/src/projects/replicas/service.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-provisioning-state/replica-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/connected/events",
+            "indexes": [
+              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+              19, 20, 21, 22, 23, 24
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "sourceSha256": {
+    "scripts/server-rust/folder-http-compatibility.mjs": "13f99c85b7086fac9c4d442b4dec2a135d37ace97780692fc3db4b6da7a7b7e5",
+    "scripts/server-rust/replica-import-http-compatibility.mjs": "6d7f0ba4502b357eaef0593844045587024245a5b38bccc33efef4c4f8db7941",
+    "scripts/server-rust/provisioning-state-reopen.mjs": "8ca3af014a6970fd2886e196b77d1818ad5315433a89236cac75491714b5ec42",
+    "scripts/server-rust/folder-creation-shutdown.mjs": "019585776bb8a35d5b83bd54f2e28ed0599382fcc65bccab885ec34fe5583b4c",
+    "scripts/server-rust/replica-connected-cases.mjs": "b9552e9712d16e23e052164a8f48cd4ac506e1e3e3a3e590c5091b9bf90a3986",
+    "scripts/server-rust/replica-converted-cases.mjs": "74232ae9702025d933c36d568b2638e5f64f6006b06bcb6793bc64b7ea6bb3e2",
+    "scripts/server-rust/replica-shutdown-cases.mjs": "512ba08a9aab7d6ddba720baa8f02d7c80e14b75a28cbfca09829387a61627be",
+    "scripts/server-rust/replica-concurrency-cases.mjs": "bf000bc951d02e824739e3d0a97792300ef7a4ac68512d128ceb62fb05f73b7b"
+  },
+  "frozenExecutables": {
+    "baseCommit": "58d6bb70e06d1412fe01c90e6d0bee8f79359df4",
+    "executables": [
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-provisioning-state-contracts/Cantrip/.qa/rust-provisioning-state/helpers-v1/cantrip-server",
+        "bytes": 179418224,
+        "sha256": "e0ebde520d595337f6f6adb15b53aae91d46799b8ccdaf7a3c1bebe1c9e0327f"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-provisioning-state-contracts/Cantrip/.qa/rust-provisioning-state/helpers-v1/http-sql-fixture",
+        "bytes": 179667056,
+        "sha256": "c777c7850b9d4983c5ae994b8ce412f682aa47b8e2f5b0c80274a275d2c0405e"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-provisioning-state-contracts/Cantrip/.qa/rust-provisioning-state/helpers-v1/project-repository-fixture",
+        "bytes": 181320416,
+        "sha256": "ace77e04c04eaac95aef73bdae5bbb1107d31eda958ee008e7bfa2688bf7e028"
+      }
+    ]
+  },
+  "localChecks": {
+    "standard": {
+      "command": ["pnpm", "check"],
+      "exitCode": 1
+    },
+    "cleanPrimaryWorkerReproduction": {
+      "command": [
+        "pnpm",
+        "--filter",
+        "@cantrip/worker",
+        "exec",
+        "vitest",
+        "run",
+        "test/app-server.test.ts",
+        "-t",
+        "retries terminal model-capacity failures on the same Codex thread|interrupts a pending model-capacity backoff"
+      ],
+      "cwd": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip",
+      "head": "58d6bb70e06d1412fe01c90e6d0bee8f79359df4",
+      "exitCode": 1,
+      "files": [
+        {
+          "path": "cantrip_worker/test/app-server.test.ts",
+          "sha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+          "primarySha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+          "identical": true
+        },
+        {
+          "path": "cantrip_worker/src/codex/app-server.ts",
+          "sha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+          "primarySha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+          "identical": true
+        }
+      ]
+    },
+    "fullFormatting": {
+      "command": ["pnpm", "format:check"],
+      "exitCode": 1,
+      "files": [
+        {
+          "path": "cantrip_app/src/lib/client-session.ts",
+          "sha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+          "primarySha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+          "identical": true
+        },
+        {
+          "path": "cantrip_os/packages/remote/root/etc/cantrip-os/remote.json",
+          "sha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+          "primarySha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+          "identical": true
+        },
+        {
+          "path": "cantrip_os/tests/active-browser.html",
+          "sha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+          "primarySha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+          "identical": true
+        },
+        {
+          "path": "cantrip_server_rs/third-party/icu_collator/README.md",
+          "sha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+          "primarySha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+          "identical": true
+        },
+        {
+          "path": "cantrip_server_rs/third-party/pglite-rs/README.md",
+          "sha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+          "primarySha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+          "identical": true
+        },
+        {
+          "path": "cantrip_worker/src/computer-use/captures.ts",
+          "sha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+          "primarySha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+          "identical": true
+        },
+        {
+          "path": "cantrip_worker/test/project-repository-stats.test.ts",
+          "sha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+          "primarySha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+          "identical": true
+        },
+        {
+          "path": "docs/BROWSER_AGENT_CURSOR_ACCEPTANCE.md",
+          "sha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+          "primarySha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+          "identical": true
+        },
+        {
+          "path": "docs/COMPUTER_USE_EFFECTS.md",
+          "sha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+          "primarySha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+          "identical": true
+        },
+        {
+          "path": "docs/REMOTE_DESKTOP_ACCEPTANCE.md",
+          "sha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+          "primarySha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+          "identical": true
+        },
+        {
+          "path": "docs/WQA-2026-10-08.md",
+          "sha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+          "primarySha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+          "identical": true
+        },
+        {
+          "path": "scripts/qa/editor-reload-error.test.mjs",
+          "sha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+          "primarySha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+          "identical": true
+        }
+      ]
+    },
+    "changedScriptFormatting": {
+      "command": [
+        "pnpm",
+        "exec",
+        "prettier",
+        "--check",
+        "scripts/server-rust/folder-http-compatibility.mjs",
+        "scripts/server-rust/replica-import-http-compatibility.mjs",
+        "scripts/server-rust/provisioning-state-reopen.mjs"
+      ],
+      "exitCode": 0
+    },
+    "boundaryAudit": {
+      "command": ["pnpm", "audit:server-boundaries"],
+      "exitCode": 0
+    },
+    "diffCheck": {
+      "command": ["git", "diff", "--check"],
+      "exitCode": 0
+    },
+    "currentGeneratedContracts": {
+      "report": ".qa/rust-provisioning-state/source-drift-v1.json",
+      "matched": 17
+    }
+  },
+  "retainedFailures": [
+    "The v1 replica comparison found six raw payload_fingerprint differences per peer/store. Original requests include independently generated replica UUIDs; v2 adds actual admission capture and independent protocol-parsed SHA256 proof before computing identity-normalized comparison hashes. All original HTTP/Live/command assertions and raw reopen equality remain intact."
+  ],
+  "retainedEvidenceDirectory": "rust-server-provisioning-state-delivery-20261110-v1",
+  "remaining": [
+    "Actual leaf Git/filesystem execution, remaining job consumers, complete interruption/coordination and final supported-platform/package acceptance retain their separate evidence scope. Controlled worker facts do not establish the full worker implementation.",
+    "Remaining command/table/Live identities, historical partial scopes and the complete original server-replacement goal remain open."
+  ]
+}

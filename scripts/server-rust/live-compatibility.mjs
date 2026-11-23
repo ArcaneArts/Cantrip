@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { buildRustServer, buildRustExample } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
@@ -19,8 +19,11 @@ const option = (name) => {
 };
 const databaseMode = option("--database") ?? "pglite";
 assert.ok(["pglite", "bundled-postgres", "postgres"].includes(databaseMode));
-const executable = await buildRustServer(),
-  repositoryBinary = await buildRustExample("project-repository-fixture");
+const executable =
+  process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer());
+const repositoryBinary =
+  process.env.CANTRIP_TEST_PROJECT_REPOSITORY_BINARY ??
+  (await buildRustExample("project-repository-fixture"));
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-live-http-"));
 const hash = await hashPassword(password);
 const report = {

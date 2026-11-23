@@ -1,0 +1,2078 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "agentActivitySchema": 0,
+    "agentScopeSchema": 18,
+    "agentActivityRawEnvelopeSchema": 34,
+    "agentActivityRawRequestDocumentSchema": 37,
+    "agentActivityRawResponseDocumentSchema": 50
+  },
+  "nodes": [
+    {
+      "type": "union",
+      "name": "agentActivitySchema",
+      "options": [
+        1, 147, 170, 186, 199, 205, 214, 218, 238, 247, 263, 268, 276, 281, 289,
+        292, 296, 298, 319, 349, 375
+      ],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 4,
+        "updatedAtMs": 4,
+        "completedAtMs": 4,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 56,
+        "source": 57,
+        "operation": 58,
+        "operationId": 59,
+        "requestId": 60,
+        "binding": 62,
+        "target": 68,
+        "cursor": 72,
+        "input": 96,
+        "observation": 131,
+        "outcome": 143,
+        "errorCode": 144,
+        "durationMs": 145
+      },
+      "catchall": 146,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-computer-use-activity",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "agentActivityStatusSchema",
+      "values": ["running", "completed", "failed", "declined"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 6,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 7, "checks": [] },
+    {
+      "type": "object",
+      "name": "codexEventCorrelationSchema",
+      "shape": {
+        "sourceMethod": 8,
+        "diagnosticId": 9,
+        "threadId": 11,
+        "turnId": 13,
+        "itemId": 15
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 10, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 12, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 14, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 16, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 18,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "agentScopeSchema",
+      "shape": {
+        "agentThreadId": 19,
+        "rootThreadId": 20,
+        "parentThreadId": 21,
+        "rootTurnId": 23,
+        "agentPath": 24,
+        "nickname": 26,
+        "role": 28,
+        "depth": 30,
+        "isRoot": 31
+      },
+      "catchall": 32,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 22, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 25,
+      "checks": [{ "check": "max_length", "maximum": 32, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 27, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 29, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 32, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 34,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "agentActivityRawEnvelopeSchema",
+      "shape": {
+        "schemaVersion": 35,
+        "request": 36,
+        "response": 49,
+        "metadata": 53
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "nullable", "innerType": 37, "checks": [] },
+    {
+      "type": "object",
+      "name": "agentActivityRawRequestDocumentSchema",
+      "shape": {
+        "mediaType": 38,
+        "originalBytes": 39,
+        "truncated": 40,
+        "digest": 41,
+        "omittedReason": 44,
+        "text": 47
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 42,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 43, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 45,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 46, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 48, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-raw-request",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 50, "checks": [] },
+    {
+      "type": "object",
+      "name": "agentActivityRawResponseDocumentSchema",
+      "shape": {
+        "mediaType": 38,
+        "originalBytes": 39,
+        "truncated": 40,
+        "digest": 41,
+        "omittedReason": 44,
+        "text": 51
+      },
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 52, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-raw-response",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "keyType": 54,
+      "valueType": 55,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-raw-metadata",
+          "messageAfterPath": true,
+          "message": "Raw capture metadata may contain at most 32 entries."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
+    },
+    { "type": "literal", "values": ["computerUse"], "checks": [] },
+    { "type": "enum", "values": ["agent-mcp", "user-preview"], "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "clipboard.read",
+        "clipboard.write",
+        "desktop.resize",
+        "capabilities.get",
+        "controls.inspect",
+        "input.press",
+        "input.click",
+        "input.perform",
+        "agent.sources.list",
+        "agent.observation.get",
+        "targets.list",
+        "session.open",
+        "session.state",
+        "target.attach",
+        "target.detach",
+        "cursor.configure",
+        "cursor.move",
+        "observation.snapshot",
+        "session.close",
+        "js.evaluate",
+        "js.wait",
+        "js.reset",
+        "preview.stop"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 61, "checks": [] },
+    {
+      "type": "string",
+      "name": "cuaIdSchema",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-utf8-256",
+          "messageAfterPath": true
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cua-id",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "workerId": 61,
+        "chatId": 61,
+        "taskId": 63,
+        "threadId": 64,
+        "turnId": 65,
+        "sessionId": 66
+      },
+      "catchall": 67,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 61, "checks": [] },
+    { "type": "nullable", "innerType": 61, "checks": [] },
+    { "type": "nullable", "innerType": 61, "checks": [] },
+    { "type": "nullable", "innerType": 61, "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 69, "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaTargetReferenceSchema",
+      "shape": { "targetId": 61, "targetGeneration": 70 },
+      "catchall": 71,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 73, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "appearance": 74,
+        "position": 84,
+        "trailPoints": 88,
+        "updatedAtMs": 89,
+        "revision": 70,
+        "action": 90
+      },
+      "catchall": 95,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "cuaCursorAppearanceSchema",
+      "shape": {
+        "version": 75,
+        "style": 76,
+        "color": 77,
+        "size": 78,
+        "label": 79,
+        "trail": 81,
+        "visible": 82
+      },
+      "catchall": 83,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["arrow", "dot", "ring", "crosshair"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^#[\\da-f]{6}(?:[\\da-f]{2})?$",
+          "flags": "iu",
+          "displayPattern": "/^#[\\da-f]{6}(?:[\\da-f]{2})?$/iu"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 8, "inclusive": true },
+        { "check": "less_than", "value": 96, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 80, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-utf8-256",
+          "messageAfterPath": true
+        },
+        {
+          "check": "refinement",
+          "tag": "worker-wire-cursor-label",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "cuaPointSchema",
+      "shape": { "x": 85, "y": 86 },
+      "catchall": 87,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 84,
+      "checks": [{ "check": "max_length", "maximum": 24, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 91,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "method": 92, "outcome": 93, "atMs": 89 },
+      "catchall": 94,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "accessibility",
+        "coordinate",
+        "process-coordinate",
+        "background-coordinate",
+        "background-text",
+        "background-key",
+        "background-move",
+        "system-media",
+        "background-drag",
+        "background-scroll",
+        "background-timeline",
+        "background-prepared-press",
+        "focus",
+        "window-input"
+      ],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["dispatched", "failed", "cancelled", "unsupported", "unknown"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 97,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 98, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "control": 99,
+        "method": 114,
+        "activation": 115,
+        "outcome": 117,
+        "windowDelivery": 118,
+        "position": 120,
+        "globalPosition": 121,
+        "effects": 122
+      },
+      "catchall": 130,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 100,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "reference": 61,
+        "role": 101,
+        "label": 102,
+        "bounds": 104,
+        "actions": 111
+      },
+      "catchall": 113,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 103, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 320, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 105, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "x": 106, "y": 107, "width": 108, "height": 109 },
+      "catchall": 110,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "element": 112,
+      "checks": [{ "check": "max_length", "maximum": 1, "when": "length" }]
+    },
+    { "type": "literal", "values": ["press"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "accessibility",
+        "coordinate",
+        "process-coordinate",
+        "background-coordinate",
+        "background-text",
+        "background-key",
+        "background-move",
+        "system-media",
+        "background-drag",
+        "background-scroll",
+        "background-timeline",
+        "background-prepared-press",
+        "focus",
+        "window-input"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 116, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "dispatched",
+        "unknown",
+        "failed",
+        "declined",
+        "cancelled",
+        "unsupported"
+      ],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 119,
+      "checks": []
+    },
+    { "type": "literal", "values": ["unverified"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 84,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 84,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 123,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "sampling": 124,
+        "beforeAtMs": 89,
+        "afterAtMs": 89,
+        "pointer": 125,
+        "foregroundApplication": 126,
+        "foregroundWindow": 127,
+        "windowOrder": 128
+      },
+      "catchall": 129,
+      "checks": []
+    },
+    { "type": "literal", "values": ["before-after-dispatch"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["unchanged", "changed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["unchanged", "changed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["unchanged", "changed", "unknown"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["unchanged", "changed", "unknown"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 132, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "revision": 133, "image": 134 },
+      "catchall": 142,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "cuaImageSchema",
+      "shape": {
+        "mediaType": 135,
+        "width": 136,
+        "height": 137,
+        "byteCount": 138,
+        "sha256": 139,
+        "cursorIncluded": 140
+      },
+      "catchall": 141,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-image-pixels",
+          "messageAfterPath": true
+        }
+      ]
+    },
+    { "type": "literal", "values": ["image/png"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 4194304, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 4194304, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 16777216, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[a-f0-9]{64}$/u"
+        }
+      ]
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "enum",
+      "values": ["completed", "failed", "declined", "cancelled"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 61, "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 152,
+        "provenance": 153,
+        "text": 154,
+        "sources": 156,
+        "model": 158,
+        "provider": 160,
+        "reasoningEffort": 162,
+        "collaborationMode": 164,
+        "permissionProfile": 166,
+        "runtimeVersion": 168
+      },
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 4,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 4,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 151,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 4, "checks": [] },
+    { "type": "literal", "values": ["instructionContext"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["exact", "assembled", "unavailable"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 155, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 65536, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 157,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 159, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 161, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 163, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 165, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 167, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 169, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 171,
+        "command": 172,
+        "cwd": 173,
+        "exitCode": 174,
+        "output": 176,
+        "outputTail": 178,
+        "outputTruncated": 181,
+        "durationMs": 183
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["command"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 175, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 177, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 179,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 180, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-wire-command-output",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 182,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 184,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 185, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 187,
+        "changes": 188
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["fileChange"], "checks": [] },
+    { "type": "array", "element": 189, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "path": 190,
+        "kind": 191,
+        "latestLine": 192,
+        "diffPreview": 195,
+        "lastActivityAtMs": 198
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "enum", "values": ["add", "delete", "update"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 193,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 194, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 8192, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 196,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 197, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 8192, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 4,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 200,
+        "operation": 201,
+        "summary": 202,
+        "worktreeId": 203
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["worktree"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 204, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 206,
+        "text": 207,
+        "explanation": 208,
+        "steps": 210
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["plan"], "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 209, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "array", "element": 211, "checks": [] },
+    { "type": "object", "shape": { "step": 212, "status": 213 }, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "values": ["pending", "inProgress", "completed"],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 215,
+        "summary": 216
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["reasoning"], "checks": [] },
+    {
+      "type": "array",
+      "element": 217,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 219,
+        "server": 220,
+        "tool": 221,
+        "query": 222,
+        "resultText": 225,
+        "error": 228,
+        "errorCode": 230,
+        "retryable": 233,
+        "durationMs": 236
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["mcpToolCall"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 223,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 224, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 4000, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 226,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 227, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 20000, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 229, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 231,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 232, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 234,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 235, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 237, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 239,
+        "namespace": 240,
+        "tool": 242,
+        "success": 243,
+        "durationMs": 245
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["dynamicToolCall"], "checks": [] },
+    { "type": "nullable", "innerType": 241, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 244, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 246, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 248,
+        "tool": 249,
+        "senderThreadId": 250,
+        "receiverThreadIds": 251,
+        "prompt": 253,
+        "model": 255,
+        "agentStates": 257
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["collabToolCall"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "array",
+      "element": 252,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 254, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 256, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "array", "element": 258, "checks": [] },
+    {
+      "type": "object",
+      "shape": { "threadId": 259, "status": 260, "message": 261 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 262, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 264,
+        "kind": 265,
+        "agentThreadId": 266,
+        "agentPath": 267
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["subAgent"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["started", "interacted", "completed", "interrupted"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 269,
+        "kind": 270,
+        "senderThreadId": 271,
+        "receiverThreadIds": 272,
+        "message": 274
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["agentCommunication"], "checks": [] },
+    {
+      "type": "enum",
+      "name": "agentCommunicationKindSchema",
+      "values": [
+        "spawned",
+        "messageSent",
+        "followupSent",
+        "waiting",
+        "statusChanged",
+        "interrupted",
+        "returned",
+        "failed"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 273,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 275, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 277,
+        "query": 278,
+        "action": 279
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["webSearch"], "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 280, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 282,
+        "kind": 283,
+        "title": 284,
+        "details": 285,
+        "durationMs": 287
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["nativeItem"], "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "hookPrompt",
+        "interAgentCommunication",
+        "functionCallOutput",
+        "sleep",
+        "imageGeneration"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 286, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 288, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 290,
+        "path": 291
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["imageView"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 293,
+        "state": 294,
+        "review": 295
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["reviewMode"], "checks": [] },
+    { "type": "enum", "values": ["entered", "exited"], "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 297
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["contextCompaction"], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 299,
+        "level": 300,
+        "message": 301,
+        "details": 302,
+        "willRetry": 304,
+        "reasonCode": 306,
+        "retry": 309
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["notice"], "checks": [] },
+    { "type": "enum", "values": ["warning", "error"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 303, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 305, "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 307,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 308, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 310,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 311, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "owner": 312,
+        "attempt": 313,
+        "maxAttempts": 315,
+        "nextAttemptAtMs": 317
+      },
+      "checks": []
+    },
+    { "type": "enum", "values": ["codex", "cantrip"], "checks": [] },
+    { "type": "nullable", "innerType": 314, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 316, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 318, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 320,
+        "nativeModelAttribution": 321,
+        "total": 338,
+        "last": 338,
+        "modelContextWindow": 345,
+        "contextUsedPercent": 347
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["usage"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 322,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeTurnModelAttributionSchema",
+      "shape": {
+        "threadId": 323,
+        "turnId": 324,
+        "isRoot": 325,
+        "reasoningEffort": 326,
+        "selection": 328
+      },
+      "catchall": 337,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 327, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "union",
+      "name": "nativeModelAttributionSchema",
+      "options": [329, 334],
+      "discriminator": "status",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "status": 330,
+        "workerId": 331,
+        "providerId": 331,
+        "providerAccountId": 332,
+        "modelId": 331,
+        "routeId": 331
+      },
+      "catchall": 333,
+      "checks": []
+    },
+    { "type": "literal", "values": ["resolved"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 255, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 331, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "status": 335 },
+      "catchall": 336,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["unavailable", "unmapped", "ambiguous"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "agentTokenUsageSchema",
+      "shape": {
+        "totalTokens": 339,
+        "inputTokens": 340,
+        "cachedInputTokens": 341,
+        "cacheWriteInputTokens": 342,
+        "outputTokens": 343,
+        "reasoningOutputTokens": 344
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 346, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 348, "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 350,
+        "credits": 351,
+        "limitId": 358,
+        "limitName": 361,
+        "planType": 363,
+        "reachedType": 365,
+        "primary": 367,
+        "secondary": 374
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["rateLimit"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 352,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 353, "checks": [] },
+    {
+      "type": "object",
+      "name": "providerCreditsSnapshotSchema",
+      "shape": { "hasCredits": 354, "unlimited": 355, "balance": 356 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 357, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 359,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 360, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 362, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 364, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 366, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 368, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "usedPercent": 369,
+        "windowDurationMins": 370,
+        "resetsAt": 372
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    { "type": "nullable", "innerType": 371, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 373, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 368, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 2,
+        "status": 3,
+        "startedAtMs": 148,
+        "updatedAtMs": 149,
+        "completedAtMs": 150,
+        "correlation": 5,
+        "agentScope": 17,
+        "raw": 33,
+        "type": 376,
+        "tokenPerformance": 377,
+        "nativeModelAttribution": 385,
+        "initialSettings": 386,
+        "initialSettingsConflict": 400,
+        "durationMs": 402,
+        "startedAt": 404,
+        "completedAt": 406
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["turnSummary"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 378,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "totalTokens": 379,
+        "outputTokens": 380,
+        "outputDurationMs": 381,
+        "durationMs": 383
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 382, "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    { "type": "nullable", "innerType": 384, "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 322,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 387,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeInitialTurnSettingsSchema",
+      "shape": {
+        "model": 388,
+        "modelProvider": 389,
+        "reasoningEffort": 390,
+        "effectiveReasoningEffort": 392,
+        "serviceTier": 394,
+        "effectiveServiceTier": 396,
+        "collaborationMode": 398
+      },
+      "catchall": 399,
+      "checks": []
+    },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 391, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 393, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 395, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 397, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 401,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 403, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 405, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 407, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    }
+  ]
+}

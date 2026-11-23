@@ -49,6 +49,8 @@ test("build uses Cargo's actual executable even with a configured/custom target"
     "--release",
     "--target",
     "x86_64-pc-windows-msvc",
+    "--config",
+    `target.'cfg(all(windows, target_env = "msvc"))'.rustflags=["-C","target-feature=+crt-static"]`,
     "--target-dir",
     path.join(root, "shared output"),
   ]);
@@ -102,7 +104,7 @@ test("build arguments reject missing values and unknown options", () => {
   }
 });
 
-test("bundling copies exact executable bytes under platform-correct name", async () => {
+test("bundling copies the executable and the Linux input licenses", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-cua-bundle-"));
   try {
     const source = path.join(root, "source");
@@ -117,6 +119,25 @@ test("bundling copies exact executable bytes under platform-correct name", async
       assert.equal(await readFile(binary, "utf8"), "fixture binary");
       if (platform !== "win32" && process.platform !== "win32")
         assert.equal((await stat(binary)).mode & 0o111, 0o111);
+      for (const crate of ["xkeysym", "reis"]) {
+        const license = path.join(
+          path.dirname(binary),
+          "licenses",
+          crate,
+          "LICENSE-MIT",
+        );
+        if (platform === "linux") {
+          assert.deepEqual(
+            await readFile(license),
+            await readFile(new URL(
+              `../../cantrip_cua/licenses/${crate}/LICENSE-MIT`,
+              import.meta.url,
+            )),
+          );
+        } else {
+          await assert.rejects(readFile(license), { code: "ENOENT" });
+        }
+      }
     }
     await assert.rejects(
       bundleCantripCua(path.join(root, "missing"), path.join(root, "bad")),

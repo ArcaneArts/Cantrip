@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "scope": "Built Cantrip web client in desktop and mobile layouts, packaged Rust server in hosted account mode, and the compiled Node reference on external PostgreSQL. Chromium received the actual app-rendered QR through a virtual camera.",
+  "chromiumVersion": "151.0.7922.34",
+  "artifacts": {
+    "rustExecutable": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198976,
+      "sha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+    },
+    "appIndex": {
+      "path": "cantrip_app/dist/index.html",
+      "bytes": 2372,
+      "sha256": "8ae112164187154107303293ad4d666e6e9b9227e38159f3ebe6bc5597ef0e02"
+    },
+    "appDistribution": {
+      "buildPath": "cantrip_app/dist",
+      "fileCount": 195,
+      "treeSha256": "36181f80d745f2197eca6420ee5d1819c4b24fd42324bd621eee5bb45387ee97"
+    },
+    "compiledNodeReference": {
+      "buildPath": "tests/reference-node-server/dist",
+      "fileCount": 1605,
+      "treeSha256": "536889d9592df67b1bd7edbbb7e8ee54f5b42545d2f6507db49c1f3eef122d9c"
+    },
+    "treeDigestDefinition": "SHA-256 of sorted lines containing the lowercase SHA-256 of each regular file, two spaces, its relative POSIX path, and a newline.",
+    "staticCameraObserver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-exact-source-mobile-browser/browser-mobile-sign-in-live-first.mjs",
+      "bytes": 26352,
+      "sha256": "bea2c53800b088de37a019bfcbfff9b1dd51ac3bd260d9ccf2f73cc38f544765"
+    },
+    "rotatingCameraObserver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-exact-source-mobile-browser/browser-mobile-sign-in-moving-camera.mjs",
+      "bytes": 26420,
+      "sha256": "1b938de496ebabeeb09f1ed5ff1551aeee70b1dd3dad72a8c3c06dd7a1333715"
+    }
+  },
+  "observations": [
+    "Desktop login and server switching retained both accounts.",
+    "QR grant creation returned 201. Actual browser scanning triggered bootstrap and QR exchange responses of 200, with the expected server identity and account.",
+    "Each independent mobile session used a Secure HttpOnly cookie, recovered encrypted access through the existing UI, retained its cookie through reload and resubscribed to App Live.",
+    "Mobile sign-out returned 204 and cleared the mobile account while preserving the issuing desktop session.",
+    "The Rust identity and desktop session persisted after a real Rust process restart."
+  ],
+  "scenarios": [
+    {
+      "rustStore": "postgres",
+      "referenceStore": "postgres",
+      "cameraInput": "centered static frame",
+      "scenarioSteps": 7,
+      "successfulExchanges": ["node", "rust"],
+      "cleanServerShutdowns": 3,
+      "browserPageErrors": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-exact-source-mobile-browser/postgres-live-first.json",
+        "bytes": 4354,
+        "sha256": "8cd981392e2e1ff13939cee3910e4df7f1456cbce8f976509c59acd33f381ee1"
+      }
+    },
+    {
+      "rustStore": "bundled-postgres",
+      "referenceStore": "postgres",
+      "cameraInput": "rotating camera feed",
+      "scenarioSteps": 7,
+      "successfulExchanges": ["node", "rust"],
+      "cleanServerShutdowns": 3,
+      "browserPageErrors": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-exact-source-mobile-browser/bundled-postgres-moving-camera-reused-fixture.json",
+        "bytes": 4370,
+        "sha256": "a4030ae0bc1975aea3d2e2cabe88ef12e6f2be40d950d9f5ceca05a7a444fd6c"
+      }
+    },
+    {
+      "rustStore": "pglite",
+      "referenceStore": "postgres",
+      "cameraInput": "rotating camera feed",
+      "scenarioSteps": 7,
+      "successfulExchanges": ["node", "rust"],
+      "cleanServerShutdowns": 3,
+      "browserPageErrors": 0,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-exact-source-mobile-browser/pglite-moving-camera-reused-fixture.json",
+        "bytes": 4350,
+        "sha256": "00dcf06dc865f1265b2d34eca102f3132d66d71b0ce914780ca5250cae5a991b"
+      }
+    }
+  ],
+  "earlierAttempts": [
+    {
+      "scope": "External PostgreSQL with a static camera frame",
+      "outcome": "The fixture's offline geometric decoder failed before the app camera path ran. The rerun kept offline decoding diagnostic and required the real browser scan and exchange.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-exact-source-mobile-browser/postgres.json",
+        "bytes": 3723,
+        "sha256": "8ff51f0287cad3dfb50a2a8c74aaadbd66bd524a45747aae6bd5b468fc0eda8a"
+      }
+    },
+    {
+      "scope": "Bundled PostgreSQL with a static camera frame",
+      "outcome": "Chromium opened the live video track but the Rust QR produced no exchange in the browser. The passing rerun rotated the rendered QR in the virtual feed and retained the same live browser and wire assertions.",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-exact-source-mobile-browser/bundled-postgres-live-first.json",
+        "bytes": 5420,
+        "sha256": "d9c4a8187500192d4746042e512ed49a533cf51c04c2f08c3ede8e72f53af75d"
+      }
+    }
+  ],
+  "remaining": [
+    "Current installed Android and iOS shipping packages, native scanner and physical camera coverage."
+  ]
+}

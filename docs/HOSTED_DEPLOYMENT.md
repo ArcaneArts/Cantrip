@@ -92,9 +92,13 @@ If UFW is already installed, it allows OpenSSH, `80/tcp`, `443/tcp`, and
 Caddy and Cantrip at boot. The application listener remains bound to loopback
 on port 4310. The DigitalOcean cloud firewall remains the outer network
 boundary.
-If the newly restarted Server fails local readiness, the installer restores the
-previous application symlink and process. Database migrations are forward-only,
-so a database backup is still required before releases that alter schema.
+The installer stages configuration and restores the previous environment,
+service/proxy configuration and application symlink after migration or startup
+failure. It checks the restored service's readiness and preserves the latest
+database rather than restoring an old snapshot. Database migrations are
+forward-only, so a database backup is still required before releases that alter
+schema. Native Rust selection and the local systemd rehearsal are documented in
+[the native Winterhold guide](RUST_SERVER_WINTERHOLD.md).
 
 ## Container quick start
 
@@ -179,13 +183,18 @@ volume retains its unique credential, identity, repositories, Code profile, and
 extensions. It also retains worker-managed project folders beneath `folders/`.
 Never clone this volume to create a second worker.
 
+The worker image starts the Rust worker and includes Codex, the Cantrip CLI,
+and native helper binaries. Upgrade an existing Compose worker by stopping
+it and rebuilding the service with its existing `worker-data` volume.
+
 ## Native server and worker packages
 
 `pnpm bundle` creates platform-native server, worker, and desktop archives. The
-server and worker archives contain their own Node runtime. Copy `.env.example`
-to `.env` and use `start.sh` or `start.cmd`; no system Node installation is
-required. The server archive also includes `migrate.sh` and `migrate.cmd` for an
-explicit migration-only run.
+server archive contains the Rust executable, native PGlite and private
+PostgreSQL assets. The worker archive contains the native worker and its
+helpers. Copy `.env.example` to `.env` and use `start.sh` or `start.cmd`.
+The server archive also includes `migrate.sh` and
+`migrate.cmd` for an explicit migration-only run.
 
 For a native worker, keep `CANTRIP_WORKER_DATA_DIR` on a persistent local disk.
 Upgrade by stopping the service, replacing the read-only application directory,

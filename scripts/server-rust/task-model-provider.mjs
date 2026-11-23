@@ -1,0 +1,277 @@
+// Public model HTTP boundary for the real Cantrip Codex executable. The browser,
+// worker entrypoint, native RPC, encrypted operations and repositories stay real.
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { once } from "node:events";
+
+export function modelFunctions(tools, namespace) {
+  return (tools ?? []).flatMap((tool) =>
+    tool.type === "namespace"
+      ? modelFunctions(tool.tools, tool.name)
+      : tool.type === "function"
+        ? [{ name: tool.name, namespace }]
+        : [],
+  );
+}
+
+export async function taskModelProvider({
+  allowMcpDiscoveryProbe = false,
+  observeStreams = false,
+  expectedApiKey,
+  modelMetadata = {},
+  additionalModels = [],
+} = {}) {
+  const replies = [],
+    requests = [],
+    failures = [],
+    discoveryProbes = [],
+    sockets = new Set();
+  // Use the bundled runtime's normal model metadata against this local provider.
+  const model = "gpt-5.5";
+  const models = [{ ...modelMetadata, id: model }, ...additionalModels];
+  let nextResponse = 0;
+  const send = (response, event) =>
+    response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  const server = createServer(async (request, response) => {
+    try {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const text = Buffer.concat(chunks).toString();
+      const input = text ? JSON.parse(text) : null;
+      const record = {
+        method: request.method,
+        path: request.url,
+        input,
+        completed: false,
+      };
+      if (observeStreams) {
+        record.closed = false;
+        response.once("close", () => {
+          record.closed = true;
+          record.closedBeforeCompletion = !record.completed;
+        });
+      }
+      const pathname = new URL(request.url, "http://fixture.invalid").pathname;
+      if (
+        allowMcpDiscoveryProbe &&
+        request.method === "POST" &&
+        ["/mcp", "/"].includes(pathname) &&
+        request.headers["user-agent"] === "Cantrip-MCP-Discovery/1.0"
+      ) {
+        assert.deepEqual(input, {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: input.params.protocolVersion,
+            capabilities: {},
+            clientInfo: { name: "cantrip-mcp-discovery", version: "1.0.0" },
+          },
+        });
+        assert.equal(typeof input.params.protocolVersion, "string");
+        discoveryProbes.push(record);
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({ error: "This fixture serves model responses." }),
+        );
+        record.completed = true;
+        return;
+      }
+      if (expectedApiKey !== undefined)
+        assert.equal(request.headers.authorization, "Bearer " + expectedApiKey);
+      requests.push(record);
+      if (
+        request.method === "GET" &&
+        ["/v1/models", "/models"].includes(pathname)
+      ) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            object: "list",
+            data: models.map((descriptor) => ({
+              object: "model",
+              created: 0,
+              owned_by: "acceptance",
+              ...descriptor,
+            })),
+          }),
+        );
+        record.completed = true;
+        return;
+      }
+      assert.equal(request.method, "POST");
+      assert.ok(
+        ["/v1/responses", "/responses"].includes(pathname),
+        "actual Responses endpoint",
+      );
+      assert.ok(
+        models.some(({ id }) => input.model === id),
+        `Unexpected model ${input.model}`,
+      );
+      assert.equal(input.stream, true);
+      let plan = replies[0];
+      // A possible extra Goal continuation belongs to that conversation. If it
+      // never runs, it must not consume the next Task's scripted quota failure.
+      while (plan?.onlyFor && !plan.onlyFor(record)) {
+        plan.skipped = true;
+        replies.shift();
+        plan = replies[0];
+      }
+      assert.ok(
+        plan,
+        "the real runtime requested an unscripted model response",
+      );
+      if (!plan.repeat) replies.shift();
+      plan.request = record;
+      plan.entered = true;
+      if (plan.status) {
+        response.writeHead(plan.status, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            error: {
+              message: plan.error ?? "Controlled model failure",
+              type: "server_error",
+            },
+          }),
+        );
+        record.completed = true;
+        return;
+      }
+      const id = plan.responseId ?? `task-fixture-response-${nextResponse++}`;
+      response.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+      });
+      send(response, { type: "response.created", response: { id } });
+      if (plan.failure) {
+        send(response, {
+          type: "response.failed",
+          response: { id, status: "failed", error: plan.failure },
+        });
+        response.end();
+        record.completed = true;
+        return;
+      }
+      // Paused tool responses can choose their output after inspecting the request.
+      if (plan.text === undefined && plan.gate) await plan.gate;
+      if (plan.text !== undefined) {
+        const item = {
+          type: "message",
+          role: "assistant",
+          id: `${id}-message`,
+          content: [{ type: "output_text", text: plan.text }],
+        };
+        send(response, {
+          type: "response.output_item.added",
+          output_index: 0,
+          item: { ...item, content: [] },
+        });
+        send(response, {
+          type: "response.output_text.delta",
+          item_id: item.id,
+          output_index: 0,
+          content_index: 0,
+          delta: plan.text,
+        });
+        if (plan.gate) await plan.gate;
+        send(response, {
+          type: "response.output_item.done",
+          output_index: 0,
+          item,
+        });
+      }
+      if (plan.toolSearch) {
+        send(response, {
+          type: "response.output_item.done",
+          item: {
+            type: "tool_search_call",
+            call_id: `${id}-search`,
+            execution: "client",
+            arguments: plan.toolSearch,
+          },
+        });
+      }
+      for (const [index, call] of (plan.calls ?? []).entries()) {
+        send(response, {
+          type: "response.output_item.done",
+          output_index: index + (plan.text === undefined ? 0 : 1),
+          item: {
+            type: "function_call",
+            id: `${id}-function-${index}`,
+            call_id: `${id}-call-${index}`,
+            name: call.name,
+            arguments: JSON.stringify(call.arguments),
+            ...(call.namespace ? { namespace: call.namespace } : {}),
+          },
+        });
+      }
+      send(response, {
+        type: "response.completed",
+        response: {
+          id,
+          usage: {
+            input_tokens: 100,
+            input_tokens_details: null,
+            output_tokens: 20,
+            output_tokens_details: null,
+            total_tokens: 120,
+          },
+        },
+      });
+      response.end();
+      record.completed = true;
+    } catch (error) {
+      failures.push(error.message);
+      if (!response.headersSent)
+        response.writeHead(500, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          error: {
+            message: "Acceptance model boundary failed",
+            type: "server_error",
+          },
+        }),
+      );
+    }
+  });
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const admitted = [];
+  return {
+    model,
+    requests,
+    failures,
+    discoveryProbes,
+    baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
+    reply(value) {
+      const plan = { ...value, entered: false, request: null };
+      if (value.repeat) {
+        plan.discard = () => {
+          const index = replies.indexOf(plan);
+          if (index >= 0) replies.splice(index, 1);
+        };
+      }
+      if (value.hold) {
+        let release;
+        plan.gate = new Promise((resolve) => {
+          release = resolve;
+        });
+        plan.release = release;
+      }
+      admitted.push(plan);
+      replies.push(plan);
+      return plan;
+    },
+    async close() {
+      for (const plan of admitted) plan.release?.();
+      const closed = once(server, "close");
+      server.close();
+      for (const socket of sockets) socket.destroy();
+      await closed;
+    },
+  };
+}

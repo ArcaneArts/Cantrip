@@ -59,7 +59,7 @@ pub fn models_url(base: &str) -> Result<url::Url, CatalogFailure> {
     if !url.cannot_be_a_base() {
         url.set_path(&path);
     }
-    url.set_query(None);
+    url.set_query(Some("output_modalities=all"));
     url.set_fragment(None);
     Ok(url)
 }
@@ -112,7 +112,44 @@ pub fn normalize_model(record: &Value) -> Value {
             ])
         })
         .collect();
+    let capability = |modality: &str, adapter: Option<&str>| {
+        let mut value = Value::object([
+            (
+                "status",
+                Value::String(
+                    if output.iter().any(|v| v == modality) {
+                        "supported"
+                    } else {
+                        "unsupported"
+                    }
+                    .into(),
+                ),
+            ),
+            ("source", Value::String("openrouter".into())),
+            ("inputModalities", Value::Array(input.clone())),
+        ]);
+        if let Some(adapter) = adapter {
+            value["adapter"] = Value::String(adapter.into());
+        }
+        value
+    };
+    let operations = if output.is_empty() {
+        Value::object([] as [(&str, Value); 0])
+    } else {
+        Value::object([
+            ("language", capability("text", None)),
+            (
+                "embedding",
+                capability("embeddings", Some("openai-embeddings")),
+            ),
+            (
+                "decision",
+                capability("decisions", Some("openrouter-decisions")),
+            ),
+        ])
+    };
     Value::object([
+        ("operationCapabilities", operations),
         ("nativeModelId", record["id"].clone()),
         (
             "canonicalModelId",

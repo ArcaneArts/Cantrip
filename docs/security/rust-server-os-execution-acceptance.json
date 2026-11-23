@@ -1,0 +1,4057 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "7ca2cdca4f88594620878fa2b30f8cf3cc4354cc",
+  "platform": "darwin-arm64",
+  "scope": "Current real HTTP/WebSocket and unchanged worker transport with controlled OS/Git/Run replies, endpoint cryptography, real server restarts and canonical storage reopen. Does not establish actual guest archive/filesystem work or final shipping/platform acceptance.",
+  "reports": [
+    {
+      "suite": "cantrip-os-http",
+      "databaseMode": "pglite",
+      "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+      "sha256": "08f00f45be1dc0d9c1316a1dd9c9ed67ee4f60a16366a62a327eca461606bbcb",
+      "pairedHttpObservations": 133,
+      "cryptographicProofs": 24
+    },
+    {
+      "suite": "cantrip-os-http",
+      "databaseMode": "bundled-postgres",
+      "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+      "sha256": "8348064f67c10ceec1d30cf25a61261e1ac7936bd5f24957ca627438cc230194",
+      "pairedHttpObservations": 133,
+      "cryptographicProofs": 24
+    },
+    {
+      "suite": "cantrip-os-http",
+      "databaseMode": "postgres",
+      "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+      "sha256": "6add1897af8a70c1c5138c2df2fb7c2974f8169ae3059fb98f6465b1bcc3179a",
+      "pairedHttpObservations": 133,
+      "cryptographicProofs": 24
+    },
+    {
+      "suite": "project-git-http",
+      "databaseMode": "pglite",
+      "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+      "sha256": "e1dae75edbc45e95af18f1c8002a6d0d552bda3eba2f029df8a3dffc26b30f00",
+      "pairedHttpObservations": 363,
+      "cryptographicProofs": 0
+    },
+    {
+      "suite": "project-git-http",
+      "databaseMode": "bundled-postgres",
+      "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+      "sha256": "e9b9f30fec78587eaaa9bf806eed578845bd459ca1377b72a224cc606e693e8f",
+      "pairedHttpObservations": 363,
+      "cryptographicProofs": 0
+    },
+    {
+      "suite": "project-git-http",
+      "databaseMode": "postgres",
+      "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+      "sha256": "5dae9c83718032cf6f02ec5c8eb9d0614eb6d9059222b3fe6721c7f6da5742fa",
+      "pairedHttpObservations": 363,
+      "cryptographicProofs": 0
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+      "sha256": "4114ce6cfa9f529c4be1e02a4c7da7d3251c13eaf3a0883dae4d112b07a9da83",
+      "requests": 290
+    },
+    {
+      "path": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+      "sha256": "27bce5d7afcc7042bfbbbf38a7979f0a880876b805d69856fc846352eaea8635",
+      "requests": 290
+    },
+    {
+      "path": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+      "sha256": "2ecb8679b0753fe34d55e59cabb773bbcde153a73856f4b3ba9d8d5508b83f7e",
+      "requests": 290
+    },
+    {
+      "path": ".qa/rust-os-execution/project-git-http-pglite-v3.requests.json",
+      "sha256": "4cafe816a8b5bb4ef57239e6c8cd46959cdeec3acdb3730ab5c6c5a27a464092",
+      "requests": 846
+    },
+    {
+      "path": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.requests.json",
+      "sha256": "d88b7aa782824dfab72b0d4e82b430bc25865de4f613c2b7d394cd29e2982435",
+      "requests": 849
+    },
+    {
+      "path": ".qa/rust-os-execution/project-git-http-postgres-v3.requests.json",
+      "sha256": "38ac7319067ae7b535f3488d008e87a8ff18fad18ce085ed4dcd918318649d6a",
+      "requests": 846
+    }
+  ],
+  "routeMappings": [
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/backup-operations",
+      "implementation": "cantrip_server_rs/src/http/cantrip_os_backups.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 42,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 89,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 137,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 185,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 235,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 285,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 42,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 89,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 137,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 185,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 235,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 285,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 42,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 89,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 137,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 185,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 235,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 285,
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/:instanceId/refresh",
+      "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 9,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 56,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 104,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 152,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 200,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 250,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 9,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 56,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 104,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 152,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 200,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 250,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 9,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 56,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 104,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 152,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 200,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 250,
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/cantrip-os/backup-operations/:operationId/recovery",
+      "implementation": "cantrip_server_rs/src/http/cantrip_os_backups.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 45,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 92,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 140,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 188,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 238,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 288,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 45,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 92,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 140,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 188,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 238,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 288,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 45,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 92,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 140,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 188,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 238,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 288,
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/cantrip-os/bindings",
+      "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 11,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 58,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 106,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 154,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 204,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 254,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 11,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 58,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 106,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 154,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 204,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 254,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 11,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 58,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 106,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 154,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 204,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 254,
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/provision",
+      "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 16,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 63,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 111,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 159,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 209,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 259,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 16,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 63,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 111,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 159,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 209,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 259,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 16,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 63,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 111,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 159,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 209,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 259,
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/recover",
+      "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 15,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 62,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 110,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 158,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 208,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 258,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 15,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 62,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 110,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 158,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 208,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 258,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 15,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 62,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 110,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 158,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 208,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 258,
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/run-definitions",
+      "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 18,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 65,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 113,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 161,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 211,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 261,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 18,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 65,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 113,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 161,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 211,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 261,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 18,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 65,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 113,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 161,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 211,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 261,
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/cantrip-os/bindings/:bindingId/verify",
+      "implementation": "cantrip_server_rs/src/http/cantrip_os.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 17,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 64,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 112,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 160,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 210,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.requests.json",
+            "index": 260,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 17,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 64,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 112,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 160,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 210,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.requests.json",
+            "index": 260,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 17,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 64,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 112,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 160,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 210,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.requests.json",
+            "index": 260,
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/repository-operation",
+      "implementation": "cantrip_server_rs/src/http/repository_operations.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/project-git-http-pglite-v3.requests.json",
+            "index": 47,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/project-git-http-pglite-v3.requests.json",
+            "index": 183,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/project-git-http-pglite-v3.requests.json",
+            "index": 321,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/project-git-http-pglite-v3.requests.json",
+            "index": 461,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/project-git-http-pglite-v3.requests.json",
+            "index": 605,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/project-git-http-pglite-v3.requests.json",
+            "index": 752,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.requests.json",
+            "index": 47,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.requests.json",
+            "index": 183,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.requests.json",
+            "index": 321,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.requests.json",
+            "index": 462,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.requests.json",
+            "index": 606,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.requests.json",
+            "index": 753,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "trace": ".qa/rust-os-execution/project-git-http-postgres-v3.requests.json",
+            "index": 47,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/project-git-http-postgres-v3.requests.json",
+            "index": 183,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "trace": ".qa/rust-os-execution/project-git-http-postgres-v3.requests.json",
+            "index": 321,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/project-git-http-postgres-v3.requests.json",
+            "index": 461,
+            "status": 200
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "trace": ".qa/rust-os-execution/project-git-http-postgres-v3.requests.json",
+            "index": 605,
+            "status": 200
+          },
+          "rust": {
+            "trace": ".qa/rust-os-execution/project-git-http-postgres-v3.requests.json",
+            "index": 752,
+            "status": 200
+          }
+        }
+      ]
+    }
+  ],
+  "workerCommandMappings": [
+    {
+      "command": "cantrip-os.inspect",
+      "implementation": "cantrip_server_rs/src/cantrip_os/",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/0"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/0"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/0"
+          }
+        }
+      ]
+    },
+    {
+      "command": "cantrip-os.attach",
+      "implementation": "cantrip_server_rs/src/cantrip_os/",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/1"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/1"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/1"
+          }
+        }
+      ]
+    },
+    {
+      "command": "cantrip-os.source.provision",
+      "implementation": "cantrip_server_rs/src/cantrip_os/",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/7"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/7"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/7"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/7"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/7"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/7"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/7"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/7"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/7"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/7"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/7"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/7"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/7"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/7"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/7"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/7"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/7"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/7"
+          }
+        }
+      ]
+    },
+    {
+      "command": "cantrip-os.operation.inspect",
+      "implementation": "cantrip_server_rs/src/cantrip_os/",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/8"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/8"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/8"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/8"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/8"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/8"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/8"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/8"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/8"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/8"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/8"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/8"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/8"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/8"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/8"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/8"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/8"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/8"
+          }
+        }
+      ]
+    },
+    {
+      "command": "cantrip-os.source.inspect",
+      "implementation": "cantrip_server_rs/src/cantrip_os/",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/12"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/12"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/12"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/12"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/12"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/12"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/12"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/12"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/12"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/12"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/12"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/12"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/12"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/12"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/12"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/12"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/12"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/12"
+          }
+        }
+      ]
+    },
+    {
+      "command": "cantrip-os.run-definition",
+      "implementation": "cantrip_server_rs/src/cantrip_os/",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/13"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/13"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/13"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/13"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/13"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/13"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/13"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/13"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/13"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/13"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/13"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/13"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/13"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/13"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/13"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/13"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/13"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/13"
+          }
+        }
+      ]
+    },
+    {
+      "command": "cantrip-os.backup.capture",
+      "implementation": "cantrip_server_rs/src/cantrip_os/",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/28"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/28"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/28"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/28"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/28"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/28"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/28"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/28"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/28"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/28"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/28"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/28"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/28"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/28"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/28"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/28"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/28"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/28"
+          }
+        }
+      ]
+    },
+    {
+      "command": "cantrip-os.backup.observe",
+      "implementation": "cantrip_server_rs/src/cantrip_os/",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/29"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/29"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/29"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/29"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/29"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-pglite-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/29"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/29"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/29"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/29"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/29"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/29"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-bundled-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/29"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/0/commands/29"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/0/outputs/1/commands/29"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/0/commands/29"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/1/outputs/1/commands/29"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/0/commands/29"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/cantrip-os-http-postgres-v11.json",
+            "pointer": "/profiles/2/outputs/1/commands/29"
+          }
+        }
+      ]
+    },
+    {
+      "command": "worktree.unlock",
+      "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/0"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/0"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/0"
+          }
+        }
+      ]
+    },
+    {
+      "command": "worktree.lock",
+      "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/1"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/1"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/1"
+          }
+        }
+      ]
+    },
+    {
+      "command": "worktree.reconcile",
+      "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/2"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/2"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/2"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/2"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/2"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/2"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/2"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/2"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/2"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/2"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/2"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/2"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/2"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/2"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/2"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/2"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/2"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/2"
+          }
+        }
+      ]
+    },
+    {
+      "command": "worktree.prune",
+      "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/3"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/3"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/3"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/3"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/3"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/3"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/3"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/3"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/3"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/3"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/3"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/3"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/3"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/3"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/3"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/3"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/3"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/3"
+          }
+        }
+      ]
+    },
+    {
+      "command": "worktree.create",
+      "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/4"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/4"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/4"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/4"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/4"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/4"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/4"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/4"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/4"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/4"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/4"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/4"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/4"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/4"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/4"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/4"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/4"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/4"
+          }
+        }
+      ]
+    },
+    {
+      "command": "worktree.remove",
+      "implementation": "cantrip_server_rs/src/projects/worktrees.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/5"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/5"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/5"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/5"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/5"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/5"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/5"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/5"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/5"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/5"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/5"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/5"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/worktreeCommands/5"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/worktreeCommands/5"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/worktreeCommands/5"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/worktreeCommands/5"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/worktreeCommands/5"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/worktreeCommands/5"
+          }
+        }
+      ]
+    },
+    {
+      "command": "project.run-configuration-runtime.output",
+      "implementation": "cantrip_server_rs/src/run_configurations/output.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runtimeOutputCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runtimeOutputCommands/0"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runtimeOutputCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runtimeOutputCommands/0"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runtimeOutputCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runtimeOutputCommands/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runtimeOutputCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runtimeOutputCommands/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runtimeOutputCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runtimeOutputCommands/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runtimeOutputCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runtimeOutputCommands/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runtimeOutputCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runtimeOutputCommands/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runtimeOutputCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runtimeOutputCommands/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runtimeOutputCommands/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runtimeOutputCommands/0"
+          }
+        }
+      ]
+    }
+  ],
+  "durableTableMappings": [
+    {
+      "tableName": "run_configuration_runtimes",
+      "exportName": "runConfigurationRuntimes",
+      "implementation": "cantrip_server_rs/src/run_configurations/",
+      "scope": "Start/restart/stop generations, concurrent admission and replay, worker disconnection reconciliation, live observations, canonical exit state after storage reopen, and 260-row retirement across the page boundary.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/runtimes"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/runtimes"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/runtimes"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/runtimes"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/runtimes"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/runtimes"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/runtimes"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/runtimes"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/runtimes"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/runtimes"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/runtimes"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/runtimes"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/runtimes"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/runtimes"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/runtimes"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/runtimes"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/runtimes"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/runtimes"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "run_configuration_runtime_operations",
+      "exportName": "runConfigurationRuntimeOperations",
+      "implementation": "cantrip_server_rs/src/run_configurations/",
+      "scope": "Original operation receipts and immutable generation/outcome identities survive storage reopen; replay avoids redispatch and conflicting replay is rejected. Retirement preserves its accepted stop receipt.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/runtimeOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/runtimeOperations"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/runtimeOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/runtimeOperations"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/runtimeOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/runtimeOperations"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/runtimeOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/runtimeOperations"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/runtimeOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/runtimeOperations"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/runtimeOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/runtimeOperations"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/runtimeOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/runtimeOperations"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/runtimeOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/runtimeOperations"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/runtimeOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/runtimeOperations"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "run_configuration_secrets",
+      "exportName": "runConfigurationSecrets",
+      "implementation": "cantrip_server_rs/src/run_configurations/",
+      "scope": "Protected values and current revisions, reference availability, owner isolation and bounded summary responses; exact original protected value and canonical current rows after storage reopen.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/secrets"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/secrets"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/secrets"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/secrets"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/secrets"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/secrets"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/secrets"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/secrets"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/secrets"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/secrets"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/secrets"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/secrets"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/secrets"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/secrets"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/secrets"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/secrets"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/secrets"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/secrets"
+          }
+        }
+      ]
+    },
+    {
+      "tableName": "run_configuration_secret_operations",
+      "exportName": "runConfigurationSecretOperations",
+      "implementation": "cantrip_server_rs/src/run_configurations/",
+      "scope": "Two original operation identities retain revisions 1 and 2 and equal protected-value digests after storage reopen; old-receipt replay returns revision 1 without reverting current revision 2 or adding a receipt.",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/secretOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/secretOperations"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/secretOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/secretOperations"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/secretOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/secretOperations"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/secretOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/secretOperations"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/secretOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/secretOperations"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/secretOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/secretOperations"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/runState/secretOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/runState/secretOperations"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/runState/secretOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/runState/secretOperations"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/runState/secretOperations"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/runState/secretOperations"
+          }
+        }
+      ]
+    }
+  ],
+  "liveResourceMappings": [
+    {
+      "resource": "run",
+      "implementation": "cantrip_server_rs/src/run_configurations/",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/changes/60/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/changes/60/events/1"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/changes/62/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/changes/62/events/1"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/changes/65/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/changes/65/events/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/changes/60/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/changes/60/events/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/changes/62/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/changes/62/events/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/changes/65/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/changes/65/events/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/changes/60/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/changes/60/events/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/changes/62/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/changes/62/events/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/changes/65/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/changes/65/events/1"
+          }
+        }
+      ]
+    },
+    {
+      "resource": "run-configuration",
+      "implementation": "cantrip_server_rs/src/run_configurations/definitions.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/changes/84/events/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/changes/84/events/0"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/changes/86/events/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/changes/86/events/0"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/changes/90/events/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/changes/90/events/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/changes/84/events/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/changes/84/events/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/changes/86/events/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/changes/86/events/0"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/changes/90/events/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/changes/90/events/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/changes/84/events/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/changes/84/events/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/changes/86/events/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/changes/86/events/0"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/changes/90/events/0"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/changes/90/events/0"
+          }
+        }
+      ]
+    },
+    {
+      "resource": "project-token-usage",
+      "implementation": "cantrip_server_rs/src/http/repository_operations/project.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/changes/44/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/changes/44/events/1"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/changes/46/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/changes/46/events/1"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/changes/49/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/changes/49/events/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/changes/44/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/changes/44/events/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/changes/46/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/changes/46/events/1"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/changes/49/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/changes/49/events/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/changes/44/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/changes/44/events/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/changes/46/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/changes/46/events/1"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/changes/49/events/1"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/changes/49/events/1"
+          }
+        }
+      ]
+    },
+    {
+      "resource": "codegraph-status",
+      "implementation": "cantrip_server_rs/src/projects/observations/codegraph.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/0/codegraphChanges"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/0/runtimes/1/codegraphChanges"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/0/codegraphChanges"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/1/runtimes/1/codegraphChanges"
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/0/codegraphChanges"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-pglite-v3.json",
+            "pointer": "/profiles/2/runtimes/1/codegraphChanges"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/codegraphChanges"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/codegraphChanges"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/codegraphChanges"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/codegraphChanges"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/codegraphChanges"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-bundled-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/codegraphChanges"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/0/codegraphChanges"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/0/runtimes/1/codegraphChanges"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/0/codegraphChanges"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/1/runtimes/1/codegraphChanges"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/0/codegraphChanges"
+          },
+          "rust": {
+            "report": ".qa/rust-os-execution/project-git-http-postgres-v3.json",
+            "pointer": "/profiles/2/runtimes/1/codegraphChanges"
+          }
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "pairedHttpObservations": 1488,
+    "cryptographicProofs": 72,
+    "tracedRequests": 3411,
+    "newRoutes": 9,
+    "newWorkerCommands": 15,
+    "newDurableTables": 4,
+    "newLiveResources": 4
+  },
+  "productionFixes": [
+    "Accept void or observed attachment acknowledgements, then verify current guest identity and ownership by fresh inspection.",
+    "Validate the complete Run definition response union before checking project, operation ID and operation type; preserve the public misrouting error.",
+    "Preserve existing public placement/source path, ownership, admission, receipt and generation error messages without exposing unexpected worker/schema/SQL details."
+  ],
+  "frozenExecutables": {
+    "original": "helpers-v2.json",
+    "attachmentFixed": "helpers-v3.json",
+    "fixed": "helpers-v5.json"
+  },
+  "retainedFailures": [
+    "OS v1-v3 fixture import/schema/canonicalization failures and initially partial PostgreSQL dylib restoration are retained as test plumbing failures.",
+    "OS v5: all three reference peers recover original operations; Rust rejects a void attachment acknowledgement before mutation follow-up inspection.",
+    "OS v7: eight public error response differences in all three stores.",
+    "OS v8: one additional account ownership error difference.",
+    "OS v9: six public source/admission/receipt/runtime-generation error response differences per store.",
+    "Project/Git v2: independently timed persisted runtime ended_at values differ; v3 validates each actual exit clock before semantic comparison, retaining raw values."
+  ],
+  "retainedEvidenceDirectory": "rust-server-os-execution-delivery-20261110-v1",
+  "remaining": [
+    "Final integrated supported-platform/package, shared deployment, upgrade and post-write rollback acceptance at the completed revision.",
+    "Three internal suspension/Task Goal HTTP routes, remaining command/table/Live entries and historical partial scopes still need reconciliation.",
+    "Original full replacement completion audit remains open."
+  ],
+  "localChecks": {
+    "library-tests-v2": {
+      "name": "library-tests-v2",
+      "command": ["node", "scripts/server-rust/cargo.mjs", "test", "--lib"],
+      "exitCode": 0,
+      "log": ".qa/rust-os-execution/library-tests-v2.log",
+      "sha256": "4fd86c81e0e7fed766c86084774bd674471c5b78ec878591636d4527700e3c01"
+    },
+    "clippy-v1": {
+      "name": "clippy-v1",
+      "command": [
+        "node",
+        "scripts/server-rust/cargo.mjs",
+        "clippy",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exitCode": 0,
+      "log": ".qa/rust-os-execution/clippy-v1.log",
+      "sha256": "fe30be416d4fb3fc3d5690865be316f4fbe18281fade4bbc38c52102ed402467"
+    },
+    "rustfmt-v1": {
+      "name": "rustfmt-v1",
+      "command": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "cantrip_server_rs/Cargo.toml",
+        "--",
+        "--check"
+      ],
+      "exitCode": 0,
+      "log": ".qa/rust-os-execution/rustfmt-v1.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "repository-check-v1": {
+      "name": "repository-check-v1",
+      "command": ["pnpm", "check"],
+      "exitCode": 1,
+      "log": ".qa/rust-os-execution/repository-check-v1.log",
+      "sha256": "4355729c3e674f2d255de3934f7bf128ddaa883bbaf4f04f3db21bcf92c2995e"
+    },
+    "repository-format-v1": {
+      "name": "repository-format-v1",
+      "command": ["pnpm", "format:check"],
+      "exitCode": 1,
+      "log": ".qa/rust-os-execution/repository-format-v1.log",
+      "sha256": "995edc3e0fff73686d6ec1767adf1fcf24143a46e4e1e193529a193f465bf619"
+    },
+    "large-files-v1": {
+      "name": "large-files-v1",
+      "command": ["pnpm", "check:large-files"],
+      "exitCode": 0,
+      "log": ".qa/rust-os-execution/large-files-v1.log",
+      "sha256": "a94c4b8119f7fd3d1e4be7e1f901996c262025d3500172c926b67ffff9f05fb7"
+    },
+    "boundary-audit-v1": {
+      "name": "boundary-audit-v1",
+      "command": ["pnpm", "audit:server-boundaries"],
+      "exitCode": 0,
+      "log": ".qa/rust-os-execution/boundary-audit-v1.log",
+      "sha256": "3f62704000eb49227b08581cf56e518a0f04b5ddac68118bff136da019bb5d30"
+    },
+    "primary-worker-baseline-v1.json": {
+      "path": ".qa/rust-os-execution/primary-worker-baseline-v1.json",
+      "sha256": "312054431ec1dc2208c6efa649274ce94725df9dc2e0f8d3fb009c94343e49c6"
+    },
+    "preexisting-format-files-v1.json": {
+      "path": ".qa/rust-os-execution/preexisting-format-files-v1.json",
+      "sha256": "8a08677a725464c4d4e0414df255df50ce53b29d66b8b74624fbeba33c511ee7"
+    }
+  },
+  "fixedSourceSha256": {
+    "cantrip_server_rs/src/cantrip_os/coordinator.rs": "0e311ad5495c24ae976eda0cb5494c3ba270fe88cd5cdc431c24a63937989b83",
+    "cantrip_server_rs/src/cantrip_os/sources.rs": "6cd859be8f5404555b103d06cdb2105f2b0c9a91fad8d4935e7abdd20251d53a"
+  },
+  "fixedExecutables": [
+    {
+      "path": ".qa/rust-os-execution/helpers-v5/cantrip-server",
+      "bytes": 179505152,
+      "sha256": "6d8c2c18acefb4f52ac16a4b17d003cc45e9e06e7fdc1922518e25ad6e5c93bf"
+    },
+    {
+      "path": ".qa/rust-os-execution/helpers-v5/project-repository-fixture",
+      "bytes": 181407344,
+      "sha256": "59bedad5df830df35014d3a77942417e0ac3372685cc45603faad9827ea0b77e"
+    },
+    {
+      "path": ".qa/rust-os-execution/helpers-v5/http-sql-fixture",
+      "bytes": 179770544,
+      "sha256": "29373e8363d8a1919c6059bbe7da6b7d596ce4030f197f8a15bc8415ab3ccbfa"
+    },
+    {
+      "path": ".qa/rust-os-execution/helpers-v5/worker-link-http-fixture",
+      "bytes": 178922736,
+      "sha256": "06d2f90b9713a60821d348ed7ee1d6e5d7864753506a6ebfb9add760e615b2f0"
+    }
+  ]
+}

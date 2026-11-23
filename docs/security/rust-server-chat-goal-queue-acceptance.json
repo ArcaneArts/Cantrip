@@ -1,0 +1,1784 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "d3178be5d8715dbb5ddc22a8c288c363ffd33d64",
+  "platform": "darwin-arm64",
+  "productionRustChanges": true,
+  "scope": "Goal controls and canonical queue use frozen production executables; Chat controls use the production router with disposable SQL fixture endpoints. All three stores/authentication profiles, real worker transport, production crypto and exact command/state/Live comparisons. Controlled worktree/native/model replies.",
+  "counts": {
+    "pairedCells": 27,
+    "receivedGoalCommands": 738,
+    "receivedProtectedTaskTurns": 18,
+    "goalLiveEvents": 270,
+    "taskCiphertextProofs": 288,
+    "goalCiphertextProofs": 162,
+    "pairedHttpCaseObservations": 2403,
+    "tracedRequests": 9499,
+    "queueLiveEvents": 198,
+    "queueCryptoProofs": 720,
+    "workerSdkOperations": 90,
+    "pairedControlCases": 756,
+    "pairedCallerDisappearancePhases": 18,
+    "receivedControlCaseCommands": 432,
+    "controlSnapshotProofs": 0,
+    "newWorkerCommands": 8,
+    "newLiveResources": 2,
+    "newDurableTables": 0
+  },
+  "reports": [
+    {
+      "family": "goals",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-chat-live/goals-pglite-v4.json",
+      "sha256": "8f6019ea1ab2a84b6e9a4329ebf34171ec25ebe547118f5b20cefe5991c46ab4",
+      "pairedHttpCaseObservations": 244
+    },
+    {
+      "family": "goals",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+      "sha256": "66b5bb6d94cbf73a51fa7617c0a2bfc9eed946de74a236391631f878ebdcddb0",
+      "pairedHttpCaseObservations": 244
+    },
+    {
+      "family": "goals",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-chat-live/goals-postgres-v4.json",
+      "sha256": "25d6d7d09e0cbf620c0072b82c3474b2b866d36547ad74b3c9e425deb6255738",
+      "pairedHttpCaseObservations": 244
+    },
+    {
+      "family": "queue",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-chat-live/queue-pglite-v4.json",
+      "sha256": "e07dd69a86785e91202ef2e88e38ef43e42689af167943dbcf0017065b087035",
+      "pairedHttpCaseObservations": 305
+    },
+    {
+      "family": "queue",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-chat-live/queue-bundled-postgres-v4.json",
+      "sha256": "864c0bb87cf30af5d847aa1a75f97ca6905c7908d78b7471284cf56a603f07e1",
+      "pairedHttpCaseObservations": 305
+    },
+    {
+      "family": "queue",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-chat-live/queue-postgres-v4.json",
+      "sha256": "21cb0bfe3348365195395307643b83a11ef12708fb7d2df966a24149037dece9",
+      "pairedHttpCaseObservations": 305
+    },
+    {
+      "family": "controls",
+      "databaseMode": "pglite",
+      "path": ".qa/rust-chat-live/controls-pglite-v4.json",
+      "sha256": "4e5d0855712350028d2c93303dddede455adfa9b2a89e17d6e0c0f0cc43ce435",
+      "pairedHttpCaseObservations": 252
+    },
+    {
+      "family": "controls",
+      "databaseMode": "bundled-postgres",
+      "path": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+      "sha256": "974e86b294decc3e68e90e7aa727e4a12d22e0f20e0aed413cd86e218287a39b",
+      "pairedHttpCaseObservations": 252
+    },
+    {
+      "family": "controls",
+      "databaseMode": "postgres",
+      "path": ".qa/rust-chat-live/controls-postgres-v4.json",
+      "sha256": "15eab08c0acaba5a110943c2f6c94d5eb30a5da3449f4c2aaa3305392481b6cd",
+      "pairedHttpCaseObservations": 252
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-chat-live/goals-pglite-v4.requests.json",
+      "sha256": "d6b2cedf61beaba3f5861013ac3faf98b05fe1a37228bc5069a93ba85724c516",
+      "requests": 506
+    },
+    {
+      "path": ".qa/rust-chat-live/goals-bundled-postgres-v4.requests.json",
+      "sha256": "29b622dd018ee250b542e2245d5f690cb9106fc8ab8cfb501441578132f78f97",
+      "requests": 506
+    },
+    {
+      "path": ".qa/rust-chat-live/goals-postgres-v4.requests.json",
+      "sha256": "ea8e6881b5434b2d67284e47f5280a8b6b5ef684165c7cf6bf0b1b6926d69725",
+      "requests": 506
+    },
+    {
+      "path": ".qa/rust-chat-live/queue-pglite-v4.requests.json",
+      "sha256": "ba2cd31a00c52fab7cd981411a78d3d0d1f38a9cbb4344842577b78d54cd989e",
+      "requests": 652
+    },
+    {
+      "path": ".qa/rust-chat-live/queue-bundled-postgres-v4.requests.json",
+      "sha256": "17de18ffb5d39e864d06025ab14e45d02fac0a156ce4f621192e762e2173df72",
+      "requests": 652
+    },
+    {
+      "path": ".qa/rust-chat-live/queue-postgres-v4.requests.json",
+      "sha256": "ceb43bb500291710d649cd45301c9382731a787d5e33d9b82623fdd2b54542ea",
+      "requests": 652
+    },
+    {
+      "path": ".qa/rust-chat-live/controls-pglite-v4.requests.json",
+      "sha256": "85d6b76a56deb0dbe6df873c395abab53768ee259dd7dbb435fb68b509976bb4",
+      "requests": 2007
+    },
+    {
+      "path": ".qa/rust-chat-live/controls-bundled-postgres-v4.requests.json",
+      "sha256": "70dabf6b5189993dbf0865d5aaa66edfe2a344d888d851958798fa42f9c45550",
+      "requests": 2010
+    },
+    {
+      "path": ".qa/rust-chat-live/controls-postgres-v4.requests.json",
+      "sha256": "7b7c69a170caeef116449683bc1fde832ff0b509bc0ec2b5562689b6c9dd04f7",
+      "requests": 2008
+    }
+  ],
+  "workerCommandMappings": [
+    {
+      "command": "chat.goal.get",
+      "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [
+              0, 3, 10, 13, 14, 17, 18, 21, 22, 25, 26, 29, 30, 33, 34, 37, 40,
+              43, 44, 45, 46, 47, 64
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.goal.update",
+      "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [49, 50, 51, 52, 53, 54, 55, 56, 57, 67, 68]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.goal.clear",
+      "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [48, 60, 61, 62, 63]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.goal.create",
+      "implementation": "cantrip_server_rs/src/chats/goals/start.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [58, 59]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [58, 59]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [58, 59]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [58, 59]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [58, 59]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [58, 59]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [58, 59]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [58, 59]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [58, 59]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [58, 59]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [58, 59]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [58, 59]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawCommands",
+            "indexes": [58, 59]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawCommands",
+            "indexes": [58, 59]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawCommands",
+            "indexes": [58, 59]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawCommands",
+            "indexes": [58, 59]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawCommands",
+            "indexes": [58, 59]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawCommands",
+            "indexes": [58, 59]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.turn",
+      "implementation": "cantrip_server_rs/src/chats/turn_runtime/payload.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawTurns",
+            "indexes": [0]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawTurns",
+            "indexes": [0]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawTurns",
+            "indexes": [0]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawTurns",
+            "indexes": [0]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawTurns",
+            "indexes": [0]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawTurns",
+            "indexes": [0]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawTurns",
+            "indexes": [0]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawTurns",
+            "indexes": [0]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawTurns",
+            "indexes": [0]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawTurns",
+            "indexes": [0]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawTurns",
+            "indexes": [0]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawTurns",
+            "indexes": [0]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawTurns",
+            "indexes": [0]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawTurns",
+            "indexes": [0]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawTurns",
+            "indexes": [0]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawTurns",
+            "indexes": [0]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawTurns",
+            "indexes": [0]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawTurns",
+            "indexes": [0]
+          }
+        }
+      ]
+    },
+    {
+      "command": "worktree.status",
+      "implementation": "cantrip_server_rs/src/http/chat_control.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/0/runtimes/0/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/0/runtimes/1/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/1/runtimes/0/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/1/runtimes/1/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/2/runtimes/0/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/2/runtimes/1/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/0/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/1/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/0/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/1/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/0/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/1/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/0/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/1/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/0/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/1/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/0/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/1/rawCaseCommands",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 14, 22]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.message.protect",
+      "implementation": "cantrip_server_rs/src/chats/live_mutations/messages.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/0/runtimes/0/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/0/runtimes/1/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/1/runtimes/0/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/1/runtimes/1/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/2/runtimes/0/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/2/runtimes/1/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/0/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/1/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/0/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/1/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/0/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/1/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/0/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/1/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/0/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/1/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/0/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/1/rawCaseCommands",
+            "indexes": [8, 10, 12, 15, 23]
+          }
+        }
+      ]
+    },
+    {
+      "command": "chat.compact",
+      "implementation": "cantrip_server_rs/src/http/chat_control.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/0/runtimes/0/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/0/runtimes/1/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/1/runtimes/0/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/1/runtimes/1/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/2/runtimes/0/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-pglite-v4.json",
+            "pointer": "/profiles/2/runtimes/1/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/0/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/1/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/0/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/1/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/0/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/1/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/0/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/0/runtimes/1/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/0/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/1/runtimes/1/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/0/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/controls-postgres-v4.json",
+            "pointer": "/profiles/2/runtimes/1/rawCaseCommands",
+            "indexes": [16, 17, 19, 20, 21]
+          }
+        }
+      ]
+    }
+  ],
+  "liveResourceMappings": [
+    {
+      "resource": "chat-goal",
+      "implementation": "cantrip_server_rs/src/http/chat_goals.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/goals-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawGoalEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          }
+        }
+      ]
+    },
+    {
+      "resource": "chat-queue",
+      "implementation": "cantrip_server_rs/src/http/native_queue.rs",
+      "witnesses": [
+        {
+          "databaseMode": "pglite",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/queue-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/queue-pglite-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/queue-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/queue-pglite-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "pglite",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/queue-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/queue-pglite-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/queue-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/queue-bundled-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/queue-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/queue-bundled-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/queue-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/queue-bundled-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "none",
+          "node": {
+            "report": ".qa/rust-chat-live/queue-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/0/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/queue-postgres-v4.json",
+            "pointer": "/profiles/0/outputs/1/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "password",
+          "node": {
+            "report": ".qa/rust-chat-live/queue-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/0/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/queue-postgres-v4.json",
+            "pointer": "/profiles/1/outputs/1/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "profile": "accounts",
+          "node": {
+            "report": ".qa/rust-chat-live/queue-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/0/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "rust": {
+            "report": ".qa/rust-chat-live/queue-postgres-v4.json",
+            "pointer": "/profiles/2/outputs/1/rawQueueEvents",
+            "indexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          }
+        }
+      ]
+    }
+  ],
+  "sourceSha256": {
+    "cantrip_server_rs/src/http/chat_goals.rs": "76944825a71c36f7c9a248c99565b86c0a8a5640204694d3852311742f5b980f",
+    "scripts/server-rust/task-dashboard-goals-http.mjs": "e436eae7738157bccc67a27c9812a66ec44a92006bce7091d51f26b38970e627",
+    "scripts/server-rust/task-dashboard-goal-worker.mjs": "1582e146885d1462c51e1036c2e8f7a792f57315a62a98e648b4e49caa896d71",
+    "scripts/server-rust/native-queue-http-compatibility.mjs": "e874321c864388b4d1afed01d1dbd44e24fa56b46ef9279acd513644f51e0c73",
+    "scripts/server-rust/native-queue-http-cases.mjs": "a0adfaee06e82b6dba4c8fc745ed31eb4bd8a571df5e9effaaba8492ab41d9dc",
+    "scripts/server-rust/native-queue-http-content.mjs": "7b467ae4e40f7b3052146b50f6895bf4288c126218b2b2a482995db23ebd03a5",
+    "scripts/server-rust/native-queue-http-imports.mjs": "07987dfe9942f979ec98a827dc8d31c0eb990c4ba0eb6e805f70959029fdbc0e",
+    "scripts/server-rust/chat-control-http-compatibility.mjs": "1be4e6c396c6d0b2544911a5deb6dfd9653af8f0c393146acc159ff32622732e",
+    "scripts/server-rust/chat-control-http-runner.mjs": "835d6155a22a5b2416309d0b704b70ce5b83709849690e8120f1f51ed0c1f228",
+    "scripts/server-rust/chat-control-http-cases.mjs": "1347538e036e621abf1c858c4bb3fcd8aa78978cfd227f10e06f8bfbebb42742",
+    "scripts/server-rust/chat-control-http-boundaries.mjs": "321166745e17bfbab459343553c29cbed73dc4c2ca9d72fb5b4e6821a3ca54c8",
+    "scripts/server-rust/native-settings-http-fixture.mjs": "e94c2f77d7eddb5b04f6e89d5290e0ae71969465855443c10199929ba034c1e9",
+    "cantrip_server_rs/src/chats/goals/start.rs": "ae959801059e1bf6ba2bc6f12e5b5679afb341f98031c2a412068da99886d991",
+    "cantrip_server_rs/src/chats/turn_runtime/payload.rs": "f23949bb550f4cc678fad84d94b435802d674495f9df72d91b00f77f762debe5",
+    "cantrip_server_rs/src/http/chat_control.rs": "19ab8532be047b6a1a746c5abca2a3532dcf89d2d90c7a4fe4744295d10a060d",
+    "cantrip_server_rs/src/chats/live_mutations/messages.rs": "05cafcf00ad73553f1fc40e34ee90654cec7cf950ddc9a8a8d8b5fea7b2e5f60",
+    "tests/reference-node-server/src/app/http/mutation-live-invalidation.ts": "311335daf3ad2b8e1414bde306fb1d363b8ea63f5bba8219cdbe51811c887172",
+    "tests/reference-node-server/src/app/shared/live-resources.ts": "bb22aabc9db9d97dcc8aa3c50dfba369fd923d63edfd655e2bfaa89a725c8291",
+    "tests/reference-node-server/src/app/runtime/chat-turn-runtime.ts": "c53637e7580be86d6f0847d87918530becddd3c238180b128e1c3fb98e8dad0e",
+    "packages/protocol/src/managed-queue.ts": "615ddfdb4dc5fac26d70de23600629da3bba2e3a4cbd53587d165e672d03b4df",
+    "packages/protocol/src/worker-command-chat.ts": "0a9b5ba6cb52f2937f855e0ece1962b106dc2e710fb728f0790894386f08463f"
+  },
+  "frozenExecutables": {
+    "baseCommit": "d3178be5d8715dbb5ddc22a8c288c363ffd33d64",
+    "productionSourceSha256": {
+      "cantrip_server_rs/src/http/chat_goals.rs": "76944825a71c36f7c9a248c99565b86c0a8a5640204694d3852311742f5b980f"
+    },
+    "executables": [
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-chat-live-contracts/Cantrip/.qa/rust-chat-live/helpers-v2/cantrip-server",
+        "bytes": 179437792,
+        "sha256": "fe065c8daac7cb7ffe3863a7dfad20b18c228643dc07b74d66b9881b7e1d79fc"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-chat-live-contracts/Cantrip/.qa/rust-chat-live/helpers-v2/http-sql-fixture",
+        "bytes": 179686624,
+        "sha256": "09e217c5c4eb61e9eec0172cb35a81c2b8ad1f3be6daf6db5b89be7df26e895a"
+      },
+      {
+        "path": "/Users/cyberpwn/.codex/worktrees/rust-chat-live-contracts/Cantrip/.qa/rust-chat-live/helpers-v2/project-repository-fixture",
+        "bytes": 181339984,
+        "sha256": "0fa08ce399b6b669f58644567b553104be8bed03295353aa1c633f31cff4b9a1"
+      }
+    ]
+  },
+  "localChecks": [
+    {
+      "label": "rust-fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "cantrip_server_rs/Cargo.toml",
+        "--",
+        "--check"
+      ],
+      "exitCode": 0,
+      "startedAt": 1794338427.068406,
+      "finishedAt": 1794338429.235631,
+      "log": ".qa/rust-chat-live/rust-fmt-v1.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "rust-clippy",
+      "command": [
+        "node",
+        "scripts/server-rust/cargo.mjs",
+        "clippy",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exitCode": 0,
+      "startedAt": 1794338429.236076,
+      "finishedAt": 1794338481.577895,
+      "log": ".qa/rust-chat-live/rust-clippy-v1.log",
+      "logSha256": "a1a067912f9d92206087043cf40fbe5b3bb9be9792fa973a983c319f152b0f7d"
+    },
+    {
+      "label": "rust-lib",
+      "command": ["node", "scripts/server-rust/cargo.mjs", "test", "--lib"],
+      "exitCode": 0,
+      "startedAt": 1794338481.578288,
+      "finishedAt": 1794338573.451524,
+      "log": ".qa/rust-chat-live/rust-lib-v1.log",
+      "logSha256": "8cc36fc4f404fc5f7093e06187df7c9c2b7d4ea6beff3d6cf22f56595852793d"
+    },
+    {
+      "label": "repository-check",
+      "command": ["pnpm", "check"],
+      "exitCode": 1,
+      "startedAt": 1794338573.451911,
+      "finishedAt": 1794338720.6161642,
+      "log": ".qa/rust-chat-live/repository-check-v1.log",
+      "logSha256": "c02d861774e907d19fc5079c7b99850b5fd24a47f3a2519b25dc07e4b131bbc7"
+    },
+    {
+      "label": "repository-format",
+      "command": ["pnpm", "format:check"],
+      "exitCode": 1,
+      "startedAt": 1794338720.616791,
+      "finishedAt": 1794338752.1081972,
+      "log": ".qa/rust-chat-live/repository-format-v1.log",
+      "logSha256": "995edc3e0fff73686d6ec1767adf1fcf24143a46e4e1e193529a193f465bf619"
+    }
+  ],
+  "cleanPrimaryWorkerReproduction": {
+    "head": "d3178be5d8715dbb5ddc22a8c288c363ffd33d64",
+    "cwd": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip",
+    "statusBefore": "",
+    "command": [
+      "pnpm",
+      "--filter",
+      "@cantrip/worker",
+      "exec",
+      "vitest",
+      "run",
+      "test/app-server.test.ts",
+      "-t",
+      "retries terminal model-capacity failures on the same Codex thread|interrupts a pending model-capacity backoff"
+    ],
+    "files": [
+      {
+        "path": "cantrip_worker/test/app-server.test.ts",
+        "sha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+        "primarySha256": "8b67d653eedd0fe52e42ea4a37bfdfae953d888a9fbd723dc71328e8b6700acc",
+        "identical": true
+      },
+      {
+        "path": "cantrip_worker/src/codex/app-server.ts",
+        "sha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+        "primarySha256": "916f73c8a9abd3d93b3caaadbc710dc4f00d7b0967f8cebb544832fe4d93ea8b",
+        "identical": true
+      }
+    ],
+    "startedAt": 1794338562.1854331,
+    "exitCode": 1,
+    "finishedAt": 1794338564.265227,
+    "statusAfter": "",
+    "log": ".qa/rust-chat-live/primary-worker-baseline-v1.log",
+    "logSha256": "3e3589f7063a8d2041dc93caf5f9b01c02b5a6c209e1c22bb77d1f475f9d5352"
+  },
+  "unchangedFormattingFailures": [
+    {
+      "path": "cantrip_app/src/lib/client-session.ts",
+      "sha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+      "primarySha256": "3f83102410aa69135e3df48b4b7746524f9d99645fe2651e03d3845e679ed979",
+      "identical": true
+    },
+    {
+      "path": "cantrip_os/packages/remote/root/etc/cantrip-os/remote.json",
+      "sha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+      "primarySha256": "f80e9fefe14ce0727af3921d768bbf8881ae9589ef99234e7af436fd429ca537",
+      "identical": true
+    },
+    {
+      "path": "cantrip_os/tests/active-browser.html",
+      "sha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+      "primarySha256": "26fe72ffa28ee0013289e81afbfc5d03ff21179816a4e4863ceb3384c1a11162",
+      "identical": true
+    },
+    {
+      "path": "cantrip_server_rs/third-party/icu_collator/README.md",
+      "sha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+      "primarySha256": "2ec35917ed33ca3e8e4b70ce25c20b20d7e8fcd45f0c1098d001bef52cf1e7a4",
+      "identical": true
+    },
+    {
+      "path": "cantrip_server_rs/third-party/pglite-rs/README.md",
+      "sha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+      "primarySha256": "f8955fe7862ac82da8b6af3eaad7268bdc889f02a2017ff55df68b5c35890b6d",
+      "identical": true
+    },
+    {
+      "path": "cantrip_worker/src/computer-use/captures.ts",
+      "sha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+      "primarySha256": "85b629ab8485264c94154cb3c984bd042eafb5f4f57b1f3ed1bb1e0c9aeed865",
+      "identical": true
+    },
+    {
+      "path": "cantrip_worker/test/project-repository-stats.test.ts",
+      "sha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+      "primarySha256": "9831ae1c1fb57cbe5caea26aca372165b6f72b737135cf80cdbd779e060ac544",
+      "identical": true
+    },
+    {
+      "path": "docs/BROWSER_AGENT_CURSOR_ACCEPTANCE.md",
+      "sha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+      "primarySha256": "13bfad69648aea77fdc23a9aad6679f829f6389e51f2c50c31471c7f555a86d4",
+      "identical": true
+    },
+    {
+      "path": "docs/COMPUTER_USE_EFFECTS.md",
+      "sha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+      "primarySha256": "b00f4d939586738360123999ffe60c83ec58a0ba7a20e9e065f9017b6dd4cca7",
+      "identical": true
+    },
+    {
+      "path": "docs/REMOTE_DESKTOP_ACCEPTANCE.md",
+      "sha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+      "primarySha256": "5cfe23748925ffe0ba54d616f3e2c163308706c9cb728246da8c78beaf3ab958",
+      "identical": true
+    },
+    {
+      "path": "docs/WQA-2026-10-08.md",
+      "sha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+      "primarySha256": "0e6a98cc95706f621db347fa15e46413d6d75c533f061d98a47c39506ea2257b",
+      "identical": true
+    },
+    {
+      "path": "scripts/qa/editor-reload-error.test.mjs",
+      "sha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+      "primarySha256": "5d01421f74afbc34dc3a43ddb103274d397b26ea6697e6d76894b9fee01a690c",
+      "identical": true
+    }
+  ],
+  "retainedFailures": [
+    "Initial Goal reference fixture expected obsolete plaintext prompt. The current reference/Rust send protectedTaskPrompt. Replacement assertion requires exact schema-parsed admitted ciphertext, actual worker-side decryption and no plaintext prompt.",
+    "Initial canonical queue reference fixture omitted goalRecovery:null. The current protocol, Node snapshot and Rust snapshot explicitly retain it; the complete expected DTO is corrected without stripping the field.",
+    "PGlite anonymous v2 actual Goal comparison has79HTTP observations on each peer and identical command DTOs, but15reference vs1RustGoalLive events. Full original reports/frozen sources/binaries retained. Production repair adds existing response-completion publication after successful mutations."
+  ],
+  "retainedEvidenceDirectory": "rust-server-chat-goal-queue-delivery-20261110-v1",
+  "remaining": [
+    "The existing worker transport and actual endpoint cryptography execute, while worktree/native/model completion replies are controlled. This batch does not execute leaf Git/Codex model compaction or full native Task inference.",
+    "These command and Live mappings qualify the executed consumers, not every queue/Goal recovery path or all supported shipping platforms. Existing native admission, recovery, rollback and product evidence retain their separate scopes.",
+    "Remaining inventory identities, historical partial scopes, broader interruption/coordination and final current supported-platform/product/artifact acceptance remain required by the complete server-replacement goal."
+  ],
+  "integrityReview": {
+    "path": ".qa/rust-chat-live/independent-acceptance-verification-v1.json",
+    "sha256": "a4c0e3c7ff8093408de812925700814c8a77e24e7a0b24c31173e14a89b8685a"
+  },
+  "currentGeneratedContracts": {
+    "path": ".qa/rust-chat-live/source-drift-v1.json",
+    "sha256": "aeb1513dedb5bdf1f5264de2ce03254eabef04af884bfbb02288b3d7c48347fb",
+    "matched": 17
+  },
+  "changedFileChecks": [
+    {
+      "command": [
+        "pnpm",
+        "exec",
+        "prettier",
+        "--check",
+        "scripts/server-rust/chat-control-http-compatibility.mjs",
+        "scripts/server-rust/native-queue-http-cases.mjs",
+        "scripts/server-rust/native-queue-http-compatibility.mjs",
+        "scripts/server-rust/task-dashboard-goal-worker.mjs",
+        "scripts/server-rust/task-dashboard-goals-http.mjs",
+        "docs/RUST_SERVER_CHAT_GOAL_QUEUE_CONTRACTS.md",
+        "docs/RUST_SERVER_ACCEPTANCE_RECONCILIATION.md",
+        "docs/security/rust-server-chat-goal-queue-acceptance.json",
+        "docs/security/rust-server-coverage.json"
+      ],
+      "exitCode": 0,
+      "log": ".qa/rust-chat-live/changed-format-v1.log",
+      "logSha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+    },
+    {
+      "command": ["git", "diff", "--check"],
+      "exitCode": 0,
+      "log": ".qa/rust-chat-live/diff-check-v1.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

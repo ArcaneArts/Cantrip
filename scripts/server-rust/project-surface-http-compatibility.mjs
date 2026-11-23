@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { buildRustServer, buildRustExample } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";

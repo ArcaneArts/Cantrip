@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "completeReplacement": false,
+  "scope": "Account-mode cross-peer HTTP, App Live, WorkerLink and direct-attachment lifecycle against external PostgreSQL 18 and Redis 8.10.3. Native 1.1.2881 artifacts and the compiled 1.1.2881 Node reference. The tests used real worker sockets and controlled worker acknowledgments.",
+  "reference": {
+    "path": "tests/reference-node-server/dist/index.js",
+    "bytes": 106,
+    "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+  },
+  "drivers": {
+    "linux": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/redis-tls-run.mjs",
+      "bytes": 18485,
+      "sha256": "fcf589dc9d7301f32fabff76ba6399a3c4a1a15e0944675b2c3cee6c8f2f7881"
+    },
+    "macOS": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/macos-local-redis-run.mjs",
+      "bytes": 15613,
+      "sha256": "b29ae237069602f09658ab93247fa4dea3e72c1c080d463eceec17b05e0ff63b"
+    }
+  },
+  "totals": {
+    "peerPairings": 9,
+    "scenarioGroups": 63,
+    "cleanServerExits": 18,
+    "redisProcessRestarts": 9,
+    "retainedWorkerClaims": 18,
+    "exactReplayedPublications": 36,
+    "singleSessionRelayClosures": 18,
+    "accountWideRelayClosures": 36,
+    "directCapabilityRevocations": 27
+  },
+  "platforms": [
+    {
+      "artifact": {
+        "target": "darwin-arm64",
+        "binary": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/cantrip-server-darwin-arm64/bin/cantrip-server",
+          "bytes": 94198976,
+          "sha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+        },
+        "binarySha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+      },
+      "redisTransport": "local Redis on loopback TCP",
+      "pairings": [
+        {
+          "pair": "rust/rust",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/macos-rust-rust.json",
+            "bytes": 4302,
+            "sha256": "ced8a37edb100b1370271fe1bdd1093af4e13c8876cbb8c8a85189b557cc086b"
+          },
+          "redisUnavailableResponseMs": [2, 2]
+        },
+        {
+          "pair": "node/rust",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/macos-node-rust.json",
+            "bytes": 3954,
+            "sha256": "28684fcb63e91c71026c1762db55ef600269fcdb400349e888548b7e36517e43"
+          },
+          "redisUnavailableResponseMs": [5, 4]
+        },
+        {
+          "pair": "rust/node",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/macos-rust-node.json",
+            "bytes": 3954,
+            "sha256": "651f7d285fee90ea821dbd908b13b798cf0323594f7e34f0be6ad748d3c0a69b"
+          },
+          "redisUnavailableResponseMs": [2, 2]
+        }
+      ]
+    },
+    {
+      "artifact": {
+        "target": "linux-arm64",
+        "containerImageId": "sha256:d8a7fac4f56fa62aa1c17680eb608e5a69ec5ce1de23001e7d650df4f573cae5",
+        "archive": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/cantrip-server-1.1.2881-linux-arm64.tar.zst",
+          "bytes": 177321976,
+          "sha256": "29918c9f8877ada8e406ea0a3651ab027b9ca9ff4f625f7a093d16c177ca4c49"
+        },
+        "binarySha256": "7738748c83116e678912a32f1681e946b2215205b85eb54e4b2415b2da689da3"
+      },
+      "redisTransport": "authenticated TLS-only Redis",
+      "pairings": [
+        {
+          "pair": "rust/rust",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/arm64-rust-rust.json",
+            "bytes": 4386,
+            "sha256": "953d8433e6746112398a7a89e959c08bb5d55c69b96e071393dabd9b78d996f9"
+          },
+          "redisUnavailableResponseMs": [3, 3]
+        },
+        {
+          "pair": "node/rust",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/arm64-node-rust.json",
+            "bytes": 4163,
+            "sha256": "c00c329b606c94f0f55046860d906fb2bcee45c14df2f485cc854fe13fecf0db"
+          },
+          "redisUnavailableResponseMs": [2, 2]
+        },
+        {
+          "pair": "rust/node",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/arm64-rust-node.json",
+            "bytes": 4163,
+            "sha256": "d38f10a7f562cf5d09c1a5eba6a0d68df898dd577ae09b88f5a1a0c82313f90b"
+          },
+          "redisUnavailableResponseMs": [2, 2]
+        }
+      ]
+    },
+    {
+      "artifact": {
+        "target": "linux-x64",
+        "containerImageId": "sha256:059dc3842a2a8810219fc7920c9ee3a5fbae777a84505eba74d5b78570847ad7",
+        "archive": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/cantrip-server-1.1.2881-linux-x64.tar.zst",
+          "bytes": 180468097,
+          "sha256": "7c7c6680a76a6424c22b3ebcb7d6a5b374da0d97c92d7709979ac65a452d5de1"
+        },
+        "binarySha256": "2b247d16a9ad93b2e59bc8db7c105b234d73505f333c5920279ea759e076e58c"
+      },
+      "redisTransport": "authenticated TLS-only Redis",
+      "pairings": [
+        {
+          "pair": "rust/rust",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/x64-rust-rust.json",
+            "bytes": 4380,
+            "sha256": "67b3e24d29c0ad351c64d37bb26ed8ecf6e681f6dd874741a8616be207ed70ea"
+          },
+          "redisUnavailableResponseMs": [5, 3]
+        },
+        {
+          "pair": "node/rust",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/x64-node-rust-retry.json",
+            "bytes": 4159,
+            "sha256": "70d8e464f4927c59a75d4e5fbe9446b2698d36f3e7675785b3ec3ecc7b349f9e"
+          },
+          "redisUnavailableResponseMs": [3, 4]
+        },
+        {
+          "pair": "rust/node",
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/x64-rust-node.json",
+            "bytes": 4298,
+            "sha256": "887b43e4a86d446e6186341a154c0642f1c8f392f185403e8e8244acbe9927de"
+          },
+          "redisUnavailableResponseMs": [5, 3]
+        }
+      ]
+    }
+  ],
+  "otherAttempts": {
+    "linuxX64InitialHostPortObservationFailure": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/x64-node-rust.json",
+      "bytes": 1514,
+      "sha256": "95edee89d166d87bb41ab130b29196bbe18ebf174d5867a9d57246c37d3cbd2e"
+    },
+    "macOSPrivateCertificateRejectedWithSslCertFileOnly": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/macos-rust-rust.json",
+      "bytes": 2648,
+      "sha256": "39779d9ce66cb613c9ad42139adc76281bea3d762e84483a25f02d794c326425"
+    }
+  },
+  "remaining": [
+    "Windows native cross-peer acceptance and macOS Redis TLS with a trusted private CA."
+  ],
+  "localAuthenticationMatrix": {
+    "scope": "Real HTTP against isolated databases using the 1.1.2881 macOS package and same-source Node HTTP oracle. The external PostgreSQL database also passed a retained state transition from Node through Rust back to Node.",
+    "pairedHttpObservations": 1083,
+    "databases": [
+      {
+        "database": "pglite",
+        "profiles": 8,
+        "pairedHttpObservations": 361,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/auth-pglite.json",
+          "bytes": 481151,
+          "sha256": "144738b5fea3719b33bc47ceba6051e2bc1f8dce32a9e2126020ec9df6b48daa"
+        }
+      },
+      {
+        "database": "bundled-postgres",
+        "profiles": 8,
+        "pairedHttpObservations": 361,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/auth-bundled-postgres.json",
+          "bytes": 481161,
+          "sha256": "1709791aaf8d2bc76f7d18234e516bcbd57ff98b7de55d4d69bea1ec0e4bd84e"
+        }
+      },
+      {
+        "database": "postgres",
+        "profiles": 8,
+        "pairedHttpObservations": 361,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/current-linux-redis-tls/exact-source/auth-postgres.json",
+          "bytes": 506462,
+          "sha256": "486bef5fc7f0a569f4e671dd3922aaf9eb8f086658e66e1047929e0c3eaaea07"
+        },
+        "postRevocationNodeReopen": true,
+        "crossRuntimeStateSteps": 17
+      }
+    ]
+  }
+}

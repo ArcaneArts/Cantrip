@@ -81,11 +81,9 @@ fn total(attempts: &[&Value]) -> Value {
         for key in TOTAL_KEYS.into_iter().take(5) {
             result[key] = Value::Number(number(&result, key) + number(row, key));
         }
-        // This helper groups the row's two token counters before adding. The
-        // dashboard's totalTokens helper deliberately has a different order.
         result["comparableTokens"] = Value::Number(
             number(&result, "comparableTokens")
-                + (number(row, "inputTokens") + number(row, "outputTokens")),
+                + super::super::model_operation_usage::observed_total(row),
         );
         for (key, known) in [
             ("visibleOutputTokens", &mut visible),

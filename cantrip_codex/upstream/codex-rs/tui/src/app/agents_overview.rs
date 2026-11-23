@@ -90,7 +90,7 @@ impl Drop for AgentsOverviewState {
 
 impl App {
     pub(super) fn open_agents_overview(&mut self, app_server: &AppServerSession) {
-        if matches!(self.app_server_target, AppServerTarget::Embedded) {
+        if !self.app_server_target.supports_command_center() {
             let workload_identity_selected = codex_login::is_workload_identity_selected();
             self.chat_widget.show_selection_view(SelectionViewParams {
                 title: Some("Shared agents unavailable".to_string()),
@@ -406,11 +406,10 @@ impl App {
         let mut view = AgentsOverviewView::new(
             rows,
             selected_thread_id,
-            self.config.features.enabled(Feature::Worktrees)
-                && !crate::uses_remote_workspace_or_environment(
-                    &self.app_server_target,
-                    self.environment_manager.as_ref(),
-                ),
+            !crate::uses_remote_workspace_or_environment(
+                &self.app_server_target,
+                self.environment_manager.as_ref(),
+            ),
             self.local_settings.tui.status_line_use_colors,
             self.app_event_tx.clone(),
             self.keymap.clone(),
@@ -552,13 +551,19 @@ impl App {
                 (config.clone(), self.local_settings.reloaded(config))
             } else if unloaded {
                 let target_session = SessionTarget {
+                    backend_id: app_server.backend_id(),
                     path: target_thread.path.clone(),
                     thread_id: root_thread_id,
                     cwd: Some(target_thread.cwd.to_path_buf()),
                     history_mode: Some(target_thread.history_mode),
                 };
                 match self
-                    .resume_config_for_target(tui, app_server, &target_session)
+                    .resume_config_for_target(
+                        tui,
+                        app_server,
+                        &target_session,
+                        super::resume_preparation::ResumeSource::Active,
+                    )
                     .await
                 {
                     Ok(config) => config,
@@ -572,7 +577,11 @@ impl App {
                 };
                 let current_cwd = self.config.cwd.to_path_buf();
                 match self
-                    .rebuild_config_for_resume_or_fallback(&current_cwd, config_cwd)
+                    .rebuild_config_for_resume_or_fallback(
+                        &current_cwd,
+                        config_cwd,
+                        (&self.config, &self.local_settings),
+                    )
                     .await
                 {
                     Ok(config) => config,
@@ -948,7 +957,6 @@ impl App {
             .as_ref()
             .filter(|_| remote)
             .map(AbsolutePathBuf::to_path_buf);
-        let preserve_service_tier = remote || cwd.is_none();
         let local_cwd = if remote {
             self.config.cwd.to_path_buf()
         } else {
@@ -970,9 +978,6 @@ impl App {
                 return None;
             }
         };
-        if preserve_service_tier {
-            config.service_tier = self.chat_widget.configured_service_tier();
-        }
         let trust_cwd = config.cwd.to_path_buf();
         if self
             .confirm_directory_trust(
@@ -1014,7 +1019,8 @@ impl App {
         }
         let defaults_cwd = match app_server.thread_params_mode() {
             crate::app_server_session::ThreadParamsMode::Embedded => config.cwd.as_path(),
-            crate::app_server_session::ThreadParamsMode::Remote => remote_cwd
+            crate::app_server_session::ThreadParamsMode::Remote
+            | crate::app_server_session::ThreadParamsMode::Cloud => remote_cwd
                 .as_deref()
                 .or_else(|| app_server.remote_cwd_override())
                 .unwrap_or(Path::new(".")),
@@ -1221,14 +1227,17 @@ impl App {
 
 #[cfg(test)]
 #[path = "agents_overview_tests.rs"]
-mod tests;
+pub(super) mod tests;
 
 fn agents_overview_group(
     thread: &Thread,
     children: &HashMap<String, Vec<&Thread>>,
 ) -> AgentsOverviewGroup {
-    children.get(&thread.id).into_iter().flatten().fold(
-        AgentsOverviewGroup::for_status(&thread.status),
-        |group, child| group.min(agents_overview_group(child, children)),
-    )
+    children
+        .get(&thread.id)
+        .into_iter()
+        .flatten()
+        .fold(AgentsOverviewGroup::for_thread(thread), |group, child| {
+            group.min(agents_overview_group(child, children))
+        })
 }

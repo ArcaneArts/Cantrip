@@ -1,0 +1,314 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "rustServerSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+  "productSourceCommit": "4f27da5bd4997c65f1f5c1f40e75506f0246a40c",
+  "productionSourcesIdenticalAcrossCommits": true,
+  "platform": "darwin-arm64",
+  "databaseMode": "postgres",
+  "postgresVersion": "18.6",
+  "redisVersion": "8.10.3",
+  "workerRuntime": "Node v24.22.2",
+  "codexVersion": "0.166.0",
+  "authentication": "accounts",
+  "rustExecutable": {
+    "path": "rust-server-worker-remaining-contracts-20261110-v1/current-binaries/cantrip-server",
+    "bytes": 94116304,
+    "sha256": "129dfce547025b0bdfaaaf57d7fb4b86dc5cdd075b20012348d96b0ab4a97bf4"
+  },
+  "redisExecutable": {
+    "path": "rust-redis-coordination-local-11b8ad27a-20261106-v1/.qa/rust-redis/redis-source/src/redis-server",
+    "bytes": 3482208,
+    "sha256": "a18144d2e5d0f1792b4af8cff9524a376c1ebd7271d1981ffcf1c4a330ad51ee"
+  },
+  "codexExecutable": {
+    "path": "rust-server-link-lease-recovery-20261111-v1/codex-bundle/codex",
+    "bytes": 281161744,
+    "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+  },
+  "postgresExecutable": {
+    "path": "bin/postgres",
+    "bytes": 9095552,
+    "sha256": "db04623906717b3f12df02e2285e8f9990c8ebbb1c9be78a4b1f18afb2361425"
+  },
+  "rustPostgresCases": [
+    {
+      "report": {
+        "path": "rust-rust-v2.json",
+        "bytes": 732737,
+        "sha256": "585a952ad90abc051d3bd78eae34cfcf921db7801b2222e24ff86905709e537c"
+      },
+      "log": {
+        "path": "rust-rust-v2.log",
+        "bytes": 942,
+        "sha256": "fbd97a518c0da706b1f5d0866fa4d61b0b0c9dfdaf813789b4a20e6983d793bb"
+      },
+      "phase": "rust-rust-v2",
+      "offlineMs": 56,
+      "workerProcessRetained": true,
+      "postgresRecoveryObserved": true,
+      "redisConnectionRetained": true
+    },
+    {
+      "report": {
+        "path": "rust-rust-v3.json",
+        "bytes": 1525516,
+        "sha256": "92e998a7b1faa3b42eb73c94b3829450fc60dc8ea414985875b3674429168ab5"
+      },
+      "log": {
+        "path": "rust-rust-v3.log",
+        "bytes": 1338,
+        "sha256": "7d0843593ff06eea8dac43d0311ccac7fe52457f5b74af4fc1f823621e731c46"
+      },
+      "phase": "rust-rust-v3",
+      "offlineMs": 45002,
+      "workerProcessRetained": true,
+      "postgresRecoveryObserved": true,
+      "redisConnectionRetained": true
+    },
+    {
+      "report": {
+        "path": "rust-rust-repeat-v3.json",
+        "bytes": 820464,
+        "sha256": "3e1521270bb5e38cab312224d9ae44bbf5460b936f4d70a2c18959a3b645310f"
+      },
+      "log": {
+        "path": "rust-rust-repeat-v3.log",
+        "bytes": 1252,
+        "sha256": "ee70af9374f39a05d7e772749f1a3dbec3803de6cf8a8501fae2629a2eba26c0"
+      },
+      "phase": "rust-rust-repeat-v3",
+      "offlineMs": 45002,
+      "workerProcessRetained": true,
+      "postgresRecoveryObserved": true,
+      "redisConnectionRetained": true
+    }
+  ],
+  "initialAndReferenceObservations": [
+    {
+      "report": {
+        "path": "node-node-v1.json",
+        "bytes": 673917,
+        "sha256": "83ef0e0362a1fef81a638049e400021a8848296219713b58badc4bb77df7f739"
+      },
+      "log": {
+        "path": "node-node-v1.log",
+        "bytes": 68900,
+        "sha256": "c5fc0b8a7d253817853957ff61f35975470c3a4c227e749b1cf73f4d0769cd0d"
+      },
+      "pair": "node/node",
+      "phase": "node-node-v1",
+      "phaseFailure": "fetch failed",
+      "serverExits": [
+        {
+          "peer": 0,
+          "runtime": "node",
+          "code": 1,
+          "signal": null
+        },
+        {
+          "peer": 1,
+          "runtime": "node",
+          "code": 0,
+          "signal": null
+        }
+      ]
+    },
+    {
+      "report": {
+        "path": "node-rust-v1.json",
+        "bytes": 686498,
+        "sha256": "e9bdfc563ed6056639a7c141c91a2747a60b24856c617dae68829e9970dc0884"
+      },
+      "log": {
+        "path": "node-rust-v1.log",
+        "bytes": 68937,
+        "sha256": "7e04568025e66ddf7293bbd2dd678e62d4414c85da852029739f742ced29b2f2"
+      },
+      "pair": "node/rust",
+      "phase": "node-rust-v1",
+      "phaseFailure": "fetch failed",
+      "serverExits": [
+        {
+          "peer": 0,
+          "runtime": "node",
+          "code": 1,
+          "signal": null
+        },
+        {
+          "peer": 1,
+          "runtime": "rust",
+          "code": 0,
+          "signal": null
+        }
+      ]
+    },
+    {
+      "report": {
+        "path": "rust-node-v1.json",
+        "bytes": 682174,
+        "sha256": "2f1efc542408f44e960ccd12e651a97d293a754d000c36f3eeba8d2d4ba2678e"
+      },
+      "log": {
+        "path": "rust-node-v1.log",
+        "bytes": 75184,
+        "sha256": "7be36053c9be5babfc4df03396173dc909fe63a0ea9ecc2b23e33d9377957edb"
+      },
+      "pair": "rust/node",
+      "phase": "rust-node-v1",
+      "phaseFailure": "The operation was aborted due to timeout",
+      "serverExits": [
+        {
+          "peer": 0,
+          "runtime": "rust",
+          "code": 0,
+          "signal": null
+        },
+        {
+          "peer": 1,
+          "runtime": "node",
+          "code": null,
+          "signal": "SIGKILL"
+        }
+      ]
+    },
+    {
+      "report": {
+        "path": "rust-rust-v1.json",
+        "bytes": 690780,
+        "sha256": "4a48e8d27f2bfa92e836814793fff91e6cc397c44f614dea5ac276abef05c2da"
+      },
+      "log": {
+        "path": "rust-rust-v1.log",
+        "bytes": 4021,
+        "sha256": "aa88dc07abb1c17fe6560173929e9c4a9cc9a5b5976497ff949ad50d27a40faf"
+      },
+      "pair": "rust/rust",
+      "phase": "rust-rust-v1",
+      "phaseFailure": "Expected values to be strictly deep-equal:",
+      "serverExits": [
+        {
+          "peer": 0,
+          "runtime": "rust",
+          "code": 0,
+          "signal": null
+        },
+        {
+          "peer": 1,
+          "runtime": "rust",
+          "code": 0,
+          "signal": null
+        }
+      ]
+    },
+    {
+      "report": {
+        "path": "node-node-v3.json",
+        "bytes": 708819,
+        "sha256": "014fac0fff2ebe8bc87321dc18ef3485659585a7c5f3eb04837ac257e436fdc6"
+      },
+      "log": {
+        "path": "node-node-v3.log",
+        "bytes": 68854,
+        "sha256": "63fc963030907085f7bc4128ee40abed658928bb2c5528e97ce811c92b0e7f7b"
+      },
+      "pair": "node/node",
+      "phase": "node-node-v3",
+      "phaseFailure": "fetch failed",
+      "serverExits": [
+        {
+          "peer": 0,
+          "runtime": "node",
+          "code": 1,
+          "signal": null
+        },
+        {
+          "peer": 1,
+          "runtime": "node",
+          "code": null,
+          "signal": "SIGKILL"
+        }
+      ]
+    }
+  ],
+  "redisControl": {
+    "report": {
+      "path": "redis-control-v1.json",
+      "bytes": 1634538,
+      "sha256": "64e43b81a39cede16d27f3739ab7296f1c54a74455c8e631077fa206d8c673a0"
+    },
+    "log": {
+      "path": "redis-control-v1.log",
+      "bytes": 620,
+      "sha256": "b942e53777ee14fa2c8431786108c13f269a08791032423d34f1084a0a1e1c46"
+    }
+  },
+  "hostedDevelopmentRuns": 0,
+  "retainedEvidenceDirectory": "rust-server-active-postgres-outage-20261111-v1",
+  "fixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 744314385,
+    "sha256": "a97676aac34f1365cc853109b1fa61671e5a9d28561611107479e5b958ad122f",
+    "verifiedRegularFiles": 79938,
+    "verifiedProcessLogHashes": 99,
+    "excludedRebuildablePaths": ["*/worker/managed-runtimes"]
+  },
+  "evidence": [
+    {
+      "path": "workspace-install.log",
+      "bytes": 1470,
+      "sha256": "4a3d77db509213dd21d2a3a5c2610968864dffe45152f9b2d4cae69c792aa955"
+    },
+    {
+      "path": "dependencies-build.log",
+      "bytes": 618,
+      "sha256": "2e7d551bbcd996734d59ed9e1a86f494a6048863282f7d8e9b24df111030827d"
+    },
+    {
+      "path": "reference-build.log",
+      "bytes": 327,
+      "sha256": "d440c23b4187e24f2de4622f23f268130da6bc14dc4d9743abe191c4f948c7d6"
+    },
+    {
+      "path": "codex-runtime-verification.log",
+      "bytes": 112,
+      "sha256": "3f47a6ffeaa6ae8b12f1e53a5c704d926c142f0c89352bb5cb26ae436f26311c"
+    },
+    {
+      "path": "compiled-entries.sha256",
+      "bytes": 203,
+      "sha256": "d3ff8b01474f74d1084244f38b987eea8bddc6f0a5ba34797d2cc979e14b236a"
+    },
+    {
+      "path": "worker-and-reference-dist.tar.gz",
+      "bytes": 4983184,
+      "sha256": "c4bd8b6708b1331de216fc14b18ebca52ccb8baa88173dab9e82e75e03d7625a"
+    },
+    {
+      "path": "verified-product.json",
+      "bytes": 6669,
+      "sha256": "b0e7cc0974ddf681fce193ba86bfdddddba12fdc4b929ce37bc00080d195ee39"
+    },
+    {
+      "path": "live-process-observation.txt",
+      "bytes": 3274,
+      "sha256": "def10cb5b25841051ff42b3cad3d58d9f6906bc18f88105d1fa9b738c9a8fdb7"
+    },
+    {
+      "path": "live-final-driver-processes.txt",
+      "bytes": 1236,
+      "sha256": "3547c484974a5e107b74f75f1e3c6442cbc94547fce83eaf004976b78a108488"
+    },
+    {
+      "path": "live-final-process-observation.txt",
+      "bytes": 3439,
+      "sha256": "15e16108508eed99878d01c0ad9517027f028ebd6a36cb899349a7bf8c9afff6"
+    },
+    {
+      "path": "owned-process-cleanup.json",
+      "bytes": 546,
+      "sha256": "18af03bc2afc45d687a7b66b101271a853725a805e637b7ce31dc315d78d6b5b"
+    }
+  ],
+  "scope": "Local Rust/Rust shared external PostgreSQL process interruption during native Task completion, with Redis available. The reference Node process failure reproduces with corrected readiness assertions. Mixed PostgreSQL-outage recovery, combined dependency faults, and supported shipping artifacts remain separate."
+}

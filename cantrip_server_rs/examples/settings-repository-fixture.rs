@@ -201,6 +201,7 @@ impl CommandDelegate for CatalogDelegate {
                     code: None,
                     unavailable: false,
                     encoding_error: None,
+                    inference: None,
                     request_id: None,
                 });
             }
@@ -353,6 +354,43 @@ async fn operation(
             .await?
         ),
         "catalog-hash" => json!(cantrip_server::settings::catalog::metadata_snapshot(input)?),
+        "model-runtime" => json!(
+            repo.get_model_runtimes(
+                owner()?,
+                r["model"].as_str(),
+                r["route"].as_str(),
+                false,
+                None
+            )
+            .boxed()
+            .await?
+            .into_iter()
+            .next()
+        ),
+        "model-runtime-route" => json!(
+            repo.get_model_runtimes(owner()?, None, r["route"].as_str(), true, None)
+                .boxed()
+                .await?
+                .into_iter()
+                .next()
+        ),
+        "model-operation-route" => json!(
+            repo.get_model_operation_route(
+                owner()?,
+                text(r, "operation")?,
+                text(r, "model")?,
+                text(r, "worker")?,
+                r["route"].as_str()
+            )
+            .boxed()
+            .await?
+        ),
+        "inference-catalog" => repo.provider_inference_catalog(owner()?).boxed().await?,
+        "inference-configurations" => json!(
+            repo.provider_inference_configurations(owner()?)
+                .boxed()
+                .await?
+        ),
         "quota-observe" => json!(
             repo.record_provider_quota_observation(owner()?, input)
                 .boxed()
@@ -769,6 +807,7 @@ async fn operation(
                     owner()?,
                     text(r, "provider")?,
                     cantrip_server::settings::catalog::CatalogUpdate {
+                        connection_revision: input["connectionRevision"].as_i64(),
                         models: input["models"]
                             .as_array()
                             .context("catalog models")?
@@ -780,6 +819,9 @@ async fn operation(
                             .into_owned(),
                         available: ids("availableNativeModelIds")?,
                         auto_create: input["autoCreateLogicalModels"].as_bool().unwrap_or(false),
+                        preserve_missing_models: input["preserveMissingModels"]
+                            .as_bool()
+                            .unwrap_or(false),
                         auto_create_native_ids: if input.get("autoCreateNativeModelIds").is_some() {
                             Some(ids("autoCreateNativeModelIds")?)
                         } else {

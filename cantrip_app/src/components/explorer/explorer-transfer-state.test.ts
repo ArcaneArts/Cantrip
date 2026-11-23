@@ -9,6 +9,7 @@ import {
   validateExplorerTransfer,
 } from "./explorer-transfer-state";
 import type { ExplorerTransferState } from "./explorer-view";
+import { JAVA_NBT } from "@cantrip/nbt";
 
 const scope = {
   serverId: "server",
@@ -48,6 +49,32 @@ async function fixture(): Promise<ExplorerTransferState> {
 }
 
 describe("editor transfer decoding", () => {
+  it("carries sparse NBT view state only in the scoped private transfer and rejects malformed positions", async () => {
+    const state = await fixture();
+    state.viewerState = {
+      viewer: "nbt",
+      version: 1,
+      baselineVersion: "v1",
+      format: { ...JAVA_NBT },
+      profile: "java",
+      compression: "none",
+      expanded: ["node:0"],
+      selected: "node:1",
+      target: null,
+      mode: "tree",
+      editing: true,
+      findOpen: false,
+      tree: { position: 123.5, rank: 124 },
+    };
+    const restored = decodeExplorerTransfer(
+      encodeExplorerTransfer(state, scope),
+      scope,
+    );
+    expect(restored.viewerState).toEqual(state.viewerState);
+    expect(restored.viewerState).not.toBe(state.viewerState);
+    state.viewerState.tree.position = NaN;
+    expect(() => validateExplorerTransfer(state, scope)).toThrow(/NBT view/);
+  });
   it("binds document transfers to the document ID and exact file", async () => {
     const original = await fixture();
     const documentScope = {

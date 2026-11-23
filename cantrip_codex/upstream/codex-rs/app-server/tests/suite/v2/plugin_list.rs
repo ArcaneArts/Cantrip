@@ -1961,7 +1961,8 @@ enabled = true
 }
 
 #[tokio::test]
-async fn app_server_startup_sync_downloads_remote_installed_plugin_bundles() -> Result<()> {
+async fn app_server_startup_downloads_installed_plugin_bundles_without_discovery_prefetch()
+-> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
     write_remote_plugin_catalog_config(
@@ -2001,11 +2002,24 @@ async fn app_server_startup_sync_downloads_remote_installed_plugin_bundles() -> 
         .await;
     mount_empty_user_installed_plugins(&server).await;
 
+    for endpoint in [
+        "/backend-api/ps/plugins/list",
+        "/backend-api/plugins/featured",
+        "/backend-api/ps/plugins/suggested/codex",
+    ] {
+        Mock::given(path(endpoint))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(0)
+            .mount(&server)
+            .await;
+    }
+
     let installed_path = codex_home
         .path()
         .join("plugins/cache/openai-curated-remote/linear/1.2.3");
     let _mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
+        .with_args(&["-c", "features.plugin_discovery_prefetch=false"])
         .with_plugin_startup_tasks()
         .with_env_overrides(&[(TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS, Some("1"))])
         .build_initialized_with_timeout(DEFAULT_TIMEOUT)
@@ -2137,7 +2151,7 @@ enum ProjectPluginConfiguration {
     Invalid,
 }
 
-#[test_case(ProjectPluginConfiguration::None, None, "", true, true; "without project override")]
+#[test_case(ProjectPluginConfiguration::None, None, "plugin_discovery_prefetch = false", true, true; "without discovery prefetch")]
 #[test_case(ProjectPluginConfiguration::Disabled, None, "", true, true; "project disables local plugins")]
 #[test_case(ProjectPluginConfiguration::Invalid, None, "", true, true; "invalid project preserves remote plugins")]
 #[test_case(ProjectPluginConfiguration::None, Some("tpp"), "", true, true; "configured product sku")]
@@ -2294,6 +2308,7 @@ async fn plugin_list_includes_remote_marketplaces_when_remote_plugin_enabled(
     Mock::given(method("GET"))
         .and(path("/backend-api/ps/plugins/installed"))
         .and(query_param("scope", "GLOBAL"))
+        .and(query_param("limit", "200"))
         .and(header("authorization", "Bearer chatgpt-token"))
         .and(header("chatgpt-account-id", "account-123"))
         .and(header("oai-product-sku", expected_product_sku))
@@ -2303,6 +2318,7 @@ async fn plugin_list_includes_remote_marketplaces_when_remote_plugin_enabled(
     Mock::given(method("GET"))
         .and(path("/backend-api/ps/plugins/installed"))
         .and(query_param("scope", "WORKSPACE"))
+        .and(query_param("limit", "200"))
         .and(header("authorization", "Bearer chatgpt-token"))
         .and(header("chatgpt-account-id", "account-123"))
         .and(header("oai-product-sku", expected_product_sku))
@@ -3915,9 +3931,16 @@ trusted_hash = "sha256:unrelated"
     )?)?;
     let hook_states = config["hooks"]["state"].as_table().expect("hook states");
     for hook in &hooks {
+        let (declaration_hash, content_hash) = hook
+            .current_hash
+            .split_once('/')
+            .expect("declaration and content hashes");
         assert_eq!(
-            hook_states[hook.key.as_str()]["trusted_hash"].as_str(),
-            Some(hook.current_hash.as_str())
+            (
+                hook_states[hook.key.as_str()]["trusted_hash"].as_str(),
+                hook_states[hook.key.as_str()]["trusted_content_hash"].as_str(),
+            ),
+            (Some(declaration_hash), Some(content_hash))
         );
     }
     assert!(
@@ -5205,6 +5228,7 @@ async fn wait_for_plugin_hooks(
             let request_id = mcp
                 .send_hooks_list_request(HooksListParams {
                     cwds: vec![cwd.to_path_buf()],
+                    ..Default::default()
                 })
                 .await?;
             let HooksListResponse { data } = mcp.read_response(request_id).await?;

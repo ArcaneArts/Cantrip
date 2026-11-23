@@ -13,7 +13,7 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { auditRows, eventually } from "./audit-observations.mjs";
 
 const requireServer = createRequire(
-  path.join(repositoryRoot, "cantrip_server/package.json"),
+  path.join(repositoryRoot, "tests/reference-node-server/package.json"),
 );
 const { default: postgres } = await import(
   pathToFileURL(requireServer.resolve("postgres")).href

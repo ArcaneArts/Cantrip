@@ -2,11 +2,11 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { applyWorkspaceCommand } from "../../packages/protocol/dist/index.js";
-import { removeResourceWorkspaceViews } from "../../cantrip_server/src/db/workspace-resource-removal.ts";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
+import { removeResourceWorkspaceViews } from "../../tests/reference-node-server/src/db/workspace-resource-removal.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
 import { workspaceState } from "./workspace-wire-fixtures.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy"),
   { getTableColumns } = require("drizzle-orm");

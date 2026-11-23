@@ -1,5 +1,6 @@
 import type { ProjectBuiltInSurfaceDefinitionId } from "@cantrip/protocol";
 import {
+  Bell,
   CircleDot,
   CirclePlay,
   GitPullRequest,
@@ -17,16 +18,18 @@ export function ProjectBuiltInSurfaceIcon({
   const Icon =
     definitionId === "project.overview"
       ? LayoutDashboard
-      : definitionId === "project.tasks"
-        ? ListTodo
-        : definitionId === "git.history"
-          ? History
-          : definitionId === "git.graph"
-            ? Network
-            : definitionId === "github.issues"
-              ? CircleDot
-              : definitionId === "github.pull-requests"
-                ? GitPullRequest
-                : CirclePlay;
+      : definitionId === "project.alerts"
+        ? Bell
+        : definitionId === "project.tasks"
+          ? ListTodo
+          : definitionId === "git.history"
+            ? History
+            : definitionId === "git.graph"
+              ? Network
+              : definitionId === "github.issues"
+                ? CircleDot
+                : definitionId === "github.pull-requests"
+                  ? GitPullRequest
+                  : CirclePlay;
   return <Icon {...props} />;
 }

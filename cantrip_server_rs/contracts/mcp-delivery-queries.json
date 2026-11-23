@@ -1,0 +1,59 @@
+{
+  "insert": {
+    "sql": "insert into \"chat_messages\" (\"id\", \"chat_id\", \"worktree_id\", \"scratch_root_id\", \"execution_lane_id\", \"sequence\", \"role\", \"mode\", \"content\", \"protected_content\", \"attachment_ids\", \"task_protected_content\", \"task_attachment_ids\", \"native_model_attribution\", \"model_id\", \"model_route_id\", \"provider_id\", \"provider_name\", \"provider_model_name\", \"reasoning_effort\", \"applied_reasoning_effort\", \"reasoning_adjusted\", \"idempotency_key\", \"created_at\") values ($1, $2, $3, $4, $5, default, $6, $7, $8, $9, $10, $11, default, default, default, default, default, default, default, $12, default, default, $13, default) returning \"id\", \"chat_id\", \"worktree_id\", \"scratch_root_id\", \"execution_lane_id\", \"sequence\", \"role\", \"mode\", \"content\", \"protected_content\", \"attachment_ids\", \"task_protected_content\", \"task_attachment_ids\", \"native_model_attribution\", \"model_id\", \"model_route_id\", \"provider_id\", \"provider_name\", \"provider_model_name\", \"reasoning_effort\", \"applied_reasoning_effort\", \"reasoning_adjusted\", \"idempotency_key\", \"created_at\"",
+    "parameters": [
+      {
+        "column": "id",
+        "json": false
+      },
+      {
+        "column": "chat_id",
+        "json": false
+      },
+      {
+        "column": "worktree_id",
+        "json": false
+      },
+      {
+        "column": "scratch_root_id",
+        "json": false
+      },
+      {
+        "column": "execution_lane_id",
+        "json": false
+      },
+      {
+        "column": "role",
+        "json": false
+      },
+      {
+        "column": "mode",
+        "json": false
+      },
+      {
+        "column": "content",
+        "json": true
+      },
+      {
+        "column": "protected_content",
+        "json": true
+      },
+      {
+        "column": "attachment_ids",
+        "json": true
+      },
+      {
+        "column": "task_protected_content",
+        "json": true
+      },
+      {
+        "column": "reasoning_effort",
+        "json": false
+      },
+      {
+        "column": "idempotency_key",
+        "json": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "target": "win32-x64",
+  "version": "1.1.3033",
+  "sourceCommit": "5c297936524bdf8a46277c2695d14d87dc3287b9",
+  "scope": "Cross-built Rust executable packaged and exercised after archive relocation inside the local Windows 11 x64 guest on macOS ARM64.",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "nodeAbsentFromServerPath": true,
+  "verifiedManifestFiles": 2281,
+  "embeddedPgliteRuntimeFallback": true,
+  "windowsLauncherEncodingVerified": true,
+  "archive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-3033/extracted/cantrip-server-1.1.3033-win32-x64.tar.gz",
+    "bytes": 97834158,
+    "sha256": "2ffc78f057894db161501d81a30158c47ce2a49eeb1c387681e7edceca67ab23"
+  },
+  "manifest": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-3033/extracted/native-server.json",
+    "bytes": 407860,
+    "sha256": "cbdf4e8c5278c40a15498ddaeabc4a3c46859cb88ac811a4968a906c7c6ea27f"
+  },
+  "executable": {
+    "path": "bin/cantrip-server.exe",
+    "bytes": 111516939,
+    "sha256": "7db41db230cef76099edf4364e4b8d6386188168c6811d6c85e420cf2589b7eb"
+  },
+  "report": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-3033/extracted/acceptance.json",
+    "bytes": 2734,
+    "sha256": "ecd047451f084bc8983e23c744ab6abf2b2572f2ed9eb7eaf17519b9798fe83d"
+  },
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-3033/media/inputs.json",
+    "bytes": 1985,
+    "sha256": "ea805038815fe1872a424f211982113823103e4d1b62bb8e0f7dfcb68a02b380"
+  },
+  "terminalReceipt": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-3033/extracted/terminal-receipt.json",
+    "bytes": 629,
+    "sha256": "cfd87fb00d9d8c60c5abdeca3b93b4a8204bdb1c49f2f7392618fcc5736547a9"
+  },
+  "acceptance": [
+    {
+      "mode": "pglite",
+      "engine": "pglite",
+      "settingsWriteAndRestart": true,
+      "migrationLauncher": true,
+      "sqlExport": {
+        "event": "database.export.completed",
+        "databaseEngine": "pglite",
+        "receipt": {
+          "format": "postgresql-sql",
+          "databaseEngine": "pglite",
+          "bytes": 493333,
+          "sha256": "248ed61da8ef255c8cbef9949f461368c1e7bdba496a119671e7aadd2b8efd33",
+          "psqlGuardsRemoved": 2,
+          "portableTransactionTimeout": true
+        }
+      },
+      "supervisionStdinClose": true,
+      "hostedReopen": true,
+      "dotenvAndProcessAndCliPrecedence": true
+    },
+    {
+      "mode": "bundled-postgres",
+      "engine": "postgres",
+      "settingsWriteAndRestart": true,
+      "migrationLauncher": true,
+      "sqlExport": {
+        "event": "database.export.completed",
+        "databaseEngine": "postgres",
+        "receipt": {
+          "format": "postgresql-sql",
+          "databaseEngine": "postgres",
+          "bytes": 493557,
+          "sha256": "0744335537042c8246f7a0ef2e1183881fcc4e972070d44fefc062c3e7373d51",
+          "psqlGuardsRemoved": 2,
+          "portableTransactionTimeout": true
+        }
+      },
+      "supervisionStdinClose": true,
+      "hostedReopen": true,
+      "dotenvAndProcessAndCliPrecedence": true
+    },
+    {
+      "mode": "postgres",
+      "engine": "postgres",
+      "settingsWriteAndRestart": true,
+      "migrationLauncher": true,
+      "sqlExport": {
+        "event": "database.export.completed",
+        "databaseEngine": "postgres",
+        "receipt": {
+          "format": "postgresql-sql",
+          "databaseEngine": "postgres",
+          "bytes": 493561,
+          "sha256": "409c1786cbf0230fc40f8e87efa57e1aab715ecea92d723103218e81008f3c93",
+          "psqlGuardsRemoved": 2,
+          "portableTransactionTimeout": true
+        }
+      },
+      "supervisionStdinClose": true,
+      "hostedReopen": true,
+      "dotenvAndProcessAndCliPrecedence": true
+    }
+  ]
+}

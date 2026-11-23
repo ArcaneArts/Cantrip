@@ -285,6 +285,20 @@ fn commit(state: &mut Command, action: &Value) -> Result<()> {
             "Source pane membership changed during transfer preparation.",
         ));
     }
+    // Use the source identity before a single-view return creates a new pane.
+    let previous = &state.window["returnPlacement"];
+    let original = if truthy(transfer.get("returnSplitId"))
+        && previous["sourceWindowId"] == destination["id"]
+        && (previous["detachedPaneId"] == source["id"]
+            || (previous["wholePane"] == true && previous["sourcePaneId"] == source["id"])
+            || (previous["detachedPaneId"].is_null()
+                && previous["wholePane"] == false
+                && values(&state.window, "panes").len() == 1))
+    {
+        Some(previous.clone())
+    } else {
+        None
+    };
     let mut moved = if transfer["wholePane"] == true {
         remove_pane(&mut state.window, &source);
         let mut moved = source.clone();
@@ -304,15 +318,6 @@ fn commit(state: &mut Command, action: &Value) -> Result<()> {
         }
     };
     if truthy(transfer.get("returnSplitId")) {
-        let previous = &state.window["returnPlacement"];
-        let original = if previous["sourceWindowId"] == destination["id"]
-            && (previous["detachedPaneId"] == moved["id"]
-                || (previous["wholePane"] == true && previous["sourcePaneId"] == moved["id"]))
-        {
-            Some(previous.clone())
-        } else {
-            None
-        };
         let original_pane = original
             .as_ref()
             .filter(|o| {
@@ -324,12 +329,30 @@ fn commit(state: &mut Command, action: &Value) -> Result<()> {
                     }
             })
             .and_then(|o| {
-                values(&destination, "panes")
+                let panes = values(&destination, "panes");
+                panes
                     .iter()
                     .find(|p| {
                         p["id"] == o["sourcePaneId"]
                             && (o["sourcePlacement"]["viewKind"] != "conversation"
                                 || (p["region"] == "center" && p["conversationView"].is_null()))
+                    })
+                    .or_else(|| {
+                        if o["sourcePlacement"]["viewKind"] == "conversation" {
+                            None
+                        } else {
+                            panes
+                                .iter()
+                                .find(|p| {
+                                    p["id"] == destination["focusedPaneId"]
+                                        && p["region"] == o["sourcePlacement"]["region"]
+                                })
+                                .or_else(|| {
+                                    panes
+                                        .iter()
+                                        .find(|p| p["region"] == o["sourcePlacement"]["region"])
+                                })
+                        }
                     })
                     .cloned()
             });
@@ -337,10 +360,14 @@ fn commit(state: &mut Command, action: &Value) -> Result<()> {
             if original.as_ref().unwrap()["sourcePlacement"]["viewKind"] == "conversation" {
                 pane["conversationView"] = moved["conversationView"].clone();
             } else {
-                let at = (original.as_ref().unwrap()["sourcePlacement"]["tabPosition"]
-                    .as_u64()
-                    .unwrap() as usize)
-                    .min(values(&pane, "tabs").len());
+                let at = if pane["id"] == original.as_ref().unwrap()["sourcePaneId"] {
+                    (original.as_ref().unwrap()["sourcePlacement"]["tabPosition"]
+                        .as_u64()
+                        .unwrap() as usize)
+                        .min(values(&pane, "tabs").len())
+                } else {
+                    values(&pane, "tabs").len()
+                };
                 tabs(&mut pane).splice(at..at, values(&moved, "tabs").to_vec());
             }
             let id = pane["id"].clone();

@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+if [ "$1" = remove ] || [ "$1" = purge ]; then
+    deb-systemd-helper disable cantrip-os-executor.service >/dev/null
+    if [ -d /run/systemd/system ]; then systemctl daemon-reload; fi
+fi
+# Instance identity, attachment preference and all workspace data are retained.

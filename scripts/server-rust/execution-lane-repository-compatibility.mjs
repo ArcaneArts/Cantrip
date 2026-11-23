@@ -34,6 +34,7 @@ let executable, pg, failure;
 const report = {
   suite: "actual-execution-lane-repositories",
   databaseMode,
+  root,
   completeReplacement: false,
   lifecycleComplete: false,
   cases: [],
@@ -835,7 +836,8 @@ try {
     await mkdir(path.dirname(p), { recursive: true });
     await writeFile(p, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(

@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 342b0cd381742103f57a93a281eca3eaee063978..b21d714b95353ab545fd328c2a563f732b7f4a36 100644
+index bda7c793ba38186ebd2e1ef109b98d85b3600247..7fd7a918046f7692f869a7eaa9cf37a7d307a4b4 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -429,9 +429,7 @@ impl TurnRequestProcessor {
+@@ -418,9 +418,7 @@ impl TurnRequestProcessor {
          request_id: &ConnectionRequestId,
          params: TurnPauseParams,
      ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
@@ -13,7 +13,7 @@ index 342b0cd381742103f57a93a281eca3eaee063978..b21d714b95353ab545fd328c2a563f73
      }
  
      pub(crate) async fn thread_realtime_start(
-@@ -1912,7 +1910,7 @@ impl TurnRequestProcessor {
+@@ -1712,7 +1710,7 @@ impl TurnRequestProcessor {
          &self,
          request_id: &ConnectionRequestId,
          params: TurnPauseParams,
@@ -22,16 +22,12 @@ index 342b0cd381742103f57a93a281eca3eaee063978..b21d714b95353ab545fd328c2a563f73
          let TurnPauseParams {
              thread_id,
              turn_id,
-@@ -1935,14 +1933,35 @@ impl TurnRequestProcessor {
+@@ -1735,14 +1733,35 @@ impl TurnRequestProcessor {
              .await
              .map_err(|err| internal_error(format!("failed to update turn pause state: {err}")))?;
          if paused {
 -            thread
 -                .wait_until_turn_pause_boundary()
--                .await
--                .map_err(|err| {
--                    internal_error(format!("failed to reach turn pause boundary: {err}"))
--                })?;
 +            // Keep validation and submission ordered with other thread mutations,
 +            // but release that queue before waiting for model/tool work to finish.
 +            // Otherwise Stop, steer and resume queue behind the very boundary
@@ -44,8 +40,12 @@ index 342b0cd381742103f57a93a281eca3eaee063978..b21d714b95353ab545fd328c2a563f73
 +                    Ok(()) => {
 +                        outgoing
 +                            .send_response(request_id, TurnPauseResponse { paused })
-+                            .await
-+                    }
+                 .await
+-                .map_err(|err| {
+-                    internal_error(format!("failed to reach turn pause boundary: {err}"))
+-                })?;
+         }
+-        Ok(TurnPauseResponse { paused })
 +                    Err(err) => {
 +                        outgoing
 +                            .send_error(
@@ -59,8 +59,7 @@ index 342b0cd381742103f57a93a281eca3eaee063978..b21d714b95353ab545fd328c2a563f73
 +                }
 +            });
 +            return Ok(None);
-         }
--        Ok(TurnPauseResponse { paused })
++        }
 +        Ok(Some(TurnPauseResponse { paused }.into()))
      }
  

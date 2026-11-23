@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { buildRustServer, repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment, startServer } from "./process.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
@@ -21,6 +21,7 @@ const uuid =
 const report = {
   schemaVersion: 1,
   suite: "authentication-http",
+  root,
   completeReplacement: false,
   profiles: [],
 };
@@ -912,7 +913,8 @@ try {
   };
 } finally {
   await postgresOwner?.close();
-  await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);

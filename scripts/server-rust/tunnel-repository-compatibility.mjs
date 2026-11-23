@@ -46,9 +46,11 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-tunnel-repository-")),
 const report = {
   suite: "actual-tunnel-attachment-repository",
   databaseMode,
+  root,
   completeReplacement: false,
   cases: [],
   snapshots: [],
+  cleanupFailures: [],
 };
 let executable,
   pg,
@@ -223,7 +225,9 @@ const rotate = (label, client = "client-main", extra = {}, options) =>
     options,
   );
 try {
-  executable = await buildRustExample("project-repository-fixture");
+  executable =
+    option("--executable") ??
+    (await buildRustExample("project-repository-fixture"));
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
   for (const [i, kind] of ["node", "rust"].entries()) {
@@ -606,11 +610,14 @@ try {
       [...(failure ? [failure] : []), ...errors],
       "Tunnel repository cleanup failed",
     );
-  await rm(root, { recursive: true, force: true });
+  report.cleanupFailures = errors.map((error) => error.stack ?? String(error));
+  report.passed = !failure;
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   }
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 console.log(
   JSON.stringify({

@@ -84,6 +84,7 @@ import { updateProjectWorktreePolicy } from "@/lib/project-encryption";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
 import { ProjectArchiveSettings } from "./project-archive-settings";
 import { ProjectReplicaSettings } from "./project-replica-settings";
+import { CantripOsSettings } from "./cantrip-os-settings";
 import { ExternalChatImportSettings } from "./external-chat-import";
 import { ProjectExportSettings } from "./project-export-settings";
 import { ProjectGithubConversion } from "./project-github-conversion";
@@ -102,6 +103,7 @@ export type ProjectSettingsSection =
   | "archive"
   | "automations"
   | "replicas"
+  | "cantrip-os"
   | "worktrees"
   | "tunnels"
   | "skills"
@@ -184,6 +186,21 @@ export const projectSettingsSections: readonly SettingsNavigationSection<Project
           label: "Worker replicas",
           description: "Manage source copies across connected workers.",
           keywords: ["sync clone machine"],
+        },
+      ],
+    },
+    {
+      id: "cantrip-os",
+      label: "CantripOS",
+      description: "Linux execution workspaces",
+      icon: SquareTerminal,
+      searchItems: [
+        {
+          id: "cantrip-os-sources",
+          label: "CantripOS sources",
+          description:
+            "Attach Linux, bind project files, and start a Linux agent.",
+          keywords: ["docker linux desktop workspace"],
         },
       ],
     },
@@ -533,6 +550,7 @@ export function ProjectSettingsPage({
   onOpenConversations,
   onOpenTunnelOwner,
   onOpenImportedChat,
+  onOpenDesktop,
   onOpenPolicySettings,
   onMobileSectionOpenChange,
   project,
@@ -557,6 +575,7 @@ export function ProjectSettingsPage({
   onOpenConversations?(): void;
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
   onOpenImportedChat(chatId: string): void;
+  onOpenDesktop?(desktopId: string): void;
   onOpenPolicySettings?(policyId?: string): void;
   onMobileSectionOpenChange?(open: boolean): void;
   project: ProjectSummary;
@@ -732,6 +751,15 @@ export function ProjectSettingsPage({
             ) : null}
             {section === "replicas" ? (
               <ProjectReplicaSettings project={project} workers={workers} />
+            ) : null}
+            {section === "cantrip-os" ? (
+              <CantripOsSettings
+                project={project}
+                workers={workers}
+                worktrees={worktrees}
+                onOpenAgent={onOpenImportedChat}
+                onOpenDesktop={onOpenDesktop}
+              />
             ) : null}
             {section === "policies" ? (
               <div

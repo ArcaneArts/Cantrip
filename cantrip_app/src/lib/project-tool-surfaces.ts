@@ -16,6 +16,7 @@ const definitionBySection = {
   overview: "project.overview",
   prs: "github.pull-requests",
   tasks: "project.tasks",
+  alerts: "project.alerts",
 } as const satisfies Record<
   ProjectOverviewSection,
   ProjectBuiltInSurfaceDefinitionId

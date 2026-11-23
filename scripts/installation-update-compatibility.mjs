@@ -219,10 +219,13 @@ export async function verifyRepositoryCompatibilityContracts({
     source(root, "cantrip_app/capacitor.config.ts"),
     source(root, "cantrip_app/android/app/build.gradle"),
     source(root, "cantrip_app/ios/App/App.xcodeproj/project.pbxproj"),
-    source(root, "cantrip_server/src/config.ts"),
-    source(root, "cantrip_server/src/db/index.ts"),
-    source(root, "cantrip_server/src/db/repository/workers.ts"),
-    source(root, "cantrip_server/src/db/schema.ts"),
+    Promise.all([
+      source(root, "cantrip_server_rs/src/config/mod.rs"),
+      source(root, "cantrip_server_rs/src/config/value.rs"),
+    ]).then((parts) => parts.join("\n")),
+    source(root, "cantrip_server_rs/src/database/startup.rs"),
+    source(root, "cantrip_server_rs/src/auth/repository.rs"),
+    source(root, "cantrip_server/drizzle/0100_giant_medusa.sql"),
     source(root, "cantrip_app/src/lib/installation-catalog.ts"),
     source(root, "cantrip_app/src/lib/browser-installation-storage.ts"),
     source(root, "cantrip_app/src/lib/client-encryption.ts"),
@@ -331,7 +334,7 @@ export async function verifyRepositoryCompatibilityContracts({
   );
   includes(
     serverSchema,
-    `sql\`\${table.formatVersion} = ${contract.encryption.profileFormatVersion}\``,
+    `"account_encryption_profiles"."format_version" = ${contract.encryption.profileFormatVersion}`,
     "Server encryption profile format",
   );
 
@@ -420,7 +423,7 @@ export async function verifyRepositoryCompatibilityContracts({
 
   includes(
     serverConfig,
-    `process.env.${contract.server.dataDirectoryEnvironment}`,
+    `"${contract.server.dataDirectoryEnvironment}"`,
     "Server data-directory environment",
   );
   includes(
@@ -430,17 +433,17 @@ export async function verifyRepositoryCompatibilityContracts({
   );
   includes(
     serverDatabase,
-    `path.join(config.dataDirectory, "${contract.server.databaseRelativePath}")`,
+    `.join("${contract.server.databaseRelativePath}")`,
     "Server database location",
   );
   includes(
     serverWorkers,
-    `SERVER_ID_STATE_KEY = "${contract.server.identityStateKey}"`,
+    `'${contract.server.identityStateKey}'`,
     "Server identity key",
   );
   includes(
-    serverSchema,
-    `pgTable("${contract.server.identityTable}"`,
+    serverWorkers,
+    `INTO ${contract.server.identityTable}(`,
     "Server identity table",
   );
 

@@ -27,6 +27,7 @@ const pair = [],
   report = {
     suite: "actual-project-target-repositories",
     databaseMode,
+    root,
     completeReplacement: false,
     cases: [],
   };
@@ -120,7 +121,9 @@ const catalog = (name, input = {}, code = null) =>
 const resolve = (name, target, input = {}, code = null) =>
   observe(name, { op: "target-resolve", target, ...input }, code);
 try {
-  executable = await buildRustExample("project-repository-fixture");
+  executable =
+    process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+    (await buildRustExample("project-repository-fixture"));
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
   for (const [i, kind] of ["node", "rust"].entries()) {
@@ -789,6 +792,7 @@ try {
   await (
     await import("./run-secret-repository-cases.mjs")
   ).runSecretCases({ pair, seed, report, owner, other });
+  report.passed = true;
 } catch (e) {
   failure = e;
   report.failure = { message: e.message, stack: e.stack };
@@ -816,8 +820,11 @@ try {
     });
     failure ??= error;
   }
-  if (failure) report.retainedRoot = root;
-  else await rm(root, { recursive: true, force: true });
+  if (failure) {
+    report.passed = false;
+    report.retainedRoot = root;
+  } else if (!process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");

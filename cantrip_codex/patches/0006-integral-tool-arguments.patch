@@ -1,5 +1,5 @@
 diff --git a/codex-rs/core/src/tools/code_mode/wait_handler.rs b/codex-rs/core/src/tools/code_mode/wait_handler.rs
-index b0e447913434a4052153ee45f683995a77f49160..4821c675c6cf99ac3fe0402296480e3ae0a6de2e 100644
+index 1623d4e427804b273291b3d4b56b42e3897e0ac7..302c97501740dfd2df7991c0557a3f99e6f5861b 100644
 --- a/codex-rs/core/src/tools/code_mode/wait_handler.rs
 +++ b/codex-rs/core/src/tools/code_mode/wait_handler.rs
 @@ -5,6 +5,7 @@ use crate::tools::context::ToolInvocation;
@@ -10,7 +10,7 @@ index b0e447913434a4052153ee45f683995a77f49160..4821c675c6cf99ac3fe0402296480e3a
  use crate::tools::registry::CoreToolRuntime;
  use crate::tools::registry::PostToolUsePayload;
  use crate::tools::registry::PreToolUsePayload;
-@@ -39,15 +40,6 @@ fn default_wait_yield_time_ms() -> u64 {
+@@ -41,15 +42,6 @@ fn default_wait_yield_time_ms() -> u64 {
      DEFAULT_WAIT_YIELD_TIME_MS
  }
  
@@ -27,7 +27,7 @@ index b0e447913434a4052153ee45f683995a77f49160..4821c675c6cf99ac3fe0402296480e3a
      fn tool_name(&self) -> ToolName {
          ToolName::plain(WAIT_TOOL_NAME)
 diff --git a/codex-rs/core/src/tools/code_mode/wait_spec.rs b/codex-rs/core/src/tools/code_mode/wait_spec.rs
-index 01b713e515c1aed3a43d4aac5e0afae84db07958..34f93d8bd324ae2d577dd37c5a714f828834bf21 100644
+index b1ec01f1779e4fbe65a34bbb578216b3ce47c01a..62c4aa57baec87ccaf1ca040b7b80930b0281e0a 100644
 --- a/codex-rs/core/src/tools/code_mode/wait_spec.rs
 +++ b/codex-rs/core/src/tools/code_mode/wait_spec.rs
 @@ -14,13 +14,13 @@ pub(crate) fn create_wait_tool(
@@ -65,10 +65,10 @@ index 01b713e515c1aed3a43d4aac5e0afae84db07958..34f93d8bd324ae2d577dd37c5a714f82
                                      .to_string(),
                              )),
 diff --git a/codex-rs/core/src/tools/handlers/mod.rs b/codex-rs/core/src/tools/handlers/mod.rs
-index 710c089b8a5481b6a69b19047d677e7f19bf419c..aba9718c59c90b3219bc438f744e6b6ffbc3556c 100644
+index 862582ec44bf5738ce436a7ff06a7014fc810736..b9e6b4c6d404a9f553f782461580abdd618ce98c 100644
 --- a/codex-rs/core/src/tools/handlers/mod.rs
 +++ b/codex-rs/core/src/tools/handlers/mod.rs
-@@ -44,8 +44,9 @@ use codex_sandboxing::policy_transforms::normalize_additional_permissions_with_c
+@@ -46,8 +46,9 @@ use codex_sandboxing::policy_transforms::normalize_additional_permissions_with_c
  use codex_utils_absolute_path::AbsolutePathBuf;
  use codex_utils_absolute_path::AbsolutePathBufGuard;
  use codex_utils_path_uri::PathUri;
@@ -78,8 +78,8 @@ index 710c089b8a5481b6a69b19047d677e7f19bf419c..aba9718c59c90b3219bc438f744e6b6f
 +use serde_json::Number;
  use serde_json::Value;
  
- use crate::function_tool::FunctionCallError;
-@@ -85,11 +86,71 @@ pub use wait_for_environment::WaitForEnvironmentToolConfig;
+ use crate::environment_selection::TurnEnvironmentSnapshot;
+@@ -89,11 +90,71 @@ pub use wait_for_environment::WaitForEnvironmentToolConfig;
  
  pub(crate) fn parse_arguments<T>(arguments: &str) -> Result<T, FunctionCallError>
  where
@@ -155,7 +155,7 @@ index 710c089b8a5481b6a69b19047d677e7f19bf419c..aba9718c59c90b3219bc438f744e6b6f
  }
  
  fn resolve_sandbox_permissions(
-@@ -151,7 +212,7 @@ fn parse_arguments_with_base_path<T>(
+@@ -155,7 +216,7 @@ fn parse_arguments_with_base_path<T>(
      base_path: &AbsolutePathBuf,
  ) -> Result<T, FunctionCallError>
  where
@@ -164,7 +164,7 @@ index 710c089b8a5481b6a69b19047d677e7f19bf419c..aba9718c59c90b3219bc438f744e6b6f
  {
      let _guard = AbsolutePathBufGuard::new(base_path);
      parse_arguments(arguments)
-@@ -399,6 +460,7 @@ mod tests {
+@@ -430,6 +491,7 @@ mod tests {
      use super::EffectiveAdditionalPermissions;
      use super::implicit_granted_permissions;
      use super::normalize_and_validate_additional_permissions;
@@ -172,7 +172,7 @@ index 710c089b8a5481b6a69b19047d677e7f19bf419c..aba9718c59c90b3219bc438f744e6b6f
      use super::preapproved_permission_profile;
      use crate::sandboxing::SandboxPermissions;
      use codex_protocol::models::AdditionalPermissionProfile;
-@@ -416,8 +478,39 @@ mod tests {
+@@ -447,8 +509,39 @@ mod tests {
      use codex_utils_absolute_path::AbsolutePathBuf;
      use codex_utils_path_uri::PathUri;
      use pretty_assertions::assert_eq;
@@ -235,7 +235,7 @@ index edc9467b4d02cc023d8961373637116cf8ba6f6f..fdeab4ced37e6ef7011860965164f4af
              options.default_timeout_ms, options.min_timeout_ms, options.max_timeout_ms,
          ))),
 diff --git a/codex-rs/core/src/tools/handlers/multi_agents_spec_tests.rs b/codex-rs/core/src/tools/handlers/multi_agents_spec_tests.rs
-index ad685919f91fe7fa3ac9b6ec301a8863898a3515..a1e3928a5044fc93665245db245262e0424f3cfa 100644
+index d74729ef218b40dd244f1497e34439c765bfcdae..a1df1d0730dd84ab0b4330de636ea7ec27c5bdfb 100644
 --- a/codex-rs/core/src/tools/handlers/multi_agents_spec_tests.rs
 +++ b/codex-rs/core/src/tools/handlers/multi_agents_spec_tests.rs
 @@ -346,6 +346,12 @@ fn wait_agent_tool_v2_uses_timeout_only_summary_output() {
@@ -252,10 +252,10 @@ index ad685919f91fe7fa3ac9b6ec301a8863898a3515..a1e3928a5044fc93665245db245262e0
          "Does not return the content; returns either a summary of which agents have updates (if any)"
      ));
 diff --git a/codex-rs/core/src/tools/handlers/shell_spec.rs b/codex-rs/core/src/tools/handlers/shell_spec.rs
-index ac3dcf992655b18ea42bfa9c068d7b9b11b989d7..3f3b4e082d9658ff47ccef194c7c757c4924db85 100644
+index 264a214f620c43edb1e26f13a8837c711339f25d..48221b1b4a17e4db071c25793416f2605ded8734 100644
 --- a/codex-rs/core/src/tools/handlers/shell_spec.rs
 +++ b/codex-rs/core/src/tools/handlers/shell_spec.rs
-@@ -53,11 +53,11 @@ pub(crate) fn create_exec_command_tool_with_environment_id(
+@@ -50,11 +50,11 @@ pub(crate) fn create_exec_command_tool_with_environment_id(
          ),
          (
              "yield_time_ms".to_string(),
@@ -269,7 +269,7 @@ index ac3dcf992655b18ea42bfa9c068d7b9b11b989d7..3f3b4e082d9658ff47ccef194c7c757c
                  "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.".to_string(),
              )),
          ),
-@@ -118,7 +118,7 @@ pub fn create_write_stdin_tool() -> ToolSpec {
+@@ -111,7 +111,7 @@ pub fn create_write_stdin_tool() -> ToolSpec {
      let properties = BTreeMap::from([
          (
              "session_id".to_string(),
@@ -278,7 +278,7 @@ index ac3dcf992655b18ea42bfa9c068d7b9b11b989d7..3f3b4e082d9658ff47ccef194c7c757c
                  "Identifier of the running unified exec session.".to_string(),
              )),
          ),
-@@ -130,13 +130,13 @@ pub fn create_write_stdin_tool() -> ToolSpec {
+@@ -123,13 +123,13 @@ pub fn create_write_stdin_tool() -> ToolSpec {
          ),
          (
              "yield_time_ms".to_string(),
@@ -295,10 +295,10 @@ index ac3dcf992655b18ea42bfa9c068d7b9b11b989d7..3f3b4e082d9658ff47ccef194c7c757c
              )),
          ),
 diff --git a/codex-rs/core/src/tools/handlers/shell_spec_tests.rs b/codex-rs/core/src/tools/handlers/shell_spec_tests.rs
-index c3d1afffffd49a7e8b22ea481ce2b55bc267317f..691e5c63a2f585d8313be52967021e14ecf8216d 100644
+index 7f8007b17f61982c80613525a47aab3542b56fb8..ba491ad94d3814457e07dd11d84a58081e03c755 100644
 --- a/codex-rs/core/src/tools/handlers/shell_spec_tests.rs
 +++ b/codex-rs/core/src/tools/handlers/shell_spec_tests.rs
-@@ -55,11 +55,11 @@ fn exec_command_tool_matches_expected_spec() {
+@@ -54,11 +54,11 @@ fn exec_command_tool_matches_expected_spec() {
          ),
          (
              "yield_time_ms".to_string(),
@@ -312,7 +312,7 @@ index c3d1afffffd49a7e8b22ea481ce2b55bc267317f..691e5c63a2f585d8313be52967021e14
                      "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.".to_string(),
                  )),
          ),
-@@ -98,7 +98,7 @@ fn write_stdin_tool_matches_expected_spec() {
+@@ -97,7 +97,7 @@ fn write_stdin_tool_matches_expected_spec() {
      let properties = BTreeMap::from([
          (
              "session_id".to_string(),
@@ -321,7 +321,7 @@ index c3d1afffffd49a7e8b22ea481ce2b55bc267317f..691e5c63a2f585d8313be52967021e14
                  "Identifier of the running unified exec session.".to_string(),
              )),
          ),
-@@ -110,13 +110,13 @@ fn write_stdin_tool_matches_expected_spec() {
+@@ -109,13 +109,13 @@ fn write_stdin_tool_matches_expected_spec() {
          ),
          (
              "yield_time_ms".to_string(),
@@ -447,7 +447,7 @@ index c607ae0762be2b08c3b95d169a7e77285ffb6e1c..51a253f279212dc63c1bdf77bdd53f4f
                                          .to_string(),
                                  ),),
 diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.rs
-index a7a192815b6a2f45e96b6903f133e5564306a419..d816611443e5cd9c49efcaa388f0cf9dd10db44c 100644
+index 36fbfe442724f9f0ae7b003f336a104713591880..673a40c5974904fdfa789e3f01ce79f9f0a72fa6 100644
 --- a/codex-rs/core/src/tools/router.rs
 +++ b/codex-rs/core/src/tools/router.rs
 @@ -279,11 +279,13 @@ impl ToolRouter {
@@ -455,22 +455,19 @@ index a7a192815b6a2f45e96b6903f133e5564306a419..d816611443e5cd9c49efcaa388f0cf9d
              } if execution == "client" => {
                  let arguments: SearchToolCallParams =
 -                    serde_json::from_value(arguments).map_err(|err| {
--                        FunctionCallError::RespondToModel(format!(
--                            "failed to parse tool_search arguments: {err}"
--                        ))
--                    })?;
 +                    crate::tools::handlers::deserialize_tool_arguments(arguments).map_err(
 +                        |err| {
-+                            FunctionCallError::RespondToModel(format!(
-+                                "failed to parse tool_search arguments: {err}"
-+                            ))
+                         FunctionCallError::RespondToModel(format!(
+                             "failed to parse tool_search arguments: {err}"
+                         ))
+-                    })?;
 +                        },
 +                    )?;
                  Ok(Some(ToolCall {
                      tool_name: ToolName::plain("tool_search"),
                      call_id,
 diff --git a/codex-rs/core/src/tools/router_tests.rs b/codex-rs/core/src/tools/router_tests.rs
-index aff6d416600a75ce43c72aa32c580db10d9d97de..df71d5b491dea8362f8d33f98e8cc35cc537a8d1 100644
+index 498fe970570ae2f63df7e536742a8a1d22d3ec5f..4a66016da372edde0a4f7592be0ea689f58a195a 100644
 --- a/codex-rs/core/src/tools/router_tests.rs
 +++ b/codex-rs/core/src/tools/router_tests.rs
 @@ -241,6 +241,29 @@ async fn build_tool_call_uses_namespace_for_registry_name() -> anyhow::Result<()

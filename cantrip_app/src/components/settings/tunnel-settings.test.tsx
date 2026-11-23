@@ -236,4 +236,112 @@ describe("tunnel settings", () => {
     expect(markup).toContain("Managed by browser");
     expect(markup).toContain("Local port attachments are available");
   });
+
+  it("shows Host and captured Linux routes together and searches the Linux destination", () => {
+    const source = {
+      bindingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      worktreeId: "worktree-linux",
+      bindingGeneration: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      attachmentGeneration: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      runtimeGeneration: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    };
+    const host = tunnel("host", { name: "Host preview" });
+    const linux = tunnel("linux", {
+      name: "Linux preview",
+      osSource: source,
+      destination: {
+        kind: "worker-os-tcp",
+        workerId: "worker-1",
+        port: 3_000,
+        source,
+      },
+    });
+    const vnc = tunnel("vnc", {
+      name: "Linux desktop",
+      osSource: source,
+      destination: { kind: "worker-os-vnc", workerId: "worker-1", source },
+    });
+    expect(tunnelMatchesSearch(vnc, "vnc", new Map(), new Map())).toBe(true);
+    expect(
+      tunnelLocalUrl(vnc, {
+        localHost: "127.0.0.1",
+        localPort: 45900,
+      } as DesktopTunnelForwardSummary),
+    ).toBeNull();
+    expect(tunnelMatchesSearch(linux, "cantripos", new Map(), new Map())).toBe(
+      true,
+    );
+    expect(tunnelMatchesSearch(linux, "3000", new Map(), new Map())).toBe(true);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    client.setQueryData(["tunnels"], [host, linux, vnc]);
+    client.setQueryData(["projects"], []);
+    client.setQueryData(["workers"], []);
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TunnelSettings />
+      </QueryClientProvider>,
+    );
+    expect(markup).toContain("Host preview");
+    expect(markup).toContain("Linux preview");
+    expect(markup).toContain("Linux desktop");
+    expect(markup).toContain("VNC");
+    expect(markup).toContain("CantripOS");
+    expect(markup).toContain(":3000");
+  });
+});
+
+it("starts Guest-to-Host routes in a browser while keeping Host local ports Native-only", () => {
+  const source = {
+    bindingId: "binding",
+    worktreeId: "worktree",
+    bindingGeneration: "binding-generation",
+    attachmentGeneration: "attachment-generation",
+    runtimeGeneration: "runtime",
+  };
+  const reverse = tunnel("reverse", {
+    name: "Reverse browser route",
+    source: {
+      kind: "worker-os-listener",
+      workerId: "worker-1",
+      source,
+      port: 51567,
+    },
+    osSource: source,
+  });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(
+    ["tunnels"],
+    [tunnel("host-browser", { name: "Host browser route" }), reverse],
+  );
+  client.setQueryData(["projects"], []);
+  client.setQueryData(
+    ["workers"],
+    [{ workerId: "worker-1", name: "Studio Mac", online: true }],
+  );
+  const markup = renderToStaticMarkup(
+    <QueryClientProvider client={client}>
+      <TunnelSettings />
+    </QueryClientProvider>,
+  );
+  const button = (name: string) =>
+    markup.match(
+      new RegExp(`<button[^>]*aria-label="Start ${name}"[^>]*>`),
+    )?.[0];
+  expect(button("Reverse browser route")).toBeDefined();
+  expect(button("Reverse browser route")).not.toContain('disabled=""');
+  expect(button("Host browser route")).toContain('disabled=""');
+  expect(markup).toContain("CantripOS :51567 → Host");
+  expect(tunnelMatchesSearch(reverse, "51567", new Map(), new Map())).toBe(
+    true,
+  );
+  expect(
+    tunnelLocalUrl(reverse, {
+      localHost: "127.0.0.1",
+      localPort: 51567,
+    } as DesktopTunnelForwardSummary),
+  ).toBeNull();
 });

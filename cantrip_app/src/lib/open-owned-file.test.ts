@@ -192,6 +192,41 @@ it("does not invent a worker binding when the selected worktree is absent", asyn
   ).toEqual([]);
 });
 
+it("opens captured OS files with their supplied worker without a host worktree lookup", async () => {
+  vi.mocked(getProjectWorktrees).mockResolvedValue([]);
+  vi.mocked(createFileDocument).mockResolvedValue({
+    ...resource,
+    workerId: "os-worker",
+    cantripOsBindingId: "binding",
+    cantripOsRuntimeGeneration: "generation",
+  });
+  const input = fixture();
+  await openOwnedFile({
+    ...input,
+    workerId: "os-worker",
+    cantripOsBindingId: "binding",
+    cantripOsRuntimeGeneration: "generation",
+  });
+  expect(getProjectWorktrees).not.toHaveBeenCalled();
+  expect(surfaceTitleEncryption.fileDocumentId).toHaveBeenCalledWith({
+    projectId: "project",
+    workerId: "os-worker",
+    worktreeId: "tree",
+    path: "src/lib.rs",
+    cantripOsBindingId: "binding",
+    cantripOsRuntimeGeneration: "generation",
+  });
+  expect(createFileDocument).toHaveBeenCalledWith({
+    id: "scoped-document-id",
+    projectId: "project",
+    workerId: "os-worker",
+    worktreeId: "tree",
+    path: "src/lib.rs",
+    cantripOsBindingId: "binding",
+    cantripOsRuntimeGeneration: "generation",
+  });
+});
+
 it("does not interpret a catalog failure as permission to create a duplicate", async () => {
   vi.mocked(getFileDocuments).mockRejectedValue(
     new Error("catalog unavailable"),
@@ -304,4 +339,27 @@ it("does not attach a late-created resource after its controller is disposed", a
     input.queryClient.getQueryData(["file-documents", "project"]),
   ).toBeUndefined();
   expect(input.focusWindow).not.toHaveBeenCalled();
+});
+
+it("reopens the same immutable document with an explicit format without changing its path or bytes", async () => {
+  const input = fixture();
+  await openOwnedFile({ ...input, viewer: "json" });
+  let owned =
+    input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs;
+  expect(owned).toHaveLength(1);
+  expect(owned[0]).toMatchObject({
+    fileViewer: "json",
+    fileMode: "visual",
+    resource: { resourceId: resource.id },
+  });
+  await openOwnedFile(input);
+  expect(
+    input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs[0]!
+      .fileViewer,
+  ).toBe("json");
+  await openOwnedFile({ ...input, viewer: null });
+  owned =
+    input.controller.getSnapshot().authoritative.windows[0]!.panes[0]!.tabs;
+  expect(owned).toHaveLength(1);
+  expect(owned[0]).toMatchObject({ fileViewer: null, fileMode: "edit" });
 });

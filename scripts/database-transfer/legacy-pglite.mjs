@@ -24,6 +24,7 @@ export async function exportLegacyPglite({ source, output }) {
     const copy = path.join(temporary, "database");
     await cp(source, copy, {
       recursive: true,
+      dereference: true,
       force: false,
       errorOnExist: true,
       mode: constants.COPYFILE_FICLONE,

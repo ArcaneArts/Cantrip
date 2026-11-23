@@ -1,0 +1,182 @@
+// Actual worker-authenticated HTTP routes, canonical persistence and unchanged
+// worker queue client. Native execution/product acceptance is tracked separately.
+import assert from "node:assert/strict";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { buildRustServer, buildRustExample } from "./build.mjs";
+import { postgresFixture } from "./postgres-fixture.mjs";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
+import { password } from "./security-fixtures.mjs";
+import {
+  settingsHttpFixture,
+  settingsWorker as worker,
+  until,
+} from "./native-settings-http-fixture.mjs";
+import {
+  seedEventChats,
+  prepareEventCommands,
+} from "./native-event-http-setup.mjs";
+import { literal } from "./project-target-state.mjs";
+import { ManagedNativeQueueClient } from "../../tests/reference-node-worker/src/managed-native-queue-client.ts";
+import { nativeQueueHttpCases } from "./native-queue-http-cases.mjs";
+
+const option = (key) => {
+  const index = process.argv.indexOf(key);
+  return index < 0 ? undefined : process.argv[index + 1];
+};
+const databaseMode = option("--database") ?? "pglite";
+const standalone = process.argv.includes("--standalone");
+const root = await mkdtemp(path.join(tmpdir(), "cantrip-native-queue-http-"));
+const report = {
+  suite: "actual-native-queue-http",
+  databaseMode,
+  bootstrapMode: standalone ? "standalone" : "pnpm-dev",
+  root,
+  completeReplacement: false,
+  profiles: [],
+};
+let pg, active, failure;
+try {
+  const executable =
+      process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
+    repositoryExecutable =
+      process.env.CANTRIP_RUST_PROJECT_REPOSITORY_BINARY ??
+      (await buildRustExample("project-repository-fixture")),
+    passwordHash = await hashPassword(password);
+  if (databaseMode !== "pglite")
+    pg = await postgresFixture(path.join(root, "postgres"));
+  for (const profile of ["none", "password", "accounts"].filter(
+    (p) => !option("--profile") || p === option("--profile"),
+  )) {
+    const outputs = [];
+    report.profiles.push({ profile, outputs });
+    for (const kind of ["node", "rust"]) {
+      const result = {
+        kind,
+        observations: [],
+        cryptoProofs: 0,
+        workerSdkOperations: 0,
+        sdkObservations: [],
+        queueNotifications: 0,
+        queueNotificationRevisions: [],
+      };
+      outputs.push(result);
+      let client;
+      const h = (active = await settingsHttpFixture({
+        kind,
+        profile,
+        root,
+        executable,
+        repositoryExecutable,
+        databaseMode,
+        passwordHash,
+        environment: standalone
+          ? {
+              CANTRIP_BOOTSTRAP_MODE: "standalone",
+              CANTRIP_WORKER_TOKEN: undefined,
+            }
+          : {},
+        url:
+          pg && (kind === "node" || databaseMode === "postgres")
+            ? await pg.database()
+            : undefined,
+        result,
+        configure: (owner) => [
+          ...seedEventChats(owner),
+          `INSERT INTO model_profiles(id,owner_id,name) VALUES('queue-model',${literal(owner)},'Controlled native queue')`,
+        ],
+        onCommand: async (command) => {
+          if (command.type === "chat.queue.changed") {
+            assert.ok(client, "actual queue client initialized");
+            const snapshot = await client.read({
+              session: h.prepared[command.chatId].session,
+            });
+            assert.equal(snapshot.revision, command.revision);
+            result.queueNotifications++;
+            result.queueNotificationRevisions.push(command.revision);
+            return null;
+          }
+        },
+      }));
+      try {
+        client = new ManagedNativeQueueClient({
+          serverUrl: h.fixture.server.origin,
+          workerId: worker,
+          token: () => h.credential,
+        });
+        h.prepared = await prepareEventCommands(h);
+        let previousRevision = -1;
+        await nativeQueueHttpCases({
+          h,
+          client,
+          result,
+          async observeRevision(revision) {
+            if (!Number.isInteger(revision) || revision <= previousRevision)
+              return;
+            // The empty read creates revision zero. Let the same outbox
+            // deliver it before a mutation can supersede it on either peer.
+            await until(
+              () => result.queueNotificationRevisions.at(-1),
+              (notifiedRevision) => notifiedRevision === revision,
+            );
+            previousRevision = revision;
+          },
+        });
+        await h.live.ping("complete canonical queue effects");
+        result.rawQueueEvents = h.live.history.filter(
+          (event) => event.type === "event" && event.resource === "chat-queue",
+        );
+        assert.deepEqual(
+          result.queueNotificationRevisions,
+          [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        );
+        assert.equal(
+          result.rawQueueEvents.length,
+          11 + result.queueNotificationRevisions.length,
+          "direct HTTP invalidations and committed outbox invalidations",
+        );
+        result.queueEvents = result.rawQueueEvents.map(({ cursor, ...event }) =>
+          h.fixture.normalize(event),
+        );
+        result.diagnostics = h.diagnostics();
+      } finally {
+        await h.close();
+        active = null;
+      }
+    }
+    for (const key of [
+      "observations",
+      "cryptoProofs",
+      "workerSdkOperations",
+      "sdkObservations",
+      "queueEvents",
+      "queueNotificationRevisions",
+    ])
+      assert.deepEqual(outputs[1][key], outputs[0][key], profile + " " + key);
+  }
+  report.passed = true;
+} catch (error) {
+  failure = error;
+  report.failure = { message: error.message, stack: error.stack };
+  report.retainedRoot = root;
+  report.diagnostics = active?.diagnostics();
+} finally {
+  await active?.close().catch(() => {});
+  await pg?.close();
+  if (option("--report")) {
+    const file = path.resolve(option("--report"));
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, JSON.stringify(report, null, 2) + "\n");
+  }
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
+}
+if (failure) throw failure;
+console.log(
+  JSON.stringify({
+    passed: true,
+    databaseMode,
+    profiles: report.profiles.length,
+  }),
+);

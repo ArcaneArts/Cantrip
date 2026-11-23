@@ -1,12 +1,32 @@
+import { taskInputWireCases } from "./task-input-wire-fixtures.mjs";
 // Only development tests invoke this process. Expectations execute the actual
 // exported protocol schemas, not the native manifest or its interpreter.
 import * as protocol from "../../packages/protocol/dist/index.js";
-import { buildContractManifest, sourceContractSchema } from "./contracts.mjs";
-import { securityFixtures } from "./security-fixtures.mjs";
+import { cantripOsWireCases } from "./cantrip-os-wire-fixtures.mjs";
+import {
+  buildContractManifest,
+  runMcpContractRoots,
+  sourceContractSchema,
+} from "./contracts.mjs";
+import {
+  agentOperationWireCases,
+  projectChatWireCases,
+  securityFixtures,
+} from "./security-fixtures.mjs";
 import { usageQueryCases } from "./usage-wire-fixtures.mjs";
 import { settingsWireCases } from "./settings-wire-fixtures.mjs";
 import { nativeSettingsWireCases } from "./native-settings-fixtures.mjs";
 import { nativeEventWireCases } from "./native-event-http-wire-fixtures.mjs";
+import { nativeHistoryWireCases } from "./native-history-wire-fixtures.mjs";
+import { terminalWireCases } from "./terminal-wire-fixtures.mjs";
+import { turnOrchestrationWireCases } from "./turn-orchestration-wire-fixtures.mjs";
+import { taskWireCases } from "./task-wire-fixtures.mjs";
+import { publicChatWireCases } from "./public-chat-wire-fixtures.mjs";
+import { projectAutomationWireCases } from "./project-automation-wire-fixtures.mjs";
+import { endpointProviderWireCases } from "./endpoint-provider-wire-fixtures.mjs";
+import { mcpCompatibleWireCases } from "./mcp-compatible-wire-fixtures.mjs";
+import { runMcpInputWireCases } from "./run-wire-fixtures.mjs";
+import { cliWireCases } from "./cli-wire-fixtures.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -55,10 +75,27 @@ export function* vectorCases(name, samples = securityFixtures[name]) {
     };
   }
   yield prepare(undefined, false);
+  for (const input of runMcpInputWireCases(name, samples)) yield prepare(input);
+  for (const input of cliWireCases(name)) yield prepare(input);
+  for (const input of mcpCompatibleWireCases(name, samples))
+    yield prepare(input);
+  for (const input of endpointProviderWireCases(name)) yield prepare(input);
+  for (const input of agentOperationWireCases(name)) yield prepare(input);
+  for (const input of projectChatWireCases(name)) yield prepare(input);
+  for (const input of cantripOsWireCases(name)) yield prepare(input);
   for (const input of usageQueryCases(name)) yield prepare(input);
   for (const input of settingsWireCases(name)) yield prepare(input);
   for (const input of nativeSettingsWireCases(name)) yield prepare(input);
   for (const input of nativeEventWireCases(name)) yield prepare(input);
+  for (const input of nativeHistoryWireCases(name)) yield prepare(input);
+  for (const input of terminalWireCases(name, samples)) yield prepare(input);
+  for (const input of turnOrchestrationWireCases(name, samples))
+    yield prepare(input);
+  for (const input of taskWireCases(name, samples)) yield prepare(input);
+  for (const input of taskInputWireCases(name)) yield prepare(input);
+  for (const input of publicChatWireCases(name, samples)) yield prepare(input);
+  for (const input of projectAutomationWireCases(name, samples))
+    yield prepare(input);
   for (const input of [null, [], {}, false, 42, ""]) yield prepare(input);
   for (const sample of samples) {
     const baseline = schema.parse(sample);
@@ -155,6 +192,20 @@ function jsonVectors() {
   ];
   for (let unit = 0; unit <= 65535; unit++)
     raw.push(`"\\u${unit.toString(16).padStart(4, "0")}"`);
+  for (const length of [63, 64, 65, 4096, 16384, 65536]) {
+    for (const pattern of [
+      "x",
+      "valid UTF-8 \u0080雪🦀",
+      '\u0000\b\t\n\f\r"\\\u2028\u2029',
+      "\ud800x\udfff",
+    ]) {
+      const value = pattern
+        .repeat(Math.ceil(length / pattern.length))
+        .slice(0, length);
+      raw.push(JSON.stringify(value));
+      raw.push(JSON.stringify({ [value]: { value }, again: [value] }));
+    }
+  }
   const bytes = new ArrayBuffer(8),
     view = new DataView(bytes);
   let state = 0x1ba5e;
@@ -182,6 +233,10 @@ if (
     process.stdout.write(JSON.stringify(securityFixtures));
   else if (process.argv.includes("--manifest"))
     process.stdout.write(JSON.stringify(buildContractManifest()));
+  else if (process.argv.includes("--run-manifest"))
+    process.stdout.write(
+      JSON.stringify(buildContractManifest(runMcpContractRoots)),
+    );
   else if (process.argv.includes("--vectors"))
     process.stdout.write(JSON.stringify(vectors(process.argv.at(-1))));
   else {

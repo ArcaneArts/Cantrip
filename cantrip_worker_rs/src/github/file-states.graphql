@@ -1,0 +1,12 @@
+
+  query CantripPullRequestFileStates(
+    $owner: String!
+    $repository: String!
+    $number: Int!
+  ) {
+    repository(owner: $owner, name: $repository) {
+      pullRequest(number: $number) {
+        files(first: 100) { nodes { path viewerViewedState } }
+      }
+    }
+  }

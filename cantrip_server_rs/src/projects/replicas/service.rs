@@ -1,10 +1,8 @@
 use super::*;
+use crate::workers::transport::WorkerTransport;
 use crate::{
     live::LiveService,
-    workers::{
-        bridge::WorkerBridge,
-        command_bus::{CommandFailure, LimitedCommandBus},
-    },
+    workers::command_bus::{CommandFailure, LimitedCommandBus},
 };
 use std::{sync::Mutex, time::Duration};
 use tokio::sync::{Notify, watch};
@@ -20,7 +18,7 @@ struct State {
 pub struct ReplicaService {
     pub repository: ReplicaRepository,
     pub(super) commands: Arc<LimitedCommandBus>,
-    pub(super) bridge: Arc<WorkerBridge>,
+    pub(super) bridge: Arc<dyn WorkerTransport>,
     live: Arc<LiveService>,
     observations: Arc<crate::projects::observations::Service>,
     state: Mutex<State>,
@@ -62,7 +60,7 @@ impl ReplicaService {
     pub fn new(
         database: Arc<Database>,
         commands: Arc<LimitedCommandBus>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         live: Arc<LiveService>,
         observations: Arc<crate::projects::observations::Service>,
     ) -> Arc<Self> {
@@ -78,7 +76,10 @@ impl ReplicaService {
         })
     }
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        self.repository.recover(true, crate::auth::now()).await?;
+        self.start_with_recovery(true).await
+    }
+    pub async fn start_with_recovery(self: &Arc<Self>, force: bool) -> Result<()> {
+        self.repository.recover(force, crate::auth::now()).await?;
         self.queue();
         let service = Arc::downgrade(self);
         let mut stop = self.stop.subscribe();
@@ -223,6 +224,9 @@ impl ReplicaService {
                     }
                 });
                 let offline = bridge.is_some_and(|e| e.unavailable);
+                let claim_replaced = bridge.is_some_and(|e| {
+                    e.unavailable && e.code.as_deref() == Some("worker-relay-claim-replaced")
+                });
                 let error = json!({"code":if offline {"worker-offline"}else{"worker-error"},"retryable":true});
                 let settled = if offline {
                     self.repository.block(&id, &command, &error).await
@@ -230,7 +234,14 @@ impl ReplicaService {
                     self.repository.fail(&id, &command, &error).await
                 };
                 match settled {
-                    Ok(job) => self.publish(&text(&claimed["ownerId"])?, &job),
+                    Ok(job) => {
+                        self.publish(&text(&claimed["ownerId"])?, &job);
+                        if claim_replaced {
+                            // The new socket can finish its requeue sweep before the
+                            // previous command records its blocked transition.
+                            self.worker_connected(text(&job["workerId"])?);
+                        }
+                    }
                     Err(e)
                         if e.downcast_ref::<ReplicaError>()
                             .is_some_and(|e| matches!(e, ReplicaError::Stale(_))) => {}

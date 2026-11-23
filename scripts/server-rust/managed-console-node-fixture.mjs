@@ -1,19 +1,19 @@
 // Actual reference routing/console services over the disposable real repository.
 import { createRequire } from "node:module";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { sql } = require("drizzle-orm");
-import { createModelRoutingRuntime } from "../../cantrip_server/src/app/runtime/model-routing-runtime.ts";
+import { createModelRoutingRuntime } from "../../tests/reference-node-server/src/app/runtime/model-routing-runtime.ts";
 import {
   prepareManagedConsoleLaunch,
   managedConsoleSessionContext,
-} from "../../cantrip_server/src/terminals/managed-session.ts";
-import { effectivePermissionProfile } from "../../cantrip_server/src/chats/execution-helpers.ts";
-import { evaluateModelRouteAvailability } from "../../cantrip_server/src/models/model-route-availability.ts";
-import { resolveAccountProviderRuntimes } from "../../cantrip_server/src/models/chatgpt-account-routing.ts";
+} from "../../tests/reference-node-server/src/terminals/managed-session.ts";
+import { effectivePermissionProfile } from "../../tests/reference-node-server/src/chats/execution-helpers.ts";
+import { evaluateModelRouteAvailability } from "../../tests/reference-node-server/src/models/model-route-availability.ts";
+import { resolveAccountProviderRuntimes } from "../../tests/reference-node-server/src/models/chatgpt-account-routing.ts";
 import { shouldUseChatGptCredits } from "../../packages/protocol/src/providers.ts";
-import { serverLogger } from "../../cantrip_server/src/logger.ts";
+import { serverLogger } from "../../tests/reference-node-server/src/logger.ts";
 
 export async function managedConsoleFixture(repository, request, trace) {
   const execute = (statement) =>

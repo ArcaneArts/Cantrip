@@ -1,0 +1,271 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "0ae86163efb8503387a2b3d627f9e962d099e1cd",
+  "buildCheckout": "db40ec6e1aa93b64c433a72e9eb70ecd96d6e410",
+  "version": "1.1.2869",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/current-arm64-windows-packages",
+  "platform": {
+    "target": "win32-x64",
+    "guest": "Windows 11 x64",
+    "virtualization": "QEMU software emulation on macOS ARM64",
+    "evaluationShutdownAfterRetainedProfileReopen": {
+      "path": "windows-vm/matrix-guest-System-shutdown.json",
+      "bytes": 2832,
+      "sha256": "0db302306b8e8298f34f01b6ab32250d0a6b510a15f2e6555bf046355344e124"
+    }
+  },
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "standalone": {
+    "archive": {
+      "path": "windows-vm/native-package/cantrip-server-1.1.2869-win32-x64.tar.gz",
+      "bytes": 97635809,
+      "sha256": "a5a42fb8bb2e56e803bba49fc3e313cb57f82ab6ccf8466303958486cf80a6c9"
+    },
+    "manifest": {
+      "path": "windows-vm/native-package/cantrip-server-win32-x64/native-server.json",
+      "bytes": 407860,
+      "sha256": "7778b5988aee9e9c48d998f603ebc8ff22421c1203a0cacbd32074fc8b71cda8"
+    },
+    "serverExecutable": {
+      "path": "windows-vm/native-package/cantrip-server-win32-x64/bin/cantrip-server.exe",
+      "bytes": 110968810,
+      "sha256": "7b88c293d8d11ed7fa8627fd6b7c31dcb29969cd3b7ef2e0f59e2e86b3e2c0ae"
+    },
+    "verifiedFiles": 2281,
+    "readinessTimeoutMs": 240000,
+    "shutdownMethod": "supervision-stdin-close",
+    "nodeAbsentFromServerPath": true,
+    "verifiedSqlExports": [
+      {
+        "databaseMode": "pglite",
+        "sql": {
+          "path": "windows-vm/native-package/pglite-export.sql",
+          "bytes": 493148,
+          "sha256": "88acb81b8b9874c6ff11a1bb6efe19f6d06e93a1e1ffe2971f24d9eb7de60fcc"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "sql": {
+          "path": "windows-vm/native-package/bundled-postgres-export.sql",
+          "bytes": 493373,
+          "sha256": "c4bfbdea03aefeba97eceaad622367767c9c5b3f3fedb458c9a7480e29ad1a59"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "sql": {
+          "path": "windows-vm/native-package/postgres-export.sql",
+          "bytes": 493372,
+          "sha256": "0b1eaaa3ba663b6394f65c2215689d6f6776fc29ef074b0787426d8c0f80ae81"
+        }
+      }
+    ],
+    "diskReceipt": {
+      "path": "windows-vm/native-package/standalone-2869-receipt.json",
+      "bytes": 3175,
+      "sha256": "71ba7068bd510fa04681dbe49e8fdf9e430a26b27290ad12fc2ee4b4e76508b2"
+    },
+    "serialReceipt": {
+      "path": "windows-vm/standalone-serial-terminal.json",
+      "bytes": 3175,
+      "sha256": "71ba7068bd510fa04681dbe49e8fdf9e430a26b27290ad12fc2ee4b4e76508b2"
+    },
+    "archiveRecovery": {
+      "path": "windows-vm/native-package/snapshot-export.json",
+      "bytes": 164,
+      "sha256": "92b29811d5e37142f9b26ee8b803ef355236cf052475139b79a55832d53b3d52"
+    },
+    "packagerReceipt": {
+      "path": "windows-vm/native-package/pack-current.json",
+      "bytes": 295,
+      "sha256": "06378a6b1bdb86137799a1b004229b6c3751c106c3abcc1d334813a1f59990b4"
+    }
+  },
+  "desktopInstaller": {
+    "installer": {
+      "path": "windows-vm/installers/1.1.2869/Cantrip_1.1.2869_x64-setup.exe",
+      "bytes": 256836676,
+      "sha256": "0551202bd5214a6c3132f1c6c76eb8a18fc348921b0a2f56c6155e4fca9c76b8"
+    },
+    "updaterSignature": {
+      "path": "windows-vm/installers/1.1.2869/Cantrip_1.1.2869_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "a9b258559a3fae8e6c90b3d8e21e1ad26980e500e36e5faa2fc62dc27da5290c"
+    },
+    "payloadManifest": {
+      "path": "windows-vm/installers/1.1.2869/nsis-embedded-runtime-manifest.json",
+      "bytes": 2505720,
+      "sha256": "ce39ea2b845f021b63fb343485e603bd3b640a1dbb8b92b494fe4c0e7ced9ffe"
+    },
+    "payloadFiles": 14089,
+    "updaterSignatureVerification": {
+      "path": "windows-vm/installers/1.1.2869/minisign-verification.log",
+      "bytes": 115,
+      "sha256": "67e612bb678d8054749340eef9b0c6adc4ed0f0d702a395802c8343403708dec"
+    },
+    "workerBuild": {
+      "path": "windows-retained-runtime.json",
+      "bytes": 281,
+      "sha256": "98a8f49be425aaa68798fb6e66011c7006544d865776cba39238d81317635aba"
+    },
+    "signingScope": "Disposable updater key for a local HTTPS rehearsal.",
+    "installedPayloadVerification": {
+      "path": "windows-vm/installers/1.1.2869/installed-payload-verification.json",
+      "bytes": 428,
+      "sha256": "a688778edd04c3abb12beef47d4b24881eb63265033135c9fa188e5890e26f68"
+    }
+  },
+  "signedUpdate": {
+    "baselineVersion": "1.1.2845",
+    "installedVersion": "1.1.2869",
+    "tamperRejection": "update_signature_invalid",
+    "retainedPGliteProfile": true,
+    "liveContinuity": {
+      "path": "windows-vm/signed-live-continuity.json",
+      "bytes": 277,
+      "sha256": "dfb1b36c8b3f6b919587c367efbb60e061da2e4876c26ff9d629ef777c40a814"
+    },
+    "webViewObservation": {
+      "path": "windows-vm/signed-webview-diagnostics.json",
+      "bytes": 653,
+      "sha256": "3554dd75d728b2ea87defec65f382f6ae8ebfa04d3a637df4e5ff7a216344c27"
+    },
+    "processAndHttpObservation": {
+      "path": "windows-vm/signed-live-diagnostics.json",
+      "bytes": 876,
+      "sha256": "f229b5aa04fba9f725febd07570358e1642f9cf88312ea8a3b3be484eac2d90d"
+    },
+    "cleanTrayShutdown": true,
+    "initialObserverError": "Cannot access 'expected' before initialization",
+    "originalObserver": {
+      "path": "windows-vm/installers/1.1.2869/signed-update-observation.json",
+      "bytes": 1339,
+      "sha256": "3eabbf5b88c01eb6cc508f4afab64a6b27a79e46e7dc9777c01b3eabd74ce057"
+    },
+    "originalInstallProgress": {
+      "path": "windows-vm/installers/1.1.2869/signed-update-observation.json.progress",
+      "bytes": 709,
+      "sha256": "89db6107fc958e99487e8b7ddbf14b6d84e7c3532d25f1b9b8fd3c903090c665"
+    },
+    "continuityReceipt": {
+      "path": "windows-vm/installers/1.1.2869/signed-update-continuity.json",
+      "bytes": 828,
+      "sha256": "d8942c93f6848a2bb9ea2f349b226e0ecd77b0dcc0be77385ec49893a89713a2"
+    },
+    "trayShutdownReceipt": {
+      "path": "windows-vm/installers/1.1.2869/signed-update-recovery-receipt.json",
+      "bytes": 232,
+      "sha256": "1112171b642095f01722bf65184e3ea0890b697f0513093c18bf889b22efc105"
+    },
+    "diskVerification": {
+      "path": "windows-vm/installers/1.1.2869/signed-update-recovery-disk-verification.json",
+      "bytes": 932,
+      "sha256": "295af4bb1c364c8da2c3ffcd36f7f2ff0f647969a176a7bd4aeb5eecc8f85ecf"
+    },
+    "retainedProfileReopen": {
+      "path": "windows-vm/installers/1.1.2869/signed-update-retained-profile-verified-reopen.json",
+      "bytes": 951,
+      "sha256": "56c7c96148baafd02681b7bdc00ca96d4b0704463eb9577b7912c3f5920e30d6"
+    }
+  },
+  "installedMatrix": {
+    "version": "1.1.2869",
+    "verification": {
+      "path": "windows-vm/installers/1.1.2869/installed-matrix-disk-verification.json",
+      "bytes": 2020,
+      "sha256": "c4b4d8bccd8eb84b8c378be32649e94a6fe94af82af086ac0280f145d3b681f2"
+    },
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "profileStart": "signed-update-reopen",
+        "configurationSource": "persisted-profile",
+        "realWorkerVersion": "1.1.2869",
+        "cleanTrayShutdown": true,
+        "receipt": {
+          "path": "windows-vm/installers/1.1.2869/signed-update-retained-profile-verified-reopen.json",
+          "bytes": 951,
+          "sha256": "56c7c96148baafd02681b7bdc00ca96d4b0704463eb9577b7912c3f5920e30d6"
+        }
+      },
+      {
+        "databaseMode": "pglite",
+        "profileStart": "initial",
+        "configurationSource": "explicit-initial-configuration",
+        "realWorkerVersion": "1.1.2869",
+        "cleanTrayShutdown": true,
+        "receipt": {
+          "path": "windows-vm/installers/1.1.2869/installed-2869-pglite.json",
+          "bytes": 882,
+          "sha256": "f41931761620467aef6a48e538629d0e88598690ad4a47692bc64ed47503a859"
+        }
+      },
+      {
+        "databaseMode": "pglite",
+        "profileStart": "reopen",
+        "configurationSource": "persisted-profile",
+        "realWorkerVersion": "1.1.2869",
+        "cleanTrayShutdown": true,
+        "receipt": {
+          "path": "windows-vm/installers/1.1.2869/installed-2869-pglite-reopen.json",
+          "bytes": 867,
+          "sha256": "d104d00ed2eb23ea19ec98176e5c3d980c778c5cfe893c6016d4c1c46f8ac880"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "profileStart": "initial",
+        "configurationSource": "explicit-initial-configuration",
+        "realWorkerVersion": "1.1.2869",
+        "cleanTrayShutdown": true,
+        "receipt": {
+          "path": "windows-vm/installers/1.1.2869/installed-2869-bundled-postgres.json",
+          "bytes": 1142,
+          "sha256": "f95b8b716f83ff0ebd8f549cb8184ac81103f84bd05b616098dfe8b58a457c99"
+        },
+        "managedPostmasterStopped": true
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "profileStart": "reopen",
+        "configurationSource": "persisted-profile",
+        "realWorkerVersion": "1.1.2869",
+        "cleanTrayShutdown": true,
+        "receipt": {
+          "path": "windows-vm/installers/1.1.2869/installed-2869-bundled-postgres-reopen.json",
+          "bytes": 1128,
+          "sha256": "9de485b11ff16ffa58999f1bcf40c47b0fc5a1d2c1fe1a1b3fc8aecf985644d9"
+        },
+        "managedPostmasterStopped": true
+      },
+      {
+        "databaseMode": "postgres",
+        "profileStart": "initial",
+        "configurationSource": "explicit-initial-configuration",
+        "realWorkerVersion": "1.1.2869",
+        "cleanTrayShutdown": true,
+        "receipt": {
+          "path": "windows-vm/installers/1.1.2869/installed-2869-postgres.json",
+          "bytes": 930,
+          "sha256": "02cbd5489c964f2e99f474d9deb5066d7b5bc73f0ce88a1ac33ee203e3a00c4a"
+        },
+        "externalPostgresSurvivedAppShutdown": true
+      },
+      {
+        "databaseMode": "postgres",
+        "profileStart": "reopen",
+        "configurationSource": "persisted-profile",
+        "realWorkerVersion": "1.1.2869",
+        "cleanTrayShutdown": true,
+        "receipt": {
+          "path": "windows-vm/installers/1.1.2869/installed-2869-postgres-reopen.json",
+          "bytes": 916,
+          "sha256": "50bf368a31a2249f627d478429fff2d9b118c474513c688e1bdee39c2d8bcc93"
+        },
+        "externalPostgresSurvivedAppShutdown": true
+      }
+    ]
+  }
+}

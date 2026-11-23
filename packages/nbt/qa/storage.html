@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>NBT encrypted storage QA</title>
+  </head>
+  <body>
+    <pre id="result">Running encrypted storage in a dedicated worker…</pre>
+    <script type="module">
+      const worker = new Worker(
+        new URL("./storage-worker.ts", import.meta.url),
+        { type: "module" },
+      );
+      worker.onmessage = (event) => {
+        if (event.data.progress) {
+          document.querySelector("#result").textContent = JSON.stringify(
+            event.data,
+          );
+          return;
+        }
+        window.__nbtStorageResult = event.data;
+        document.querySelector("#result").textContent = JSON.stringify(
+          event.data,
+          null,
+          2,
+        );
+        worker.terminate();
+      };
+      worker.onerror = (event) => {
+        window.__nbtStorageResult = { ok: false, error: event.message };
+      };
+      worker.postMessage(
+        new URL(location.href).searchParams.has("automatic")
+          ? "automatic"
+          : "run",
+      );
+    </script>
+  </body>
+</html>

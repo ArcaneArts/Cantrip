@@ -52,6 +52,7 @@ export type {
 
 export {
   remoteDesktopTargetSchema,
+  remoteDesktopOsSourceSchema,
   remoteDesktopCreateSchema,
   encryptedRemoteDesktopCreateSchema,
   remoteDesktopMonitorSchema,
@@ -498,6 +499,7 @@ export {
   chatComposerDraftSchema,
   chatMessageCreateSchema,
   chatMessageSchema,
+  uniqueChatCommunicationMessages,
 } from "./chat-messages.js";
 
 export type {

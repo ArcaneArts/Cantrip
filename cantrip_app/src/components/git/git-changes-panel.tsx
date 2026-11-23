@@ -426,14 +426,7 @@ export function GitChangesPanel({
     action.mutate({ type: "push" });
   };
   return (
-    <aside
-      className={cn(
-        "absolute inset-y-0 right-0 z-20 flex w-full max-w-full shrink-0 overflow-hidden border-l bg-background shadow-2xl md:relative md:z-auto md:shadow-none",
-        selected
-          ? "md:w-[min(72rem,78vw)]"
-          : "sm:max-w-sm md:w-96 md:max-w-none",
-      )}
-    >
+    <aside className="flex h-full min-h-0 min-w-0 w-full flex-1 overflow-hidden bg-background">
       <div className="flex min-h-0 min-w-0 flex-1">
         {selected ? (
           <GitFileDiffView

@@ -1,8 +1,8 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index ee24f5351fc4285ea35f8da10b70f46cd7ed28f6..8b4d439aad3c05109a0bdbcdd849bcf58b6a85a4 100644
+index 47660608e61752ad0fc8f9486dc280c94634e4d4..661bac811e11ff4d7eaf629c6f3106a8417a7e2f 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -694,6 +694,11 @@ client_request_definitions! {
+@@ -710,6 +710,11 @@ client_request_definitions! {
          serialization: thread_id(params.thread_id),
          response: v2::ThreadSectionMoveResponse,
      },
@@ -15,7 +15,7 @@ index ee24f5351fc4285ea35f8da10b70f46cd7ed28f6..8b4d439aad3c05109a0bdbcdd849bcf5
      ThreadSettingsUpdate => "thread/settings/update" {
          params: v2::ThreadSettingsUpdateParams,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 1e04232e1bba3917cb766e33bb7834c2748b8aec..264db7af4e8615d10f49e536872e3b8fcae07cbd 100644
+index 70c237a2225a75a12e9446222973582386d0085c..cb46e1fa1462fdc13023989b1d1e592b4396f5f4 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 @@ -98,6 +98,9 @@ pub struct ThreadStartParams {
@@ -103,7 +103,7 @@ index 1e04232e1bba3917cb766e33bb7834c2748b8aec..264db7af4e8615d10f49e536872e3b8f
      #[ts(optional = nullable)]
      pub base_instructions: Option<String>,
      #[ts(optional = nullable)]
-@@ -2182,3 +2246,90 @@ pub struct ContextCompactedNotification {
+@@ -2210,3 +2274,90 @@ pub struct ContextCompactedNotification {
      pub thread_id: String,
      pub turn_id: String,
  }
@@ -195,10 +195,10 @@ index 1e04232e1bba3917cb766e33bb7834c2748b8aec..264db7af4e8615d10f49e536872e3b8f
 +    }
 +}
 diff --git a/codex-rs/app-server/src/config_manager.rs b/codex-rs/app-server/src/config_manager.rs
-index d5f2c2b89a6d64d9331b0c9c045a65cd5b5e527c..b0b7e96f7f79882c36476fe6018204cf3222bf74 100644
+index 461920b677da7a40530837e354d89190ad18550f..6a8bf6879d479b859a6c621a43cc3f60c532a794 100644
 --- a/codex-rs/app-server/src/config_manager.rs
 +++ b/codex-rs/app-server/src/config_manager.rs
-@@ -226,6 +226,22 @@ impl ConfigManager {
+@@ -286,6 +286,22 @@ impl ConfigManager {
          Ok(config)
      }
  
@@ -222,10 +222,10 @@ index d5f2c2b89a6d64d9331b0c9c045a65cd5b5e527c..b0b7e96f7f79882c36476fe6018204cf
          &self,
          session_layers: &ConfigLayerStack,
 diff --git a/codex-rs/app-server/src/mcp_refresh.rs b/codex-rs/app-server/src/mcp_refresh.rs
-index ac965523fb227f4c2beb832828a41bdf480e9be1..4fa87618961c52cd72d8d985c7c885fa6bcd9686 100644
+index 7fe1e32af4a196a6880f0812b03e2a8ebe1dc400..647a1cf32d81fea7d4eab86abb805faae1d8dacc 100644
 --- a/codex-rs/app-server/src/mcp_refresh.rs
 +++ b/codex-rs/app-server/src/mcp_refresh.rs
-@@ -155,10 +155,7 @@ async fn load_refresh_config(
+@@ -156,10 +156,7 @@ async fn load_refresh_config(
      config_manager: &ConfigManager,
  ) -> io::Result<Config> {
      config_manager
@@ -237,7 +237,7 @@ index ac965523fb227f4c2beb832828a41bdf480e9be1..4fa87618961c52cd72d8d985c7c885fa
          .await
  }
  
-@@ -387,6 +384,125 @@ enabled = false
+@@ -388,6 +385,125 @@ enabled = false
          Ok(())
      }
  
@@ -364,10 +364,10 @@ index ac965523fb227f4c2beb832828a41bdf480e9be1..4fa87618961c52cd72d8d985c7c885fa
      async fn strict_refresh_installs_refreshed_thread_mcp_config() -> anyhow::Result<()> {
          let (temp_dir, thread_manager, config_manager, _loader) = refresh_test_state().await?;
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 22d017649edbb06162404a472794e26c1a3c478b..262b8aaeec2a13ca4e4a1bcdfb89047aae5bd921 100644
+index 7cb30cb256fcbb9e845936c2e045957592996b78..85ff086526058119e57c59f4a8e0e2b85ae5c5d7 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1429,6 +1429,11 @@ impl MessageProcessor {
+@@ -1480,6 +1480,11 @@ impl MessageProcessor {
              ClientRequest::ThreadSectionDelete { params, .. } => {
                  self.thread_processor.thread_section_delete(params).await
              }
@@ -380,7 +380,7 @@ index 22d017649edbb06162404a472794e26c1a3c478b..262b8aaeec2a13ca4e4a1bcdfb89047a
                  self.turn_processor
                      .thread_settings_update(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 643d470f5a6e235d33ebdce5cceb9176685fe8df..28985d2eb70fcdb3755eddad291e9c0af7ade122 100644
+index a99d5790007009aa18a202278590aa2f80d879e6..1eeb0ad3b07835187988ad75dfadda386afbb356 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
 @@ -1,3 +1,5 @@
@@ -406,10 +406,10 @@ index be74a8fb615b67100a5f0d18ee2ac2c0b7ab98ec..ecf3d3512c385bd3c855cc397de2c337
              .map_err(|err| internal_error(format!("failed to reload config: {err}")))
      }
 diff --git a/codex-rs/app-server/src/request_processors/catalog_processor.rs b/codex-rs/app-server/src/request_processors/catalog_processor.rs
-index e8ea00fd4725892ad5e6a4c5f82f096893e63f02..d8aaf4191ad3dc4ea5fd77b10fa060c1c0b8d400 100644
+index 45a84cf170e69204706ba4e9c03260f4107b20f6..545378cc33ff8714783667eaab19c32fc71e2ec3 100644
 --- a/codex-rs/app-server/src/request_processors/catalog_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/catalog_processor.rs
-@@ -363,10 +363,7 @@ impl CatalogRequestProcessor {
+@@ -375,10 +375,7 @@ impl CatalogRequestProcessor {
                      .map_err(|_| invalid_request(format!("thread not found: {thread_id}")))?;
                  let thread_config = thread.config().await;
                  self.config_manager
@@ -422,10 +422,10 @@ index e8ea00fd4725892ad5e6a4c5f82f096893e63f02..d8aaf4191ad3dc4ea5fd77b10fa060c1
                      .map_err(|err| internal_error(format!("failed to reload config: {err}")))?
              }
 diff --git a/codex-rs/app-server/src/request_processors/config_processor.rs b/codex-rs/app-server/src/request_processors/config_processor.rs
-index 1343329ae1df0f3992e0db111e4664a5a1d71048..f29986457d1fda8370c4646a8769e0077a916040 100644
+index b31f910fe2b56536bc7ae4e4ef1ddeb39cb4b218..519721dce6462e5f6500181a2dd018b3e5253c29 100644
 --- a/codex-rs/app-server/src/request_processors/config_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/config_processor.rs
-@@ -382,10 +382,7 @@ async fn reload_user_config_inner(config_manager: &ConfigManager, thread_manager
+@@ -395,10 +395,7 @@ async fn reload_user_config_inner(config_manager: &ConfigManager, thread_manager
          for attempt in 0..4 {
              let current_config = thread.config().await;
              let next_config = match config_manager
@@ -470,10 +470,10 @@ index 0000000000000000000000000000000000000000..386a41e5ac5c316649b571dea83c32da
 +    })
 +}
 diff --git a/codex-rs/app-server/src/request_processors/mcp_processor.rs b/codex-rs/app-server/src/request_processors/mcp_processor.rs
-index e65e6d744e3d7bf015b33e5c8d12724aacacb495..ea1f16599e990c1aa63dacd6bb256fe35e8f0b1a 100644
+index 7bee469285d95e0029937451b085c6a237827fa5..b5198c16bc28b5d2bcd166318ed858d0b4f542c0 100644
 --- a/codex-rs/app-server/src/request_processors/mcp_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/mcp_processor.rs
-@@ -411,10 +411,7 @@ impl McpRequestProcessor {
+@@ -419,10 +419,7 @@ impl McpRequestProcessor {
                  Some(thread) => {
                      let thread_config = thread.config().await;
                      self.config_manager
@@ -486,10 +486,10 @@ index e65e6d744e3d7bf015b33e5c8d12724aacacb495..ea1f16599e990c1aa63dacd6bb256fe3
                          .map_err(|err| internal_error(format!("failed to reload config: {err}")))?
                  }
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 69ed09f72db480b788cfa9281287dd72f60d6aa5..782696fb5eee9bc5cd378f49c9a30c8e9a16f86f 100644
+index eb061fbdb414e939329e4ae858584de57c3fcd85..fc1b9a42a3dc0fcb5823ce28a92f2bcb5cfc7cc8 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -1159,6 +1159,7 @@ impl ThreadRequestProcessor {
+@@ -1254,6 +1254,7 @@ impl ThreadRequestProcessor {
              sandbox,
              permissions,
              config,
@@ -497,7 +497,7 @@ index 69ed09f72db480b788cfa9281287dd72f60d6aa5..782696fb5eee9bc5cd378f49c9a30c8e
              service_name,
              base_instructions,
              developer_instructions,
-@@ -1176,6 +1177,9 @@ impl ThreadRequestProcessor {
+@@ -1271,6 +1272,9 @@ impl ThreadRequestProcessor {
              daybreak_enabled,
              environments,
          } = params;
@@ -507,7 +507,7 @@ index 69ed09f72db480b788cfa9281287dd72f60d6aa5..782696fb5eee9bc5cd378f49c9a30c8e
          if matches!(
              history_mode,
              Some(codex_app_server_protocol::ThreadHistoryMode::Paginated)
-@@ -1253,6 +1257,7 @@ impl ThreadRequestProcessor {
+@@ -1347,6 +1351,7 @@ impl ThreadRequestProcessor {
                  app_server_client_version,
                  client_mcp_extensions,
                  config,
@@ -515,7 +515,7 @@ index 69ed09f72db480b788cfa9281287dd72f60d6aa5..782696fb5eee9bc5cd378f49c9a30c8e
                  typesafe_overrides,
                  dynamic_tools,
                  selected_capability_roots.unwrap_or_default(),
-@@ -1335,6 +1340,7 @@ impl ThreadRequestProcessor {
+@@ -1429,6 +1434,7 @@ impl ThreadRequestProcessor {
          app_server_client_version: Option<String>,
          client_mcp_extensions: ClientMcpExtensions,
          config_overrides: Option<HashMap<String, serde_json::Value>>,
@@ -523,7 +523,7 @@ index 69ed09f72db480b788cfa9281287dd72f60d6aa5..782696fb5eee9bc5cd378f49c9a30c8e
          typesafe_overrides: ConfigOverrides,
          dynamic_tools: Option<Vec<DynamicToolSpec>>,
          selected_capability_roots: Vec<SelectedCapabilityRoot>,
-@@ -1481,6 +1487,11 @@ impl ThreadRequestProcessor {
+@@ -1575,6 +1581,11 @@ impl ThreadRequestProcessor {
          if !selected_capability_roots.is_empty() {
              thread_extension_init.insert(selected_capability_roots);
          }
@@ -535,7 +535,7 @@ index 69ed09f72db480b788cfa9281287dd72f60d6aa5..782696fb5eee9bc5cd378f49c9a30c8e
          let mut start_options = StartThreadOptions::new(config);
          let reserved_thread_id = if start_options.config.ephemeral {
              None
-@@ -3916,6 +3927,7 @@ impl ThreadRequestProcessor {
+@@ -3994,6 +4005,7 @@ impl ThreadRequestProcessor {
              sandbox,
              permissions,
              config: mut request_overrides,
@@ -543,7 +543,7 @@ index 69ed09f72db480b788cfa9281287dd72f60d6aa5..782696fb5eee9bc5cd378f49c9a30c8e
              base_instructions,
              developer_instructions,
              personality,
-@@ -4198,6 +4210,13 @@ impl ThreadRequestProcessor {
+@@ -4313,6 +4325,13 @@ impl ThreadRequestProcessor {
                  return Ok(ControlFlow::Continue(()));
              }
          };
@@ -558,10 +558,10 @@ index 69ed09f72db480b788cfa9281287dd72f60d6aa5..782696fb5eee9bc5cd378f49c9a30c8e
              config.model_reasoning_effort = None;
          }
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-index 06ffa446796b4d89280414458129179123128abf..f30bedc9737fe82049bd821f8231494080db190a 100644
+index 1c0631884eef55f868f5a66f1f8c88bb83dfffb4..d5cac1754ab949fe72767911c6aa085509db5611 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
-@@ -676,6 +676,7 @@ mod thread_processor_behavior_tests {
+@@ -721,6 +721,7 @@ mod thread_processor_behavior_tests {
              approvals_reviewer: None,
              sandbox: None,
              permissions: None,
@@ -570,10 +570,10 @@ index 06ffa446796b4d89280414458129179123128abf..f30bedc9737fe82049bd821f82314940
              base_instructions: None,
              developer_instructions: None,
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 263e748051bbaf38b683e99dc153623107a6439c..29e549e96840998c646a1a6e55481d4d1218d0a5 100644
+index f49e4e148840580348fcce71ffba39a771cecfce..0d7366f735bf9957bd7edbad03d46a91675a7cf4 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -202,6 +202,35 @@ impl TurnRequestProcessor {
+@@ -191,6 +191,35 @@ impl TurnRequestProcessor {
              .map(|response| Some(response.into()))
      }
  
@@ -622,10 +622,10 @@ index 679a5365f85162c28a0adb04bebdcc4ef50bbce1..6aed8c37673c20faf0ef1211ca10465b
              base_instructions: None,
              developer_instructions: None,
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 027531de4ac840fba017d7305965fabbd6237cb5..041d6ecc72890ccb262deccc84a344e6892cbd42 100644
+index 68068425c8724a396ab46e150b63d1f63887fbec..784ecd977c7661939d9f6da532fa48949c080248 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -1121,6 +1121,26 @@ impl CodexThread {
+@@ -1228,6 +1228,26 @@ impl CodexThread {
          self.session.disable_mcp_enterprise_auth().await;
      }
  
@@ -653,10 +653,10 @@ index 027531de4ac840fba017d7305965fabbd6237cb5..041d6ecc72890ccb262deccc84a344e6
      /// A stale owner requires reloading from the current config before retrying.
      pub async fn refresh_mcp_config(
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index d37f986b242e9bcae16ee1ff55ecdbeb95b0a24f..233604261482c2fc98177b44af591dbc9b5c6438 100644
+index 1b9434ba9b08224d6092272dc6e00ab2a123d460..649b0d64a4a9a421082fdeaf68e90cabc1dab8f5 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -617,6 +617,17 @@ pub enum ThreadStoreConfig {
+@@ -622,6 +622,17 @@ pub enum ThreadStoreConfig {
      InMemory { id: String },
  }
  
@@ -674,7 +674,7 @@ index d37f986b242e9bcae16ee1ff55ecdbeb95b0a24f..233604261482c2fc98177b44af591dbc
  /// Application configuration loaded from disk and merged with overrides.
  #[derive(Debug, Clone, PartialEq)]
  pub struct Config {
-@@ -631,6 +642,9 @@ pub struct Config {
+@@ -636,6 +647,9 @@ pub struct Config {
      /// Plugin settings resolved with this snapshot, before capability admission.
      pub plugins: codex_config::types::PluginsConfigToml,
  
@@ -684,7 +684,7 @@ index d37f986b242e9bcae16ee1ff55ecdbeb95b0a24f..233604261482c2fc98177b44af591dbc
      /// Warnings collected during config load that should be shown on startup.
      pub startup_warnings: Vec<String>,
  
-@@ -1948,6 +1962,25 @@ impl Config {
+@@ -2011,6 +2025,25 @@ impl Config {
          }
      }
  
@@ -710,7 +710,7 @@ index d37f986b242e9bcae16ee1ff55ecdbeb95b0a24f..233604261482c2fc98177b44af591dbc
      pub fn workspace_routing_context(&self) -> codex_model_provider::WorkspaceRoutingContext {
          codex_model_provider::WorkspaceRoutingContext::new(self.chatgpt_base_url.clone())
              .with_session(codex_login::WorkspaceRoutingSession {
-@@ -4445,6 +4478,7 @@ impl Config {
+@@ -4567,6 +4600,7 @@ impl Config {
              base_instructions_provenance,
              personality,
              developer_instructions,
@@ -719,10 +719,10 @@ index d37f986b242e9bcae16ee1ff55ecdbeb95b0a24f..233604261482c2fc98177b44af591dbc
              include_permissions_instructions,
              include_apps_instructions,
 diff --git a/codex-rs/core/src/session/config_refresh.rs b/codex-rs/core/src/session/config_refresh.rs
-index 166c1f604593bd83874be313559fea901daa268c..10cd8d744546fdbf22dd8b1a36dc428423bb154a 100644
+index 016eae3978dd2b0f4e0d37d55b1de7ca580479e5..d03031a9507e8c21d837af2e96729feca0d0b849 100644
 --- a/codex-rs/core/src/session/config_refresh.rs
 +++ b/codex-rs/core/src/session/config_refresh.rs
-@@ -49,9 +49,17 @@ impl Session {
+@@ -52,9 +52,17 @@ impl Session {
      pub(super) async fn refresh_config(
          &self,
          expected_config: Arc<Config>,
@@ -742,10 +742,10 @@ index 166c1f604593bd83874be313559fea901daa268c..10cd8d744546fdbf22dd8b1a36dc4284
              match expected_config.resolve_runtime_refresh(&next_config, scope) {
                  Ok(config) => (config, ConfigRefreshOutcome::Published, None),
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 6ef36e29b8456d1c520d9185e5fe20fbb2fde332..8a93593bb7d5f950c6901bb5d709ce17d1d136cf 100644
+index 04c678e6773fff524ed655fe5b6a2762a6940b9b..3a42169077fa94fe3251386832ba41d6ced536e9 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -2290,6 +2290,33 @@ impl Session {
+@@ -2382,6 +2382,33 @@ impl Session {
          }
      }
  
@@ -780,10 +780,10 @@ index 6ef36e29b8456d1c520d9185e5fe20fbb2fde332..8a93593bb7d5f950c6901bb5d709ce17
          &self,
          previous_config: Option<&Config>,
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 4740820e7b26146de66d057a64791c886aacfc7e..8555fb296912f74f7e0fdaec3098362d6805ee24 100644
+index 917d043c18183e60e81d68d3b52609636fe4f12b..a0a4ba37b3d9e95d37da3dfa74c07054348be6e3 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -2159,6 +2159,218 @@ disabled_tools = [
+@@ -2205,6 +2205,218 @@ disabled_tools = [
      );
  }
  
@@ -1003,7 +1003,7 @@ index 4740820e7b26146de66d057a64791c886aacfc7e..8555fb296912f74f7e0fdaec3098362d
  #[test_case::test_case(true; "rejected")]
  #[tokio::test]
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 0d53be0050161aa148fa79032f9d63b72c612536..1a0c03a0fd39b5fd08617c9ad4788ce507d8835a 100644
+index 1ced86ef113dfd68db029a86d2a83b13cf4465bf..1d1ad759df683f806bc6ac4d005a4972f35a1a1d 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
 @@ -240,6 +240,7 @@ async fn new_config(

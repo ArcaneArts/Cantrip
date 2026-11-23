@@ -1,7 +1,9 @@
 //! Durable policy metadata and opaque endpoint-encrypted content. The server
 //! never decrypts policy summaries, bodies or their blind indexes.
+mod mcp_queries;
 mod query_error;
 pub(crate) use query_error::PolicyQueryError;
+pub(crate) use repository::StoredPolicyValidationError;
 pub mod repository;
 pub mod request;
 use serde_json::Value;

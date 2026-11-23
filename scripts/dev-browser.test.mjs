@@ -21,7 +21,7 @@ test("browser and Tauri development keep separate encrypted state", async () => 
 
   assert.match(
     browserLauncher,
-    /CANTRIP_DATA_DIR=\.\.\/\.cantrip\/browser-dev/u,
+    /CANTRIP_DATA_DIR=\.cantrip\/browser-dev pnpm server:dev/u,
   );
   assert.match(
     browserLauncher,

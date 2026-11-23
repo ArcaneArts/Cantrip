@@ -1,3 +1,4 @@
+import { tunnelSshConnectionInfoSchema } from "./cantrip-os-tunnels.js";
 import { z } from "zod";
 
 import {
@@ -101,6 +102,8 @@ export const workerLinkGrantOperationSchema = z.enum([
   "stream:read",
   "stream:write",
   "stream:half-close",
+  "stream:guest-connect",
+  "stream:guest-listen",
   "events:subscribe",
   "datagram:send",
 ]);
@@ -641,6 +644,7 @@ export const workerLinkResourceGrantSchema = z
 
 export const workerLinkTunnelGrantSchema = z
   .object({
+    ssh: tunnelSshConnectionInfoSchema.optional(),
     grant: workerLinkResourceGrantSchema,
     route: workerLinkTunnelRouteSchema,
   })

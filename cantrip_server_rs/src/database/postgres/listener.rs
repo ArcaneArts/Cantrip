@@ -128,6 +128,12 @@ async fn run(
                 }
                 continue;
             }
+            // This metadata consumer must recover rows committed while LISTEN
+            // was disconnected. Empty payload is its explicit rescan wakeup.
+            let channel = "cantrip_inference_resource_revocations";
+            if channels.contains(channel) {
+                let _ = notifications.send((channel.to_owned(), String::new()));
+            }
         }
         let command = if let Some(connected) = session.as_mut() {
             tokio::select! {

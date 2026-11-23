@@ -1,22 +1,23 @@
-import { access, cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { normalizeTarget } from "./native-target.mjs";
-import { buildCantripCli, bundleCantripCli } from "./cantrip-cli/build.mjs";
-import { buildCantripCua, bundleCantripCua } from "./cantrip-cua/build.mjs";
+import { hostTarget, normalizeTarget } from "./native-target.mjs";
+import { buildCantripCli } from "./cantrip-cli/build.mjs";
+import { buildCantripCua } from "./cantrip-cua/build.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
+import { serviceWorkspaceBuilds } from "./package-workspace-runtime.mjs";
+import { packageNativeServer } from "./package-server-rust.mjs";
 import {
-  assertPackagedWorkspaceRuntime,
-  serviceWorkspaceBuilds,
-} from "./package-workspace-runtime.mjs";
+  packageNativeWorker,
+  verifyNativeWorkerBin,
+} from "./package-worker-rust.mjs";
 import {
-  bundleNodeRuntime,
-  writeServiceLaunchers,
-} from "./package-runtime.mjs";
+  configureDesktopServer,
+  replaceDesktopRuntime,
+} from "./desktop-server-runtime.mjs";
 import { verifyPackagedWorkerMcp } from "./verify-packaged-worker-mcp.mjs";
-import { verifyPackagedWorkerCua } from "./verify-packaged-worker-cua.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const selection = process.argv[2];
@@ -37,6 +38,10 @@ if (!supportedTargets.has(selection)) {
 let requestedTarget;
 let fromArtifacts = false;
 let skipProtocolBuild = false;
+let serverRuntime = "rust";
+let workerRuntime;
+let prebuiltWorkerDir;
+let postgresBin;
 for (let index = 3; index < process.argv.length; index += 1) {
   const argument = process.argv[index];
   if (argument === "--target") {
@@ -48,6 +53,25 @@ for (let index = 3; index < process.argv.length; index += 1) {
     index += 1;
   } else if (argument.startsWith("--target=")) {
     requestedTarget = argument.slice("--target=".length);
+  } else if (argument === "--server-runtime" || argument === "--postgres-bin") {
+    const value = process.argv[++index];
+    if (!value || value.startsWith("--"))
+      throw new Error(`${argument} requires a value`);
+    if (argument === "--server-runtime") serverRuntime = value;
+    else postgresBin = value;
+  } else if (argument.startsWith("--server-runtime=")) {
+    serverRuntime = argument.slice("--server-runtime=".length);
+  } else if (argument.startsWith("--postgres-bin=")) {
+    postgresBin = argument.slice("--postgres-bin=".length);
+  } else if (
+    argument === "--worker-runtime" ||
+    argument === "--prebuilt-worker-dir"
+  ) {
+    const value = process.argv[++index];
+    if (!value || value.startsWith("--"))
+      throw new Error(`${argument} requires a value`);
+    if (argument === "--worker-runtime") workerRuntime = value;
+    else prebuiltWorkerDir = path.resolve(value);
   } else if (argument === "--from-artifacts") {
     fromArtifacts = true;
   } else if (argument === "--skip-protocol-build") {
@@ -58,11 +82,24 @@ for (let index = 3; index < process.argv.length; index += 1) {
   }
 }
 
+if (serverRuntime !== "rust")
+  throw new Error("The packaged server runtime is Rust.");
 const packageTarget = normalizeTarget(requestedTarget);
 
 const platform = packageTarget.id;
+if (workerRuntime !== undefined && workerRuntime !== "rust")
+  throw new Error("The packaged worker runtime is Rust.");
+if ((workerRuntime || prebuiltWorkerDir) && selection === "server")
+  throw new Error("The server package does not include a worker.");
+if (selection !== "server" && platform !== hostTarget())
+  throw new Error(
+    "Build the Rust worker package on a machine matching --target.",
+  );
+if (prebuiltWorkerDir && fromArtifacts)
+  throw new Error("Use either --prebuilt-worker-dir or --from-artifacts.");
 const codexBuild = path.join(root, "cantrip_codex", ".build", platform);
 const artifacts = path.join(root, "artifacts");
+const workerArtifact = path.join(artifacts, `cantrip-worker-${platform}`);
 const runtime = path.join(
   root,
   "cantrip_app",
@@ -70,7 +107,6 @@ const runtime = path.join(
   "resources",
   "runtime",
 );
-let cuaBinary;
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -87,60 +123,6 @@ function runPnpm(args) {
   run(invocation.command, invocation.arguments);
 }
 
-async function requireDirectory(directory, description) {
-  try {
-    await access(directory);
-  } catch {
-    throw new Error(
-      `${description} is missing at ${path.relative(root, directory)}. Package or extract the native service artifact first.`,
-    );
-  }
-}
-
-async function packageService(name, destination, { standalone = true } = {}) {
-  const packageName = `@cantrip/${name}`;
-  await rm(destination, { force: true, recursive: true });
-  await mkdir(path.dirname(destination), { recursive: true });
-  runPnpm([
-    "--config.node-linker=hoisted",
-    "--filter",
-    packageName,
-    "deploy",
-    "--prod",
-    destination,
-  ]);
-  await assertPackagedWorkspaceRuntime(destination);
-
-  if (standalone) {
-    await bundleNodeRuntime(path.join(destination, "runtime"));
-    await writeServiceLaunchers(destination, { migrations: name === "server" });
-  }
-  await cp(
-    path.join(root, "deploy", `${name}.env.example`),
-    path.join(destination, ".env.example"),
-  );
-  if (name === "server") {
-    await cp(
-      path.join(root, "policy_templates"),
-      path.join(destination, "policy_templates"),
-      { recursive: true },
-    );
-  }
-  if (name === "worker") {
-    const bin = path.join(destination, "bin");
-    await cp(path.join(codexBuild, "bundle"), bin, { recursive: true });
-    await bundleCantripCli(root, bin);
-    await bundleCantripCua(cuaBinary, bin);
-    await verifyPackagedWorkerCua(destination);
-    await verifyPackagedWorkerMcp(destination, { smoke: standalone });
-  }
-  await cp(
-    path.join(root, "deploy", `${name}.README.md`),
-    path.join(destination, "README.md"),
-  );
-  console.log(`Packaged ${name}: ${path.relative(root, destination)}`);
-}
-
 function buildServiceWorkspaces() {
   if (!skipProtocolBuild) {
     for (const packageName of serviceWorkspaceBuilds) {
@@ -149,92 +131,90 @@ function buildServiceWorkspaces() {
   }
 }
 
-function buildSelectedServices(selection) {
-  buildServiceWorkspaces();
-  if (selection === "server" || selection === "services") {
-    runPnpm(["--filter", "@cantrip/server", "build"]);
-  }
-  if (selection === "worker" || selection === "services") {
-    runPnpm(["--filter", "@cantrip/worker", "build"]);
-  }
-}
-
 function buildCodex() {
   run(process.execPath, ["scripts/cantrip-codex/build.mjs"]);
 }
 
 function buildCli() {
-  buildCantripCli(root, {
+  return buildCantripCli(root, {
     release: true,
     run: (command, arguments_) => run(command, arguments_),
   });
 }
 
-async function packageStandalone(selection) {
-  if (selection === "worker" || selection === "services") {
+async function assembleNativeWorker(destination, { standalone = true } = {}) {
+  const suffix = packageTarget.platform === "win32" ? ".exe" : "";
+  let inputs;
+  if (prebuiltWorkerDir) {
+    inputs = {
+      codex: path.join(prebuiltWorkerDir, "codex"),
+      worker: path.join(prebuiltWorkerDir, `cantrip-worker${suffix}`),
+      cli: path.join(prebuiltWorkerDir, `cantrip${suffix}`),
+      cua: path.join(prebuiltWorkerDir, `cantrip-cua${suffix}`),
+    };
+  } else {
     buildCodex();
-    buildCli();
-    cuaBinary = buildCantripCua(root, { release: true });
+    inputs = {
+      codex: path.join(codexBuild, "bundle"),
+      cli: buildCli(),
+      cua: buildCantripCua(root, { release: true }),
+    };
   }
-  buildSelectedServices(selection);
-  if (selection === "server" || selection === "services") {
-    await packageService(
-      "server",
-      path.join(artifacts, `cantrip-server-${platform}`),
-    );
-  }
-  if (selection === "worker" || selection === "services") {
-    await packageService(
-      "worker",
-      path.join(artifacts, `cantrip-worker-${platform}`),
-    );
-  }
+  await packageNativeWorker({
+    target: packageTarget,
+    destination,
+    inputs,
+    standalone,
+  });
 }
 
-async function packageDesktopRuntime() {
-  await rm(runtime, { force: true, recursive: true });
-  await mkdir(runtime, { recursive: true });
-  await writeFile(path.join(runtime, ".gitkeep"), "");
+async function packageStandalone(selection) {
+  if (selection !== "worker") {
+    buildServiceWorkspaces();
+    const output = path.join(artifacts, `cantrip-server-${platform}`);
+    await rm(output, { force: true, recursive: true });
+    await packageNativeServer({
+      target: packageTarget.id,
+      output,
+      postgresBin,
+    });
+  }
+  if (selection !== "server") await assembleNativeWorker(workerArtifact);
+}
+
+async function assembleDesktopRuntime(destination) {
+  await writeFile(path.join(destination, ".gitkeep"), "");
+  const workerRoot = path.join(destination, "worker");
   if (fromArtifacts) {
     const serverArtifact = path.join(
       artifacts,
       `cantrip-server-${packageTarget.id}`,
     );
-    const workerArtifact = path.join(
-      artifacts,
-      `cantrip-worker-${packageTarget.id}`,
+    await cp(serverArtifact, path.join(destination, "server"), {
+      recursive: true,
+      dereference: true,
+    });
+    const bin = path.join(workerRoot, "bin");
+    // Copy only the binaries and launcher configuration.
+    await cp(path.join(workerArtifact, "bin"), bin, {
+      recursive: true,
+      dereference: true,
+    });
+    await cp(
+      path.join(workerArtifact, "desktop-worker.json"),
+      path.join(workerRoot, "desktop-worker.json"),
     );
-    await requireDirectory(serverArtifact, "Packaged server");
-    await requireDirectory(workerArtifact, "Packaged worker");
-    await cp(serverArtifact, path.join(runtime, "server"), { recursive: true });
-    await cp(workerArtifact, path.join(runtime, "worker"), { recursive: true });
-    for (const service of ["server", "worker"]) {
-      const serviceRoot = path.join(runtime, service);
-      await rm(path.join(serviceRoot, "runtime"), {
-        force: true,
-        recursive: true,
-      });
-      await rm(path.join(serviceRoot, "start.sh"), { force: true });
-      await rm(path.join(serviceRoot, "start.cmd"), { force: true });
-      await assertPackagedWorkspaceRuntime(serviceRoot);
-    }
+    await verifyNativeWorkerBin(bin, packageTarget.platform);
+    await verifyPackagedWorkerMcp(workerRoot);
   } else {
-    buildCodex();
-    buildCli();
-    cuaBinary = buildCantripCua(root, { release: true });
-    buildSelectedServices("services");
-    await packageService("server", path.join(runtime, "server"), {
-      standalone: false,
+    await packageNativeServer({
+      target: packageTarget.id,
+      output: path.join(destination, "server"),
+      postgresBin,
     });
-    await packageService("worker", path.join(runtime, "worker"), {
-      standalone: false,
-    });
+    await assembleNativeWorker(workerRoot, { standalone: false });
   }
-  await bundleNodeRuntime(runtime);
-  await verifyPackagedWorkerCua(path.join(runtime, "worker"));
-  console.log(
-    `Bundled Node ${process.version}: ${path.relative(root, runtime)}`,
-  );
+  await configureDesktopServer(path.join(destination, "server"));
 }
 
 if (fromArtifacts && selection !== "desktop-runtime") {
@@ -248,5 +228,6 @@ if (skipProtocolBuild && selection === "desktop-runtime" && !fromArtifacts) {
   );
 }
 
-if (selection === "desktop-runtime") await packageDesktopRuntime();
+if (selection === "desktop-runtime")
+  await replaceDesktopRuntime(runtime, assembleDesktopRuntime);
 else await packageStandalone(selection);

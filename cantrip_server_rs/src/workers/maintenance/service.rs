@@ -1,9 +1,7 @@
 use super::{Repository, surface_material_changed};
+use crate::workers::transport::WorkerTransport;
 use crate::{
-    database::Database,
-    live::LiveService,
-    wire::Value,
-    workers::{bridge::WorkerBridge, command_bus::LimitedCommandBus},
+    database::Database, live::LiveService, wire::Value, workers::command_bus::LimitedCommandBus,
 };
 use anyhow::{Context, Result};
 use std::{
@@ -20,7 +18,7 @@ struct State {
 }
 pub struct Service {
     pub repository: Repository,
-    bridge: Arc<WorkerBridge>,
+    bridge: Arc<dyn WorkerTransport>,
     commands: Arc<LimitedCommandBus>,
     live: Arc<LiveService>,
     server_id: String,
@@ -37,7 +35,7 @@ impl Drop for Admission {
 impl Service {
     pub fn new(
         database: Arc<Database>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         commands: Arc<LimitedCommandBus>,
         live: Arc<LiveService>,
         server_id: String,
@@ -62,13 +60,24 @@ impl Service {
         self: &Arc<Self>,
         operation: impl Future<Output = Result<T>> + Send + 'static,
     ) -> Result<T> {
-        let admission = self.admission(false)?;
+        self.admit_owned(operation).await
+    }
+    /// Admit both sides of a concurrent request before observing either result.
+    /// Dropping a waiter leaves its already admitted operation in the drain.
+    pub fn admit_owned<T: Send + 'static>(
+        self: &Arc<Self>,
+        operation: impl Future<Output = Result<T>> + Send + 'static,
+    ) -> futures::future::BoxFuture<'static, Result<T>> {
+        let admission = match self.admission(false) {
+            Ok(admission) => admission,
+            Err(cause) => return Box::pin(async move { Err(cause) }),
+        };
         let (send, receive) = oneshot::channel();
         tokio::spawn(async move {
             let _admission = admission;
             let _ = send.send(operation.await);
         });
-        receive.await.context("Worker maintenance task ended")?
+        Box::pin(async move { receive.await.context("Worker maintenance task ended")? })
     }
     /// Child work from an already admitted socket must be counted synchronously,
     /// including close callbacks arriving after new HTTP admission has stopped.

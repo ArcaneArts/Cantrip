@@ -1,0 +1,3938 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "d45fdd2488e84a305f761e472cd2fd4ba6849e4b",
+  "scope": "Current macOS arm64 foundation comparisons. Auth/security use the packaged production executable; policy/settings use native adapters of production repositories on real migrated stores. Method evidence is scoped to these compared operations and HTTP effects; other domain, platform and final shipping acceptance remain separate.",
+  "artifact": {
+    "runtime": "rust",
+    "version": "1.1.2788",
+    "target": "darwin-arm64",
+    "binarySha256": "0e20785cd0246cbd9cbafa5ced8f3294a9d442e984238cc78a7ba5721d3fa018",
+    "binaryBytes": 93801616
+  },
+  "reports": [
+    {
+      "suite": "auth-compatibility",
+      "databaseMode": "pglite",
+      "cases": 361,
+      "report": "foundations-v2/auth-compatibility-pglite.json",
+      "sha256": "da7846107f8e9f0427eed04af737d32dcda3776919488a2d236cfa4cb8d794f3",
+      "exitCode": 0
+    },
+    {
+      "suite": "auth-compatibility",
+      "databaseMode": "bundled-postgres",
+      "cases": 361,
+      "report": "foundations-v2/auth-compatibility-bundled-postgres.json",
+      "sha256": "833828579e41f8f008352b67029189bdc71c4093c71abede6e22351fc6b7812a",
+      "exitCode": 0
+    },
+    {
+      "suite": "auth-compatibility",
+      "databaseMode": "postgres",
+      "cases": 361,
+      "report": "foundations-v2/auth-compatibility-postgres.json",
+      "sha256": "c7391aee4594b92807ee10a4190311f1fbb8aa50e2a6c9f69cbf794fab681595",
+      "exitCode": 0
+    },
+    {
+      "suite": "security-compatibility",
+      "databaseMode": "pglite",
+      "cases": 387,
+      "report": "foundations-v2/security-compatibility-pglite.json",
+      "sha256": "2c3b4750e9c57dc6fdbd813e8be80b27db53bab72a08abf422ccbe5a08c676f4",
+      "exitCode": 0
+    },
+    {
+      "suite": "security-compatibility",
+      "databaseMode": "bundled-postgres",
+      "cases": 387,
+      "report": "foundations-v2/security-compatibility-bundled-postgres.json",
+      "sha256": "f474a0e2ea75af800ef8d61f55b19be97b37f43a424711a626317188fa838988",
+      "exitCode": 0
+    },
+    {
+      "suite": "security-compatibility",
+      "databaseMode": "postgres",
+      "cases": 387,
+      "report": "foundations-v2/security-compatibility-postgres.json",
+      "sha256": "b5daa98b1dbe27224d8265160077e5898a20d66c36d8837bfbdf65cacf2ad78b",
+      "exitCode": 0
+    },
+    {
+      "suite": "policy-repository-compatibility",
+      "databaseMode": "pglite",
+      "cases": 62,
+      "report": "policies-v1/policy-repository-compatibility-pglite.json",
+      "sha256": "bb255e3b1d82d125a1e17d6847c61f510e5278bb11de2a8548fb4629ae506aaa",
+      "exitCode": 0
+    },
+    {
+      "suite": "policy-repository-compatibility",
+      "databaseMode": "bundled-postgres",
+      "cases": 62,
+      "report": "policies-v1/policy-repository-compatibility-bundled-postgres.json",
+      "sha256": "5c715e4f2e7de1f68c7b676cb0ba590a63e356f9355b2bfaa513087a61ecbb76",
+      "exitCode": 0
+    },
+    {
+      "suite": "policy-repository-compatibility",
+      "databaseMode": "postgres",
+      "cases": 62,
+      "report": "policies-v1/policy-repository-compatibility-postgres.json",
+      "sha256": "4d09926e81725d44bbf8f87f247604a575889d01e797ef88ee58ff03f4da33a3",
+      "exitCode": 0
+    },
+    {
+      "suite": "settings-repository-compatibility",
+      "databaseMode": "pglite",
+      "cases": 788,
+      "report": "foundations-v12/settings-repository-compatibility-pglite.json",
+      "sha256": "d917c98bf8c5ca748477b1929a821b6569b39888690e0d62af321f03fd6a8c5c",
+      "exitCode": 0
+    },
+    {
+      "suite": "settings-repository-compatibility",
+      "databaseMode": "bundled-postgres",
+      "cases": 788,
+      "report": "foundations-v12/settings-repository-compatibility-bundled-postgres.json",
+      "sha256": "7f6269f335df2ac0f08b5ff736078dc72a0eae4b790177cbecaddae6e719e6b7",
+      "exitCode": 0
+    },
+    {
+      "suite": "settings-repository-compatibility",
+      "databaseMode": "postgres",
+      "cases": 788,
+      "report": "foundations-v12/settings-repository-compatibility-postgres.json",
+      "sha256": "bc4957c20bd6f993f8d311fb3b879ebbb248b1fc92afc986c430ed7bea9663ca",
+      "exitCode": 0
+    }
+  ],
+  "crossRuntimeExternalPostgres": {
+    "auth": true,
+    "security": true
+  },
+  "archiveDirectory": "rust-server-foundation-reconciliation-delivery-20261109-v1",
+  "repositoryMethods": [
+    {
+      "operation": "ensure-account",
+      "method": "ensureAccountConfiguration",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "ensure_account_configuration",
+      "implementation": "cantrip_server_rs/src/settings/repository.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 19,
+        "bundled-postgres": 19,
+        "postgres": 19
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 1,
+            "label": "initialize account"
+          },
+          {
+            "caseIndex": 3,
+            "label": "initialize other account"
+          },
+          {
+            "caseIndex": 41,
+            "label": "ensure account does not reset preferences"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 1,
+            "label": "initialize account"
+          },
+          {
+            "caseIndex": 3,
+            "label": "initialize other account"
+          },
+          {
+            "caseIndex": 41,
+            "label": "ensure account does not reset preferences"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 1,
+            "label": "initialize account"
+          },
+          {
+            "caseIndex": 3,
+            "label": "initialize other account"
+          },
+          {
+            "caseIndex": 41,
+            "label": "ensure account does not reset preferences"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "ensure-default",
+      "method": "ensureDefaultModelConfiguration",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "ensure_default_model_configuration",
+      "implementation": "cantrip_server_rs/src/settings/repository.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 2,
+        "bundled-postgres": 2,
+        "postgres": 2
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 63,
+            "label": "default bootstrap"
+          },
+          {
+            "caseIndex": 64,
+            "label": "default bootstrap is idempotent"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 63,
+            "label": "default bootstrap"
+          },
+          {
+            "caseIndex": 64,
+            "label": "default bootstrap is idempotent"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 63,
+            "label": "default bootstrap"
+          },
+          {
+            "caseIndex": 64,
+            "label": "default bootstrap is idempotent"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "settings",
+      "method": "getSettings",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "get_settings",
+      "implementation": "cantrip_server_rs/src/settings/repository.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 16,
+        "bundled-postgres": 16,
+        "postgres": 16
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 2,
+            "label": "initial full bundle"
+          },
+          {
+            "caseIndex": 4,
+            "label": "bundle projections with opaque accounts and route ownership"
+          },
+          {
+            "caseIndex": 5,
+            "label": "other tenant bundle"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 2,
+            "label": "initial full bundle"
+          },
+          {
+            "caseIndex": 4,
+            "label": "bundle projections with opaque accounts and route ownership"
+          },
+          {
+            "caseIndex": 5,
+            "label": "other tenant bundle"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 2,
+            "label": "initial full bundle"
+          },
+          {
+            "caseIndex": 4,
+            "label": "bundle projections with opaque accounts and route ownership"
+          },
+          {
+            "caseIndex": 5,
+            "label": "other tenant bundle"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "preferences",
+      "method": "getUserSettings",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "get_user_settings",
+      "implementation": "cantrip_server_rs/src/settings/repository.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 3,
+        "bundled-postgres": 3,
+        "postgres": 3
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 42,
+            "label": "preferences retained after initializer"
+          },
+          {
+            "caseIndex": 54,
+            "label": "destination does not update other tenant"
+          },
+          {
+            "caseIndex": 787,
+            "label": "destination after process reopen"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 42,
+            "label": "preferences retained after initializer"
+          },
+          {
+            "caseIndex": 54,
+            "label": "destination does not update other tenant"
+          },
+          {
+            "caseIndex": 787,
+            "label": "destination after process reopen"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 42,
+            "label": "preferences retained after initializer"
+          },
+          {
+            "caseIndex": 54,
+            "label": "destination does not update other tenant"
+          },
+          {
+            "caseIndex": 787,
+            "label": "destination after process reopen"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "update",
+      "method": "updateSettings",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "update_settings",
+      "implementation": "cantrip_server_rs/src/settings/repository.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 25,
+        "bundled-postgres": 25,
+        "postgres": 25
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 32,
+            "label": "configure model defaults and worker"
+          },
+          {
+            "caseIndex": 34,
+            "label": "clear nullable defaults"
+          },
+          {
+            "caseIndex": 35,
+            "label": "merge mobile tabs initial"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 32,
+            "label": "configure model defaults and worker"
+          },
+          {
+            "caseIndex": 34,
+            "label": "clear nullable defaults"
+          },
+          {
+            "caseIndex": 35,
+            "label": "merge mobile tabs initial"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 32,
+            "label": "configure model defaults and worker"
+          },
+          {
+            "caseIndex": 34,
+            "label": "clear nullable defaults"
+          },
+          {
+            "caseIndex": 35,
+            "label": "merge mobile tabs initial"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "destination",
+      "method": "updateAppDestination",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "update_app_destination",
+      "implementation": "cantrip_server_rs/src/settings/repository.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 11,
+        "bundled-postgres": 11,
+        "postgres": 11
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 51,
+            "label": "save owned destination"
+          },
+          {
+            "caseIndex": 53,
+            "label": "clear one destination field"
+          },
+          {
+            "caseIndex": 43,
+            "label": "destination rejects foreign-project"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 51,
+            "label": "save owned destination"
+          },
+          {
+            "caseIndex": 53,
+            "label": "clear one destination field"
+          },
+          {
+            "caseIndex": 43,
+            "label": "destination rejects foreign-project"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 51,
+            "label": "save owned destination"
+          },
+          {
+            "caseIndex": 53,
+            "label": "clear one destination field"
+          },
+          {
+            "caseIndex": 43,
+            "label": "destination rejects foreign-project"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "runtimes",
+      "method": "getModelRuntimes",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "get_model_runtimes",
+      "implementation": "cantrip_server_rs/src/settings/repository.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 17,
+        "bundled-postgres": 17,
+        "postgres": 17
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 6,
+            "label": "runtime filters {}"
+          },
+          {
+            "caseIndex": 7,
+            "label": "runtime filters {\"includeDisabled\":true}"
+          },
+          {
+            "caseIndex": 8,
+            "label": "runtime filters {\"model\":\"profile\"}"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 6,
+            "label": "runtime filters {}"
+          },
+          {
+            "caseIndex": 7,
+            "label": "runtime filters {\"includeDisabled\":true}"
+          },
+          {
+            "caseIndex": 8,
+            "label": "runtime filters {\"model\":\"profile\"}"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 6,
+            "label": "runtime filters {}"
+          },
+          {
+            "caseIndex": 7,
+            "label": "runtime filters {\"includeDisabled\":true}"
+          },
+          {
+            "caseIndex": 8,
+            "label": "runtime filters {\"model\":\"profile\"}"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "model-create",
+      "method": "createModelProfile",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "create_model_profile",
+      "implementation": "cantrip_server_rs/src/settings/models.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 3,
+        "bundled-postgres": 3,
+        "postgres": 3
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 88,
+            "label": "create model and ordered routes with fresh identities"
+          },
+          {
+            "caseIndex": 86,
+            "label": "model creation rejects foreign provider"
+          },
+          {
+            "caseIndex": 87,
+            "label": "provider ownership compares original UTF16"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 88,
+            "label": "create model and ordered routes with fresh identities"
+          },
+          {
+            "caseIndex": 86,
+            "label": "model creation rejects foreign provider"
+          },
+          {
+            "caseIndex": 87,
+            "label": "provider ownership compares original UTF16"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 88,
+            "label": "create model and ordered routes with fresh identities"
+          },
+          {
+            "caseIndex": 86,
+            "label": "model creation rejects foreign provider"
+          },
+          {
+            "caseIndex": 87,
+            "label": "provider ownership compares original UTF16"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "model-update",
+      "method": "updateModelProfile",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "update_model_profile",
+      "implementation": "cantrip_server_rs/src/settings/models.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 6,
+        "bundled-postgres": 6,
+        "postgres": 6
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 89,
+            "label": "model route reorder and enable toggle"
+          },
+          {
+            "caseIndex": 94,
+            "label": "changed route detaches runtime"
+          },
+          {
+            "caseIndex": 100,
+            "label": "remove model route"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 89,
+            "label": "model route reorder and enable toggle"
+          },
+          {
+            "caseIndex": 94,
+            "label": "changed route detaches runtime"
+          },
+          {
+            "caseIndex": 100,
+            "label": "remove model route"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 89,
+            "label": "model route reorder and enable toggle"
+          },
+          {
+            "caseIndex": 94,
+            "label": "changed route detaches runtime"
+          },
+          {
+            "caseIndex": 100,
+            "label": "remove model route"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "model-delete",
+      "method": "deleteModelProfile",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "delete_model_profile",
+      "implementation": "cantrip_server_rs/src/settings/models.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 8,
+        "bundled-postgres": 8,
+        "postgres": 8
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 102,
+            "label": "owned model delete"
+          },
+          {
+            "caseIndex": 104,
+            "label": "delete discovered model adds suppression"
+          },
+          {
+            "caseIndex": 265,
+            "label": "delete discovered catalog model records suppression"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 102,
+            "label": "owned model delete"
+          },
+          {
+            "caseIndex": 104,
+            "label": "delete discovered model adds suppression"
+          },
+          {
+            "caseIndex": 265,
+            "label": "delete discovered catalog model records suppression"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 102,
+            "label": "owned model delete"
+          },
+          {
+            "caseIndex": 104,
+            "label": "delete discovered model adds suppression"
+          },
+          {
+            "caseIndex": 265,
+            "label": "delete discovered catalog model records suppression"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "provider-create",
+      "method": "createModelProvider",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "create_model_provider",
+      "implementation": "cantrip_server_rs/src/settings/providers.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 24,
+        "bundled-postgres": 24,
+        "postgres": 24
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 66,
+            "label": "create opaque API provider"
+          },
+          {
+            "caseIndex": 81,
+            "label": "create pooled account provider"
+          },
+          {
+            "caseIndex": 367,
+            "label": "create built-in catalog provider zai-service"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 66,
+            "label": "create opaque API provider"
+          },
+          {
+            "caseIndex": 81,
+            "label": "create pooled account provider"
+          },
+          {
+            "caseIndex": 367,
+            "label": "create built-in catalog provider zai-service"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 66,
+            "label": "create opaque API provider"
+          },
+          {
+            "caseIndex": 81,
+            "label": "create pooled account provider"
+          },
+          {
+            "caseIndex": 367,
+            "label": "create built-in catalog provider zai-service"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "provider-get",
+      "method": "getModelProvider",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "get_model_provider",
+      "implementation": "cantrip_server_rs/src/settings/providers.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 3,
+        "bundled-postgres": 3,
+        "postgres": 3
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 69,
+            "label": "provider-get owned"
+          },
+          {
+            "caseIndex": 77,
+            "label": "legacy provider edit preserves inference state"
+          },
+          {
+            "caseIndex": 70,
+            "label": "provider-get foreign"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 69,
+            "label": "provider-get owned"
+          },
+          {
+            "caseIndex": 77,
+            "label": "legacy provider edit preserves inference state"
+          },
+          {
+            "caseIndex": 70,
+            "label": "provider-get foreign"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 69,
+            "label": "provider-get owned"
+          },
+          {
+            "caseIndex": 77,
+            "label": "legacy provider edit preserves inference state"
+          },
+          {
+            "caseIndex": 70,
+            "label": "provider-get foreign"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "provider-update",
+      "method": "updateModelProvider",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "update_model_provider",
+      "implementation": "cantrip_server_rs/src/settings/providers.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 6,
+        "bundled-postgres": 6,
+        "postgres": 6
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 67,
+            "label": "provider inference limit advances revision"
+          },
+          {
+            "caseIndex": 68,
+            "label": "identical inference limit preserves revision"
+          },
+          {
+            "caseIndex": 75,
+            "label": "update provider omits protected key"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 67,
+            "label": "provider inference limit advances revision"
+          },
+          {
+            "caseIndex": 68,
+            "label": "identical inference limit preserves revision"
+          },
+          {
+            "caseIndex": 75,
+            "label": "update provider omits protected key"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 67,
+            "label": "provider inference limit advances revision"
+          },
+          {
+            "caseIndex": 68,
+            "label": "identical inference limit preserves revision"
+          },
+          {
+            "caseIndex": 75,
+            "label": "update provider omits protected key"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "provider-delete",
+      "method": "deleteModelProvider",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "delete_model_provider",
+      "implementation": "cantrip_server_rs/src/settings/providers.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 2,
+        "bundled-postgres": 2,
+        "postgres": 2
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 84,
+            "label": "provider deletion cascades pooled accounts"
+          },
+          {
+            "caseIndex": 83,
+            "label": "provider delete foreign is false"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 84,
+            "label": "provider deletion cascades pooled accounts"
+          },
+          {
+            "caseIndex": 83,
+            "label": "provider delete foreign is false"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 84,
+            "label": "provider deletion cascades pooled accounts"
+          },
+          {
+            "caseIndex": 83,
+            "label": "provider delete foreign is false"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "provider-runtime",
+      "method": "getModelProviderCatalogRuntime",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "get_provider_catalog_runtime",
+      "implementation": "cantrip_server_rs/src/settings/providers.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 3,
+        "bundled-postgres": 3,
+        "postgres": 3
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 71,
+            "label": "provider-runtime owned"
+          },
+          {
+            "caseIndex": 76,
+            "label": "read retained opaque provider key"
+          },
+          {
+            "caseIndex": 72,
+            "label": "provider-runtime foreign"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 71,
+            "label": "provider-runtime owned"
+          },
+          {
+            "caseIndex": 76,
+            "label": "read retained opaque provider key"
+          },
+          {
+            "caseIndex": 72,
+            "label": "provider-runtime foreign"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 71,
+            "label": "provider-runtime owned"
+          },
+          {
+            "caseIndex": 76,
+            "label": "read retained opaque provider key"
+          },
+          {
+            "caseIndex": 72,
+            "label": "provider-runtime foreign"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "provider-routes",
+      "method": "hasModelRoutesForProvider",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "has_model_routes_for_provider",
+      "implementation": "cantrip_server_rs/src/settings/providers.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 2,
+        "bundled-postgres": 2,
+        "postgres": 2
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 73,
+            "label": "provider-routes owned"
+          },
+          {
+            "caseIndex": 74,
+            "label": "provider-routes foreign"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 73,
+            "label": "provider-routes owned"
+          },
+          {
+            "caseIndex": 74,
+            "label": "provider-routes foreign"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 73,
+            "label": "provider-routes owned"
+          },
+          {
+            "caseIndex": 74,
+            "label": "provider-routes foreign"
+          }
+        ]
+      },
+      "coverageLimit": "This matrix compares no-route and foreign lookups. Positive attached-route lookup evidence remains open."
+    },
+    {
+      "operation": "account-runtimes",
+      "method": "listModelProviderAccountRuntimes",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "list_provider_account_runtimes",
+      "implementation": "cantrip_server_rs/src/settings/models.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 5,
+        "bundled-postgres": 5,
+        "postgres": 5
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 106,
+            "label": "account runtime {\"provider\":\"chatgpt\",\"worker\":\"worker\"}"
+          },
+          {
+            "caseIndex": 107,
+            "label": "account runtime {\"provider\":\"chatgpt\",\"worker\":\"foreign-worker\"}"
+          },
+          {
+            "caseIndex": 108,
+            "label": "account runtime {\"provider\":\"chatgpt\",\"worker\":\"worker\",\"owner\":\"settings-other\"}"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 106,
+            "label": "account runtime {\"provider\":\"chatgpt\",\"worker\":\"worker\"}"
+          },
+          {
+            "caseIndex": 107,
+            "label": "account runtime {\"provider\":\"chatgpt\",\"worker\":\"foreign-worker\"}"
+          },
+          {
+            "caseIndex": 108,
+            "label": "account runtime {\"provider\":\"chatgpt\",\"worker\":\"worker\",\"owner\":\"settings-other\"}"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 106,
+            "label": "account runtime {\"provider\":\"chatgpt\",\"worker\":\"worker\"}"
+          },
+          {
+            "caseIndex": 107,
+            "label": "account runtime {\"provider\":\"chatgpt\",\"worker\":\"foreign-worker\"}"
+          },
+          {
+            "caseIndex": 108,
+            "label": "account runtime {\"provider\":\"chatgpt\",\"worker\":\"worker\",\"owner\":\"settings-other\"}"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "accounts-list",
+      "method": "listModelProviderAccounts",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "list_provider_accounts",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 21,
+        "bundled-postgres": 19,
+        "postgres": 19
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 111,
+            "label": "pooled account list includes worker bindings"
+          },
+          {
+            "caseIndex": 122,
+            "label": "account positions append after last position"
+          },
+          {
+            "caseIndex": 128,
+            "label": "read complete reordered account set"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 111,
+            "label": "pooled account list includes worker bindings"
+          },
+          {
+            "caseIndex": 122,
+            "label": "account positions append after last position"
+          },
+          {
+            "caseIndex": 128,
+            "label": "read complete reordered account set"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 111,
+            "label": "pooled account list includes worker bindings"
+          },
+          {
+            "caseIndex": 122,
+            "label": "account positions append after last position"
+          },
+          {
+            "caseIndex": 128,
+            "label": "read complete reordered account set"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "account-create",
+      "method": "createModelProviderAccount",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "create_provider_account",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 12,
+        "bundled-postgres": 12,
+        "postgres": 12
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 116,
+            "label": "create encrypted account 88888888-8888-4888-8888-888888888881"
+          },
+          {
+            "caseIndex": 117,
+            "label": "create encrypted account 88888888-8888-4888-8888-888888888882"
+          },
+          {
+            "caseIndex": 506,
+            "label": "create account catalog sign-in 88888888-8888-4888-8888-888888888886"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 116,
+            "label": "create encrypted account 88888888-8888-4888-8888-888888888881"
+          },
+          {
+            "caseIndex": 117,
+            "label": "create encrypted account 88888888-8888-4888-8888-888888888882"
+          },
+          {
+            "caseIndex": 506,
+            "label": "create account catalog sign-in 88888888-8888-4888-8888-888888888886"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 116,
+            "label": "create encrypted account 88888888-8888-4888-8888-888888888881"
+          },
+          {
+            "caseIndex": 117,
+            "label": "create encrypted account 88888888-8888-4888-8888-888888888882"
+          },
+          {
+            "caseIndex": 506,
+            "label": "create account catalog sign-in 88888888-8888-4888-8888-888888888886"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "account-update",
+      "method": "updateModelProviderAccount",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "update_provider_account",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 7,
+        "bundled-postgres": 7,
+        "postgres": 7
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 130,
+            "label": "disable account account"
+          },
+          {
+            "caseIndex": 131,
+            "label": "disable account disabled-account"
+          },
+          {
+            "caseIndex": 132,
+            "label": "disable account 88888888-8888-4888-8888-888888888881"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 130,
+            "label": "disable account account"
+          },
+          {
+            "caseIndex": 131,
+            "label": "disable account disabled-account"
+          },
+          {
+            "caseIndex": 132,
+            "label": "disable account 88888888-8888-4888-8888-888888888881"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 130,
+            "label": "disable account account"
+          },
+          {
+            "caseIndex": 131,
+            "label": "disable account disabled-account"
+          },
+          {
+            "caseIndex": 132,
+            "label": "disable account 88888888-8888-4888-8888-888888888881"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "accounts-order",
+      "method": "reorderModelProviderAccounts",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "reorder_provider_accounts",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 5,
+        "bundled-postgres": 5,
+        "postgres": 5
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 126,
+            "label": "empty unavailable provider reorder matches source"
+          },
+          {
+            "caseIndex": 127,
+            "label": "swap pooled accounts without transient position collision"
+          },
+          {
+            "caseIndex": 123,
+            "label": "invalid account order {\"ids\":[\"disabled-account\",\"88888888-8888-4888-8888-888888888881\",\"88888888-8888-4888-8888-888888888882\"]}"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 126,
+            "label": "empty unavailable provider reorder matches source"
+          },
+          {
+            "caseIndex": 127,
+            "label": "swap pooled accounts without transient position collision"
+          },
+          {
+            "caseIndex": 123,
+            "label": "invalid account order {\"ids\":[\"disabled-account\",\"88888888-8888-4888-8888-888888888881\",\"88888888-8888-4888-8888-888888888882\"]}"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 126,
+            "label": "empty unavailable provider reorder matches source"
+          },
+          {
+            "caseIndex": 127,
+            "label": "swap pooled accounts without transient position collision"
+          },
+          {
+            "caseIndex": 123,
+            "label": "invalid account order {\"ids\":[\"disabled-account\",\"88888888-8888-4888-8888-888888888881\",\"88888888-8888-4888-8888-888888888882\"]}"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "account-delete",
+      "method": "deleteModelProviderAccount",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "delete_provider_account",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 2,
+        "bundled-postgres": 2,
+        "postgres": 2
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 235,
+            "label": "account deletion removes bindings"
+          },
+          {
+            "caseIndex": 234,
+            "label": "account deletion rejects foreign owner"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 235,
+            "label": "account deletion removes bindings"
+          },
+          {
+            "caseIndex": 234,
+            "label": "account deletion rejects foreign owner"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 235,
+            "label": "account deletion removes bindings"
+          },
+          {
+            "caseIndex": 234,
+            "label": "account deletion rejects foreign owner"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "account-runtime",
+      "method": "getModelProviderAccountRuntime",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "get_provider_account_runtime",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 129,
+            "label": "default account follows order"
+          },
+          {
+            "caseIndex": 135,
+            "label": "explicit disabled account remains addressable"
+          },
+          {
+            "caseIndex": 134,
+            "label": "no enabled default account"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 129,
+            "label": "default account follows order"
+          },
+          {
+            "caseIndex": 135,
+            "label": "explicit disabled account remains addressable"
+          },
+          {
+            "caseIndex": 134,
+            "label": "no enabled default account"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 129,
+            "label": "default account follows order"
+          },
+          {
+            "caseIndex": 135,
+            "label": "explicit disabled account remains addressable"
+          },
+          {
+            "caseIndex": 134,
+            "label": "no enabled default account"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "credential-get",
+      "method": "getModelProviderAccountCredential",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "get_provider_account_credential",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 14,
+        "bundled-postgres": 14,
+        "postgres": 14
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 146,
+            "label": "read stored opaque provider credential"
+          },
+          {
+            "caseIndex": 151,
+            "label": "credential record retains opaque credential while reauth required"
+          },
+          {
+            "caseIndex": 622,
+            "label": "captured expiry is stored at the source millisecond precision"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 146,
+            "label": "read stored opaque provider credential"
+          },
+          {
+            "caseIndex": 151,
+            "label": "credential record retains opaque credential while reauth required"
+          },
+          {
+            "caseIndex": 622,
+            "label": "captured expiry is stored at the source millisecond precision"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 146,
+            "label": "read stored opaque provider credential"
+          },
+          {
+            "caseIndex": 151,
+            "label": "credential record retains opaque credential while reauth required"
+          },
+          {
+            "caseIndex": 622,
+            "label": "captured expiry is stored at the source millisecond precision"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "credential-migrations",
+      "method": "listModelProviderAccountCredentialMigrations",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "list_provider_credential_migrations",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 3,
+        "bundled-postgres": 3,
+        "postgres": 3
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 141,
+            "label": "migration list excludes signed-out records"
+          },
+          {
+            "caseIndex": 155,
+            "label": "signed-in credential migration list"
+          },
+          {
+            "caseIndex": 227,
+            "label": "signed-out account removed from migration list"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 141,
+            "label": "migration list excludes signed-out records"
+          },
+          {
+            "caseIndex": 155,
+            "label": "signed-in credential migration list"
+          },
+          {
+            "caseIndex": 227,
+            "label": "signed-out account removed from migration list"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 141,
+            "label": "migration list excludes signed-out records"
+          },
+          {
+            "caseIndex": 155,
+            "label": "signed-in credential migration list"
+          },
+          {
+            "caseIndex": 227,
+            "label": "signed-out account removed from migration list"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "credential-migration",
+      "method": "getModelProviderAccountCredentialMigration",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "get_provider_credential_migration",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 140,
+            "label": "signed-out account has migration identity"
+          },
+          {
+            "caseIndex": 154,
+            "label": "signed-in migration metadata"
+          },
+          {
+            "caseIndex": 226,
+            "label": "signed-out migration record retains revision"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 140,
+            "label": "signed-out account has migration identity"
+          },
+          {
+            "caseIndex": 154,
+            "label": "signed-in migration metadata"
+          },
+          {
+            "caseIndex": 226,
+            "label": "signed-out migration record retains revision"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 140,
+            "label": "signed-out account has migration identity"
+          },
+          {
+            "caseIndex": 154,
+            "label": "signed-in migration metadata"
+          },
+          {
+            "caseIndex": 226,
+            "label": "signed-out migration record retains revision"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "credential-store",
+      "method": "storeModelProviderAccountCredential",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "store_provider_account_credential",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 12,
+        "bundled-postgres": 12,
+        "postgres": 12
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 145,
+            "label": "store opaque provider credential"
+          },
+          {
+            "caseIndex": 153,
+            "label": "refresh same identity accepts omitted expected revision"
+          },
+          {
+            "caseIndex": 627,
+            "label": "prepare lifecycle opaque credential aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 145,
+            "label": "store opaque provider credential"
+          },
+          {
+            "caseIndex": 153,
+            "label": "refresh same identity accepts omitted expected revision"
+          },
+          {
+            "caseIndex": 627,
+            "label": "prepare lifecycle opaque credential aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 145,
+            "label": "store opaque provider credential"
+          },
+          {
+            "caseIndex": 153,
+            "label": "refresh same identity accepts omitted expected revision"
+          },
+          {
+            "caseIndex": 627,
+            "label": "prepare lifecycle opaque credential aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "credential-state",
+      "method": "updateModelProviderAccountCredentialState",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "update_provider_credential_state",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 3,
+        "bundled-postgres": 3,
+        "postgres": 3
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 150,
+            "label": "mark credential reauthentication required"
+          },
+          {
+            "caseIndex": 152,
+            "label": "mark credential identity conflict"
+          },
+          {
+            "caseIndex": 149,
+            "label": "stale credential-state observation"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 150,
+            "label": "mark credential reauthentication required"
+          },
+          {
+            "caseIndex": 152,
+            "label": "mark credential identity conflict"
+          },
+          {
+            "caseIndex": 149,
+            "label": "stale credential-state observation"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 150,
+            "label": "mark credential reauthentication required"
+          },
+          {
+            "caseIndex": 152,
+            "label": "mark credential identity conflict"
+          },
+          {
+            "caseIndex": 149,
+            "label": "stale credential-state observation"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "credential-clear",
+      "method": "clearModelProviderAccountCredential",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "clear_provider_account_credential",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 3,
+        "bundled-postgres": 3,
+        "postgres": 3
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 231,
+            "label": "clear credential returns presence"
+          },
+          {
+            "caseIndex": 232,
+            "label": "repeated sign-out still advances revision"
+          },
+          {
+            "caseIndex": 233,
+            "label": "missing credential clear is false"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 231,
+            "label": "clear credential returns presence"
+          },
+          {
+            "caseIndex": 232,
+            "label": "repeated sign-out still advances revision"
+          },
+          {
+            "caseIndex": 233,
+            "label": "missing credential clear is false"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 231,
+            "label": "clear credential returns presence"
+          },
+          {
+            "caseIndex": 232,
+            "label": "repeated sign-out still advances revision"
+          },
+          {
+            "caseIndex": 233,
+            "label": "missing credential clear is false"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "credential-signout",
+      "method": "takeModelProviderAccountCredentialForSignOut",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "take_provider_credential_for_sign_out",
+      "implementation": "cantrip_server_rs/src/settings/accounts.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 1,
+        "bundled-postgres": 1,
+        "postgres": 1
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 223,
+            "label": "sign-out atomically clears credential, quota, credits and bindings"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 223,
+            "label": "sign-out atomically clears credential, quota, credits and bindings"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 223,
+            "label": "sign-out atomically clears credential, quota, credits and bindings"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "account-status",
+      "method": "recordModelProviderAccountStatus",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "record_provider_account_status",
+      "implementation": "cantrip_server_rs/src/settings/account_observations.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 7,
+        "bundled-postgres": 7,
+        "postgres": 7
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 156,
+            "label": "persist quota and legacy worker authentication"
+          },
+          {
+            "caseIndex": 158,
+            "label": "signed-out status retains account quota and plan"
+          },
+          {
+            "caseIndex": 180,
+            "label": "legacy status Date range -0.0005"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 156,
+            "label": "persist quota and legacy worker authentication"
+          },
+          {
+            "caseIndex": 158,
+            "label": "signed-out status retains account quota and plan"
+          },
+          {
+            "caseIndex": 180,
+            "label": "legacy status Date range -0.0005"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 156,
+            "label": "persist quota and legacy worker authentication"
+          },
+          {
+            "caseIndex": 158,
+            "label": "signed-out status retains account quota and plan"
+          },
+          {
+            "caseIndex": 180,
+            "label": "legacy status Date range -0.0005"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "account-credits",
+      "method": "recordModelProviderAccountCredits",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "record_provider_account_credits",
+      "implementation": "cantrip_server_rs/src/settings/account_observations.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 6,
+        "bundled-postgres": 6,
+        "postgres": 6
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 217,
+            "label": "record provider credits"
+          },
+          {
+            "caseIndex": 219,
+            "label": "equal credits observation replaces snapshot"
+          },
+          {
+            "caseIndex": 501,
+            "label": "credit timestamps retain JavaScript millisecond precision"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 217,
+            "label": "record provider credits"
+          },
+          {
+            "caseIndex": 219,
+            "label": "equal credits observation replaces snapshot"
+          },
+          {
+            "caseIndex": 501,
+            "label": "credit timestamps retain JavaScript millisecond precision"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 217,
+            "label": "record provider credits"
+          },
+          {
+            "caseIndex": 219,
+            "label": "equal credits observation replaces snapshot"
+          },
+          {
+            "caseIndex": 501,
+            "label": "credit timestamps retain JavaScript millisecond precision"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "account-usage",
+      "method": "recordModelProviderAccountUsage",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "record_provider_account_usage",
+      "implementation": "cantrip_server_rs/src/settings/account_observations.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 15,
+        "bundled-postgres": 15,
+        "postgres": 15
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 163,
+            "label": "clamped quota usage -100"
+          },
+          {
+            "caseIndex": 165,
+            "label": "clamped quota usage -0.005"
+          },
+          {
+            "caseIndex": 167,
+            "label": "clamped quota usage 0"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 163,
+            "label": "clamped quota usage -100"
+          },
+          {
+            "caseIndex": 165,
+            "label": "clamped quota usage -0.005"
+          },
+          {
+            "caseIndex": 167,
+            "label": "clamped quota usage 0"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 163,
+            "label": "clamped quota usage -100"
+          },
+          {
+            "caseIndex": 165,
+            "label": "clamped quota usage -0.005"
+          },
+          {
+            "caseIndex": 167,
+            "label": "clamped quota usage 0"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "catalog-targets",
+      "method": "listModelProviderCatalogTargets",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "list_provider_catalog_targets",
+      "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 1,
+        "bundled-postgres": 1,
+        "postgres": 1
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 239,
+            "label": "provider catalog refresh target order"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 239,
+            "label": "provider catalog refresh target order"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 239,
+            "label": "provider catalog refresh target order"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "catalog-refresh-targets",
+      "method": "listModelProviderRefreshTargets",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "list_provider_refresh_targets",
+      "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 1,
+        "bundled-postgres": 1,
+        "postgres": 1
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 238,
+            "label": "catalog refresh targets with pooled account summaries"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 238,
+            "label": "catalog refresh targets with pooled account summaries"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 238,
+            "label": "catalog refresh targets with pooled account summaries"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "catalog-sync",
+      "method": "setProviderCatalogSyncState",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "set_provider_catalog_sync_state",
+      "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 255,
+            "label": "record refreshing state with opaque ETag"
+          },
+          {
+            "caseIndex": 257,
+            "label": "partial sync update preserves omitted fields"
+          },
+          {
+            "caseIndex": 259,
+            "label": "explicit null clears only supplied sync fields"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 255,
+            "label": "record refreshing state with opaque ETag"
+          },
+          {
+            "caseIndex": 257,
+            "label": "partial sync update preserves omitted fields"
+          },
+          {
+            "caseIndex": 259,
+            "label": "explicit null clears only supplied sync fields"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 255,
+            "label": "record refreshing state with opaque ETag"
+          },
+          {
+            "caseIndex": 257,
+            "label": "partial sync update preserves omitted fields"
+          },
+          {
+            "caseIndex": 259,
+            "label": "explicit null clears only supplied sync fields"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "catalog-get",
+      "method": "getProviderModelCatalog",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "get_provider_model_catalog",
+      "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 21,
+        "bundled-postgres": 21,
+        "postgres": 21
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 240,
+            "label": "empty provider catalog"
+          },
+          {
+            "caseIndex": 244,
+            "label": "read complete catalog and availability"
+          },
+          {
+            "caseIndex": 256,
+            "label": "read refreshing catalog state"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 240,
+            "label": "empty provider catalog"
+          },
+          {
+            "caseIndex": 244,
+            "label": "read complete catalog and availability"
+          },
+          {
+            "caseIndex": 256,
+            "label": "read refreshing catalog state"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 240,
+            "label": "empty provider catalog"
+          },
+          {
+            "caseIndex": 244,
+            "label": "read complete catalog and availability"
+          },
+          {
+            "caseIndex": 256,
+            "label": "read refreshing catalog state"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "catalog-availability",
+      "method": "listProviderModelAvailability",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "list_provider_model_availability",
+      "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 2,
+        "bundled-postgres": 2,
+        "postgres": 2
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 246,
+            "label": "owned provider model availability"
+          },
+          {
+            "caseIndex": 247,
+            "label": "foreign model availability denied"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 246,
+            "label": "owned provider model availability"
+          },
+          {
+            "caseIndex": 247,
+            "label": "foreign model availability denied"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 246,
+            "label": "owned provider model availability"
+          },
+          {
+            "caseIndex": 247,
+            "label": "foreign model availability denied"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "catalog-reconcile",
+      "method": "reconcileProviderModelCatalog",
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "nativeSymbol": "reconcile_provider_model_catalog",
+      "implementation": "cantrip_server_rs/src/settings/catalog.rs",
+      "suite": "settings-repository-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 13,
+        "bundled-postgres": 13,
+        "postgres": 13
+      },
+      "samples": {
+        "pglite": [
+          {
+            "caseIndex": 243,
+            "label": "create first native catalog and scoped availability"
+          },
+          {
+            "caseIndex": 249,
+            "label": "secret metadata and object insertion order do not change hash"
+          },
+          {
+            "caseIndex": 251,
+            "label": "public metadata changes produce immutable observation"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "caseIndex": 243,
+            "label": "create first native catalog and scoped availability"
+          },
+          {
+            "caseIndex": 249,
+            "label": "secret metadata and object insertion order do not change hash"
+          },
+          {
+            "caseIndex": 251,
+            "label": "public metadata changes produce immutable observation"
+          }
+        ],
+        "postgres": [
+          {
+            "caseIndex": 243,
+            "label": "create first native catalog and scoped availability"
+          },
+          {
+            "caseIndex": 249,
+            "label": "secret metadata and object insertion order do not change hash"
+          },
+          {
+            "caseIndex": 251,
+            "label": "public metadata changes produce immutable observation"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "ensureLocalIdentity",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "auth-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 2,
+        "bundled-postgres": 2,
+        "postgres": 2
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 43,
+            "label": "retained session in anonymous mode"
+          },
+          {
+            "profile": "partitioned-accounts",
+            "caseIndex": 46,
+            "label": "retained session in anonymous mode"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 43,
+            "label": "retained session in anonymous mode"
+          },
+          {
+            "profile": "partitioned-accounts",
+            "caseIndex": 46,
+            "label": "retained session in anonymous mode"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 43,
+            "label": "retained session in anonymous mode"
+          },
+          {
+            "profile": "partitioned-accounts",
+            "caseIndex": 46,
+            "label": "retained session in anonymous mode"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "countAccountUsers",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "auth-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 8,
+        "bundled-postgres": 8,
+        "postgres": 8
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 1,
+            "label": "bootstrap"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 1,
+            "label": "bootstrap"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 1,
+            "label": "bootstrap"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 1,
+            "label": "bootstrap"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 1,
+            "label": "bootstrap"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 1,
+            "label": "bootstrap"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 1,
+            "label": "bootstrap"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 1,
+            "label": "bootstrap"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 1,
+            "label": "bootstrap"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "listAccountLicenseWhitelist",
+      "implementation": "cantrip_server_rs/src/auth/security_repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 83,
+            "label": "whitelist summary"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 86,
+            "label": "whitelist summary"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 100,
+            "label": "whitelist summary"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 83,
+            "label": "whitelist summary"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 86,
+            "label": "whitelist summary"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 100,
+            "label": "whitelist summary"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 83,
+            "label": "whitelist summary"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 86,
+            "label": "whitelist summary"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 100,
+            "label": "whitelist summary"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "createAccountLicenseWhitelistEntry",
+      "implementation": "cantrip_server_rs/src/auth/security_repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 81,
+            "label": "whitelist created"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 84,
+            "label": "whitelist created"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 98,
+            "label": "whitelist created"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 81,
+            "label": "whitelist created"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 84,
+            "label": "whitelist created"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 98,
+            "label": "whitelist created"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 81,
+            "label": "whitelist created"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 84,
+            "label": "whitelist created"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 98,
+            "label": "whitelist created"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "deleteAccountLicenseWhitelistEntry",
+      "implementation": "cantrip_server_rs/src/auth/security_repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 84,
+            "label": "whitelist deleted"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 87,
+            "label": "whitelist deleted"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 101,
+            "label": "whitelist deleted"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 84,
+            "label": "whitelist deleted"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 87,
+            "label": "whitelist deleted"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 101,
+            "label": "whitelist deleted"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 84,
+            "label": "whitelist deleted"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 87,
+            "label": "whitelist deleted"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 101,
+            "label": "whitelist deleted"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "createAccount",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 2,
+        "bundled-postgres": 2,
+        "postgres": 2
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "accounts",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          },
+          {
+            "profile": "administrator",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "accounts",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          },
+          {
+            "profile": "administrator",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "accounts",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          },
+          {
+            "profile": "administrator",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "findAccountCredential",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 1,
+        "bundled-postgres": 1,
+        "postgres": 1
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "accounts",
+            "caseIndex": 77,
+            "label": "new password accepted"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "accounts",
+            "caseIndex": 77,
+            "label": "new password accepted"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "accounts",
+            "caseIndex": 77,
+            "label": "new password accepted"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "findAccountCredentialById",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 1,
+        "bundled-postgres": 1,
+        "postgres": 1
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "accounts",
+            "caseIndex": 75,
+            "label": "changed password"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "accounts",
+            "caseIndex": 75,
+            "label": "changed password"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "accounts",
+            "caseIndex": 75,
+            "label": "changed password"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "createUserSession",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 2,
+        "bundled-postgres": 2,
+        "postgres": 2
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "accounts",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          },
+          {
+            "profile": "administrator",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "accounts",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          },
+          {
+            "profile": "administrator",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "accounts",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          },
+          {
+            "profile": "administrator",
+            "caseIndex": 1,
+            "label": "account sign-in"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "getActiveUserSession",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 3,
+        "bundled-postgres": 3,
+        "postgres": 3
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "password",
+            "caseIndex": 2,
+            "label": "current session"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 2,
+            "label": "current session"
+          },
+          {
+            "profile": "administrator",
+            "caseIndex": 2,
+            "label": "current session"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 2,
+            "label": "current session"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 2,
+            "label": "current session"
+          },
+          {
+            "profile": "administrator",
+            "caseIndex": 2,
+            "label": "current session"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 2,
+            "label": "current session"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 2,
+            "label": "current session"
+          },
+          {
+            "profile": "administrator",
+            "caseIndex": 2,
+            "label": "current session"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "createMobileSignInGrant",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "auth-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 6,
+        "bundled-postgres": 6,
+        "postgres": 6
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "password",
+            "caseIndex": 33,
+            "label": "mobile grant"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 36,
+            "label": "mobile grant"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 33,
+            "label": "mobile grant"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 33,
+            "label": "mobile grant"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 36,
+            "label": "mobile grant"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 33,
+            "label": "mobile grant"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 33,
+            "label": "mobile grant"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 36,
+            "label": "mobile grant"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 33,
+            "label": "mobile grant"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "consumeMobileSignInGrant",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "auth-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 6,
+        "bundled-postgres": 6,
+        "postgres": 6
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "password",
+            "caseIndex": 36,
+            "label": "mobile session"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 39,
+            "label": "mobile session"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 36,
+            "label": "mobile session"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 36,
+            "label": "mobile session"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 39,
+            "label": "mobile session"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 36,
+            "label": "mobile session"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 36,
+            "label": "mobile session"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 39,
+            "label": "mobile session"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 36,
+            "label": "mobile session"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "revokeUserSession",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "auth-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 6,
+        "bundled-postgres": 6,
+        "postgres": 6
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "password",
+            "caseIndex": 44,
+            "label": "session after logout"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 47,
+            "label": "session after logout"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 48,
+            "label": "session after logout"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 44,
+            "label": "session after logout"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 47,
+            "label": "session after logout"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 48,
+            "label": "session after logout"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 44,
+            "label": "session after logout"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 47,
+            "label": "session after logout"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 48,
+            "label": "session after logout"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "revokeAllUserSessions",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "auth-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 6,
+        "bundled-postgres": 6,
+        "postgres": 6
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "password",
+            "caseIndex": 48,
+            "label": "session after logout all"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 51,
+            "label": "session after logout all"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 52,
+            "label": "session after logout all"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 48,
+            "label": "session after logout all"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 51,
+            "label": "session after logout all"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 52,
+            "label": "session after logout all"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 48,
+            "label": "session after logout all"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 51,
+            "label": "session after logout all"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 52,
+            "label": "session after logout all"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "listUserSessions",
+      "implementation": "cantrip_server_rs/src/auth/security_repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 66,
+            "label": "list sessions"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 69,
+            "label": "list sessions"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 83,
+            "label": "list sessions"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 66,
+            "label": "list sessions"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 69,
+            "label": "list sessions"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 83,
+            "label": "list sessions"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 66,
+            "label": "list sessions"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 69,
+            "label": "list sessions"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 83,
+            "label": "list sessions"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "appendAuditEvent",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 67,
+            "label": "list audit"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 70,
+            "label": "list audit"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 84,
+            "label": "list audit"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 67,
+            "label": "list audit"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 70,
+            "label": "list audit"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 84,
+            "label": "list audit"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 67,
+            "label": "list audit"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 70,
+            "label": "list audit"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 84,
+            "label": "list audit"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "listAuditEvents",
+      "implementation": "cantrip_server_rs/src/auth/security_repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 67,
+            "label": "list audit"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 70,
+            "label": "list audit"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 84,
+            "label": "list audit"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 67,
+            "label": "list audit"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 70,
+            "label": "list audit"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 84,
+            "label": "list audit"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 67,
+            "label": "list audit"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 70,
+            "label": "list audit"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 84,
+            "label": "list audit"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-identity-model.ts",
+      "method": "getOrCreateServerId",
+      "implementation": "cantrip_server_rs/src/auth/repository.rs",
+      "suite": "auth-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 6,
+        "bundled-postgres": 6,
+        "postgres": 6
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "password",
+            "caseIndex": 39,
+            "label": "retained identity after restart"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 42,
+            "label": "retained identity after restart"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 39,
+            "label": "retained identity after restart"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 39,
+            "label": "retained identity after restart"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 42,
+            "label": "retained identity after restart"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 39,
+            "label": "retained identity after restart"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "password",
+            "caseIndex": 39,
+            "label": "retained identity after restart"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 42,
+            "label": "retained identity after restart"
+          },
+          {
+            "profile": "partitioned-password",
+            "caseIndex": 39,
+            "label": "retained identity after restart"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "getProfile",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 9,
+            "label": "initialized state"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 12,
+            "label": "initialized state"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 12,
+            "label": "initialized state"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 9,
+            "label": "initialized state"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 12,
+            "label": "initialized state"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 12,
+            "label": "initialized state"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 9,
+            "label": "initialized state"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 12,
+            "label": "initialized state"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 12,
+            "label": "initialized state"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "initializeProfile",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 7,
+            "label": "initialized"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 10,
+            "label": "initialized"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 10,
+            "label": "initialized"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 7,
+            "label": "initialized"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 10,
+            "label": "initialized"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 10,
+            "label": "initialized"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 7,
+            "label": "initialized"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 10,
+            "label": "initialized"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 10,
+            "label": "initialized"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "updateMigrationStatus",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 42,
+            "label": "migration update"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 45,
+            "label": "migration update"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 49,
+            "label": "migration update"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 42,
+            "label": "migration update"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 45,
+            "label": "migration update"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 49,
+            "label": "migration update"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 42,
+            "label": "migration update"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 45,
+            "label": "migration update"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 49,
+            "label": "migration update"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "changeAccountPassword",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 1,
+        "bundled-postgres": 1,
+        "postgres": 1
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "accounts",
+            "caseIndex": 75,
+            "label": "changed password"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "accounts",
+            "caseIndex": 75,
+            "label": "changed password"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "accounts",
+            "caseIndex": 75,
+            "label": "changed password"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "listPrincipals",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 87,
+            "label": "retained principals"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 90,
+            "label": "retained principals"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 107,
+            "label": "retained principals"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 87,
+            "label": "retained principals"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 90,
+            "label": "retained principals"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 107,
+            "label": "retained principals"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 87,
+            "label": "retained principals"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 90,
+            "label": "retained principals"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 107,
+            "label": "retained principals"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "createPrincipal",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 44,
+            "label": "new client"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 47,
+            "label": "new client"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 51,
+            "label": "new client"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 44,
+            "label": "new client"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 47,
+            "label": "new client"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 51,
+            "label": "new client"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 44,
+            "label": "new client"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 47,
+            "label": "new client"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 51,
+            "label": "new client"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "approvePrincipal",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 49,
+            "label": "approved client"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 52,
+            "label": "approved client"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 56,
+            "label": "approved client"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 49,
+            "label": "approved client"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 52,
+            "label": "approved client"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 56,
+            "label": "approved client"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 49,
+            "label": "approved client"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 52,
+            "label": "approved client"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 56,
+            "label": "approved client"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "revokePrincipal",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 62,
+            "label": "revoke initial principal"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 65,
+            "label": "revoke initial principal"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 69,
+            "label": "revoke initial principal"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 62,
+            "label": "revoke initial principal"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 65,
+            "label": "revoke initial principal"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 69,
+            "label": "revoke initial principal"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 62,
+            "label": "revoke initial principal"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 65,
+            "label": "revoke initial principal"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 69,
+            "label": "revoke initial principal"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "listActiveGrants",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 55,
+            "label": "active grants"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 58,
+            "label": "active grants"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 62,
+            "label": "active grants"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 55,
+            "label": "active grants"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 58,
+            "label": "active grants"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 62,
+            "label": "active grants"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 55,
+            "label": "active grants"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 58,
+            "label": "active grants"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 62,
+            "label": "active grants"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "createGrant",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 53,
+            "label": "new grant"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 56,
+            "label": "new grant"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 60,
+            "label": "new grant"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 53,
+            "label": "new grant"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 56,
+            "label": "new grant"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 60,
+            "label": "new grant"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 53,
+            "label": "new grant"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 56,
+            "label": "new grant"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 60,
+            "label": "new grant"
+          }
+        ]
+      }
+    },
+    {
+      "file": "tests/reference-node-server/src/db/encryption-registry.ts",
+      "method": "revokeGrant",
+      "implementation": "cantrip_server_rs/src/encryption/repository.rs",
+      "suite": "security-compatibility",
+      "completedInvocationCounts": {
+        "pglite": 4,
+        "bundled-postgres": 4,
+        "postgres": 4
+      },
+      "samples": {
+        "pglite": [
+          {
+            "profile": "none",
+            "caseIndex": 57,
+            "label": "revoke grant"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 60,
+            "label": "revoke grant"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 64,
+            "label": "revoke grant"
+          }
+        ],
+        "bundled-postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 57,
+            "label": "revoke grant"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 60,
+            "label": "revoke grant"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 64,
+            "label": "revoke grant"
+          }
+        ],
+        "postgres": [
+          {
+            "profile": "none",
+            "caseIndex": 57,
+            "label": "revoke grant"
+          },
+          {
+            "profile": "password",
+            "caseIndex": 60,
+            "label": "revoke grant"
+          },
+          {
+            "profile": "accounts",
+            "caseIndex": 64,
+            "label": "revoke grant"
+          }
+        ]
+      }
+    }
+  ],
+  "modelDeletionRegression": {
+    "originalReferenceReport": "qa/model-delete-v2/report.json",
+    "originalReferenceSha256": "11e25d0a6563e6632f923f44ef8851dfa637278254e95e66d8827b7d0051e84f",
+    "fixedReferenceReport": "qa/model-delete-v3/report.json",
+    "fixedReferenceSha256": "7a1ea9f2b43f8f947e062a4da9e081a7371723d808059547c7164104235fb886",
+    "scope": "Actual external PostgreSQL before/after reproduction. Original Node raw-Date binding fails and rolls back; Rust already succeeds. Corrected reference now matches successful deletion, foreign-owner denial, selected override clearing and other-owner retention. Current all-store settings reports separately assert both runtime outcomes and exact SQL state."
+  }
+}

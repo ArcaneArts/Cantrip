@@ -4,7 +4,7 @@ import type {
   WorkerSummary,
 } from "@cantrip/protocol";
 
-import { refreshWorkerEncryption } from "./api";
+import { refreshWorkerEncryption } from "./api/worker-wire";
 import type { ClientSessionContext } from "./client-session";
 import { getClientSession } from "./client-session";
 import type {

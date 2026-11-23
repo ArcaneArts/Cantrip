@@ -1,0 +1,2644 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "encryptedRemoteSurfaceCreateSchema": 0,
+    "encryptedRemoteSurfaceUpdateSchema": 51,
+    "remoteSurfaceWireSummarySchema": 61,
+    "remoteSurfaceWireListSchema": 77,
+    "encryptedRemoteDesktopCreateSchema": 78,
+    "encryptedRemoteDesktopUpdateSchema": 110,
+    "remoteDesktopWireSummarySchema": 113,
+    "remoteDesktopWireListSchema": 125,
+    "remoteDesktopFleetWireSchema": 126,
+    "remoteDesktopProtectedInventorySchema": 154,
+    "remoteDesktopProbeResultSchema": 161,
+    "remoteDesktopOsSourceSchema": 11,
+    "remoteDesktopPreparedGenerationSchema": 165,
+    "remoteSurfaceViewportSchema": 167,
+    "remoteSurfaceConnectionMessageSchema": 171,
+    "remoteSurfaceWebRtcConfigurationSchema": 178,
+    "remoteBrowserClientMessageSchema": 193,
+    "remoteBrowserServerMessageSchema": 257,
+    "remoteBrowserCursorMessageSchema": 306,
+    "remoteBrowserClipboardMessageSchema": 309,
+    "browserPrivateStateProtectedContentSchema": 313,
+    "remoteDesktopServerMessageSchema": 321,
+    "remoteDesktopStreamFeedbackSchema": 378,
+    "remoteDesktopViewerPointerSchema": 385,
+    "remoteDesktopViewerKeySchema": 406,
+    "remoteDesktopViewerClipboardSchema": 419,
+    "remoteDesktopViewerInputCancelSchema": 428,
+    "remoteDesktopViewerControlSchema": 431,
+    "remoteDesktopViewerTargetIconsSchema": 437
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "encryptedRemoteSurfaceCreateSchema",
+      "shape": {
+        "workerId": 1,
+        "configuration": 2,
+        "id": 21,
+        "stateProtection": 22,
+        "titleProtection": 40
+      },
+      "catchall": 50,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "remote-surface-create",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "union",
+      "name": "remoteSurfaceConfigurationSchema",
+      "options": [3, 8],
+      "discriminator": "kind",
+      "checks": []
+    },
+    { "type": "object", "shape": { "kind": 4, "profileId": 5 }, "checks": [] },
+    { "type": "literal", "values": ["browser"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 7, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 9, "osSource": 10 },
+      "catchall": 20,
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 11,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "remoteDesktopOsSourceSchema",
+      "shape": {
+        "bindingId": 12,
+        "worktreeId": 13,
+        "bindingGeneration": 14,
+        "attachmentGeneration": 15,
+        "runtimeGeneration": 16,
+        "desktopGeneration": 17
+      },
+      "catchall": 19,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 18,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-f0-9]{64}$",
+          "flags": "",
+          "displayPattern": "/^[a-f0-9]{64}$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 23,
+      "checks": []
+    },
+    { "type": "union", "options": [24, 39], "checks": [] },
+    {
+      "type": "object",
+      "name": "browserPrivateStateOpaqueSchema",
+      "shape": { "classification": 25, "protectedState": 28 },
+      "catchall": 38,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-surface-kind:browser-state",
+          "messageAfterPath": true,
+          "message": "Expected browser-state protected state.",
+          "path": ["classification", "recordKind"]
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "surfacePrivateStateClassificationSchema",
+      "shape": { "recordKind": 26 },
+      "catchall": 27,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "surfacePrivateStateRecordKindSchema",
+      "values": [
+        "terminal-state",
+        "explorer-state",
+        "file-document-state",
+        "browser-state",
+        "remote-desktop-state",
+        "remote-desktop-inventory"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedSurfacePrivateStateSchema",
+      "shape": { "formatVersion": 29, "keyRevision": 30, "envelope": 31 },
+      "catchall": 37,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-surface-envelope",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "number",
+      "name": "encryptionKeyRevisionSchema",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 2147483647, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "version": 32,
+        "algorithm": 33,
+        "keyRevision": 30,
+        "nonce": 34,
+        "ciphertext": 35
+      },
+      "catchall": 36,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "name": "encryptionEnvelopeVersionSchema",
+      "values": [1],
+      "checks": []
+    },
+    { "type": "literal", "values": ["AES-256-GCM"], "checks": [] },
+    {
+      "type": "string",
+      "name": "encryptionNonceSchema",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "length_equals", "length": 16, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 5592427, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteDesktopPrivateStateOpaqueSchema",
+      "shape": { "classification": 25, "protectedState": 28 },
+      "catchall": 38,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-surface-kind:remote-desktop-state",
+          "messageAfterPath": true,
+          "message": "Expected remote-desktop-state protected state.",
+          "path": ["classification", "recordKind"]
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "privateDisplayLabelOpaqueSchema",
+      "shape": { "classification": 41, "protectedLabel": 44 },
+      "catchall": 49,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "privateDisplayLabelClassificationSchema",
+      "shape": { "recordKind": 42 },
+      "catchall": 43,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "privateDisplayLabelRecordKindSchema",
+      "values": [
+        "project",
+        "chat",
+        "terminal",
+        "explorer",
+        "code-tab",
+        "browser",
+        "remote-surface",
+        "project-view",
+        "tab-group"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedPrivateDisplayLabelSchema",
+      "shape": { "formatVersion": 45, "keyRevision": 30, "envelope": 46 },
+      "catchall": 48,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "private-label-envelope",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 32,
+        "algorithm": 33,
+        "keyRevision": 30,
+        "nonce": 34,
+        "ciphertext": 47
+      },
+      "catchall": 36,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 5483, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedRemoteSurfaceUpdateSchema",
+      "shape": {
+        "expectedStateRevision": 52,
+        "titleProtection": 54,
+        "configuration": 55,
+        "preferredTransport": 56,
+        "stateProtection": 58
+      },
+      "catchall": 60,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "remote-surface-update",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 53,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 40,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 2,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 57,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "remoteSurfaceTransportSchema",
+      "values": ["websocket", "webrtc"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 59,
+      "checks": []
+    },
+    { "type": "union", "options": [24, 39], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteSurfaceWireSummarySchema",
+      "shape": {
+        "id": 62,
+        "projectId": 63,
+        "workerId": 64,
+        "kind": 65,
+        "status": 66,
+        "preferredTransport": 57,
+        "configuration": 2,
+        "stateRevision": 67,
+        "lastError": 69,
+        "lastConnectedAt": 71,
+        "createdAt": 73,
+        "updatedAt": 74,
+        "titleProtection": 40,
+        "stateProtection": 75
+      },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "remote-surface-wire",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "remoteSurfaceKindSchema",
+      "values": ["browser", "desktop"],
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "remoteSurfaceStatusSchema",
+      "values": [
+        "idle",
+        "connecting",
+        "active",
+        "suspended",
+        "offline",
+        "error"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 68, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 70, "checks": [] },
+    { "type": "string", "checks": [] },
+    { "type": "nullable", "innerType": 72, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 76, "checks": [] },
+    { "type": "union", "options": [24, 39], "checks": [] },
+    {
+      "type": "array",
+      "name": "remoteSurfaceWireListSchema",
+      "element": 61,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "encryptedRemoteDesktopCreateSchema",
+      "shape": {
+        "paneId": 79,
+        "tabGroupId": 81,
+        "targetRegion": 83,
+        "target": 85,
+        "cantripOsBindingId": 104,
+        "cantripOsRuntimeGeneration": 106,
+        "id": 108,
+        "stateProtection": 39,
+        "titleProtection": 40
+      },
+      "catchall": 109,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "desktop-os-source",
+          "messageAfterPath": true,
+          "message": "Choose an OS binding and runtime generation, or a Host target."
+        },
+        {
+          "check": "refinement",
+          "tag": "browser-placement",
+          "messageAfterPath": true,
+          "message": "Specify only one of paneId, the deprecated tabGroupId, or targetRegion.",
+          "path": ["paneId"]
+        },
+        {
+          "check": "refinement",
+          "tag": "desktop-title",
+          "messageAfterPath": true,
+          "message": "Remote Desktop title classification must be project-view.",
+          "path": ["titleProtection", "classification", "recordKind"]
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 80,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 82,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 84,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "surfacePlacementRegionSchema",
+      "values": ["center", "right", "bottom", "left"],
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 86,
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "executionTargetSchema",
+      "options": [87, 91, 94, 97, 100],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 88, "projectId": 89 },
+      "catchall": 90,
+      "checks": []
+    },
+    { "type": "literal", "values": ["project"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 92, "projectId": 89, "workerId": 89 },
+      "catchall": 93,
+      "checks": []
+    },
+    { "type": "literal", "values": ["worker"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 95, "projectId": 89, "projectReplicaId": 89 },
+      "catchall": 96,
+      "checks": []
+    },
+    { "type": "literal", "values": ["replica"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "kind": 98, "projectId": 89, "worktreeId": 89 },
+      "catchall": 99,
+      "checks": []
+    },
+    { "type": "literal", "values": ["worktree"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 101,
+        "projectId": 89,
+        "surfaceKind": 102,
+        "surfaceId": 89
+      },
+      "catchall": 103,
+      "checks": []
+    },
+    { "type": "literal", "values": ["surface"], "checks": [] },
+    {
+      "type": "enum",
+      "name": "executionSurfaceKindSchema",
+      "values": [
+        "chat",
+        "terminal",
+        "explorer",
+        "code",
+        "browser",
+        "remote-desktop",
+        "remote-surface"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 105,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 107,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedRemoteDesktopUpdateSchema",
+      "shape": { "expectedStateRevision": 111, "stateProtection": 39 },
+      "catchall": 112,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteDesktopWireSummarySchema",
+      "shape": {
+        "id": 114,
+        "projectId": 115,
+        "position": 116,
+        "workerId": 117,
+        "osSource": 118,
+        "stateRevision": 119,
+        "status": 66,
+        "lastError": 120,
+        "createdAt": 122,
+        "updatedAt": 123,
+        "stateProtection": 39,
+        "titleProtection": 40
+      },
+      "catchall": 124,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "desktop-wire-title",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 11,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 121, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "remoteDesktopWireListSchema",
+      "element": 113,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "remoteDesktopFleetWireSchema",
+      "shape": {
+        "projectId": 127,
+        "observedAt": 128,
+        "partial": 129,
+        "truncated": 130,
+        "workers": 132
+      },
+      "catchall": 153,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 131,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 133,
+      "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "remoteDesktopFleetWireWorkerSchema",
+      "shape": {
+        "workerId": 134,
+        "workerName": 135,
+        "platform": 136,
+        "architecture": 137,
+        "status": 138,
+        "desktops": 139,
+        "error": 140,
+        "truncated": 144,
+        "inventoryOperationId": 146,
+        "inventoryProtection": 148,
+        "monitorCount": 150,
+        "windowCount": 151
+      },
+      "catchall": 152,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "desktop-fleet-inventory",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "remoteDesktopFleetWorkerStatusSchema",
+      "values": ["ok", "offline", "timed-out", "error"],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 113,
+      "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 141, "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteDesktopFleetErrorSchema",
+      "shape": { "code": 142, "message": 143 },
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["worker-offline", "worker-timeout", "worker-error"],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 145,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 147, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 149, "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteDesktopPrivateInventoryOpaqueSchema",
+      "shape": { "classification": 25, "protectedState": 28 },
+      "catchall": 38,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-command-surface-kind:remote-desktop-inventory",
+          "messageAfterPath": true,
+          "message": "Expected remote-desktop-inventory protected state.",
+          "path": ["classification", "recordKind"]
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 64, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 2000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteDesktopProtectedInventorySchema",
+      "shape": {
+        "operationId": 155,
+        "stateProtection": 149,
+        "monitorCount": 156,
+        "windowCount": 157,
+        "truncated": 158
+      },
+      "catchall": 160,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 64, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 2000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 159,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteDesktopProbeResultSchema",
+      "shape": { "available": 162, "message": 163 },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 164, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2048, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "desktopGeneration": 166 },
+      "catchall": 19,
+      "checks": []
+    },
+    { "type": "nonoptional", "innerType": 17, "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteSurfaceViewportSchema",
+      "shape": { "width": 168, "height": 169, "devicePixelRatio": 170 },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 16384, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 16384, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0.25, "inclusive": true },
+        { "check": "less_than", "value": 8, "inclusive": true }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "remoteSurfaceConnectionMessageSchema",
+      "options": [172, 189],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 173,
+        "surfaceId": 174,
+        "attachmentId": 175,
+        "transport": 57,
+        "webrtc": 176
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["ready"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 177,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 178, "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteSurfaceWebRtcConfigurationSchema",
+      "shape": {
+        "iceServers": 179,
+        "iceTransportPolicy": 187,
+        "negotiationTimeoutMs": 188
+      },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 180,
+      "checks": [{ "check": "max_length", "maximum": 16, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "remoteSurfaceIceServerSchema",
+      "shape": { "urls": 181, "username": 183, "credential": 185 },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 182,
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 184,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 186,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "remoteSurfaceIceTransportPolicySchema",
+      "values": ["all", "relay"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1000, "inclusive": true },
+        { "check": "less_than", "value": 30000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 190, "message": 191, "recoverable": 192 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["error"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "union",
+      "name": "remoteBrowserClientMessageSchema",
+      "options": [194, 197, 202, 204, 206, 208, 225, 234, 236, 252],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "type": 195, "operationId": 196, "stateProtection": 24 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["navigate"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "object", "shape": { "type": 198, "delta": 199 }, "checks": [] },
+    { "type": "literal", "values": ["history"], "checks": [] },
+    { "type": "union", "options": [200, 201], "checks": [] },
+    { "type": "literal", "values": [-1], "checks": [] },
+    { "type": "literal", "values": [1], "checks": [] },
+    { "type": "object", "shape": { "type": 203 }, "checks": [] },
+    { "type": "literal", "values": ["reload"], "checks": [] },
+    { "type": "object", "shape": { "type": 205 }, "checks": [] },
+    { "type": "literal", "values": ["stop"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 207, "viewport": 167 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["viewport"], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "type": 209,
+        "event": 210,
+        "x": 211,
+        "y": 212,
+        "button": 213,
+        "buttons": 215,
+        "clickCount": 217,
+        "deltaX": 219,
+        "deltaY": 221,
+        "modifiers": 223
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["pointer"], "checks": [] },
+    { "type": "enum", "values": ["move", "down", "up", "wheel"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 214,
+      "defaultValue": "none",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["none", "left", "middle", "right", "back", "forward"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 216,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 31, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 218,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 3, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 220,
+      "defaultValue": 0,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 222,
+      "defaultValue": 0,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 224,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 15, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 226,
+        "event": 227,
+        "key": 228,
+        "code": 229,
+        "text": 230,
+        "modifiers": 232
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["key"], "checks": [] },
+    { "type": "enum", "values": ["down", "up"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 231,
+      "defaultValue": "",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 10, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 233,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 15, "inclusive": true }
+      ]
+    },
+    { "type": "object", "shape": { "type": 235 }, "checks": [] },
+    { "type": "literal", "values": ["focus"], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 237, "event": 238, "points": 239, "modifiers": 250 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["touch"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["start", "move", "end", "cancel"],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 240,
+      "checks": [{ "check": "max_length", "maximum": 10, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 241,
+        "x": 242,
+        "y": 243,
+        "radiusX": 244,
+        "radiusY": 246,
+        "force": 248
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 245,
+      "defaultValue": 1,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 247,
+      "defaultValue": 1,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 249,
+      "defaultValue": 1,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 251,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 15, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 253, "operation": 254, "text": 255 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["clipboard"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["copy-selection", "paste-text"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 256,
+      "defaultValue": "",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "remoteBrowserServerMessageSchema",
+      "options": [258, 290, 297, 303],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "browserAgentCursorSchema",
+      "shape": {
+        "type": 259,
+        "epoch": 260,
+        "sequence": 261,
+        "position": 262,
+        "click": 266,
+        "dragging": 267,
+        "sprite": 268
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-agent-cursor"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 263, "checks": [] },
+    { "type": "object", "shape": { "x": 264, "y": 265 }, "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "number", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 269,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "remoteCursorSpriteSchema",
+      "shape": {
+        "motion": 270,
+        "width": 281,
+        "height": 282,
+        "hotspot": 283,
+        "normal": 286,
+        "click": 288
+      },
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 271,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "minimumDistance": 272,
+        "pixelsPerMs": 273,
+        "minDurationMs": 274,
+        "maxDurationMs": 275,
+        "easing": 276
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": false }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    { "type": "tuple", "items": [277, 278, 279, 280], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    { "type": "number", "checks": [] },
+    { "type": "literal", "values": [256], "checks": [] },
+    { "type": "literal", "values": [256], "checks": [] },
+    { "type": "object", "shape": { "x": 284, "y": 285 }, "checks": [] },
+    { "type": "literal", "values": [128], "checks": [] },
+    { "type": "literal", "values": [128], "checks": [] },
+    {
+      "type": "array",
+      "element": 287,
+      "checks": [{ "check": "max_length", "maximum": 262144, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 255, "inclusive": true }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 289,
+      "checks": [{ "check": "max_length", "maximum": 262144, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 255, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 291,
+        "operationId": 292,
+        "stateProtection": 24,
+        "title": 293,
+        "canGoBack": 294,
+        "canGoForward": 295,
+        "loading": 296
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-state"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 298, "status": 299, "message": 300 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-runtime"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["ready", "recovering", "error"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 301,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 302, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 304, "editable": 305 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-input-focus"], "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "remoteBrowserCursorMessageSchema",
+      "shape": { "type": 307, "cursor": 308 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-cursor"], "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "auto",
+        "default",
+        "none",
+        "context-menu",
+        "help",
+        "pointer",
+        "progress",
+        "wait",
+        "cell",
+        "crosshair",
+        "text",
+        "vertical-text",
+        "alias",
+        "copy",
+        "move",
+        "no-drop",
+        "not-allowed",
+        "grab",
+        "grabbing",
+        "all-scroll",
+        "col-resize",
+        "row-resize",
+        "n-resize",
+        "e-resize",
+        "s-resize",
+        "w-resize",
+        "ne-resize",
+        "nw-resize",
+        "se-resize",
+        "sw-resize",
+        "ew-resize",
+        "ns-resize",
+        "nesw-resize",
+        "nwse-resize",
+        "zoom-in",
+        "zoom-out"
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "remoteBrowserClipboardMessageSchema",
+      "shape": { "type": 310, "operation": 311, "text": 312 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-clipboard"], "checks": [] },
+    { "type": "literal", "values": ["copy-selection"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "browserPrivateStateProtectedContentSchema",
+      "shape": {
+        "version": 314,
+        "classification": 315,
+        "revision": 318,
+        "url": 319
+      },
+      "catchall": 320,
+      "checks": []
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": { "recordKind": 316 },
+      "catchall": 317,
+      "checks": []
+    },
+    { "type": "literal", "values": ["browser-state"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "string_format", "format": "url", "abort": false },
+        { "check": "max_length", "maximum": 4096, "when": "length" },
+        {
+          "check": "refinement",
+          "tag": "worker-command-private-http-url",
+          "messageAfterPath": true,
+          "message": "Protected browser URLs must use HTTP or HTTPS."
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "remoteDesktopServerMessageSchema",
+      "options": [322, 329, 334, 340, 346, 361, 367, 375],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 323,
+        "mode": 324,
+        "isController": 325,
+        "leaseId": 326
+      },
+      "catchall": 328,
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-control"], "checks": [] },
+    { "type": "enum", "values": ["agent", "switching", "human"], "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 327, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 330, "participants": 331 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-cursor-assets"], "checks": [] },
+    {
+      "type": "array",
+      "element": 332,
+      "checks": [{ "check": "max_length", "maximum": 16, "when": "length" }]
+    },
+    { "type": "object", "shape": { "id": 333, "sprite": 269 }, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 335, "id": 336, "x": 337, "y": 338, "click": 339 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-cursor"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 341, "epoch": 342, "message": 344 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-input"], "checks": [] },
+    { "type": "nullable", "innerType": 343, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 345, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2048, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 347,
+        "width": 348,
+        "height": 349,
+        "status": 350,
+        "message": 351,
+        "stream": 353
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-state"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": ["ready", "launching", "suspended", "error"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 352, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 2048, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 354,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 355, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "backend": 356,
+        "targetFps": 357,
+        "observedFps": 358,
+        "quality": 359,
+        "encodedWidth": 360
+      },
+      "checks": []
+    },
+    { "type": "enum", "values": ["native", "compatibility"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 60, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 240, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 100, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 362,
+        "operationId": 363,
+        "stateProtection": 149,
+        "monitorCount": 364,
+        "windowCount": 365
+      },
+      "catchall": 366,
+      "checks": []
+    },
+    { "type": "literal", "values": ["desktop-targets"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 64, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 2000, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "object", "shape": { "type": 368, "icons": 369 }, "checks": [] },
+    { "type": "literal", "values": ["desktop-target-icons"], "checks": [] },
+    {
+      "type": "array",
+      "element": 370,
+      "checks": [{ "check": "max_length", "maximum": 64, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "remoteDesktopApplicationIconSchema",
+      "shape": { "key": 371, "mimeType": 372, "data": 373 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "remoteDesktopApplicationIconKeySchema",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 128, "when": "length" },
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[a-zA-Z0-9:_-]+$",
+          "flags": "u",
+          "displayPattern": "/^[a-zA-Z0-9:_-]+$/u"
+        }
+      ]
+    },
+    { "type": "literal", "values": ["image/png"], "checks": [] },
+    { "type": "nullable", "innerType": 374, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 180000, "when": "length" }]
+    },
+    { "type": "object", "shape": { "type": 376, "text": 377 }, "checks": [] },
+    { "type": "literal", "values": ["desktop-clipboard"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 379,
+        "intervalMs": 380,
+        "receivedFrames": 381,
+        "renderedFrames": 382,
+        "droppedFrames": 383,
+        "averageDecodeMs": 384
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["stream-feedback"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 250, "inclusive": true },
+        { "check": "less_than", "value": 10000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 1000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 10000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 386,
+        "inputEpoch": 387,
+        "inputSequence": 389,
+        "event": 391,
+        "x": 392,
+        "y": 393,
+        "button": 394,
+        "buttons": 396,
+        "clickCount": 398,
+        "deltaX": 400,
+        "deltaY": 402,
+        "modifiers": 404
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["pointer"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 388,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 390,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["move", "down", "up", "wheel"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "number",
+      "checks": [{ "check": "greater_than", "value": 0, "inclusive": true }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 395,
+      "defaultValue": "none",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": ["none", "left", "middle", "right", "back", "forward"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 397,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 31, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 399,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 3, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 401,
+      "defaultValue": 0,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 403,
+      "defaultValue": 0,
+      "checks": []
+    },
+    { "type": "number", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 405,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 15, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 407,
+        "inputEpoch": 408,
+        "inputSequence": 410,
+        "event": 412,
+        "key": 413,
+        "code": 414,
+        "text": 415,
+        "modifiers": 417
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["key"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 409,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 411,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["down", "up"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 416,
+      "defaultValue": "",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 10, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 418,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 15, "inclusive": true }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "type": 420,
+        "inputEpoch": 421,
+        "inputSequence": 423,
+        "operation": 425,
+        "text": 426
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["clipboard"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 422,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 424,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 9007199254740991, "inclusive": true }
+      ]
+    },
+    { "type": "enum", "values": ["copy", "paste-text"], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 427,
+      "defaultValue": "",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "max_length", "maximum": 1000000, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 429, "inputEpoch": 430 },
+      "checks": []
+    },
+    { "type": "literal", "values": ["input-cancel"], "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": { "type": 432, "operation": 433, "leaseId": 434 },
+      "catchall": 436,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "desktop-control-return",
+          "messageAfterPath": true,
+          "message": "Returning control requires the current viewer lease."
+        }
+      ]
+    },
+    { "type": "literal", "values": ["desktop-control"], "checks": [] },
+    { "type": "enum", "values": ["take", "return"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 435,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "object", "shape": { "type": 438, "keys": 439 }, "checks": [] },
+    { "type": "literal", "values": ["request-target-icons"], "checks": [] },
+    {
+      "type": "array",
+      "element": 371,
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    }
+  ]
+}

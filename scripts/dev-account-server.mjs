@@ -88,7 +88,7 @@ serverLogger.info(
   { serverUrl },
 );
 
-const serverCommand = pnpmCommand(["--filter", "@cantrip/server", "dev"], {
+const serverCommand = pnpmCommand(["server:dev"], {
   environment,
 });
 const server = spawn(serverCommand.command, serverCommand.arguments, {

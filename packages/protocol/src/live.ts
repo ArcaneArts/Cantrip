@@ -153,6 +153,7 @@ const appLiveScopesSchema = z
   });
 
 export const appLiveResourceSchema = z.enum([
+  "project-alert",
   "server",
   "account-session",
   "account-resource-usage",
@@ -184,6 +185,7 @@ export const appLiveResourceSchema = z.enum([
   "chat-plan",
   "chat-preparation",
   "inference-progress",
+  "worker-inference",
   "task",
   "agent-interaction",
   "terminal",

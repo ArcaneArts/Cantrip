@@ -45,11 +45,14 @@ test("devtop is launched through the hard-stop lifecycle wrapper", async () => {
   assert.match(launcher, /CARGO_TARGET_DIR=\$\{tauriTargetDirectory\}/u);
   assert.match(launcher, /CANTRIP_DEVELOPMENT_KEY_VAULT=1/u);
   assert.match(launcher, /VITE_CANTRIP_DISABLE_LEGACY_WEBCRYPTO=true/u);
-  assert.match(launcher, /CANTRIP_DATA_DIR=\$\{packageStateDirectory\}/u);
+  assert.match(launcher, /CANTRIP_DATA_DIR=\$\{relativeStateDirectory\}/u);
+  assert.match(launcher, /pnpm server:dev/u);
+  assert.doesNotMatch(launcher, /pnpm --filter @cantrip\/server dev/u);
   assert.match(
     launcher,
     /CANTRIP_WORKER_DATA_DIR=\$\{packageStateDirectory\}\/worker/u,
   );
+  assert.match(launcher, /pnpm worker:dev/u);
   assert.doesNotMatch(launcher, /(?:VITE_)?CANTRIP_LOCAL_ONLY=true/u);
   assert.ok(
     launcher.indexOf(
@@ -206,6 +209,29 @@ test("legacy cleanup recognizes only the exact CUA worker launcher in known work
     { pid: 50, ppid: 1, command },
   ];
   assert.deepEqual(findLegacyDevtopRootPids(processes, roots), [10]);
+});
+
+test("legacy cleanup recognizes a native development controller only in a Cantrip checkout", () => {
+  const roots = ["/workspace/Cantrip"];
+  const command = "node scripts/worker-rust/dev.mjs --watch";
+  const processes = [
+    { pid: 10, ppid: 1, command, cwd: "/workspace/Cantrip" },
+    { pid: 20, ppid: 1, command, cwd: "/workspace/Other" },
+    { pid: 30, ppid: 1, command, cwd: "/workspace/Cantrip/tests" },
+    {
+      pid: 40,
+      ppid: 1,
+      command: "node ../scripts/worker-rust/dev.mjs --watch",
+      cwd: "/workspace/Cantrip/cantrip_worker",
+    },
+    {
+      pid: 50,
+      ppid: 10,
+      command: "/shared/target/debug/cantrip-worker --shutdown-on-stdin-close",
+      cwd: "/workspace/Cantrip/cantrip_worker",
+    },
+  ];
+  assert.deepEqual(findLegacyDevtopRootPids(processes, roots), [10, 40]);
 });
 
 test("hard process-tree cleanup sends SIGKILL without a graceful signal", () => {

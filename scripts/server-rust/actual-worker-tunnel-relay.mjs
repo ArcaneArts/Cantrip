@@ -8,7 +8,7 @@ import { eventually } from "./full-worker.mjs";
 import {
   sealTunnelDataFrame,
   openTunnelDataFrame,
-} from "../../cantrip_worker/src/tunnel-data-protection.ts";
+} from "../../tests/reference-node-worker/src/tunnel-data-protection.ts";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 export async function actualWorkerTunnelRelay({
   page,

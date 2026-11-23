@@ -88,6 +88,11 @@ for (const [engine, browserType] of [
     const tree = page.getByRole("tree", { name: "Project files", exact: true });
     const assets = page.getByRole("treeitem", { name: "assets", exact: true });
     await assets.waitFor({ timeout: 90_000 });
+    const waitForImport = () =>
+      page
+        .getByRole("status")
+        .filter({ hasText: /^Adding /u })
+        .waitFor({ state: "hidden" });
     const transfer = async (files) =>
       page.evaluateHandle(
         (files) => {
@@ -131,6 +136,7 @@ for (const [engine, browserType] of [
       text,
     );
     await data.dispose();
+    await waitForImport();
 
     const binary = Buffer.from(
       Uint8Array.from({ length: 600_017 }, (_, index) => index % 256),
@@ -160,6 +166,7 @@ for (const [engine, browserType] of [
       binary,
     );
     await data.dispose();
+    await waitForImport();
 
     data = await transfer([
       ["SENTINEL-empty", Buffer.alloc(0)],
@@ -185,6 +192,7 @@ for (const [engine, browserType] of [
       "batch",
     );
     await data.dispose();
+    await waitForImport();
 
     data = await transfer([["SENTINEL-drop.txt", Buffer.from("replacement")]]);
     await tree.dispatchEvent("drop", { dataTransfer: data });

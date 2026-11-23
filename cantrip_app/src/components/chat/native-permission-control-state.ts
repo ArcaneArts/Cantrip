@@ -39,9 +39,13 @@ export function nativePermissionControlState(
   const nativePendingIsNewer =
     nativeIntent?.pending &&
     nativeIntent.operationId !== transition?.operationId;
-  const canonicalChoice = nativePendingIsNewer
-    ? nativeChoice
-    : (transition ?? nativeChoice);
+  // Both queries can survive an archive. For the same operation, its native
+  // result must win over an older permission-profile response still in cache.
+  const canonicalChoice =
+    nativePendingIsNewer ||
+    (nativeChoice && nativeIntent?.operationId === transition?.operationId)
+      ? nativeChoice
+      : (transition ?? nativeChoice);
   const canonicalPending =
     canonicalChoice &&
     (canonicalChoice.status === "accepted" ||

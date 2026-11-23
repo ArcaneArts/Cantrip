@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2869",
+  "fixtureSourceBase": "53f046adcda02bc5e2c3326e11ad019f67f261c8",
+  "fixtureBuildFix": "34dfafc2f509ccd847c7fd14eac29895098ff149",
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/current-goal-source-capture",
+  "platform": "darwin-arm64",
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "httpGoalSourceCapture": {
+    "pairedHttpObservations": 165,
+    "exactReopens": 54,
+    "authenticationModes": ["none", "password", "accounts"],
+    "scope": "Actual HTTP, App Live, existing WorkerConnection, endpoint cryptography, and isolated databases. Native Core replies are controlled.",
+    "reports": [
+      {
+        "databaseMode": "pglite",
+        "path": "pglite.json",
+        "bytes": 2166483,
+        "sha256": "3a6a04d018f4d710b6bae8e6c22d81c649986ebd7a7f67836c53b16b78812470"
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "path": "bundled-postgres.json",
+        "bytes": 2167124,
+        "sha256": "6649d4512b4947f0e187776c16c1d46f19025cf9c2d3ffabb345e0748b079220"
+      },
+      {
+        "databaseMode": "postgres",
+        "path": "postgres.json",
+        "bytes": 2167071,
+        "sha256": "f2ebd9be045a6cc2445055bf5398d7feebb4ce276cf408d6504eb8ba5c780515"
+      }
+    ],
+    "verifiedSummary": {
+      "path": "verified-http-source-capture.json",
+      "bytes": 2445,
+      "sha256": "c1bfac6b252068bc323f7358aa8e6facbba65c4b1e268cfa14c4d66f0ece4d69"
+    }
+  },
+  "repositoryGoalPublication": {
+    "pairedCases": 1101,
+    "exactReopens": 15,
+    "scope": "Actual repositories and isolated databases. Active native-root output sealing and the pending projection wake are asserted explicitly. Replay, rejection, SQL rollback, and reopen preserve the complete raw state for each runtime.",
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "pairedCases": 367,
+        "exactReopens": 5,
+        "report": {
+          "path": "publication-pglite-v4.json",
+          "bytes": 7051558,
+          "sha256": "61266f486caecd53dda2d30d195466a58cab2d49120220dec86d112efaa68752"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "pairedCases": 367,
+        "exactReopens": 5,
+        "report": {
+          "path": "publication-bundled-postgres-v4.json",
+          "bytes": 7051909,
+          "sha256": "c52ba7a26af2358fdc66d0da2cdd2392308ae960b5bd3ddc46dc7ecc2349a53c"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "pairedCases": 367,
+        "exactReopens": 5,
+        "report": {
+          "path": "publication-postgres-v4.json",
+          "bytes": 7051924,
+          "sha256": "629e9eaf67e0945d9c073d5d0552b11d857c31eebafb19e88eaa378d60e3ecee"
+        }
+      }
+    ],
+    "initialFailure": {
+      "path": "task-goal-repository-pglite.json",
+      "bytes": 3359258,
+      "sha256": "0a668c879c169367425145416d954dffe098ceb1eadba0791bb1bef27d830b2e"
+    }
+  },
+  "testSources": [
+    {
+      "path": "scripts/server-rust/native-command-admission-compatibility.mjs",
+      "bytes": 48807,
+      "sha256": "0ae3912e6cdf0e5e14e5f090f472ec11455578a75131681de926c2acb4374c9e"
+    },
+    {
+      "path": "scripts/server-rust/task-goal-cases.mjs",
+      "bytes": 23975,
+      "sha256": "2008056981d9c873f8a29c3a37cef195e62690afc94aa012c79a12cfbfe3d6fa"
+    },
+    {
+      "path": "scripts/server-rust/task-response-publication-cases.mjs",
+      "bytes": 14159,
+      "sha256": "e0dbc18cd82540c5827cfbd57fa929165d73f0ea82eedec6951ac5f9984c46ec"
+    },
+    {
+      "path": "scripts/server-rust/task-goal-cycle-publication-cases.mjs",
+      "bytes": 6521,
+      "sha256": "782823e05586f151b3f12a142fe726cb96e3d56fd72f2da2d3da3fc3c777347d"
+    }
+  ]
+}

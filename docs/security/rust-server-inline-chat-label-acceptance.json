@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "productBaseCommit": "441959fe9f72912f42e626d5944c67ee4f5614fd",
+  "servingExecutableSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+  "platform": "darwin-arm64",
+  "workerRuntime": "Node v24.22.2",
+  "codexVersion": "0.166.0",
+  "postgresVersion": "18.6",
+  "authentication": "accounts",
+  "servingExecutable": {
+    "path": "current-binaries/cantrip-server",
+    "bytes": 94116304,
+    "sha256": "129dfce547025b0bdfaaaf57d7fb4b86dc5cdd075b20012348d96b0ab4a97bf4"
+  },
+  "nodeReferenceEntrypoint": {
+    "path": "tests/reference-node-server/dist/index.js",
+    "bytes": 106,
+    "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+  },
+  "workerEntrypoint": {
+    "path": "cantrip_worker/dist/index.js",
+    "bytes": 391660,
+    "sha256": "ed0cd85f4756c5960b20b1283b680fb0c5701d54dc13e187a92c86923093beab"
+  },
+  "nativeCodexExecutable": {
+    "path": "codex-bundle/codex",
+    "bytes": 281161744,
+    "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+  },
+  "currentWorkerCommandCoverage": {
+    "mapped": 312,
+    "total": 323
+  },
+  "originalMissingGrant": [
+    {
+      "kind": "node",
+      "report": {
+        "path": "pglite-node-v2.json",
+        "bytes": 416197,
+        "sha256": "47777b81715660cacc54c0174318c398f9416b1165969e0eeff672019824decb"
+      }
+    },
+    {
+      "kind": "rust",
+      "report": {
+        "path": "pglite-rust-v2.json",
+        "bytes": 429787,
+        "sha256": "8dc0c6660edf4333775e3c993b6d9556c7b49ec7dd4268ff468827f81259b5ec"
+      }
+    }
+  ],
+  "product": [
+    {
+      "mode": "pglite",
+      "report": {
+        "path": "pglite-matrix-v2.json",
+        "bytes": 1671773,
+        "sha256": "8b7689aadd7aa77265f779763bcabd861cd0b4e3f2f274135bb171bbbd6bca89"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "firstTurnReplies": 3,
+          "generatedTitles": 2,
+          "retainedFallbackTitles": 1,
+          "exactRetainedEnvelopes": 3,
+          "scratchResolveCommands": 0,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 1
+        },
+        {
+          "kind": "rust",
+          "firstTurnReplies": 3,
+          "generatedTitles": 2,
+          "retainedFallbackTitles": 1,
+          "exactRetainedEnvelopes": 3,
+          "scratchResolveCommands": 0,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 1
+        }
+      ]
+    },
+    {
+      "mode": "bundled-postgres",
+      "report": {
+        "path": "bundled-postgres-matrix-v2.json",
+        "bytes": 1752235,
+        "sha256": "440e0121ccebec2232d3a3cb85ac92433b224a17c4f3155e50cf47cae5cb9662"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "firstTurnReplies": 3,
+          "generatedTitles": 2,
+          "retainedFallbackTitles": 1,
+          "exactRetainedEnvelopes": 3,
+          "scratchResolveCommands": 0,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 1
+        },
+        {
+          "kind": "rust",
+          "firstTurnReplies": 3,
+          "generatedTitles": 2,
+          "retainedFallbackTitles": 1,
+          "exactRetainedEnvelopes": 3,
+          "scratchResolveCommands": 0,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 1
+        }
+      ]
+    },
+    {
+      "mode": "postgres",
+      "report": {
+        "path": "postgres-matrix-v2.json",
+        "bytes": 1751510,
+        "sha256": "dc1063559041d8cc26303e6dfdfaf493968ca56b97c640b91c943ea08a4769eb"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "firstTurnReplies": 3,
+          "generatedTitles": 2,
+          "retainedFallbackTitles": 1,
+          "exactRetainedEnvelopes": 3,
+          "scratchResolveCommands": 0,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 1
+        },
+        {
+          "kind": "rust",
+          "firstTurnReplies": 3,
+          "generatedTitles": 2,
+          "retainedFallbackTitles": 1,
+          "exactRetainedEnvelopes": 3,
+          "scratchResolveCommands": 0,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 1
+        }
+      ]
+    }
+  ],
+  "appValidation": {
+    "focusedPassed": 23,
+    "reports": [
+      {
+        "path": "app-tests-final.log",
+        "bytes": 474,
+        "sha256": "627b77647a77ffecf8ae8b09f4613e5488f6111ec06d770441a7c48fcea5f986"
+      },
+      {
+        "path": "app-typecheck.log",
+        "bytes": 24,
+        "sha256": "5cfb036289d819b2a87e947d65f4532031dd37753f3cf2def0f77d398eea1737"
+      },
+      {
+        "path": "app-build.log",
+        "bytes": 18666,
+        "sha256": "4f13a8a79ec9b9d86482d186b3f09bb5e17b0ad61ff3444245baf0f50466715b"
+      }
+    ]
+  },
+  "verifiedFixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 1136290762,
+    "sha256": "89bd17ef21dd62a7f337f7e5287b3341c650f8098819259dafc089646c39cfb5",
+    "verifiedRegularFiles": 144703,
+    "redactedServerProcessLogs": 24,
+    "excludedRebuildablePaths": [
+      "*/worker/managed-runtimes",
+      "*/worker/tools/codegraph/versions"
+    ]
+  },
+  "retainedEvidenceDirectory": "rust-server-inline-chat-labels-20261111-v1",
+  "limitations": [
+    "Model output comes from loopback Responses fixtures.",
+    "The fresh-worker Agent thread can continue after optional console preparation fails. The console path, shared-server interruption and final shipping retain their own acceptance scope."
+  ]
+}

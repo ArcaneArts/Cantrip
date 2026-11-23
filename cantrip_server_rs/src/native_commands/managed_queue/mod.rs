@@ -5,6 +5,7 @@ mod delivery;
 mod imports;
 mod mutation;
 mod replay;
+mod resume;
 mod snapshot;
 use super::{
     admit::{raw_one, reject, text},
@@ -18,6 +19,7 @@ use crate::{
 use anyhow::Result;
 pub(super) use mutation::mutate as mutate_in_transaction;
 use sha2::{Digest, Sha256};
+pub(super) use snapshot::owned_snapshot;
 use std::sync::Arc;
 #[derive(Clone)]
 pub struct QueueRepository {
@@ -57,7 +59,7 @@ pub(super) fn normalized(value: &Value, fields: &[&str]) -> Value {
     result
 }
 // Node's isDeepStrictEqual distinguishes negative zero, unlike JavaScript ===.
-pub(super) fn deep_equal(left: &Value, right: &Value) -> bool {
+pub(crate) fn deep_equal(left: &Value, right: &Value) -> bool {
     let mut pending = vec![(left, right)];
     while let Some((left, right)) = pending.pop() {
         match (left, right) {
@@ -87,6 +89,55 @@ pub(super) fn deep_equal(left: &Value, right: &Value) -> bool {
 }
 pub(super) const NO_PERMISSION: &str = "NOT EXISTS (SELECT 1 FROM native_settings_states s WHERE s.chat_id=c.id AND (EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.state->'pending','[]'::jsonb)) p WHERE p->'intent'->'permissionTransition' IS NOT NULL) OR (s.state->>'desiredStatus'='uncertain' AND s.state->'desired'->'permissionTransition' IS NOT NULL)))";
 pub(super) const NO_HANDOFF: &str = "NOT EXISTS (SELECT 1 FROM native_runtime_handoffs h WHERE h.chat_id=c.id AND h.phase IN ('preparing','prepared','committed'))";
+/// The explicit Resume transaction already owns the chat row. A transport
+/// closure is retryable only if the native command never reached dispatch.
+/// Keep the rejected command receipt and restore the prompt's queue position.
+pub(crate) async fn retry_undispatched(
+    tx: &Transaction<'_>,
+    owner: &str,
+    chat: &str,
+) -> Result<()> {
+    tx.query(
+        "UPDATE managed_queue_claims q SET status='deferred'
+         FROM queued_prompts p, native_commands n
+         WHERE q.chat_id=$1 AND q.status='rejected' AND q.native_turn_id IS NULL
+           AND p.chat_id=q.chat_id AND p.id=q.prompt_id
+           AND p.revision=q.prompt_revision AND p.state='pending' AND p.frozen=false
+           AND n.chat_id=q.chat_id AND n.owner_id=$2
+           AND n.operation_id=q.operation_id AND n.operation_generation=q.operation_generation
+           AND n.origin='gui' AND n.method='turn/start' AND n.kind='start'
+           AND n.operation_id=n.logical_operation_id
+           AND n.status='rejected' AND n.rejection_code='not-dispatched'
+           AND n.execution_completed_at IS NOT NULL AND n.logical_completed_at IS NOT NULL
+           AND n.terminal_evidence->>'kind'='transport-ended'
+           AND n.terminal_evidence->>'source'='worker-command'
+           AND NOT EXISTS (SELECT 1 FROM native_command_turns t WHERE t.operation_id=n.operation_id)",
+        &[&chat, &owner],
+    )
+    .await?;
+    Ok(())
+}
+
+/// Restore order only for the next canonical executable input. Provider routing
+/// and model availability remain the responsibility of the actual dispatcher.
+pub(super) async fn recovery_eligible(
+    tx: &Transaction<'_>,
+    owner: &str,
+    worker: &str,
+    chat: &str,
+    prompt: &str,
+) -> Result<bool> {
+    let context = super::context::execution(tx, owner, chat).await?;
+    if context.as_ref().and_then(|c| c["workerId"].as_str()) != Some(worker) {
+        return Ok(false);
+    }
+    if tx.query(&format!("SELECT p.id FROM queued_prompts p JOIN chats c ON c.id=p.chat_id WHERE p.id=$1 AND c.id=$2 AND c.archived_at IS NULL AND c.automation_paused=false AND c.managed_autonomy_stopped=false AND p.frozen=false AND p.state IN ('pending','claimed') AND {NO_PERMISSION} AND {NO_HANDOFF} AND NOT EXISTS(SELECT 1 FROM managed_queue_claims q WHERE q.prompt_id=p.id AND q.prompt_revision=p.revision AND q.status='rejected')"), &[&prompt,&chat]).await?.is_empty() { return Ok(false); }
+    if let Some(active) = raw_one(tx, "SELECT to_jsonb(q)::text FROM managed_queue_claims q WHERE q.chat_id=$1 AND q.status IN ('claimed','accepted','dispatched','uncertain') ORDER BY q.created_at ASC LIMIT 1", &[&chat]).await? {
+        return Ok(active["prompt_id"].as_str() == Some(prompt) && matches!(active["status"].as_str(),Some("claimed"|"accepted")));
+    }
+    let head = raw_one(tx, "SELECT to_jsonb(p)::text FROM queued_prompts p WHERE p.chat_id=$1 AND p.state='pending' AND p.frozen=false AND NOT EXISTS(SELECT 1 FROM managed_queue_claims q WHERE q.prompt_id=p.id AND q.prompt_revision=p.revision AND q.status='rejected') ORDER BY p.position ASC,p.created_at ASC LIMIT 1", &[&chat]).await?;
+    Ok(head.as_ref().and_then(|p| p["id"].as_str()) == Some(prompt))
+}
 pub(super) async fn bump(tx: &Transaction<'_>, chat: &str) -> Result<()> {
     super::queue::changed(tx, chat).await
 }
@@ -98,6 +149,7 @@ pub(super) fn claim_value(row: &Value) -> Result<Value> {
         ("promptId", "prompt_id"),
         ("promptRevision", "prompt_revision"),
         ("awaitingGoal", "awaiting_goal"),
+        ("goalCancelled", "goal_cancelled"),
         ("goalEpoch", "goal_epoch"),
         ("goalOperationId", "goal_operation_id"),
         ("goalOperationGeneration", "goal_operation_generation"),
@@ -112,7 +164,7 @@ pub(super) fn claim_value(row: &Value) -> Result<Value> {
     result["createdAt"] = super::receipt::iso(&row["created_at"])?;
     parse("managedQueueClaimSchema", &result)
 }
-pub(super) async fn retain_input(
+pub(crate) async fn retain_input(
     tx: &Transaction<'_>,
     claim: &str,
     prompt: &Value,

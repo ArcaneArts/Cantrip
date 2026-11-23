@@ -1,5 +1,10 @@
+import { inferenceCommandTimingSchema } from "./inference-admission.js";
 import { nativeBehaviorAttributionSchema } from "./native-behavior-attribution.js";
 import { z } from "zod";
+import {
+  modelOperationUsageEvidenceSchema,
+  modelOperationUsageCoverageSchema,
+} from "./model-operation-usage.js";
 import { nativeHistoryUsageSchema } from "./native-history-usage.js";
 import {
   detailedTokenUsageTotalsSchema,
@@ -123,7 +128,12 @@ export const modelBehaviorSummarySchema = z.object({
   testCommandCount: z.number().int().nonnegative(),
   testFailureCount: z.number().int().nonnegative(),
   immediateCorrectiveFollowupCount: z.number().int().nonnegative(),
+  /** Total server-observed elapsed time, including queueing. */
   durationMs: telemetryValueStatisticsSchema,
+  /** Complete worker samples only; excludes queue, suspension and preparation. */
+  executionDurationMs: telemetryValueStatisticsSchema.optional(),
+  queueWaitMs: telemetryValueStatisticsSchema.optional(),
+  suspendedMs: telemetryValueStatisticsSchema.optional(),
   timeToFirstActivityMs: telemetryValueStatisticsSchema,
   timeToVisibleResponseMs: telemetryValueStatisticsSchema,
 });
@@ -200,6 +210,7 @@ export const providerTelemetryAnalyticsSchema = z.object({
     }),
   ),
   tokens: z.object({
+    directOperations: modelOperationUsageCoverageSchema.optional(),
     total: detailedTokenUsageTotalsSchema,
     daily: z.array(projectTokenUsageDaySchema).max(366),
   }),
@@ -333,6 +344,7 @@ const telemetryExportTokenUsageSchema = z.object({
   reportedTotalTokens: z.number().int().nonnegative().nullable(),
   usageSemantics: z.string().min(1),
   nativeUsage: nativeHistoryUsageSchema.optional(),
+  modelOperationUsage: modelOperationUsageEvidenceSchema.optional(),
   startedAt: z.string().datetime().nullable(),
   completedAt: z.string().datetime().nullable(),
   finalizedAt: z.string().datetime().nullable(),
@@ -359,6 +371,7 @@ const telemetryExportBehaviorSchema = z.object({
   completedAt: z.string().datetime().nullable(),
   finalizedAt: z.string().datetime().nullable(),
   durationMs: z.number().int().nonnegative().nullable(),
+  inferenceTiming: inferenceCommandTimingSchema.nullable().optional(),
   finalAnswerAppeared: z.boolean(),
   toolCallCount: z.number().int().nonnegative(),
   invalidToolCallCount: z.number().int().nonnegative(),

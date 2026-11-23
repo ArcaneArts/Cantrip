@@ -34,14 +34,28 @@ impl Admission<'_> {
             &chat,
             runtime.as_deref(),
             None,
-            if policy::classify(&method) == Some(Kind::Attach) {
+            if self.options["canonicalQueueMutation"] == true
+                && matches!(
+                    method.as_str(),
+                    "thread/queue/add"
+                        | "thread/queue/update"
+                        | "thread/queue/delete"
+                        | "thread/queue/reorder"
+                )
+            {
+                Access::Queue
+            } else if policy::classify(&method) == Some(Kind::Attach) {
                 Access::Attach
+            } else if policy::classify(&method) == Some(Kind::Control)
+                || method == "serverRequest/reply"
+            {
+                Access::Control
             } else {
                 Access::Write
             },
         )
         .await?;
-        if managed_console::session_context(&self.context).is_none() {
+        if managed_console::turn_session_context(&self.context).is_none() {
             return reject("managed-session-ineligible");
         }
         if (method == "turn/pause"
@@ -50,6 +64,13 @@ impl Admission<'_> {
             || (method != "turn/pause" && intent.get("paused").is_some())
         {
             return reject("invalid-pause-intent");
+        }
+        if truthy(intent.get("durableSuspension"))
+            && (!matches!(method.as_str(), "turn/pause" | "turn/interrupt")
+                || !truthy(intent.get("expectedTurnId"))
+                || !truthy(intent.get("workerGeneration")))
+        {
+            return reject("invalid-suspension-control");
         }
         if truthy(intent.get("resumeAutonomy"))
             && !matches!(
@@ -104,14 +125,36 @@ impl Admission<'_> {
         {
             return reject("path-scope-mismatch");
         }
-        if self.context.get("threadId") != session.get("threadId")
+        let gui_runtime = self.options.get("guiRuntime").filter(|v| !v.is_null());
+        if gui_runtime.is_some()
+            && (self.context["experience"] != "agent"
+                || input["origin"] != "gui"
+                || method != "turn/start"
+                || !self.starts)
+        {
+            return reject("managed-session-ineligible");
+        }
+        let mut intended = self.context.clone();
+        let route_change = gui_runtime
+            .filter(|_| {
+                self.context["contextKind"] == "standalone"
+                    || (self.context["threadId"].is_null()
+                        && self.context["modelRouteId"].is_null())
+            })
+            .cloned();
+        if let Some(route) = &route_change {
+            for key in ["threadId", "modelRouteId", "providerAccountId"] {
+                intended[key] = route[key].clone();
+            }
+        }
+        if intended.get("threadId") != session.get("threadId")
             || (!truthy(session.get("threadId"))
                 && (input["origin"] != "gui"
                     || (!self.starts && !truthy(self.options.get("canonicalQueueMutation")))))
         {
             return reject("thread-identity-mismatch");
         }
-        if !context::same_runtime_route(Some(&self.context), Some(session))? {
+        if !context::same_runtime_route(Some(&intended), Some(session))? {
             return reject("runtime-route-mismatch");
         }
         let activation = raw_one(
@@ -146,6 +189,28 @@ impl Admission<'_> {
                     .unwrap_or(Value::Null);
             if !truthy(self.context.get("executionLaneId")) {
                 return reject("execution-unavailable");
+            }
+            if let Some(route) = &route_change {
+                crate::chats::update_runtime_in_transaction(
+                    tx,
+                    crate::chats::RuntimeUpdate {
+                        chat: chat.clone(),
+                        worker: text(&self.context["workerId"])?,
+                        worktree: optional(&self.context["worktreeId"])?,
+                        scratch_root: optional(&self.context["scratchRootId"])?,
+                        thread: optional(&route["threadId"])?,
+                        route: text(&route["modelRouteId"])?,
+                        status: "ready".into(),
+                        provider_account: Some(optional(&route["providerAccountId"])?),
+                    },
+                )
+                .await?;
+                self.context = context::execution(tx, self.owner, &chat)
+                    .await?
+                    .unwrap_or(Value::Null);
+                if !truthy(self.context.get("executionLaneId")) {
+                    return reject("execution-unavailable");
+                }
             }
             self.row["activation_generation"] = json!(uuid::Uuid::new_v4().to_string());
             self.row["execution_lane_id"] = self.context["executionLaneId"].clone();

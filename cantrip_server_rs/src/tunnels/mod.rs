@@ -2,10 +2,11 @@
 mod attachments;
 pub mod broker;
 mod catalog;
-pub mod frame;
+pub use cantrip_framing::tunnel as frame;
 mod leases;
 mod managed;
 mod management;
+mod os;
 mod recovery;
 mod references;
 pub mod runtime;

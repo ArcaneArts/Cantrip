@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import * as protocol from "../../packages/protocol/dist/index.js";
 
-export function validateAlternatives(fixtures) {
+export function workerCommandAlternatives() {
   const seen = new Set(),
     expected = [];
   function visit(schema, path) {
@@ -12,7 +12,7 @@ export function validateAlternatives(fixtures) {
     if (d.type === "union" || d.type === "enum") {
       const values = d.type === "union" ? d.options : Object.values(d.entries);
       values.forEach((_, index) =>
-        expected.push({ kind: d.type, path, index }),
+        expected.push({ kind: d.type, path, index, schema }),
       );
     }
     if (d.shape)
@@ -35,6 +35,42 @@ export function validateAlternatives(fixtures) {
     if (d.getter) visit(d.getter(), [...path, "resolved"]);
   }
   visit(protocol.workerRequestEnvelopeSchema, []);
+  return expected;
+}
+
+export function workerCommandAlternativePath(path) {
+  let schema = protocol.workerRequestEnvelopeSchema;
+  const valuePath = [];
+  for (let i = 0; i < path.length; i++) {
+    const token = path[i],
+      d = schema._zod.def;
+    if (d.shape && Object.hasOwn(d.shape, token)) {
+      schema = d.shape[token];
+      valuePath.push(token);
+    } else if (["innerType", "in", "out"].includes(token)) schema = d[token];
+    else if (token === "resolved") schema = d.getter();
+    else if (token === "options") schema = d.options[Number(path[++i])];
+    else if (token === "items") {
+      const key = Number(path[++i]);
+      schema = d.items[key];
+      valuePath.push(key);
+    } else if (token === "element") {
+      schema = d.element;
+      valuePath.push(0);
+    } else if (token === "valueType") {
+      schema = d.valueType;
+      valuePath.push("fixture");
+    } else throw new Error("Unknown alternative fixture path: " + token);
+  }
+  return { schema, valuePath };
+}
+
+export function validateAlternatives(fixtures) {
+  const expected = workerCommandAlternatives().map(({ kind, path, index }) => ({
+    kind,
+    path,
+    index,
+  }));
   assert.deepEqual(
     fixtures.alternatives.map(({ kind, path, index }) => ({
       kind,

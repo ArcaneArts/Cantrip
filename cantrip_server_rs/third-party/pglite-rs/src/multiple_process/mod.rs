@@ -230,8 +230,7 @@ impl PGlite {
         options: MultiProcessOptions,
     ) -> Result<PGlite, Error> {
         let data_dir = data_dir.as_ref().to_path_buf();
-        let runtime_dir = Engine::runtime_dir();
-        Engine::extract_runtime_to(&runtime_dir)?;
+        let runtime_dir = crate::runtime::prepare()?;
         Engine::run_initdb_at(
             &runtime_dir,
             &data_dir,

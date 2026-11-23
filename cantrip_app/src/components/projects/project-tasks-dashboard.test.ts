@@ -1,3 +1,4 @@
+import { EMPTY_MODEL_CONFIGURATION } from "@cantrip/protocol";
 import type { ChatSummary, TaskDetail } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
@@ -27,6 +28,7 @@ function task(input: {
     chatId: input.chatId,
     planGoalEnabled: false,
     priority: input.priority ?? 0,
+    modelConfiguration: EMPTY_MODEL_CONFIGURATION,
     requestedTaskWorkerId: null,
     continuityFamily: null,
     lastTaskWorkerId: null,
@@ -158,7 +160,6 @@ function renderTaskList(
               }) as ChatSummary,
           ),
           creatingTask: options.creatingTask ?? false,
-          onConfigureWorkers: () => undefined,
           onCreateTask: () => undefined,
           onCloseTask: () => undefined,
           onOpenTask: () => undefined,

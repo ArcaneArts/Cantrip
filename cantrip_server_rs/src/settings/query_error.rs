@@ -4,7 +4,7 @@ use crate::wire::Value;
 
 pub(crate) use crate::database::query_error::{QueryError as SettingsQueryError, context};
 type QueryContext = (String, Vec<Value>);
-const PROVIDER_COLUMNS: &str = "\"id\", \"owner_id\", \"name\", \"kind\", \"base_url\", \"protected_api_key\", \"weekly_usage_reserve_percent\", \"created_at\", \"updated_at\"";
+const PROVIDER_COLUMNS: &str = "\"id\", \"owner_id\", \"name\", \"kind\", \"base_url\", \"connection_revision\", \"protected_api_key\", \"weekly_usage_reserve_percent\", \"max_concurrent_inference\", \"inference_config_revision\", \"created_at\", \"updated_at\"";
 pub(super) fn provider_insert(
     id: &str,
     owner: &str,
@@ -30,10 +30,17 @@ pub(super) fn provider_insert(
         "default"
     };
     parameters.push(Value::Number(reserve as f64));
+    parameters.push(
+        input
+            .get("maxConcurrentInference")
+            .cloned()
+            .unwrap_or(Value::Number(8.0)),
+    );
     let columns = PROVIDER_COLUMNS;
     (
         format!(
-            "insert into \"model_providers\" ({columns}) values ($1, $2, $3, $4, $5, {key}, ${}, default, default) returning {columns}",
+            "insert into \"model_providers\" ({columns}) values ($1, $2, $3, $4, $5, default, {key}, ${}, ${}, default, default, default) returning {columns}",
+            parameters.len() - 1,
             parameters.len()
         ),
         parameters,
@@ -63,6 +70,9 @@ pub(super) fn provider_update(
     }
     if let Some(reserve) = input.get("weeklyUsageReservePercent") {
         fields.push(("weekly_usage_reserve_percent", reserve.clone()));
+    }
+    if let Some(limit) = input.get("maxConcurrentInference") {
+        fields.push(("max_concurrent_inference", limit.clone()));
     }
     fields.push(("updated_at", Value::String(crate::auth::iso(at).into())));
     let assignments = fields
@@ -319,7 +329,6 @@ pub(super) fn account_sign_out_params(
     ]
 }
 pub(super) const ACCOUNT_BINDINGS_SIGN_OUT: &str = "update \"model_provider_account_workers\" set \"auth_state\" = $1, \"weekly_usage_used_basis_points\" = $2, \"weekly_usage_resets_at\" = $3, \"last_synced_at\" = $4, \"updated_at\" = $5 where \"model_provider_account_workers\".\"account_id\" = $6";
-pub(super) const PROFILE_INSERT: &str = "insert into \"model_profiles\" (\"id\", \"owner_id\", \"name\", \"canonical_model_id\", \"default_reasoning_effort\", \"discovery_managed\", \"routing_policy\", \"created_at\", \"updated_at\") values ($1, $2, $3, default, default, default, default, default, default)";
 pub(super) fn routes_insert(
     rows: &[serde_json::Value],
     original: &[Value],

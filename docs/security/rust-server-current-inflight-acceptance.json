@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2845",
+  "artifactSourceCommit": "2e60d2042203f64c8105d5c52d12ae1db92d2d83",
+  "harnessSourceCommit": "6bb9ce793d07bf191b5f8f8ad744a1cbf5f07de9",
+  "platform": "darwin-arm64",
+  "databaseMode": "postgres",
+  "server": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 93566000,
+    "sha256": "f8a2d070020752305e2045a80d1a59d1192ad943cdfc9e0c466ed3d3d2213474"
+  },
+  "signedWorkerSourceArchive": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-desktop-signed-update/run-v1/candidate/Cantrip Server Signed Update QA.app.tar.gz",
+    "bytes": 338480386,
+    "sha256": "50c2d9c35a572578d7b8c0aa3ca32a60f3e41b7f48c3a650764d720084835b47"
+  },
+  "packagedWorkerEntry": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/runtime/worker/dist/index.js",
+    "bytes": 391696,
+    "sha256": "79bdbd422dcaa65f4294ec22fd090096091bcd074f4d64f472bd088f9717b0cd"
+  },
+  "packagedNode": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/runtime/node",
+    "bytes": 121833248,
+    "sha256": "1cb5ac15fcf30a715e4a220e08a17dd31f6c05855e9fe27c7714b608b3d00bf8"
+  },
+  "packagedCli": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/runtime/worker/bin/cantrip",
+    "bytes": 5408944,
+    "sha256": "1d44083cb9edfd872f0aefab43851fb31dadbb31bd17c62abd6735589fbf604a"
+  },
+  "packagedCodex": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/runtime/worker/bin/codex",
+    "bytes": 279545328,
+    "sha256": "d2bc564513ece54a6c1df0132f8ebc8c494b088ebc9fd48fc34d64cea18b766c"
+  },
+  "workerNodeVersion": "v24.22.1",
+  "codexVersion": "0.166.0",
+  "redis": {
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/redis-all.json",
+      "bytes": 5054455,
+      "sha256": "609dfd8a85ae2374579fdbdf57c13ae7220c5b943c1a477f224be375999c7e56"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/redis-all.log",
+      "bytes": 1913,
+      "sha256": "ddcb34ddcd99c81b0ff615eef8efd1bdae04b128307f3f2f744b345f033930ef"
+    },
+    "fixtureArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/redis-all-fixture.tar.zst",
+      "bytes": 3135171038,
+      "sha256": "2907e9621bfdae42cbfb58c189b28623f19fd7ae22056d3d6dc9f03fa17e0712"
+    },
+    "observations": [
+      {
+        "pair": "node/node",
+        "productSteps": 10,
+        "offlineMs": 45077,
+        "placementWarmups": 1,
+        "modelRequests": 1,
+        "dispatchAttempts": 1,
+        "workerContinuityRetained": true,
+        "observedServerExits": 2,
+        "observedWorkerExits": 3,
+        "completedBeforeRedisRestart": true,
+        "newRedisConnection": true,
+        "originalClaimTtlMs": 4445
+      },
+      {
+        "pair": "node/rust",
+        "productSteps": 10,
+        "offlineMs": 45072,
+        "placementWarmups": 0,
+        "modelRequests": 1,
+        "dispatchAttempts": 1,
+        "workerContinuityRetained": true,
+        "observedServerExits": 2,
+        "observedWorkerExits": 3,
+        "completedBeforeRedisRestart": true,
+        "newRedisConnection": true,
+        "originalClaimTtlMs": 4161
+      },
+      {
+        "pair": "rust/node",
+        "productSteps": 10,
+        "offlineMs": 45074,
+        "placementWarmups": 1,
+        "modelRequests": 1,
+        "dispatchAttempts": 1,
+        "workerContinuityRetained": true,
+        "observedServerExits": 2,
+        "observedWorkerExits": 3,
+        "completedBeforeRedisRestart": true,
+        "newRedisConnection": true,
+        "originalClaimTtlMs": 3847
+      },
+      {
+        "pair": "rust/rust",
+        "productSteps": 10,
+        "offlineMs": 45072,
+        "placementWarmups": 0,
+        "modelRequests": 1,
+        "dispatchAttempts": 1,
+        "workerContinuityRetained": true,
+        "observedServerExits": 2,
+        "observedWorkerExits": 3,
+        "completedBeforeRedisRestart": true,
+        "newRedisConnection": true,
+        "originalClaimTtlMs": 4287
+      }
+    ]
+  },
+  "postgres": {
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/postgres-rust-rust.json",
+      "bytes": 822082,
+      "sha256": "d362a7f31e5bf2603171d16786a40d919d4ab8250c20572e9ad34972a316e666"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/postgres-rust-rust.log",
+      "bytes": 1356,
+      "sha256": "99cb8f039e987377b7b98ad517f6710ff6a6a74c00457583fcb339242988b7c4"
+    },
+    "fixtureArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/current-inflight-recovery/postgres-rust-rust-fixture.tar.zst",
+      "bytes": 787221420,
+      "sha256": "5e96bcf9cc687b36e9b7af96b684bfca8bb46e59b518d02bf8a24c8a8481fdec"
+    },
+    "observations": [
+      {
+        "pair": "rust/rust",
+        "productSteps": 10,
+        "offlineMs": 45005,
+        "placementWarmups": 0,
+        "modelRequests": 1,
+        "dispatchAttempts": 1,
+        "workerContinuityRetained": true,
+        "observedServerExits": 2,
+        "observedWorkerExits": 3,
+        "protectedOutcomeRetained": true,
+        "outboxDrained": true
+      }
+    ]
+  }
+}

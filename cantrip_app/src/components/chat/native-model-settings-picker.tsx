@@ -1,7 +1,8 @@
 import { NativeAccountDefaultsEditor } from "./native-account-defaults-editor";
 import { NativeRuntimeHandoffEditor } from "./native-runtime-handoff-editor";
 import { useRuntimeHandoff } from "./use-runtime-handoff";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNonLanguageRoutes } from "./use-language-model-routes";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,6 +30,14 @@ export function NativeModelSettingsPicker({
   disabled?: boolean;
 }) {
   const { binding, selected, inventory, observed, update } = controller;
+  const nonLanguageRoutes = useNonLanguageRoutes(open);
+  const modelChoices = useMemo(
+    () =>
+      inventory.data?.models.filter(
+        (model) => !nonLanguageRoutes.has(model.routeId),
+      ) ?? [],
+    [inventory.data?.models, nonLanguageRoutes],
+  );
   const handoff = useRuntimeHandoff({
     binding,
     identity: observed.identity,
@@ -93,6 +102,12 @@ export function NativeModelSettingsPicker({
   const model = inventory.data?.models.find(
     (candidate) => candidate.routeId === draft?.routeId,
   );
+  const subagentConflict =
+    Boolean(draft?.subagentModel) &&
+    inventory.data?.models.some(
+      (entry) => entry.name === draft?.subagentModel,
+    ) &&
+    !modelChoices.some((entry) => entry.name === draft?.subagentModel);
   const efforts = [
     ...new Set([
       null,
@@ -194,7 +209,7 @@ export function NativeModelSettingsPicker({
             value={draft?.routeId ?? ""}
             disabled={!editable || update.isPending}
             onChange={(event) => {
-              const choice = inventory.data?.models.find(
+              const choice = modelChoices.find(
                 (candidate) => candidate.routeId === event.target.value,
               );
               if (choice) {
@@ -214,12 +229,16 @@ export function NativeModelSettingsPicker({
             <option value="" disabled>
               {draft?.model ?? "Choose model"}
             </option>
-            {inventory.data?.models.map((candidate) => (
+            {draft?.routeId && nonLanguageRoutes.has(draft.routeId) ? (
+              <option value={draft.routeId} disabled>
+                {draft.model} · Review language configuration
+              </option>
+            ) : null}
+            {modelChoices.map((candidate) => (
               <option key={candidate.routeId} value={candidate.routeId}>
                 {candidate.catalog?.displayName ?? candidate.name}
-                {inventory.data?.models.filter(
-                  (entry) => entry.name === candidate.name,
-                ).length > 1
+                {modelChoices.filter((entry) => entry.name === candidate.name)
+                  .length > 1
                   ? ` (${candidate.routeId})`
                   : ""}
               </option>
@@ -341,12 +360,19 @@ export function NativeModelSettingsPicker({
               <option value="">Inherit parent model</option>
               {[
                 ...new Set([
-                  ...(inventory.data?.models.map((entry) => entry.name) ?? []),
+                  ...modelChoices.map((entry) => entry.name),
                   ...(draft.subagentModel ? [draft.subagentModel] : []),
                 ]),
               ].map((name) => (
-                <option key={name} value={name}>
+                <option
+                  key={name}
+                  value={name}
+                  disabled={name === draft.subagentModel && subagentConflict}
+                >
                   {name}
+                  {name === draft.subagentModel && subagentConflict
+                    ? " · Review language configuration"
+                    : ""}
                 </option>
               ))}
             </select>
@@ -382,7 +408,7 @@ export function NativeModelSettingsPicker({
               <option value="">Inherit parent reasoning</option>
               {[
                 ...new Set([
-                  ...(inventory.data?.models
+                  ...(modelChoices
                     .find(
                       (entry) =>
                         entry.name === (draft.subagentModel ?? draft.model),

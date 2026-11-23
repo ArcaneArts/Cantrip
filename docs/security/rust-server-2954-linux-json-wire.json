@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2954",
+  "sourceCommit": "f21824cc883343819d581dafcc5fc93e20591a8b",
+  "referenceSourceCommit": "10dad9dbc5241895e52eb4cd34b9f0ba528ddda1",
+  "referencePlatform": "darwin-arm64",
+  "referenceNodeVersion": "24.22.2",
+  "scope": "The current Node reference ran on the host and the Rust server ran inside the locally built Linux OCI images through their packaged launcher. Both used isolated databases. The existing suite compared HTTP status, response bodies, security headers and cookies, plus App Live responses and health and close checks. Cursor comparisons account for independently observed usage publications.",
+  "pairedHttpCases": 312,
+  "pairedWebSocketCases": 162,
+  "platforms": [
+    {
+      "target": "linux-arm64",
+      "architecture": "arm64",
+      "execution": "Linux ARM64",
+      "ociArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/cantrip-server-1.1.2954-f21824cc8-linux-arm64.oci.tar",
+        "bytes": 178428928,
+        "sha256": "1f93b5b0b63c5a975c6f94aa07fa940c092b233ffaf14bd2e8ce4fb161eae50f"
+      },
+      "ociManifestDigest": "sha256:bffdd25f983d2206f53ed448da199a0ffc1e83eef1179d1b622e540b971acf21",
+      "executedBinary": {
+        "path": "bin/cantrip-server",
+        "bytes": 106463960,
+        "sha256": "5f67499f85d31ab50411b08a9111063122a6273971bb511cd149b0c57a545cac",
+        "elfMachine": 183
+      },
+      "databaseModes": [
+        {
+          "databaseMode": "pglite",
+          "pairedHttpCases": 52,
+          "pairedWebSocketCases": 27,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/arm64-pglite-confirmed/pglite.json",
+            "bytes": 149907,
+            "sha256": "bc4d64392d45cb5c4cfa4d07f047cffd4db389c90cb075771e3569d50d860b8a"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "pairedHttpCases": 52,
+          "pairedWebSocketCases": 27,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/arm64-postgres-wire/bundled-postgres.json",
+            "bytes": 149961,
+            "sha256": "f6a1ad72b3dc9b56b43cdb6bfcdf50ca24eb8c9e0db78a7a3db5fdbf6be9ee89"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "pairedHttpCases": 52,
+          "pairedWebSocketCases": 27,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/arm64-postgres-wire/postgres.json",
+            "bytes": 149909,
+            "sha256": "757950c9d1392b1853ee7ec42a37f89c04a6d44785cdfc3a045443e9e27f4859"
+          }
+        }
+      ]
+    },
+    {
+      "target": "linux-x64",
+      "architecture": "amd64",
+      "execution": "Rosetta on Linux ARM64",
+      "ociArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/x64/cantrip-server-1.1.2954-f21824cc8-linux-x64.oci.tar",
+        "bytes": 181588992,
+        "sha256": "57e015918278fbbffc6d5d2912999103e47419e5e2dffc0a01b503b52e5f5e72"
+      },
+      "ociManifestDigest": "sha256:5bc45314fab8659abf6b2571b60ec9c75d1a5c1a609ac00e60c3352ab24d6328",
+      "executedBinary": {
+        "path": "bin/cantrip-server",
+        "bytes": 111192760,
+        "sha256": "ca82a0f5031182e2f2eadd1acb6d7f41aea96c8e8a83ac6cb3c8f1363dd794a1",
+        "elfMachine": 62
+      },
+      "databaseModes": [
+        {
+          "databaseMode": "pglite",
+          "pairedHttpCases": 52,
+          "pairedWebSocketCases": 27,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/amd64-pglite-confirmed/pglite.json",
+            "bytes": 149949,
+            "sha256": "f998df154ebc2c15b5e147da92d90a7142e5dc66d4112062d3d7120c830a8a28"
+          }
+        },
+        {
+          "databaseMode": "bundled-postgres",
+          "pairedHttpCases": 52,
+          "pairedWebSocketCases": 27,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/amd64-postgres-wire/bundled-postgres.json",
+            "bytes": 150003,
+            "sha256": "8b5f23fdf7ba561ece9c9213d3312d176e96f4bc9c8ae7f5daf59915605c460c"
+          }
+        },
+        {
+          "databaseMode": "postgres",
+          "pairedHttpCases": 52,
+          "pairedWebSocketCases": 27,
+          "report": {
+            "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/amd64-postgres-wire/postgres.json",
+            "bytes": 149951,
+            "sha256": "2795866666e4065e7f96babaac21f96ffd22d28ba8e45dc1ddc9796610b9e779"
+          }
+        }
+      ]
+    }
+  ],
+  "driver": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/packaged-json-compatibility.mjs",
+    "bytes": 11694,
+    "sha256": "eedee764be855daefa233ca9ad24a854b263a5d1861da60abc7a4fec46e638cd"
+  },
+  "containerLauncher": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/container-server.py",
+    "bytes": 1988,
+    "sha256": "a98e04724b928140ab5bbe718f846e232dd75369143a158c3e712034f5da22ad"
+  },
+  "runner": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/run.sh",
+    "bytes": 2937,
+    "sha256": "2a86eff613c9e4325da8477e7af2479b258df1dc71892f73e92693ab759212db"
+  },
+  "protocolRebuildLog": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/protocol-build.log",
+    "bytes": 23,
+    "sha256": "29c5ee0f6b0b20dbb259b99d01276198c3d28190090706394608d4deda6d2c0b"
+  },
+  "initialContainerSetupFailure": {
+    "scope": "The inherited development worker token was rejected by both images on a non-loopback container listener. The transport comparison uses enrollment-code routes and does not use that token. The rerun removed it from both fixtures.",
+    "arm64": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/arm64/pglite.json",
+      "bytes": 1330,
+      "sha256": "be2003644e75f3ec91072fa46078db163f4ce4ad1ef54247364653443737287b"
+    },
+    "amd64": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/linux-f21824cc8/current-linux-json-wire/amd64/pglite.json",
+      "bytes": 1330,
+      "sha256": "8a75847aabfe44a1f20aca70ee4634cb6d778bcff97939c3c267d532d3f965bd"
+    }
+  }
+}

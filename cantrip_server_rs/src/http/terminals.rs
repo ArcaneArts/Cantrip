@@ -69,7 +69,7 @@ async fn mutate(
             resource: Value::String(terminal.clone().into()),
         };
         let result = service.direct_attachments.mutate(scope, async {
-            service.worker_links.revoke_resource(&owner,"terminal",&terminal,"resource-deleted").await;
+            service.worker_links.revoke_resource(&owner,"terminal",&terminal,"resource-deleted").await?;
             let Some(context)=repository.delete(&owner,&terminal).await? else{return Ok(error(404,"Terminal not found."))};
             let worker=context["workerId"].as_str().context("Deleted terminal worker")?;
             if service.workers.bridge.is_connected(worker)
@@ -98,7 +98,7 @@ async fn mutate(
                 service
                     .worker_links
                     .revoke_resource(&owner, "terminal", &terminal, "resource-stopped")
-                    .await;
+                    .await?;
                 if let Some(context) = repository.context(&owner, &terminal).await? {
                     if context["kind"] == "run-configuration" {
                         return Ok(error(

@@ -338,6 +338,11 @@ function Configure-Rust {
         "--component", "rust-src"
     )
     Invoke-Native "rustup.exe" @("default", "1.95.0-x86_64-pc-windows-msvc")
+    Invoke-Native "rustup.exe" @("target", "add", "x86_64-pc-windows-gnu")
+    Install-WinGetPackage "MSYS2.MSYS2" "MinGW native server build tools" "x64"
+    $msysRoot = if ($env:MSYS2_ROOT) { $env:MSYS2_ROOT } else { "C:\msys64" }
+    Invoke-Native (Join-Path $msysRoot "usr\bin\bash.exe") @("-lc", "pacman -S --needed --noconfirm mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf")
+    $env:PATH = (Join-Path $msysRoot "mingw64\bin") + ";" + $env:PATH
 
     $rustDetails = @(Invoke-NativeCapture "rustc.exe" @("-vV"))
     if (($rustDetails -join "`n") -notmatch "host: x86_64-pc-windows-msvc") {

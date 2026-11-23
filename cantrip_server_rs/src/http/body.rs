@@ -74,6 +74,146 @@ fn poisoned(value: &JsValue) -> bool {
 }
 
 pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsValue>, Response> {
+    parse_body(request, limit, None, BinaryMode::Ignore).await
+}
+
+enum BinaryMode {
+    Ignore,
+    Enumerate,
+    Own,
+    Json,
+}
+
+/// Attachment uploads explicitly JSON.parse the registered Buffer body. Other
+/// media types still run their ordinary parser before the route rejects them.
+pub(super) async fn parse_attachment(
+    request: Request,
+    json_limit: u64,
+    binary_limit: u64,
+) -> Result<Option<JsValue>, Response> {
+    let binary = value(request.headers(), "content-type").is_some_and(|value| {
+        value
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .eq_ignore_ascii_case("application/octet-stream")
+    });
+    let parsed = parse_body(request, json_limit, Some(binary_limit), BinaryMode::Json).await?;
+    Ok(if binary { parsed } else { None })
+}
+
+/// Automation contracts read named data properties and enumerate unknown keys.
+/// Include Buffer's inherited enumerable keys in Source order so strict-object
+/// diagnostics and refinement aborts match, including an empty Buffer. Values
+/// for those unused prototype keys are immaterial to these contracts.
+pub(super) async fn parse_js_buffer(
+    request: Request,
+    json_limit: u64,
+    binary_limit: u64,
+) -> Result<Option<JsValue>, Response> {
+    parse_body(
+        request,
+        json_limit,
+        Some(binary_limit),
+        BinaryMode::Enumerate,
+    )
+    .await
+}
+
+/// Object.keys(Buffer) exposes its byte indices, without inherited methods.
+pub(super) async fn parse_js_own_buffer(
+    request: Request,
+    json_limit: u64,
+    binary_limit: u64,
+) -> Result<Option<JsValue>, Response> {
+    parse_body(request, json_limit, Some(binary_limit), BinaryMode::Own).await
+}
+
+/// Routes which ignore their parsed input still use Fastify's registered
+/// binary parser and its distinct upload limit, without projecting a Buffer.
+pub(super) async fn parse_ignored(
+    request: Request,
+    json_limit: u64,
+    binary_limit: u64,
+) -> Result<(), Response> {
+    parse_body(request, json_limit, Some(binary_limit), BinaryMode::Ignore)
+        .await
+        .map(|_| ())
+}
+
+pub(super) async fn parse_fallback(
+    request: Request,
+    json_limit: u64,
+    binary_limit: u64,
+) -> Result<(), Response> {
+    if request.method().as_str() == "QUERY" {
+        if !request.headers().contains_key(header::CONTENT_TYPE) {
+            return Err(parser_error(
+                400,
+                "FST_ERR_ROUTE_MISSING_CONTENT_TYPE",
+                "Method 'QUERY' must provide a 'Content-Type' header.",
+            ));
+        }
+        if !request.headers().contains_key(header::TRANSFER_ENCODING)
+            && value(request.headers(), "content-length").is_none_or(|v| v == "0")
+        {
+            return Err(parser_error(
+                400,
+                "FST_ERR_ROUTE_MISSING_CONTENT",
+                "Method 'QUERY' must provide a request body.",
+            ));
+        }
+    }
+    let content_type = value(request.headers(), "content-type");
+    let kind = if let Some(raw) = content_type {
+        let media = raw.split(';').next().unwrap_or("");
+        let invalid = || {
+            parser_error(
+                415,
+                "FST_ERR_CTP_INVALID_MEDIA_TYPE",
+                "Unsupported Media Type",
+            )
+        };
+        let Some((kind, subtype)) = media.split_once('/') else {
+            return Err(invalid());
+        };
+        let kind = kind
+            .trim_start_matches(crate::text::whitespace)
+            .to_lowercase();
+        let subtype = subtype
+            .trim_end_matches(crate::text::whitespace)
+            .to_lowercase();
+        let token = |value: &str| {
+            !value.is_empty()
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"_!#$%&'*+.^`|~-".contains(&byte))
+        };
+        if !token(&kind) || !token(&subtype) {
+            return Err(invalid());
+        }
+        format!("{kind}/{subtype}")
+    } else {
+        String::new()
+    };
+    // Fastify's content-type parser deliberately calls the 404 handler when
+    // no registered parser exists. Known parsers still validate their input.
+    if !matches!(
+        kind.as_str(),
+        "application/json" | "text/plain" | "application/octet-stream"
+    ) {
+        return Ok(());
+    }
+    parse_ignored(request, json_limit, binary_limit).await
+}
+
+async fn parse_body(
+    request: Request,
+    limit: u64,
+    ignored_binary_limit: Option<u64>,
+    binary_mode: BinaryMode,
+) -> Result<Option<JsValue>, Response> {
     let content_type = value(request.headers(), "content-type");
     let kind = content_type
         .as_deref()
@@ -83,6 +223,11 @@ pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsVa
         .unwrap_or("")
         .trim()
         .to_lowercase();
+    let limit = if kind == "application/octet-stream" {
+        ignored_binary_limit.unwrap_or(limit)
+    } else {
+        limit
+    };
     if value(request.headers(), "content-length")
         .and_then(|length| length.trim().parse::<u64>().ok())
         .is_some_and(|length| length > limit)
@@ -139,7 +284,31 @@ pub(super) async fn parse_js(request: Request, limit: u64) -> Result<Option<JsVa
         Ok(Some(JsValue::String(JsString::from(
             String::from_utf8_lossy(&bytes).into_owned(),
         ))))
-    } else if kind.is_empty() && bytes.is_empty() {
+    } else if kind == "application/octet-stream" && matches!(binary_mode, BinaryMode::Json) {
+        // Unlike the application/json parser, Buffer JSON.parse does not
+        // remove a BOM or reject prototype-named data properties.
+        Ok(serde_json::from_str(&String::from_utf8_lossy(&bytes)).ok())
+    } else if kind == "application/octet-stream"
+        && matches!(binary_mode, BinaryMode::Enumerate | BinaryMode::Own)
+    {
+        let mut value = JsValue::object(
+            bytes
+                .into_iter()
+                .enumerate()
+                .map(|(index, byte)| (index.to_string(), JsValue::Number(f64::from(byte)))),
+        );
+        if matches!(binary_mode, BinaryMode::Enumerate) {
+            let inherited: Vec<String> =
+                serde_json::from_str(include_str!("../../contracts/js-buffer-keys.json"))
+                    .expect("Source Buffer enumerable keys");
+            for key in inherited {
+                value[key.as_str()] = JsValue::Null;
+            }
+        }
+        Ok(Some(value))
+    } else if (kind.is_empty() && bytes.is_empty())
+        || (kind == "application/octet-stream" && ignored_binary_limit.is_some())
+    {
         Ok(None)
     } else {
         Err(parser_error(
@@ -171,6 +340,36 @@ mod tests {
                 .map(|chunk| (Ok::<_, Infallible>(chunk), receiver))
         }));
         (sender, body)
+    }
+
+    #[tokio::test]
+    async fn ignored_binary_bodies_keep_the_registered_parser_limit() {
+        let request = |kind: &str, bytes: Vec<u8>| {
+            Request::builder()
+                .header(header::CONTENT_TYPE, kind)
+                .body(Body::from(bytes))
+                .unwrap()
+        };
+        // Binary input is opaque and can exceed the ordinary JSON limit.
+        assert!(
+            parse_ignored(request("application/octet-stream", vec![0xff; 8]), 4, 8)
+                .await
+                .is_ok()
+        );
+        assert_eq!(
+            parse_ignored(request("application/octet-stream", vec![0xff; 9]), 4, 8)
+                .await
+                .unwrap_err()
+                .status(),
+            413
+        );
+        assert_eq!(
+            parse_ignored(request("application/json", b"false".to_vec()), 4, 8)
+                .await
+                .unwrap_err()
+                .status(),
+            413
+        );
     }
 
     #[tokio::test]

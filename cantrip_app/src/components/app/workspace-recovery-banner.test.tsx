@@ -1,6 +1,6 @@
 import { act, create } from "react-test-renderer";
 import { renderToStaticMarkup } from "react-dom/server";
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceRecoveryBanner } from "./workspace-recovery-banner";
 
 function fixture() {
@@ -99,3 +99,180 @@ it.each(["read", "command", "labels", "bootstrap", "disposed"] as const)(
     await act(async () => renderer.unmount());
   },
 );
+
+describe("automatic workspace reconnection", () => {
+  const renderers: ReturnType<typeof create>[] = [];
+  beforeEach(() => {
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.useFakeTimers({
+      toFake: [
+        "setTimeout",
+        "clearTimeout",
+        "setInterval",
+        "clearInterval",
+        "performance",
+      ],
+    });
+  });
+  afterEach(async () => {
+    for (const renderer of renderers) await act(async () => renderer.unmount());
+    renderers.length = 0;
+    vi.useRealTimers();
+  });
+  async function mount(
+    workspace: ReturnType<typeof fixture> = {
+      ...fixture(),
+      error: new Error("The window attachment is no longer current."),
+    },
+  ) {
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(<WorkspaceRecoveryBanner workspace={workspace} />);
+    });
+    renderers.push(renderer);
+    return { renderer, workspace };
+  }
+  const advance = (ms: number) =>
+    act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+  const area = (renderer: ReturnType<typeof create>) =>
+    renderer.root.findByProps({ "data-workspace-reconnect": "" });
+
+  it.each(["bootstrap", "disposed"])(
+    "reconnects a %s failure after five seconds, once per attempt",
+    async (kind) => {
+      const workspace = fixture();
+      if (kind === "bootstrap") workspace.error = new Error("Connection lost");
+      else workspace.controllerState.disposed = true;
+      await mount(workspace);
+      await advance(4999);
+      expect(workspace.retry).not.toHaveBeenCalled();
+      await advance(1);
+      expect(workspace.retry).toHaveBeenCalledOnce();
+      await advance(10000);
+      expect(workspace.retry).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("freezes progress while hovered and resumes the remaining countdown", async () => {
+    const { renderer, workspace } = await mount();
+    await advance(2000);
+    await act(async () => area(renderer).props.onMouseEnter());
+    const progress = () =>
+      renderer.root.findByProps({ "data-reconnect-progress": "" }).props.style
+        .width;
+    expect(progress()).toBe("40%");
+    await advance(12000);
+    expect(workspace.retry).not.toHaveBeenCalled();
+    expect(progress()).toBe("40%");
+    expect(JSON.stringify(renderer.toJSON())).toContain("Paused");
+    await act(async () => area(renderer).props.onMouseLeave());
+    await advance(2999);
+    expect(workspace.retry).not.toHaveBeenCalled();
+    await advance(1);
+    expect(workspace.retry).toHaveBeenCalledOnce();
+  });
+
+  it("keeps keyboard focus paused after the pointer leaves", async () => {
+    const { renderer, workspace } = await mount();
+    await advance(1000);
+    await act(async () => {
+      area(renderer).props.onMouseEnter();
+      area(renderer).props.onFocusCapture();
+      area(renderer).props.onMouseLeave();
+    });
+    await advance(10000);
+    expect(workspace.retry).not.toHaveBeenCalled();
+    await act(async () =>
+      area(renderer).props.onBlurCapture({
+        currentTarget: { contains: () => false },
+        relatedTarget: null,
+      }),
+    );
+    await advance(4000);
+    expect(workspace.retry).toHaveBeenCalledOnce();
+  });
+
+  it("reconnects immediately on click without a later duplicate", async () => {
+    const { renderer, workspace } = await mount();
+    await advance(2000);
+    await act(async () => renderer.root.findByType("button").props.onClick());
+    expect(workspace.retry).toHaveBeenCalledOnce();
+    await advance(10000);
+    expect(workspace.retry).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a resolved issue and starts a fresh countdown for the next failure", async () => {
+    const { renderer, workspace } = await mount();
+    await advance(4000);
+    await act(async () =>
+      renderer.update(<WorkspaceRecoveryBanner workspace={fixture()} />),
+    );
+    await advance(2000);
+    expect(workspace.retry).not.toHaveBeenCalled();
+    await act(async () =>
+      renderer.update(<WorkspaceRecoveryBanner workspace={workspace} />),
+    );
+    await advance(5000);
+    expect(workspace.retry).toHaveBeenCalledOnce();
+  });
+
+  it("replaces the countdown when its connection changes", async () => {
+    const { renderer, workspace } = await mount();
+    await advance(4000);
+    const next = { ...workspace, retry: vi.fn() };
+    await act(async () =>
+      renderer.update(<WorkspaceRecoveryBanner workspace={next} />),
+    );
+    await advance(4999);
+    expect(workspace.retry).not.toHaveBeenCalled();
+    expect(next.retry).not.toHaveBeenCalled();
+    await advance(1);
+    expect(next.retry).toHaveBeenCalledOnce();
+  });
+
+  it("cleans up the pending retry when the banner unmounts", async () => {
+    const { renderer, workspace } = await mount();
+    await advance(4000);
+    await act(async () => renderer.unmount());
+    await advance(5000);
+    expect(workspace.retry).not.toHaveBeenCalled();
+  });
+
+  it.each(["read", "command", "labels", "migration"])(
+    "does not automatically replay a %s recovery action",
+    async (kind) => {
+      const workspace = fixture();
+      const error = new Error("Failed");
+      if (kind === "read") workspace.controllerState.refreshError = error;
+      if (kind === "command") workspace.controllerState.error = error;
+      if (kind === "labels") workspace.presentation.error = error;
+      const migration = {
+        error: kind === "migration" ? error : null,
+        retry: vi.fn(),
+      };
+      let renderer!: ReturnType<typeof create>;
+      await act(async () => {
+        renderer = create(
+          <WorkspaceRecoveryBanner
+            workspace={workspace}
+            migration={migration}
+          />,
+        );
+      });
+      renderers.push(renderer);
+      await advance(10000);
+      for (const action of [
+        "retry",
+        "refresh",
+        "retryCommand",
+        "retryLabels",
+      ] as const)
+        expect(workspace[action]).not.toHaveBeenCalled();
+      expect(migration.retry).not.toHaveBeenCalled();
+    },
+  );
+});

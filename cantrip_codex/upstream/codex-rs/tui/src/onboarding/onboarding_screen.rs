@@ -52,7 +52,7 @@ use crate::onboarding::trust_directory::TrustDirectoryWidget;
 use crate::onboarding::welcome::WelcomeWidget;
 use crate::startup_draft::StartupCancelled;
 use crate::tui::FrameRequester;
-use crate::tui::OverlayInput;
+use crate::tui::MouseCapture;
 use crate::tui::Tui;
 use crate::tui::TuiEvent;
 use color_eyre::eyre::Result;
@@ -599,8 +599,8 @@ async fn run_onboarding_screen(
     tui: &mut Tui,
 ) -> Result<OnboardingResult> {
     // Let the terminal select and copy login URLs and device codes, even in fullscreen mode.
-    let previous_input = tui.overlay_input;
-    let result = match tui.set_overlay_input(OverlayInput::Onboarding) {
+    let previous_mouse_capture = tui.mouse_capture;
+    let result = match tui.set_mouse_capture(MouseCapture::Disabled) {
         Ok(()) => {
             run_onboarding_screen_inner(
                 onboarding_screen,
@@ -612,7 +612,7 @@ async fn run_onboarding_screen(
         }
         Err(error) => Err(error.into()),
     };
-    let restore = tui.set_overlay_input(previous_input);
+    let restore = tui.set_mouse_capture(previous_mouse_capture);
     result.and_then(|result| restore.map(|()| result).map_err(Into::into))
 }
 
@@ -764,7 +764,7 @@ async fn run_onboarding_screen_inner(
                 }
             }, if app_server.is_some() => {
                 if let Some(event) = event {
-                    match event {
+                    match event.event {
                         AppServerEvent::ServerNotification(notification) => {
                             onboarding_screen.handle_app_server_notification(*notification);
                         }

@@ -1,12 +1,21 @@
 import { ComputerUseEffectsSettings } from "./computer-use-effects-settings";
+import { ModelOperationFields } from "./model-operation-fields";
+import {
+  operationCapabilityText,
+  scopedOperationCapabilities,
+  scopedCapabilitiesByModel,
+  modelOperationLabels,
+} from "./model-operation-metadata";
 import { LabelingSettings } from "./labeling-settings";
 import { Monitor } from "lucide-react";
 import { FileChangeSettings } from "./file-change-settings";
 import { TabDisplaySettings } from "./tab-display-settings";
-import { CodeEditorSettings } from "./code-editor-settings";
+import { EditorsSettings, editorSettingsSearchItems } from "./editors-settings";
+import { FileNavigationSettings } from "./file-navigation-settings";
 import type {
   CodeAppearance,
   CodexDeviceLogin,
+  ModelOperation,
   ModelProfileSummary,
   ModelProviderKind,
   ModelProviderSummary,
@@ -15,10 +24,14 @@ import type {
   ProviderModelCatalogResult,
   ThemePreference,
   UserSettings,
-  WorkspaceLayoutProfile,
   TunnelSummary,
 } from "@cantrip/protocol";
+import { useModelsSettingsTab } from "./use-models-settings-tab";
 import {
+  modelProfileOperation,
+  providerOperationSupport,
+  DEFAULT_MAX_CONCURRENT_INFERENCE,
+  providerInferenceLimitSchema,
   shouldUseChatGptCredits,
   PROVIDER_REAUTH_REQUIRED_ERROR_CODE,
   ZAI_CODING_PLAN_BASE_URL,
@@ -133,7 +146,6 @@ import { EliteSettings } from "./elite-settings";
 import { PolicySettings } from "./policy-settings";
 import { AccountUsageSettings } from "./account-usage-settings";
 import { EncryptionRecoverySettings } from "./encryption-recovery-settings";
-import { TaskSettings } from "./task-settings";
 import { ComputerUseSettings } from "./computer-use-settings";
 import {
   availableCatalogModelIds,
@@ -173,10 +185,10 @@ import { ModelsSettings } from "./models-settings";
 import {
   modelsSettingsSearchTab,
   providerModelsTab,
-  type ModelsSettingsTab,
 } from "./models-settings-state";
 import {
   providerSetupDefaults,
+  providerInstanceName,
   providerSetupFor,
   providerSetupOptions,
   providerSetupUnavailableReason,
@@ -188,11 +200,10 @@ export type SettingsSection =
   | "computer-use"
   | "remote-desktop"
   | "appearance"
-  | "code-editor"
+  | "editors"
   | "usage"
   | "elite"
   | "models"
-  | "tasks"
   | "workers"
   | "logs"
   | "tunnels"
@@ -217,10 +228,13 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           keywords: ["random generated first request short thinking effort"],
         },
         {
-          id: "workspace-layout-profile",
-          label: "Project workspace profile",
-          description: "First-open destinations for new project tabs.",
-          keywords: ["agent hybrid ide layout tabs panes docks"],
+          id: "sidebar-auto-expand-folders",
+          label: "Auto-expand nested folders",
+          description:
+            "Automatically expand folders that contain only another folder in the file sidebar.",
+          keywords: [
+            "files explorer tree navigation single child chain directory",
+          ],
         },
         {
           id: "agent-permissions",
@@ -263,9 +277,9 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           id: "computer-use",
           label: "Computer Use",
           description:
-            "Enable computer use, macOS permissions, and window effects.",
+            "Enable computer use, allow or deny Cantrip app access, macOS permissions, and window effects.",
           keywords: [
-            "accessibility privacy screen recording window effects filter worker capture",
+            "accessibility privacy screen recording window effects filter worker capture cantrip app allow deny protected self control",
           ],
         },
       ],
@@ -326,18 +340,11 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
       ],
     },
     {
-      id: "code-editor",
-      label: "Code Editor",
-      description: "Code editing and viewing preferences",
+      id: "editors",
+      label: "Editors",
+      description: "File editing and viewing preferences",
       icon: Code2,
-      searchItems: [
-        {
-          id: "code-editor-line-numbers",
-          label: "Show line numbers",
-          description: "Show or hide line numbers in code editors and viewers.",
-          keywords: ["gutter margin numbering"],
-        },
-      ],
+      searchItems: editorSettingsSearchItems,
     },
     {
       id: "usage",
@@ -370,10 +377,22 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
       icon: Cpu,
       searchItems: [
         {
+          id: "default-embedding-model",
+          label: "Default embedding model",
+          keywords: ["embeddings dimensions vectors none selected"],
+        },
+        {
+          id: "default-decision-model",
+          label: "Default decision model",
+          keywords: ["predicate choice score native decisions none selected"],
+        },
+        {
           id: "providers",
           label: "Model providers",
           description: "Ollama, ChatGPT, Grok, xAI, and compatible APIs.",
-          keywords: ["openai openrouter zai oauth endpoint api key"],
+          keywords: [
+            "openai openrouter zai oauth endpoint api key maximum concurrent inference limit queue",
+          ],
         },
         {
           id: "models",
@@ -384,24 +403,6 @@ export const settingsNavigationSections: readonly SettingsNavigationSection<Sett
           id: "model-defaults",
           label: "Default model configuration",
           description: "Root, subagent, and standalone Chat defaults.",
-        },
-      ],
-    },
-    {
-      id: "tasks",
-      label: "Tasks",
-      description: "Task worker defaults",
-      icon: ListTodo,
-      searchItems: [
-        {
-          id: "task-workers",
-          label: "Task Workers",
-          description: "Configure workers that execute background tasks.",
-        },
-        {
-          id: "task-models",
-          label: "Task agent models",
-          description: "Choose models and reasoning for task agents.",
         },
       ],
     },
@@ -563,11 +564,14 @@ export function settingsNavigationSectionsForResources(
                     )
                     .join(", ")
                 : "Logical model profile.",
-              keywords: model.routes.flatMap((route) => [
-                route.providerName,
-                route.modelName,
-                "route",
-              ]),
+              keywords: [
+                modelProfileOperation(model),
+                ...model.routes.flatMap((route) => [
+                  route.providerName,
+                  route.modelName,
+                  "route",
+                ]),
+              ],
             })),
           ],
         }
@@ -832,13 +836,41 @@ function ProviderRow({
 }) {
   const queryClient = useQueryClient();
   const supportsCatalog = providerSupportsCatalog(provider);
-  const catalogQueryKey = providerCatalogQueryKey(provider.id, workerId);
-  const catalog = useProviderCatalog(provider.id, workerId, supportsCatalog);
+  const connectionRevision = provider.connectionRevision ?? provider.updatedAt;
+  const catalogQueryKey = providerCatalogQueryKey(
+    provider.id,
+    workerId,
+    connectionRevision,
+  );
+  const catalog = useProviderCatalog(
+    provider.id,
+    workerId,
+    supportsCatalog,
+    provider.connectionRevision ?? provider.updatedAt,
+  );
   const refreshCatalog = useMutation({
+    mutationKey: [
+      "provider-catalog-refresh",
+      provider.id,
+      workerId,
+      connectionRevision,
+    ],
+    onMutate: () => ({
+      providerId: provider.id,
+      workerId,
+      connectionRevision,
+      catalogQueryKey,
+    }),
     mutationFn: () => refreshProviderModelCatalog(provider.id, workerId),
-    onSuccess: (result) => {
-      cacheProviderModelCatalog(provider.id, workerId, result);
-      queryClient.setQueryData(catalogQueryKey, result);
+    onSuccess: (result, _variables, context) => {
+      if (!context) return;
+      cacheProviderModelCatalog(
+        context.providerId,
+        context.workerId,
+        result,
+        context.connectionRevision,
+      );
+      queryClient.setQueryData(context.catalogQueryKey, result);
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
   });
@@ -1014,9 +1046,11 @@ function CatalogModelField({
   provider,
   routeKey,
   value,
+  operation,
   workerId,
   onChange,
 }: {
+  operation: ModelOperation;
   provider: ModelProviderSummary | undefined;
   routeKey: string;
   value: string;
@@ -1028,9 +1062,18 @@ function CatalogModelField({
     provider?.id,
     workerId,
     Boolean(provider && supportsCatalog),
+    provider?.connectionRevision ?? provider?.updatedAt,
+  );
+  const capabilitiesById = useMemo(
+    () => scopedCapabilitiesByModel(catalog.data, workerId),
+    [catalog.data, workerId],
   );
   const visibleModels =
-    catalog.data?.models.filter(({ hidden }) => !hidden) ?? [];
+    catalog.data?.models.filter(
+      (model) =>
+        !model.hidden &&
+        capabilitiesById.get(model.id)?.[operation]?.status !== "unsupported",
+    ) ?? [];
   const availableModelIds = catalog.data
     ? availableCatalogModelIds(catalog.data, workerId)
     : new Set<string>();
@@ -1069,6 +1112,7 @@ function CatalogModelField({
         catalog={catalog.data}
         loading={catalog.isLoading}
         model={selected}
+        operation={operation}
         accountScoped={Boolean(
           provider && isAccountProviderKind(provider.kind),
         )}
@@ -1085,10 +1129,12 @@ function CatalogModelMetadata({
   catalog,
   loading,
   model,
+  operation,
   supportsCatalog,
   value,
   workerId,
 }: {
+  operation: ModelOperation;
   accountScoped: boolean;
   catalog: ProviderModelCatalogResult | undefined;
   loading: boolean;
@@ -1111,12 +1157,18 @@ function CatalogModelMetadata({
     );
   }
   const metadata = [
-    formatContextWindow(model.contextWindow),
-    model.inputModalities.length ? model.inputModalities.join(" + ") : null,
-    model.supportsTools ? "tools" : null,
-    model.supportsStructuredOutput ? "structured output" : null,
-    model.supportsVision ? "vision" : null,
-    model.supportsReasoning ? "reasoning" : null,
+    model.loaded === true
+      ? "Loaded"
+      : model.loaded === false
+        ? "Installed · not loaded"
+        : null,
+    operationCapabilityText(
+      operation,
+      scopedOperationCapabilities(model, catalog, workerId),
+    ),
+    operation === "language" ? formatContextWindow(model.contextWindow) : null,
+    operation === "language" && model.supportsTools ? "tools" : null,
+    operation === "language" && model.supportsReasoning ? "reasoning" : null,
   ].filter((item): item is string => Boolean(item));
   const available = catalogModelAvailable(model, catalog, workerId);
   return (
@@ -1152,8 +1204,7 @@ export function SettingsPage({
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
 }) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
-  const [activeModelsTab, setActiveModelsTab] =
-    useState<ModelsSettingsTab>("general");
+  const [activeModelsTab, setActiveModelsTab] = useModelsSettingsTab();
   const [policyEditorId, setPolicyEditorId] = useState<string | null>(
     initialPolicyId,
   );
@@ -1185,6 +1236,9 @@ export function SettingsPage({
   const [editingProvider, setEditingProvider] =
     useState<ModelProviderSummary | null>(null);
   const [providerName, setProviderName] = useState("");
+  const [providerInferenceLimit, setProviderInferenceLimit] = useState(
+    String(DEFAULT_MAX_CONCURRENT_INFERENCE),
+  );
   const [providerKind, setProviderKind] = useState<ModelProviderKind>("ollama");
   const [providerSetup, setProviderSetup] =
     useState<ProviderSetupKind>("ollama");
@@ -1194,6 +1248,7 @@ export function SettingsPage({
   const [connectionTestResult, setConnectionTestResult] = useState<{
     ok: boolean;
     message: string;
+    target: string;
   } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
     null,
@@ -1212,6 +1267,8 @@ export function SettingsPage({
   const [editingModel, setEditingModel] = useState<ModelProfileSummary | null>(
     null,
   );
+  const [modelOperation, setModelOperation] =
+    useState<ModelOperation>("language");
   const [modelName, setModelName] = useState("");
   const [modelRoutes, setModelRoutes] = useState<EditableRoute[]>([]);
   const accountProvider =
@@ -1345,6 +1402,9 @@ export function SettingsPage({
       if (providerUnavailableReason) throw new Error(providerUnavailableReason);
       const input = {
         name: providerName,
+        maxConcurrentInference: providerInferenceLimitSchema.parse(
+          Number(providerInferenceLimit),
+        ),
         kind: providerKind,
         baseUrl: isAccountProviderKind(providerKind)
           ? providerKind === "grok"
@@ -1407,20 +1467,48 @@ export function SettingsPage({
       await refresh();
     },
   });
+  const savedConnection =
+    settings.data?.providers.find(({ id }) => id === editingProvider?.id) ??
+    editingProvider;
+  const connectionTestTarget = JSON.stringify([
+    savedConnection?.id,
+    savedConnection?.connectionRevision ?? savedConnection?.updatedAt,
+    worker?.workerId,
+  ]);
+  const connectionChangesSaved = Boolean(
+    savedConnection &&
+    baseUrl.trim() === savedConnection.baseUrl &&
+    providerKind === savedConnection.kind &&
+    !apiKey.trim() &&
+    !removeApiKey,
+  );
+  const visibleConnectionTestResult =
+    connectionChangesSaved &&
+    connectionTestResult?.target === connectionTestTarget
+      ? connectionTestResult
+      : null;
   const testProviderConnection = useMutation({
+    mutationKey: ["provider-connection-test", connectionTestTarget],
+    onMutate: () => connectionTestTarget,
     mutationFn: () =>
       testModelProviderConnection(
         editingProvider!.id,
         worker?.workerId ?? null,
       ),
-    onSuccess: (result) => {
-      setConnectionTestResult({ ok: result.ok, message: result.message });
+    onSuccess: (result, _variables, target) => {
+      if (target)
+        setConnectionTestResult({
+          ok: result.ok,
+          message: result.message,
+          target,
+        });
     },
   });
   const saveModel = useMutation({
     mutationFn: async () => {
       const input = {
         name: modelName,
+        operation: modelOperation,
         routes: modelRoutes.map(({ key: _key, ...route }) => route),
       };
       return editingModel
@@ -1530,14 +1618,21 @@ export function SettingsPage({
   useEffect(() => {
     const providerId = accountProvider?.id;
     const workerId = worker?.workerId;
+    const connectionRevision =
+      accountProvider?.connectionRevision ?? accountProvider?.updatedAt;
     if (!providerDialogOpen || !providerId || !workerId) return;
     let cancelled = false;
     void refreshProviderModelCatalog(providerId, workerId)
       .then(async (catalog) => {
         if (cancelled) return;
-        cacheProviderModelCatalog(providerId, workerId, catalog);
+        cacheProviderModelCatalog(
+          providerId,
+          workerId,
+          catalog,
+          connectionRevision,
+        );
         queryClient.setQueryData(
-          providerCatalogQueryKey(providerId, workerId),
+          providerCatalogQueryKey(providerId, workerId, connectionRevision),
           catalog,
         );
         await reloadAccountProvider(providerId);
@@ -1546,7 +1641,13 @@ export function SettingsPage({
     return () => {
       cancelled = true;
     };
-  }, [accountProvider?.id, providerDialogOpen, worker?.workerId]);
+  }, [
+    accountProvider?.id,
+    accountProvider?.connectionRevision,
+    accountProvider?.updatedAt,
+    providerDialogOpen,
+    worker?.workerId,
+  ]);
   const addProviderAccount = useMutation({
     mutationFn: () =>
       createModelProviderAccount(accountProvider!.id, {
@@ -1593,7 +1694,15 @@ export function SettingsPage({
     signOutCodex.reset();
     consumeRateLimitReset.reset();
     setEditingProvider(provider);
-    setProviderName(provider?.name ?? defaults.name);
+    setProviderName(
+      provider?.name ??
+        providerInstanceName(defaults.name, settings.data?.providers ?? []),
+    );
+    setProviderInferenceLimit(
+      String(
+        provider?.maxConcurrentInference ?? DEFAULT_MAX_CONCURRENT_INFERENCE,
+      ),
+    );
     setProviderKind(provider?.kind ?? defaults.kind);
     setProviderSetup(provider ? providerSetupFor(provider) : setup);
     setBaseUrl(provider?.baseUrl ?? defaults.baseUrl);
@@ -1613,10 +1722,12 @@ export function SettingsPage({
   const openModelDialog = (
     model: ModelProfileSummary | null,
     providerId?: string,
+    operation: ModelOperation = "language",
   ) => {
     const firstProviderId = providerId ?? settings.data?.providers[0]?.id ?? "";
     saveModel.reset();
     setEditingModel(model);
+    setModelOperation(model ? modelProfileOperation(model) : operation);
     setModelName(model?.name ?? "");
     setModelRoutes(
       model
@@ -1668,7 +1779,10 @@ export function SettingsPage({
     ).find(
       ({ sectionId, id }) =>
         sectionId === "models" &&
-        (id.startsWith("provider:") || id.startsWith("model:")),
+        (id.startsWith("provider:") ||
+          id.startsWith("model:") ||
+          id === "default-embedding-model" ||
+          id === "default-decision-model"),
     );
     if (resource) {
       setActiveModelsTab(
@@ -1888,51 +2002,23 @@ export function SettingsPage({
                   ) : null}
 
                   {section === "general" &&
-                  matchesSetting("workspace-layout-profile") ? (
-                    <section>
-                      <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <Layers3 className="size-4 shrink-0 text-muted-foreground" />
-                          <div>
-                            <h2 className="text-sm font-semibold">
-                              Project workspace profile
-                            </h2>
-                            <p className="text-xs text-muted-foreground">
-                              Chooses destinations only for newly opened tabs.
-                              Existing tab placements never move.
-                            </p>
-                          </div>
-                        </div>
-                        <label className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">Profile</span>
-                          <NativeSelect
-                            aria-label="Project workspace profile"
-                            size="sm"
-                            value={
-                              settings.data?.preferences
-                                .workspaceLayoutProfile ?? "hybrid"
-                            }
-                            disabled={preferences.isPending}
-                            onChange={(event) =>
-                              preferences.mutate({
-                                workspaceLayoutProfile: event.target
-                                  .value as WorkspaceLayoutProfile,
-                              })
-                            }
-                          >
-                            <option value="agent">Agent</option>
-                            <option value="hybrid">Hybrid</option>
-                            <option value="ide">IDE</option>
-                          </NativeSelect>
-                        </label>
-                      </div>
-                    </section>
+                  matchesSetting("sidebar-auto-expand-folders") ? (
+                    <FileNavigationSettings />
                   ) : null}
 
                   {section === "computer-use" &&
                   matchesSetting("computer-use") ? (
                     <div>
                       <ComputerUseSettings
+                        cantripAppAllowed={
+                          settings.data?.preferences
+                            .computerUseCantripAppAllowed ?? false
+                        }
+                        onCantripAppAllowedChange={(
+                          computerUseCantripAppAllowed,
+                        ) =>
+                          preferences.mutate({ computerUseCantripAppAllowed })
+                        }
                         enabled={
                           settings.data?.preferences.computerUseEnabled ?? false
                         }
@@ -2217,6 +2303,7 @@ export function SettingsPage({
               {section === "models" && settings.data ? (
                 <ModelsSettings
                   activeTab={activeModelsTab}
+                  workerId={worker?.workerId ?? null}
                   models={models}
                   providers={providers}
                   preferences={settings.data.preferences}
@@ -2234,9 +2321,12 @@ export function SettingsPage({
                       : null
                   }
                   onTabChange={setActiveModelsTab}
+                  providersLoaded={Boolean(settings.data)}
                   onAddProvider={(setup) => openProviderDialog(null, setup)}
                   onEditProvider={(provider) => openProviderDialog(provider)}
-                  onAddModel={(providerId) => openModelDialog(null, providerId)}
+                  onAddModel={(providerId, operation) =>
+                    openModelDialog(null, providerId, operation)
+                  }
                   onEditModel={(model) => openModelDialog(model)}
                   onRemoveModel={(model) => removeModel.mutate(model.id)}
                   onPreferencesChange={preferences.mutateAsync}
@@ -2277,10 +2367,8 @@ export function SettingsPage({
                 </div>
               ) : null}
               {section === "workers" ? <WorkerSettings /> : null}
-              {section === "tasks" ? <TaskSettings /> : null}
-              {section === "code-editor" &&
-              matchesSetting("code-editor-line-numbers") ? (
-                <CodeEditorSettings />
+              {section === "editors" ? (
+                <EditorsSettings matchesSetting={matchesSetting} />
               ) : null}
               {section === "usage" ? <AccountUsageSettings /> : null}
               {section === "elite" ? (
@@ -2451,9 +2539,17 @@ export function SettingsPage({
                       !providerName.trim() ||
                       (!editingProvider &&
                         providerName ===
-                          providerSetupDefaults(providerSetup).name)
+                          providerInstanceName(
+                            providerSetupDefaults(providerSetup).name,
+                            settings.data?.providers ?? [],
+                          ))
                     ) {
-                      setProviderName(preset.name);
+                      setProviderName(
+                        providerInstanceName(
+                          preset.name,
+                          settings.data?.providers ?? [],
+                        ),
+                      );
                     }
                   }}
                   className={inputClass}
@@ -2477,6 +2573,27 @@ export function SettingsPage({
                   })}
                 </NativeSelect>
               </Field>
+              <Field label="Maximum concurrent inference">
+                <div className="space-y-1.5">
+                  <input
+                    required
+                    type="number"
+                    min={1}
+                    max={2_147_483_647}
+                    step={1}
+                    value={providerInferenceLimit}
+                    onChange={(event) =>
+                      setProviderInferenceLimit(event.target.value)
+                    }
+                    className={inputClass}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Shared by all models, accounts, and projects on each worker.
+                    Additional turns queue automatically. Each worker has its
+                    own limit.
+                  </p>
+                </div>
+              </Field>
               {!isAccountProviderKind(providerKind) &&
               providerSetup !== "zai" ? (
                 <Field label="Base URL">
@@ -2488,7 +2605,7 @@ export function SettingsPage({
                       onChange={(event) => {
                         setBaseUrl(event.target.value);
                         if (
-                          providerSetup !== "ollama" &&
+                          providerKind === "openai-compatible" &&
                           providerSetup !== "openai-compatible"
                         ) {
                           setProviderSetup("openai-compatible");
@@ -2561,7 +2678,7 @@ export function SettingsPage({
                     placeholder={
                       editingProvider?.hasApiKey
                         ? "Leave blank to keep saved key"
-                        : "Not required for local Ollama"
+                        : "Leave blank for an unauthenticated endpoint"
                     }
                   />
                 </Field>
@@ -2578,21 +2695,25 @@ export function SettingsPage({
                 Remove the saved API key
               </label>
             ) : null}
-            {providerSetup === "zai" ? (
+            {!isAccountProviderKind(providerKind) ? (
               <div className="flex flex-col gap-3 border-y py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">Connection test</p>
                   <p className="text-xs text-muted-foreground">
                     Runs a tiny request through an online worker and bundled
-                    Codex. This uses a very small amount of Coding Plan quota.
+                    Codex using a saved model route.
+                    {providerSetup === "zai"
+                      ? " This uses a very small amount of Coding Plan quota."
+                      : null}
                   </p>
-                  {connectionTestResult ? (
+                  {visibleConnectionTestResult ? (
                     <p
-                      className={`mt-1 text-xs ${connectionTestResult.ok ? "text-emerald-500" : "text-destructive"}`}
+                      className={`mt-1 text-xs ${visibleConnectionTestResult.ok ? "text-emerald-500" : "text-destructive"}`}
                     >
-                      {connectionTestResult.message}
+                      {visibleConnectionTestResult.message}
                     </p>
-                  ) : testProviderConnection.isError ? (
+                  ) : connectionChangesSaved &&
+                    testProviderConnection.isError ? (
                     <p className="mt-1 text-xs text-destructive">
                       {errorText(testProviderConnection.error)}
                     </p>
@@ -2605,15 +2726,14 @@ export function SettingsPage({
                   disabled={
                     !editingProvider ||
                     !worker ||
-                    Boolean(apiKey.trim()) ||
-                    removeApiKey ||
+                    !connectionChangesSaved ||
                     testProviderConnection.isPending
                   }
                   title={
                     !editingProvider
                       ? "Add the provider before testing"
-                      : apiKey.trim() || removeApiKey
-                        ? "Save API key changes before testing"
+                      : !connectionChangesSaved
+                        ? "Save connection changes before testing"
                         : !worker
                           ? "Connect a worker before testing"
                           : "Test through bundled Codex"
@@ -2625,7 +2745,7 @@ export function SettingsPage({
                 >
                   {testProviderConnection.isPending ? (
                     <Loader2 className="size-4 animate-spin" />
-                  ) : connectionTestResult?.ok ? (
+                  ) : visibleConnectionTestResult?.ok ? (
                     <Check className="size-4" />
                   ) : null}
                   Test connection
@@ -3088,11 +3208,58 @@ export function SettingsPage({
                 {editingModel ? "Edit model" : "Add model"}
               </DialogTitle>
               <DialogDescription>
-                Select this logical model in an agent; Cantrip tries its enabled
-                provider routes from top to bottom.
+                {modelOperation === "language"
+                  ? "Select this model in an agent. Enabled routes are tried in priority order."
+                  : modelOperation === "embedding"
+                    ? "Configure embedding inference. Fallback must preserve the same embedding space."
+                    : "Configure native typed decisions. Enabled routes are tried in priority order."}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4">
+              <Field label="Operation">
+                <NativeSelect
+                  value={modelOperation}
+                  disabled={Boolean(editingModel)}
+                  onChange={(event) => {
+                    const operation = event.target.value as ModelOperation;
+                    setModelOperation(operation);
+                    const usable = providers.filter(
+                      (provider) =>
+                        providerOperationSupport(provider)[operation] !==
+                        "unsupported",
+                    );
+                    setModelRoutes((routes) =>
+                      routes.map((route) => ({
+                        ...route,
+                        providerId: usable.some(
+                          (provider) => provider.id === route.providerId,
+                        )
+                          ? route.providerId
+                          : (usable[0]?.id ?? ""),
+                        modelName: "",
+                        operationAdapter: null,
+                        operationOptions: null,
+                      })),
+                    );
+                  }}
+                >
+                  {(["language", "embedding", "decision"] as const).map(
+                    (operation) => (
+                      <option
+                        key={operation}
+                        value={operation}
+                        disabled={providers.every(
+                          (provider) =>
+                            providerOperationSupport(provider)[operation] ===
+                            "unsupported",
+                        )}
+                      >
+                        {modelOperationLabels[operation]}
+                      </option>
+                    ),
+                  )}
+                </NativeSelect>
+              </Field>
               <Field label="Display name">
                 <input
                   required
@@ -3100,7 +3267,13 @@ export function SettingsPage({
                   value={modelName}
                   onChange={(event) => setModelName(event.target.value)}
                   className={inputClass}
-                  placeholder="GPT-5.6 Sol"
+                  placeholder={
+                    modelOperation === "language"
+                      ? "GPT-5.6 Sol"
+                      : modelOperation === "embedding"
+                        ? "Text embeddings"
+                        : "Native decisions"
+                  }
                 />
               </Field>
               <div className="grid gap-2">
@@ -3108,7 +3281,11 @@ export function SettingsPage({
                   <div>
                     <p className="text-sm font-medium">Provider routes</p>
                     <p className="text-xs text-muted-foreground">
-                      The first available route handles each new turn.
+                      {modelOperation === "language"
+                        ? "The first available route handles each new turn."
+                        : modelOperation === "embedding"
+                          ? "Routes must produce compatible vectors to allow fallback."
+                          : "The first compatible route handles each decision request."}
                     </p>
                   </div>
                   <Button
@@ -3116,7 +3293,11 @@ export function SettingsPage({
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      const providerId = settings.data?.providers[0]?.id;
+                      const providerId = providers.find(
+                        (provider) =>
+                          providerOperationSupport(provider)[modelOperation] !==
+                          "unsupported",
+                      )?.id;
                       if (!providerId) return;
                       setModelRoutes((routes) => [
                         ...routes,
@@ -3164,6 +3345,8 @@ export function SettingsPage({
                                       ...candidate,
                                       providerId: event.target.value,
                                       modelName: "",
+                                      operationAdapter: null,
+                                      operationOptions: null,
                                     }
                                   : candidate,
                               ),
@@ -3172,7 +3355,15 @@ export function SettingsPage({
                           className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
                         >
                           {(settings.data?.providers ?? []).map((provider) => (
-                            <option key={provider.id} value={provider.id}>
+                            <option
+                              key={provider.id}
+                              value={provider.id}
+                              disabled={
+                                providerOperationSupport(provider)[
+                                  modelOperation
+                                ] === "unsupported"
+                              }
+                            >
                               {providerRouteLabel(provider)}
                             </option>
                           ))}
@@ -3186,6 +3377,7 @@ export function SettingsPage({
                           provider={settings.data?.providers.find(
                             ({ id }) => id === route.providerId,
                           )}
+                          operation={modelOperation}
                           routeKey={route.key}
                           value={route.modelName}
                           workerId={worker?.workerId ?? null}
@@ -3281,6 +3473,23 @@ export function SettingsPage({
                           <span className="sr-only">Remove route</span>
                         </Button>
                       </div>
+                      {modelOperation !== "language" ? (
+                        <ModelOperationFields
+                          key={`${route.providerId}:${modelOperation}`}
+                          operation={modelOperation}
+                          adapter={route.operationAdapter}
+                          options={route.operationOptions}
+                          onChange={(input) =>
+                            setModelRoutes((routes) =>
+                              routes.map((candidate) =>
+                                candidate.key === route.key
+                                  ? { ...candidate, ...input }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                        />
+                      ) : null}
                     </div>
                   ))}
                 </div>

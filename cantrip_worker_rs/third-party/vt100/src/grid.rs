@@ -1,0 +1,954 @@
+use crate::term::BufWrite as _;
+use std::collections::BTreeSet;
+
+mod reflow;
+mod snapshot;
+
+#[derive(Clone, Debug)]
+pub struct Grid {
+    size: Size,
+    pos: Pos,
+    // Row index in retained history plus the viewport, as used by xterm.
+    saved_row: usize,
+    saved_col: u16,
+    tab_stops: BTreeSet<u16>,
+    rows: Vec<crate::row::Row>,
+    scroll_top: u16,
+    scroll_bottom: u16,
+    origin_mode: bool,
+    scrollback: std::collections::VecDeque<crate::row::Row>,
+    scrollback_len: usize,
+    scrollback_offset: usize,
+}
+
+impl Grid {
+    pub fn new(size: Size, scrollback_len: usize) -> Self {
+        Self {
+            size,
+            pos: Pos::default(),
+            saved_row: 0,
+            saved_col: 0,
+            tab_stops: (0..size.cols).step_by(8).collect(),
+            rows: vec![],
+            scroll_top: 0,
+            scroll_bottom: size.rows - 1,
+            origin_mode: false,
+            scrollback: std::collections::VecDeque::new(),
+            scrollback_len,
+            scrollback_offset: 0,
+        }
+    }
+
+    pub fn allocate_rows(&mut self) {
+        if self.rows.is_empty() {
+            self.rows.extend(
+                std::iter::repeat_with(|| {
+                    crate::row::Row::new(self.size.cols)
+                })
+                .take(usize::from(self.size.rows)),
+            );
+        }
+    }
+
+    fn new_row(&self) -> crate::row::Row {
+        crate::row::Row::new(self.size.cols)
+    }
+
+    pub fn clear(&mut self, attrs: crate::attrs::Attrs) {
+        self.pos = Pos::default();
+        self.saved_row = 0;
+        self.saved_col = 0;
+        self.tab_stops = (0..self.size.cols).step_by(8).collect();
+        for row in self.drawing_rows_mut() {
+            row.clear(attrs, false);
+        }
+        self.scroll_top = 0;
+        self.scroll_bottom = self.size.rows - 1;
+        self.origin_mode = false;
+    }
+
+    pub fn size(&self) -> Size {
+        self.size
+    }
+
+    pub fn set_size(&mut self, size: Size) {
+        if size.cols != self.size.cols {
+            for row in &mut self.rows {
+                row.wrap(false);
+            }
+        }
+
+        if self.scroll_bottom == self.size.rows - 1 {
+            self.scroll_bottom = size.rows - 1;
+        }
+
+        self.size = size;
+        for row in &mut self.rows {
+            row.resize(size.cols, crate::Cell::new());
+        }
+        self.rows.resize(usize::from(size.rows), self.new_row());
+
+        if self.scroll_bottom >= size.rows {
+            self.scroll_bottom = size.rows - 1;
+        }
+        if self.scroll_bottom < self.scroll_top {
+            self.scroll_top = 0;
+        }
+
+        self.row_clamp_top(false);
+        self.row_clamp_bottom(false);
+        self.col_clamp();
+
+        self.saved_row = self.saved_row.min(usize::from(self.size.rows - 1));
+        self.saved_col = self.saved_col.min(self.size.cols - 1);
+    }
+
+    pub fn pos(&self) -> Pos {
+        self.pos
+    }
+
+    pub fn set_pos(&mut self, mut pos: Pos) {
+        if self.origin_mode {
+            pos.row = pos.row.saturating_add(self.scroll_top);
+        }
+        self.pos = pos;
+        self.row_clamp_top(self.origin_mode);
+        self.row_clamp_bottom(self.origin_mode);
+        self.col_clamp();
+    }
+
+    pub fn activate(&mut self, pos: Pos, origin: bool) {
+        self.pos = pos;
+        self.origin_mode = origin;
+    }
+
+    pub fn save_cursor(&mut self) {
+        self.saved_row = self.scrollback.len() + usize::from(self.pos.row);
+        self.saved_col = self.pos.col;
+    }
+
+    pub fn saved_position(&self) -> Pos {
+        Pos {
+            row: self
+                .saved_row
+                .saturating_sub(self.scrollback.len())
+                .min(usize::from(self.size.rows - 1)) as u16,
+            col: self.saved_col.min(self.size.cols - 1),
+        }
+    }
+
+    pub fn restore_cursor(&mut self) {
+        self.pos = self.saved_position();
+        self.row_clamp_top(self.origin_mode);
+        self.row_clamp_bottom(self.origin_mode);
+    }
+
+    pub fn visible_rows(&self) -> impl Iterator<Item = &crate::row::Row> {
+        let scrollback_len = self.scrollback.len();
+        let rows_len = self.rows.len();
+        self.scrollback
+            .iter()
+            .skip(scrollback_len - self.scrollback_offset)
+            // when scrollback_offset > rows_len (e.g. rows = 3,
+            // scrollback_len = 10, offset = 9) the skip(10 - 9)
+            // will take 9 rows instead of 3. we need to set
+            // the upper bound to rows_len (e.g. 3)
+            .take(rows_len)
+            // same for rows_len - scrollback_offset (e.g. 3 - 9).
+            // it'll panic with overflow. we have to saturate the subtraction.
+            .chain(
+                self.rows
+                    .iter()
+                    .take(rows_len.saturating_sub(self.scrollback_offset)),
+            )
+    }
+
+    pub fn drawing_rows(&self) -> impl Iterator<Item = &crate::row::Row> {
+        self.rows.iter()
+    }
+
+    pub fn drawing_rows_mut(
+        &mut self,
+    ) -> impl Iterator<Item = &mut crate::row::Row> {
+        self.rows.iter_mut()
+    }
+
+    pub fn visible_row(&self, row: u16) -> Option<&crate::row::Row> {
+        self.visible_rows().nth(usize::from(row))
+    }
+
+    pub fn drawing_row(&self, row: u16) -> Option<&crate::row::Row> {
+        self.drawing_rows().nth(usize::from(row))
+    }
+
+    pub fn drawing_row_mut(
+        &mut self,
+        row: u16,
+    ) -> Option<&mut crate::row::Row> {
+        self.drawing_rows_mut().nth(usize::from(row))
+    }
+
+    pub fn current_row_mut(&mut self) -> &mut crate::row::Row {
+        self.drawing_row_mut(self.pos.row)
+            // we assume self.pos.row is always valid
+            .unwrap()
+    }
+
+    pub fn visible_cell(&self, pos: Pos) -> Option<&crate::Cell> {
+        self.visible_row(pos.row).and_then(|r| r.get(pos.col))
+    }
+
+    pub fn drawing_cell(&self, pos: Pos) -> Option<&crate::Cell> {
+        self.drawing_row(pos.row).and_then(|r| r.get(pos.col))
+    }
+
+    pub fn drawing_cell_mut(&mut self, pos: Pos) -> Option<&mut crate::Cell> {
+        self.drawing_row_mut(pos.row)
+            .and_then(|r| r.get_mut(pos.col))
+    }
+
+    pub fn scrollback_len(&self) -> usize {
+        self.scrollback_len
+    }
+
+    pub fn scrollback(&self) -> usize {
+        self.scrollback_offset
+    }
+
+    pub fn set_scrollback(&mut self, rows: usize) {
+        self.scrollback_offset = rows.min(self.scrollback.len());
+    }
+
+    pub fn clear_scrollback(&mut self) {
+        self.saved_row = self.saved_row.saturating_sub(self.scrollback.len());
+        self.scrollback.clear();
+        self.scrollback_offset = 0;
+    }
+
+    pub fn write_contents(&self, contents: &mut String) {
+        let mut wrapping = false;
+        for row in self.visible_rows() {
+            row.write_contents(contents, 0, self.size.cols, wrapping);
+            if !row.wrapped() {
+                contents.push('\n');
+            }
+            wrapping = row.wrapped();
+        }
+
+        while contents.ends_with('\n') {
+            contents.truncate(contents.len() - 1);
+        }
+    }
+
+    pub fn write_contents_formatted(
+        &self,
+        contents: &mut Vec<u8>,
+    ) -> crate::attrs::Attrs {
+        crate::term::ClearAttrs.write_buf(contents);
+        crate::term::ClearScreen.write_buf(contents);
+
+        let mut prev_attrs = crate::attrs::Attrs::default();
+        let mut prev_pos = Pos::default();
+        let mut wrapping = false;
+        for (i, row) in self.visible_rows().enumerate() {
+            // we limit the number of cols to a u16 (see Size), so
+            // visible_rows() can never return more rows than will fit
+            let i = i.try_into().unwrap();
+            let (new_pos, new_attrs) = row.write_contents_formatted(
+                contents,
+                0,
+                self.size.cols,
+                i,
+                wrapping,
+                Some(prev_pos),
+                Some(prev_attrs),
+            );
+            prev_pos = new_pos;
+            prev_attrs = new_attrs;
+            wrapping = row.wrapped();
+        }
+
+        self.write_cursor_position_formatted(
+            contents,
+            Some(prev_pos),
+            Some(prev_attrs),
+        );
+
+        prev_attrs
+    }
+
+    pub fn write_contents_diff(
+        &self,
+        contents: &mut Vec<u8>,
+        prev: &Self,
+        mut prev_attrs: crate::attrs::Attrs,
+    ) -> crate::attrs::Attrs {
+        let mut prev_pos = prev.pos;
+        let mut wrapping = false;
+        let mut prev_wrapping = false;
+        for (i, (row, prev_row)) in
+            self.visible_rows().zip(prev.visible_rows()).enumerate()
+        {
+            // we limit the number of cols to a u16 (see Size), so
+            // visible_rows() can never return more rows than will fit
+            let i = i.try_into().unwrap();
+            let (new_pos, new_attrs) = row.write_contents_diff(
+                contents,
+                prev_row,
+                0,
+                self.size.cols,
+                i,
+                wrapping,
+                prev_wrapping,
+                prev_pos,
+                prev_attrs,
+            );
+            prev_pos = new_pos;
+            prev_attrs = new_attrs;
+            wrapping = row.wrapped();
+            prev_wrapping = prev_row.wrapped();
+        }
+
+        self.write_cursor_position_formatted(
+            contents,
+            Some(prev_pos),
+            Some(prev_attrs),
+        );
+
+        prev_attrs
+    }
+
+    pub fn write_cursor_position_formatted(
+        &self,
+        contents: &mut Vec<u8>,
+        prev_pos: Option<Pos>,
+        prev_attrs: Option<crate::attrs::Attrs>,
+    ) {
+        let prev_attrs = prev_attrs.unwrap_or_default();
+        // writing a character to the last column of a row doesn't wrap the
+        // cursor immediately - it waits until the next character is actually
+        // drawn. it is only possible for the cursor to have this kind of
+        // position after drawing a character though, so if we end in this
+        // position, we need to redraw the character at the end of the row.
+        if prev_pos != Some(self.pos) && self.pos.col >= self.size.cols {
+            let mut pos = Pos {
+                row: self.pos.row,
+                col: self.size.cols - 1,
+            };
+            if self
+                .drawing_cell(pos)
+                // we assume self.pos.row is always valid, and self.size.cols
+                // - 1 is always a valid column
+                .unwrap()
+                .is_wide_continuation()
+            {
+                pos.col = self.size.cols - 2;
+            }
+            let cell =
+                // we assume self.pos.row is always valid, and self.size.cols
+                // - 2 must be a valid column because self.size.cols - 1 is
+                // always valid and we just checked that the cell at
+                // self.size.cols - 1 is a wide continuation character, which
+                // means that the first half of the wide character must be
+                // before it
+                self.drawing_cell(pos).unwrap();
+            if cell.has_contents() {
+                if let Some(prev_pos) = prev_pos {
+                    crate::term::MoveFromTo::new(prev_pos, pos)
+                        .write_buf(contents);
+                } else {
+                    crate::term::MoveTo::new(pos).write_buf(contents);
+                }
+                cell.attrs().write_escape_code_diff(contents, &prev_attrs);
+                contents.extend(cell.contents().as_bytes());
+                prev_attrs.write_escape_code_diff(contents, cell.attrs());
+            } else {
+                // if the cell doesn't have contents, we can't have gotten
+                // here by drawing a character in the last column. this means
+                // that as far as i'm aware, we have to have reached here from
+                // a newline when we were already after the end of an earlier
+                // row. in the case where we are already after the end of an
+                // earlier row, we can just write a few newlines, otherwise we
+                // also need to do the same as above to get ourselves to after
+                // the end of a row.
+                let mut found = false;
+                for i in (0..self.pos.row).rev() {
+                    pos.row = i;
+                    pos.col = self.size.cols - 1;
+                    if self
+                        .drawing_cell(pos)
+                        // i is always less than self.pos.row, which we assume
+                        // to be always valid, so it must also be valid.
+                        // self.size.cols - 1 is always a valid col.
+                        .unwrap()
+                        .is_wide_continuation()
+                    {
+                        pos.col = self.size.cols - 2;
+                    }
+                    let cell = self
+                        .drawing_cell(pos)
+                        // i is always less than self.pos.row, which we assume
+                        // to be always valid, so it must also be valid.
+                        // self.size.cols - 2 is valid because self.size.cols
+                        // - 1 is always valid, and col gets set to
+                        // self.size.cols - 2 when the cell at self.size.cols
+                        // - 1 is a wide continuation character, meaning that
+                        // the first half of the wide character must be before
+                        // it
+                        .unwrap();
+                    if cell.has_contents() {
+                        if let Some(prev_pos) = prev_pos {
+                            if prev_pos.row != i
+                                || prev_pos.col < self.size.cols
+                            {
+                                crate::term::MoveFromTo::new(prev_pos, pos)
+                                    .write_buf(contents);
+                                cell.attrs().write_escape_code_diff(
+                                    contents,
+                                    &prev_attrs,
+                                );
+                                contents.extend(cell.contents().as_bytes());
+                                prev_attrs.write_escape_code_diff(
+                                    contents,
+                                    cell.attrs(),
+                                );
+                            }
+                        } else {
+                            crate::term::MoveTo::new(pos).write_buf(contents);
+                            cell.attrs().write_escape_code_diff(
+                                contents,
+                                &prev_attrs,
+                            );
+                            contents.extend(cell.contents().as_bytes());
+                            prev_attrs.write_escape_code_diff(
+                                contents,
+                                cell.attrs(),
+                            );
+                        }
+                        contents.extend(
+                            "\n".repeat(usize::from(self.pos.row - i))
+                                .as_bytes(),
+                        );
+                        found = true;
+                        break;
+                    }
+                }
+
+                // this can happen if you get the cursor off the end of a row,
+                // and then do something to clear the end of the current row
+                // without moving the cursor (IL, DL, ED, EL, etc). we know
+                // there can't be something in the last column because we
+                // would have caught that above, so it should be safe to
+                // overwrite it.
+                if !found {
+                    pos = Pos {
+                        row: self.pos.row,
+                        col: self.size.cols - 1,
+                    };
+                    if let Some(prev_pos) = prev_pos {
+                        crate::term::MoveFromTo::new(prev_pos, pos)
+                            .write_buf(contents);
+                    } else {
+                        crate::term::MoveTo::new(pos).write_buf(contents);
+                    }
+                    contents.push(b' ');
+                    // we know that the cell has no contents, but it still may
+                    // have drawing attributes (background color, etc)
+                    let end_cell = self
+                        .drawing_cell(pos)
+                        // we assume self.pos.row is always valid, and
+                        // self.size.cols - 1 is always a valid column
+                        .unwrap();
+                    end_cell
+                        .attrs()
+                        .write_escape_code_diff(contents, &prev_attrs);
+                    crate::term::SaveCursor.write_buf(contents);
+                    crate::term::MoveTo::new(pos).write_buf(contents);
+                    crate::term::EraseChar::new(1).write_buf(contents);
+                    crate::term::RestoreCursor.write_buf(contents);
+                    prev_attrs
+                        .write_escape_code_diff(contents, end_cell.attrs());
+                }
+            }
+        } else if let Some(prev_pos) = prev_pos {
+            crate::term::MoveFromTo::new(prev_pos, self.pos)
+                .write_buf(contents);
+        } else {
+            crate::term::MoveTo::new(self.pos).write_buf(contents);
+        }
+    }
+
+    pub fn erase_all(&mut self, attrs: crate::attrs::Attrs, selective: bool) {
+        for row in self.drawing_rows_mut() {
+            row.clear(attrs, selective);
+        }
+    }
+
+    pub fn erase_all_forward(
+        &mut self,
+        attrs: crate::attrs::Attrs,
+        selective: bool,
+    ) {
+        let pos = self.pos;
+        for row in self.drawing_rows_mut().skip(usize::from(pos.row) + 1) {
+            row.clear(attrs, selective);
+        }
+
+        self.erase_row_forward(attrs, selective);
+    }
+
+    pub fn erase_all_backward(
+        &mut self,
+        attrs: crate::attrs::Attrs,
+        selective: bool,
+    ) {
+        let pos = self.pos;
+        for row in self.drawing_rows_mut().take(usize::from(pos.row)) {
+            row.clear(attrs, selective);
+        }
+
+        self.erase_row_backward(attrs, selective);
+    }
+
+    pub fn erase_row(&mut self, attrs: crate::attrs::Attrs, selective: bool) {
+        self.current_row_mut().clear(attrs, selective);
+    }
+
+    pub fn erase_row_forward(
+        &mut self,
+        attrs: crate::attrs::Attrs,
+        selective: bool,
+    ) {
+        let size = self.size;
+        let pos = self.pos;
+        let row = self.current_row_mut();
+        for col in pos.col..size.cols {
+            row.erase(col, attrs, selective);
+        }
+    }
+
+    pub fn erase_row_backward(
+        &mut self,
+        attrs: crate::attrs::Attrs,
+        selective: bool,
+    ) {
+        let size = self.size;
+        let pos = self.pos;
+        let row = self.current_row_mut();
+        for col in 0..=pos.col.min(size.cols - 1) {
+            row.erase(col, attrs, selective);
+        }
+    }
+
+    pub fn insert_cells(
+        &mut self,
+        count: u16,
+        attrs: crate::attrs::Attrs,
+    ) {
+        self.col_clamp();
+        let col = self.pos.col;
+        self.current_row_mut().insert_cells(col, count, attrs);
+    }
+
+    pub fn delete_cells(
+        &mut self,
+        count: u16,
+        attrs: crate::attrs::Attrs,
+    ) {
+        self.col_clamp();
+        let col = self.pos.col;
+        self.current_row_mut().delete_cells(col, count, attrs);
+    }
+
+    pub fn erase_cells(&mut self, count: u16, attrs: crate::attrs::Attrs) {
+        let size = self.size;
+        let pos = self.pos;
+        let row = self.current_row_mut();
+        for col in pos.col..((pos.col.saturating_add(count)).min(size.cols)) {
+            row.erase(col, attrs, false);
+        }
+    }
+
+    pub fn edit_lines(
+        &mut self,
+        count: u16,
+        attrs: crate::attrs::Attrs,
+        insert: bool,
+    ) {
+        self.col_clamp();
+        if !self.in_scroll_region() {
+            return;
+        }
+        self.pos.col = 0;
+        let top = usize::from(self.pos.row);
+        let bottom = usize::from(self.scroll_bottom);
+        let lines = &mut self.rows[top..=bottom];
+        let count = usize::from(count).min(lines.len());
+        let first_blank = if insert {
+            lines.rotate_right(count);
+            lines.last_mut().unwrap().wrap(false);
+            0
+        } else {
+            lines.rotate_left(count);
+            lines.len() - count
+        };
+        for line in &mut lines[first_blank..first_blank + count] {
+            line.clear(attrs, false);
+        }
+    }
+
+    pub fn scroll_up(
+        &mut self,
+        count: u16,
+        attrs: crate::attrs::Attrs,
+        retain_history: bool,
+    ) {
+        for _ in 0..count.min(self.scroll_bottom - self.scroll_top + 1) {
+            self.rows.insert(
+                usize::from(self.scroll_bottom) + 1,
+                crate::row::Row::blank(self.size.cols, attrs),
+            );
+            let removed = self.rows.remove(usize::from(self.scroll_top));
+            if retain_history && self.scrollback_len > 0 && self.scroll_top == 0
+            {
+                self.scrollback.push_back(removed);
+                while self.scrollback.len() > self.scrollback_len {
+                    self.scrollback.pop_front();
+                    self.saved_row = self.saved_row.saturating_sub(1);
+                }
+                if self.scrollback_offset > 0 {
+                    self.scrollback_offset =
+                        self.scrollback.len().min(self.scrollback_offset + 1);
+                }
+            }
+        }
+    }
+
+    pub fn scroll_down(&mut self, count: u16, attrs: crate::attrs::Attrs) {
+        for _ in 0..count.min(self.scroll_bottom - self.scroll_top + 1) {
+            self.rows.remove(usize::from(self.scroll_bottom));
+            self.rows.insert(
+                usize::from(self.scroll_top),
+                crate::row::Row::blank(self.size.cols, attrs),
+            );
+            // self.scroll_bottom is maintained to always be a valid row
+            self.rows[usize::from(self.scroll_bottom)].wrap(false);
+        }
+    }
+
+    pub fn set_scroll_region(&mut self, top: u16, bottom: u16) {
+        let bottom = bottom.min(self.size().rows - 1);
+        if top < bottom {
+            self.scroll_top = top;
+            self.scroll_bottom = bottom;
+            self.set_pos(Pos::default());
+        }
+    }
+
+    pub fn write_region(
+        &self,
+        contents: &mut Vec<u8>,
+        attrs: crate::attrs::Attrs,
+    ) {
+        if !self.origin_mode && !self.scroll_region_active() {
+            return;
+        }
+        if self.scroll_region_active() {
+            contents.extend_from_slice(
+                format!(
+                    "\x1b[{};{}r",
+                    self.scroll_top + 1,
+                    self.scroll_bottom + 1
+                )
+                .as_bytes(),
+            );
+        }
+        let mut row = self.pos.row;
+        if self.origin_mode {
+            contents.extend_from_slice(b"\x1b[?6h");
+            row = row.saturating_sub(self.scroll_top);
+        }
+
+        self.write_snapshot_position(contents, row, attrs);
+    }
+
+    pub fn write_snapshot_position(
+        &self,
+        contents: &mut Vec<u8>,
+        row: u16,
+        attrs: crate::attrs::Attrs,
+    ) {
+        let mut col = self.pos.col.min(self.size.cols - 1);
+        if self.pos.col == self.size.cols {
+            let mut cell = self
+                .drawing_cell(Pos {
+                    row: self.pos.row,
+                    col,
+                })
+                .unwrap();
+            if cell.is_wide_continuation() {
+                col -= 1;
+                cell = self
+                    .drawing_cell(Pos {
+                        row: self.pos.row,
+                        col,
+                    })
+                    .unwrap();
+            }
+            if cell.has_contents() {
+                crate::term::MoveTo::new(Pos { row, col }).write_buf(contents);
+                cell.attrs().write_escape_code_diff(contents, &attrs);
+                contents.extend_from_slice(cell.contents().as_bytes());
+                attrs.write_escape_code_diff(contents, cell.attrs());
+                return;
+            }
+        }
+        crate::term::MoveTo::new(Pos { row, col }).write_buf(contents);
+    }
+
+    fn in_scroll_region(&self) -> bool {
+        self.pos.row >= self.scroll_top && self.pos.row <= self.scroll_bottom
+    }
+
+    fn scroll_region_active(&self) -> bool {
+        self.scroll_top != 0 || self.scroll_bottom != self.size.rows - 1
+    }
+
+    pub fn origin_mode(&self) -> bool {
+        self.origin_mode
+    }
+
+    pub fn soft_reset(&mut self) {
+        self.scroll_top = 0;
+        self.scroll_bottom = self.size.rows - 1;
+        self.origin_mode = false;
+        self.saved_row = self.scrollback.len();
+        self.saved_col = 0;
+    }
+
+    pub fn set_origin_mode(&mut self, mode: bool) {
+        self.origin_mode = mode;
+        self.set_pos(Pos { row: 0, col: 0 });
+    }
+
+    pub fn row_inc_clamp(&mut self, count: u16) {
+        let count = if self.pos.row <= self.scroll_bottom {
+            count.min(self.scroll_bottom - self.pos.row)
+        } else {
+            count
+        };
+        self.move_cursor(i32::from(count), 0);
+    }
+
+    pub fn row_inc_scroll(
+        &mut self,
+        count: u16,
+        attrs: crate::attrs::Attrs,
+    ) -> u16 {
+        let in_scroll_region = self.in_scroll_region();
+        self.pos.row = self.pos.row.saturating_add(count);
+        let lines = self.row_clamp_bottom(in_scroll_region);
+        if in_scroll_region {
+            self.scroll_up(lines, attrs, true);
+            lines
+        } else {
+            0
+        }
+    }
+
+    pub fn row_dec_clamp(&mut self, count: u16) {
+        let count = if self.pos.row >= self.scroll_top {
+            count.min(self.pos.row - self.scroll_top)
+        } else {
+            count
+        };
+        self.move_cursor(-i32::from(count), 0);
+    }
+
+    pub fn move_cursor(&mut self, rows: i32, cols: i32) {
+        // xterm clips a pending wrap before relative addressing, then applies
+        // the same origin adjustment as for an absolute cursor position.
+        self.row_clamp_top(self.origin_mode);
+        self.row_clamp_bottom(self.origin_mode);
+        self.col_clamp();
+        self.set_pos(Pos {
+            row: (i32::from(self.pos.row) + rows)
+                .clamp(0, i32::from(self.size.rows - 1)) as u16,
+            col: (i32::from(self.pos.col) + cols)
+                .clamp(0, i32::from(self.size.cols - 1)) as u16,
+        });
+    }
+
+    pub fn reverse_index(&mut self, attrs: crate::attrs::Attrs) {
+        self.col_clamp();
+        if self.pos.row == self.scroll_top {
+            self.scroll_down(1, attrs);
+        } else {
+            self.pos.row = self.pos.row.saturating_sub(1);
+        }
+    }
+
+    pub fn row_set(&mut self, i: u16) {
+        self.set_pos(Pos {
+            row: i,
+            col: self.pos.col,
+        });
+    }
+
+    pub fn col_inc(&mut self, count: u16) {
+        self.pos.col = self.pos.col.saturating_add(count);
+    }
+
+    pub fn col_inc_clamp(&mut self, count: u16) {
+        self.pos.col = self.pos.col.saturating_add(count);
+        self.col_clamp();
+    }
+
+    pub fn col_dec(&mut self, count: u16) {
+        self.pos.col = self.pos.col.saturating_sub(count);
+    }
+
+    pub fn backspace(&mut self, reverse: bool) {
+        if !reverse {
+            self.col_clamp();
+        }
+        if self.pos.col > 0 {
+            self.col_dec(1);
+        } else if reverse
+            && self.pos.row > self.scroll_top
+            && self.pos.row <= self.scroll_bottom
+        {
+            let row = self.pos.row - 1;
+            let mut col = self.size.cols - 1;
+            let previous = self.drawing_row_mut(row).unwrap();
+            if previous.wrapped() {
+                previous.wrap(false);
+                let cell = previous.get(col).unwrap();
+                if !cell.has_contents() && !cell.is_wide_continuation() {
+                    // A wide glyph may have wrapped before the right margin.
+                    col = col.saturating_sub(1);
+                }
+                self.pos = Pos { row, col };
+            }
+        }
+    }
+
+    pub fn col_tab(&mut self, count: u16, backward: bool) {
+        let col = self.pos.col;
+        if col >= self.size.cols {
+            return;
+        }
+        let offset = usize::from(count - 1);
+        self.pos.col = if backward {
+            self.tab_stops
+                .range(..col)
+                .rev()
+                .nth(offset)
+                .copied()
+                .unwrap_or(0)
+        } else {
+            self.tab_stops
+                .range(col + 1..self.size.cols)
+                .nth(offset)
+                .copied()
+                .unwrap_or(self.size.cols - 1)
+        };
+    }
+
+    pub fn set_tab_stop(&mut self) {
+        self.tab_stops.insert(self.pos.col);
+    }
+
+    pub fn clear_tab_stops(&mut self, mode: u16) {
+        match mode {
+            0 => {
+                self.tab_stops.remove(&self.pos.col);
+            }
+            3 => self.tab_stops.clear(),
+            _ => {}
+        }
+    }
+
+    pub fn extend_tab_stops(&mut self) {
+        // xterm retains hidden stops when shrinking and extends the eight-column
+        // pattern from the closest stop in range on resize.
+        let cols = self.size.cols;
+        let anchor = self
+            .tab_stops
+            .range(..=cols)
+            .next_back()
+            .copied()
+            .unwrap_or(0);
+        self.tab_stops.extend((anchor..cols).step_by(8));
+    }
+
+    pub fn col_set(&mut self, i: u16) {
+        self.pos.col = i;
+        self.col_clamp();
+    }
+
+    pub fn col_wrap(
+        &mut self,
+        width: u16,
+        wrap: bool,
+        attrs: crate::attrs::Attrs,
+    ) {
+        if self.pos.col > self.size.cols - width {
+            let prev = self.pos.row;
+            self.pos.col = 0;
+            let scrolled = self.row_inc_scroll(1, attrs);
+            if let Some(row) = prev.checked_sub(scrolled) {
+                let soft = wrap && row + 1 == self.pos.row;
+                self.drawing_row_mut(row).unwrap().wrap(soft);
+            } else if self.scrollback_len > 0 && self.scroll_top == 0 {
+                // A one-row normal screen moved the whole row into history.
+                if let Some(row) = self.scrollback.back_mut() {
+                    row.wrap(wrap);
+                }
+            }
+        }
+    }
+
+    fn row_clamp_top(&mut self, limit_to_scroll_region: bool) -> u16 {
+        if limit_to_scroll_region && self.pos.row < self.scroll_top {
+            let rows = self.scroll_top - self.pos.row;
+            self.pos.row = self.scroll_top;
+            rows
+        } else {
+            0
+        }
+    }
+
+    fn row_clamp_bottom(&mut self, limit_to_scroll_region: bool) -> u16 {
+        let bottom = if limit_to_scroll_region {
+            self.scroll_bottom
+        } else {
+            self.size.rows - 1
+        };
+        if self.pos.row > bottom {
+            let rows = self.pos.row - bottom;
+            self.pos.row = bottom;
+            rows
+        } else {
+            0
+        }
+    }
+
+    fn col_clamp(&mut self) {
+        if self.pos.col > self.size.cols - 1 {
+            self.pos.col = self.size.cols - 1;
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct Size {
+    pub rows: u16,
+    pub cols: u16,
+}
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct Pos {
+    pub row: u16,
+    pub col: u16,
+}

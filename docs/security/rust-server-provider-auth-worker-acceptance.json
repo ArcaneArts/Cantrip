@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "productSourceCommit": "738358289a636d482c466d00ead9fb1ce88e1864",
+  "servingExecutableSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+  "historicalDirectStatusProducerRetirement": "0a736e17deeb5829f3ba1545e661c79863618717",
+  "platform": "darwin-arm64",
+  "workerRuntime": "Node v24.22.2",
+  "codexVersion": "0.166.0",
+  "postgresVersion": "18.6",
+  "authentication": "accounts",
+  "servingExecutable": {
+    "path": "current-binaries/cantrip-server",
+    "bytes": 94116304,
+    "sha256": "129dfce547025b0bdfaaaf57d7fb4b86dc5cdd075b20012348d96b0ab4a97bf4"
+  },
+  "nodeReferenceEntrypoint": {
+    "path": "tests/reference-node-server/dist/index.js",
+    "bytes": 106,
+    "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+  },
+  "workerEntrypoint": {
+    "path": "cantrip_worker/dist/index.js",
+    "bytes": 391660,
+    "sha256": "ed0cd85f4756c5960b20b1283b680fb0c5701d54dc13e187a92c86923093beab"
+  },
+  "nativeCodexExecutable": {
+    "path": "codex-bundle/codex",
+    "bytes": 281161744,
+    "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+  },
+  "nativeCodexVerification": {
+    "path": "codex-runtime-verification.log",
+    "bytes": 112,
+    "sha256": "3f47a6ffeaa6ae8b12f1e53a5c704d926c142f0c89352bb5cb26ae436f26311c"
+  },
+  "currentWorkerCommandCoverage": {
+    "mapped": 310,
+    "total": 323
+  },
+  "product": [
+    {
+      "mode": "pglite",
+      "report": {
+        "path": "pglite.json",
+        "bytes": 91317,
+        "sha256": "f424608a08b33514058e1de2aa08d26c5201787aa4094cbc6c413bc406dac23d"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "accountSignOuts": 2,
+          "nativeCodexLogouts": 1,
+          "cleanWorkerExits": 1,
+          "directStatusCommands": 0
+        },
+        {
+          "kind": "rust",
+          "accountSignOuts": 2,
+          "nativeCodexLogouts": 1,
+          "cleanWorkerExits": 1,
+          "directStatusCommands": 0
+        }
+      ]
+    },
+    {
+      "mode": "bundled-postgres",
+      "report": {
+        "path": "bundled-postgres.json",
+        "bytes": 157485,
+        "sha256": "b2af4b4aa66bb2ba4b9e58e188b88dce7136cc00f11caf2fd5b3565e9eb58f71"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "accountSignOuts": 2,
+          "nativeCodexLogouts": 1,
+          "cleanWorkerExits": 1,
+          "directStatusCommands": 0
+        },
+        {
+          "kind": "rust",
+          "accountSignOuts": 2,
+          "nativeCodexLogouts": 1,
+          "cleanWorkerExits": 1,
+          "directStatusCommands": 0
+        }
+      ]
+    },
+    {
+      "mode": "postgres",
+      "report": {
+        "path": "postgres.json",
+        "bytes": 156718,
+        "sha256": "991bd8267636fedf0a03569a1c90824c28d46f02959159657cc77932c2d89a2c"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "accountSignOuts": 2,
+          "nativeCodexLogouts": 1,
+          "cleanWorkerExits": 1,
+          "directStatusCommands": 0
+        },
+        {
+          "kind": "rust",
+          "accountSignOuts": 2,
+          "nativeCodexLogouts": 1,
+          "cleanWorkerExits": 1,
+          "directStatusCommands": 0
+        }
+      ]
+    }
+  ],
+  "successfulPreliminaryPGliteReport": {
+    "path": "pglite-v1.json",
+    "bytes": 91307,
+    "sha256": "e7ba733b252fadb3a471a978285d61766bb901421b6c97dd7110f035c46ae62e"
+  },
+  "verifiedFixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 57671466,
+    "sha256": "a88559b8d5c8092b229fc6a18f1e3dbfa54c54edfa3c32b2fb62e96ad68e7e0d",
+    "verifiedRegularFiles": 15399,
+    "retainedAdjacentCredentials": 16,
+    "excludedRebuildablePaths": ["*/worker/managed-runtimes"]
+  },
+  "retainedEvidenceDirectory": "rust-server-worker-account-contracts-20261111-v1",
+  "limitations": [
+    "Legacy credentials are synthetic files in disposable worker homes.",
+    "Upstream OAuth and revocation, mixed-server interruption, and the final desktop and shipping matrix retain separate acceptance scope."
+  ]
+}

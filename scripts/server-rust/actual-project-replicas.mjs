@@ -1,4 +1,8 @@
 import { actualGithubReplicas } from "./actual-github-replicas.mjs";
+import {
+  prepareReplicaRedisOutage,
+  recoverReplicaAcrossRedisOutage,
+} from "./actual-replica-redis-outage.mjs";
 // Existing encrypted browser APIs and two complete worker processes; all Git
 // paths belong to this disposable fixture. No command/repository substitution.
 import assert from "node:assert/strict";
@@ -6,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
-import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
+import { normalizeProjectSourcePath } from "../../tests/reference-node-worker/src/project-source-path.ts";
 
 export async function actualProjectReplicas({
   page,
@@ -28,6 +32,9 @@ export async function actualProjectReplicas({
     encoding: "utf8",
   }).trim();
   const contents = await readFile(path.join(clone, "retained.txt"), "utf8");
+  const redisOutage = process.argv.includes("--replica-redis-outage")
+    ? await prepareReplicaRedisOutage(path.dirname(clone), target)
+    : undefined;
   const requests = [];
   const capture = (request) => {
     if (
@@ -48,13 +55,19 @@ export async function actualProjectReplicas({
     );
   let worker;
   const start = async (enrollmentCode) => {
-    worker = launchActualWorker(fixture, dataDirectory, {
-      cliBinary,
-      enrollmentCode,
-      workerId,
-      traceShutdown: true,
-    });
+    worker = launchActualWorker(
+      fixture.workerFixture ?? fixture,
+      dataDirectory,
+      {
+        cliBinary,
+        enrollmentCode,
+        workerId,
+        traceShutdown: true,
+        environment: redisOutage?.environment,
+      },
+    );
     await worker.ready();
+    if (fixture.workerFixture) await fixture.assertRemoteWorker(workerId);
     await eventually(
       () => page.evaluate(() => window.folderWorkers.getWorkers()),
       (workers) => {
@@ -88,18 +101,19 @@ export async function actualProjectReplicas({
         assert.equal(snapshot.activeScopeCount, snapshot.desiredScopeCount);
       },
     );
+  const jobEvents = (id) =>
+    page.evaluate(
+      (jobId) =>
+        window.replicaEvents.filter(
+          (event) =>
+            event.resource === "project-replica-job" &&
+            event.entityId === jobId,
+        ),
+      id,
+    );
   const jobLive = (job) =>
     eventually(
-      () =>
-        page.evaluate(
-          (id) =>
-            window.replicaEvents.filter(
-              (event) =>
-                event.resource === "project-replica-job" &&
-                event.entityId === id,
-            ),
-          job.id,
-        ),
+      () => jobEvents(job.id),
       (events) => {
         assert.equal(events[0]?.revision, 1);
         assert.equal(events.at(-1)?.revision, job.stateRevision);
@@ -138,6 +152,7 @@ export async function actualProjectReplicas({
     await liveReady();
     const original = await call("getProjectReplicas", [projectId]);
     assert.equal(original.length, 1);
+    const primaryWorker = redisOutage ? await startWorker() : undefined;
     const enrollment = await page.evaluate(
       async (workerId) =>
         (await import("/src/lib/api/workers.ts")).createWorkerEnrollmentCode({
@@ -153,8 +168,20 @@ export async function actualProjectReplicas({
       idempotencyKey: "actual-local-git-replica",
     };
     const admitted = await call("createProjectReplica", [projectId, input]);
-    const completed = await waitJob(admitted.id);
-    assert.equal(completed.attempt, 1);
+    const completed = redisOutage
+      ? await recoverReplicaAcrossRedisOutage({
+          fixture,
+          gate: redisOutage,
+          worker,
+          primaryWorker,
+          workerId,
+          primaryWorkerId: original[0].workerId,
+          admitted,
+          waitJob,
+          result,
+        })
+      : await waitJob(admitted.id);
+    assert.equal(completed.attempt, redisOutage ? 2 : 1);
     await jobLive(completed);
     const attached = await eventually(
       () => call("getProjectReplicas", [projectId]),
@@ -169,6 +196,9 @@ export async function actualProjectReplicas({
       },
     );
     const replica = attached.find((value) => value.workerId === workerId);
+    const initialEventCount = fixture.workerFixture
+      ? (await jobEvents(admitted.id)).length
+      : 0;
     assert.equal(
       (await call("createProjectReplica", [projectId, input])).id,
       admitted.id,
@@ -190,6 +220,59 @@ export async function actualProjectReplicas({
         /^ctrr_[A-Za-z0-9_-]{43}$/.test(value.path),
       ),
     );
+    if (fixture.workerFixture) {
+      await eventually(
+        () => jobEvents(admitted.id),
+        (events) => {
+          assert.equal(events.length, initialEventCount + 1);
+          assert.equal(events.at(-1).revision, completed.stateRevision);
+        },
+      );
+      const claims = async () =>
+        Promise.all(
+          [original[0].workerId, workerId].map(async (id) => {
+            const { connectionId, instanceId } =
+              await fixture.assertRemoteWorker(id);
+            return { workerId: id, connectionId, instanceId };
+          }),
+        );
+      const before = await claims();
+      const workerServerPid = fixture.workerFixture.server.child.pid;
+      const replicaWorkerPid = worker.child.pid;
+      const replacement = await fixture.replacePeer(0, fixture.peers[0].kind, {
+        crash: true,
+      });
+      assert.notEqual(replacement.after.pid, replacement.before.pid);
+      await liveReady();
+      assert.deepEqual(await claims(), before);
+      assert.equal(fixture.workerFixture.server.child.pid, workerServerPid);
+      assert.equal(worker.child.pid, replicaWorkerPid);
+      assert.deepEqual(
+        await call("getProjectReplicaJob", [admitted.id]),
+        completed,
+      );
+      const published = () => jobEvents(admitted.id);
+      const previousEvents = await published();
+      const replay = await call("createProjectReplica", [projectId, input]);
+      assert.deepEqual(replay, completed);
+      const events = await eventually(published, (observations) => {
+        assert.equal(observations.length, previousEvents.length + 1);
+        assert.equal(observations.at(-1).revision, completed.stateRevision);
+      });
+      result.replicaPeerRecovery = {
+        replacement,
+        workerServerPid,
+        replicaWorkerPid,
+        claims: before,
+        jobId: replay.id,
+        attempt: replay.attempt,
+        stateRevision: replay.stateRevision,
+        replayEvent: events.at(-1),
+      };
+      result.steps.push(
+        "replacing the browser server preserves both remote worker connections, the completed replica job and its replay publication",
+      );
+    }
     const port = Number(new URL(fixture.server.origin).port);
     await stop();
     await stopWorker();
@@ -295,7 +378,9 @@ export async function actualProjectReplicas({
     };
     throw error;
   } finally {
+    await redisOutage?.release();
     await stop();
+    if (redisOutage) await stopWorker();
     await page.evaluate(() => window.replicaLive?.stop()).catch(() => {});
     page.off("request", capture);
   }

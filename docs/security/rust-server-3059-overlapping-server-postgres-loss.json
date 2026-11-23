@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "databaseMode": "postgres",
+  "harnessBaseCommit": "9c8130606001d92113226d4c866029d08374b91e",
+  "testChanges": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-overlapping-server-postgres-retry.PsTA5MFu/local-harness.diff",
+    "bytes": 5622,
+    "sha256": "45e6d0eb6e8b9a568205ca0cffc317bada1606edb1f75f456c2c6bf860942321"
+  },
+  "scope": "The browser client and full packaged Node worker used local PostgreSQL 18 and a controlled local model HTTP service. PostgreSQL stopped after the running deployment lost its server process and recovered before the server relaunched. The Linux images ran in Docker on the same Apple Silicon host with Linux x64 under emulation.",
+  "worker": {
+    "version": "1.1.3059",
+    "entrySha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+  },
+  "cases": [
+    {
+      "target": "darwin-arm64",
+      "runtime": "node",
+      "server": null,
+      "database": "external PostgreSQL 18",
+      "browserSteps": 20,
+      "modelOperationCases": 14,
+      "providerRequests": 15,
+      "serverIntentionallyKilled": 1,
+      "serverCleanExits": 3,
+      "workerIntentionallyKilledInSeparateControl": 1,
+      "workerCleanExits": 4,
+      "interruptedEmbeddingProviderPosts": 1,
+      "interruptedEmbeddingUsageStatus": "running",
+      "interruptedEmbeddingReceipt": null,
+      "originalWorkerStayedRunning": true,
+      "postgresRestartSamePort": true,
+      "providerCloseObservedAfterMs": 1615,
+      "postRecoveryDecisionCompleted": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-overlapping-server-postgres-retry.PsTA5MFu/matrix.json",
+        "bytes": 833784,
+        "sha256": "8f6f7a2312dfefc7c8a4b94b7e14d7ae0ac5cd39fa7d379739f9516dd165586d"
+      }
+    },
+    {
+      "target": "darwin-arm64",
+      "runtime": "rust",
+      "server": {
+        "sourceCommit": "e7f25540d48209e90748cafc09c6e9f483df8934",
+        "serverSha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+      },
+      "database": "external PostgreSQL 18",
+      "browserSteps": 20,
+      "modelOperationCases": 14,
+      "providerRequests": 15,
+      "serverIntentionallyKilled": 1,
+      "serverCleanExits": 3,
+      "workerIntentionallyKilledInSeparateControl": 1,
+      "workerCleanExits": 4,
+      "interruptedEmbeddingProviderPosts": 1,
+      "interruptedEmbeddingUsageStatus": "running",
+      "interruptedEmbeddingReceipt": null,
+      "originalWorkerStayedRunning": true,
+      "postgresRestartSamePort": true,
+      "providerCloseObservedAfterMs": 819,
+      "postRecoveryDecisionCompleted": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-overlapping-server-postgres-retry.PsTA5MFu/matrix.json",
+        "bytes": 833784,
+        "sha256": "8f6f7a2312dfefc7c8a4b94b7e14d7ae0ac5cd39fa7d379739f9516dd165586d"
+      }
+    },
+    {
+      "target": "linux-arm64",
+      "runtime": "rust",
+      "server": {
+        "sourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+        "imageId": "sha256:5ca1ee248797d385739b295faa1d057dfac17ae7f4426871e253cff969ac427c",
+        "serverSha256": "1fc14ed5abc8a8a3e2d2acc02e4da542f280256e81f0b6ca106b93e76fcf72cf"
+      },
+      "database": "external PostgreSQL 18",
+      "browserSteps": 20,
+      "modelOperationCases": 14,
+      "providerRequests": 15,
+      "serverIntentionallyKilled": 1,
+      "serverCleanExits": 3,
+      "workerIntentionallyKilledInSeparateControl": 1,
+      "workerCleanExits": 4,
+      "interruptedEmbeddingProviderPosts": 1,
+      "interruptedEmbeddingUsageStatus": "running",
+      "interruptedEmbeddingReceipt": null,
+      "originalWorkerStayedRunning": true,
+      "postgresRestartSamePort": true,
+      "providerCloseObservedAfterMs": 2388,
+      "postRecoveryDecisionCompleted": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-overlapping-server-postgres-retry.WxIHtIfa/arm64/postgres/matrix.json",
+        "bytes": 404054,
+        "sha256": "2cd3ceef8f632c0114878fd71779a66128c040f695264dbb1dfd0080f2a2e574"
+      },
+      "liveImageAndProcessEvidence": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-overlapping-server-postgres-retry.WxIHtIfa/arm64/postgres/generations.jsonl",
+        "bytes": 5822,
+        "sha256": "4dac8b208030935763155856da0662f86764adb71b537e082a64d9007c5c8351"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "runtime": "rust",
+      "server": {
+        "sourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+        "imageId": "sha256:ab3d9ff71769e4f885cde41a104abf313b8b0d36ee4601fe649b47de3f315a9f",
+        "serverSha256": "50aa09c86bb87aba0ea01acad193a2cab25d1c1bb4abec741ebff09f877f16f4"
+      },
+      "database": "external PostgreSQL 18",
+      "browserSteps": 20,
+      "modelOperationCases": 14,
+      "providerRequests": 15,
+      "serverIntentionallyKilled": 1,
+      "serverCleanExits": 3,
+      "workerIntentionallyKilledInSeparateControl": 1,
+      "workerCleanExits": 4,
+      "interruptedEmbeddingProviderPosts": 1,
+      "interruptedEmbeddingUsageStatus": "running",
+      "interruptedEmbeddingReceipt": null,
+      "originalWorkerStayedRunning": true,
+      "postgresRestartSamePort": true,
+      "providerCloseObservedAfterMs": 3183,
+      "postRecoveryDecisionCompleted": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-overlapping-server-postgres-retry.WxIHtIfa/x64/postgres/matrix.json",
+        "bytes": 402682,
+        "sha256": "bd2abb101218762bbae38dbc1b38ec81b566a6ab60caa05fb83f4c268e6b5046"
+      },
+      "liveImageAndProcessEvidence": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-overlapping-server-postgres-retry.WxIHtIfa/x64/postgres/generations.jsonl",
+        "bytes": 5828,
+        "sha256": "98089481cb424d675e64a5f477f696e3ed1782edec1fb6f411ad99ff6ee24596"
+      }
+    }
+  ],
+  "limits": "This case covers one server and short overlapping process loss. It leaves the unreported operation row intact. Independent long outages, shared peers, other stores, and Windows packaged cases have separate acceptance.",
+  "completeReplacement": false,
+  "serverOnlyRegression": {
+    "databaseMode": "pglite",
+    "matchedBrowserSteps": 40,
+    "matchedModelOperations": 28,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-overlapping-server-postgres-retry.PsTA5MFu/server-only-regression/matrix.json",
+      "bytes": 766941,
+      "sha256": "fca3c0495d835099b7addf139d6365f10dea4ebd68e0a8d2741605e90682f17e"
+    }
+  }
+}

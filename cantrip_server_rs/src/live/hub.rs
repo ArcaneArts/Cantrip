@@ -2,8 +2,12 @@ mod control;
 mod protocol;
 use crate::wire::{self, JsString, Value};
 use anyhow::{Context as _, Result, bail};
-use futures::future::{BoxFuture, join_all};
+use futures::{
+    FutureExt,
+    future::{BoxFuture, join_all},
+};
 use indexmap::IndexMap;
+use parking_lot::ReentrantMutex;
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -152,6 +156,7 @@ struct State {
 }
 pub struct Hub {
     options: Options,
+    publication_order: ReentrantMutex<()>,
     state: Mutex<State>,
     timer: Mutex<Option<AbortHandle>>,
     maintaining: AtomicBool,
@@ -191,6 +196,7 @@ impl Hub {
         let interval = Duration::from_millis(options.heartbeat_interval_ms);
         let hub = Arc::new(Self {
             options,
+            publication_order: ReentrantMutex::new(()),
             state: Mutex::new(State::default()),
             timer: Mutex::new(None),
             maintaining: AtomicBool::new(false),
@@ -575,7 +581,7 @@ impl Hub {
         }
         Ok(())
     }
-    fn publication(&self, publication: &Value) -> Result<Value> {
+    fn publication(&self, state: &mut State, publication: &Value) -> Result<Value> {
         let owner = publication["ownerId"]
             .as_str()
             .context("live publication owner")?;
@@ -584,11 +590,10 @@ impl Hub {
             bail!("Invalid live publication")
         };
         object.shift_remove("ownerId");
-        let mut state = self.state.lock().unwrap();
         if state.closed {
             bail!("Cannot publish after the live hub has closed.")
         }
-        let cursor = Self::cursor(&state, owner) + 1;
+        let cursor = Self::cursor(state, owner) + 1;
         event["type"] = obj(serde_json::json!("event"));
         event["cursor"] = obj(serde_json::json!(cursor));
         if event.get("occurredAt").is_none_or(Value::is_null) {
@@ -633,34 +638,70 @@ impl Hub {
                 let local = connection.local.lock().unwrap();
                 local.initialized && local.resume.is_none()
             };
-            if eligible && self.send_encoded(&mut state, &connection, &encoded) {
+            if eligible && self.send_encoded(state, &connection, &encoded) {
                 state.stats.delivered_event_count += 1;
             }
         }
         Ok(event)
     }
     pub fn publish(&self, publication: Value) -> Result<Value> {
-        let event = self.publication(&publication)?;
-        if let Some(publish) = &self.options.publish_external {
-            let result = publish(publication);
+        let _order = self.publication_order.lock();
+        let event = self.publication(&mut self.state.lock().unwrap(), &publication)?;
+        self.start_external(publication);
+        Ok(event)
+    }
+    fn start_external(&self, publication: Value) {
+        if let Ok(Some(result)) = self.begin_external(publication) {
             tokio::spawn(async move {
                 let _ = result.await;
             });
         }
-        Ok(event)
+    }
+    fn begin_external(&self, publication: Value) -> Result<Option<BoxFuture<'static, Result<()>>>> {
+        let Some(publish) = &self.options.publish_external else {
+            return Ok(None);
+        };
+        // Source invokes async callbacks through their first await before the
+        // next publication. Do not hold the ordering lock across pending IO.
+        let mut result = publish(publication);
+        match result.as_mut().now_or_never() {
+            Some(result) => result.map(|()| None),
+            None => Ok(Some(result)),
+        }
+    }
+    /// Preserve a Source synchronous publication group against concurrent producers.
+    pub fn publish_group(&self, publications: Vec<Value>) -> Result<Vec<Value>> {
+        let _order = self.publication_order.lock();
+        let events = {
+            let mut state = self.state.lock().unwrap();
+            publications
+                .iter()
+                .map(|publication| self.publication(&mut state, publication))
+                .collect::<Result<Vec<_>>>()?
+        };
+        for publication in publications {
+            self.start_external(publication);
+        }
+        Ok(events)
     }
     pub async fn publish_confirmed(&self, publication: Value) -> Result<Value> {
-        let event = self.publication(&publication)?;
-        if let Some(publish) = &self.options.publish_external {
-            publish(publication).await?;
+        let (event, pending) = {
+            let _order = self.publication_order.lock();
+            let event = self.publication(&mut self.state.lock().unwrap(), &publication)?;
+            (event, self.begin_external(publication)?)
+        };
+        if let Some(pending) = pending {
+            pending.await?;
         }
         Ok(event)
     }
     pub fn receive_external(&self, publication: &Value) -> Option<Value> {
+        let _order = self.publication_order.lock();
         if !publication["ownerId"].is_string() {
             return None;
         }
-        self.publication(publication).ok()
+        self.publication(&mut self.state.lock().unwrap(), publication)
+            .ok()
     }
     pub fn revoke_owner(&self, owner: &str) -> usize {
         self.revoke(
@@ -723,6 +764,7 @@ impl Hub {
         self.maintaining.store(false, Ordering::Release);
     }
     pub fn close(&self) {
+        let _order = self.publication_order.lock();
         let mut state = self.state.lock().unwrap();
         if state.closed {
             return;

@@ -396,6 +396,8 @@ export const codexExternalImportStatusSchema = z.object({
   status: z.enum(["pending", "completed", "unknown"]),
   results: z.array(codexExternalImportTypeResultSchema).max(100),
 });
+export const codexExternalImportStatusRequestSchema =
+  codexExternalImportStatusSchema.pick({ importId: true });
 
 export function mentionedSkillNames(text: string): string[] {
   const names = new Set<string>();

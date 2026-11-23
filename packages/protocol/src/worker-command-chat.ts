@@ -1,12 +1,30 @@
 import {
+  taskPauseScopeSchema,
+  taskPauseIntentSchema,
+  taskTurnResumptionSchema,
+  taskTurnStopSchema,
+} from "./task-pause.js";
+import {
+  cantripOsExecutionSchema,
+  cantripOsDesktopPlacement,
+} from "./worker-command-cantrip-os.js";
+import {
   nativeSettingsUpdateCommandSchema,
   nativePermissionUpdateCommandSchema,
 } from "./native-settings-update.js";
 import { nativeSettingsReadScopeSchema } from "./native-settings-state.js";
+import { taskGoalCycleRecoverySchema } from "./task-goal-cycle.js";
 import { queuedPromptOpaqueContentSchema } from "./communication-content.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { nativeCommandReceiptSchema } from "./native-commands.js";
+import { nativeSuspensionEvidenceSchema } from "./native-suspensions.js";
+import {
+  nativeGoalRecoverySourceSchema,
+  nativeGoalRecoverySchema,
+  nativeGoalClaimRecoverySchema,
+} from "./native-goal-recovery.js";
 import { z } from "zod";
+import { initialLabelCommandSchema } from "./labeling.js";
 import {
   managedSessionContextSchema,
   managedSessionSubagentDefaultsSchema,
@@ -30,6 +48,7 @@ import {
   taskMessageOpaqueContentSchema,
 } from "./tasks.js";
 import { taskDispatchWorkerLeaseSchema } from "./task-scheduling.js";
+import { taskInferenceInputReceiptSchema } from "./task-inference-input.js";
 import { encryptionKeyBytesSchema } from "./encryption.js";
 import { mcpServerOpaqueRuntimeSchema } from "./protected-secrets.js";
 import { NATIVE_SUBAGENT_PROTOCOL_VERSION } from "./runtime-capabilities.js";
@@ -55,6 +74,42 @@ import {
   workerChatAttachmentSchema,
 } from "./worker-runtime-support.js";
 
+const managedThreadOptions = {
+  session: managedSessionContextSchema.optional(),
+  subagentDefaults: managedSessionSubagentDefaultsSchema.nullable().optional(),
+  mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).optional(),
+};
+
+/** Task Goals own input through Task dispatch, not a managed console session. */
+const taskGoalRuntimeSchema = z
+  .object({
+    projectId: z.string().min(1),
+    worktreeId: z.string().min(1),
+    rootKind: projectRootKindSchema,
+    computerUseEnabled: z.boolean(),
+  })
+  .strict();
+
+const nativeSuspensionControlSchema = z
+  .object({
+    chatId: z.string().min(1),
+    threadId: z.string().min(1),
+    controlId: z.uuid(),
+    checkpoint: nativeSuspensionEvidenceSchema,
+    nativeActivationGeneration: z.string().min(1).nullable(),
+    nativeRuntimeGeneration: z.string().min(1).nullable(),
+    session: managedSessionContextSchema,
+    cwd: z.string().min(1),
+    executionProfile: z.enum(["ide", "standalone-chat"]),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
+    planMode: planModeSchema,
+    subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
+  })
+  .strict();
+
 export const workerChatCommandSchemas = [
   z
     .object({
@@ -71,6 +126,14 @@ export const workerChatCommandSchemas = [
     .object({
       type: z.literal("chat.settings.read"),
       scope: nativeSettingsReadScopeSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("task.goal.source"),
+      scope: nativeSettingsReadScopeSchema,
+      cycleId: z.string().min(1).max(255),
+      input: taskInferenceInputReceiptSchema.optional(),
     })
     .strict(),
   z.object({
@@ -134,12 +197,16 @@ export const workerChatCommandSchemas = [
   z
     .object({
       type: z.literal("chat.turn"),
+      initialLabel: initialLabelCommandSchema.optional(),
+      osExecution: cantripOsExecutionSchema.optional(),
       nativeCommandReceipt: nativeCommandReceiptSchema.optional(),
       protectedNativeInput: encryptedPayloadEnvelopeSchema.optional(),
       nativeClientUserMessageId: z.string().min(1).max(255).optional(),
       queuedPromptId: z.string().min(1).optional(),
       computerUseAuthority: cuaAgentAuthoritySchema.optional(),
-      executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
+      executionProfile: z
+        .enum(["ide", "standalone-chat", "cantrip-os"])
+        .default("ide"),
       contextKind: chatContextKindSchema.default("project"),
       chatId: z.string().min(1),
       clientMessageId: z.string().min(1),
@@ -190,10 +257,125 @@ export const workerChatCommandSchemas = [
       automationPaused: z.boolean().default(false),
       resultMode: agentTurnResultModeSchema.default({ kind: "visible" }),
       taskDispatchLease: taskDispatchWorkerLeaseSchema.optional(),
+      taskInferenceInput: taskInferenceInputReceiptSchema.optional(),
+      taskResumption: taskTurnResumptionSchema.optional(),
     })
     .superRefine((command, context) => {
+      const taskInput = command.taskInferenceInput;
+      const restore = command.taskResumption;
+      if (
+        restore &&
+        (!taskInput ||
+          taskInput.kind !== restore.source.kind ||
+          restore.source.operationId === taskInput.operationId ||
+          restore.source.chatId !== command.chatId ||
+          restore.source.clientMessageId !== command.clientMessageId ||
+          restore.source.executionLaneId !== command.executionLaneId ||
+          restore.source.worktreeId !== command.worktreeId ||
+          restore.source.dispatch.operationId !==
+            taskInput.dispatch.operationId ||
+          restore.source.dispatch.cycleId !== taskInput.dispatch.cycleId ||
+          command.threadId !== restore.checkpoint.suspension.threadId)
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["taskResumption"],
+          message:
+            "Task restoration must retain its original input, lane, and native turn under fresh authority.",
+        });
+      if (
+        taskInput &&
+        (command.nativeCommandReceipt !== undefined ||
+          (taskInput.kind === "goal"
+            ? command.resultMode.kind !== "task-message-encrypted" ||
+              command.protectedTaskPrompt?.classification.mode !== "goal" ||
+              command.protectedTaskPrompt?.id !== taskInput.clientMessageId
+            : command.resultMode.kind !== "task-encrypted" ||
+              command.resultMode.operation.operationId !==
+                taskInput.dispatch.operationId ||
+              command.resultMode.operation.chatId !== taskInput.chatId ||
+              command.resultMode.operation.userMessage.id !==
+                taskInput.clientMessageId) ||
+          command.chatId !== taskInput.chatId ||
+          command.clientMessageId !== taskInput.clientMessageId ||
+          command.executionLaneId !== taskInput.executionLaneId ||
+          command.worktreeId !== taskInput.worktreeId ||
+          command.provider.id !== taskInput.providerId ||
+          (command.provider.accountId ?? null) !==
+            taskInput.providerAccountId ||
+          command.model.routeId !== taskInput.modelRouteId ||
+          command.taskDispatchLease?.cycleId !== taskInput.dispatch.cycleId ||
+          command.taskDispatchLease?.operationId !==
+            taskInput.dispatch.operationId ||
+          command.taskDispatchLease?.leaseOwner !==
+            taskInput.dispatch.leaseOwner ||
+          command.taskDispatchLease?.fencingToken !==
+            taskInput.dispatch.fencingToken)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Task input receipt must match its canonical round, dispatch, and placement.",
+          path: ["taskInferenceInput"],
+        });
+      }
+      if (
+        (command.executionProfile === "cantrip-os") !==
+        Boolean(command.osExecution)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "OS execution requires its explicit execution profile and captured placement together.",
+          path: ["executionProfile"],
+        });
+      }
+
+      if (command.osExecution) {
+        const scope = command.osExecution.scope;
+        if (
+          command.contextKind !== "project" ||
+          command.worktreeId !== scope.worktreeId ||
+          command.policyProjectId !== scope.projectId ||
+          command.cwd !== scope.guestPath ||
+          command.rootKind !==
+            (scope.sourceKind === "git" ? "git-worktree" : "folder-root")
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "OS turns must use their exact captured project, worktree, guest cwd, and Linux capabilities.",
+            path: ["osExecution"],
+          });
+        }
+        const authority = command.computerUseAuthority;
+        const placement = cantripOsDesktopPlacement(command.osExecution);
+        if (
+          authority &&
+          (authority.ownerId !== scope.ownerId ||
+            authority.workerId !== scope.workerId ||
+            authority.chatId !== command.chatId ||
+            authority.contextKind !== "project" ||
+            authority.projectId !== scope.projectId ||
+            authority.placementId !== scope.worktreeId ||
+            authority.executionLaneId !== command.executionLaneId ||
+            Object.entries(placement).some(
+              ([key, value]) =>
+                authority.osPlacement?.[key as keyof typeof placement] !==
+                value,
+            ))
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "OS computer use must match its captured desktop placement and execution lane.",
+            path: ["computerUseAuthority"],
+          });
+        }
+      }
       const projectShape =
-        command.executionProfile === "ide" &&
+        (command.executionProfile === "ide" ||
+          command.executionProfile === "cantrip-os") &&
         command.contextKind === "project" &&
         command.worktreeId !== null &&
         command.scratchRootId === null &&
@@ -225,7 +407,7 @@ export const workerChatCommandSchemas = [
         });
       }
       if (
-        command.executionProfile === "ide" &&
+        command.executionProfile !== "standalone-chat" &&
         (command.standalonePolicies.policies.length > 0 ||
           command.chatSkillAudienceKeys.length > 0)
       ) {
@@ -298,6 +480,12 @@ export const workerChatCommandSchemas = [
       rootOperationGeneration: z.string().min(1),
     })
     .strict(),
+  nativeSuspensionControlSchema.extend({
+    type: z.literal("chat.suspension.resume"),
+  }),
+  nativeSuspensionControlSchema.extend({
+    type: z.literal("chat.suspension.stop"),
+  }),
   z
     .object({
       type: z.literal("chat.native-control"),
@@ -352,6 +540,8 @@ export const workerChatCommandSchemas = [
     .strict(),
   z.object({
     type: z.literal("chat.pause.set"),
+    task: taskPauseScopeSchema.optional(),
+    waitForBoundary: z.boolean().optional(),
     nativeActivationGeneration: z.string().min(1).nullable().optional(),
     chatId: z.string().min(1),
     paused: z.boolean(),
@@ -374,12 +564,21 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.interrupt"),
+    taskStop: taskTurnStopSchema
+      .extend({
+        cwd: z.string().min(1),
+        model: workerRuntimeModelSchema.optional(),
+        provider: workerRuntimeProviderSchema.optional(),
+        permissionProfileId: permissionProfileIdSchema,
+      })
+      .optional(),
+    task: taskPauseScopeSchema.optional(),
     nativeActivationGeneration: z.string().min(1).nullable().optional(),
     executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     chatId: z.string().min(1),
     threadId: z.string().min(1).nullable(),
-    model: workerRuntimeModelSchema,
-    provider: workerRuntimeProviderSchema,
+    model: workerRuntimeModelSchema.optional(),
+    provider: workerRuntimeProviderSchema.optional(),
   }),
   z.object({
     type: z.literal("chat.turn.rollback"),
@@ -404,6 +603,7 @@ export const workerChatCommandSchemas = [
       type: z.literal("chat.queue.changed"),
       chatId: z.string().min(1),
       revision: z.number().int().nonnegative(),
+      taskPause: taskPauseIntentSchema.optional(),
     })
     .strict(),
   z
@@ -463,8 +663,62 @@ export const workerChatCommandSchemas = [
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,
   }),
+  z
+    .object({
+      type: z.literal("chat.goal.recover"),
+      source: nativeGoalRecoverySourceSchema,
+      recovery: nativeGoalRecoverySchema.optional(),
+      session: managedSessionContextSchema,
+      subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
+      planMode: planModeSchema,
+      chatId: z.string().min(1),
+      cwd: z.string().min(1),
+      threadId: z.string().min(1),
+      model: workerRuntimeModelSchema,
+      provider: workerRuntimeProviderSchema,
+      permissionProfileId: permissionProfileIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("chat.goal.claim-recover"),
+      claim: nativeGoalClaimRecoverySchema,
+      session: managedSessionContextSchema,
+      subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
+      planMode: planModeSchema,
+      chatId: z.string().min(1),
+      cwd: z.string().min(1),
+      threadId: z.string().min(1),
+      model: workerRuntimeModelSchema,
+      provider: workerRuntimeProviderSchema,
+      permissionProfileId: permissionProfileIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("task.goal.recover"),
+      osExecution: cantripOsExecutionSchema.optional(),
+      recovery: taskGoalCycleRecoverySchema,
+      subagentDefaults: managedSessionSubagentDefaultsSchema.nullable(),
+      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200),
+      planMode: planModeSchema,
+      chatId: z.string().min(1),
+      projectId: z.string().min(1),
+      worktreeId: z.string().min(1),
+      rootKind: z.enum(["folder-root", "git-worktree"]),
+      computerUseEnabled: z.boolean(),
+      cwd: z.string().min(1),
+      threadId: z.string().min(1),
+      model: workerRuntimeModelSchema,
+      provider: workerRuntimeProviderSchema,
+      permissionProfileId: permissionProfileIdSchema,
+    })
+    .strict(),
   z.object({
     type: z.literal("chat.goal.get"),
+    osExecution: cantripOsExecutionSchema.optional(),
     observeExecution: z.boolean().optional(),
     protectObjective: z.boolean().optional(),
     chatId: z.string().min(1),
@@ -477,6 +731,8 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.create"),
+    osExecution: cantripOsExecutionSchema.optional(),
+    taskRuntime: taskGoalRuntimeSchema.optional(),
     operationId: z.string().min(1).max(255).optional(),
     session: managedSessionContextSchema.optional(),
     subagentDefaults: managedSessionSubagentDefaultsSchema
@@ -499,6 +755,8 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.update"),
+    osExecution: cantripOsExecutionSchema.optional(),
+    taskRuntime: taskGoalRuntimeSchema.optional(),
     protectObjective: z.boolean().optional(),
     session: managedSessionContextSchema.optional(),
     subagentDefaults: managedSessionSubagentDefaultsSchema
@@ -518,11 +776,7 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.goal.clear"),
-    session: managedSessionContextSchema.optional(),
-    subagentDefaults: managedSessionSubagentDefaultsSchema
-      .nullable()
-      .optional(),
-    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).optional(),
+    ...managedThreadOptions,
     planMode: planModeSchema.optional(),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
@@ -592,6 +846,7 @@ export const workerChatCommandSchemas = [
   }),
   z.object({
     type: z.literal("chat.plan.set"),
+    ...managedThreadOptions,
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     mode: planModeSchema,

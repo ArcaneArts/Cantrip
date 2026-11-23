@@ -4,6 +4,7 @@ import {
   workspaceActionSchema,
   workspaceOwnershipSchema,
   type WorkspaceAction,
+  type ExplorerFileMode,
   type WorkspaceCommand,
   type WorkspaceOwnership,
   workspaceReceiptSchema,
@@ -464,6 +465,8 @@ export class WorkspaceCommandClient {
       targetRegion?: ProjectPaneRegion;
       worktreeId?: string | null;
       preview?: boolean;
+      fileViewer?: string | null;
+      fileMode?: ExplorerFileMode;
       reservePreview?: (resourceId: string) => (() => void) | null;
     } = {},
   ): Promise<WorkspaceReceipt> {
@@ -533,6 +536,9 @@ export class WorkspaceCommandClient {
           id: this.allocateId(),
           resource,
           preview: options.preview ?? false,
+          ...(options.fileViewer !== undefined
+            ? { fileViewer: options.fileViewer, fileMode: options.fileMode }
+            : {}),
           titleProtection: null,
           dockPresentation: null,
           builtInState:

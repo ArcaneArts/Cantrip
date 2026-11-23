@@ -115,19 +115,20 @@ export function ExplorerHeaderActions({
                       <Check className="size-3.5" />
                     ) : null}
                   </StyledDropdownMenuItem>
-                  <StyledDropdownMenuItem
-                    className="justify-between"
-                    disabled={!header.canVisual}
-                    onSelect={() => header.setFileMode("visual")}
-                  >
-                    <span className="flex items-center gap-2">
-                      <TableProperties className="size-3.5" />
-                      Visual
-                    </span>
-                    {header.fileMode === "visual" ? (
-                      <Check className="size-3.5" />
-                    ) : null}
-                  </StyledDropdownMenuItem>
+                  {header.canVisual ? (
+                    <StyledDropdownMenuItem
+                      className="justify-between"
+                      onSelect={() => header.setFileMode("visual")}
+                    >
+                      <span className="flex items-center gap-2">
+                        <TableProperties className="size-3.5" />
+                        Visual
+                      </span>
+                      {header.fileMode === "visual" ? (
+                        <Check className="size-3.5" />
+                      ) : null}
+                    </StyledDropdownMenuItem>
+                  ) : null}
                   <StyledDropdownMenuItem
                     className="justify-between"
                     disabled={!header.canEdit}
@@ -162,14 +163,14 @@ export function ExplorerHeaderActions({
               Unsaved
             </span>
           ) : null}
-          {header.canEdit ? (
+          {header.canEdit && (header.dirty || header.isSaving) ? (
             <TooltipButton
               aria-keyshortcuts="Meta+S Control+S"
               className="relative size-8"
               disabled={!header.dirty || header.isSaving}
               onClick={() => void header.save()}
               size="icon"
-              tooltip={header.dirty ? "Save file" : "File is saved"}
+              tooltip={header.isSaving ? "Saving file" : "Save file"}
               variant="ghost"
             >
               {header.isSaving ? (
@@ -197,19 +198,21 @@ export function ExplorerHeaderActions({
           ) : null}
         </>
       ) : null}
-      <TooltipButton
-        className="size-8"
-        disabled={header.isFetching}
-        onClick={header.refresh}
-        size="icon"
-        tooltip="Refresh Explorer"
-        variant="ghost"
-      >
-        <RefreshCw
-          className={cn("size-4", header.isFetching && "animate-spin")}
-        />
-        <span className="sr-only">Refresh Explorer</span>
-      </TooltipButton>
+      {!header.selectedPath ? (
+        <TooltipButton
+          className="size-8"
+          disabled={header.isFetching}
+          onClick={header.refresh}
+          size="icon"
+          tooltip="Refresh Explorer"
+          variant="ghost"
+        >
+          <RefreshCw
+            className={cn("size-4", header.isFetching && "animate-spin")}
+          />
+          <span className="sr-only">Refresh Explorer</span>
+        </TooltipButton>
+      ) : null}
     </div>
   );
 }

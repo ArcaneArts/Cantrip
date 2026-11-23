@@ -1,13 +1,4 @@
 import {
-  taskWorkerListSchema,
-  type TaskWorkerCreate,
-  taskWorkerSummarySchema,
-  taskWorkerCreateSchema,
-  type TaskWorkerUpdate,
-  taskWorkerUpdateSchema,
-  taskWorkerDeleteSchema,
-  type TaskWorkerOrderUpdate,
-  taskWorkerOrderUpdateSchema,
   projectTaskPauseStateSchema,
   type ProjectTaskPauseUpdate,
   projectTaskPauseUpdateSchema,
@@ -19,7 +10,12 @@ import {
   taskWireCreateResultSchema,
   taskImplementationOpaqueDashboardSchema,
   taskImplementationDashboardSchema,
+  taskInferenceRouteViewSchema,
+  taskInferenceRouteChangeRequestSchema,
+  taskInferenceRouteChangeSchema,
+  type TaskInferenceRouteChangeRequest,
 } from "@cantrip/protocol";
+import type { ClientSessionIdentitySnapshot } from "@/lib/client-session";
 import {
   mapWithConcurrency,
   CHAT_MESSAGE_DECRYPT_CONCURRENCY,
@@ -43,60 +39,12 @@ import type {
   TaskContinuationStart,
 } from "@cantrip/protocol";
 import { chatTitleEncryption } from "@/lib/chat-title-encryption";
+import {
+  ensurePrivateLabelWorkerEncryption,
+  type PrivateLabelWorkerEncryptionDescriptor,
+} from "@/lib/private-label-worker-encryption";
 import { openAttachmentOpaqueList } from "@/lib/attachment-encryption";
 import { chatAttachmentOpaqueListSchema } from "@cantrip/protocol/attachment-content";
-
-export async function getTaskWorkers() {
-  return taskWorkerListSchema.parse(
-    await request("/api/settings/task-workers"),
-  );
-}
-
-export async function createTaskWorker(input: TaskWorkerCreate) {
-  return taskWorkerSummarySchema.parse(
-    await request("/api/settings/task-workers", {
-      method: "POST",
-      body: JSON.stringify(taskWorkerCreateSchema.parse(input)),
-    }),
-  );
-}
-
-export async function updateTaskWorker(
-  taskWorkerId: string,
-  input: TaskWorkerUpdate,
-) {
-  return taskWorkerSummarySchema.parse(
-    await request(
-      `/api/settings/task-workers/${encodeURIComponent(taskWorkerId)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(taskWorkerUpdateSchema.parse(input)),
-      },
-    ),
-  );
-}
-
-export async function deleteTaskWorker(
-  taskWorkerId: string,
-  rowVersion: number,
-): Promise<void> {
-  await request(
-    `/api/settings/task-workers/${encodeURIComponent(taskWorkerId)}`,
-    {
-      method: "DELETE",
-      body: JSON.stringify(taskWorkerDeleteSchema.parse({ rowVersion })),
-    },
-  );
-}
-
-export async function reorderTaskWorkers(input: TaskWorkerOrderUpdate) {
-  return taskWorkerListSchema.parse(
-    await request("/api/settings/task-workers/order", {
-      method: "PUT",
-      body: JSON.stringify(taskWorkerOrderUpdateSchema.parse(input)),
-    }),
-  );
-}
 
 export async function getProjectTaskPauseState(projectId: string) {
   return projectTaskPauseStateSchema.parse(
@@ -177,6 +125,58 @@ export async function getTask(chatId: string) {
   );
 }
 
+export async function getTaskInferenceRoute(
+  chatId: string,
+  identity: ClientSessionIdentitySnapshot,
+  signal?: AbortSignal,
+) {
+  const result = taskInferenceRouteViewSchema.parse(
+    await request(
+      `/api/tasks/${encodeURIComponent(chatId)}/inference-route`,
+      { signal },
+      { expectedIdentity: identity },
+    ),
+  );
+  if (
+    result.chatId !== chatId ||
+    (result.source && result.source.chatId !== chatId) ||
+    (result.latest && result.latest.source.chatId !== chatId)
+  )
+    throw new Error("The Task provider state belongs to another chat.");
+  return result;
+}
+
+export async function changeTaskInferenceRoute(
+  chatId: string,
+  identity: ClientSessionIdentitySnapshot,
+  input: TaskInferenceRouteChangeRequest,
+) {
+  const result = taskInferenceRouteChangeSchema.parse(
+    await request(
+      `/api/tasks/${encodeURIComponent(chatId)}/inference-route`,
+      {
+        method: "POST",
+        body: JSON.stringify(
+          taskInferenceRouteChangeRequestSchema.parse(input),
+        ),
+      },
+      { expectedIdentity: identity },
+    ),
+  );
+  if (
+    result.source.chatId !== chatId ||
+    result.operationId !== input.operationId ||
+    result.inputOperationId !== input.inputOperationId ||
+    result.expectedRevision !== input.expectedRevision ||
+    result.targetModelRouteId !== input.targetModelRouteId ||
+    result.targetProviderAccountId !== input.targetProviderAccountId
+  )
+    throw new Error(
+      "The Task provider receipt does not match the requested change.",
+    );
+  return result;
+}
+
 export async function recoverTaskImplementation(chatId: string) {
   return openTaskOpaqueSummary(
     await post(`/api/tasks/${encodeURIComponent(chatId)}/recover`, {}),
@@ -236,9 +236,16 @@ async function queueTaskOperation(
   chatId: string,
   path: "start" | "plan" | "continue" | "begin-implementation" | "retry",
   input: TaskOperationStart,
+  automaticTitleWorker?: PrivateLabelWorkerEncryptionDescriptor,
 ) {
   const current = await getTask(chatId);
   assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
+  if (automaticTitleWorker) {
+    // The Task can queue if its worker cannot accept the optional label key.
+    await ensurePrivateLabelWorkerEncryption({
+      worker: automaticTitleWorker,
+    }).catch(() => undefined);
+  }
   return openTaskOpaqueSummary(
     await post(`/api/tasks/${encodeURIComponent(chatId)}/${path}`, {
       operationId: input.operationId,
@@ -250,15 +257,17 @@ async function queueTaskOperation(
 export async function startTaskPlanning(
   chatId: string,
   input: TaskOperationStart,
+  automaticTitleWorker?: PrivateLabelWorkerEncryptionDescriptor,
 ) {
-  return queueTaskOperation(chatId, "plan", input);
+  return queueTaskOperation(chatId, "plan", input, automaticTitleWorker);
 }
 
 export async function startTaskDirectly(
   chatId: string,
   input: TaskOperationStart,
+  automaticTitleWorker?: PrivateLabelWorkerEncryptionDescriptor,
 ) {
-  return queueTaskOperation(chatId, "start", input);
+  return queueTaskOperation(chatId, "start", input, automaticTitleWorker);
 }
 
 export async function updateTaskPlan(chatId: string, input: TaskPlanUpdate) {

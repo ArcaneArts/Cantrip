@@ -63,6 +63,14 @@ export function placementWireFixtures(label) {
     };
   });
   const fixtures = {
+    executionTargetSchema: targets,
+    executionTargetResourceKindSchema: [
+      "project",
+      "worker",
+      "replica",
+      "worktree",
+      ...surfaceKinds,
+    ],
     chatWireSummarySchema: [
       {
         id: "chat",

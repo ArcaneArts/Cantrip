@@ -3,6 +3,7 @@ use codex_extension_api::ConversationHistorySnapshot;
 use codex_extension_api::ResponseItem;
 use codex_guardian_context::ContextTarget;
 use codex_protocol::AgentPath;
+use codex_protocol::ResponseItemId;
 use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
@@ -23,6 +24,19 @@ use super::MAX_TOOL_ENTRY_TOKENS;
 use super::MAX_TOOL_TRANSCRIPT_TOKENS;
 use super::TranscriptConfig;
 use super::TranscriptSource;
+
+// Existing rendering tests exercise the same fresh-conversation preparation and
+// delivery filtering as the classifier, without retaining the snapshot formatter.
+impl super::TranscriptConfig {
+    fn build_context(
+        &self,
+        input: ContextInput<'_>,
+    ) -> Result<codex_guardian_context::ComposedContext, codex_guardian_context::SectionError> {
+        let (mut context, _) = self.collect_context(input)?.compose(/*cursor*/ None, &[])?;
+        context.retain_new_instructions(&[]);
+        Ok(context)
+    }
+}
 
 struct TestConversationHistory<'a>(&'a [ResponseItem]);
 
@@ -1258,7 +1272,7 @@ fn transcript_omits_media_payloads_and_keeps_readable_content() {
 
 #[test]
 fn transcript_preserves_encrypted_agent_messages_and_omits_other_encrypted_fields() {
-    let items = vec![
+    let mut items = vec![
         ResponseItem::AgentMessage {
             id: None,
             author: "worker".to_string(),
@@ -1303,6 +1317,9 @@ fn transcript_preserves_encrypted_agent_messages_and_omits_other_encrypted_field
             internal_chat_message_metadata_passthrough: None,
         },
     ];
+    let mut native = items[0].clone();
+    native.set_id(Some(ResponseItemId::from_server("amsg_parent".to_owned())));
+    items.extend([native.clone(), native.clone()]);
 
     let context = TranscriptConfig::default()
         .build_context(ContextInput {
@@ -1319,7 +1336,14 @@ fn transcript_preserves_encrypted_agent_messages_and_omits_other_encrypted_field
         })
         .expect("collect transcript")
         .into_messages();
-    assert_eq!(context[1], items[0]);
+    assert_eq!(
+        context
+            .iter()
+            .filter(|item| matches!(item, ResponseItem::AgentMessage { .. }))
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec![items[0].clone(), native]
+    );
     let text = context
         .iter()
         .filter_map(|item| match item {
@@ -1343,7 +1367,7 @@ trait TranscriptEntries {
     fn transcript_entries(self) -> Vec<String>;
 }
 
-impl TranscriptEntries for super::RenderedContext {
+impl TranscriptEntries for codex_guardian_context::ComposedContext {
     fn transcript_entries(self) -> Vec<String> {
         let messages = self.into_messages();
         let [ResponseItem::Message { role, content, .. }] = messages.as_slice() else {

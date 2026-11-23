@@ -129,8 +129,8 @@ IDE-only.
 
 ## Tool catalog
 
-The complete IDE catalog contains 44 tools. Read-only and mutation annotations
-are attached per tool. Cantrip narrows Codex's enabled tool list to the current
+The IDE catalog attaches read-only and mutation annotations per tool.
+Cantrip narrows Codex's enabled tool list to the current
 permission profile, so read-only bindings receive the Run configuration read
 tools but not authoring, lifecycle, or secret mutations; the broker and server
 independently enforce the same boundary. The standalone profile is a strict
@@ -138,6 +138,14 @@ three-tool subset, and `tool_help` only advertises tools in the active profile.
 
 | Tool                            | Kind                            | Purpose                                                                                         |
 | ------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `task_create`                   | Mutation                        | Queue a normal Task from a description using the caller's model, with Goal mode off.            |
+| `task_list`                     | Read                            | Page through project Tasks with exact IDs, model, state, and dispatch status.                   |
+| `task_status`                   | Read                            | Inspect one or multiple project Task IDs.                                                       |
+| `task_wait`                     | Read                            | Wait for all specified Tasks or race until any Task finishes.                                   |
+| `chat_list`                     | Read                            | List accessible Agent chats in the current project, with stable IDs and status.                 |
+| `chat_read`                     | Read                            | Read bounded text history with agent attribution, paging, and a change cursor.                  |
+| `chat_send`                     | Mutation                        | Send an attributed message through another Agent chat's normal queue.                           |
+| `chat_wait`                     | Read                            | Wait up to 30 seconds for messages, streaming edits, pause changes, or status changes.          |
 | `context_get`                   | Read                            | Return validated task scope plus exact current context occupancy when Codex has reported it.    |
 | `context_compact`               | Mutation                        | Schedule native Codex context compaction at the safe idle boundary after the current turn.      |
 | `tool_help`                     | Read                            | Return exact generated input JSON Schema, examples, and notes for one Cantrip MCP tool.         |
@@ -260,3 +268,63 @@ the explicit empty dynamic-tool override on resume. See
 [`CODEX_RUNTIME_COMPATIBILITY.md`](CODEX_RUNTIME_COMPATIBILITY.md),
 [`LIVE_TRANSPORT.md`](LIVE_TRANSPORT.md), and
 [`HOSTED_SECURITY_ARCHITECTURE.md`](HOSTED_SECURITY_ARCHITECTURE.md).
+
+## Messages between Agent chats
+
+The four `chat_*` tools operate on active Agent chats owned by the same account
+in the bound project. They use stable Cantrip chat IDs, so the destination may
+have a different worker, provider account, or native thread. Standalone Chats,
+Tasks, archived chats, and other projects are outside this tool scope.
+
+`chat_send` requires a UUID `operationId`. Reuse it when retrying the same send.
+Queue admission and both encrypted transcript records commit in one transaction;
+retries retain the original delivery, including after server restart. The target
+keeps its current model configuration and permissions. Busy chats queue the
+message, paused chats remain paused, and the ordinary queue dispatcher handles
+idle chats. No native collaboration tree is created or modified.
+
+The sender sees the full message in a **Sent to [chat] · Agent** bubble. The
+recipient sees **From [chat] · Agent**, with an agent icon instead of a human
+avatar. These rows remain outside collapsed tool groups, and received messages
+cannot be edited and resent as human input. Protected content carries the sender
+and recipient names, IDs, and delivery identity. Model-visible queued input also
+identifies the source as another agent. The server routes only encrypted bodies
+and labels; it never needs to decrypt them.
+
+`chat_read` returns chronological messages within a bounded history page. Use
+`page.nextBeforeSequence` to read older pages and `cursor` as `chat_wait`'s
+`afterCursor`. The change cursor is independent of the requested history page
+and includes recent encrypted content revisions, so streaming changes wake a
+wait even when no new message ID appears. A wait never starts, resumes, or
+interrupts the target. Text output is capped with `maxChars`, prioritizing the newest messages;
+attachment and activity payloads are omitted. Pending delivery cards do not
+create turn boundaries while another turn is running. Once the queued input
+starts, its attributed prompt replaces the receipt in the visible transcript.
+
+## Creating and waiting for Tasks
+
+Project agents can delegate ordinary Tasks with `task_create`. Supply a
+`description`, an optional `title`, and a fresh UUID `operationId`. The server
+inherits the calling chat's model and reasoning configuration and always queues
+direct execution with Goal mode disabled. Task scheduling, capacity limits,
+permission checks, and project pause controls still apply. The task title and
+description remain encrypted; only the worker opens them. Creation does not
+open or rearrange the user's tabs.
+
+Reuse the same `operationId` only when retrying the same creation. The caller
+and operation identify one Task, including when the original response was lost
+or admission was interrupted. Retrying an existing Task never restarts it.
+`task_list` returns project Tasks in bounded pages; `task_status` accepts up to
+50 exact IDs. Both include task state, scheduling state, model configuration,
+and a `terminal` flag. Deleted, archived, and inaccessible IDs appear in
+`missingTaskIds` without exposing another project's Tasks.
+
+Use `task_wait` with `taskIds` and `mode: "all"` to wait for every task, or
+`mode: "any"` to return when the first finishes. A final failure counts as
+finished, while scheduled automatic retries, queued/running dispatches, paused
+tasks, and blocked tasks remain unfinished. Missing IDs return immediately.
+`timeoutMs: 0` (the default) holds the tool call until completion, cancellation,
+or expiry of the active turn binding. A positive timeout returns the current
+snapshot with `timedOut: true`. Waiting does not resume Tasks, and a Task cannot
+wait for itself. The broker batches status checks once per second and cancels
+the wait when its MCP request disconnects or its execution binding is revoked.

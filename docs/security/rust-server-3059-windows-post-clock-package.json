@@ -1,0 +1,338 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "target": "win32-x64",
+  "completeReplacement": false,
+  "serverSourceCommit": "cdba080907df32759458d6efed55c4d38f8236dc",
+  "serverSourceTree": "231eebb40ca362eb9bff23d0ce1e32420228f184",
+  "serverSha256": "290c60f27e15e5cd2c1110cad05ba413648904e84ffb8f5e7ffc72e0e79ac459",
+  "guest": "Windows 11 Enterprise Evaluation x64 under QEMU software emulation on macOS ARM64",
+  "standalone": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-871f62ae9-retry.gso8SAsC/extracted/cantrip-server-1.1.3059-win32-x64.tar.gz",
+      "bytes": 97803749,
+      "sha256": "13bbdc1e261029dd21a769edac88d30a27fd67e741b17477b1ddaf1b44673b46"
+    },
+    "manifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-871f62ae9-retry.gso8SAsC/extracted/native-server.json",
+      "bytes": 407860,
+      "sha256": "40152ba36c585be91e6bff8314ec1ab984787123a1086f58a129df386c05385b"
+    },
+    "acceptance": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-871f62ae9-retry.gso8SAsC/extracted/acceptance.json",
+      "bytes": 104994,
+      "sha256": "4ebdfe4f195abbd032b3763b296b26760a643d7c76db9f7a3efa232904ca2512"
+    },
+    "guestReceipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-871f62ae9-retry.gso8SAsC/extracted/receipt.json",
+      "bytes": 3569,
+      "sha256": "96cc2c9252df75f9d7ba3a8a6b5e131071e5547bd02ad069a12b5fe55cd31393"
+    },
+    "verifiedManifestFiles": 2281,
+    "serverRuntimePathHasNoNode": true,
+    "windowsLauncherEncodingVerified": true,
+    "shutdownMethod": "supervision-stdin-close",
+    "cleanSupervisionExits": 13,
+    "maximumShutdownMs": 6680,
+    "storageModes": [
+      {
+        "mode": "pglite",
+        "engine": "pglite",
+        "startupMs": [184884.445, 1899.598, 1646.002, 1668.858],
+        "sqlExport": {
+          "format": "postgresql-sql",
+          "databaseEngine": "pglite",
+          "bytes": 493335,
+          "sha256": "e2537bb57bb302f5189f33b683fb4c6daf0aa9474e2636f57c3e17e637a607b3",
+          "psqlGuardsRemoved": 2,
+          "portableTransactionTimeout": true
+        },
+        "verifiedBehavior": [
+          "configuration precedence",
+          "native migration launcher",
+          "native SQL export",
+          "settings persistence across restart",
+          "hosted reopen",
+          "supervision stdin shutdown"
+        ]
+      },
+      {
+        "mode": "bundled-postgres",
+        "engine": "postgres",
+        "startupMs": [
+          128029.381, 8118.043, 7894.984, 6808.028, 6475.014, 6651.458
+        ],
+        "sqlExport": {
+          "format": "postgresql-sql",
+          "databaseEngine": "postgres",
+          "bytes": 493560,
+          "sha256": "53b51fe26d771180e85ade7b253c073d58548b7fb1be14d504f5cdc396063741",
+          "psqlGuardsRemoved": 2,
+          "portableTransactionTimeout": true
+        },
+        "verifiedBehavior": [
+          "configuration precedence",
+          "native migration launcher",
+          "native SQL export",
+          "settings persistence across restart",
+          "hosted reopen",
+          "supervision stdin shutdown"
+        ]
+      },
+      {
+        "mode": "postgres",
+        "engine": "postgres",
+        "startupMs": [29066.599, 2715.669, 2712.062],
+        "sqlExport": {
+          "format": "postgresql-sql",
+          "databaseEngine": "postgres",
+          "bytes": 493560,
+          "sha256": "432cd6816db15b02bcfae7df252a3717350ac5b1f7c44c77a5f0371ed03b9da0",
+          "psqlGuardsRemoved": 2,
+          "portableTransactionTimeout": true
+        },
+        "verifiedBehavior": [
+          "configuration precedence",
+          "native migration launcher",
+          "native SQL export",
+          "settings persistence across restart",
+          "hosted reopen",
+          "supervision stdin shutdown"
+        ]
+      }
+    ]
+  },
+  "desktopPackage": {
+    "appBuildSourceCommit": "34d4b14ed492b02cde8c1d5108a6eb35ac7bc0a2",
+    "bundleSourceCommit": "b4ef18d63a8ea50d6b956d19d8721b54fca3a103",
+    "installer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/Cantrip_1.1.3059_x64-setup.exe",
+      "bytes": 256883449,
+      "sha256": "cf6e01dea29010e8f3071a292305241b56896d41fcdb0a80865d117dd3f05c56"
+    },
+    "localQaUpdaterSignature": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/Cantrip_1.1.3059_x64-setup.exe.sig",
+      "bytes": 420,
+      "sha256": "9d0c75e22f32e93d3cb685fe086f53467d1700d4b7ab6a05d53da73dae5bd96b"
+    },
+    "minisignVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/desktop-minisign-verification.log",
+      "bytes": 115,
+      "sha256": "7f8a6665048eab784bf9defabee1b7d59abcd9955797efcf33810ffc9075b98e"
+    },
+    "payloadManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/desktop-nsis-runtime-manifest.json",
+      "bytes": 2505120,
+      "sha256": "17e35f507cc4c8d92d5041f61fc8a088d336ba0ccf664805734ec841a7a4bef9"
+    },
+    "executableMarkerVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/desktop-nsis-app-marker.json",
+      "bytes": 334,
+      "sha256": "c62a7f63becdfc7dbc1b3b8c61c29855960bf86e1c62d8ff4a507fe75a269522"
+    },
+    "verifiedPayloadFiles": 14085,
+    "appSha256": "d65a47949658ac5eee8ff80a35d064676216151758752554c836ad3db9ec367d",
+    "serverSha256": "290c60f27e15e5cd2c1110cad05ba413648904e84ffb8f5e7ffc72e0e79ac459",
+    "workerVersion": "1.1.3059",
+    "workerSha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+    "scope": "All NSIS app and runtime bytes match the build inputs after applying the three-byte Tauri NSIS bundle marker to the expected app executable. The local QA updater signature verifies. Production signing and the updater installation path for this exact artifact remain open."
+  },
+  "installedDesktop": {
+    "scope": "Windows 11 x64 guest installs the exact NSIS, starts the Rust server on loopback and owns the packaged Node worker. Each database retains its identity and saved setting on reopen. All cases use the actual tray quit action. The app reaps its services and bundled database. External PostgreSQL survives app shutdown.",
+    "windowsGuest": "Windows 11 Enterprise Evaluation x64 under QEMU software emulation on macOS ARM64",
+    "cleanTrayQuits": 6,
+    "guestReceiptsMatchSerial": true,
+    "hostObserver": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/installed-observer.jsonl",
+      "bytes": 7848,
+      "sha256": "6b9a6bbd14ca8719cbc39718b41202f55a265655b0f34874d6820414fcc907ca"
+    },
+    "collector": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/installed-collection.json",
+      "bytes": 4090,
+      "sha256": "4b0a12f70158f59d8e9dbbbe787fac82484e4b31f14708acce1dc80eabc69cf5"
+    },
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "reopen": false,
+        "profileConfiguration": "explicit-initial-configuration",
+        "engine": "pglite",
+        "secondsToReadyLoopbackListener": 203.796,
+        "guestReceipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/installed-receipts/installed-3059-pglite.json",
+          "bytes": 987,
+          "sha256": "1cded51adad6495638c012574cddbe4fae5b75e75bcdf629b40f0bce063ab0db"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/pglite-initial-14280-tray-menu.png",
+          "bytes": 55690,
+          "sha256": "8e7ab33020a6998e84e05c7c19f709f1b54f397d206c3fc3a8c9fe7680fb1f80"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/pglite-initial-14280-quit-confirmation.png",
+          "bytes": 64548,
+          "sha256": "9f25c8260f76b780690aa548dabf3608441c819b20d8c13e5cc8488d8b1c541e"
+        },
+        "anonymousRecoveryConfirmed": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/pglite-initial-14280-anonymous-recovery-confirmation.png",
+          "bytes": 62938,
+          "sha256": "fe08e19aef4730ec0096476833e987d7344a5d9cadd2ba02f2e894ed8bf7a418"
+        },
+        "workerVersion": "1.1.3059",
+        "cleanAppAndServicesExit": true,
+        "retainedIdentityAndSettings": false,
+        "bundledPostgresStopped": null,
+        "externalPostgresSurvived": null
+      },
+      {
+        "databaseMode": "pglite",
+        "reopen": true,
+        "profileConfiguration": "persisted-profile",
+        "engine": "pglite",
+        "secondsToReadyLoopbackListener": 42.522,
+        "guestReceipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/installed-receipts/installed-3059-pglite-reopen.json",
+          "bytes": 972,
+          "sha256": "8f3b9ee38e571304956850dfbbda76d2f76dfe9b5ff74c916a6dc9f5687ac1bd"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/pglite-reopen-15696-tray-menu.png",
+          "bytes": 55662,
+          "sha256": "b9a8d087c620fa77495eadf8fd1012e8f69ae33a5843afa22dbeb39362851185"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/pglite-reopen-15696-quit-confirmation.png",
+          "bytes": 64519,
+          "sha256": "040613dd4a492710cca0d5e8a76a9ef6abe107b4c29fe7ce54f75755024985dc"
+        },
+        "anonymousRecoveryConfirmed": null,
+        "workerVersion": "1.1.3059",
+        "cleanAppAndServicesExit": true,
+        "retainedIdentityAndSettings": true,
+        "bundledPostgresStopped": null,
+        "externalPostgresSurvived": null
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "reopen": false,
+        "profileConfiguration": "explicit-initial-configuration",
+        "engine": "postgres",
+        "secondsToReadyLoopbackListener": 150.118,
+        "guestReceipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/installed-receipts/installed-3059-bundled-postgres.json",
+          "bytes": 1293,
+          "sha256": "7357aa462606b26a8947d5ee7b54a027f5c8e06addacc9d6c6e53e491c0914bb"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/bundled-postgres-initial-7040-tray-menu.png",
+          "bytes": 55705,
+          "sha256": "6d53f64ac8a37b2aa7a5f67013d9af0f17eb0f75453e7dc96dfc424880698843"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/bundled-postgres-initial-7040-quit-confirmation.png",
+          "bytes": 64565,
+          "sha256": "33f13650c06233d7f0773fc3f7c66a08e91ae348838918be80e75e8a64a38852"
+        },
+        "anonymousRecoveryConfirmed": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/bundled-postgres-initial-7040-anonymous-recovery-confirmation.png",
+          "bytes": 61959,
+          "sha256": "89737d41135c7e437cd9223ab720f8fd9cf15c4eaa9019046f2ca6f1bde25226"
+        },
+        "workerVersion": "1.1.3059",
+        "cleanAppAndServicesExit": true,
+        "retainedIdentityAndSettings": false,
+        "bundledPostgresStopped": true,
+        "externalPostgresSurvived": null
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "reopen": true,
+        "profileConfiguration": "persisted-profile",
+        "engine": "postgres",
+        "secondsToReadyLoopbackListener": 42.794,
+        "guestReceipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/installed-receipts/installed-3059-bundled-postgres-reopen.json",
+          "bytes": 1278,
+          "sha256": "6200ee7fe93dc2f192cbe6b25fb6114c7fb78b46cfefa3543bc380fec189f28c"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/bundled-postgres-reopen-13452-tray-menu.png",
+          "bytes": 55704,
+          "sha256": "1b0215b8629fb605a6197f321997c40f041f658cdca7597e68562f7281e47125"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/bundled-postgres-reopen-13452-quit-confirmation.png",
+          "bytes": 64564,
+          "sha256": "9a350bc457044f56bf538d50f59015e8b54bf73b20e5d25fbb5e6ebf55bca918"
+        },
+        "anonymousRecoveryConfirmed": null,
+        "workerVersion": "1.1.3059",
+        "cleanAppAndServicesExit": true,
+        "retainedIdentityAndSettings": true,
+        "bundledPostgresStopped": true,
+        "externalPostgresSurvived": null
+      },
+      {
+        "databaseMode": "postgres",
+        "reopen": false,
+        "profileConfiguration": "explicit-initial-configuration",
+        "engine": "postgres",
+        "secondsToReadyLoopbackListener": 53.438,
+        "guestReceipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/installed-receipts/installed-3059-postgres.json",
+          "bytes": 1032,
+          "sha256": "d54fdbd58272ec76e6036a989feedaa2265cad26ecd4880b431a9995599fd3c9"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/postgres-initial-808-tray-menu.png",
+          "bytes": 55691,
+          "sha256": "d01eb0128104662ae1a0767de24631d6d93134ca319e11174208f9b24f343a55"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/postgres-initial-808-quit-confirmation.png",
+          "bytes": 64609,
+          "sha256": "3ddc1d8127c4c81088dc33709631ce74c016fb120942a97df3cb11da64c6fe1c"
+        },
+        "anonymousRecoveryConfirmed": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/postgres-initial-808-anonymous-recovery-confirmation.png",
+          "bytes": 62179,
+          "sha256": "c394fc4616dbedd75c45aa3ab952f1f835d98b15d4814cd50bbda6ca661600ce"
+        },
+        "workerVersion": "1.1.3059",
+        "cleanAppAndServicesExit": true,
+        "retainedIdentityAndSettings": false,
+        "bundledPostgresStopped": null,
+        "externalPostgresSurvived": true
+      },
+      {
+        "databaseMode": "postgres",
+        "reopen": true,
+        "profileConfiguration": "persisted-profile",
+        "engine": "postgres",
+        "secondsToReadyLoopbackListener": 45.163,
+        "guestReceipt": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/installed-receipts/installed-3059-postgres-reopen.json",
+          "bytes": 1019,
+          "sha256": "3f3acfe49606537bf38e9d2943b3aab75911df3b01f6e7cb7c3226baba455143"
+        },
+        "trayMenu": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/postgres-reopen-9572-tray-menu.png",
+          "bytes": 55748,
+          "sha256": "c46feb781114451da208ac4e9696a403f7821f2d8abf9039523ff58d41c449b0"
+        },
+        "quitConfirmation": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-post-clock.icj13n9A/ui/postgres-reopen-9572-quit-confirmation.png",
+          "bytes": 76813,
+          "sha256": "835fd7a0e1b4bf80915eb4b510e4f758606332294fea9380f7a6d641b8d1a14e"
+        },
+        "anonymousRecoveryConfirmed": null,
+        "workerVersion": "1.1.3059",
+        "cleanAppAndServicesExit": true,
+        "retainedIdentityAndSettings": true,
+        "bundledPostgresStopped": null,
+        "externalPostgresSurvived": true
+      }
+    ]
+  }
+}

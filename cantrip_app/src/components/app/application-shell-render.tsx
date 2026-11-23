@@ -4,7 +4,7 @@ import type { ChatSummary, TerminalSummary } from "@cantrip/protocol";
 import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import { TabColorDialogHost } from "@/components/workspace/tab-color";
 import { useCallback, useEffect, useState } from "react";
-import { RunConfigurationControl } from "@/components/run/run-configuration-control";
+import { RunSourceControl } from "@/components/run/run-source-control";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
@@ -46,7 +46,6 @@ function ShellContent({
     showProjectSettings,
     showServerAdmin,
     showSettings,
-    showProjectOverview,
     tabLayout,
     workspaceSelection,
   } = bindings;
@@ -65,7 +64,6 @@ function ShellContent({
     showProjectSettings,
     showServerAdmin,
     showSettings,
-    showProjectOverview,
     workspaceDestination: workspaceSelection.destination,
   });
   return (
@@ -301,7 +299,7 @@ export function ApplicationShellRender({
     !isPopout && (desktopSidebarDrawer || sidebarCollapsed);
   const renderProjectRunConfigurationControl = (compact: boolean) =>
     selectedProject ? (
-      <RunConfigurationControl
+      <RunSourceControl
         compact={compact}
         editorConfigurationId={runConfigurationEditorId}
         error={
@@ -322,10 +320,9 @@ export function ApplicationShellRender({
     ) : null;
   const renderBindings = {
     ...bindings,
-    codeSurfaceVisible: codeSurfaceVisible && !bindings.showProjectOverview,
+    codeSurfaceVisible,
     renderAgentPanelActions,
-    explorerSurfaceVisible:
-      explorerSurfaceVisible && !bindings.showProjectOverview,
+    explorerSurfaceVisible,
     mobileSettingsSectionOpen,
     mobileSurfacePickerOpen,
     renderProjectRunConfigurationControl,
@@ -333,8 +330,7 @@ export function ApplicationShellRender({
     setMobileSurfacePickerOpen,
     sidebarExpanded,
     sidebarToggleVisible,
-    terminalSurfaceVisible:
-      terminalSurfaceVisible && !bindings.showProjectOverview,
+    terminalSurfaceVisible,
   };
 
   return (

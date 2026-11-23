@@ -177,3 +177,79 @@
 .cantrip-editor-input[readonly] {
   caret-color: transparent;
 }
+
+.cantrip-editor-find {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: min(370px, calc(100% - 16px));
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--popover, var(--background));
+  color: var(--foreground);
+  box-shadow: 0 4px 16px #0002;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 20px;
+}
+.cantrip-editor-find:focus-within {
+  border-color: var(--ring);
+}
+.cantrip-editor-find input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  padding: 2px 4px;
+  font: inherit;
+}
+.cantrip-editor-find-count {
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cantrip-editor-find button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.cantrip-editor-find button:hover {
+  background: var(--accent);
+}
+.cantrip-editor-find button:focus-visible {
+  outline: 2px solid var(--ring);
+}
+.cantrip-editor-find button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.cantrip-editor-find svg {
+  width: 14px;
+  height: 14px;
+}
+.cantrip-editor-find-match {
+  color: inherit;
+  background: color-mix(in srgb, var(--primary) 28%, transparent);
+  outline: 1px solid var(--primary);
+  border-radius: 2px;
+}
+
+/* Keep the current match visible even when a narrow panel's chip fills its width. */
+.cantrip-editor[data-find-open="true"] {
+  padding-top: 44px;
+}

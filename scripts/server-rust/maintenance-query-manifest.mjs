@@ -2,9 +2,9 @@
 // This development export supplies diagnostics after real native query failures.
 import { createRequire } from "node:module";
 import { writeFile } from "node:fs/promises";
-import { TerminalRepository } from "../../cantrip_server/src/db/repository/terminals.ts";
+import { TerminalRepository } from "../../tests/reference-node-server/src/db/repository/terminals.ts";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 const captured = [];

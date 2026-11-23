@@ -1,0 +1,497 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "sourceBaseline": "b20585de1e4fbce9c120d26d7bfc6da026de5767",
+  "artifactSourceCommit": "f820371ea602a2493f2e6beca6438cc188446580",
+  "scope": "Exact macOS ARM64 standalone archive and Linux ARM64/x64 container images. The real browser and the full Node worker connect through opposite server peers. Isolated external PostgreSQL and Redis run locally. The controlled loopback provider sends its reply while both dependencies remain stopped. PostgreSQL recovers before Redis.",
+  "nodeReferenceSourceTree": "3b67d65df364e06ddd97e949564046e269101831",
+  "workerEntry": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/worker/dist/index.js",
+    "bytes": 391720,
+    "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+  },
+  "workerVersion": "1.1.3059",
+  "nodeVersion": "v24.22.1",
+  "postgresVersion": "postgres (PostgreSQL) 18.6 (Homebrew)",
+  "redisVersion": "8.10.3",
+  "macosArtifact": {
+    "archive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-private-redis-ca.0bnpqW3N/cantrip-server-1.1.3059-darwin-arm64.tar.zst",
+      "bytes": 63134019,
+      "sha256": "8524cc99886b24bcc19bd25245f2846ff631f3ef28358bee8599d821ad812abf"
+    },
+    "verifiedPackage": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/verified-macos-package.json",
+      "bytes": 382,
+      "sha256": "0c288ce928545792cea8ab9b1fdd61c9f26b771e7c387b4e64d9f31defe57a34"
+    }
+  },
+  "linuxImages": {
+    "arm64": {
+      "imageArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/arm64/cantrip-server-1.1.3059-linux-arm64.image.tar.zst",
+        "bytes": 177474699,
+        "sha256": "1d64e964fc1510d9953a19600433a08a0b1cbebdc7cebcf5c72832175208f6e4"
+      },
+      "imageDigest": "sha256:02bb9cc4bc4644465882ae7013aa3ba999d79cb3850f319d50c4e7c0ebc40398",
+      "serverSha256": "b802ee28a32e6df25be91da62ead44d3735ecc834fe0d41cc8a83b70be420898"
+    },
+    "x64": {
+      "imageArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-private-redis-ca.p5NnnnBN/images/x64/cantrip-server-1.1.3059-linux-x64.image.tar.zst",
+        "bytes": 180713775,
+        "sha256": "0e0a675396947207fc99ab3fd905de5e224e3d479fa61401f24b772e042fc8a8"
+      },
+      "imageDigest": "sha256:a315ba94431a64f991e5b49875228f77510002fbb70886261506f9ed37b7a144",
+      "serverSha256": "f85dcfe460eaeb915c57f6b726edea03cffc556891e7688d38e4db61b9e4ebd4"
+    }
+  },
+  "x64PackageProof": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/verified-x64-package.json",
+    "bytes": 298,
+    "sha256": "e2a90d7aa7d8bb157b7c664d0fe7b7a1d519b7538396dd606fc89eb49fa6ad62"
+  },
+  "driverInputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/driver-inputs.sha256",
+    "bytes": 843,
+    "sha256": "9df9b4ed668237cc4846ac5d5765032d38425d94a8d479342686d1bb88472e8d"
+  },
+  "runner": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/run-case.sh",
+    "bytes": 2942,
+    "sha256": "5047d0795daed24d3c8118c0229868803b49811b94a101b15bf1670bcde30ffc"
+  },
+  "commonInterruptedDecisionOutcome": {
+    "ok": false,
+    "name": "CantripApiError",
+    "code": "model-operation-unavailable",
+    "status": 502,
+    "message": "The decision worker operation could not be completed. It was not automatically retried."
+  },
+  "postgresOnlyRegression": {
+    "modelOperations": 14,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-postgres-only.json",
+      "bytes": 529751,
+      "sha256": "e5a1b18580a4cac2b85b72c9deade345465099013c739e9ef8b3817ca2c49b2b"
+    },
+    "exit": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-postgres-only.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-postgres-only.log",
+      "bytes": 1928,
+      "sha256": "3f845c2097b4b12a7fdfc8c72b3bd12aa1be714c356bc1ec994849d973f408d9"
+    },
+    "runner": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/run-postgres-only.sh",
+      "bytes": 2859,
+      "sha256": "db0ba2d01567155a4e910ac83e82b8c03666ee3ae4888d46ce6c6b8b63fa9c48"
+    }
+  },
+  "cases": [
+    {
+      "platform": "darwin-arm64",
+      "pairing": "node/node",
+      "redisOfflineMs": 58151,
+      "bothOfflineMs": 50006,
+      "providerRepliedAfterOverlapMs": 20057,
+      "browserSettledWhileBothOffline": false,
+      "readinessWhileBothOffline": [
+        {
+          "timeoutMs": 5000
+        },
+        {
+          "timeoutMs": 5000
+        }
+      ],
+      "livenessWhileBothOffline": [200, 200],
+      "postgresRecoveredFirstReadiness": [503, 503],
+      "recoveredReadiness": [200, 200],
+      "firstDecisionStatus": 502,
+      "originalUsageStatus": "unknown",
+      "originalProviderRequests": 1,
+      "originalUsageReceipt": false,
+      "replayedUsageTransport": "replied",
+      "freshDecisionReceiptTokens": 10,
+      "originalWorkerContinuity": true,
+      "cleanServerExits": 6,
+      "modelOperations": 14,
+      "providerRequests": 15
+    },
+    {
+      "platform": "darwin-arm64",
+      "pairing": "node/rust",
+      "redisOfflineMs": 51520,
+      "bothOfflineMs": 50005,
+      "providerRepliedAfterOverlapMs": 20055,
+      "browserSettledWhileBothOffline": false,
+      "readinessWhileBothOffline": [
+        {
+          "timeoutMs": 5000
+        },
+        503
+      ],
+      "livenessWhileBothOffline": [200, 200],
+      "postgresRecoveredFirstReadiness": [503, 503],
+      "recoveredReadiness": [200, 200],
+      "firstDecisionStatus": 502,
+      "originalUsageStatus": "unknown",
+      "originalProviderRequests": 1,
+      "originalUsageReceipt": false,
+      "replayedUsageTransport": "replied",
+      "freshDecisionReceiptTokens": 10,
+      "originalWorkerContinuity": true,
+      "cleanServerExits": 6,
+      "modelOperations": 14,
+      "providerRequests": 15
+    },
+    {
+      "platform": "darwin-arm64",
+      "pairing": "rust/node",
+      "redisOfflineMs": 55179,
+      "bothOfflineMs": 50005,
+      "providerRepliedAfterOverlapMs": 20054,
+      "browserSettledWhileBothOffline": false,
+      "readinessWhileBothOffline": [
+        503,
+        {
+          "timeoutMs": 5000
+        }
+      ],
+      "livenessWhileBothOffline": [200, 200],
+      "postgresRecoveredFirstReadiness": [503, 503],
+      "recoveredReadiness": [200, 200],
+      "firstDecisionStatus": 502,
+      "originalUsageStatus": "unknown",
+      "originalProviderRequests": 1,
+      "originalUsageReceipt": false,
+      "replayedUsageTransport": "replied",
+      "freshDecisionReceiptTokens": 10,
+      "originalWorkerContinuity": true,
+      "cleanServerExits": 6,
+      "modelOperations": 14,
+      "providerRequests": 15
+    },
+    {
+      "platform": "darwin-arm64",
+      "pairing": "rust/rust",
+      "redisOfflineMs": 45411,
+      "bothOfflineMs": 45009,
+      "providerRepliedAfterOverlapMs": 20054,
+      "browserSettledWhileBothOffline": false,
+      "readinessWhileBothOffline": [503, 503],
+      "livenessWhileBothOffline": [200, 200],
+      "postgresRecoveredFirstReadiness": [503, 503],
+      "recoveredReadiness": [200, 200],
+      "firstDecisionStatus": 502,
+      "originalUsageStatus": "unknown",
+      "originalProviderRequests": 1,
+      "originalUsageReceipt": false,
+      "replayedUsageTransport": "replied",
+      "freshDecisionReceiptTokens": 10,
+      "originalWorkerContinuity": true,
+      "cleanServerExits": 6,
+      "modelOperations": 14,
+      "providerRequests": 15
+    },
+    {
+      "platform": "linux-arm64",
+      "pairing": "rust/rust",
+      "redisOfflineMs": 45360,
+      "bothOfflineMs": 45054,
+      "providerRepliedAfterOverlapMs": 20055,
+      "browserSettledWhileBothOffline": false,
+      "readinessWhileBothOffline": [503, 503],
+      "livenessWhileBothOffline": [200, 200],
+      "postgresRecoveredFirstReadiness": [503, 503],
+      "recoveredReadiness": [200, 200],
+      "firstDecisionStatus": 502,
+      "originalUsageStatus": "unknown",
+      "originalProviderRequests": 1,
+      "originalUsageReceipt": false,
+      "replayedUsageTransport": "unavailable",
+      "freshDecisionReceiptTokens": 10,
+      "originalWorkerContinuity": true,
+      "cleanServerExits": 6,
+      "modelOperations": 14,
+      "providerRequests": 15
+    },
+    {
+      "platform": "linux-x64",
+      "pairing": "rust/rust",
+      "redisOfflineMs": 45374,
+      "bothOfflineMs": 45017,
+      "providerRepliedAfterOverlapMs": 20051,
+      "browserSettledWhileBothOffline": false,
+      "readinessWhileBothOffline": [503, 503],
+      "livenessWhileBothOffline": [200, 200],
+      "postgresRecoveredFirstReadiness": [503, 503],
+      "recoveredReadiness": [200, 200],
+      "firstDecisionStatus": 502,
+      "originalUsageStatus": "unknown",
+      "originalProviderRequests": 1,
+      "originalUsageReceipt": false,
+      "replayedUsageTransport": "unavailable",
+      "freshDecisionReceiptTokens": 10,
+      "originalWorkerContinuity": true,
+      "cleanServerExits": 6,
+      "modelOperations": 14,
+      "providerRequests": 15
+    }
+  ],
+  "reports": {
+    "darwin-arm64": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-overlap.json",
+        "bytes": 2455713,
+        "sha256": "eaf8b8c678f285fb2188dee827b72b89d5a107c55c735bc96163fa38dacc8bd0"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-overlap.log",
+        "bytes": 8136,
+        "sha256": "c9b8ebb15095fe70852a70b565fe067f3b6a8cc86ba935d844e998f19c11d763"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-overlap.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    "linux-arm64": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/arm64-overlap.json",
+        "bytes": 607953,
+        "sha256": "10b28240dd69e156455ec777607677161d3e19af30e610c9e179eac299075e81"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/arm64-overlap.log",
+        "bytes": 2143,
+        "sha256": "711fd89f1943b76cc949f6108cd7688eac13b75c20f1085056fd4daaca2a1ff0"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/arm64-overlap.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "containerGenerations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/arm64-overlap-generations.jsonl",
+        "bytes": 6126,
+        "sha256": "f9ab364260d65041a810114b14ed3da9620d9e732b023335c808f665e11d21e4"
+      },
+      "executableObservation": ["direct"]
+    },
+    "linux-x64": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/x64-overlap.json",
+        "bytes": 621539,
+        "sha256": "330e60e21182f44f4d30bfd2ee88297712434ab0e74189a4ad131569d434022d"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/x64-overlap.log",
+        "bytes": 2186,
+        "sha256": "5f2735d5c6ce5ab92f15b2664b02deba886be269f0868652fc07358ac2723993"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/x64-overlap.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "containerGenerations": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/x64-overlap-generations.jsonl",
+        "bytes": 6438,
+        "sha256": "bbd741bd4d89dc6852d4c1feec443a88348da06964c8e5ff517957a97ef3025f"
+      },
+      "executableObservation": ["mapped"]
+    }
+  },
+  "limitations": [
+    "The original 1.1.3059 packages are the PostgreSQL-first matrix. The fixed canonical macOS ARM64 package separately qualifies Redis-first recovery against both Rust and mixed peers.",
+    "The patched Linux images, installed Windows packages and other provider adapters retain separate qualification.",
+    "Linux x64 runs through Rosetta on the ARM64 host."
+  ],
+  "redisFirstRecovery": {
+    "baselineObservation": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/redis-first-baseline-comparison.json",
+      "bytes": 854,
+      "sha256": "e50c0eda6ee00734bffbb982ddd84a66101e20928e2f5b5f50cbbbc06646ca98"
+    },
+    "unpatchedRustReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-redis-first-rust.json",
+      "bytes": 617988,
+      "sha256": "f5e0872214d24df62f06b8b0a7ff86a24970faae2c496d97ddefb16a5edbc22e"
+    },
+    "unpatchedRustLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-redis-first-rust.log",
+      "bytes": 4943,
+      "sha256": "2310d9caa7394807432731666b948f18a757c50c511ad4378085a2cb96672056"
+    },
+    "unpatchedRustExit": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-redis-first-rust.exit",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    "referenceNodeReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-redis-first-node.json",
+      "bytes": 569097,
+      "sha256": "8653673b0f076820b9b65bde085acb0bfe2efb3423fd803d38ab448f77b27cf9"
+    },
+    "diagnosticRunner": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/run-redis-first-diagnostic.sh",
+      "bytes": 2958,
+      "sha256": "6e4a54c1e801a8b2778637662d932a6a4b29a3c2b5953c97e5bbd307ed35c6a1"
+    },
+    "pairedFixtureSource": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/actual-folder-redis-first-diagnostic.mjs",
+        "bytes": 92252,
+        "sha256": "bcca8fe47fb93a4fadd4af554f724db8e0794b9b2ece29490f4ecdbf4b8c42ed"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/actual-model-operations-redis-first-diagnostic.mjs",
+        "bytes": 43919,
+        "sha256": "b45f1a5fd4aab49e4d7a6bed8c48392fe53f610382f47cd5117440610126be4c"
+      }
+    ],
+    "fixedServer": {
+      "target": "darwin-arm64",
+      "version": "1.1.3059",
+      "sha256": "94803a23e54145af26bb21fe11afb32c178512d0afff02aa3b24254a401299bb",
+      "packageFiles": 1762,
+      "manifest": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/fixed-package-manifest.json",
+        "bytes": 325804,
+        "sha256": "31f639323af7e4706bbe3a4b60b369b8d886ce1bf9364c62d4fe5ede482e429a"
+      },
+      "archive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/cantrip-server-1.1.3059-usage-settlement-fix-darwin-arm64.tar.zst",
+        "bytes": 63286212,
+        "sha256": "32d0d6892870d63109232dfca7c9f064c82d481e598fbc1aac1cff51871eb30b"
+      },
+      "buildLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/package-fixed-macos.log",
+        "bytes": 1460,
+        "sha256": "9fa910e9b603d6c2366ca03cb19c60c51023384b6f92649af071a922062b2312"
+      },
+      "buildInputs": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/fix-build-inputs.sha256",
+        "bytes": 345,
+        "sha256": "179540a9344024f6269ebdea8dae6596c13a105f8a557fea3fd1bfab6d871860"
+      },
+      "runner": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/run-fixed-case.sh",
+        "bytes": 2948,
+        "sha256": "c14139a83bbdc2c36e26e9408bf1d6f8320a6ca6714e96be5caed5a30ef1a430"
+      }
+    },
+    "fixedMacOSPeerCases": [
+      {
+        "pairing": "rust/rust",
+        "firstDecisionHttpStatusWhileOnlyPostgresDown": 502,
+        "providerRepliedAfterOverlapMs": 20055,
+        "redisRestoredAfterOverlapMs": 45036,
+        "postgresRestoredAfterOverlapMs": 52748,
+        "terminalRecordAfterPostgresRecovery": "unknown",
+        "originalProviderRequests": 1,
+        "originalUsageReceiptPresent": false,
+        "freshDecisionReceiptTokens": 10,
+        "modelOperations": 14,
+        "cleanServerExits": 6,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-fixed-rr.json",
+          "bytes": 654541,
+          "sha256": "581ca554f0621b03d6cc1b52a32513a0e426352572af76290b96654739db3e5c"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-fixed-rr.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        },
+        "log": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-fixed-rr.log",
+          "bytes": 2100,
+          "sha256": "01974537ba650d6463e0419e250d1ce42cdaeb18719aa3d15ccbd5feccad3dec"
+        }
+      },
+      {
+        "pairing": "rust/node",
+        "firstDecisionHttpStatusWhileOnlyPostgresDown": 502,
+        "providerRepliedAfterOverlapMs": 20054,
+        "redisRestoredAfterOverlapMs": 50032,
+        "postgresRestoredAfterOverlapMs": 56093,
+        "terminalRecordAfterPostgresRecovery": "unknown",
+        "originalProviderRequests": 1,
+        "originalUsageReceiptPresent": false,
+        "freshDecisionReceiptTokens": 10,
+        "modelOperations": 14,
+        "cleanServerExits": 6,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-fixed-rn.json",
+          "bytes": 614331,
+          "sha256": "9294912da03b26d626be57e4fe1e2bd41cd604474776948402817ae9190051fd"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-fixed-rn.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        },
+        "log": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-fixed-rn.log",
+          "bytes": 2143,
+          "sha256": "38f74b28dbf3c69f56fa1bd6ac34fd0fedf9c6e40d33c124e6d14dfbed059d62"
+        }
+      },
+      {
+        "pairing": "node/rust",
+        "firstDecisionHttpStatusWhileOnlyPostgresDown": 502,
+        "providerRepliedAfterOverlapMs": 20054,
+        "redisRestoredAfterOverlapMs": 50033,
+        "postgresRestoredAfterOverlapMs": 56866,
+        "terminalRecordAfterPostgresRecovery": "unknown",
+        "originalProviderRequests": 1,
+        "originalUsageReceiptPresent": false,
+        "freshDecisionReceiptTokens": 10,
+        "modelOperations": 14,
+        "cleanServerExits": 6,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-fixed-nr.json",
+          "bytes": 614696,
+          "sha256": "a815fa790cb4dbfe4c9a1d1ed243f0026e178ab6f4e62cb2d39c518aa3784b82"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-fixed-nr.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        },
+        "log": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/mac-fixed-nr.log",
+          "bytes": 2186,
+          "sha256": "d5a77d248f81ff66deb4118dd3ea9f2327bd64b018f450c26c3083b08afc0374"
+        }
+      }
+    ],
+    "fixedMacOSPackageSmoke": {
+      "modes": ["pglite", "bundled-postgres", "postgres"],
+      "cleanShutdowns": 13,
+      "isolatedFromHomebrew": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/fixed-package-smoke.json",
+        "bytes": 104813,
+        "sha256": "eaa4ccfffc39ea2078d61597d2668d403e7e1cb494b0d0ddddd7590aac54e270"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/fixed-package-smoke.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/3059-shared-model-db-redis-outage.4OWV5MOh/fixed-package-smoke.log",
+        "bytes": 57705,
+        "sha256": "597a96d3db5c0d4100bb315839f656a8419778f2ca0e32632374ac35b3cd2015"
+      }
+    }
+  }
+}

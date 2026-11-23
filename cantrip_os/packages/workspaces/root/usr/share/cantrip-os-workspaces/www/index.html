@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  />
+  <meta name="theme-color" content="#000000" /><link
+    rel="icon"
+    href="./bolt.svg"
+  />
+  <title>CantripOS workspaces</title>
+  <link rel="stylesheet" href="./workspaces.css" />
+  <header>
+    <img src="./bolt.svg" alt="" /><strong>CantripOS</strong
+    ><span>Workspaces</span>
+  </header>
+  <main>
+    <h1>Your workspaces</h1>
+    <p>Each workspace has its own desktop, files, and browser profile.</p>
+    <form id="create">
+      <label for="name">New workspace</label>
+      <div class="create-row">
+        <input
+          id="name"
+          name="name"
+          placeholder="workspace-name"
+          pattern="[a-z][a-z0-9-]{0,23}"
+          maxlength="24"
+          required
+          autocomplete="off"
+        /><button>Create workspace</button>
+      </div>
+    </form>
+    <p id="message" role="status" aria-live="polite"></p>
+    <div id="workspaces"></div>
+  </main>
+  <script type="module" src="./workspaces.mjs"></script>
+</html>

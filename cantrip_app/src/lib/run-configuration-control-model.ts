@@ -9,6 +9,18 @@ import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuratio
 
 import { runConfigurationRuntimeIsActive } from "@/lib/run-terminal-model";
 
+export type RunConfigurationWorktree = Pick<
+  ProjectWorktreeSummary,
+  | "id"
+  | "workerId"
+  | "isPrimary"
+  | "isDefault"
+  | "name"
+  | "branch"
+  | "lifecycleState"
+  | "displayPath"
+>;
+
 export interface RunConfigurationTargetControl {
   available: boolean;
   label: string;
@@ -16,7 +28,7 @@ export interface RunConfigurationTargetControl {
   runtime: RunConfigurationRuntime | null;
   stopAvailable: boolean;
   stopReason: string | null;
-  worktree: ProjectWorktreeSummary;
+  worktree: RunConfigurationWorktree;
 }
 
 export interface RunConfigurationControlItem {
@@ -44,8 +56,8 @@ export interface InvalidRunConfigurationControlItem {
 export interface RunConfigurationControlModel {
   configurations: RunConfigurationControlItem[];
   invalidConfigurations: InvalidRunConfigurationControlItem[];
-  primaryWorktree: ProjectWorktreeSummary | null;
-  worktrees: ProjectWorktreeSummary[];
+  primaryWorktree: RunConfigurationWorktree | null;
+  worktrees: RunConfigurationWorktree[];
 }
 
 type RunConfigurationControlInventory = RunConfigurationRepositoryInventory & {
@@ -113,7 +125,7 @@ export function runConfigurationTargetLabel(
 }
 
 function targetControl(
-  worktree: ProjectWorktreeSummary,
+  worktree: RunConfigurationWorktree,
   runtime: RunConfigurationRuntime | undefined,
   workers: readonly WorkerSummary[],
   providerValidation: RunConfigurationProviderValidation | null | undefined,
@@ -129,6 +141,9 @@ function targetControl(
         ? "Worker is offline."
         : null;
   const reason =
+    (runtime?.osDefinition && runtime.state === "lost"
+      ? "Stop the uncertain Linux Run before starting another generation."
+      : null) ??
     stopReason ??
     (providerValidation === undefined
       ? "Run configuration validation is refreshing."
@@ -152,7 +167,7 @@ export function runConfigurationTargetControlForIdentity(input: {
   runtimes: readonly RunConfigurationRuntime[];
   workers: readonly WorkerSummary[];
   worktreeId: string;
-  worktrees: readonly ProjectWorktreeSummary[];
+  worktrees: readonly RunConfigurationWorktree[];
 }): RunConfigurationTargetControl | null {
   const worktree = input.worktrees.find(({ id }) => id === input.worktreeId);
   if (!worktree) return null;
@@ -188,7 +203,7 @@ export function buildRunConfigurationControlModel(input: {
   inventory: RunConfigurationControlInventory | null | undefined;
   runtimes: readonly RunConfigurationRuntime[];
   workers: readonly WorkerSummary[];
-  worktrees: readonly ProjectWorktreeSummary[];
+  worktrees: readonly RunConfigurationWorktree[];
 }): RunConfigurationControlModel {
   const primaryWorktree =
     input.worktrees.find(({ isPrimary }) => isPrimary) ??

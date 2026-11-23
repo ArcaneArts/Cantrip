@@ -36,6 +36,7 @@ export function formatGoalElapsed(seconds: number): string {
 }
 
 export function GoalPanel({
+  waitingForInference = false,
   automationPaused = false,
   executionFailed = false,
   error,
@@ -45,6 +46,7 @@ export function GoalPanel({
   onUpdate,
   pending,
 }: {
+  waitingForInference?: boolean;
   automationPaused?: boolean;
   executionFailed?: boolean;
   error?: string | null;
@@ -80,7 +82,11 @@ export function GoalPanel({
             <span className="text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">
               Goal
             </span>
-            <Badge variant="outline">{STATUS_LABELS[status]}</Badge>
+            <Badge variant="outline">
+              {status === "active" && waitingForInference
+                ? "Queued"
+                : STATUS_LABELS[status]}
+            </Badge>
           </div>
           <GoalObjective goal={goal} onEdit={onEdit} pending={pending} />
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">

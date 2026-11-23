@@ -1,0 +1,19 @@
+[package]
+name = "cantrip-protocol"
+version = "0.0.0"
+description = "Cantrip native protocol contracts and validation"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = "1"
+cantrip-wire = { path = "../cantrip-wire" }
+cantrip-scheduling = { path = "../cantrip-scheduling" }
+indexmap = "2.14"
+regress = { version = "0.12", features = ["utf16"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision", "raw_value"] }
+url = "2.5"
+sha2 = "0.10"
+uuid = "1"

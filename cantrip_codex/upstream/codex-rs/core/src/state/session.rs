@@ -1,11 +1,13 @@
 //! Session-wide mutable state.
 
+use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::models::BaseInstructionsProvenance;
 #[cfg(test)]
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ReasoningEffort;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 use super::AdditionalContextStore;
 use super::auto_compact_window::AutoCompactWindow;
@@ -68,6 +70,8 @@ impl ReasoningEffortPin {
 /// Persistent, session-scoped state previously stored directly on `Session`.
 pub(crate) struct SessionState {
     pub(crate) session_configuration: SessionConfiguration,
+    /// Catalog to carry across compaction, independent of an explicit resume override.
+    pub(crate) persisted_dynamic_tools: Arc<[DynamicToolSpec]>,
     /// Plugin selection of the last admitted task; settings updates take effect on the next task.
     pub(crate) active_disabled_plugin_ids: Vec<String>,
     /// Persisted origin of the session base instructions, when known.
@@ -77,7 +81,6 @@ pub(crate) struct SessionState {
     pub(crate) history_reset: CancellationToken,
     pub(crate) latest_rate_limits: Option<RateLimitSnapshot>,
     pub(crate) latest_token_usage_record: Option<TokenUsageRecord>,
-    pub(crate) server_reasoning_included: bool,
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     pub(crate) additional_context: AdditionalContextStore,
     /// Settings used by the latest regular user turn, used for turn-to-turn
@@ -104,6 +107,7 @@ pub(crate) struct SessionState {
     pub(crate) active_connector_selection: HashSet<String>,
     pub(crate) pending_session_start_sources: VecDeque<codex_hooks::SessionStartSource>,
     next_turn_is_first: bool,
+    initial_settings_pending: bool,
 }
 
 impl SessionState {
@@ -124,13 +128,13 @@ impl SessionState {
     ) -> Self {
         Self {
             active_disabled_plugin_ids: Vec::new(),
+            persisted_dynamic_tools: Arc::clone(&session_configuration.dynamic_tools),
             session_configuration,
             base_instructions_provenance: None,
             history,
             history_reset: CancellationToken::new(),
             latest_rate_limits: None,
             latest_token_usage_record: None,
-            server_reasoning_included: false,
             mcp_dependency_prompted: HashSet::new(),
             additional_context: AdditionalContextStore::default(),
             previous_turn_settings: None,
@@ -146,6 +150,7 @@ impl SessionState {
             active_connector_selection: HashSet::new(),
             pending_session_start_sources: VecDeque::new(),
             next_turn_is_first: true,
+            initial_settings_pending: true,
         }
     }
 
@@ -161,12 +166,19 @@ impl SessionState {
 
     pub(crate) fn set_next_turn_is_first(&mut self, value: bool) {
         self.next_turn_is_first = value;
+        self.initial_settings_pending = value;
     }
 
     pub(crate) fn take_next_turn_is_first(&mut self) -> bool {
         let is_first_turn = self.next_turn_is_first;
         self.next_turn_is_first = false;
         is_first_turn
+    }
+
+    pub(crate) fn take_initial_settings_pending(&mut self) -> bool {
+        let pending = self.initial_settings_pending;
+        self.initial_settings_pending = false;
+        pending
     }
 
     pub(crate) fn clone_history(&self) -> ContextManager {
@@ -282,8 +294,10 @@ impl SessionState {
         &mut self,
         usage: &TokenUsage,
         model_context_window: Option<i64>,
+        includes_reasoning: bool,
     ) {
-        self.history.update_token_info(usage, model_context_window);
+        self.history
+            .update_token_info(usage, model_context_window, includes_reasoning);
     }
 
     pub(crate) fn ensure_auto_compact_window_server_prefill_from_usage(
@@ -365,17 +379,8 @@ impl SessionState {
         self.history.set_token_usage_full(context_window);
     }
 
-    pub(crate) fn get_total_token_usage(&self, server_reasoning_included: bool) -> i64 {
-        self.history
-            .get_total_token_usage(server_reasoning_included)
-    }
-
-    pub(crate) fn set_server_reasoning_included(&mut self, included: bool) {
-        self.server_reasoning_included = included;
-    }
-
-    pub(crate) fn server_reasoning_included(&self) -> bool {
-        self.server_reasoning_included
+    pub(crate) fn get_total_token_usage(&self) -> i64 {
+        self.history.get_total_token_usage()
     }
 
     pub(crate) fn record_mcp_dependency_prompted<I>(&mut self, names: I)

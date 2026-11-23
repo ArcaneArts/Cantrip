@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertGeneratedAtInOperation } from "./operation-clock.mjs";
 
 export async function worktreeStateCases({
   pair,
@@ -23,10 +24,28 @@ export async function worktreeStateCases({
     await seed(
       `UPDATE project_worktrees SET created_at='${stamp}',updated_at='${stamp}',last_scanned_at=NULL`,
     );
-    const input = { owner, project: "github", worktree, ...operation };
+    const input = {
+      owner,
+      project: "github",
+      worktree,
+      ...operation,
+      observeOperationClock: true,
+    };
     const start = Date.now(),
-      results = [];
-    for (const repo of pair) results.push(await repo.request(input));
+      results = [],
+      persistedClocks = [];
+    for (const repo of pair) {
+      const result = await repo.request(input);
+      results.push(result);
+      if (result.value?.updatedAt) {
+        const stored = await repo.request({
+          op: "query-json",
+          sql: "SELECT jsonb_build_object('updatedAt',floor(extract(epoch from updated_at)*1000),'lastScannedAt',floor(extract(epoch from last_scanned_at)*1000)) result FROM project_worktrees WHERE id='github-alpha-main'",
+        });
+        assert.equal(stored.rejected, false, stored.diagnostic);
+        persistedClocks.push(stored.value);
+      } else persistedClocks.push(null);
+    }
     const end = Date.now();
     report.cases.push({
       label,
@@ -34,8 +53,9 @@ export async function worktreeStateCases({
       expected: results[0],
       actual: results[1],
       clockWindow: [start, end],
+      persistedClocks,
     });
-    const values = results.map((result) => {
+    const values = results.map((result, index) => {
       assert.equal(result.rejected, error !== null, label);
       if (error) {
         assert.equal(result.diagnostic, error);
@@ -46,9 +66,18 @@ export async function worktreeStateCases({
         for (const key of input.op === "worktree-observe"
           ? ["updatedAt", "lastScannedAt"]
           : ["updatedAt"]) {
-          assert.ok(
-            Date.parse(value[key]) >= start && Date.parse(value[key]) <= end,
-            `${label}: actual ${key}`,
+          assertGeneratedAtInOperation({
+            label: `${label}: actual ${key}`,
+            kind: index === 0 ? "node" : "rust",
+            before: start,
+            after: end,
+            operationClock: result.operationClock,
+            actualGeneratedAt: value[key],
+          });
+          assert.equal(
+            Date.parse(value[key]),
+            persistedClocks[index][key],
+            `${label}: persisted ${key} matches returned timestamp`,
           );
           value[key] = "verified-operation-clock";
         }

@@ -6,7 +6,7 @@ import path from "node:path";
 import { repositoryFixture } from "./repository-fixture.mjs";
 import { command } from "./native-command-admission-cases.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 async function waiters(sql, count) {

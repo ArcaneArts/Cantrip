@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "serverSourceCommit": "871f62ae9a7ea48fdcb1746c9b4e518391d2b562",
+  "driverSourceCommit": "58acdd151455ce04b3b80c35bd24278ce650f64e",
+  "workerVersion": "1.1.3059",
+  "completeReplacement": false,
+  "scope": "Exact Rust Linux OCI server processes on ARM64 and x64, with x64 translated on Apple Silicon. The headless browser, unchanged packaged Node worker and native Codex ran on macOS. The worker evaluated real shell conditions and exercised native Agent history; model HTTP responses were controlled.",
+  "pairedMacosReference": "docs/security/rust-server-3059-macos-project-automations.json",
+  "productDriver": "scripts/server-rust/actual-folder-client.mjs",
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/inputs.sha256",
+    "bytes": 1166,
+    "sha256": "dec74458398304ccdf4850f52597c7d8ab60e704e64b62991f07db554984ee75"
+  },
+  "images": [
+    {
+      "target": "linux-arm64",
+      "imageId": "sha256:5ca1ee248797d385739b295faa1d057dfac17ae7f4426871e253cff969ac427c",
+      "serverSha256": "1fc14ed5abc8a8a3e2d2acc02e4da542f280256e81f0b6ca106b93e76fcf72cf",
+      "verifiedManifestFiles": 2558
+    },
+    {
+      "target": "linux-x64",
+      "imageId": "sha256:ab3d9ff71769e4f885cde41a104abf313b8b0d36ee4601fe649b47de3f315a9f",
+      "serverSha256": "50aa09c86bb87aba0ea01acad193a2cab25d1c1bb4abec741ebff09f877f16f4",
+      "verifiedManifestFiles": 2558
+    }
+  ],
+  "projectAutomations": {
+    "completed": true,
+    "actualScheduler": true,
+    "actualScriptConditions": [0, 7],
+    "started": 1,
+    "skipped": 1,
+    "completedNativeTurns": 1,
+    "retainedAfterTwoRestarts": true,
+    "deleted": true,
+    "additionalModelRequests": 1
+  },
+  "sameRunExternalPostgresNodeReference": {
+    "runtime": "node",
+    "steps": 14,
+    "cleanServerExits": 5,
+    "cleanWorkerExits": 6,
+    "modelPosts": 5
+  },
+  "cases": [
+    {
+      "target": "linux-arm64",
+      "databaseMode": "pglite",
+      "runtime": "rust",
+      "steps": 14,
+      "cleanServerExits": 5,
+      "cleanWorkerExits": 6,
+      "modelPosts": 5,
+      "matchedNodeAutomationOutcome": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/arm64/pglite/matrix.json",
+        "bytes": 551260,
+        "sha256": "2cc6f5eef3868bcecff48ff41dd51774392f59fe3cd2f59ced67f63fe7b2eb15"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/arm64/pglite/generations.jsonl",
+        "bytes": 6997,
+        "sha256": "0d051511539f4d537cf763aebc9177a2639028d7b2d52e358c6ebed566862a79"
+      }
+    },
+    {
+      "target": "linux-arm64",
+      "databaseMode": "bundled-postgres",
+      "runtime": "rust",
+      "steps": 14,
+      "cleanServerExits": 5,
+      "cleanWorkerExits": 6,
+      "modelPosts": 5,
+      "matchedNodeAutomationOutcome": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/arm64/bundled-postgres/matrix.json",
+        "bytes": 558530,
+        "sha256": "e5ad10c45d3af747667fb1a7de4baff1c95061e0c93e82928025bd0cd12e66b0"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/arm64/bundled-postgres/generations.jsonl",
+        "bytes": 7505,
+        "sha256": "4d816eb59a361ee96adfbddcb419641af3b221f9994d9b075bd577a7f34212eb"
+      }
+    },
+    {
+      "target": "linux-arm64",
+      "databaseMode": "postgres",
+      "runtime": "rust",
+      "steps": 14,
+      "cleanServerExits": 5,
+      "cleanWorkerExits": 6,
+      "modelPosts": 5,
+      "matchedNodeAutomationOutcome": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/arm64/postgres/matrix.json",
+        "bytes": 1094078,
+        "sha256": "0ee37e52c964f956a0cf8a134efa230d5a1c2193336749a6b31802dc0f588565"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/arm64/postgres/generations.jsonl",
+        "bytes": 7105,
+        "sha256": "fc81ebb44527de38c44354411d785d101395efba39e48bab1b832367f0484888"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "databaseMode": "pglite",
+      "runtime": "rust",
+      "steps": 14,
+      "cleanServerExits": 5,
+      "cleanWorkerExits": 6,
+      "modelPosts": 5,
+      "matchedNodeAutomationOutcome": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/x64/pglite/matrix.json",
+        "bytes": 551237,
+        "sha256": "e4403379e2521c211db7e7e5efe9e5d977a647e94d56e420de1429f6d03ba4bf"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/x64/pglite/generations.jsonl",
+        "bytes": 6999,
+        "sha256": "7ffa3e8d9539cd080b831c7b1fe6dc7762b7d574dc9b073540c3855e13b79be7"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "databaseMode": "bundled-postgres",
+      "runtime": "rust",
+      "steps": 14,
+      "cleanServerExits": 5,
+      "cleanWorkerExits": 6,
+      "modelPosts": 5,
+      "matchedNodeAutomationOutcome": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/x64/bundled-postgres/matrix.json",
+        "bytes": 556666,
+        "sha256": "922fd3d23b3e4c02bc54db00b6d0aff3642467d5ee9f8fbf08b2d3260ec6bf51"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/x64/bundled-postgres/generations.jsonl",
+        "bytes": 7479,
+        "sha256": "3515b36c3ff4de49ff5c5c3010f063b9434c04070cc8896b444122777a9e850e"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "databaseMode": "postgres",
+      "runtime": "rust",
+      "steps": 14,
+      "cleanServerExits": 5,
+      "cleanWorkerExits": 6,
+      "modelPosts": 5,
+      "matchedNodeAutomationOutcome": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/x64/postgres/matrix.json",
+        "bytes": 545330,
+        "sha256": "3dbf5075732696f6076bec8017d7c8d1887d1406d76905e278ebe188677e7d14"
+      },
+      "processProof": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-project-automations.xjeHsnXy/x64/postgres/generations.jsonl",
+        "bytes": 7102,
+        "sha256": "48373a5b856725ee04ce9742076c13f892f377ec1191c479da43c18e0097aad5"
+      }
+    }
+  ],
+  "totals": {
+    "linuxProductSteps": 84,
+    "linuxCleanServerExits": 30,
+    "cleanPackagedWorkerExitsAcrossLinuxRuns": 36,
+    "scheduledNativeTurnsAcrossLinuxRuns": 6,
+    "skippedScheduledConditionsAcrossLinuxRuns": 6
+  },
+  "remaining": [
+    "Windows packaged automation execution, shared scheduler ownership and interruption during scheduled dispatch require separate qualification.",
+    "The end-to-end browser run asserts automation state through public reads and does not add a project-automation App Live assertion."
+  ]
+}

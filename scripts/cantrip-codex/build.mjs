@@ -11,9 +11,7 @@ import {
 import path from "node:path";
 
 import {
-  buildDirectory,
-  buildManifestPath,
-  bundleDirectory,
+  buildDirectory as fullBuildDirectory,
   executableName,
   filesManifestPath,
   patchSetSha256,
@@ -39,14 +37,36 @@ const verify = spawnSync(
 if (verify.status !== 0) process.exit(verify.status ?? 1);
 
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
-const runtimeBinaries = [
-  "codex",
-  "codex-code-mode-host",
-  "codex-responses-api-proxy",
-  ...(process.platform === "win32"
-    ? ["codex-windows-sandbox-setup", "codex-command-runner"]
-    : []),
-];
+const executorOnly = process.argv.includes("--executor-only");
+const development = process.argv.includes("--dev");
+const cargoProfile = development ? "dev" : "release";
+const profileArguments = development ? ["--profile", "dev"] : ["--release"];
+const buildDirectory = () =>
+  executorOnly
+    ? path.join(
+        fullBuildDirectory(),
+        ...(development ? ["dev"] : []),
+        "executor",
+      )
+    : path.join(fullBuildDirectory(), ...(development ? ["dev"] : []));
+const bundleDirectory = () => path.join(buildDirectory(), "bundle");
+const buildManifestPath = () =>
+  path.join(bundleDirectory(), "codex-runtime.json");
+const component = executorOnly ? "codex-executor" : "codex-cli";
+const entrypoint = executorOnly
+  ? `codex-exec-server${executableSuffix}`
+  : executableName();
+const runtimeBinaries = executorOnly
+  ? ["codex-exec-server"]
+  : [
+      "codex",
+      "codex-code-mode-host",
+      "codex-exec-server",
+      "codex-responses-api-proxy",
+      ...(process.platform === "win32"
+        ? ["codex-windows-sandbox-setup", "codex-command-runner"]
+        : []),
+    ];
 const expectedCompiledArtifacts = [
   ...runtimeBinaries.map((name) => `${name}${executableSuffix}`),
   ...(process.platform === "linux" ? ["codex-resources/bwrap"] : []),
@@ -57,7 +77,7 @@ const skillTemplates = await readSkillTemplates();
 const sourceManifestSha256 = await sha256File(filesManifestPath);
 const patchesSha256 = patchSetSha256(patches);
 const skillTemplatesSha256 = fingerprintSkillTemplates(skillTemplates);
-const buildRecipeVersion = 5;
+const buildRecipeVersion = 6;
 
 async function fetchRequired(url) {
   const response = await fetch(url, { redirect: "follow" });
@@ -188,14 +208,14 @@ async function reusableBundle() {
     .sort();
   if (
     manifest.schemaVersion !== 1 ||
-    manifest.component !== "codex-cli" ||
+    manifest.component !== component ||
     manifest.version !== metadata.version ||
     manifest.upstream?.repository !== metadata.repository ||
     manifest.upstream?.ref !== metadata.ref ||
     manifest.upstream?.commit !== metadata.commit ||
-    manifest.entrypoint !== executableName() ||
+    manifest.entrypoint !== entrypoint ||
     manifest.target !== platformKey() ||
-    manifest.profile !== "release" ||
+    manifest.profile !== cargoProfile ||
     JSON.stringify(compiledArtifactPaths) !==
       JSON.stringify(expectedCompiledArtifacts) ||
     !compiledArtifacts.every((artifact) =>
@@ -243,7 +263,7 @@ async function withDistributionNotices(compiledArtifacts) {
 function runtimeManifest(artifacts) {
   return {
     schemaVersion: 1,
-    component: "codex-cli",
+    component,
     version: metadata.version,
     upstream: {
       repository: metadata.repository,
@@ -254,10 +274,10 @@ function runtimeManifest(artifacts) {
     patchesSha256,
     skillTemplatesSha256,
     buildRecipeVersion,
-    entrypoint: executableName(),
+    entrypoint,
     artifacts,
     target: platformKey(),
-    profile: "release",
+    profile: cargoProfile,
   };
 }
 
@@ -333,8 +353,13 @@ console.log(
   `Installed ${skillTemplates.length} validated Cantrip skill template${skillTemplates.length === 1 ? "" : "s"}.`,
 );
 const cargoDirectory = path.join(preparedRoot, "codex-rs");
-const cargoTargetDirectory = path.join(outputDirectory, "target");
-const releaseDirectory = path.join(cargoTargetDirectory, "release");
+const cargoTargetDirectory = process.env.CARGO_TARGET_DIR
+  ? path.resolve(root, process.env.CARGO_TARGET_DIR)
+  : path.join(outputDirectory, "target");
+const compiledDirectory = path.join(
+  cargoTargetDirectory,
+  development ? "debug" : "release",
+);
 const buildEnvironment = {
   ...process.env,
   CARGO_TARGET_DIR: cargoTargetDirectory,
@@ -396,16 +421,20 @@ if (normalizedPackages > 0) {
   console.log("Prepared Cargo.lock already matches the workspace manifests.");
 }
 
-await configureRustyV8(buildEnvironment, lockPackages, cargoDirectory);
+// V8 belongs to the separate code-mode host, which an executor-only guest does
+// not install. Keep source preparation, reviewed patches and sandbox resources
+// identical to the worker runtime build.
+if (!executorOnly)
+  await configureRustyV8(buildEnvironment, lockPackages, cargoDirectory);
 
 if (process.platform === "linux") {
   const bwrapBuild = spawnSync(
     cargo,
-    ["build", "--locked", "--release", "--bin", "bwrap"],
+    ["build", "--locked", ...profileArguments, "--bin", "bwrap"],
     { cwd: cargoDirectory, env: buildEnvironment, stdio: "inherit" },
   );
   if (bwrapBuild.status !== 0) process.exit(bwrapBuild.status ?? 1);
-  const bwrap = path.join(releaseDirectory, "bwrap");
+  const bwrap = path.join(compiledDirectory, "bwrap");
   const strip = spawnSync(
     "strip",
     ["--strip-debug", "--strip-unneeded", bwrap],
@@ -423,7 +452,7 @@ const build = spawnSync(
   [
     "build",
     "--locked",
-    "--release",
+    ...profileArguments,
     ...runtimeBinaries.flatMap((binary) => ["--bin", binary]),
   ],
   {
@@ -440,7 +469,7 @@ await mkdir(bundle, { recursive: true });
 const artifacts = [];
 for (const name of runtimeBinaries) {
   const fileName = `${name}${executableSuffix}`;
-  const source = path.join(releaseDirectory, fileName);
+  const source = path.join(compiledDirectory, fileName);
   const destination = path.join(bundle, fileName);
   await cp(source, destination);
   if (process.platform !== "win32") await chmod(destination, 0o755);
@@ -453,7 +482,7 @@ if (process.platform === "linux") {
   const relative = path.join("codex-resources", "bwrap");
   const destination = path.join(bundle, relative);
   await mkdir(path.dirname(destination), { recursive: true });
-  await cp(path.join(releaseDirectory, "bwrap"), destination);
+  await cp(path.join(compiledDirectory, "bwrap"), destination);
   await chmod(destination, 0o755);
   artifacts.push({ path: relative, sha256: await sha256File(destination) });
 }

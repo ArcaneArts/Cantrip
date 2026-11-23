@@ -1,5 +1,4 @@
-use super::has_non_contextual_dev_message_content;
-use super::is_contextual_dev_message_content;
+use super::contextual_dev_fragments;
 use super::parse_turn_item;
 use crate::context::ContextualUserFragment;
 use crate::context::InternalContextSource;
@@ -23,15 +22,20 @@ use codex_protocol::protocol::CONTEXT_WINDOW_GUIDANCE_OPEN_TAG;
 use codex_protocol::protocol::CONTEXT_WINDOW_OPEN_TAG;
 use codex_protocol::protocol::SKILLS_INSTRUCTIONS_OPEN_TAG;
 use codex_protocol::user_input::UserInput;
+use codex_protocol_test_support::ContentItemTestExt;
 use pretty_assertions::assert_eq;
 
 #[test]
 fn recognizes_skills_instructions_as_contextual_developer_content() {
-    assert!(is_contextual_dev_message_content(&[
-        ContentItem::InputText {
-            text: format!("{SKILLS_INSTRUCTIONS_OPEN_TAG}\n## Skills"),
-        },
-    ]));
+    assert!(
+        contextual_dev_fragments(
+            &[ContentItem::InputText {
+                text: format!("{SKILLS_INSTRUCTIONS_OPEN_TAG}\n## Skills"),
+            },],
+            &[]
+        )
+        .any(|matched| matched)
+    );
 }
 
 #[test]
@@ -41,8 +45,10 @@ fn recognizes_legacy_token_budget_as_contextual_developer_content() {
             .to_string(),
     }];
 
-    assert!(is_contextual_dev_message_content(&content));
-    assert!(!has_non_contextual_dev_message_content(&content));
+    assert_eq!(
+        contextual_dev_fragments(&content, &[]).collect::<Vec<_>>(),
+        vec![true]
+    );
 }
 
 #[test]
@@ -55,8 +61,10 @@ Agent name: /root
         ),
     }];
 
-    assert!(is_contextual_dev_message_content(&content));
-    assert!(!has_non_contextual_dev_message_content(&content));
+    assert_eq!(
+        contextual_dev_fragments(&content, &[]).collect::<Vec<_>>(),
+        vec![true]
+    );
 }
 
 #[test]
@@ -67,8 +75,10 @@ fn recognizes_context_window_guidance_as_contextual_developer_content() {
         ),
     }];
 
-    assert!(is_contextual_dev_message_content(&content));
-    assert!(!has_non_contextual_dev_message_content(&content));
+    assert_eq!(
+        contextual_dev_fragments(&content, &[]).collect::<Vec<_>>(),
+        vec![true]
+    );
 }
 
 #[test]
@@ -453,6 +463,7 @@ fn parses_hook_prompt_message_as_distinct_turn_item() {
                 HookPromptFragment {
                     text: "Retry with exactly the phrase meow meow meow.".to_string(),
                     hook_run_id: "hook-run-1".to_string(),
+                    metadata: Default::default(),
                 }
             );
         }
@@ -490,6 +501,7 @@ fn parses_hook_prompt_and_hides_other_contextual_fragments() {
                 vec![HookPromptFragment {
                     text: "Retry with care & joy.".to_string(),
                     hook_run_id: "hook-run-1".to_string(),
+                    metadata: Default::default(),
                 }]
             );
         }
@@ -509,7 +521,8 @@ fn internal_model_context_does_not_parse_as_visible_turn_item() {
                 InternalContextSource::from_static("extension"),
                 "Internal steering.",
             )
-            .render(),
+            .render()
+            .expect_text(),
         }],
         phase: None,
         internal_chat_message_metadata_passthrough: None,

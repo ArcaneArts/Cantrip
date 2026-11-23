@@ -5,17 +5,23 @@ import type {
   ProviderModelCatalogEntry,
   ProviderModelCatalogResult,
 } from "@cantrip/protocol";
-import { isZaiCodingPlanBaseUrl } from "@cantrip/protocol";
+import {
+  isZaiCodingPlanBaseUrl,
+  usesWorkerModelCatalog,
+  providerDefinitions,
+  operationProviderFamily,
+} from "@cantrip/protocol";
 
 export type CatalogDisplayStatus =
   "current" | "failed" | "manual" | "refreshing" | "stale" | "unknown";
 
 export function providerFamilyLabel(provider: ModelProviderSummary) {
   if (isZaiCodingPlanBaseUrl(provider.baseUrl)) return "Z.ai Coding Plan";
-  if (provider.kind === "openai-compatible") return "OpenAI compatible";
-  if (provider.kind === "chatgpt") return "ChatGPT";
-  if (provider.kind === "grok") return "Grok";
-  return provider.kind === "ollama" ? "Ollama" : provider.kind;
+  const family = operationProviderFamily(provider);
+  if (family === "openai") return "OpenAI API";
+  if (family === "openrouter") return "OpenRouter";
+  if (family === "xai") return "xAI API";
+  return providerDefinitions[provider.kind].label;
 }
 
 export function providerRouteLabel(provider: ModelProviderSummary) {
@@ -25,20 +31,16 @@ export function providerRouteLabel(provider: ModelProviderSummary) {
 
 export function providerSupportsCatalog(provider: ModelProviderSummary) {
   if (
-    provider.kind === "ollama" ||
+    usesWorkerModelCatalog(provider) ||
     provider.kind === "chatgpt" ||
     provider.kind === "grok"
   ) {
     return true;
   }
-  try {
-    return (
-      isZaiCodingPlanBaseUrl(provider.baseUrl) ||
-      new URL(provider.baseUrl).hostname.toLowerCase() === "openrouter.ai"
-    );
-  } catch {
-    return false;
-  }
+  return (
+    isZaiCodingPlanBaseUrl(provider.baseUrl) ||
+    operationProviderFamily(provider) === "openrouter"
+  );
 }
 
 export function catalogScopesForWorker(
@@ -125,7 +127,7 @@ export function catalogScopeLabel(
   workerId: string | null,
 ) {
   if (!providerSupportsCatalog(provider)) return "Custom IDs";
-  if (provider.kind === "ollama") {
+  if (usesWorkerModelCatalog(provider)) {
     const workers = new Set(
       catalog?.availability.flatMap(({ workerId: id }) => (id ? [id] : [])) ??
         [],

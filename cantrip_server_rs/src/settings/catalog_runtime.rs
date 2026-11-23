@@ -25,6 +25,7 @@ pub enum Family {
     ChatGpt,
     Grok,
     Ollama,
+    Endpoint,
 }
 #[derive(Clone)]
 pub struct CatalogRequest {
@@ -64,7 +65,10 @@ impl CatalogBackend for Services {
         let public = self.public.clone();
         let grok = self.grok.clone();
         async move {
-            let worker_text = if matches!(family, Family::Ollama | Family::ChatGpt | Family::Grok) {
+            let worker_text = if matches!(
+                family,
+                Family::Ollama | Family::Endpoint | Family::ChatGpt | Family::Grok
+            ) {
                 request
                     .worker
                     .as_ref()
@@ -85,7 +89,7 @@ impl CatalogBackend for Services {
                         .get_provider_catalog(&request.owner, &request.provider, request.force)
                         .await
                 }
-                Family::Ollama => {
+                Family::Ollama | Family::Endpoint => {
                     repository
                         .get_ollama_provider_catalog_for_key(
                             &request.owner,
@@ -132,24 +136,26 @@ impl CatalogBackend for Services {
     }
 }
 
-/// Operational output is intentionally separate from the pending shared native
-/// logger's redaction, rate-limit summaries, buffering and archive integration.
+/// Catalog diagnostics share the server's redaction, noise policy and archive.
 struct OperationalDiagnostics;
 impl CatalogDiagnostics for OperationalDiagnostics {
     fn event(&self, level: &'static str, context: Value, message: &'static str) -> Result<()> {
-        eprintln!(
-            "{}",
-            Value::object([
-                ("level", Value::String(level.into())),
-                ("message", Value::String(message.into())),
-                ("context", context)
-            ])
-            .stringify()
-        );
+        crate::operations::logging::server_logger()(crate::operations::logging::LogCall::event(
+            level, message, context,
+        ));
         Ok(())
     }
     fn rate_limited(&self, warning: CatalogWarning) -> Result<()> {
-        self.event(warning.level, warning.context, warning.message)
+        crate::operations::logging::server_logger()(crate::operations::logging::LogCall::repeated(
+            warning.key.into(),
+            warning.level,
+            warning.message,
+            warning.context,
+            Some(
+                crate::wire::value::json!({"summaryEvery":warning.summary_every,"windowMs":warning.window_ms}),
+            ),
+        ));
+        Ok(())
     }
 }
 pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
@@ -315,6 +321,9 @@ impl CatalogRuntime {
             Some("chatgpt") => Family::ChatGpt,
             Some("grok") => Family::Grok,
             Some("ollama") => Family::Ollama,
+            Some(_) if super::endpoint_providers::worker_catalog_provider(&provider) => {
+                Family::Endpoint
+            }
             _ => Family::Public,
         };
         if matches!(family, Family::Public) {
@@ -347,6 +356,9 @@ impl CatalogRuntime {
             let label = match family {
                 Family::ChatGpt => "ChatGPT",
                 Family::Grok => "Grok",
+                Family::Endpoint => {
+                    super::endpoint_providers::label(provider["kind"].as_str().unwrap_or_default())
+                }
                 _ => "Ollama",
             };
             anyhow::bail!("No worker is available for {label} discovery.")

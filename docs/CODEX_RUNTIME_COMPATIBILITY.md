@@ -6,24 +6,24 @@ to Codex App Server directly.
 
 ## Tested range
 
-Cantrip currently pins and builds `codex-cli 0.163.0` from the official
-`rust-v0.163.0` source tag at `83086188ae0614bd882818ff1aa23f3194962012`. Its imported source manifest and
+Cantrip currently pins and builds `codex-cli 0.166.0` from the official
+`rust-v0.166.0` source tag at `6ff1e1ca3b30fc8b914720681fcf5fe62e95f856`. Its imported source manifest and
 manual update workflow live under `cantrip_codex/`. The protocol validators and
 fixtures were checked against the TypeScript and JSON Schema bindings generated
-by that CLI on October 21, 2026:
+by that CLI on November 2, 2026:
 
 ```sh
 codex app-server generate-ts --experimental --out <temporary-directory>
 codex app-server generate-json-schema --experimental --out <temporary-directory>
 ```
 
-The adapter's compatibility range is `>=0.163.0 <0.164.0`, but packaged
-workers contain exactly `0.163.0`; they do not select another compatible patch
+The adapter's compatibility range is `>=0.166.0 <0.167.0`, but packaged
+workers contain exactly `0.166.0`; they do not select another compatible patch
 from the host. Advancing even within the tested range is a Cantrip source and
 worker release. Expanding the range requires regenerating the bindings,
 reviewing schema changes, and updating compatibility tests.
 
-The 0.163.0 catalog lists `gpt-6-astra` and now gives `gpt-6.1-sol` the highest
+The 0.166.0 catalog includes `gpt-6.1-terra` and gives `gpt-6.1-sol` the highest
 priority, making Sol the bundled Codex default when no model is explicitly configured. Cantrip
 continues to use its server-owned model configuration for managed turns.
 
@@ -34,9 +34,17 @@ polling or repeatedly launching the worker. The phase comes from the model
 resolver's explicit missing-selection result, not a separate readiness gate.
 Provider-route and native runtime failures retain their normal failure states.
 
-All 42 existing Cantrip source patches are rebased onto this tag. Patch `0044`
+The original 43 Cantrip source patches were rebased onto this tag; the reviewed
+series has continued to grow since that upgrade. Patch `0045`
 adapts the new native interfaces and regenerates both
-stable and experimental protocol exports. Managed TUI attachment keeps the new
+stable and experimental protocol exports. Recipe 6 packages the new standalone
+executor alongside the CLI, code-mode host, and responses proxy. Canonical
+history preserves item payloads and lifecycle timestamps through the new
+`ThreadItem` wrapper while retaining bounded, cancellable upstream replay.
+Cold resume combines Cantrip-owned settings with upstream acknowledgement and
+current permission constraints. Portable imports bind their destination metadata
+to the currently configured provider; historical segment bytes and provider
+provenance remain intact, and ordinary resume admission remains enforced. Managed TUI attachment keeps the new
 screen-reader probe read-only, preserving account preferences. The GUI's
 precise history revert uses `thread/revert`; upstream removed `thread/rollback`.
 Revert remains limited to paginated native threads, and actual native errors
@@ -60,6 +68,15 @@ the sandboxed Rusty V8 archive and binding from OpenAI's official versioned
 Codex dependency release, verifies their published SHA-256 values, and passes
 them to Cargo. The ordered patch-set hash is part of the runtime manifest and
 invalidates cached binaries.
+
+Keeping the imported snapshot pristine preserves the patch-based upgrade
+workflow. It does not establish compatibility with a newer upstream release.
+Changes to native turn execution, extensions, resources, and protocol internals
+must be ported and tested against the actual destination version. Durable pause
+has not yet been qualified on a newer upstream than this pin. The private Task
+Goal recovery integration reuses the current native checkpoint contract and adds
+no native patch; its Goal worker continuation is version 2 inside the existing
+version 3 Task-protected source registry.
 
 ## Startup negotiation
 
@@ -214,10 +231,10 @@ external thread. See
 
 ## Endpoint-protected ChatGPT authentication
 
-Portable ChatGPT accounts depend on an experimental Codex 0.163 App Server
+Portable ChatGPT accounts depend on an experimental Codex 0.166 App Server
 surface. Before starting a portable ChatGPT runtime, the worker requires:
 
-- semantic version `>=0.163.0 <0.164.0`;
+- semantic version `>=0.166.0 <0.167.0`;
 - `initialize.capabilities.experimentalApi` support; and
 - an available `account/login/start` method.
 
@@ -310,3 +327,76 @@ To widen support for a new Codex release:
 6. run the real-Codex compatibility smoke test and package every supported
    worker target; and
 7. change the tested range only after the full Cantrip check passes.
+
+## Durable turn suspension work
+
+Patch `0048` adds the native checkpoint storage foundation, including atomic
+replacement, exclusive process ownership, revisioned settlement, explicit format
+and runtime compatibility, and forced-process-termination storage tests. It is
+consumed by patch `0051` through experimental native capture/read/resume/discard
+operations. Patch `0053` adds stored inspection and the explicit
+`thread/resume.expectedSuspension` attachment hold, and checks runtime metadata
+before decoding a continuation. The managed worker now confirms Pause only after
+committing the checkpoint and its encrypted source locator. Production recovery
+continues the original turn after worker-tree termination; the remaining resource
+and error matrix is still being qualified. The contract and evidence boundary are documented in
+[the durable suspension guide](DURABLE_TURN_SUSPENSION.md).
+
+Patch `0061` advances the experimental continuation contract to
+`0.166.0/cantrip-suspension-v3`. Resumption preparation retains its payload and
+keeps the confirmed capture identity stable across lifecycle writes and retry.
+An earlier suspended runtime remains preserved with a clear compatibility error;
+explicit Stop can retire it. Product adoption and complete process-tree restart
+acceptance remain required before the product pause acknowledgement changes.
+
+Finalized CodeMode data uses native checkpoint contract
+`0.166.0/cantrip-suspension-v7` (patch `0072`). Protected resource-data format 2
+contains optional version-1 CodeMode JSON state and completed terminal records;
+the enclosing worker encryption envelope remains format 1. Native contracts
+from previous milestones remain inspectable and stoppable and require a matching
+runtime for Resume. The production gRPC CodeMode host supports explicit state
+export/import; unsupported providers and older hosts return an error, without
+empty-state fallback, prompt replay or a replacement turn. This does not establish
+the outstanding whole-worker/server/client recovery guarantee.
+
+Patch `0073` advances the native suspension contract to
+`0.166.0/cantrip-suspension-v8`. CodeMode state format 2 represents native cell
+counters as canonical decimal strings, preserving exact identities through the
+worker's JavaScript JSON bridge. Framed-stdio providers now negotiate
+`stored-state-v2` and support the same explicit transfer as gRPC providers.
+Missing capabilities, old formats and malformed identities fail explicitly;
+earlier checkpoints require their matching runtime for Resume and remain
+inspectable/stoppable. The protected resource and encryption envelope versions
+remain 2 and 1 respectively. Complete product recovery is still outstanding.
+
+Patch `0091` advances the native suspension contract to
+`0.166.0/cantrip-suspension-v9`. Its capture boundary checks actual open native
+child threads, including V1 children without V2 agent-path membership. V1 children
+must finish and be explicitly closed before the parent can confirm durable
+Pause. V2 retains agents for follow-up without a close-agent tool; a retained
+V2 tree supports live Pause/Resume and Stop but cannot confirm durable Pause.
+A refused capture retains the live paused turn and its Resume/Stop
+controls. Checkpoints written by v8 do not attest this stronger boundary and
+require their matching runtime for Resume; v9 must preserve their evidence and
+offer Stop rather than silently restoring them. The protected resource and
+encryption formats remain unchanged. The macOS ARM64 optimized runtime passed
+all 73 original native acceptance cases, plus the V2 refusal/Resume/Stop case,
+including the open-V1-child refusal and closed-child parent recovery. Mounted
+Node and Rust acceptance also passed corrupt and
+v8-version rejection, retained evidence, idle browser reload and explicit retry
+through two process-tree terminations. Other platform builds are unqualified.
+
+Patch `0075` leaves those formats unchanged and adds a held MCP lifecycle.
+Attaching a suspended native thread defers all initial server publication and
+required-server validation until explicit Resume. Existing clients quiesce before
+durable confirmation; resumption initializes fresh sessions under current runtime
+authentication. Failed required startup remains held and retryable, and Stop
+does not require that startup to finish. Pending MCP interactions refuse durable
+confirmation without losing their responders. Completed results remain native
+history; opaque server handles are not reconstructed by replaying side effects.
+See the [MCP recovery policy](DURABLE_TURN_SUSPENSION.md#mcp-clients-and-held-startup).
+
+Blocking native questions and command approvals remain answerable during pending
+Pause. Durable confirmation waits for the reply and completed tool result; the
+pending waiter itself is not a portable checkpoint. See the
+[question and approval policy](DURABLE_TURN_SUSPENSION.md#questions-and-command-approvals).

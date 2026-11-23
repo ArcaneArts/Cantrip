@@ -1,0 +1,12 @@
+# Local/release rehearsal with the same services and server settings as hosted
+# deployment. The final default cutover follows full replacement qualification.
+# docker compose -f deploy/compose.hosted.yml -f deploy/compose.rust.yml up
+services:
+  server:
+    build:
+      dockerfile: deploy/docker/server-rust.Dockerfile
+    image: cantrip-server-rust:${CANTRIP_IMAGE_TAG:-local}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --fail --silent --show-error http://127.0.0.1:$${CANTRIP_SERVER_PORT:-4310}/readyz

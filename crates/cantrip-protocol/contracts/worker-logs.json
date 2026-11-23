@@ -1,0 +1,308 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "workerLogReadQuerySchema": 0,
+    "serviceLogReadResultSchema": 10,
+    "workerLogStreamStartResultSchema": 25,
+    "workerLogStreamRenewResultSchema": 29,
+    "workerLogStreamServerMessageSchema": 32
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "workerLogReadQuerySchema",
+      "shape": {
+        "afterCursor": 1,
+        "beforeCursor": 3,
+        "limit": 5,
+        "minimumLevel": 7
+      },
+      "catchall": 9,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 2,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "coerce": true,
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 4,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "coerce": true,
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 6,
+      "defaultValue": 200,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "coerce": true,
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 500, "inclusive": true }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 8,
+      "defaultValue": "trace",
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "serviceLogLevelSchema",
+      "values": ["trace", "debug", "info", "warn", "error", "fatal"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "serviceLogReadResultSchema",
+      "shape": {
+        "records": 11,
+        "nextCursor": 19,
+        "oldestCursor": 20,
+        "latestCursor": 22,
+        "hasMore": 23,
+        "truncated": 24
+      },
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 12,
+      "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "serviceLogRecordSchema",
+      "shape": {
+        "cursor": 13,
+        "timestamp": 14,
+        "system": 15,
+        "level": 8,
+        "message": 16,
+        "context": 17
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 16384, "when": "length" }]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 18,
+      "checks": []
+    },
+    { "type": "unknown", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 21, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "object",
+      "name": "workerLogStreamStartResultSchema",
+      "shape": { "accepted": 26, "latestCursor": 27 },
+      "catchall": 28,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "workerLogStreamRenewResultSchema",
+      "shape": { "accepted": 30 },
+      "catchall": 31,
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "workerLogStreamServerMessageSchema",
+      "options": [33, 38, 47],
+      "discriminator": "type",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "type": 34, "subscriptionId": 35, "nextCursor": 36 },
+      "catchall": 37,
+      "checks": []
+    },
+    { "type": "literal", "values": ["ready"], "checks": [] },
+    {
+      "type": "string",
+      "name": "workerLogStreamSubscriptionIdSchema",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "records": 39,
+        "nextCursor": 40,
+        "oldestCursor": 41,
+        "latestCursor": 43,
+        "truncated": 44,
+        "type": 45
+      },
+      "catchall": 46,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 12,
+      "checks": [{ "check": "max_length", "maximum": 200, "when": "length" }]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "nullable", "innerType": 42, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "literal", "values": ["batch"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "type": 48, "code": 49, "message": 50, "retryable": 51 },
+      "catchall": 52,
+      "checks": []
+    },
+    { "type": "literal", "values": ["error"], "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "authorization-failed",
+        "invalid-request",
+        "worker-offline",
+        "stream-unavailable"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] }
+  ]
+}

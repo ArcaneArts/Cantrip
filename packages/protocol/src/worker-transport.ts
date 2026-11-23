@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { workerCommandSchema } from "./worker-commands.js";
+import { inferenceFailureEvidenceSchema } from "./inference-failure.js";
 
 export const PROJECT_SOURCE_UNAVAILABLE_CODE = "project-source-unavailable";
 
@@ -13,6 +14,18 @@ export const workerRequestEnvelopeSchema = z.object({
   kind: z.literal("request"),
   requestId: z.string().min(1),
   command: workerCommandSchema,
+  // Older workers strip this optional envelope field. New workers only emit
+  // the extended private admission event when the requesting server opts in.
+  inferenceAdmissionAck: z.literal(true).optional(),
+  // Opt-in response metadata; older workers strip this envelope field without
+  // rejecting or changing the strict inference command itself.
+  modelOperationUsage: z.literal(true).optional(),
+  // Issued in send order by the current server command bridge. This is an
+  // execution identity, not a capacity grant or a second prompt queue.
+  inferenceSequence: z
+    .string()
+    .regex(/^[1-9][0-9]{0,39}$/u)
+    .optional(),
 });
 
 export const WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL = "cantrip-worker-legacy";
@@ -64,6 +77,7 @@ export const workerResponseEnvelopeSchema = z.discriminatedUnion("ok", [
     error: z.object({
       code: workerCommandErrorCodeSchema.optional(),
       message: z.string().min(1),
+      inference: inferenceFailureEvidenceSchema.optional(),
     }),
   }),
 ]);

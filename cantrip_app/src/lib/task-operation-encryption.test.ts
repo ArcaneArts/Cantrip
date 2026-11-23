@@ -1,3 +1,4 @@
+import { EMPTY_MODEL_CONFIGURATION } from "@cantrip/protocol";
 import {
   clearSensitiveBytes,
   createTaskOperationRelayResult,
@@ -37,6 +38,7 @@ const task: TaskDetail = {
   chatId: "chat-client-task-relay",
   planGoalEnabled: true,
   priority: 0,
+  modelConfiguration: EMPTY_MODEL_CONFIGURATION,
   requestedTaskWorkerId: null,
   continuityFamily: null,
   lastTaskWorkerId: null,

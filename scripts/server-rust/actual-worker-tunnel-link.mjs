@@ -12,7 +12,7 @@ import { eventually } from "./full-worker.mjs";
 import {
   sealTunnelDataFrame,
   openTunnelDataFrame,
-} from "../../cantrip_worker/src/tunnel-data-protection.ts";
+} from "../../tests/reference-node-worker/src/tunnel-data-protection.ts";
 const hash = (v) => createHash("sha256").update(v).digest("hex");
 export async function prepareTunnelLink(page, projectId, workerId) {
   const token = "private-tcp-tunnel-" + randomUUID(),
@@ -293,7 +293,7 @@ export async function actualWorkerTunnelLink({
         );
       },
     );
-    assert.deepEqual(tunnel.received, [
+    assert.deepEqual(await (tunnel.readReceived?.() ?? tunnel.received), [
       { bytes: tunnel.plaintext.length, sha256: hash(tunnel.plaintext) },
     ]);
     for (const frame of frames.filter((f) => f.header.kind === "data")) {

@@ -1,0 +1,165 @@
+import { z } from "zod";
+import { boundedJsonObjectSchema } from "./bounded-json.js";
+
+/** A model may implement more than one operation; a profile selects one. */
+export const modelOperationSchema = z.enum([
+  "language",
+  "embedding",
+  "decision",
+]);
+export type ModelOperation = z.infer<typeof modelOperationSchema>;
+
+export const modelOperationAdapterSchema = z.enum([
+  "responses",
+  "chat-completions",
+  "openai-embeddings",
+  "ollama-embed",
+  "llama-embeddings",
+  "vllm-embeddings",
+  "vllm-pooling",
+  "vllm-bge-m3",
+  "cohere-embed",
+  "openai-decisions",
+  "system-one",
+  "openrouter-decisions",
+]);
+export type ModelOperationAdapter = z.infer<typeof modelOperationAdapterSchema>;
+
+/** Saved request configuration, not a claim about endpoint health or access. */
+export const modelOperationOptionsSchema = z
+  .object({
+    dimensions: z.number().int().positive().optional(),
+    inputType: z.string().trim().min(1).max(160).optional(),
+    encodingFormat: z.enum(["float", "base64"]).optional(),
+    vectorRepresentation: z
+      .enum(["dense", "sparse", "multi-vector", "hybrid"])
+      .optional(),
+    poolingTask: z.enum(["embed", "token_embed"]).optional(),
+    messageRole: z.string().trim().min(1).max(80).optional(),
+    inputModalities: z
+      .array(z.string().trim().min(1).max(80))
+      .max(32)
+      .optional(),
+    modelRevision: z.string().trim().min(1).max(500).optional(),
+    embeddingSpace: z.string().trim().min(1).max(1_000).optional(),
+    normalization: z.string().trim().min(1).max(80).optional(),
+    maxBatchSize: z.number().int().positive().optional(),
+    timeoutMs: z.number().int().positive().optional(),
+    mediaFormat: z
+      .enum(["content-parts", "base64-images", "data-url-files", "media-urls"])
+      .optional(),
+    // Explicit opt-in to a fixed, credential-free TypeSafe gateway header.
+    typesafeImages: z.boolean().optional(),
+    providerRouting: boundedJsonObjectSchema.optional(),
+    // Adapters must protect model, input, questions and credentials from overrides.
+    parameters: boundedJsonObjectSchema.optional(),
+  })
+  .strict();
+export type ModelOperationOptions = z.infer<typeof modelOperationOptionsSchema>;
+
+export function modelAdapterSupportsOperation(
+  adapter: ModelOperationAdapter | null | undefined,
+  operation: ModelOperation,
+): boolean {
+  if (!adapter) return true;
+  if (operation === "language")
+    return adapter === "responses" || adapter === "chat-completions";
+  if (operation === "embedding")
+    return [
+      "openai-embeddings",
+      "ollama-embed",
+      "llama-embeddings",
+      "vllm-embeddings",
+      "vllm-pooling",
+      "vllm-bge-m3",
+      "cohere-embed",
+    ].includes(adapter);
+  return (
+    adapter === "openai-decisions" ||
+    adapter === "system-one" ||
+    adapter === "openrouter-decisions"
+  );
+}
+
+const positive = z.number().int().positive();
+const modalities = z.array(z.string().trim().min(1).max(80)).max(32);
+const operationCapabilitySchema = z.object({
+  modelRevision: z.string().trim().min(1).max(1000).nullable().optional(),
+  status: z.enum(["supported", "unsupported", "unknown"]),
+  adapter: modelOperationAdapterSchema.nullable().optional(),
+  inputModalities: modalities.nullable().optional(),
+  maxInputTokens: positive.nullable().optional(),
+  maxBatchSize: positive.nullable().optional(),
+  maxRequestBytes: positive.nullable().optional(),
+  maxMediaItems: positive.nullable().optional(),
+  source: z.string().trim().min(1).max(160),
+  observedAt: z.string().datetime().nullable().optional(),
+});
+
+export const modelOperationCapabilitiesSchema = z.object({
+  language: operationCapabilitySchema.optional(),
+  embedding: operationCapabilitySchema
+    .extend({
+      dimensions: positive.nullable().optional(),
+      supportedDimensions: z.array(positive).max(128).nullable().optional(),
+      configurableDimensions: z.boolean().nullable().optional(),
+      vectorRepresentation: z
+        .enum(["dense", "sparse", "multi-vector", "hybrid"])
+        .nullable()
+        .optional(),
+      normalization: z.string().trim().min(1).max(80).nullable().optional(),
+      inputTypes: z
+        .array(z.string().trim().min(1).max(160))
+        .max(128)
+        .nullable()
+        .optional(),
+      mediaEncodings: z
+        .array(z.string().trim().min(1).max(160))
+        .max(128)
+        .nullable()
+        .optional(),
+      embeddingSpace: z.string().trim().min(1).max(1_000).nullable().optional(),
+    })
+    .optional(),
+  decision: operationCapabilitySchema
+    .extend({
+      questionTypes: z
+        .array(z.string().trim().min(1).max(80))
+        .max(64)
+        .nullable()
+        .optional(),
+      maxQuestions: positive.nullable().optional(),
+      maxChoices: positive.nullable().optional(),
+      maxScoreLevels: positive.nullable().optional(),
+      mediaEncodings: z
+        .array(z.string().trim().min(1).max(160))
+        .max(128)
+        .nullable()
+        .optional(),
+    })
+    .optional(),
+});
+export type ModelOperationCapabilities = z.infer<
+  typeof modelOperationCapabilitiesSchema
+>;
+
+/** Omitted operation is a legacy language profile, not a capability inference. */
+export function modelProfileOperation(profile: {
+  operation?: ModelOperation;
+}): ModelOperation {
+  return profile.operation ?? "language";
+}
+
+/** Preserve explicitly configured profiles while excluding confirmed non-language
+ * routes from new language selections. Unknown or conflicting observations and
+ * legacy peers without this presentation evidence remain selectable. */
+export function isLanguageModelProfile(profile: {
+  operation?: ModelOperation;
+  routes?: readonly { enabled: boolean; languageSelectionConflict?: boolean }[];
+}): boolean {
+  if (modelProfileOperation(profile) !== "language") return false;
+  const enabled = profile.routes?.filter((route) => route.enabled) ?? [];
+  return (
+    !enabled.length || enabled.some((route) => !route.languageSelectionConflict)
+  );
+}

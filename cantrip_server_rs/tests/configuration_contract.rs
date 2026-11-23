@@ -209,3 +209,97 @@ fn executable_applies_configuration_before_storage_and_preserves_cli_overrides()
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn serving_process_identity_matches_http_and_respects_configuration() -> Result<()> {
+    async fn observe(
+        directory: &std::path::Path,
+        configured: Option<&str>,
+    ) -> Result<(String, String)> {
+        use std::{process::Stdio, time::Duration};
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
+        let mut command = tokio::process::Command::from(executable());
+        command
+            .args([
+                "--port",
+                "0",
+                "--database",
+                "pglite",
+                "--shutdown-on-stdin-close",
+            ])
+            .env("CANTRIP_DATA_DIR", directory)
+            .env("CANTRIP_SERVER_HOST", "127.0.0.1")
+            .env("CANTRIP_DEPLOYMENT_MODE", "local")
+            .env("CANTRIP_AUTH_MODE", "none")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .kill_on_drop(true);
+        if let Some(id) = configured {
+            command.env("CANTRIP_SERVER_INSTANCE_ID", id);
+        }
+        let mut child = command.spawn()?;
+        let mut lines = BufReader::new(child.stdout.take().context("server output")?).lines();
+        let origin = tokio::time::timeout(Duration::from_secs(60), async {
+            while let Some(line) = lines.next_line().await? {
+                if let Ok(event) = serde_json::from_str::<Value>(&line)
+                    && event["event"] == "server.listening"
+                {
+                    return Ok::<_, anyhow::Error>(
+                        event["origin"]
+                            .as_str()
+                            .context("listener origin")?
+                            .to_owned(),
+                    );
+                }
+            }
+            anyhow::bail!("Server exited before announcing its listener");
+        })
+        .await??;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()?;
+        async fn get(client: &reqwest::Client, url: String) -> Result<Value> {
+            let body = client
+                .get(url)
+                .send()
+                .await?
+                .error_for_status()?
+                .text()
+                .await?;
+            Ok(serde_json::from_str(&body)?)
+        }
+        let health = get(&client, format!("{origin}/api/health")).await?;
+        let traffic = get(&client, format!("{origin}/api/account/live-traffic")).await?;
+        let bootstrap = get(&client, format!("{origin}/api/bootstrap")).await?;
+        assert_eq!(health["operations"]["instanceId"], traffic["instanceId"]);
+        let instance = traffic["instanceId"]
+            .as_str()
+            .context("instance ID")?
+            .to_owned();
+        let installation = bootstrap["server"]["id"]
+            .as_str()
+            .context("installation ID")?
+            .to_owned();
+
+        drop(child.stdin.take());
+        assert!(
+            tokio::time::timeout(Duration::from_secs(30), child.wait())
+                .await??
+                .success()
+        );
+        Ok((instance, installation))
+    }
+
+    let directory = tempfile::tempdir()?;
+    let first = observe(directory.path(), None).await?;
+    let second = observe(directory.path(), None).await?;
+    for id in [&first.0, &second.0] {
+        assert_eq!(uuid::Uuid::parse_str(id)?.get_version_num(), 4);
+    }
+    assert_ne!(first.0, second.0);
+    assert_eq!(first.1, second.1);
+    let configured = observe(directory.path(), Some("local-configured-server")).await?;
+    assert_eq!(configured, ("local-configured-server".into(), first.1));
+    Ok(())
+}

@@ -42,7 +42,7 @@ pub(super) fn statement_failure(cause: anyhow::Error, parameters: &[&str]) -> an
     .into()
 }
 pub(super) fn raw(row: &crate::database::Row) -> Result<Value> {
-    Ok(serde_json::from_str(&row.get::<String>(0)?)?)
+    Ok(serde_json::from_str(row.get::<&str>(0)?)?)
 }
 fn text(value: &Value) -> Result<String> {
     Ok(value
@@ -63,11 +63,33 @@ pub(super) fn iso(value: &Value) -> Result<Value> {
         .as_js_string()
         .and_then(crate::wire::date_milliseconds)
         .context("Invalid time value")?;
-    Ok(json!(
-        crate::wire::date_iso_milliseconds(millis).context("Invalid time value")?
-    ))
+    let iso = crate::wire::date_iso_milliseconds(millis).context("Invalid time value")?;
+    Ok(Value::String(iso.into()))
 }
 impl Repository {
+    pub async fn list_project(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
+        self.list_project_with_query_context(owner, project, None)
+            .await
+    }
+    pub(crate) async fn list_project_with_query_context(
+        &self,
+        owner: &str,
+        project: &str,
+        context: Option<(&str, &[Value])>,
+    ) -> Result<Vec<Value>> {
+        let result=self.database.query("SELECT to_jsonb(c)::text FROM chats c INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE c.project_id=$2 AND c.archived_at IS NULL ORDER BY c.position ASC,c.created_at ASC", &[&owner,&project]).await;
+        let rows = match context {
+            Some((sql, params)) => crate::database::query_error::context(result, sql, params)?,
+            None => result?,
+        };
+        rows.iter().map(|row| wire_summary(&raw(row)?)).collect()
+    }
+    pub async fn list_archived_project(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
+        let rows = self.database.query("SELECT to_jsonb(c)::text,(SELECT count(*)::int FROM chat_messages m WHERE m.chat_id=c.id) FROM chats c INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$1 WHERE c.project_id=$2 AND c.archived_at IS NOT NULL ORDER BY c.archived_at DESC", &[&owner,&project]).await?;
+        rows.iter()
+            .map(|row| super::archive::archived_project_summary(&raw(row)?, row.get::<i32>(1)?))
+            .collect()
+    }
     pub async fn list_standalone(&self, owner: &str) -> Result<Vec<Value>> {
         self.database.query("SELECT to_jsonb(c)::text FROM chats c WHERE owner_id=$1 AND context_kind='standalone' AND archived_at IS NULL ORDER BY position ASC,created_at ASC",&[&owner]).await?.iter().map(|r|wire_summary(&raw(r)?)).collect()
     }

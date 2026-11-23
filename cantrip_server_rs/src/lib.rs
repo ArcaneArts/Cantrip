@@ -1,12 +1,23 @@
+// PGlite's Windows archive imports zlib. Supply its static build rather than
+// requiring a separately installed MinGW library or runtime zlib DLL.
+#[cfg(windows)]
+use libz_sys as _;
+
 pub mod agent_interactions;
 pub mod auth;
 pub mod browsers;
+pub mod cantrip_os;
 pub mod chats;
+pub mod cli;
+pub mod computer_use;
+pub mod computer_use_revocations;
 pub mod config;
+pub mod coordination;
 pub mod database;
 pub mod database_transfer;
 pub mod direct_attachments;
 pub mod encryption;
+pub use cantrip_config::env_file;
 mod environment;
 pub mod file_documents;
 pub mod http;
@@ -14,17 +25,24 @@ pub mod live;
 pub mod managed_postgres;
 pub mod migrations;
 pub mod native_commands;
+pub mod native_handoffs;
+pub mod native_history;
 pub mod operations;
 pub mod pane_layouts;
 pub mod policies;
 pub mod profile;
-mod project_layout;
+pub mod project_alerts;
+pub mod project_automations;
+pub mod project_layout;
 pub mod project_shares;
 pub mod projects;
 pub mod relay;
 pub mod remote_surfaces;
 pub mod run_configurations;
 pub mod settings;
+pub mod task_dispatch;
+pub mod task_scheduling;
+pub mod tasks;
 pub mod terminals;
 mod text;
 pub mod tunnels;
@@ -36,3 +54,5 @@ pub mod workspace_layouts;
 pub mod workspaces;
 
 pub mod project_surfaces;
+
+pub mod agent_alerts;

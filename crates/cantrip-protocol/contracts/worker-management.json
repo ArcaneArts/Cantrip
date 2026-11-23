@@ -1,0 +1,1296 @@
+{
+  "schemaVersion": 1,
+  "roots": {
+    "workerManagementSourceSchema": 0,
+    "workerManagementSummarySchema": 7,
+    "workerManagementListSchema": 215,
+    "workerUpdateSchema": 216,
+    "workerRestartAcknowledgementSchema": 218,
+    "workerRestartResultSchema": 220
+  },
+  "nodes": [
+    {
+      "type": "object",
+      "name": "workerManagementSourceSchema",
+      "shape": {
+        "projectReplicaId": 1,
+        "projectId": 4,
+        "nameWithOwner": 5,
+        "displayPath": 6
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 2,
+      "defaultValue": null,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 3, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "workerManagementSummarySchema",
+      "shape": {
+        "workerId": 8,
+        "name": 9,
+        "platform": 10,
+        "architecture": 11,
+        "codexVersion": 12,
+        "codexRuntime": 14,
+        "remoteSurfaces": 48,
+        "directBroker": 60,
+        "projectReplicas": 74,
+        "managedFolders": 90,
+        "standaloneChat": 106,
+        "chatRelocation": 129,
+        "externalCodexHistory": 131,
+        "codegraph": 133,
+        "webRuntimes": 157,
+        "encryption": 189,
+        "startedAt": 205,
+        "online": 206,
+        "lastSeenAt": 207,
+        "runtimeName": 208,
+        "internal": 209,
+        "editable": 210,
+        "removable": 211,
+        "credentialCount": 212,
+        "activeCredentialCount": 213,
+        "sources": 214
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 13, "checks": [] },
+    { "type": "string", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 15,
+      "defaultValue": {
+        "adapter": "app-server",
+        "compatibility": "missing",
+        "version": null,
+        "testedRange": ">=0.166.0 <0.167.0",
+        "initialize": null,
+        "methods": {},
+        "features": [],
+        "nativeSubagents": {
+          "available": false,
+          "protocolVersion": null,
+          "reason": "This worker has not reported native subagent support."
+        },
+        "degradedReasons": [
+          "This worker has not reported runtime compatibility."
+        ]
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "codexRuntimeReportSchema",
+      "shape": {
+        "adapter": 16,
+        "compatibility": 17,
+        "version": 18,
+        "testedRange": 22,
+        "initialize": 23,
+        "methods": 29,
+        "features": 32,
+        "nativeSubagents": 38,
+        "degradedReasons": 46
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": ["app-server"], "checks": [] },
+    {
+      "type": "enum",
+      "values": ["compatible", "partial", "incompatible", "missing"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 19, "checks": [] },
+    { "type": "object", "shape": { "raw": 20, "semantic": 21 }, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "flags": "u",
+          "displayPattern": "/^\\d+\\.\\d+\\.\\d+$/u"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "nullable", "innerType": 24, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "userAgent": 25,
+        "platformFamily": 26,
+        "platformOs": 27,
+        "experimentalApi": 28
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "record", "keyType": 30, "valueType": 31, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "codexRuntimeMethodStateSchema",
+      "values": ["available", "unavailable", "unknown"],
+      "checks": []
+    },
+    { "type": "array", "element": 33, "checks": [] },
+    {
+      "type": "object",
+      "name": "codexRuntimeFeatureSchema",
+      "shape": { "name": 34, "stage": 35, "enabled": 36, "defaultEnabled": 37 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "codexRuntimeFeatureStageSchema",
+      "values": ["beta", "underDevelopment", "stable", "deprecated", "removed"],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 39,
+      "defaultValue": {
+        "available": false,
+        "protocolVersion": null,
+        "reason": "This worker has not reported native subagent support."
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "nativeSubagentRuntimeCapabilitySchema",
+      "shape": { "available": 40, "protocolVersion": 41, "reason": 43 },
+      "catchall": 45,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 42, "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 44, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "array", "element": 47, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 49,
+      "defaultValue": {
+        "browser": false,
+        "desktop": false,
+        "transports": ["websocket"],
+        "iceTransportPolicies": ["relay"],
+        "maxSessions": 4
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "remoteSurfaceCapabilitiesSchema",
+      "shape": {
+        "browser": 50,
+        "desktop": 52,
+        "transports": 54,
+        "iceTransportPolicies": 56,
+        "maxSessions": 59
+      },
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 51,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 53,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "array",
+      "element": 55,
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "remoteSurfaceTransportSchema",
+      "values": ["websocket", "webrtc"],
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 57,
+      "defaultValue": ["relay"],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 58,
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    {
+      "type": "enum",
+      "name": "remoteSurfaceIceTransportPolicySchema",
+      "values": ["all", "relay"],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 61,
+      "defaultValue": { "available": false },
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "directBrokerAdvertisementSchema",
+      "options": [62, 64],
+      "discriminator": "available",
+      "checks": []
+    },
+    { "type": "object", "shape": { "available": 63 }, "checks": [] },
+    { "type": "literal", "values": [false], "checks": [] },
+    {
+      "type": "object",
+      "name": "availableDirectBrokerSchema",
+      "shape": {
+        "available": 65,
+        "leaseRenewal": 66,
+        "protocol": 68,
+        "loopbackHost": 69,
+        "loopbackPort": 70,
+        "instanceId": 71,
+        "publicKey": 72,
+        "fingerprint": 73
+      },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 67,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "literal", "values": ["ws-v1"], "checks": [] },
+    { "type": "literal", "values": ["127.0.0.1"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 1, "inclusive": true },
+        { "check": "less_than", "value": 65535, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 43, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[0-9a-f]{64}$",
+          "flags": "u",
+          "displayPattern": "/^[0-9a-f]{64}$/u"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 75,
+      "defaultValue": {
+        "provision": false,
+        "synchronize": false,
+        "remove": false,
+        "exactRevision": false,
+        "directPlacement": false,
+        "managedLinkPlacement": false,
+        "attachExisting": false,
+        "recursiveParentCreation": false,
+        "workspaceScopedRoots": false
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "projectReplicaCapabilitiesSchema",
+      "shape": {
+        "provision": 76,
+        "synchronize": 77,
+        "remove": 78,
+        "exactRevision": 79,
+        "directPlacement": 80,
+        "managedLinkPlacement": 82,
+        "attachExisting": 84,
+        "recursiveParentCreation": 86,
+        "workspaceScopedRoots": 88
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 81,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 83,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 85,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 87,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 89,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 91,
+      "defaultValue": {
+        "create": false,
+        "attachExisting": false,
+        "attachWorkspaceRoot": false,
+        "discoverWorkspaceRepositories": false,
+        "convertToGithub": false,
+        "convertExternalGitToGithub": false,
+        "remove": false,
+        "workspaceScopedRoots": false
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "managedFolderCapabilitiesSchema",
+      "shape": {
+        "create": 92,
+        "attachExisting": 93,
+        "attachWorkspaceRoot": 95,
+        "discoverWorkspaceRepositories": 97,
+        "convertToGithub": 99,
+        "convertExternalGitToGithub": 101,
+        "remove": 103,
+        "workspaceScopedRoots": 104
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 94,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 96,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 98,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 100,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 102,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 105,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 107,
+      "defaultValue": {
+        "protocolVersion": 1,
+        "scratch": {
+          "provision": false,
+          "resolve": false,
+          "archive": false,
+          "restore": false,
+          "remove": false,
+          "reconcile": false,
+          "routingHandles": false
+        },
+        "files": {
+          "list": false,
+          "read": false,
+          "write": false,
+          "remove": false,
+          "download": false,
+          "archive": false,
+          "networkShare": false
+        }
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "standaloneChatCapabilitiesSchema",
+      "shape": { "protocolVersion": 108, "scratch": 109, "files": 118 },
+      "catchall": 128,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "standaloneChatScratchCapabilitiesSchema",
+      "shape": {
+        "provision": 110,
+        "resolve": 111,
+        "archive": 112,
+        "restore": 113,
+        "remove": 114,
+        "reconcile": 115,
+        "routingHandles": 116
+      },
+      "catchall": 117,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "standaloneChatFileCapabilitiesSchema",
+      "shape": {
+        "list": 119,
+        "read": 120,
+        "write": 121,
+        "remove": 122,
+        "download": 123,
+        "archive": 124,
+        "networkShare": 125
+      },
+      "catchall": 127,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 126,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 130,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 132,
+      "defaultValue": false,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 134,
+      "defaultValue": {
+        "supported": false,
+        "available": false,
+        "runtimeState": "unavailable",
+        "installedVersion": null,
+        "latestVersion": null,
+        "previousVersion": null,
+        "lastCheckedAt": null,
+        "telemetryDisabled": false,
+        "healthy": false,
+        "statusMessage": "This worker has not reported CodeGraph capabilities.",
+        "projectCounts": {
+          "ready": 0,
+          "indexing": 0,
+          "queued": 0,
+          "degraded": 0
+        },
+        "cliAvailable": false,
+        "mcpInjectionAvailable": false
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "codeGraphWorkerStatusSchema",
+      "shape": {
+        "supported": 135,
+        "available": 136,
+        "runtimeState": 137,
+        "installedVersion": 138,
+        "latestVersion": 140,
+        "previousVersion": 142,
+        "lastCheckedAt": 144,
+        "telemetryDisabled": 146,
+        "healthy": 147,
+        "statusMessage": 148,
+        "projectCounts": 150,
+        "cliAvailable": 155,
+        "mcpInjectionAvailable": 156
+      },
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "enum",
+      "name": "codeGraphRuntimeStateSchema",
+      "values": ["checking", "degraded", "installing", "ready", "unavailable"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 139, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 141, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 143, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 145, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "nullable", "innerType": 149, "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "max_length", "maximum": 1000, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "name": "codeGraphProjectCountsSchema",
+      "shape": {
+        "ready": 151,
+        "indexing": 152,
+        "queued": 153,
+        "degraded": 154
+      },
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 128, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 128, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 128, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 128, "inclusive": true }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 158,
+      "defaultValue": {
+        "schemaVersion": 1,
+        "search": {
+          "component": "searxng",
+          "supported": false,
+          "state": "unsupported",
+          "installedVersion": null,
+          "previousVersion": null,
+          "latestVersion": null,
+          "lastCheckedAt": null,
+          "progress": null,
+          "failure": null
+        },
+        "browser": {
+          "component": "playwright",
+          "supported": false,
+          "state": "unsupported",
+          "installedVersion": null,
+          "previousVersion": null,
+          "latestVersion": null,
+          "lastCheckedAt": null,
+          "progress": null,
+          "failure": null
+        },
+        "staticReading": false
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeCapabilitiesSchema",
+      "shape": {
+        "schemaVersion": 159,
+        "search": 160,
+        "browser": 160,
+        "staticReading": 187
+      },
+      "catchall": 188,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "managed-runtime-components",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeStatusSchema",
+      "shape": {
+        "component": 161,
+        "supported": 162,
+        "state": 163,
+        "installedVersion": 164,
+        "previousVersion": 166,
+        "latestVersion": 168,
+        "lastCheckedAt": 170,
+        "progress": 172,
+        "failure": 179
+      },
+      "catchall": 186,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeComponentSchema",
+      "values": ["searxng", "playwright"],
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeStateSchema",
+      "values": [
+        "checking",
+        "installing",
+        "updating",
+        "ready",
+        "degraded",
+        "failed",
+        "unsupported"
+      ],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 165, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 167, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 169, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 100, "when": "length" }
+      ]
+    },
+    { "type": "nullable", "innerType": 171, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 173, "checks": [] },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeProgressSchema",
+      "shape": {
+        "phase": 174,
+        "completedBytes": 175,
+        "totalBytes": 176,
+        "updatedAt": 177
+      },
+      "catchall": 178,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "managed-runtime-progress",
+          "messageAfterPath": true,
+          "message": "Managed web runtime progress cannot exceed its total."
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeProgressPhaseSchema",
+      "values": [
+        "manifest",
+        "download",
+        "verify",
+        "extract",
+        "inventory",
+        "probe",
+        "promote",
+        "cleanup"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 12000000000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "less_than", "value": 12000000000, "inclusive": true }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 180, "checks": [] },
+    {
+      "type": "object",
+      "name": "managedWebRuntimeFailureSchema",
+      "shape": {
+        "category": 181,
+        "message": 182,
+        "retryable": 183,
+        "failedAt": 184
+      },
+      "catchall": 185,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "managedWebRuntimeFailureCategorySchema",
+      "values": [
+        "download",
+        "integrity",
+        "signature",
+        "archive",
+        "inventory",
+        "health-check",
+        "compatibility",
+        "disk",
+        "process",
+        "unknown"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 1000, "when": "length" }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 190,
+      "defaultValue": {
+        "supported": false,
+        "state": "unavailable",
+        "principalId": null,
+        "grants": [],
+        "lastSyncedAt": null,
+        "error": null
+      },
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerEncryptionStatusSchema",
+      "shape": {
+        "supported": 191,
+        "state": 192,
+        "principalId": 193,
+        "grants": 195,
+        "lastSyncedAt": 200,
+        "error": 202
+      },
+      "catchall": 204,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "worker-encryption-status",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "enum",
+      "values": ["unavailable", "pending-approval", "ready", "error"],
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 194, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 196,
+      "checks": [{ "check": "max_length", "maximum": 18, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": { "component": 197, "keyRevision": 198 },
+      "catchall": 199,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "workerEncryptionComponentScopeSchema",
+      "values": [
+        "chat-content",
+        "task-content",
+        "attachment-content",
+        "interaction-content",
+        "private-surface-metadata",
+        "surface-private-state",
+        "policy-content",
+        "provider-credential",
+        "mcp-secret",
+        "repository-content",
+        "workflow-content",
+        "run-content",
+        "customization-content",
+        "model-operation-content",
+        "tunnel-content",
+        "client-control-content",
+        "alert-content",
+        "private-analytics"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "name": "encryptionKeyRevisionSchema",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 2147483647, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 201, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/"
+        }
+      ]
+    },
+    { "type": "nullable", "innerType": 203, "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 500, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "array", "element": 0, "checks": [] },
+    {
+      "type": "array",
+      "name": "workerManagementListSchema",
+      "element": 7,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "workerUpdateSchema",
+      "shape": { "name": 217 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "trim" },
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 120, "when": "length" }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "workerRestartAcknowledgementSchema",
+      "shape": { "restarting": 219 },
+      "checks": []
+    },
+    { "type": "literal", "values": [true], "checks": [] },
+    {
+      "type": "object",
+      "name": "workerRestartResultSchema",
+      "shape": { "workerId": 221, "status": 222 },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "literal", "values": ["restarting"], "checks": [] }
+  ]
+}

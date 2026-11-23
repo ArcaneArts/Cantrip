@@ -320,16 +320,26 @@ export async function runDispatchCases({
     { code: "autonomy-stopped" },
   );
   for (const status of ["running", "idle"])
-    for (const method of ["skills/list", "hooks/list"]) {
+    for (const method of [
+      "skills/list",
+      "hooks/list",
+      "thread/resume",
+      "thread/unsubscribe",
+    ]) {
       admitted = await setup(true);
       await seed(`UPDATE chats SET status=${literal(status)} WHERE id='chat'`);
+      const observerSession = {
+        ...session,
+        runtimeGeneration: "replacement-observer-runtime",
+        connectionId: "replacement-observer-view",
+      };
       const discovery = await observe(
         "admit discovery " + status + " " + method,
-        command({ operationId: "discovery", session, method }),
+        command({ operationId: "discovery", session: observerSession, method }),
       );
       const result = await dispatch(
         "dispatch discovery without activation " + status + " " + method,
-        (i) => input(discovery, i),
+        (i) => input(discovery, i, { session: observerSession }),
       );
       for (const value of result)
         assert.equal(value.receipt.activationGeneration, null);
@@ -385,8 +395,12 @@ export async function runDispatchCases({
       "goal cancellation preserves dispatched parent " + method,
     );
     for (const value of state) {
-      assert.equal(value.claims[0].status, "rejected");
-      assert.equal(value.prompts[0].state, "pending");
+      // A dispatched setter can already have native side effects. Cancellation
+      // retains its claim until the actual receipt proves what happened.
+      assert.equal(value.claims[0].status, "uncertain");
+      assert.equal(value.claims[0].awaiting_goal, true);
+      assert.equal(value.claims[0].goal_cancelled, true);
+      assert.equal(value.prompts[0].state, "claimed");
       assert.equal(
         value.commands.find((c) => c.operation_id === "goal-parent").status,
         "dispatched",

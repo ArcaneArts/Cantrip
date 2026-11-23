@@ -76,7 +76,7 @@ export async function runControlCases({
         { error: true, code: "chat-not-found" },
       );
   }
-  for (const chat of ["task", standalone]) {
+  for (const chat of ["task"]) {
     for (const value of await unchanged(
       "ineligible autonomy stop " + chat,
       "stop-autonomy",
@@ -90,34 +90,62 @@ export async function runControlCases({
     ))
       assert.equal(value, null);
   }
-  for (const value of await control("idle autonomy stop", "stop-autonomy", {
-    chat: "chat",
-    expected: null,
-  }))
-    assert.equal(value, true);
-  let states = await snapshot("idle Stop increments revision and queue");
-  for (const state of states) {
-    const chat = state.chats.find((c) => c.id === "chat");
-    assert.equal(chat.managed_input_revision, 1);
-    assert.equal(chat.managed_autonomy_stopped, true);
-    assert.equal(state.queues[0].revision, 1);
+  let states;
+  // Source #2534 shares native input and autonomy ownership between project
+  // and standalone Agent Chats. Check every durable transition for both.
+  for (const chatId of ["chat", standalone]) {
+    await reset();
+    if (chatId === standalone)
+      await seed(
+        `INSERT INTO managed_queue_states(chat_id,revision,notified_revision,notification_due_at) VALUES(${literal(chatId)},0,-1,${literal(stamp)})`,
+      );
+    for (const value of await control(
+      "idle autonomy stop " + chatId,
+      "stop-autonomy",
+      {
+        chat: chatId,
+        expected: null,
+      },
+    ))
+      assert.equal(value, true);
+    states = await snapshot(
+      "idle Stop increments revision and queue " + chatId,
+    );
+    for (const state of states) {
+      const chat = state.chats.find((c) => c.id === chatId);
+      assert.equal(chat.managed_input_revision, 1);
+      assert.equal(chat.managed_autonomy_stopped, true);
+      assert.equal(state.queues.find((q) => q.chat_id === chatId).revision, 1);
+    }
+    await control(
+      "repeat Stop keeps Source revision semantics " + chatId,
+      "stop-autonomy",
+      { chat: chatId, expected: null },
+    );
+    await control("resume idle autonomy " + chatId, "resume-autonomy", {
+      chat: chatId,
+    });
+    await control(
+      "repeat resume increments queue revision " + chatId,
+      "resume-autonomy",
+      {
+        chat: chatId,
+      },
+    );
+    states = await snapshot(
+      "autonomy controls preserve Source revisions " + chatId,
+    );
+    for (const state of states) {
+      const chat = state.chats.find((c) => c.id === chatId);
+      assert.equal(chat.managed_input_revision, 2);
+      assert.equal(chat.managed_autonomy_stopped, false);
+      assert.equal(state.queues.find((q) => q.chat_id === chatId).revision, 4);
+    }
   }
-  await control(
-    "repeat Stop keeps Source revision semantics",
-    "stop-autonomy",
-    { chat: "chat", expected: null },
+  // Keep the additional scenario's queue separate from later project fixtures.
+  await seed(
+    `DELETE FROM managed_queue_states WHERE chat_id=${literal(standalone)}`,
   );
-  await control("resume idle autonomy", "resume-autonomy", { chat: "chat" });
-  await control("repeat resume increments queue revision", "resume-autonomy", {
-    chat: "chat",
-  });
-  states = await snapshot("autonomy controls preserve Source revisions");
-  for (const state of states) {
-    const chat = state.chats.find((c) => c.id === "chat");
-    assert.equal(chat.managed_input_revision, 2);
-    assert.equal(chat.managed_autonomy_stopped, false);
-    assert.equal(state.queues[0].revision, 4);
-  }
 
   let admitted = await start();
   let contexts = await control(

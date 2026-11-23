@@ -7,16 +7,23 @@ pub mod agent_time;
 pub mod authentication;
 pub mod catalog;
 mod catalog_hash;
+pub mod catalog_refresh;
 pub mod catalog_runtime;
 pub mod chatgpt;
 pub mod credential_migrations;
+pub(crate) mod desktop_update;
+pub(crate) mod endpoint_providers;
 pub mod enrichment;
 pub mod grok;
 pub mod lifecycle;
+mod mcp_servers;
+pub(crate) mod model_operation_usage;
 mod models;
 pub mod native_inventory;
 pub mod ollama;
 pub mod openrouter;
+mod project_usage;
+pub mod provider_connection;
 mod providers;
 mod query_error;
 pub mod quota;
@@ -24,7 +31,9 @@ mod quota_query_error;
 mod raw_identifiers;
 pub mod reasoning;
 pub mod repository;
+mod skill_audiences;
 pub mod telemetry;
+mod worker_catalog_pages;
 pub mod zai;
 
 pub use providers::normalize_responses_base_url;
@@ -63,19 +72,6 @@ pub(crate) fn operation_error_message(error: &anyhow::Error) -> crate::wire::JsS
     }
 }
 
-pub(crate) fn parse_response(
-    schema: &str,
-    value: Option<&crate::wire::Value>,
-) -> anyhow::Result<crate::wire::Value> {
-    crate::wire::parse(schema, value).map_err(response_error)
-}
-pub(crate) fn response_error(error: crate::wire::ValidationError) -> anyhow::Error {
-    match error {
-        crate::wire::ValidationError::Invalid(issues) => {
-            anyhow::Error::msg(crate::wire::Value::Array(issues).stringify_pretty())
-        }
-        crate::wire::ValidationError::Operation => {
-            anyhow::anyhow!("Settings response validation failed.")
-        }
-    }
-}
+pub(crate) use cantrip_protocol::response::{
+    ResponseValidationError, parse_response, response_error,
+};

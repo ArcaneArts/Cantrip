@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3032",
+  "target": "darwin-arm64",
+  "serverSourceCommit": "d91420eb9e0b4513f2b8b3928cfcde81dadd4c20",
+  "harnessCommit": "2795880b0c32c042393f7d20acacb03124fbf7c9",
+  "scope": "Actual browser SDK and full packaged Node worker with native Codex through Rust to Node reference to Rust rollback. The full worker and held Agent and Goal streams survive the switches. The fixture controls model HTTP responses. The PostgreSQL code-only case keeps the original database URL and profile directory.",
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/profile-runtime-3032/inputs.sha256",
+    "bytes": 1408,
+    "sha256": "4aeea58e8f8ff69b583e9e3ca0ddbcf47a85e48254430cefb7c8a0cbf7d3fc3b"
+  },
+  "artifacts": {
+    "nativeServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/qualified-candidate/bin/cantrip-server",
+      "bytes": 94323600,
+      "sha256": "c422e441f9939610d6f8dc3804cf700c7d91d0cb1a5f9bc545fba77abb39d1e1"
+    },
+    "nativeManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-d91420eb9/qualified-candidate/native-server.json",
+      "bytes": 325804,
+      "sha256": "092dead2c5d8853738ff6d648178469bf7a373fddfa3ad865232adcba49b5fba"
+    },
+    "snapshotProbe": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/historical-profile-probes/database-transfer-fixture",
+      "bytes": 177381856,
+      "sha256": "d4b1ff6bd325d1e4c60e47ae4d0d9dd3d837c77be065a8b7ccb7426d4651a7a3"
+    },
+    "converter": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/profile-runtime-3032/runtime/profile-converter/dist/index.mjs",
+      "bytes": 1078,
+      "sha256": "055e3b3fa4eea4660ad15c2d6cc071c1ea262b4c798afc1a353741243295421b"
+    },
+    "nodeProductionEntry": {
+      "path": "tests/reference-node-server/dist/index.js",
+      "bytes": 106,
+      "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+    },
+    "nativeWorkerRuntime": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-rolling-3032/worker-assets/runtime/worker/bin/codex",
+      "bytes": 279545328,
+      "sha256": "bb2d8c52d600f3d17cb2e4152942a8e4f6f9e153a7d93baed4a35657ef448a13"
+    },
+    "workerEntry": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-rolling-3032/worker-assets/runtime/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    "workerRuntimeManifest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-rolling-3032/worker-assets/runtime/worker/bin/codex-runtime.json",
+      "bytes": 1434,
+      "sha256": "4f337b848fd1bbdc8ad23d98f0dbe31989230d09e49c07d6b673440d7d24d69e"
+    },
+    "lockfile": {
+      "path": "pnpm-lock.yaml",
+      "bytes": 429490,
+      "sha256": "fca48e6a5a409bd55a8d6d4c47ba0408007bad9db9b9b13ec685ccae10fbe11b"
+    }
+  },
+  "summary": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/profile-runtime-3032/profile-runtime-e26c38/summary.json",
+    "bytes": 19716,
+    "sha256": "5cdf63714b444d48771bc3de8c0835e290439f24466f5c29067ac1940507609b"
+  },
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "samePostgres": false,
+      "storagePath": ["pglite", "pglite", "pglite"],
+      "productSteps": 20,
+      "retainedTasks": 4,
+      "profileTransfers": 2,
+      "comparedTablesPerTransfer": 136,
+      "comparedSequencesPerTransfer": 3,
+      "cleanWorkerStops": 7,
+      "cleanServerExits": 5,
+      "intentionalServerKills": 2,
+      "taskModelPosts": 8,
+      "agentModelPosts": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/profile-runtime-3032/profile-runtime-e26c38/pglite.json",
+        "bytes": 1823319,
+        "sha256": "ff3a5fa7fb73f54ace8750fc5c2381818decdea0ee0800869204df787aecd045"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "samePostgres": false,
+      "storagePath": ["bundled-postgres", "pglite", "bundled-postgres"],
+      "productSteps": 20,
+      "retainedTasks": 4,
+      "profileTransfers": 2,
+      "comparedTablesPerTransfer": 136,
+      "comparedSequencesPerTransfer": 3,
+      "cleanWorkerStops": 7,
+      "cleanServerExits": 5,
+      "intentionalServerKills": 2,
+      "taskModelPosts": 8,
+      "agentModelPosts": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/profile-runtime-3032/profile-runtime-e26c38/bundled-postgres.json",
+        "bytes": 1818782,
+        "sha256": "a89f960791b762fadb67c312a5229bcfdf8a46551dbe0f4b7a70a87c937f1794"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "samePostgres": false,
+      "storagePath": ["postgres", "pglite", "postgres"],
+      "productSteps": 20,
+      "retainedTasks": 4,
+      "profileTransfers": 2,
+      "comparedTablesPerTransfer": 136,
+      "comparedSequencesPerTransfer": 3,
+      "cleanWorkerStops": 7,
+      "cleanServerExits": 5,
+      "intentionalServerKills": 2,
+      "taskModelPosts": 8,
+      "agentModelPosts": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/profile-runtime-3032/profile-runtime-e26c38/postgres.json",
+        "bytes": 1817902,
+        "sha256": "1e194df7be3c2553e80d1cc9529e565fb62ae2b5507cdd25a2cd78793adfb0c4"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "samePostgres": true,
+      "storagePath": ["postgres", "postgres", "postgres"],
+      "productSteps": 20,
+      "retainedTasks": 4,
+      "profileTransfers": 2,
+      "comparedTablesPerTransfer": 136,
+      "comparedSequencesPerTransfer": 3,
+      "cleanWorkerStops": 7,
+      "cleanServerExits": 5,
+      "intentionalServerKills": 2,
+      "taskModelPosts": 8,
+      "agentModelPosts": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/profile-runtime-3032/profile-runtime-e26c38/postgres-code-only.json",
+        "bytes": 1821627,
+        "sha256": "f3fde620c5c42b7470af7f9144cfee97b8b075f5219d6819f7d08e05f5ce6fe9"
+      }
+    }
+  ],
+  "totals": {
+    "productSteps": 80,
+    "profileTransfers": 8,
+    "cleanWorkerStops": 28,
+    "cleanServerExits": 20,
+    "intentionalServerKills": 8,
+    "controlledModelPosts": 48
+  }
+}

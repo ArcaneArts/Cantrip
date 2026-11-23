@@ -325,6 +325,7 @@ export {
   tunnelUserCreateSchema,
   tunnelUserUpdateSchema,
   tunnelUserWireCreateSchema,
+  tunnelOsPrepareResultSchema,
   tunnelUserWireUpdateSchema,
   tunnelManagedRegistrationSchema,
   tunnelAttachmentKindSchema,

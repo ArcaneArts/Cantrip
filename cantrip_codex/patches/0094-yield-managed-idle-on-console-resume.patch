@@ -1,0 +1,47 @@
+diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
+--- a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
++++ b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
+@@ -1273,9 +1273,20 @@
+         .await;
+     // App-server owns resume response and snapshot ordering, so wait until
+     // replay completes before letting extensions react to the idle thread.
+-    conversation
+-        .emit_thread_idle_lifecycle_if_idle(ThreadIdleCause::Completed)
+-        .await;
++    if conversation.managed_execution_gate().await.is_some() {
++        // A managed wake can wait for the owner of the current turn. Keep
++        // draining its native events and approval requests while it waits.
++        let conversation = Arc::clone(conversation);
++        tokio::spawn(async move {
++            conversation
++                .emit_thread_idle_lifecycle_if_idle(ThreadIdleCause::Completed)
++                .await;
++        });
++    } else {
++        conversation
++            .emit_thread_idle_lifecycle_if_idle(ThreadIdleCause::Completed)
++            .await;
++    }
+ }
+ 
+ pub(super) async fn send_thread_goal_snapshot_notification(
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -786,6 +786,16 @@
+             None
+         };
+         if let Some(gate) = gate {
++            // A queued Goal wake may have waited for the Goal state permit while
++            // another turn started. Do not hold that permit across a producer
++            // request when the native turn slot already has an owner.
++            if request.start.turn_trigger.as_deref() == Some("goal")
++                && self.session.active_turn.lock().await.is_some()
++            {
++                return Ok(TurnInputSubmission::NotSubmitted {
++                    reason: codex_protocol::turn_input::NotSubmittedReason::NotIdle,
++                });
++            }
+             let turn_id = new_submission_id();
+             // Queue/goal producers submit inherited thread settings; never omit an
+             // unexpected compiled authority override from the protected admission input.

@@ -12,6 +12,38 @@ worker pairing, credentials, heartbeat storage and foundational control sockets.
 Storage supports native PGlite, private managed PostgreSQL and external
 PostgreSQL. The worker remains Node.
 
+Project statistics, token usage, encrypted project/terminal script discovery
+and opaque Task workload now have native HTTP handlers. Current local
+Source/Rust comparisons and full browser/worker restart flows pass all three
+stores and four Redis pairings. See
+[`docs/RUST_SERVER_PROJECT_INSIGHTS.md`](../docs/RUST_SERVER_PROJECT_INSIGHTS.md)
+for exact scope and remaining replacement requirements.
+
+External Chat imports and Codex history discovery now use the native repository,
+executor, HTTP routes, attachment relay and immutable hydration path. See
+[`docs/RUST_SERVER_CHAT_IMPORTS.md`](../docs/RUST_SERVER_CHAT_IMPORTS.md) for the
+local storage/authentication matrix, real crash and lease tests, and remaining
+full-worker/platform acceptance.
+
+Native MCP now includes Explorer reads/writes, terminal snapshots/input/service
+restart, browser discovery/navigation and all four client-control operations.
+The registry advertises all 55 reference MCP operations in their original order.
+Help and web operations retain the unchanged worker's implementation; native
+binding authority preserves their grants, permissions and execution-lane rules.
+Direct server calls to these worker-owned tools retain the reference errors.
+The legacy worker CLI relay now implements all 35 commands in Rust, including
+its independent context selection, full diagnostics and mutation audits. See
+[`docs/RUST_SERVER_CLI.md`](../docs/RUST_SERVER_CLI.md) for local qualification
+and its boundaries. Full native product acceptance remains required.
+The surface port preserves opaque endpoint data, exact owned target placement,
+permission/lane guards, browser revision conflicts and client acknowledgments.
+
+The local [native Task and Goal matrix](../docs/RUST_SERVER_NATIVE_PRODUCT.md)
+runs the existing browser APIs and full worker in separate disposable stores for
+Task lifecycle and native MCP Task scenarios on all three database modes. It
+retains actual failures and runtime provenance; supported-platform and packaged
+qualification remain separate.
+
 The native command kernel now owns admission, immutable receipts, execution
 lanes, logical continuations, encrypted prompts, managed queue claims/imports,
 settings evidence, permission policies and interaction requests. Internal HTTP
@@ -25,8 +57,9 @@ Chats continue through their separate execution paths.
 
 Receipt HTTP with queue wake/delivery, GUI queue and turn orchestration,
 canonical history ingestion and full native runtime product flows remain
-unfinished. The `native-commands` CI job exercises the kernel and protected APIs
-on Linux, macOS and Windows; local checks do not establish those platform passes.
+unfinished. Development validation runs locally; GitHub Actions is reserved for
+releases and deployments. Local macOS checks do not establish Linux or Windows
+platform acceptance.
 
 Protected Chat message listing, turn-aware pagination, append and stored turn
 archive reads also execute natively. Repository and real HTTP/Live comparisons
@@ -358,9 +391,12 @@ Domain event persistence, binary relays, shared coordination and
 resource/execution recovery remain unported. App Live is integrated below,
 with incomplete domain publishers and multi-instance support.
 
-`.github/workflows/rust-server.yml` executes native and compatibility suites on
-Linux, macOS and Windows. A configured workflow is not passing evidence; record
-observed results for the actual milestone head before claiming acceptance.
+Run native and compatibility suites locally. GitHub Actions is reserved for
+releases and deployments; the former Linux/macOS/Windows recipe is retained at
+`.github/workflow-archive/rust-server.yml` as an inactive command reference.
+Record observed results and platform limitations for the actual milestone head.
+Do not dispatch hosted validation or infer another platform's runtime behavior
+from a successful local run.
 
 ## Application Live core in progress
 

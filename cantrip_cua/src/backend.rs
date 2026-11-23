@@ -15,6 +15,15 @@ pub struct Capture {
     pub raster: Raster,
 }
 
+pub type CaptureWork = Box<dyn FnOnce() -> Result<Capture> + Send>;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RemoteMonitorInput {
+    Unsupported,
+    AssignedGuest,
+    ExclusiveHost,
+}
+
 impl Raster {
     pub fn validate(&self) -> Result<()> {
         let pixels = (self.width as usize)
@@ -29,6 +38,88 @@ impl Raster {
 }
 
 pub trait CaptureBackend: Send {
+    fn remote_monitor_input(&self) -> RemoteMonitorInput {
+        RemoteMonitorInput::Unsupported
+    }
+    fn open_remote_monitor(
+        &mut self,
+        _binding: &crate::interaction::Binding,
+        _participant: &str,
+        _target: &Target,
+        _cancel: &Cancellation,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn cancel_remote_monitor_open(&mut self, _binding: &crate::interaction::Binding) {}
+    /// The native owner has ended this viewer's input session.
+    fn remote_input_closed(&self, _participant: &str) -> bool {
+        false
+    }
+    fn open_remote_window(
+        &mut self,
+        _participant: &str,
+        _target: &Target,
+        _cancel: &Cancellation,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn desktop_io(&self) -> bool {
+        false
+    }
+    fn clipboard_read(
+        &mut self,
+        _target: &Target,
+        _cancel: &Cancellation,
+    ) -> Result<Option<String>> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Clipboard access is unavailable on this backend.",
+        ))
+    }
+    fn clipboard_write(
+        &mut self,
+        _target: &Target,
+        _text: &str,
+        _cancel: &Cancellation,
+    ) -> Result<()> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Clipboard access is unavailable on this backend.",
+        ))
+    }
+    fn resize_desktop(
+        &mut self,
+        _target: &Target,
+        _width: u32,
+        _height: u32,
+        _cancel: &Cancellation,
+    ) -> Result<Target> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Desktop resize is unavailable on this backend.",
+        ))
+    }
+    /// Host displays can contain protected Cantrip windows. A backend bound by
+    /// the guest carrier to an explicit owned desktop has no host display.
+    fn protects_host_displays(&self) -> bool {
+        true
+    }
+    /// Native application identity, never a window title supplied by the model.
+    fn is_cantrip_application(&self, target: &Target) -> Result<bool> {
+        Ok(target
+            .application
+            .as_deref()
+            .is_some_and(crate::target::is_cantrip_application_name))
+    }
+    /// Own the native capture wait without holding the service/input executor.
+    /// Backends without an independent capture path keep the synchronous path.
+    fn capture_work(
+        &mut self,
+        _target: &Target,
+        _cancellation: &Cancellation,
+    ) -> Result<Option<CaptureWork>> {
+        Ok(None)
+    }
     /// Capture owners are independent of agent and input lifetimes.
     fn retain_remote_captures(&mut self, _targets: Vec<Target>) {}
     /// Trusted worker participants share the native input host, not agent bindings.
@@ -46,6 +137,22 @@ pub trait CaptureBackend: Send {
             "Surface-directed input is unavailable; no input was posted.",
         ))
     }
+    /// Copy text from the selected destination as one viewer operation.
+    /// A backend may dispatch a paired key press using the two reserved sequences.
+    fn copy_selection_text(
+        &mut self,
+        _participant: &str,
+        _target: &Target,
+        _position: crate::target::Point,
+        _sequence: u64,
+        _cancel: &Cancellation,
+    ) -> Result<Option<String>> {
+        Err(CuaError::new(
+            ErrorCode::Unsupported,
+            "Window clipboard access is unavailable.",
+        ))
+    }
+
     fn present_interaction_cursors(
         &mut self,
         _participants: Vec<cantrip_interaction::presentation::CursorPresentation<Target>>,
@@ -272,6 +379,7 @@ impl CaptureBackend for FakeBackend {
                 pixel_width: 640,
                 pixel_height: 360,
                 scale_factor: 2.0,
+                access: None,
                 focused: None,
                 minimized: None,
             },
@@ -291,10 +399,24 @@ impl CaptureBackend for FakeBackend {
                 pixel_width: 320,
                 pixel_height: 200,
                 scale_factor: 2.0,
+                access: None,
                 focused: Some(false),
                 minimized: Some(false),
             },
         ])
+    }
+    fn interaction_input(
+        &mut self,
+        _participant: &str,
+        _target: &Target,
+        _position: crate::target::Point,
+        _sequence: u64,
+        event: cantrip_interaction::input::InputEvent,
+        cancellation: &Cancellation,
+    ) -> Result<()> {
+        cancellation.check()?;
+        event.validate()?;
+        Ok(())
     }
     fn capture(&mut self, target: &Target, cancellation: &Cancellation) -> Result<Capture> {
         let current = self

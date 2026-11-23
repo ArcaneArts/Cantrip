@@ -1,0 +1,494 @@
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+index e5e9670..cb49352 100644
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -720,6 +720,11 @@ client_request_definitions! {
+         serialization: None,
+         response: v2::ManagedExecutionBindResponse,
+     },
++    ManagedExecutionHandoff => "thread/managedExecution/handoff" {
++        params: v2::ManagedExecutionHandoffParams,
++        serialization: None,
++        response: v2::ManagedExecutionHandoffResponse,
++    },
+     ManagedExecutionInferenceClaim => "thread/managedExecution/inferenceClaim" {
+         params: v2::ManagedExecutionInferenceClaimParams,
+         serialization: None,
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+index 28a6af4..835ac67 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/managed_execution.rs
+@@ -112,6 +112,26 @@ pub struct ManagedExecutionInferenceClaimParams {
+     pub attempt_id: String,
+ }
+ 
++/// Worker-owned transfer control; it never grants inference.
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase", deny_unknown_fields)]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionHandoffParams {
++    pub thread_id: String,
++    pub runner_generation: String,
++    pub action: String,
++    pub operation_id: Option<String>,
++    pub expected_revision: Option<String>,
++}
++
++#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
++#[serde(rename_all = "camelCase")]
++#[ts(export_to = "v2/")]
++pub struct ManagedExecutionHandoffResponse {
++    pub revision: String,
++    pub held_by: Option<String>,
++}
++
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+index f33ba27..1c5928b 100644
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -1492,6 +1492,11 @@ impl MessageProcessor {
+                     .managed_execution_bind(&request_id, params)
+                     .await
+             }
++            ClientRequest::ManagedExecutionHandoff { params, .. } => {
++                self.turn_processor
++                    .managed_execution_handoff(&request_id, params)
++                    .await
++            }
+             ClientRequest::ManagedExecutionInferenceClaim { params, .. } => {
+                 self.turn_processor
+                     .managed_execution_inference_claim(&request_id, params)
+diff --git a/codex-rs/app-server/src/request_processors/managed_execution.rs b/codex-rs/app-server/src/request_processors/managed_execution.rs
+index 8434648..243975c 100644
+--- a/codex-rs/app-server/src/request_processors/managed_execution.rs
++++ b/codex-rs/app-server/src/request_processors/managed_execution.rs
+@@ -267,6 +267,53 @@ impl TurnRequestProcessor {
+             .map_err(invalid_params)?;
+         Ok(Some(ManagedExecutionBindResponse { bound: true }.into()))
+     }
++    pub(crate) async fn managed_execution_handoff(
++        &self,
++        request_id: &ConnectionRequestId,
++        params: codex_app_server_protocol::ManagedExecutionHandoffParams,
++    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
++        let gate = {
++            let gates = self
++                .outgoing
++                .managed_execution_gates
++                .lock()
++                .unwrap_or_else(std::sync::PoisonError::into_inner);
++            gates
++                .get(&params.runner_generation)
++                .and_then(|(owner, gate)| {
++                    (*owner == request_id.connection_id).then(|| gate.clone())
++                })
++                .ok_or_else(|| invalid_params("handoff has no current native gate owner"))?
++        };
++        let thread_id = codex_protocol::ThreadId::from_string(&params.thread_id)
++            .map_err(|_| invalid_params("invalid handoff thread id"))?;
++        let expected = params
++            .expected_revision
++            .as_deref()
++            .map(str::parse::<u64>)
++            .transpose()
++            .map_err(|_| invalid_params("invalid handoff revision"))?;
++        let (revision, held_by) = gate
++            .handoff_control(
++                thread_id,
++                &params.action,
++                params.operation_id.as_deref(),
++                expected,
++            )
++            .map_err(invalid_params)?;
++        if params.action == "release" && held_by.is_none() {
++            let (_, thread) = self.load_thread(&params.thread_id).await?;
++            thread.wake_managed_tree_after_handoff().await;
++        }
++        Ok(Some(
++            codex_app_server_protocol::ManagedExecutionHandoffResponse {
++                revision: revision.to_string(),
++                held_by,
++            }
++            .into(),
++        ))
++    }
++
+     pub(crate) async fn managed_execution_inference_claim(
+         &self,
+         request_id: &ConnectionRequestId,
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index 0ffc794..1b12081 100644
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -702,6 +702,15 @@ impl CodexThread {
+         }
+     }
+ 
++    pub async fn wake_managed_tree_after_handoff(&self) {
++        self.session
++            .services
++            .local_agent_runtime
++            .security_transitions
++            .wake_handoff_members()
++            .await;
++    }
++
+     pub async fn managed_execution_gate(
+         &self,
+     ) -> Option<Arc<crate::managed_execution::ManagedExecutionGate>> {
+@@ -763,9 +772,16 @@ impl CodexThread {
+                 request.start.turn_trigger.as_deref(),
+                 Some("goal" | "queue")
+             ) {
+-            self.managed_execution_gate()
+-                .await
+-                .filter(|gate| !gate.is_inference_only())
++            let gate = self.managed_execution_gate().await;
++            if gate
++                .as_ref()
++                .is_some_and(|gate| gate.root_producer_held(self.session.thread_id()))
++            {
++                return Ok(TurnInputSubmission::NotSubmitted {
++                    reason: codex_protocol::turn_input::NotSubmittedReason::PendingSettings,
++                });
++            }
++            gate.filter(|gate| !gate.is_inference_only())
+         } else {
+             None
+         };
+diff --git a/codex-rs/core/src/managed_execution.rs b/codex-rs/core/src/managed_execution.rs
+index cfd049c..ccb07da 100644
+--- a/codex-rs/core/src/managed_execution.rs
++++ b/codex-rs/core/src/managed_execution.rs
+@@ -51,6 +51,9 @@ struct GateState {
+     thread_id: Option<ThreadId>,
+     startup_bindings: usize,
+     thread_binding_committed: bool,
++    handoff_revision: u64,
++    handoff_operation: Option<String>,
++    handoff_export_sealed: bool,
+     attempts: HashMap<String, Attempt>,
+     inference_requests: HashMap<
+         String,
+@@ -59,6 +62,7 @@ struct GateState {
+             String,
+             String,
+             Option<String>,
++            bool,
+             oneshot::Sender<bool>,
+         ),
+     >,
+@@ -292,8 +296,14 @@ impl ManagedExecutionGate {
+                 .state
+                 .lock()
+                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+-            if state.closed {
+-                return Err("inference owner is disconnected or invalidated".into());
++            if state.closed
++                || state.handoff_export_sealed
++                || (phase == "begin"
++                    && goal_epoch.is_some()
++                    && state.thread_id == Some(thread_id)
++                    && state.handoff_operation.is_some())
++            {
++                return Err("inference owner is disconnected, invalidated or held".into());
+             }
+             state.inference_requests.insert(
+                 attempt_id.clone(),
+@@ -302,6 +312,7 @@ impl ManagedExecutionGate {
+                     turn_id.to_owned(),
+                     scope_id.to_owned(),
+                     goal_epoch.map(str::to_owned),
++                    phase == "begin",
+                     reply,
+                 ),
+             );
+@@ -351,10 +362,10 @@ impl ManagedExecutionGate {
+             .state
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        if state.closed {
++        if state.closed || state.handoff_export_sealed {
+             return Ok(ManagedInferenceClaim::default());
+         }
+-        let Some((expected_thread, expected_turn, expected_scope, goal_epoch, reply)) =
++        let Some((expected_thread, expected_turn, expected_scope, goal_epoch, _, reply)) =
+             state.inference_requests.get(attempt_id)
+         else {
+             return Ok(ManagedInferenceClaim::default());
+@@ -386,7 +397,7 @@ impl ManagedExecutionGate {
+             .state
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        let (expected, _, scope_id, _, _) = state.inference_requests.get(attempt_id)?;
++        let (expected, _, scope_id, _, _, _) = state.inference_requests.get(attempt_id)?;
+         if *expected != thread_id {
+             return Some(Err("foreign inference request".into()));
+         }
+@@ -397,7 +408,18 @@ impl ManagedExecutionGate {
+         {
+             return Some(Err("inference acknowledgement has no matching scope".into()));
+         }
+-        let (_, _, _, _, reply) = state.inference_requests.remove(attempt_id).unwrap();
++        if allow
++            && (state.handoff_export_sealed
++                || (state.thread_id == Some(thread_id)
++                    && state.handoff_operation.is_some()
++                    && state
++                        .inference_requests
++                        .get(attempt_id)
++                        .is_some_and(|request| request.3.is_some() && request.4)))
++        {
++            return Some(Err("native producer is held for transfer".into()));
++        }
++        let (_, _, _, _, _, reply) = state.inference_requests.remove(attempt_id).unwrap();
+         Some(
+             reply
+                 .send(allow)
+@@ -430,6 +452,114 @@ impl ManagedExecutionGate {
+         });
+     }
+ 
++    /// A root producer hold leaves child inference and live task settlement
++    /// intact. Its monotonic revision fences delayed holds after cancellation.
++    pub fn handoff_control(
++        &self,
++        thread_id: ThreadId,
++        action: &str,
++        operation: Option<&str>,
++        expected: Option<u64>,
++    ) -> Result<(u64, Option<String>), String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.thread_id != Some(thread_id) || state.inherited {
++            return Err("handoff targets another native root".into());
++        }
++        if action == "read" {
++            return Ok((state.handoff_revision, state.handoff_operation.clone()));
++        }
++        let operation = operation
++            .filter(|id| !id.is_empty() && id.len() <= 255)
++            .ok_or("handoff requires an operation identity")?;
++        let expected = expected.ok_or("handoff requires its observed revision")?;
++        match action {
++            "hold" => {
++                if state.handoff_operation.as_deref() == Some(operation) {
++                    return Ok((state.handoff_revision, state.handoff_operation.clone()));
++                }
++                if state.closed
++                    || state.handoff_operation.is_some()
++                    || state.handoff_revision != expected
++                {
++                    return Err("native root handoff ownership changed".into());
++                }
++                let next = state
++                    .handoff_revision
++                    .checked_add(1)
++                    .ok_or("handoff revision exhausted")?;
++                state.handoff_operation = Some(operation.to_owned());
++                state.handoff_export_sealed = false;
++                state.handoff_revision = next;
++            }
++            "release" => {
++                if state
++                    .handoff_operation
++                    .as_deref()
++                    .is_some_and(|id| id != operation)
++                {
++                    return Err("another handoff holds this native root".into());
++                }
++                if state.handoff_operation.is_some() {
++                    if state.handoff_revision != expected {
++                        return Err("native handoff revision changed".into());
++                    }
++                    let next = state
++                        .handoff_revision
++                        .checked_add(1)
++                        .ok_or("handoff revision exhausted")?;
++                    state.handoff_operation = None;
++                    state.handoff_export_sealed = false;
++                    state.handoff_revision = next;
++                } else if state.handoff_revision == expected {
++                    // A hold request may still be in flight. Retire its exact
++                    // revision even when it has not acquired this hold yet.
++                    state.handoff_revision = state
++                        .handoff_revision
++                        .checked_add(1)
++                        .ok_or("handoff revision exhausted")?;
++                } else if state.handoff_revision < expected {
++                    return Err("native handoff revision is from another lifetime".into());
++                }
++            }
++            _ => return Err("unknown native handoff action".into()),
++        }
++        Ok((state.handoff_revision, state.handoff_operation.clone()))
++    }
++
++    pub fn root_producer_held(&self, thread_id: ThreadId) -> bool {
++        let state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        state.thread_id == Some(thread_id) && state.handoff_operation.is_some()
++    }
++
++    /// Called only while the actual tree execution coordinator is locked and
++    /// has confirmed no live execution, auxiliary producer or suspension hold.
++    pub fn seal_handoff_export(&self, thread_id: ThreadId) -> Result<(), String> {
++        let mut state = self
++            .state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if state.thread_id != Some(thread_id) || state.inherited {
++            return Err("history export targets another native root".into());
++        }
++        if state.handoff_operation.is_some() {
++            state.handoff_export_sealed = true;
++        }
++        Ok(())
++    }
++
++    pub fn handoff_export_sealed(&self) -> bool {
++        self.state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .handoff_export_sealed
++    }
++
+     pub fn is_closed(&self) -> bool {
+         self.state
+             .lock()
+@@ -522,8 +652,8 @@ impl ManagedExecutionGate {
+                 .state
+                 .lock()
+                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+-            if state.closed {
+-                return Err("managed runner requires explicit rearm".into());
++            if state.closed || state.handoff_operation.is_some() {
++                return Err("managed runner requires explicit rearm or handoff release".into());
+             }
+             state.attempts.insert(
+                 attempt_id.clone(),
+@@ -574,8 +704,8 @@ impl ManagedExecutionGate {
+             .state
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        if state.closed {
+-            return Err("managed runner invalidated".into());
++        if state.closed || (allow && state.handoff_operation.is_some()) {
++            return Err("managed runner invalidated or held for transfer".into());
+         }
+         let attempt = state
+             .attempts
+@@ -610,8 +740,8 @@ impl ManagedExecutionGate {
+             .state
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner);
+-        if state.closed {
+-            return Err("managed runner invalidated before start".into());
++        if state.closed || state.handoff_operation.is_some() {
++            return Err("managed runner invalidated or held before start".into());
+         }
+         let attempt = state
+             .attempts
+@@ -672,7 +802,7 @@ impl ManagedExecutionGate {
+         };
+         // Cancellation and gate closure are committed under the same lock, so
+         // no new waiter can be inserted between draining and invalidation.
+-        for (attempt_id, (thread_id, turn_id, scope_id, _, reply)) in inference_requests {
++        for (attempt_id, (thread_id, turn_id, scope_id, _, _, reply)) in inference_requests {
+             let _ = reply.send(false);
+             self.notify_inference(
+                 thread_id,
+diff --git a/codex-rs/core/src/session/managed_context.rs b/codex-rs/core/src/session/managed_context.rs
+index d7b022b..8a10508 100644
+--- a/codex-rs/core/src/session/managed_context.rs
++++ b/codex-rs/core/src/session/managed_context.rs
+@@ -16,6 +16,10 @@ impl Session {
+             .security_transitions
+             .history_export_guard()
+             .await?;
++        if let Some(gate) = self.managed_execution_gate().await {
++            gate.seal_handoff_export(self.thread_id())
++                .map_err(CodexErr::InvalidRequest)?;
++        }
+         let active = self.active_turn.lock().await;
+         if active.is_some() {
+             return Err(CodexErr::InvalidRequest(
+diff --git a/codex-rs/core/src/session/security_transitions.rs b/codex-rs/core/src/session/security_transitions.rs
+index ef48b92..f8661e6 100644
+--- a/codex-rs/core/src/session/security_transitions.rs
++++ b/codex-rs/core/src/session/security_transitions.rs
+@@ -159,15 +159,20 @@ impl SecurityTransitions {
+                 "cannot migrate history with pending native security settings".into(),
+             ));
+         }
+-        if state.sessions.values().filter_map(Weak::upgrade).any(|session| {
+-            session
+-                .services
+-                .thread_extension_data
+-                .get::<crate::session::durable_suspension::DurableSuspension>()
+-                .is_some_and(|suspension| {
+-                    suspension.frozen.load(std::sync::atomic::Ordering::Acquire)
+-                })
+-        }) {
++        if state
++            .sessions
++            .values()
++            .filter_map(Weak::upgrade)
++            .any(|session| {
++                session
++                    .services
++                    .thread_extension_data
++                    .get::<crate::session::durable_suspension::DurableSuspension>()
++                    .is_some_and(|suspension| {
++                        suspension.frozen.load(std::sync::atomic::Ordering::Acquire)
++                    })
++            })
++        {
+             return Err(CodexErr::InvalidRequest(
+                 "cannot migrate history while a native tree continuation is suspended".into(),
+             ));
+@@ -257,6 +262,16 @@ impl SecurityTransitions {
+         turn_id: &str,
+     ) -> CodexResult<Option<SecurityExecutionLease>> {
+         let mut state = self.state.lock().await;
++        if session
++            .get_config()
++            .await
++            .managed_thread_configuration
++            .as_ref()
++            .and_then(|managed| managed.execution_gate.as_ref())
++            .is_some_and(|gate| gate.handoff_export_sealed())
++        {
++            return Ok(None);
++        }
+         if let Err(error) = self.drain_locked(&mut state).await {
+             tracing::warn!(%error, "pending security recovery prevented new admission");
+             return Ok(None);
+@@ -323,6 +338,20 @@ impl SecurityTransitions {
+         }
+     }
+ 
++    pub(crate) async fn wake_handoff_members(&self) {
++        let members: Vec<_> = self
++            .state
++            .lock()
++            .await
++            .sessions
++            .values()
++            .filter_map(Weak::upgrade)
++            .collect();
++        for member in members {
++            tokio::spawn(member.maybe_start_turn_for_pending_work());
++        }
++    }
++
+     pub(crate) async fn settle(&self) -> CodexResult<()> {
+         let mut state = self.state.lock().await;
+         self.drain_locked(&mut state).await

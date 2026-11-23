@@ -9,6 +9,7 @@ import type {
 import {
   ChevronRight,
   Cpu,
+  FolderGit2,
   GitFork,
   HardDrive,
   Play,
@@ -79,6 +80,12 @@ const worktreePlacementKinds = new Set<ProjectSurfaceCreateKind>([
 const projectToolCreateKinds = new Set<ProjectSurfaceCreateKind>([
   "history",
   "graph",
+  "issues",
+  "prs",
+  "actions",
+]);
+
+const githubCreateKinds = new Set<ProjectSurfaceCreateKind>([
   "issues",
   "prs",
   "actions",
@@ -164,9 +171,7 @@ export function projectSurfaceCreateOptions(
       creatingKinds.has(definition.kind) ||
       ((definition.kind === "history" || definition.kind === "graph") &&
         capabilities?.git === false) ||
-      ((definition.kind === "issues" ||
-        definition.kind === "prs" ||
-        definition.kind === "actions") &&
+      (githubCreateKinds.has(definition.kind) &&
         capabilities?.github === false),
   }));
 }
@@ -201,6 +206,9 @@ export function ProjectSurfaceCreateMenu({
     projectSurfaceCreateOptions(creatingKinds, placement?.capabilities).filter(
       ({ kind }) => !allowedKinds || allowedKinds.has(kind),
     );
+  const githubOptions = capabilityFilteredProjectSurfaceCreateOptions.filter(
+    ({ kind }) => githubCreateKinds.has(kind),
+  );
   return (
     <DropdownMenu.Root onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
@@ -212,6 +220,42 @@ export function ProjectSurfaceCreateMenu({
         >
           {capabilityFilteredProjectSurfaceCreateOptions.map(
             ({ disabled, kind, label }) => {
+              if (githubCreateKinds.has(kind)) {
+                if (kind !== githubOptions[0]?.kind) return null;
+                return (
+                  <DropdownMenu.Sub key="github">
+                    <StyledDropdownMenuSubTrigger
+                      disabled={githubOptions.every(
+                        (option) => option.disabled,
+                      )}
+                    >
+                      <FolderGit2 className="size-4" aria-hidden="true" />
+                      GitHub
+                      <ChevronRight className="ml-auto size-3.5" />
+                    </StyledDropdownMenuSubTrigger>
+                    <DropdownMenu.Portal>
+                      <StyledDropdownMenuSubContent
+                        sideOffset={4}
+                        className="min-w-40"
+                      >
+                        {githubOptions.map((option) => (
+                          <StyledDropdownMenuItem
+                            key={option.kind}
+                            disabled={option.disabled}
+                            onSelect={() => onCreate(option.kind)}
+                          >
+                            <ProjectSurfaceIcon
+                              kind={option.kind}
+                              className="size-4"
+                            />
+                            {option.label}
+                          </StyledDropdownMenuItem>
+                        ))}
+                      </StyledDropdownMenuSubContent>
+                    </DropdownMenu.Portal>
+                  </DropdownMenu.Sub>
+                );
+              }
               if (
                 !placementControls ||
                 !placement ||

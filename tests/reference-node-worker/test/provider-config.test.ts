@@ -1,0 +1,180 @@
+import {
+  nativeEndpointProviderKinds,
+  endpointProviderKinds,
+  type WorkerCommand,
+} from "@cantrip/protocol";
+import { describe, expect, it } from "vitest";
+
+import { codexProviderConfiguration } from "../src/codex/provider-config.js";
+import { codexRuntimeId } from "../src/codex/app-server.js";
+
+type TurnProvider = Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
+
+function provider(
+  kind: TurnProvider["kind"],
+  overrides: Partial<TurnProvider> = {},
+): TurnProvider {
+  return {
+    id: `provider-${kind}`,
+    name: kind,
+    kind,
+    baseUrl: "https://provider.example/v1",
+    apiKey: null,
+    accountId: null,
+    credentialHomeKey: null,
+    ...overrides,
+  } as TurnProvider;
+}
+
+describe("Codex provider configuration", () => {
+  it("uses an environment-backed endpoint key for authenticated Ollama while retaining the keyless builtin", () => {
+    const authenticated = codexProviderConfiguration(
+      provider("ollama", { apiKey: "ollama-secret" }),
+    );
+    expect(authenticated.arguments).toContain(
+      'model_provider="cantrip_runtime"',
+    );
+    expect(authenticated.arguments.join(" ")).not.toContain("ollama-secret");
+    expect(authenticated.environment).toEqual({
+      CANTRIP_PROVIDER_API_KEY: "ollama-secret",
+    });
+    expect(codexProviderConfiguration(provider("ollama")).arguments).toContain(
+      'model_provider="ollama"',
+    );
+  });
+  it.each(nativeEndpointProviderKinds)(
+    "uses a private Responses configuration for each %s instance",
+    (kind) => {
+      const a = codexProviderConfiguration(
+        provider(kind, {
+          id: "instance-a",
+          baseUrl: "http://[::1]:9000/proxy/v1/responses///",
+          apiKey: "first-key",
+        }),
+      );
+      const b = codexProviderConfiguration(
+        provider(kind, {
+          id: "instance-b",
+          baseUrl: "http://gpu.lan:9001/custom/v1",
+          apiKey: "second-key",
+        }),
+      );
+      expect(a.arguments).toContain(
+        'model_providers.cantrip_runtime.base_url="http://[::1]:9000/proxy/v1"',
+      );
+      expect(b.arguments).toContain(
+        'model_providers.cantrip_runtime.base_url="http://gpu.lan:9001/custom/v1"',
+      );
+      expect(a.arguments).toContain(
+        'model_providers.cantrip_runtime.wire_api="responses"',
+      );
+      expect(a.arguments.join(" ")).not.toContain("first-key");
+      expect(a.environment).toEqual({ CANTRIP_PROVIDER_API_KEY: "first-key" });
+      expect(b.environment).toEqual({ CANTRIP_PROVIDER_API_KEY: "second-key" });
+      expect(codexProviderConfiguration(provider(kind)).environment).toEqual(
+        {},
+      );
+    },
+  );
+
+  it.each(endpointProviderKinds)(
+    "separates %s runtime generations when an instance or its connection changes",
+    (kind) => {
+      const model = {
+        id: "model",
+        routeId: "route",
+        name: "same-model",
+        reasoningEffort: null,
+      };
+      const original = provider(kind, { id: "first", apiKey: "first-key" });
+      const generation = codexRuntimeId(model, original);
+      for (const change of [
+        { id: "second" },
+        { baseUrl: "http://another-gpu.lan/v1" },
+        { apiKey: "second-key" },
+      ]) {
+        expect(codexRuntimeId(model, { ...original, ...change })).not.toBe(
+          generation,
+        );
+      }
+      expect(
+        codexRuntimeId({ ...model, name: "another-model" }, original),
+      ).toBe(generation);
+    },
+  );
+  it("disables Fast mode for every Cantrip-managed runtime", () => {
+    for (const kind of [
+      "chatgpt",
+      "ollama",
+      "openai-compatible",
+      "grok",
+    ] as const) {
+      const arguments_ = codexProviderConfiguration(provider(kind)).arguments;
+      expect(arguments_).toContain("features.fast_mode=false");
+      expect(arguments_).toContain("agents.enabled=true");
+      expect(arguments_.join(" ")).not.toContain("service_tier=");
+    }
+  });
+
+  it("configures canonical Z.ai providers through an environment-backed Responses transport", () => {
+    const configuration = codexProviderConfiguration(
+      provider("openai-compatible", {
+        name: "Legacy GLM provider",
+        baseUrl: "https://api.z.ai/api/v1/responses",
+        apiKey: "zai-secret",
+      }),
+    );
+    expect(configuration.arguments).toEqual(
+      expect.arrayContaining([
+        'model_provider="cantrip_runtime"',
+        'model_providers.cantrip_runtime.name="Z.ai Coding Plan"',
+        'model_providers.cantrip_runtime.base_url="https://api.z.ai/api/v1"',
+        'model_providers.cantrip_runtime.env_key="CANTRIP_PROVIDER_API_KEY"',
+        'model_providers.cantrip_runtime.wire_api="responses"',
+      ]),
+    );
+    expect(configuration.arguments.join(" ")).not.toContain(
+      "experimental_bearer_token",
+    );
+    expect(configuration.arguments.join(" ")).not.toContain("zai-secret");
+    expect(configuration.environment).toEqual({
+      CANTRIP_PROVIDER_API_KEY: "zai-secret",
+    });
+  });
+
+  it("disables native Codex web search for every provider family", () => {
+    for (const kind of [
+      "chatgpt",
+      "ollama",
+      "openai-compatible",
+      "grok",
+    ] as const) {
+      const arguments_ = codexProviderConfiguration(provider(kind)).arguments;
+      expect(arguments_).toContain('web_search="disabled"');
+      expect(
+        arguments_.filter((argument) => argument === 'web_search="disabled"'),
+      ).toHaveLength(1);
+    }
+  });
+
+  it("selects namespaced MultiAgent V2 tools for ChatGPT runtimes", () => {
+    const chatGptArguments = codexProviderConfiguration(
+      provider("chatgpt"),
+    ).arguments;
+    expect(chatGptArguments).toEqual(
+      expect.arrayContaining([
+        "features.multi_agent=false",
+        "features.multi_agent_v2.enabled=true",
+        'features.multi_agent_v2.tool_namespace="cantrip_agents"',
+      ]),
+    );
+    expect(chatGptArguments).not.toContain("features.multi_agent=true");
+    expect(chatGptArguments.join(" ")).not.toContain("collaboration");
+
+    for (const kind of ["ollama", "openai-compatible", "grok"] as const) {
+      const arguments_ = codexProviderConfiguration(provider(kind)).arguments;
+      expect(arguments_).toContain("features.multi_agent=true");
+      expect(arguments_.join(" ")).not.toContain("multi_agent_v2");
+    }
+  });
+});

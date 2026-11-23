@@ -9,7 +9,38 @@ impl ReplicaRepository {
         project: &str,
         replica: &str,
     ) -> Result<Option<Value>> {
-        let rows=self.database.query("SELECT jsonb_build_object('capabilities',w.project_replica_capabilities,'linkPath',s.link_path,'ownershipKind',s.ownership_kind,'placementMode',s.placement_mode,'repository',p.github_repository_full_name,'repositoryFingerprint',s.repository_fingerprint,'sourcePath',s.absolute_path,'workerId',s.worker_id)::text FROM project_sources s INNER JOIN projects p ON p.id=s.project_id AND p.owner_id=$1 INNER JOIN workers w ON w.id=s.worker_id AND w.unlinked_at IS NULL WHERE p.id=$2 AND s.id=$3 AND s.removed_at IS NULL LIMIT 1",&[&owner,&project,&replica]).await?;
+        // Protected repository handles belong to the worker that registered
+        // them. The project-level handle may belong to a different worker.
+        let rows = self
+            .database
+            .query(
+                "SELECT jsonb_build_object(
+                    'capabilities',w.project_replica_capabilities,
+                    'linkPath',s.link_path,
+                    'ownershipKind',s.ownership_kind,
+                    'placementMode',s.placement_mode,
+                    'repository',COALESCE((
+                        SELECT j.repository
+                        FROM project_replica_jobs j
+                        WHERE j.owner_id=p.owner_id AND j.project_id=p.id
+                          AND j.project_replica_id=s.id AND j.worker_id=s.worker_id
+                          AND j.state='succeeded' AND j.repository IS NOT NULL
+                          AND j.kind IN ('provision','synchronize')
+                        ORDER BY j.completed_at DESC NULLS LAST,j.id DESC
+                        LIMIT 1
+                    ),p.github_repository_full_name),
+                    'repositoryFingerprint',s.repository_fingerprint,
+                    'sourcePath',s.absolute_path,
+                    'workerId',s.worker_id
+                )::text
+                FROM project_sources s
+                INNER JOIN projects p ON p.id=s.project_id AND p.owner_id=$1
+                INNER JOIN workers w ON w.id=s.worker_id AND w.unlinked_at IS NULL
+                WHERE p.id=$2 AND s.id=$3 AND s.removed_at IS NULL
+                LIMIT 1",
+                &[&owner, &project, &replica],
+            )
+            .await?;
         let Some(row) = rows.first() else {
             return Ok(None);
         };

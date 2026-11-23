@@ -122,16 +122,20 @@ export class SurfaceTitleEncryptionAdapter {
   }
 
   fileDocumentId(location: {
+    cantripOsBindingId?: string;
+    cantripOsRuntimeGeneration?: string;
     projectId: string;
     workerId: string;
     worktreeId: string;
     path: string;
   }): string {
     const identity = this.identity();
+    const { cantripOsBindingId, cantripOsRuntimeGeneration, ...plainLocation } =
+      location;
     const value = fileDocumentPrivateStateProtectedContentSchema.parse({
       version: 1,
       classification: { recordKind: "file-document-state" },
-      ...location,
+      ...plainLocation,
     });
     // This is the identity derivation version, not the ciphertext revision.
     // Envelope revision changes must not rename a document. Callers reuse
@@ -161,6 +165,9 @@ export class SurfaceTitleEncryptionAdapter {
             value.workerId,
             value.worktreeId,
             value.path,
+            ...(cantripOsBindingId
+              ? [cantripOsBindingId, cantripOsRuntimeGeneration]
+              : []),
           ]),
         ),
       ).slice(0, 16);

@@ -30,7 +30,7 @@ async fn stop(
     let current = context::execution(tx, owner, chat).await?;
     if current
         .as_ref()
-        .and_then(managed_console::session_context)
+        .and_then(managed_console::turn_session_context)
         .is_none()
     {
         return Ok(false);
@@ -52,7 +52,7 @@ pub(super) async fn resume(tx: &Transaction<'_>, owner: &str, chat: &str) -> Res
     let current = context::execution(tx, owner, chat).await?;
     if current
         .as_ref()
-        .and_then(managed_console::session_context)
+        .and_then(managed_console::turn_session_context)
         .is_none()
     {
         return Ok(());
@@ -192,6 +192,12 @@ async fn finish(
         || !truthy(row.get("execution_lane_id"))
         || !truthy(active.get("active"))
         || active.get("generation") != row.get("activation_generation")
+    {
+        return Ok(false);
+    }
+    if super::suspension::retained_execution(tx, owner, &row)
+        .await?
+        .is_some()
     {
         return Ok(false);
     }

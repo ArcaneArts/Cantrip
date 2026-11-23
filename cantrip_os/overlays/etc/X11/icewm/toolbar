@@ -1,0 +1,3 @@
+prog "Terminal" utilities-terminal xterm
+prog "Files" system-file-manager pcmanfm
+prog "Chromium" web-browser cantrip-browser

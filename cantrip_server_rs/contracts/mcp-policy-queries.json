@@ -1,0 +1,10 @@
+{
+  "ensure": "insert into \"policy_owner_states\" (\"owner_id\", \"bootstrap_version\", \"collection_version\", \"created_at\", \"updated_at\") values ($1, default, default, default, default) on conflict do nothing",
+  "project": "select \"id\" from \"projects\" where (\"projects\".\"id\" = $1 and \"projects\".\"owner_id\" = $2) limit $3",
+  "eligible": "select \"id\", \"owner_id\", \"key_blind_index\", \"protected_summary\", \"protected_body\", \"enabled\", \"mandatory\", \"audience\", \"position\", \"template_key\", \"row_version\", \"created_at\", \"updated_at\" from \"policies\" where (\"policies\".\"owner_id\" = $1 and \"policies\".\"enabled\" = $2 and \"policies\".\"audience\" in ($3, $4)) order by \"policies\".\"position\" asc, \"policies\".\"id\" asc",
+  "direct": "select \"policy_id\" from \"project_policy_assignments\" where \"project_policy_assignments\".\"project_id\" = $1",
+  "workspace": "select \"workspace_policy_assignments\".\"policy_id\", \"project_workspaces\".\"id\" from \"workspace_policy_assignments\" inner join \"project_workspaces\" on (\"project_workspaces\".\"id\" = \"workspace_policy_assignments\".\"workspace_id\" and \"project_workspaces\".\"owner_id\" = $1) inner join \"project_workspace_memberships\" on (\"project_workspace_memberships\".\"workspace_id\" = \"project_workspaces\".\"id\" and \"project_workspace_memberships\".\"project_id\" = $2) order by \"project_workspaces\".\"position\" asc, \"project_workspaces\".\"created_at\" asc",
+  "get": "select \"id\", \"owner_id\", \"key_blind_index\", \"protected_summary\", \"protected_body\", \"enabled\", \"mandatory\", \"audience\", \"position\", \"template_key\", \"row_version\", \"created_at\", \"updated_at\" from \"policies\" where (\"policies\".\"id\" = $1 and \"policies\".\"owner_id\" = $2) limit $3",
+  "workspaceCount": "select count(*) from \"workspace_policy_assignments\" where \"workspace_policy_assignments\".\"policy_id\" = $1",
+  "projectCount": "select count(*) from \"project_policy_assignments\" where \"project_policy_assignments\".\"policy_id\" = $1"
+}

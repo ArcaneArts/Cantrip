@@ -511,7 +511,7 @@ try {
           { kind, subject: id, op: `project-surface-${op}`, input, ...changes },
           options,
         );
-      await run("create with profile default", "create");
+      await run("create with fixed default despite retired profile", "create");
       await snapshot(`${id}: persisted placement`);
       await run("duplicate creation rejects", "create", {}, { rejected: true });
       await snapshot(`${id}: duplicate rollback`);

@@ -1,0 +1,120 @@
+/* Retain Adwaita's complete widget geometry and states; override its surfaces. */
+@import url("resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained-dark.css");
+
+@define-color theme_bg_color #000000;
+@define-color theme_fg_color #eeeeee;
+@define-color theme_base_color #000000;
+@define-color theme_text_color #eeeeee;
+@define-color theme_selected_bg_color #333333;
+@define-color theme_selected_fg_color #ffffff;
+@define-color theme_unfocused_bg_color #000000;
+@define-color theme_unfocused_fg_color #aaaaaa;
+@define-color theme_unfocused_base_color #000000;
+@define-color theme_unfocused_text_color #cccccc;
+@define-color theme_unfocused_selected_bg_color #262626;
+@define-color theme_unfocused_selected_fg_color #eeeeee;
+@define-color borders #303030;
+@define-color unfocused_borders #222222;
+
+/* Adwaita also contains literal colors, so cover the actual surface nodes. */
+.background,
+.background:backdrop,
+window,
+dialog,
+messagedialog,
+headerbar,
+headerbar:backdrop,
+toolbar,
+toolbar:backdrop,
+menubar,
+menubar:backdrop,
+menu,
+menu:backdrop,
+popover,
+notebook,
+notebook > header,
+notebook > stack,
+stack,
+paned,
+scrolledwindow,
+viewport,
+list,
+row,
+.sidebar,
+.sidebar row,
+.view,
+.view:backdrop,
+treeview.view,
+iconview.view,
+textview,
+textview text,
+textview border,
+textview text:backdrop,
+entry,
+entry:backdrop,
+spinbutton,
+statusbar {
+  background-color: #000000;
+  background-image: none;
+  color: #eeeeee;
+}
+button,
+button:backdrop,
+notebook tab {
+  background-color: #0c0c0c;
+  background-image: none;
+  color: #dddddd;
+  border-color: #303030;
+  box-shadow: none;
+  text-shadow: none;
+}
+button:hover,
+button:active,
+button:checked,
+menuitem:hover,
+menubar > menuitem:hover,
+row:hover,
+notebook tab:checked {
+  background-color: #242424;
+  background-image: none;
+  color: #ffffff;
+}
+selection,
+.view:selected,
+.view:selected:focus,
+treeview.view:selected,
+iconview.view:selected,
+row:selected,
+entry selection,
+textview text selection {
+  background-color: #333333;
+  color: #ffffff;
+}
+check,
+radio,
+scale trough,
+progressbar trough,
+scrollbar trough {
+  background-color: #111111;
+  background-image: none;
+  border-color: #444444;
+}
+check:checked,
+radio:checked,
+scale highlight,
+progressbar progress {
+  background-color: #888888;
+  background-image: none;
+  color: #000000;
+  border-color: #aaaaaa;
+}
+scrollbar slider {
+  background: #555555;
+  border-color: transparent;
+}
+separator {
+  background: #303030;
+}
+*:disabled {
+  color: #777777;
+}

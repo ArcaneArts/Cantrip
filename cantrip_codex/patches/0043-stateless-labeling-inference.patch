@@ -26,10 +26,10 @@ index 8a18b9a63453b58c95b07a6dd87767bf30d774ed..0610e82d25cd8140a52db7062acc3dc7
  fn precomputed_exports_are_written_to_disk() -> Result<()> {
      let output_dir = tempfile::tempdir().context("create export temp dir")?;
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index ccc582c73cdd9ac58670c4f0902e6c601a57b182..a30bc26d243ded98fc6a0c70d1c16e1bbfacc95c 100644
+index 43d6b64df5420ce1a04060c089ebdd644b4d6711..51c55aa7b779a97f60144ea884880abe9bd349b1 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
-@@ -1198,6 +1198,12 @@ client_request_definitions! {
+@@ -1220,6 +1220,12 @@ client_request_definitions! {
          serialization: None,
          response: v2::ModelListResponse,
      },
@@ -71,10 +71,10 @@ index 32a96ebcceca894bde893ab38ae0ed8498e37728..2ac5342286d6667a47fe9a1c306e7623
      pub enum ModelRerouteReason from CoreModelRerouteReason {
          HighRiskCyberActivity
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 5535a356629750cef500f001005614504c591a31..b3ade083ae558c8401ecd6208b5fe1eefd558556 100644
+index c29ebfdf74c51af119af502ee46e179aee473683..d7807b2c799601b5c724e9102f34ba021043a405 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1669,6 +1669,9 @@ impl MessageProcessor {
+@@ -1723,6 +1723,9 @@ impl MessageProcessor {
              ClientRequest::ModelList { params, .. } => {
                  self.catalog_processor.model_list(params).await
              }
@@ -85,10 +85,10 @@ index 5535a356629750cef500f001005614504c591a31..b3ade083ae558c8401ecd6208b5fe1ee
                  self.catalog_processor
                      .experimental_feature_list(params)
 diff --git a/codex-rs/app-server/src/request_processors/catalog_processor.rs b/codex-rs/app-server/src/request_processors/catalog_processor.rs
-index cc5268ab474edb9da19b0490398a9004e269b244..bf0c5c5452b8fb42e4233faef8763de3265fda27 100644
+index bf7b1ab1f8d827ba05c6c7dd14ca576e7be0df8b..d42ad66ff2d70c97a443b35d0a9bb33c26978db7 100644
 --- a/codex-rs/app-server/src/request_processors/catalog_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/catalog_processor.rs
-@@ -120,6 +120,48 @@ fn errors_to_info(
+@@ -121,6 +121,48 @@ fn errors_to_info(
  }
  
  impl CatalogRequestProcessor {
@@ -282,7 +282,7 @@ index 0000000000000000000000000000000000000000..5bb73fa39e17f05c8139719ee2744aef
 +    Ok(text)
 +}
 diff --git a/codex-rs/core/src/lib.rs b/codex-rs/core/src/lib.rs
-index 95de2ebe47b9dd0639f2090ebc76d54de6637a0e..50a1d73d4be90ef906200f83b40c3c97f66b65cc 100644
+index de071247e822919c257f96fcc5adc28f79b0e5e9..8a04373715db308cb7446ba843ea32a305f3229a 100644
 --- a/codex-rs/core/src/lib.rs
 +++ b/codex-rs/core/src/lib.rs
 @@ -7,6 +7,7 @@

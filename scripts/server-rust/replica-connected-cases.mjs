@@ -6,9 +6,9 @@ import { replicaShutdownCases } from "./replica-shutdown-cases.mjs";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
+import { sendHeartbeat } from "../../tests/reference-node-worker/src/heartbeat.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
 import { heartbeat } from "./security-fixtures.mjs";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
 async function until(read, check, timeoutMs = 20000) {
@@ -440,6 +440,13 @@ export async function replicaConnectedCases({
         "admission, ordered valid progress and completion; stale events must not publish",
       );
     assert.equal(commands.length, 5);
+    assert.deepEqual(
+      commands
+        .map(({ command }) => command)
+        .filter((command) => command.type === "project.replica.provision")
+        .map((command) => command.jobId),
+      [first.id, second.id],
+    );
     for (const { command } of commands) {
       assert.equal(command.projectId, id);
       assert.deepEqual(command.repository, { nameWithOwner: repository });

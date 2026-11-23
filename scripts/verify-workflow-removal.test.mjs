@@ -22,7 +22,7 @@ test("current tree satisfies the durable workflow removal contract", async () =>
 test("finds restored product types, routes, commands, tables, and docs", () => {
   const violations = forbiddenWorkflowReferences([
     {
-      file: "cantrip_server/src/restored.ts",
+      file: "tests/reference-node-server/src/restored.ts",
       sourceText: [
         'const run: WorkflowRun = await load("workflow_runs");',
         'app.post("/api/workflow-runs", handler);',
@@ -46,7 +46,7 @@ test("allows the GitHub Actions workflow_runs response field", () => {
   assert.deepEqual(
     forbiddenWorkflowReferences([
       {
-        file: "cantrip_worker/src/github.ts",
+        file: "tests/reference-node-worker/src/github.ts",
         sourceText: "const runs = response.workflow_runs;",
       },
     ]),
@@ -55,12 +55,28 @@ test("allows the GitHub Actions workflow_runs response field", () => {
   assert.equal(
     forbiddenWorkflowReferences([
       {
-        file: "cantrip_worker/src/github.ts",
+        file: "tests/reference-node-worker/src/github.ts",
         sourceText: "const definitions = response.workflow_definitions;",
       },
     ]).length,
     1,
   );
+});
+
+test("allows the GitHub response object key in Rust worker fixtures and still flags SQL", () => {
+  const file = "scripts/worker-rust/github-operations-fixture.mjs";
+  const violations = forbiddenWorkflowReferences([
+    {
+      file,
+      sourceText: [
+        "const response = { workflow_runs: [] };",
+        'const query = "SELECT * FROM workflow_runs";',
+      ].join("\n"),
+    },
+  ]);
+  assert.deepEqual(violations, [
+    `${file}:2: retired workflow table: workflow_runs`,
+  ]);
 });
 
 test("requires the forward migration and its journal entry to remain complete", async () => {

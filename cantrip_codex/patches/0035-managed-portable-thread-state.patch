@@ -1,15 +1,15 @@
 diff --git a/codex-rs/state/src/lib.rs b/codex-rs/state/src/lib.rs
-index d1de678a862ec11f563e6f350a6571ce89203bfa..daf77618ae16360247390623aeda7389cbbfbce0 100644
+index 4c9960624facc976c0dd37ec22046395e267e90f..ae71ab917f1ac0b31ac4d4b403d5181b765b285a 100644
 --- a/codex-rs/state/src/lib.rs
 +++ b/codex-rs/state/src/lib.rs
-@@ -40,6 +40,7 @@ pub use runtime::MAX_GUARDIAN_REVIEW_RECORDS;
+@@ -43,6 +43,7 @@ pub use runtime::MAX_GUARDIAN_REVIEW_RECORDS;
  pub use runtime::MAX_GUARDIAN_REVIEW_RECORDS_PER_THREAD;
  /// Preferred entrypoint: owns configuration and metrics.
  pub use runtime::StateRuntime;
 +pub use runtime::portable_thread::PortableThreadState;
  pub use sqlite::SqliteConfig;
+ pub use sqlite::SqlitePoolWriteExt;
  
- pub use audit::ThreadStateAuditRow;
 diff --git a/codex-rs/state/src/model/thread_goal.rs b/codex-rs/state/src/model/thread_goal.rs
 index 93d8c3f42a199b0884828dabc43966416e69b329..354f7619f3ccebdc3109e56a8968716f1305a9c1 100644
 --- a/codex-rs/state/src/model/thread_goal.rs
@@ -40,10 +40,10 @@ index 93d8c3f42a199b0884828dabc43966416e69b329..354f7619f3ccebdc3109e56a8968716f
      pub thread_id: ThreadId,
      pub goal_id: String,
 diff --git a/codex-rs/state/src/runtime.rs b/codex-rs/state/src/runtime.rs
-index 244f219cd571f229dc9b1968acb9f1c39414f932..9a9b73e03498d5ed7345bb12d6c3474cdf984b0d 100644
+index 2ecd9592c69aa2c7aade3f083a5bb95b5dfd8233..5a2ddb04c646caed5bbdf30c31dad14ae74a94e7 100644
 --- a/codex-rs/state/src/runtime.rs
 +++ b/codex-rs/state/src/runtime.rs
-@@ -48,6 +48,7 @@ mod logs_maintenance;
+@@ -49,6 +49,7 @@ mod logs_maintenance;
  mod memories;
  mod memory_versions;
  mod projects;
@@ -52,10 +52,10 @@ index 244f219cd571f229dc9b1968acb9f1c39414f932..9a9b73e03498d5ed7345bb12d6c3474c
  pub(crate) mod reclamation;
  pub(crate) mod recovery;
 diff --git a/codex-rs/state/src/runtime/goals.rs b/codex-rs/state/src/runtime/goals.rs
-index 939659c6dca6fabe5affb9e16a37899b65db60aa..0881abf7cb75c7d0e106926b4f4b9899abc0f08a 100644
+index 98764f9b30065d7de7e45d3217969a75624ec53d..4568cc409c3ba71db9d92457e63aae6c014436d7 100644
 --- a/codex-rs/state/src/runtime/goals.rs
 +++ b/codex-rs/state/src/runtime/goals.rs
-@@ -66,6 +66,53 @@ WHERE thread_id = ?
+@@ -68,6 +68,53 @@ WHERE thread_id = ?
          row.map(|row| thread_goal_from_row(&row)).transpose()
      }
  
@@ -301,10 +301,10 @@ index 0000000000000000000000000000000000000000..acb8c99dee254c8685488148d91cb82a
 +    }
 +}
 diff --git a/codex-rs/state/src/runtime/threads.rs b/codex-rs/state/src/runtime/threads.rs
-index a44ab7cdc87adc2cf2feaf8b9ebc28b134c0df21..39c05ae11b42d10f399e18999c09734681da1d12 100644
+index ecdcf303e1d337b8622cd18f23aaf974fa6a5610..c43964584538edbe4a63476003ad0e284a8ce094 100644
 --- a/codex-rs/state/src/runtime/threads.rs
 +++ b/codex-rs/state/src/runtime/threads.rs
-@@ -367,7 +367,7 @@ ON CONFLICT(child_thread_id) DO NOTHING
+@@ -388,7 +388,7 @@ ON CONFLICT(child_thread_id) DO NOTHING
          Ok(())
      }
  
@@ -313,7 +313,7 @@ index a44ab7cdc87adc2cf2feaf8b9ebc28b134c0df21..39c05ae11b42d10f399e18999c097346
          &self,
          child_thread_id: ThreadId,
          source: &str,
-@@ -615,6 +615,22 @@ ON CONFLICT(child_thread_id) DO NOTHING
+@@ -638,6 +638,22 @@ ON CONFLICT(child_thread_id) DO NOTHING
      pub async fn insert_thread_if_absent(
          &self,
          metadata: &crate::ThreadMetadata,
@@ -336,7 +336,7 @@ index a44ab7cdc87adc2cf2feaf8b9ebc28b134c0df21..39c05ae11b42d10f399e18999c097346
      ) -> anyhow::Result<bool> {
          let updated_at = self.allocate_thread_updated_at(metadata.updated_at)?;
          let recency_at = self.allocate_thread_recency_at(metadata.recency_at)?;
-@@ -713,13 +729,11 @@ ON CONFLICT(id) DO NOTHING
+@@ -737,13 +753,11 @@ ON CONFLICT(id) DO NOTHING
          .bind(metadata.git_sha.as_deref())
          .bind(metadata.git_branch.as_deref())
          .bind(metadata.git_origin_url.as_deref())
@@ -344,14 +344,14 @@ index a44ab7cdc87adc2cf2feaf8b9ebc28b134c0df21..39c05ae11b42d10f399e18999c097346
 +        .bind(memory_mode)
          .bind(metadata.project_id.as_deref())
          .bind(metadata.daybreak_enabled)
--        .execute(self.pool.as_ref())
-+        .execute(&mut **transaction)
-         .await?;
+         .bind(metadata.attached_thread_parent_id.map(|id| id.to_string()))
+-        .execute_with_busy_retry(self.pool.as_ref())
+-        .await?;
 -        self.insert_thread_spawn_edge_from_source_if_absent(metadata.id, metadata.source.as_str())
--            .await?;
++        .execute(&mut **transaction)
+             .await?;
          Ok(result.rows_affected() > 0)
      }
- 
 diff --git a/codex-rs/thread-store/src/local/portable_history.rs b/codex-rs/thread-store/src/local/portable_history.rs
 index 1e6d0c859ca788970a78029322274eb0fc3bcabe..8332f89b3fc6f27003fb5d384c4ecf7a6888dbe7 100644
 --- a/codex-rs/thread-store/src/local/portable_history.rs

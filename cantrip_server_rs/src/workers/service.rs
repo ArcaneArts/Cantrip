@@ -1,4 +1,5 @@
 use super::{bridge::WorkerBridge, limits::SlidingWindow, repository::WorkerRepository};
+use crate::workers::transport::WorkerTransport;
 use crate::{
     config::{DeploymentMode, ServerConfig},
     database::Database,
@@ -32,7 +33,7 @@ pub struct RequestLimiters {
 }
 pub struct WorkerService {
     pub repository: WorkerRepository,
-    pub bridge: Arc<WorkerBridge>,
+    pub bridge: Arc<dyn WorkerTransport>,
     pub commands: Arc<super::command_bus::LimitedCommandBus>,
     pub relay_quotas: Arc<crate::relay::RelayQuotas>,
     pub invalidations: broadcast::Sender<Invalidation>,
@@ -44,6 +45,7 @@ pub struct WorkerService {
     pub shutdown: watch::Sender<bool>,
     presence: Mutex<HashMap<String, String>>,
     offline: Mutex<HashMap<String, AbortHandle>>,
+    pub(super) inference_revocations: super::resource_revocations::Pending,
     limits: Mutex<RequestLimiters>,
 }
 impl WorkerService {
@@ -55,7 +57,38 @@ impl WorkerService {
         config: &ServerConfig,
         usage: Option<crate::live::UsageRecorder>,
     ) -> Arc<Self> {
-        let bridge = WorkerBridge::with_usage(Duration::from_secs(15), usage);
+        Self::with_coordination(database, config, usage, None)
+    }
+    pub fn with_coordination(
+        database: Arc<Database>,
+        config: &ServerConfig,
+        usage: Option<crate::live::UsageRecorder>,
+        coordination: Option<Arc<dyn crate::coordination::RelayCoordinator>>,
+    ) -> Arc<Self> {
+        let bridge: Arc<dyn WorkerTransport> = match coordination {
+            Some(coordination) => {
+                let repository = WorkerRepository::new(database.clone());
+                let mut options = super::coordinated::Options::new(
+                    coordination,
+                    Arc::new(move |worker| {
+                        let repository = repository.clone();
+                        Box::pin(async move { repository.owner(&worker).await })
+                    }),
+                );
+                options.usage = usage;
+                super::transport::CoordinatedTransport::new(
+                    super::coordinated::CoordinatedBridge::new(options),
+                )
+            }
+            None => WorkerBridge::with_usage(Duration::from_secs(15), usage),
+        };
+        Self::with_transport(database, config, bridge)
+    }
+    pub fn with_transport(
+        database: Arc<Database>,
+        config: &ServerConfig,
+        bridge: Arc<dyn WorkerTransport>,
+    ) -> Arc<Self> {
         let relay_quotas = crate::relay::RelayQuotas::new(config);
         let commands = super::command_bus::LimitedCommandBus::new(
             database.clone(),
@@ -63,7 +96,7 @@ impl WorkerService {
             relay_quotas.clone(),
             config,
         );
-        Arc::new(Self {
+        let service = Arc::new(Self {
             repository: WorkerRepository::new(database),
             bridge,
             commands,
@@ -80,13 +113,16 @@ impl WorkerService {
             shutdown: watch::channel(false).0,
             presence: Mutex::new(HashMap::new()),
             offline: Mutex::new(HashMap::new()),
+            inference_revocations: Mutex::new(HashMap::new()),
             limits: Mutex::new(RequestLimiters {
                 api: SlidingWindow::new(config.api_rate_limit_per_minute as usize),
                 pairing: SlidingWindow::new(config.pairing_rate_limit_per_minute as usize),
                 websocket: SlidingWindow::new(config.websocket_handshake_rate_per_minute as usize),
                 upload: SlidingWindow::new(config.upload_rate_limit_per_minute as usize),
             }),
-        })
+        });
+        super::resource_revocations::start(service.clone());
+        service
     }
     pub fn invalidate(&self, owner: &str, resource: &'static str, id: &str) {
         let event = Invalidation {
@@ -194,17 +230,17 @@ impl WorkerService {
         )
     }
     pub fn pre_close(&self) {
-        // Close socket ingress before waiting for active HTTP requests. Pending
-        // commands retain their normal disconnect/reconnect grace, as in the
-        // reference WebSocket plugin's preClose hook.
+        // Queue close behind admitted output, then stop new handshakes. Sending
+        // a close frame alone does not interrupt an existing bridge generation.
+        self.bridge.local().pre_close();
         self.shutdown.send_replace(true);
     }
-    pub fn close(&self) {
+    pub async fn close(&self) -> Result<()> {
         self.pre_close();
         for (_, timer) in self.offline.lock().unwrap().drain() {
             timer.abort();
         }
-        self.bridge.close();
+        self.bridge.shutdown().await
     }
     pub async fn drained(&self) -> Result<()> {
         // Pre-close is published before HTTP admission stops. A late upgraded

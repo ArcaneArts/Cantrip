@@ -1,4 +1,16 @@
 import { z } from "zod";
+import {
+  modelOperationSchema,
+  modelOperationCapabilitiesSchema,
+  modelOperationAdapterSchema,
+  modelOperationOptionsSchema,
+} from "./model-operations.js";
+import { modelProviderKinds } from "./provider-definitions.js";
+import {
+  DEFAULT_MAX_CONCURRENT_INFERENCE,
+  providerInferenceLimitSchema,
+  providerInferenceRevisionSchema,
+} from "./inference-admission.js";
 
 import { encryptionKeyBytesSchema } from "./encryption.js";
 import {
@@ -8,12 +20,7 @@ import {
   providerCredentialPublicMetadataSchema,
 } from "./protected-secrets.js";
 
-export const modelProviderKindSchema = z.enum([
-  "chatgpt",
-  "grok",
-  "ollama",
-  "openai-compatible",
-]);
+export const modelProviderKindSchema = z.enum(modelProviderKinds);
 
 export const ZAI_CODING_PLAN_BASE_URL = "https://api.z.ai/api/v1";
 
@@ -277,8 +284,8 @@ export function normalizeResponsesBaseUrl(value: string): string {
   url.search = "";
   url.hash = "";
   url.pathname = url.pathname
-    .replace(/\/(?:chat\/completions|chat|responses)\/?$/i, "")
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\/(?:chat\/completions|chat|responses)$/i, "");
   if (url.hostname.toLowerCase() === "openrouter.ai" && url.pathname === "/") {
     url.pathname = "/api/v1";
   }
@@ -307,6 +314,7 @@ export const providerModelMetadataSourceSchema = z.enum([
 ]);
 
 export const providerModelCatalogEntrySchema = z.object({
+  operationCapabilities: modelOperationCapabilitiesSchema.optional(),
   id: z.string().min(1),
   providerId: z.string().min(1),
   nativeModelId: z.string().trim().min(1).max(500),
@@ -330,6 +338,7 @@ export const providerModelCatalogEntrySchema = z.object({
   quantization: z.string().max(100).nullable(),
   digest: z.string().max(500).nullable(),
   metadataSource: providerModelMetadataSourceSchema,
+  loaded: z.boolean().nullable().optional(),
   matchConfidence: z.number().min(0).max(1).nullable(),
   hidden: z.boolean(),
   isDefault: z.boolean(),
@@ -345,6 +354,8 @@ export const providerModelAvailabilityStateSchema = z.enum([
 ]);
 
 export const providerModelAvailabilitySchema = z.object({
+  // Scoped observations override provider-wide capability metadata.
+  operationCapabilities: modelOperationCapabilitiesSchema.optional(),
   id: z.string().min(1),
   providerModelId: z.string().min(1),
   scopeKey: z.string().min(1).max(500),
@@ -519,6 +530,8 @@ export const modelProviderCreateSchema = z.object({
   baseUrl: z.url(),
   apiKey: z.string().trim().min(1).max(10_000).nullable().optional(),
   weeklyUsageReservePercent: z.number().int().min(0).max(100).optional(),
+  // Optional on mutation inputs: legacy updates must preserve the stored limit.
+  maxConcurrentInference: providerInferenceLimitSchema.optional(),
 });
 
 export const modelProviderUpdateSchema = modelProviderCreateSchema;
@@ -557,6 +570,11 @@ export const modelProviderSummarySchema = modelProviderCreateSchema
     id: z.string().min(1),
     hasApiKey: z.boolean(),
     weeklyUsageReservePercent: z.number().int().min(0).max(100).default(3),
+    maxConcurrentInference: providerInferenceLimitSchema.default(
+      DEFAULT_MAX_CONCURRENT_INFERENCE,
+    ),
+    inferenceConfigRevision: providerInferenceRevisionSchema.default(0),
+    connectionRevision: z.number().int().positive().optional(),
     accounts: modelProviderAccountListSchema.default([]),
     tokenUsage: tokenUsageTotalsSchema.default({
       inputTokens: 0,
@@ -580,6 +598,9 @@ export const modelProviderWireListSchema = z.array(
 );
 
 export const modelRouteInputSchema = z.object({
+  // Missing on legacy updates preserves configuration; null explicitly resets it.
+  operationAdapter: modelOperationAdapterSchema.nullable().optional(),
+  operationOptions: modelOperationOptionsSchema.nullable().optional(),
   id: z.string().min(1).optional(),
   providerId: z.string().min(1),
   modelName: z.string().trim().min(1).max(160),
@@ -592,9 +613,13 @@ export const modelRouteSummarySchema = modelRouteInputSchema.extend({
   providerModelId: z.string().min(1).nullable().default(null),
   position: z.number().int().nonnegative(),
   discoveryManaged: z.boolean().default(false),
+  // Presentation evidence only. Explicit inference never gates on catalog metadata.
+  languageSelectionConflict: z.boolean().optional(),
 });
 
 export const modelProfileCreateSchema = z.object({
+  // Omission on legacy updates preserves the profile operation.
+  operation: modelOperationSchema.optional(),
   name: z.string().trim().min(1).max(160),
   routes: z
     .array(modelRouteInputSchema)

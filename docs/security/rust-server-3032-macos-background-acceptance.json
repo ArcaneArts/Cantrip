@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3032",
+  "target": "darwin-arm64",
+  "harnessCommit": "e3ca112796d166469e609b888d7955a748c61981",
+  "serverSourceCommit": "d91420eb9e0b4513f2b8b3928cfcde81dadd4c20",
+  "serverExecutableSha256": "c422e441f9939610d6f8dc3804cf700c7d91d0cb1a5f9bc545fba77abb39d1e1",
+  "scope": "Exact macOS ARM64 standalone Rust executable and the development Node reference with isolated profiles. Controlled worker replies use the existing WorkerConnection. Scope covers approval expiry, credential reconnect and log archive behavior.",
+  "inputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/background-services-3032/inputs.sha256",
+    "bytes": 920,
+    "sha256": "17fe699de5b36e1df1be1441146d1a2ffed23e3087a514078344c75f1baa0673"
+  },
+  "additionalInputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/background-services-3032/additional-inputs.sha256",
+    "bytes": 255,
+    "sha256": "428ec4125825162a59c0d070cd1a5a171c8cb4db02c9a6d956f5b171a067ee7c"
+  },
+  "approvalExpiry": {
+    "databaseMode": "postgres",
+    "authMode": "accounts",
+    "productionSqlControlStatus": 404,
+    "pairedPublicationStages": 4,
+    "preservedRowsPerPeerAtExit": 11,
+    "heldUpdateDrained": true,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/background-services-3032/expiry/acceptance.json",
+      "bytes": 78478,
+      "sha256": "899f0843b0b402f1c0b05dfd3cd13e9861a0f1240601497425eca43acaa617e5"
+    }
+  },
+  "credentialReconnect": {
+    "databaseMode": "postgres",
+    "authMode": "accounts",
+    "productionSqlControlStatus": 404,
+    "queryFailureAndRecovery": true,
+    "heldUpdateDrainedBeforeExit": true,
+    "purgeAfterRetainedRestart": true,
+    "pairedObservations": {
+      "http": 4,
+      "commands": 60,
+      "summaries": 6,
+      "stages": 4
+    },
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/background-services-3032/credential/acceptance.json",
+      "bytes": 225253,
+      "sha256": "3f53c89026b9f4f23222b4886250c1811431f20c64843ac88beea31c341e19ac"
+    },
+    "deadlineReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/background-services-3032/credential-deadline/acceptance.json",
+      "bytes": 104003,
+      "sha256": "9dc17291f369c289411fe9f7321c5665d37025cc7b040bd97a265ffd7840ed4e"
+    },
+    "deadlinePairedCommands": 17
+  },
+  "logArchive": {
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "pairedScenarios": [
+      "postgres-default",
+      "pglite-default",
+      "bundled-default",
+      "directory-precedence",
+      "legacy-file",
+      "blank-settings",
+      "archive-recovery",
+      "startup-failure"
+    ],
+    "peerRuns": 16,
+    "cleanExits": 14,
+    "expectedStartupFailureExits": 2,
+    "liveArchiveObstructionRecovery": true,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/background-services-3032/log-archive/acceptance.json",
+      "bytes": 552961,
+      "sha256": "692e65301c9133b8fe8520f2d7126eb65f1b65335c8c6161c24824e236b21ae9"
+    }
+  }
+}

@@ -7,7 +7,7 @@ import { literal, stamp } from "./project-target-state.mjs";
 import { settingsSnapshot } from "./native-settings-fixtures.mjs";
 import { command } from "./native-command-admission-cases.mjs";
 const require = createRequire(
-    new URL("../../cantrip_server/package.json", import.meta.url),
+    new URL("../../tests/reference-node-server/package.json", import.meta.url),
   ),
   postgres = require("postgres");
 async function waiters(sql, count, entry) {

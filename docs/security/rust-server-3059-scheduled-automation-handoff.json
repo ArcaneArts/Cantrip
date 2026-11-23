@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "039cc400e711cdb66566c78e099d0e19d7913f18",
+  "version": "1.1.3059",
+  "database": "external PostgreSQL 18.6",
+  "coordination": "Redis 8.10.3",
+  "linux": {
+    "scope": "Exact packaged standalone Linux images under local Docker. The browser and full Node worker ran on macOS. Each architecture exercised both boundaries with Rust/Rust and frozen Node/Rust peers, held one scheduled occurrence, and verified the worker-owning container was killed and replaced.",
+    "verifiedCases": 8,
+    "images": [
+      {
+        "architecture": "arm64",
+        "runtimeImage": "sha256:89d3ac229eddea5def8ce01f65257be9d5bc6b053d8304e49209912a720ed600",
+        "localImageTag": "cantrip-rust-local:scheduled-automation-3059-arm64-039cc400",
+        "serverSha256": "a4273845218dfad3589e69b013896aa46669fc9b73a67ff3e6b30f93ad94ba81",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-scheduled-automation.9dnGh0lv/verified-arm64.json",
+          "bytes": 2138,
+          "sha256": "076a8437278a7395bcbf7c3d23a97931b8fcb87f09d6071b9d86159b4951f55c"
+        },
+        "cases": [
+          {
+            "phase": "finish",
+            "pair": "rust/rust",
+            "oldContainer": "9eda50b1c462e7b068e3785c0d8eaa07b3079fc80e948d0e14df701d1639e855",
+            "oldContainerExit": 137,
+            "initialFence": 1,
+            "recoveredFence": 2,
+            "modelRequests": 1,
+            "completedNativeTurns": 1,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-scheduled-automation.9dnGh0lv/verified/arm64/finish/rust-rust/matrix.json",
+              "bytes": 681022,
+              "sha256": "f3896611e3ee3f320f7a7dd75f2a0ae94218c591a6b1171c40d94dc4b545abb0"
+            }
+          },
+          {
+            "phase": "finish",
+            "pair": "node/rust",
+            "oldContainer": "07c3bcb23a65787368f840e2aebd5c5c3deb665a6bd734f6f6fcc739d09db006",
+            "oldContainerExit": 137,
+            "initialFence": 1,
+            "recoveredFence": 2,
+            "modelRequests": 1,
+            "completedNativeTurns": 1,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-scheduled-automation.9dnGh0lv/verified/arm64/finish/node-rust/matrix.json",
+              "bytes": 606055,
+              "sha256": "4c3d7148bf0e18d3c655db1e4f6e70e3563a96aa6f60b3d55a23763f1d973386"
+            }
+          },
+          {
+            "phase": "protect",
+            "pair": "rust/rust",
+            "oldContainer": "4696564399f64f19761d483f629246107071cfb301955b3e5400dd595a505d6d",
+            "oldContainerExit": 137,
+            "initialFence": 1,
+            "recoveredFence": 2,
+            "modelRequests": 1,
+            "completedNativeTurns": 1,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-scheduled-automation.9dnGh0lv/verified/arm64/protect/rust-rust/matrix.json",
+              "bytes": 700419,
+              "sha256": "a8c2c477bcaddda73982c9257ce9c0da6ac06f46452c798906cf224dbd73a598"
+            }
+          },
+          {
+            "phase": "protect",
+            "pair": "node/rust",
+            "oldContainer": "b9e0b2e2b97890b7031571e55a031e4b2e7a21ea275612c5a4718c7a8ad6e00f",
+            "oldContainerExit": 137,
+            "initialFence": 1,
+            "recoveredFence": 2,
+            "modelRequests": 1,
+            "completedNativeTurns": 1,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-scheduled-automation.9dnGh0lv/verified/arm64/protect/node-rust/matrix.json",
+              "bytes": 620290,
+              "sha256": "12b730999892fe3e475ec0d18b917ed617612e98668ce7484e552550a75602ee"
+            }
+          }
+        ]
+      },
+      {
+        "architecture": "x64",
+        "runtimeImage": "sha256:dca76889a546e26cd90076469a782a39e5aaae36e0d8950ffb945e7a78485d16",
+        "localImageTag": "cantrip-rust-local:scheduled-automation-3059-x64-039cc400",
+        "serverSha256": "c5b6639ac5dc0a70d0f57ed52e6afcbd7a2c9695afe9c9ab9a3079d6cb430641",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-scheduled-automation.9dnGh0lv/verified-x64.json",
+          "bytes": 2128,
+          "sha256": "9d05380464cf2445645524a17ca70f58ec94e687ea50ae74a2f3701ed170c44d"
+        },
+        "cases": [
+          {
+            "phase": "finish",
+            "pair": "rust/rust",
+            "oldContainer": "df360449c5ecebf53bf3eee0229e0f0b81a0530deb71914216131b4e23d7956a",
+            "oldContainerExit": 137,
+            "initialFence": 1,
+            "recoveredFence": 2,
+            "modelRequests": 1,
+            "completedNativeTurns": 1,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-scheduled-automation.9dnGh0lv/verified/x64/finish/rust-rust/matrix.json",
+              "bytes": 686405,
+              "sha256": "7ba619cf8f732a2de41e0ea4f17e2cef20cedb24d51a67db3e95a59bd4b799a8"
+            }
+          },
+          {
+            "phase": "finish",
+            "pair": "node/rust",
+            "oldContainer": "a92167b5e03dfce8b9b27330bdc67d1d9638a3aeaf19edd6c769d8a1090f2951",
+            "oldContainerExit": 137,
+            "initialFence": 1,
+            "recoveredFence": 2,
+            "modelRequests": 1,
+            "completedNativeTurns": 1,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-scheduled-automation.9dnGh0lv/verified/x64/finish/node-rust/matrix.json",
+              "bytes": 616699,
+              "sha256": "454f7f0cc192d4fcd7634856ac67d8dead02fe8ee22633a93429be352631908b"
+            }
+          },
+          {
+            "phase": "protect",
+            "pair": "rust/rust",
+            "oldContainer": "1c01adfdf7cfde76619d526dad0e1069933bb9a654ab3f037f6adb70ff003a7d",
+            "oldContainerExit": 137,
+            "initialFence": 1,
+            "recoveredFence": 2,
+            "modelRequests": 1,
+            "completedNativeTurns": 1,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-scheduled-automation.9dnGh0lv/verified/x64/protect/rust-rust/matrix.json",
+              "bytes": 699662,
+              "sha256": "48f5e8586dddeca117cd4da1535535b060aa8f79f8eb595d78f323bf1feb425c"
+            }
+          },
+          {
+            "phase": "protect",
+            "pair": "node/rust",
+            "oldContainer": "31fc785afb09f6a5c40168849e087bd13d8a216ffccb93e11998bae44f0cbd2f",
+            "oldContainerExit": 137,
+            "initialFence": 1,
+            "recoveredFence": 2,
+            "modelRequests": 1,
+            "completedNativeTurns": 1,
+            "report": {
+              "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux-relay-claim-candidate/3059-scheduled-automation.9dnGh0lv/verified/x64/protect/node-rust/matrix.json",
+              "bytes": 625521,
+              "sha256": "cfa2e4d376d2b492d9b2a838239c38cde9fee284429a522430837a95d1c6fd14"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "macOS": {
+    "scope": "Real browser, two separately enrolled full Node workers, two Rust API peers, private PostgreSQL/Redis, direct Git replica, actual worker protection, durable chat relocation and bundled native Codex. The fixture recorded the source revision returned by the worker because direct import left its catalog HEAD empty. It held the original worker's retry while the chat moved.",
+    "serverSha256": "71cf9d66347f62d58d5f9a2fd7c3956c070243bcd7c4dfd2cf6ed80fc6d742cc",
+    "workerDiscoverySha256": "f699b05a8eb3f2aac9ac51d2113a71ad9677525bd461058a40781760dda9e2d3",
+    "referenceFailures": [
+      {
+        "reason": "Direct Git import left the catalog HEAD unobserved.",
+        "httpStatus": 409,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation-handoff.RDuecIhB/matrix.json",
+          "bytes": 566149,
+          "sha256": "375b60ca27285b575961c95baaf87e5ee723ac0164cd451497458664fe58d1e8"
+        }
+      },
+      {
+        "reason": "The original worker failed to report three relocation methods, and the admitted relocation failed with capability-missing.",
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation-handoff.RDuecIhB/source-worker-revision/matrix.json",
+          "bytes": 579766,
+          "sha256": "f640cd8366db34ea7670a5b798a68ec56622e9984b21cd73e6155a5b6e02d207"
+        },
+        "workerRuntimeReport": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation-handoff.RDuecIhB/source-worker-revision/relocation-single-user.log",
+          "bytes": 1764,
+          "sha256": "51807bbd24baa3e641690c81917d27f164ac2761d85da831c9ded2383575655a"
+        }
+      }
+    ],
+    "relocationRuntimeProbe": {
+      "methods": {
+        "thread/inject_items": "available",
+        "thread/unsubscribe": "available",
+        "thread/settings/update": "available"
+      },
+      "runtime": "0.166.0",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation-handoff.RDuecIhB/patched-real-runtime-method-probe.json",
+        "bytes": 201,
+        "sha256": "a4b8b67d538984cbb6df5f30f64a9645258007a4665f2b57fecc766e5db98c2e"
+      }
+    },
+    "recovered": {
+      "originalFence": 1,
+      "recoveredFence": 2,
+      "finalStatus": "started",
+      "sameOccurrence": true,
+      "separatelyEnrolledWorkers": true,
+      "modelRequests": 1,
+      "nativeTurns": 1,
+      "canonicalHistoryRetained": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation-handoff.RDuecIhB/live-runtime-probes/matrix.json",
+        "bytes": 775729,
+        "sha256": "ff1f2a4c2cba5d25a4abc9561aa943b2378096ca6b027543e48427995500b95b"
+      }
+    },
+    "workerChecks": {
+      "passed": 16,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation-handoff.RDuecIhB/worker-targeted-tests.log",
+        "bytes": 235,
+        "sha256": "97a4a2d172270fb5eea8fd1e01a3be4bed46dd36929f380789e9c7ed0f4557c4"
+      }
+    }
+  },
+  "followUpQualification": "docs/security/rust-server-3059-relocation-source-revision.json",
+  "remainingQualification": [
+    "Repeat both packaged Linux interruption boundaries on Windows using the isolated guest."
+  ]
+}

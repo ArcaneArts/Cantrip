@@ -5,25 +5,38 @@ import { buildRustExample, repositoryRoot } from "./build.mjs";
 import { fixtureEnvironment, startServer } from "./process.mjs";
 
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const postgres = require("postgres");
 
-export async function postgresFixture(directory, { url } = {}) {
-  const executable = !url && (await buildRustExample("database-fixture"));
+export async function postgresFixture(
+  directory,
+  { url, restartable = false, startupTimeoutMs } = {},
+) {
+  const bin = process.env.CANTRIP_TEST_POSTGRES_BIN_DIR ?? "";
+  const cluster = restartable
+    ? await (
+        await import("./restartable-postgres.mjs")
+      ).restartablePostgres(directory, bin, { startupTimeoutMs })
+    : undefined;
+  const executable =
+    !url &&
+    !cluster &&
+    (process.env.CANTRIP_RUST_DATABASE_FIXTURE_BINARY ??
+      (await buildRustExample("database-fixture")));
   const owner =
     !url &&
+    !cluster &&
     (await startServer(
       executable,
-      [
-        "--data-dir",
-        directory,
-        "--postgres-bin-dir",
-        process.env.CANTRIP_TEST_POSTGRES_BIN_DIR ?? "",
-      ],
-      { cwd: repositoryRoot, env: fixtureEnvironment(directory) },
+      ["--data-dir", directory, "--postgres-bin-dir", bin],
+      {
+        cwd: repositoryRoot,
+        env: fixtureEnvironment(directory),
+        startupTimeoutMs,
+      },
     ));
-  const connection = url || owner.origin;
+  const connection = url || cluster?.url || owner.origin;
   const sql = postgres(connection, { max: 1 });
   const names = [];
   const prefix = url
@@ -31,6 +44,7 @@ export async function postgresFixture(directory, { url } = {}) {
     : "cantrip_auth_fixture";
   let sequence = 0;
   return {
+    cluster,
     async database() {
       const name = `${prefix}_${sequence++}`;
       await sql`CREATE DATABASE ${sql(name)}`;
@@ -39,7 +53,7 @@ export async function postgresFixture(directory, { url } = {}) {
       databaseUrl.pathname = `/${name}`;
       return databaseUrl.href;
     },
-    async close() {
+    async close({ shutdownTimeoutMs } = {}) {
       try {
         // For a caller-supplied test server, remove only databases this fixture
         // actually created. Never alter the caller's original database.
@@ -48,7 +62,8 @@ export async function postgresFixture(directory, { url } = {}) {
             await sql`DROP DATABASE ${sql(name)} WITH (FORCE)`;
       } finally {
         await sql.end({ timeout: 5 });
-        if (owner) await owner.close();
+        if (owner) await owner.close({ shutdownTimeoutMs });
+        if (cluster) await cluster.stop();
       }
     },
   };

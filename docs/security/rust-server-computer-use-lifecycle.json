@@ -1,0 +1,527 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "productBaseCommit": "4877ba2c962ea7dc07ba382427f2b341f1b93ba3",
+  "servingExecutableSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+  "unchangedProductionTreesAtProductBase": [
+    "cantrip_server_rs",
+    "cantrip_worker",
+    "cantrip_cua",
+    "packages",
+    "tests/reference-node-server"
+  ],
+  "platform": "darwin-arm64",
+  "workerRuntime": "Node v24.22.2",
+  "postgresVersion": "18.6",
+  "authentication": "accounts",
+  "servingExecutable": {
+    "path": "current-binaries/cantrip-server",
+    "bytes": 94116304,
+    "sha256": "129dfce547025b0bdfaaaf57d7fb4b86dc5cdd075b20012348d96b0ab4a97bf4"
+  },
+  "nodeReferenceEntrypoint": {
+    "path": "tests/reference-node-server/dist/index.js",
+    "bytes": 106,
+    "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+  },
+  "workerEntrypoint": {
+    "path": "cantrip_worker/dist/index.js",
+    "bytes": 391660,
+    "sha256": "ed0cd85f4756c5960b20b1283b680fb0c5701d54dc13e187a92c86923093beab"
+  },
+  "nativeHelper": {
+    "path": "cantrip_worker/bin/cantrip-cua",
+    "bytes": 4575744,
+    "sha256": "d925a0adab52e3bfa8ac13ce6265f2723fbca06d148834980ecb3ecce70a67e9",
+    "protocolVersion": 1
+  },
+  "currentWorkerCommandCoverage": {
+    "mapped": 319,
+    "total": 323,
+    "remaining": [
+      "surface.desktop.os-prepare",
+      "surface.desktop.probe",
+      "surface.desktop.targets",
+      "surface.tunnel.os-prepare"
+    ]
+  },
+  "summary": {
+    "peers": 16,
+    "correlatedWorkerCompletions": 340,
+    "cleanServerExits": 40,
+    "cleanWorkerExits": 48,
+    "sealedSnapshots": 10,
+    "retainedSessionApprovals": 30
+  },
+  "product": [
+    {
+      "variant": "native",
+      "mode": "pglite",
+      "report": {
+        "path": "pglite-native-v2.json",
+        "bytes": 400038,
+        "sha256": "74dd37a1354cfbc7bbd5b83d45e4096f448865fc8224c0f1e05b601f4135bd3f"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "backend": "macos-screencapturekit",
+          "retainedEffectRevision": 2,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 4,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 5,
+            "computer-use.operation": 4,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        },
+        {
+          "kind": "rust",
+          "backend": "macos-screencapturekit",
+          "retainedEffectRevision": 2,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 4,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 5,
+            "computer-use.operation": 4,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        }
+      ]
+    },
+    {
+      "variant": "native",
+      "mode": "bundled-postgres",
+      "report": {
+        "path": "bundled-postgres-native-v2.json",
+        "bytes": 469292,
+        "sha256": "9441c8bd78ace952af361c80d655261a10df92d53ff2be93c36321ca7411bf31"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "backend": "macos-screencapturekit",
+          "retainedEffectRevision": 2,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 4,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 5,
+            "computer-use.operation": 4,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        },
+        {
+          "kind": "rust",
+          "backend": "macos-screencapturekit",
+          "retainedEffectRevision": 2,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 4,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 5,
+            "computer-use.operation": 4,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        }
+      ]
+    },
+    {
+      "variant": "native",
+      "mode": "postgres",
+      "report": {
+        "path": "postgres-native-v2.json",
+        "bytes": 467373,
+        "sha256": "28fded9aeff3f47a422850b4055ee96193d41536ba0671e1baca3738e83f5def"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "backend": "macos-screencapturekit",
+          "retainedEffectRevision": 2,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 4,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 5,
+            "computer-use.operation": 4,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        },
+        {
+          "kind": "rust",
+          "backend": "macos-screencapturekit",
+          "retainedEffectRevision": 2,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 4,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 5,
+            "computer-use.operation": 4,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        }
+      ]
+    },
+    {
+      "variant": "fake",
+      "mode": "pglite",
+      "report": {
+        "path": "pglite-fake-v3.json",
+        "bytes": 467896,
+        "sha256": "0d2568ee14c89014507299b7a09f57701e6b8ac44d17b311ab4b0963e6fb86b9"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "backend": "fake",
+          "retainedEffectRevision": 4,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 10,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 9,
+            "computer-use.operation": 10,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3,
+          "capture": {
+            "mediaType": "image/png",
+            "width": 640,
+            "height": 360,
+            "bytes": 4043,
+            "sealedChunks": 1,
+            "retainedSessionApprovals": 3
+          },
+          "effectsUnsupportedThenRestored": true
+        },
+        {
+          "kind": "rust",
+          "backend": "fake",
+          "retainedEffectRevision": 4,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 10,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 9,
+            "computer-use.operation": 10,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3,
+          "capture": {
+            "mediaType": "image/png",
+            "width": 640,
+            "height": 360,
+            "bytes": 4034,
+            "sealedChunks": 1,
+            "retainedSessionApprovals": 3
+          },
+          "effectsUnsupportedThenRestored": true
+        }
+      ]
+    },
+    {
+      "variant": "fake",
+      "mode": "bundled-postgres",
+      "report": {
+        "path": "bundled-postgres-fake-v3.json",
+        "bytes": 536851,
+        "sha256": "f9b06ac56e63ae6f88032aa4f5819ee408b4a4488cd833dbd422c855f954e149"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "backend": "fake",
+          "retainedEffectRevision": 4,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 10,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 9,
+            "computer-use.operation": 10,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3,
+          "capture": {
+            "mediaType": "image/png",
+            "width": 640,
+            "height": 360,
+            "bytes": 4041,
+            "sealedChunks": 1,
+            "retainedSessionApprovals": 3
+          },
+          "effectsUnsupportedThenRestored": true
+        },
+        {
+          "kind": "rust",
+          "backend": "fake",
+          "retainedEffectRevision": 4,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 10,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 9,
+            "computer-use.operation": 10,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3,
+          "capture": {
+            "mediaType": "image/png",
+            "width": 640,
+            "height": 360,
+            "bytes": 4042,
+            "sealedChunks": 1,
+            "retainedSessionApprovals": 3
+          },
+          "effectsUnsupportedThenRestored": true
+        }
+      ]
+    },
+    {
+      "variant": "fake",
+      "mode": "postgres",
+      "report": {
+        "path": "postgres-fake-v3.json",
+        "bytes": 534740,
+        "sha256": "a89d74d2789c423a847af7dad141dc37afb2b2e6f50c339d0b699dac56b07e27"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "backend": "fake",
+          "retainedEffectRevision": 4,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 10,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 9,
+            "computer-use.operation": 10,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3,
+          "capture": {
+            "mediaType": "image/png",
+            "width": 640,
+            "height": 360,
+            "bytes": 4028,
+            "sealedChunks": 1,
+            "retainedSessionApprovals": 3
+          },
+          "effectsUnsupportedThenRestored": true
+        },
+        {
+          "kind": "rust",
+          "backend": "fake",
+          "retainedEffectRevision": 4,
+          "declinedProtectedApproval": true,
+          "freshLeaseAfterFeatureReenable": true,
+          "successfulStops": 3,
+          "sealedOperationReplies": 10,
+          "correlatedWorkerCompletions": {
+            "computer-use.effects.sync": 9,
+            "computer-use.operation": 10,
+            "computer-use.preview.open": 3,
+            "computer-use.preview.stop": 3
+          },
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3,
+          "capture": {
+            "mediaType": "image/png",
+            "width": 640,
+            "height": 360,
+            "bytes": 4034,
+            "sealedChunks": 1,
+            "retainedSessionApprovals": 3
+          },
+          "effectsUnsupportedThenRestored": true
+        }
+      ]
+    }
+  ],
+  "sharedPostgresRedis": {
+    "report": {
+      "path": "postgres-fake-shared-v1.json",
+      "bytes": 1266811,
+      "sha256": "9f532a01c497a6eead7b5b35b0ed77ccbb5eef5d66e577f7409e9001596a7655"
+    },
+    "fixtureArchive": {
+      "path": "shared-fixture-evidence.tar.zst",
+      "bytes": 24141561,
+      "sha256": "becb51302d15abe59e9cf6b4c552c3562fda7edb8ebbc83dc400759a0e50cad0",
+      "verifiedRegularFiles": 5810,
+      "redactedServerProcessLogs": 32,
+      "excludedRebuildablePaths": [
+        "*/worker/managed-runtimes",
+        "*/worker/tools/codegraph/versions"
+      ]
+    },
+    "peers": [
+      {
+        "kind": "node/node",
+        "backend": "fake",
+        "retainedEffectRevision": 4,
+        "declinedProtectedApproval": true,
+        "freshLeaseAfterFeatureReenable": true,
+        "successfulStops": 3,
+        "sealedOperationReplies": 10,
+        "correlatedWorkerCompletions": {
+          "computer-use.effects.sync": 9,
+          "computer-use.operation": 10,
+          "computer-use.preview.open": 3,
+          "computer-use.preview.stop": 3
+        },
+        "cleanServerExits": 4,
+        "cleanWorkerExits": 3,
+        "capture": {
+          "mediaType": "image/png",
+          "width": 640,
+          "height": 360,
+          "bytes": 4048,
+          "sealedChunks": 1,
+          "retainedSessionApprovals": 3
+        },
+        "effectsUnsupportedThenRestored": true
+      },
+      {
+        "kind": "node/rust",
+        "backend": "fake",
+        "retainedEffectRevision": 4,
+        "declinedProtectedApproval": true,
+        "freshLeaseAfterFeatureReenable": true,
+        "successfulStops": 3,
+        "sealedOperationReplies": 10,
+        "correlatedWorkerCompletions": {
+          "computer-use.effects.sync": 9,
+          "computer-use.operation": 10,
+          "computer-use.preview.open": 3,
+          "computer-use.preview.stop": 3
+        },
+        "cleanServerExits": 4,
+        "cleanWorkerExits": 3,
+        "capture": {
+          "mediaType": "image/png",
+          "width": 640,
+          "height": 360,
+          "bytes": 4035,
+          "sealedChunks": 1,
+          "retainedSessionApprovals": 3
+        },
+        "effectsUnsupportedThenRestored": true
+      },
+      {
+        "kind": "rust/node",
+        "backend": "fake",
+        "retainedEffectRevision": 4,
+        "declinedProtectedApproval": true,
+        "freshLeaseAfterFeatureReenable": true,
+        "successfulStops": 3,
+        "sealedOperationReplies": 10,
+        "correlatedWorkerCompletions": {
+          "computer-use.effects.sync": 9,
+          "computer-use.operation": 10,
+          "computer-use.preview.open": 3,
+          "computer-use.preview.stop": 3
+        },
+        "cleanServerExits": 4,
+        "cleanWorkerExits": 3,
+        "capture": {
+          "mediaType": "image/png",
+          "width": 640,
+          "height": 360,
+          "bytes": 4062,
+          "sealedChunks": 1,
+          "retainedSessionApprovals": 3
+        },
+        "effectsUnsupportedThenRestored": true
+      },
+      {
+        "kind": "rust/rust",
+        "backend": "fake",
+        "retainedEffectRevision": 4,
+        "declinedProtectedApproval": true,
+        "freshLeaseAfterFeatureReenable": true,
+        "successfulStops": 3,
+        "sealedOperationReplies": 10,
+        "correlatedWorkerCompletions": {
+          "computer-use.effects.sync": 9,
+          "computer-use.operation": 10,
+          "computer-use.preview.open": 3,
+          "computer-use.preview.stop": 3
+        },
+        "cleanServerExits": 4,
+        "cleanWorkerExits": 3,
+        "capture": {
+          "mediaType": "image/png",
+          "width": 640,
+          "height": 360,
+          "bytes": 4027,
+          "sealedChunks": 1,
+          "retainedSessionApprovals": 3
+        },
+        "effectsUnsupportedThenRestored": true
+      }
+    ]
+  },
+  "originalFakeStatusProjection": {
+    "path": "pglite-fake-v1.json",
+    "bytes": 114500,
+    "sha256": "2d5f061640f62bc060f7292edb71fe94c170a7a9b76e0dd2e1229e1f04571552"
+  },
+  "fixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 164910767,
+    "sha256": "d07ba32695ab0cbb40cdd5737550b972f0b2a831432f90a78d4b8e08961fc1e9",
+    "verifiedRegularFiles": 42802,
+    "redactedServerProcessLogs": 48,
+    "excludedRebuildablePaths": [
+      "*/worker/managed-runtimes",
+      "*/worker/tools/codegraph/versions"
+    ]
+  },
+  "localEvidenceDirectory": "rust-server-computer-use-lifecycle-20261111-v1",
+  "scope": "Current browser SDK, production server peers, full worker and native CUA helper. The explicit fake backend isolates positive image capture.",
+  "remaining": [
+    "Positive physical capture, native input, Metal effect rendering, native-agent MCP and supported shipping acceptance."
+  ]
+}

@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "target": "win32-x64",
+  "serverSha256": "c2bee345723f75ec694d21ca9dbfe1e4d0bf34ad4ba5f4566511af5f408d1114",
+  "archiveSha256": "19298d402d00820b9f658645834b5b8d9423513cb507811a04c46040649d5f3f",
+  "scope": "Exact Windows x64 standalone archive in a local Windows guest using software emulation. The final launcher matrix passed all three database modes. Earlier export and shutdown failures are retained.",
+  "launcherMatrix": {
+    "result": "failed",
+    "stage": "bundled PostgreSQL pg_dump from migrate.cmd",
+    "startupTimeoutMs": 600000,
+    "completedDatabaseModes": ["pglite"],
+    "pgliteReadinessMs": [319354.919, 3596.721, 7942.101, 3214.4],
+    "pgliteSqlSha256": "162daa1068d4226ba13fdc3e432df6bb52d349f74989dbc05c6024d0a84c950c",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-acceptance.json",
+      "bytes": 2372,
+      "sha256": "b5e0cc37b155a7c878c10a1f1b04d56e22953b1e9f52bf8dea50b0f10ed2e009"
+    },
+    "stderr": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-acceptance.stderr",
+      "bytes": 1189,
+      "sha256": "9ff40ec406d052cc4ed001aaff4a6620714cebb1e1d350c1cc7dc8a18119477e"
+    }
+  },
+  "directExportControls": [
+    {
+      "pgDump": "observed packaged executable",
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-diagnostic-receipt",
+        "bytes": 467,
+        "sha256": "dc70ea45ee6538d9a3894700f528d332e274eb2493f634b1a4bbddc8af04afe6"
+      },
+      "sql": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-diagnostic-sql",
+        "bytes": 493560,
+        "sha256": "a54c305ae12a640a74b846e2141b8cbdc994f68fe0d9bbe006724e7f57db07df"
+      }
+    },
+    {
+      "pgDump": "direct packaged executable",
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-direct-receipt",
+        "bytes": 449,
+        "sha256": "0ccd27cff046f8f1a12dd0dee8cf11dfa80dcd5a01699d0495748b1993e1e1bd"
+      },
+      "sql": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/guest-direct-sql",
+        "bytes": 493560,
+        "sha256": "a54c305ae12a640a74b846e2141b8cbdc994f68fe0d9bbe006724e7f57db07df"
+      }
+    }
+  ],
+  "exactLauncherRecheck": {
+    "result": "failed",
+    "stage": "First bundled PostgreSQL shutdown after serving the settings write",
+    "startupTimeoutMs": 600000,
+    "shutdownTimeoutMs": 15000,
+    "completedDatabaseModes": ["pglite"],
+    "pgliteSql": {
+      "bytes": 493335,
+      "sha256": "e9ddfffc2183a4ca17f154ddd546696fc38a67621f92c209565c8307194540c7"
+    },
+    "scope": "The exact archive and original shutdown deadline were retained. The process exceeded the acceptance deadline after supervision stdin closed. This run did not reach the bundled PostgreSQL SQL export or external PostgreSQL case.",
+    "serial": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/exact-recheck.6iLZxOT9/guest-receipts.jsonl",
+      "bytes": 984,
+      "sha256": "0d9563d46e01bc4525a53e855e57899ff536e2d398d0d0d4313d202d765b79e7"
+    },
+    "stderr": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/exact-recheck.6iLZxOT9/guest-acceptance.stderr",
+      "bytes": 592,
+      "sha256": "54416ef67cb089da8b093489b660142a07a18a6155c31054f72797f0b89d1bd5"
+    },
+    "guestVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/exact-recheck.6iLZxOT9/guest-verified.json",
+      "bytes": 1256,
+      "sha256": "61c5120baa78c117f8f821795b5079001b1d820f2f243b09d0a21fa8d9cb6628"
+    }
+  },
+  "sixtySecondShutdownReplay": {
+    "result": "failed",
+    "mode": "pglite",
+    "phase": "initial",
+    "shutdownTimeoutMs": 60000,
+    "forcedAtMs": 60069,
+    "databaseCloseStageMs": 58978,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/shutdown-supervisor-budget.ExX9oNXA/guest-acceptance.json",
+      "bytes": 8840,
+      "sha256": "5c454909f474a6bdea66f54a6c8a074eba81b8af35a253620739f1573b2fd334"
+    }
+  },
+  "finalLauncherMatrix": {
+    "result": "passed",
+    "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+    "harnessSourceCommit": "381136680f96f207118c811eaee36cba8f156a5f",
+    "startupTimeoutMs": 900000,
+    "shutdownTimeoutMs": 180000,
+    "verifiedFiles": 2281,
+    "serverRuntimePathHasNoNode": true,
+    "embeddedRuntimeFallback": true,
+    "windowsLauncherEncodingVerified": true,
+    "elapsedShutdownMs": {
+      "pglite": {
+        "initial": 7518,
+        "reopen": 1686,
+        "hosted": 5576,
+        "configured-runtime": 1605
+      },
+      "bundled-postgres": {
+        "initial": 14100,
+        "reopen": 6312,
+        "hosted": 6734,
+        "portable-selection": 5027,
+        "saved-binary-selection": 5300,
+        "explicit-binary-selection": 6032
+      },
+      "postgres": {
+        "initial": 4364,
+        "reopen": 3630,
+        "hosted": 9124
+      }
+    },
+    "cleanShutdowns": 13,
+    "forcedShutdowns": 0,
+    "modes": [
+      {
+        "mode": "pglite",
+        "startupMs": [
+          469528.56200000003, 3584.060999999987, 2811.3699999999953,
+          2063.430000000051
+        ],
+        "identity": "9d27673a-250b-4ec6-8558-6cbb78a70540",
+        "engine": "pglite",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "sqlExport": {
+          "event": "database.export.completed",
+          "databaseEngine": "pglite",
+          "receipt": {
+            "format": "postgresql-sql",
+            "databaseEngine": "pglite",
+            "bytes": 493335,
+            "sha256": "eb36ac06b69c8e2d4ee55eafbd3204dfa5185f4631d9864a66809c1e5de52c13",
+            "psqlGuardsRemoved": 2,
+            "portableTransactionTimeout": true
+          }
+        },
+        "supervisionStdinClose": true,
+        "hostedReopen": true,
+        "dotenvAndProcessAndCliPrecedence": true
+      },
+      {
+        "mode": "bundled-postgres",
+        "startupMs": [
+          262662.113, 12070.034999999916, 12922.314000000013, 11413.69200000004,
+          10051.884999999776, 10202.262000000104
+        ],
+        "identity": "731c451d-5de8-4f69-a100-e503aaadbadd",
+        "engine": "postgres",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "sqlExport": {
+          "event": "database.export.completed",
+          "databaseEngine": "postgres",
+          "receipt": {
+            "format": "postgresql-sql",
+            "databaseEngine": "postgres",
+            "bytes": 493559,
+            "sha256": "959712796c004b7cb8058e82e57680be09547ccf1a038185c98673f562932016",
+            "psqlGuardsRemoved": 2,
+            "portableTransactionTimeout": true
+          }
+        },
+        "supervisionStdinClose": true,
+        "hostedReopen": true,
+        "dotenvAndProcessAndCliPrecedence": true
+      },
+      {
+        "mode": "postgres",
+        "startupMs": [
+          43749.73099999991, 4621.3610000000335, 22085.148000000045
+        ],
+        "identity": "adc927af-5da1-467a-bceb-5d26035d299b",
+        "engine": "postgres",
+        "settingsWriteAndRestart": true,
+        "migrationLauncher": true,
+        "sqlExport": {
+          "event": "database.export.completed",
+          "databaseEngine": "postgres",
+          "receipt": {
+            "format": "postgresql-sql",
+            "databaseEngine": "postgres",
+            "bytes": 493553,
+            "sha256": "03fe9aad0247ac3d50d1736da6d9855cef7e15d8fbd2b5950b18ba7b7012a8ee",
+            "psqlGuardsRemoved": 2,
+            "portableTransactionTimeout": true
+          }
+        },
+        "supervisionStdinClose": true,
+        "hostedReopen": true,
+        "dotenvAndProcessAndCliPrecedence": true
+      }
+    ],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/shutdown-pglite-observation.8DsZv2QP/guest-acceptance.json",
+      "bytes": 105111,
+      "sha256": "01ec19f08b3f0e7810976ddfef1eccbcb3734df40f37f9cc3c0079ac26f0b217"
+    },
+    "guestSerial": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/standalone-86dc1f0a1/retry-budget/shutdown-pglite-observation.8DsZv2QP/original-invocation-receipts.jsonl",
+      "bytes": 2727,
+      "sha256": "95a77afa33a9e71ae615d544564f37d0c5fee31d0e16e17d789416c43cd53882"
+    },
+    "scope": "The startup and shutdown settings were explicit fixture allowances for this software-emulated guest. The final run measured a 14.1-second maximum shutdown. Earlier timeouts are retained and this run does not measure supported physical Windows hardware."
+  }
+}

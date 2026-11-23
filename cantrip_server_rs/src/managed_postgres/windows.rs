@@ -5,7 +5,7 @@
 use std::{
     ffi::OsStr,
     fs::File,
-    io,
+    io::{self, Write},
     mem::{size_of, size_of_val},
     os::windows::{
         ffi::OsStrExt,
@@ -22,6 +22,10 @@ use anyhow::{Context, Result, bail};
 use tokio::time::{Instant, sleep};
 use windows_sys::Win32::{
     Foundation::{HANDLE, HANDLE_FLAG_INHERIT, SetHandleInformation, WAIT_OBJECT_0, WAIT_TIMEOUT},
+    Security::{
+        CreateRestrictedToken, CreateWellKnownSid, DISABLE_MAX_PRIVILEGE, SECURITY_MAX_SID_SIZE,
+        SID_AND_ATTRIBUTES, TOKEN_ALL_ACCESS, WinBuiltinAdministratorsSid, WinBuiltinPowerUsersSid,
+    },
     System::{
         JobObjects::{
             CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
@@ -30,11 +34,11 @@ use windows_sys::Win32::{
             QueryInformationJobObject, SetInformationJobObject, TerminateJobObject,
         },
         Threading::{
-            CREATE_NO_WINDOW, CreateProcessW, DeleteProcThreadAttributeList,
-            EXTENDED_STARTUPINFO_PRESENT, GetExitCodeProcess, InitializeProcThreadAttributeList,
-            LPPROC_THREAD_ATTRIBUTE_LIST, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-            PROC_THREAD_ATTRIBUTE_JOB_LIST, PROCESS_INFORMATION, STARTF_USESTDHANDLES,
-            STARTUPINFOEXW, UpdateProcThreadAttribute, WaitForSingleObject,
+            CREATE_NO_WINDOW, CreateProcessAsUserW, CreateProcessW, DeleteProcThreadAttributeList,
+            EXTENDED_STARTUPINFO_PRESENT, GetCurrentProcess, GetExitCodeProcess,
+            InitializeProcThreadAttributeList, LPPROC_THREAD_ATTRIBUTE_LIST, OpenProcessToken,
+            PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST, PROCESS_INFORMATION,
+            STARTF_USESTDHANDLES, STARTUPINFOEXW, UpdateProcThreadAttribute, WaitForSingleObject,
         },
     },
 };
@@ -110,6 +114,70 @@ impl Drop for Attributes {
     }
 }
 
+fn restricted_token() -> Result<OwnedHandle> {
+    let mut raw = null_mut();
+    // SAFETY: the API writes the caller's token handle to the out pointer.
+    checked(unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &mut raw) })?;
+    let original = unsafe { OwnedHandle::from_raw_handle(raw) };
+    let mut sid_storage = [[0_u32; SECURITY_MAX_SID_SIZE as usize / size_of::<u32>()]; 2];
+    let mut disabled = [SID_AND_ATTRIBUTES::default(); 2];
+    for ((storage, sid), kind) in sid_storage
+        .iter_mut()
+        .zip(&mut disabled)
+        .zip([WinBuiltinAdministratorsSid, WinBuiltinPowerUsersSid])
+    {
+        let mut bytes = size_of_val(storage) as u32;
+        // SAFETY: the aligned buffer holds the complete well-known SID.
+        checked(unsafe {
+            CreateWellKnownSid(kind, null_mut(), storage.as_mut_ptr().cast(), &mut bytes)
+        })?;
+        sid.Sid = storage.as_mut_ptr().cast();
+    }
+    // SAFETY: the original token and both disabled SIDs remain live here.
+    checked(unsafe {
+        CreateRestrictedToken(
+            original.as_raw_handle(),
+            DISABLE_MAX_PRIVILEGE,
+            disabled.len() as u32,
+            disabled.as_ptr(),
+            0,
+            null(),
+            0,
+            null(),
+            &mut raw,
+        )
+    })?;
+    Ok(unsafe { OwnedHandle::from_raw_handle(raw) })
+}
+
+pub(crate) async fn execute_single_user(
+    binary_directory: &Path,
+    data_directory: &Path,
+    sql: &str,
+) -> Result<ExitStatus> {
+    let mut command = Command::new(super::binary(binary_directory, "postgres"));
+    command
+        .arg("--single")
+        .arg("-D")
+        .arg(data_directory)
+        .arg("postgres");
+    let (input, mut writer) = os_pipe::pipe()?;
+    // The caller supplies a single bounded statement containing the generated
+    // password. Close the write end so the backend exits after reading it.
+    writer.write_all(sql.as_bytes())?;
+    drop(writer);
+    let discard = File::options().write(true).open(r"\\.\NUL")?;
+    let token = restricted_token().context("restrict legacy PostgreSQL credentials")?;
+    let mut child = PostgresProcess::spawn(&command, &input, &discard, Some(&token))?;
+    drop(input);
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+}
+
 impl PostgresProcess {
     pub(super) fn start(
         binary_directory: &Path,
@@ -124,12 +192,23 @@ impl PostgresProcess {
             // Inherit the owned append handle below. pg_ctl's -l redirection
             // would reopen that same file through cmd.exe with incompatible
             // Windows sharing semantics.
-            .args(["start", "-w", "-t", "30"])
+            .args(["start", "-w", "-t"])
+            .arg(super::WINDOWS_RECOVERY_TIMEOUT.as_secs().to_string())
             .arg("-o")
             .arg(format!(
                 "-h 127.0.0.1 -p {port} -c unix_socket_directories= -c log_min_messages=fatal -c log_min_error_statement=panic -c log_error_verbosity=terse"
             ));
 
+        let input = File::open(r"\\.\NUL")?;
+        Self::spawn(&command, &input, &log, None)
+    }
+
+    fn spawn(
+        command: &Command,
+        input: &impl AsRawHandle,
+        log: &File,
+        token: Option<&OwnedHandle>,
+    ) -> Result<Self> {
         let mut application: Vec<u16> = command.get_program().encode_wide().collect();
         application.push(0);
         let mut command_line = argument(command.get_program())?;
@@ -158,7 +237,6 @@ impl PostgresProcess {
         })
         .context("set PostgreSQL process ownership")?;
 
-        let input = File::open(r"\\.\NUL")?;
         let handles: [HANDLE; 2] = [input.as_raw_handle(), log.as_raw_handle()];
         for handle in handles {
             checked(unsafe {
@@ -198,20 +276,37 @@ impl PostgresProcess {
         // SAFETY: UTF-16 buffers are NUL terminated, command_line is mutable,
         // and all startup attributes remain valid throughout process creation.
         checked(unsafe {
-            CreateProcessW(
-                application.as_ptr(),
-                command_line.as_mut_ptr(),
-                null(),
-                null(),
-                1,
-                CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
-                null(),
-                null(),
-                &startup.StartupInfo,
-                &mut process,
-            )
+            let flags = CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT;
+            if let Some(token) = token {
+                CreateProcessAsUserW(
+                    token.as_raw_handle(),
+                    application.as_ptr(),
+                    command_line.as_mut_ptr(),
+                    null(),
+                    null(),
+                    1,
+                    flags,
+                    null(),
+                    null(),
+                    &startup.StartupInfo,
+                    &mut process,
+                )
+            } else {
+                CreateProcessW(
+                    application.as_ptr(),
+                    command_line.as_mut_ptr(),
+                    null(),
+                    null(),
+                    1,
+                    flags,
+                    null(),
+                    null(),
+                    &startup.StartupInfo,
+                    &mut process,
+                )
+            }
         })
-        .context("launch bundled PostgreSQL through pg_ctl")?;
+        .context("launch bundled PostgreSQL process")?;
         let launcher = unsafe { OwnedHandle::from_raw_handle(process.hProcess) };
         drop(unsafe { OwnedHandle::from_raw_handle(process.hThread) });
         Ok(Self { launcher, job })

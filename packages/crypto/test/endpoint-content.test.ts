@@ -155,3 +155,37 @@ describe("endpoint content encryption", () => {
     }
   });
 });
+
+it("protects stored alert details and binds them to the originating chat", async () => {
+  const input = {
+    ownerId: "owner",
+    componentKey: new Uint8Array(32).fill(7),
+    keyRevision: 1,
+    context: {
+      domain: "alert-content" as const,
+      serverId: "server",
+      workerId: "worker",
+      scopeId: "chat",
+      operationId: "11111111-1111-4111-8111-111111111111",
+      operation: "alert.raise",
+      direction: "stored" as const,
+      sequence: 1,
+    },
+  };
+  const plaintext = new TextEncoder().encode("Private blocker reason");
+  const opaque = await encryptEndpointContentPayload({ ...input, plaintext });
+  expect(opaque.domain).toBe("alert-content");
+  expect(await decryptEndpointContentPayload({ ...input, opaque })).toEqual(
+    plaintext,
+  );
+  await expect(
+    decryptEndpointContentPayload({
+      ...input,
+      opaque,
+      context: { ...input.context, scopeId: "foreign" },
+    }),
+  ).rejects.toThrow();
+  await expect(
+    decryptEndpointContentPayload({ ...input, opaque, ownerId: "foreign" }),
+  ).rejects.toThrow();
+});

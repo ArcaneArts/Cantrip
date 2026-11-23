@@ -1,4 +1,5 @@
 use super::*;
+use crate::wire::value::json;
 
 impl Hub {
     pub async fn request_control(
@@ -18,12 +19,11 @@ impl Hub {
         }
         let bounded = timeout_ms.clamp(1, 10000);
         let issued = (self.options.now)();
-        let request=wire::parse("clientControlRequestSchema",Some(&obj(serde_json::json!({"correlationId":correlation,"issuedAt":crate::auth::iso(chrono::DateTime::from_timestamp_millis(issued).context("live control time")?),"expiresAt":crate::auth::iso(chrono::DateTime::from_timestamp_millis(issued+bounded).context("live control expiry")?),"command":command})))).map_err(|_|anyhow::anyhow!("Invalid client-control request"))?;
+        let request=wire::parse("clientControlRequestSchema",Some(&json!({"correlationId":correlation,"issuedAt":crate::auth::iso(chrono::DateTime::from_timestamp_millis(issued).context("live control time")?),"expiresAt":crate::auth::iso(chrono::DateTime::from_timestamp_millis(issued+bounded).context("live control expiry")?),"command":command}))).map_err(|_|anyhow::anyhow!("Invalid client-control request"))?;
         let candidates = {
             let state = self.state.lock().unwrap();
-            let scope = wire::live::scope_key(&obj(
-                serde_json::json!({"kind":"project","projectId":command["projectId"]}),
-            ));
+            let scope =
+                wire::live::scope_key(&json!({"kind":"project","projectId":command["projectId"]}));
             state
                 .subscribers
                 .get(owner)
@@ -67,11 +67,8 @@ impl Hub {
                 serde_json::json!({"correlationId":correlation,"status":"unsupported"}),
             ));
         }
-        let chat = (command["kind"] == "show-interaction").then(|| {
-            wire::live::scope_key(&obj(
-                serde_json::json!({"kind":"chat","chatId":command["chatId"]}),
-            ))
-        });
+        let chat = (command["kind"] == "show-interaction")
+            .then(|| wire::live::scope_key(&json!({"kind":"chat","chatId":command["chatId"]})));
         let connection = compatible
             .iter()
             .find(|connection| {

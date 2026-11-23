@@ -103,6 +103,33 @@ export function runWireFixtures(protectedValue) {
     createdAt: at,
   };
   return {
+    cantripMcpRunConfigurationListInputSchema: [{}],
+    cantripMcpRunConfigurationGetInputSchema: [{ configurationId }],
+    cantripMcpRunConfigurationDetectInputSchema: [{}, { provider: "shell" }],
+    cantripMcpRunConfigurationCreateInputSchema: [{ operationId, document }],
+    cantripMcpRunConfigurationUpdateInputSchema: [
+      { operationId, configurationId, expectedRevision: revision, document },
+    ],
+    cantripMcpRunConfigurationDeleteInputSchema: [
+      { operationId, configurationId, expectedRevision: revision },
+    ],
+    cantripMcpRunConfigurationStartInputSchema: [
+      { operationId, configurationId },
+      { operationId, configurationId, worktreeId },
+    ],
+    cantripMcpRunConfigurationRestartInputSchema: [
+      { operationId, configurationId },
+    ],
+    cantripMcpRunConfigurationStopInputSchema: [
+      { operationId, configurationId },
+    ],
+    cantripMcpRunConfigurationStatusInputSchema: [
+      {},
+      { configurationId, worktreeId, limit: 1 },
+    ],
+    cantripMcpRunConfigurationReadOutputInputSchema: [
+      { operationId, configurationId },
+    ],
     runConfigurationRuntimeLifecycleRequestSchema: [
       {
         operation: "start",
@@ -314,4 +341,14 @@ export function runWireFixtures(protectedValue) {
       },
     ],
   };
+}
+
+export function* runMcpInputWireCases(name, samples) {
+  if (name === "cantripMcpRunConfigurationUpdateInputSchema") {
+    for (const configurationId of [
+      "77777777-7777-4777-8777-777777777777",
+      "invalid",
+    ])
+      yield { ...structuredClone(samples[0]), configurationId };
+  }
 }

@@ -28,9 +28,9 @@ pub fn normalize_responses_base_url(value: &str) -> Result<String> {
     url.set_query(None);
     url.set_fragment(None);
     let path = ENDPOINT
-        .get_or_init(|| regex::Regex::new(r"(?i)/(?:chat/completions|chat|responses)/?$").unwrap())
-        .replace(url.path(), "");
-    let path = path.trim_end_matches('/').to_owned();
+        .get_or_init(|| regex::Regex::new(r"(?i)/(?:chat/completions|chat|responses)$").unwrap())
+        .replace(url.path().trim_end_matches('/'), "")
+        .into_owned();
     if !url.cannot_be_a_base() {
         url.set_path(&path);
     }
@@ -58,6 +58,7 @@ impl SettingsRepository {
         let name = text(input, "name")?.lossy().into_owned();
         let base = normalize_responses_base_url(&text(input, "baseUrl")?.lossy())?;
         let reserve = input["weeklyUsageReservePercent"].as_i64().unwrap_or(3);
+        let concurrency = input["maxConcurrentInference"].as_i64().unwrap_or(8);
         let protected_key = json_value(&input["protectedApiKey"])?;
         let initial = input["initialAccount"].clone();
         let insert_context = super::query_error::provider_insert(&id, owner, input, &base, reserve);
@@ -66,7 +67,7 @@ impl SettingsRepository {
             if account_kind(&kind) && !tx.query("SELECT id FROM model_providers WHERE owner_id=$1 AND kind=$2 LIMIT 1", &[&owner,&kind]).await?.is_empty() {
                 anyhow::bail!("A {} provider already exists. Add another sign-in to that provider instead.",label(&kind));
             }
-            let rows=super::query_error::context(tx.query("INSERT INTO model_providers(id,owner_id,name,kind,base_url,weekly_usage_reserve_percent,protected_api_key) VALUES($1,$2,$3,$4,$5,$6::text::integer,$7) RETURNING to_jsonb(model_providers)", &[&id,&owner,&name,&kind,&base,&reserve.to_string(),&protected_key.as_object().map(|_| &protected_key)]).await, &insert_context.0, &insert_context.1)?;
+            let rows=super::query_error::context(tx.query("INSERT INTO model_providers(id,owner_id,name,kind,base_url,weekly_usage_reserve_percent,protected_api_key,max_concurrent_inference) VALUES($1,$2,$3,$4,$5,$6::text::integer,$7,$8::text::integer) RETURNING to_jsonb(model_providers)", &[&id,&owner,&name,&kind,&base,&reserve.to_string(),&protected_key.as_object().map(|_| &protected_key),&concurrency.to_string()]).await, &insert_context.0, &insert_context.1)?;
             let provider=rows.first().context("Database returned no row after creating a model provider.")?.get::<Value>(0)?;
             if !account_kind(&kind) { return provider_summary(&provider,vec![],None,None) }
             if initial.is_null() { anyhow::bail!("The provider is missing its protected account label.") }
@@ -94,20 +95,45 @@ impl SettingsRepository {
         owner: &str,
         provider: &str,
     ) -> Result<Option<Value>> {
-        Ok(self.json_rows("SELECT to_jsonb(p) FROM model_providers p WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&provider,&owner]).await?.first().map(|row| json!({"id":row["id"],"ownerId":row["owner_id"],"kind":row["kind"],"baseUrl":row["base_url"],"protectedApiKey":row["protected_api_key"]})))
+        Ok(self.json_rows("SELECT to_jsonb(p) FROM model_providers p WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&provider,&owner]).await?.first().map(|row| json!({"id":row["id"],"ownerId":row["owner_id"],"kind":row["kind"],"baseUrl":row["base_url"],"protectedApiKey":row["protected_api_key"],"connectionRevision":row["connection_revision"]})))
     }
     pub async fn has_model_routes_for_provider(&self, owner: &str, provider: &str) -> Result<bool> {
         Ok(!self.database.query("SELECT r.id FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id AND m.owner_id=$1 WHERE r.provider_id=$2 LIMIT 1", &[&owner,&provider]).await?.is_empty())
     }
     pub async fn delete_model_provider(&self, owner: &str, provider: &str) -> Result<bool> {
-        Ok(!self
-            .database
-            .query(
-                "DELETE FROM model_providers WHERE id=$1 AND owner_id=$2 RETURNING id",
-                &[&provider, &owner],
-            )
-            .await?
-            .is_empty())
+        let (owner, provider) = (owner.to_owned(), provider.to_owned());
+        self.database
+            .transaction(move |tx| {
+                Box::pin(async move {
+                    let models = tx.query("SELECT DISTINCT r.model_id FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id AND m.owner_id=$1 INNER JOIN user_settings s ON s.user_id=$1 WHERE r.provider_id=$2 AND r.model_id IN (s.default_model_id,s.default_chat_model_id,s.default_subagent_model_id,s.labeling_model_id,s.default_embedding_model_id,s.default_decision_model_id)", &[&owner,&provider]).await?
+                        .iter().map(|row| row.get::<String>(0)).collect::<Result<Vec<_>>>()?;
+                    if tx.query("DELETE FROM model_providers WHERE id=$1 AND owner_id=$2 RETURNING id", &[&provider,&owner]).await?.is_empty() {
+                        return Ok(false);
+                    }
+                    // Keep profiles for configuration recovery. Only defaults
+                    // whose last enabled route was deleted are cleared.
+                    if !models.is_empty() {
+                        let at = now();
+                        for column in [
+                            "default_model_id",
+                            "default_chat_model_id",
+                            "default_subagent_model_id",
+                            "labeling_model_id",
+                            "default_embedding_model_id",
+                            "default_decision_model_id",
+                        ] {
+                            let subagent_reset = if column == "default_subagent_model_id" {
+                                ",default_custom_subagent_model=false"
+                            } else {
+                                ""
+                            };
+                            tx.query(&format!("UPDATE user_settings SET {column}=NULL{subagent_reset},updated_at=$3 WHERE user_id=$1 AND {column}=ANY($2::text[]) AND NOT EXISTS (SELECT 1 FROM model_routes r WHERE r.model_id=user_settings.{column} AND r.enabled=true)"), &[&owner,&models,&at]).await?;
+                        }
+                    }
+                    Ok(true)
+                })
+            })
+            .await
     }
     pub async fn update_model_provider(
         &self,
@@ -124,6 +150,8 @@ impl SettingsRepository {
         }
         let name = text(input, "name")?.lossy();
         let base = normalize_responses_base_url(&text(input, "baseUrl")?.lossy())?;
+        let native_configuration_changed =
+            current["baseUrl"] != base || input.get("protectedApiKey").is_some();
         let mut values = json!({"name":name,"kind":kind,"base_url":base});
         let mut sets = vec![
             "name=v.name",
@@ -135,6 +163,10 @@ impl SettingsRepository {
             values["weekly_usage_reserve_percent"] = json_value(reserve)?;
             sets.push("weekly_usage_reserve_percent=v.weekly_usage_reserve_percent");
         }
+        if let Some(limit) = input.get("maxConcurrentInference") {
+            values["max_concurrent_inference"] = json_value(limit)?;
+            sets.push("max_concurrent_inference=v.max_concurrent_inference");
+        }
         if let Some(key) = input.get("protectedApiKey") {
             values["protected_api_key"] = json_value(key)?;
             sets.push("protected_api_key=v.protected_api_key");
@@ -145,19 +177,28 @@ impl SettingsRepository {
         let Some(row) = rows.first() else {
             return Ok(None);
         };
-        let routes = self
-            .database
-            .query(
-                "SELECT id FROM model_routes WHERE provider_id=$1",
-                &[&provider],
-            )
-            .await?;
-        for route in routes {
-            let route = route.get::<String>(0)?;
-            let at = now();
-            let reference = super::query_error::provider_detach(&route, at);
-            super::query_error::context(self.database.query("UPDATE chat_runtime_sessions SET codex_thread_id=NULL,status='detached',updated_at=$2 WHERE model_route_id=$1", &[&route,&at]).await, &reference.0, &reference.1)?;
+        if native_configuration_changed {
+            let routes = self
+                .database
+                .query(
+                    "SELECT id FROM model_routes WHERE provider_id=$1",
+                    &[&provider],
+                )
+                .await?;
+            for route in routes {
+                let route = route.get::<String>(0)?;
+                let at = now();
+                let reference = super::query_error::provider_detach(&route, at);
+                super::query_error::context(self.database.query("UPDATE chat_runtime_sessions SET codex_thread_id=NULL,status='detached',updated_at=$2 WHERE model_route_id=$1", &[&route,&at]).await, &reference.0, &reference.1)?;
+            }
         }
         Ok(Some(provider_summary(row, vec![], None, None)?))
+    }
+    pub async fn provider_inference_catalog(&self, owner: &str) -> Result<Value> {
+        // A single statement observes membership and its revision together.
+        self.json_rows("SELECT jsonb_build_object('catalogRevision', coalesce((SELECT revision FROM provider_inference_catalogs WHERE owner_id=$1),0), 'configurations', coalesce((SELECT jsonb_agg(jsonb_build_object('providerId',id,'maxConcurrentInference',max_concurrent_inference,'inferenceConfigRevision',inference_config_revision,'inferenceCatalogCreatedRevision',inference_catalog_created_revision) ORDER BY id) FROM model_providers WHERE owner_id=$1),'[]'::jsonb))", &[&owner]).await?.into_iter().next().context("provider inference catalog")
+    }
+    pub async fn provider_inference_configurations(&self, owner: &str) -> Result<Vec<Value>> {
+        self.json_rows("SELECT jsonb_build_object('providerId',id,'maxConcurrentInference',max_concurrent_inference,'inferenceConfigRevision',inference_config_revision,'inferenceCatalogCreatedRevision',inference_catalog_created_revision) FROM model_providers WHERE owner_id=$1", &[&owner]).await
     }
 }

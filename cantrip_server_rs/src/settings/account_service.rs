@@ -19,26 +19,21 @@ use std::sync::{
 use tokio::sync::Notify;
 mod auth_flow;
 mod auth_observations;
+mod catalog_refresh;
+mod credential_reconnect;
+mod inference_delivery;
 mod providers;
 mod quota;
 use auth_flow::AuthObservation;
 pub(crate) use quota::{QuotaAuthenticationUpdateError, REAUTH_MESSAGE};
 
-// Lifecycle only supplies fixed operational fields here. Shared native log
-// formatting, rate limiting, buffering and archival remain a separate pending
-// integration, as recorded in the server coverage ledger.
+// Lifecycle records use the same minimization and archive as other consumers.
 struct LifecycleLog;
 impl LifecycleLog {
-    fn emit(level: &str, context: Value, message: &'static str) {
-        eprintln!(
-            "{}",
-            Value::object([
-                ("level", Value::String(level.into())),
-                ("message", Value::String(message.into())),
-                ("context", context),
-            ])
-            .stringify()
-        );
+    fn emit(level: &'static str, context: Value, message: &'static str) {
+        crate::operations::logging::server_logger()(crate::operations::logging::LogCall::event(
+            level, message, context,
+        ));
     }
 }
 impl LifecycleDiagnostics for LifecycleLog {
@@ -59,10 +54,11 @@ pub struct AccountService {
     live: Arc<LiveService>,
     catalogs: Arc<super::catalog_runtime::CatalogRuntime>,
     commands: Arc<LimitedCommandBus>,
-    bridge: Arc<crate::workers::bridge::WorkerBridge>,
+    bridge: Arc<dyn crate::workers::transport::WorkerTransport>,
     auth_state: Mutex<AuthState>,
     observation_subscriptions:
         Mutex<std::collections::HashMap<String, crate::workers::bridge::NotificationSubscription>>,
+    inference_deliveries: Mutex<inference_delivery::Deliveries>,
     active: AtomicUsize,
     drained: Notify,
 }
@@ -94,12 +90,15 @@ fn sign_out_input(owner: &str, provider: &str, target: &Json) -> Result<SignOutI
     })
 }
 impl AccountService {
+    pub(crate) fn worker_is_connected(&self, worker: &str) -> bool {
+        self.commands.is_connected(worker)
+    }
     pub fn new(
         repository: SettingsRepository,
         commands: Arc<LimitedCommandBus>,
         live: Arc<LiveService>,
         catalogs: Arc<super::catalog_runtime::CatalogRuntime>,
-        bridge: Arc<crate::workers::bridge::WorkerBridge>,
+        bridge: Arc<dyn crate::workers::transport::WorkerTransport>,
     ) -> Arc<Self> {
         let migrations = MigrationCoordinator::with_purge_kinds(
             repository.clone(),
@@ -151,6 +150,7 @@ impl AccountService {
                 revision: crate::auth::now().timestamp_millis() as f64 * 1000.0,
             }),
             observation_subscriptions: Mutex::new(std::collections::HashMap::new()),
+            inference_deliveries: Mutex::new(inference_delivery::Deliveries::default()),
             active: AtomicUsize::new(0),
             drained: Notify::new(),
         })
@@ -352,6 +352,7 @@ impl AccountService {
         Ok(payload)
     }
     pub async fn drained(&self) {
+        self.close_inference_delivery();
         loop {
             let notified = self.drained.notified();
             tokio::pin!(notified);

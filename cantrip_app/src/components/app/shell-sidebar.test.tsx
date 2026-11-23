@@ -124,6 +124,16 @@ describe("desktop app mode menu", () => {
 
     render();
 
+    bindings.projectAlertCounts = new Map([["project-a", 3]]);
+    bindings.projectSidebarPage = "files";
+    expect(render()).toContain("3 Alerts");
+    bindings.projectSidebarPage = "conversations";
+    expect(render()).toContain("3 Alerts");
+    bindings.projectAlertCounts = new Map();
+    expect(render()).not.toContain('data-slot="project-alert-tile"');
+    bindings.projectSidebarPage = "files";
+    mocks.projectChatListProps.length = 0;
+    render();
     expect(mocks.projectChatListProps).toHaveLength(1);
     expect(mocks.projectChatListProps[0]).toEqual(
       expect.objectContaining({
@@ -167,7 +177,7 @@ describe("desktop app mode menu", () => {
     bindings.showProjectSettings = false;
     expect(render()).not.toContain("display:none");
     bindings.showProjectOverview = true;
-    expect(render()).toContain("display:none");
+    expect(render()).not.toContain("display:none");
     bindings.showProjectOverview = false;
     expect(render()).not.toContain("display:none");
   });

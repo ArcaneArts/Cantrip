@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "baseCommit": "4d1479e33a01d37dd69d4147554b8dc185d9a89b",
+  "candidateVersion": "1.1.2809",
+  "platform": "darwin-arm64",
+  "productionRustChanges": [
+    "cantrip_server_rs/src/chats/recovery/transitions.rs",
+    "cantrip_server_rs/src/http/worker_socket.rs",
+    "cantrip_server_rs/src/http/workers.rs"
+  ],
+  "scope": "Real HTTP, App Live, existing WorkerConnection and isolated SQL for all storage and authentication modes. Native observations and receipts are controlled. Current worker entry points, post-commit queue effects, endpoint cryptography, rollback, worker replacement and exact persistence reopen are exercised.",
+  "counts": {
+    "cells": 9,
+    "httpPairs": 165,
+    "tracedRequests": 1538,
+    "workerCommands": 360,
+    "liveEffects": 198,
+    "exactReopens": 54,
+    "independentlyOpenedPayloads": 162,
+    "newWorkerCommands": 4,
+    "retainedWorkerCommands": 284,
+    "unmappedWorkerCommands": 39,
+    "newLiveResources": 0,
+    "newDurableTables": 0
+  },
+  "cells": [
+    "pglite/none",
+    "pglite/password",
+    "pglite/accounts",
+    "bundled-postgres/none",
+    "bundled-postgres/password",
+    "bundled-postgres/accounts",
+    "postgres/none",
+    "postgres/password",
+    "postgres/accounts"
+  ],
+  "reports": [
+    {
+      "path": ".qa/rust-native-task-goal/pilot-presence-v4.json",
+      "sha256": "f5a585cba54d0f64c63eec988964da0b9faa98dd03f74c9b85c018544912460d",
+      "databaseMode": "pglite",
+      "profiles": ["none"]
+    },
+    {
+      "path": ".qa/rust-native-task-goal/matrix-pglite-password-v4.json",
+      "sha256": "04106da5f2988c79255c97eb9e4b3f3b942f0fc2142121e547eaf6bb89e66b1f",
+      "databaseMode": "pglite",
+      "profiles": ["password"]
+    },
+    {
+      "path": ".qa/rust-native-task-goal/matrix-pglite-accounts-v4.json",
+      "sha256": "9c8f8920ea0e5e511f21b3a597094e9374c6b510f9648d542d99ffe30c67ca09",
+      "databaseMode": "pglite",
+      "profiles": ["accounts"]
+    },
+    {
+      "path": ".qa/rust-native-task-goal/matrix-bundled-postgres-v4.json",
+      "sha256": "0884c17854126547f83cabcb2b9f70a006719b49a0f7d3e398961687430648eb",
+      "databaseMode": "bundled-postgres",
+      "profiles": ["none", "password", "accounts"]
+    },
+    {
+      "path": ".qa/rust-native-task-goal/matrix-postgres-v4.json",
+      "sha256": "53c1b0c36a4380e51af45d86fbd878926d9388a0b425c42a05e914b8f1ccaa8b",
+      "databaseMode": "postgres",
+      "profiles": ["none", "password", "accounts"]
+    }
+  ],
+  "traces": [
+    {
+      "path": ".qa/rust-native-task-goal/pilot-presence-v4.requests.json",
+      "sha256": "4987d77e8d0d3d8d236affeb3e4bd0093a164461d285fb5299739e94cbd124ef",
+      "requests": 166
+    },
+    {
+      "path": ".qa/rust-native-task-goal/matrix-pglite-password-v4.requests.json",
+      "sha256": "939f95344c820f8c42f171b4dd4a3ffc1e883926fbfa1a2fec0262a93f9f16b9",
+      "requests": 171
+    },
+    {
+      "path": ".qa/rust-native-task-goal/matrix-pglite-accounts-v4.requests.json",
+      "sha256": "8446d40c11aa09b64f6d09331178b5cb7af209e3d85c14d155babe4c6130e2ad",
+      "requests": 174
+    },
+    {
+      "path": ".qa/rust-native-task-goal/matrix-bundled-postgres-v4.requests.json",
+      "sha256": "61882a9895510ac20284df1c33a9f25003390ee4219533385f7edba25774075e",
+      "requests": 514
+    },
+    {
+      "path": ".qa/rust-native-task-goal/matrix-postgres-v4.requests.json",
+      "sha256": "058d4121def41881f584373b7d68c908e6567eb363ff9aaf16260c6226914508",
+      "requests": 513
+    }
+  ],
+  "candidate": {
+    "path": ".qa/rust-native-task-goal/helpers-v2.json",
+    "sha256": "0fd6a549785a0f5d8c632769cfc2102b1ba1b3b1b37f87a4616e17be6120fd14"
+  },
+  "verification": {
+    "path": ".qa/rust-native-task-goal/verified-matrix-v4.json",
+    "sha256": "65f1073cb80af45f41dbc6b092eba9e5f50866556a0397ff260f19e41419dd17"
+  },
+  "verifier": {
+    "path": ".qa/rust-native-task-goal/verify-goal-recovery.mjs",
+    "sha256": "25eb61a77748619f470abdbb3d11669296e91d5d30d7b35327cb925d359421b5"
+  },
+  "baselineMissingReconnect": {
+    "path": ".qa/rust-native-task-goal/baseline-presence-v4.json",
+    "sha256": "a4d6c2f80d2a6843a23c832a47c247892224cc4f3cc216fa95d48ea152e12db2"
+  },
+  "sources": [
+    {
+      "path": "scripts/server-rust/native-goal-recovery-http-compatibility.mjs",
+      "sha256": "372ae45a60fcbff6011ee41b7a64fe034ca3d643714279ab7078541201288939"
+    },
+    {
+      "path": "scripts/server-rust/native-goal-recovery-http-agent.mjs",
+      "sha256": "af1db98f7750bacdb17ca45b4b888a61c78b4a620f5e6a501c326cddc2517205"
+    },
+    {
+      "path": "scripts/server-rust/native-goal-recovery-http-task.mjs",
+      "sha256": "403206a1518639d4bc648b7751586c58ab249502d7d82baac301578793ed79ca"
+    }
+  ],
+  "newCommandMappings": [
+    "task.goal.source",
+    "task.goal.recover",
+    "chat.goal.recover",
+    "chat.goal.claim-recover"
+  ],
+  "extendedCommandMappings": ["chat.goal.get"],
+  "remaining": [
+    "The worker supplies a controlled private native-cycle capture through the unchanged transport, with real endpoint encryption. Native Core capture and the first-input handoff arm remain open.",
+    "Durable queue delivery qualifies stale-generation rejection, scheduled adoption and duplicate wake for a retained private cycle. Full native execution and the ineligible and invalidated receipt variants remain open.",
+    "Durable queue delivery qualifies current-scope source retention and retirement with controlled receipts. Scheduled native work and remaining receipt variants require separate acceptance.",
+    "Durable queue delivery qualifies deferred retention and current-scope negative retirement of a first-cycle claim. Successful native scheduling and Core observation remain open.",
+    "Final supported-platform artifacts and complete product, fault, coordination, migration, post-write rollback and performance acceptance remain required."
+  ]
+}

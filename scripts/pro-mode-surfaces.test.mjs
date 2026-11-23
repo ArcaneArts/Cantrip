@@ -9,7 +9,7 @@ const rootDir = path.resolve(
   "..",
 );
 
-test("Terminal service structural surfaces stay transparent in Pro Mode", async () => {
+test("Terminal service content stays transparent inside its dialog in Pro Mode", async () => {
   const [styles, panel, terminalView] = await Promise.all([
     readFile(path.join(rootDir, "cantrip_app", "src", "index.css"), "utf8"),
     readFile(
@@ -41,17 +41,10 @@ test("Terminal service structural surfaces stay transparent in Pro Mode", async 
     .join("\n");
 
   assert.match(panel, /data-slot="terminal-service-panel"/);
-  assert.match(
-    terminalView,
-    /surfaceDataSlot="terminal-service-panel-surface"/,
-  );
+  assert.match(terminalView, /<DialogContent\b/);
   assert.match(
     transparentRules,
     /\.pro-mode \[data-slot="terminal-service-panel"\]/,
-  );
-  assert.match(
-    transparentRules,
-    /\.pro-mode \[data-slot="terminal-service-panel-surface"\]/,
   );
 });
 

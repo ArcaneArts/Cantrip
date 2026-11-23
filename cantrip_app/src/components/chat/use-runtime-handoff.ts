@@ -17,13 +17,15 @@ import {
 import { CantripApiError } from "@/lib/api-client";
 
 export function useRuntimeHandoff(input: {
+  chatId?: string;
   binding: NativeSettingsBinding | null | undefined;
   identity: ClientSessionIdentitySnapshot | null;
   open: boolean;
+  observe?: boolean;
   unlocked: boolean;
 }) {
-  const { binding, identity } = input;
-  const chatId = binding?.chatId;
+  const { identity } = input;
+  const chatId = input.chatId ?? input.binding?.chatId;
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [tracking, setTracking] = useState(false);
@@ -51,21 +53,22 @@ export function useRuntimeHandoff(input: {
       chatId &&
       identity &&
       input.unlocked &&
-      (input.open || tracking || busy || unconfirmed),
+      (input.open || input.observe || tracking || busy || unconfirmed),
     ),
     queryFn: ({ signal }) =>
       readRuntimeHandoffs({ chatId: chatId!, identity: identity! }, signal),
     retry: false,
     refetchOnMount: "always",
-    refetchInterval: (query) =>
-      input.unlocked &&
-      (input.open ||
-        busy ||
-        unconfirmed ||
-        runtimeHandoffActive(query.state.data?.latest?.phase))
-        ? 1500
-        : false,
   });
+  const binding = input.binding ?? query.data?.binding;
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    const open = Boolean(input.open && input.unlocked && identity && chatId);
+    // A hidden panel may have had no live subscription. Reopening is an
+    // explicit snapshot read; ordinary background progress remains event driven.
+    if (open && !wasOpen.current && query.data) void query.refetch();
+    wasOpen.current = open;
+  }, [input.open, input.unlocked, identity, chatId, query.refetch]);
   const latest = query.data?.latest;
   useEffect(() => {
     if (!latest) return;
@@ -141,6 +144,7 @@ export function useRuntimeHandoff(input: {
     }
   };
   return {
+    binding,
     query,
     latest,
     busy,

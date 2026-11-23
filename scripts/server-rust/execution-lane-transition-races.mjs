@@ -4,7 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
 import { repositoryFixture } from "./repository-fixture.mjs";
 const require = createRequire(
-    new URL("../../cantrip_server/package.json", import.meta.url),
+    new URL("../../tests/reference-node-server/package.json", import.meta.url),
   ),
   postgres = require("postgres");
 async function waiters(sql, count, entry) {

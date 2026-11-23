@@ -1,5 +1,6 @@
 import {
   Bot,
+  Bell,
   CircleDot,
   CirclePlay,
   Code2,
@@ -21,32 +22,37 @@ export function ProjectSurfaceIcon({
   filled = false,
   kind,
   ...props
-}: LucideProps & { filled?: boolean; kind: ProjectPaneVisualKind | "tasks" }) {
+}: LucideProps & {
+  filled?: boolean;
+  kind: ProjectPaneVisualKind | "tasks" | "alerts";
+}) {
   const Icon =
-    kind === "task" || kind === "tasks"
-      ? ListTodo
-      : kind === "chat"
-        ? Bot
-        : kind === "terminal"
-          ? SquareTerminal
-          : kind === "explorer"
-            ? FolderTree
-            : kind === "browser"
-              ? Globe2
-              : kind === "code"
-                ? Code2
-                : kind === "history"
-                  ? GitCommitHorizontal
-                  : kind === "graph"
-                    ? GitFork
-                    : kind === "issues"
-                      ? CircleDot
-                      : kind === "prs"
-                        ? GitPullRequest
-                        : kind === "actions"
-                          ? CirclePlay
-                          : kind === "remote-desktop"
-                            ? MonitorUp
-                            : Layers3;
+    kind === "alerts"
+      ? Bell
+      : kind === "task" || kind === "tasks"
+        ? ListTodo
+        : kind === "chat"
+          ? Bot
+          : kind === "terminal"
+            ? SquareTerminal
+            : kind === "explorer"
+              ? FolderTree
+              : kind === "browser"
+                ? Globe2
+                : kind === "code"
+                  ? Code2
+                  : kind === "history"
+                    ? GitCommitHorizontal
+                    : kind === "graph"
+                      ? GitFork
+                      : kind === "issues"
+                        ? CircleDot
+                        : kind === "prs"
+                          ? GitPullRequest
+                          : kind === "actions"
+                            ? CirclePlay
+                            : kind === "remote-desktop"
+                              ? MonitorUp
+                              : Layers3;
   return <Icon {...props} fill={filled ? "currentColor" : props.fill} />;
 }

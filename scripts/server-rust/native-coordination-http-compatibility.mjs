@@ -6,7 +6,7 @@ import path from "node:path";
 import { buildRustServer, buildRustExample } from "./build.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { password, heartbeat } from "./security-fixtures.mjs";
 import {
   settingsHttpFixture,
@@ -34,14 +34,18 @@ const databaseMode = option("--database") ?? "pglite",
 const report = {
   suite: "actual-native-coordination-http-live-crypto",
   databaseMode,
+  root,
   completeReplacement: false,
   lifecycleComplete: false,
   profiles: [],
 };
 let pg, failure, active;
 try {
-  const executable = await buildRustServer(),
-    repositoryExecutable = await buildRustExample("project-repository-fixture"),
+  const executable =
+      process.env.CANTRIP_RUST_SERVER_BINARY ?? (await buildRustServer()),
+    repositoryExecutable =
+      process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+      (await buildRustExample("project-repository-fixture")),
     passwordHash = await hashPassword(password);
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
@@ -168,7 +172,8 @@ try {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify(report, null, 2) + "\n");
   }
-  if (!failure) await rm(root, { recursive: true, force: true });
+  if (!failure && !process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
 }
 if (failure) throw failure;
 console.log(

@@ -1,8 +1,8 @@
 diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
-index 2c6ef708ea41031c5b67ee87595616cdf5e1485c..28f5582f53e0c3c7713308c90b542faa750273b2 100644
+index 7f07155bbe5df9494f39330bb56a81c484a2564b..1bc3e8808326e2de502f24122fac0b93629b997c 100644
 --- a/codex-rs/tui/src/app.rs
 +++ b/codex-rs/tui/src/app.rs
-@@ -245,6 +245,7 @@ mod native_history;
+@@ -248,6 +248,7 @@ mod native_history;
  mod owned_transcript;
  mod pending_interactive_replay;
  mod permission_shortcuts;
@@ -10,7 +10,7 @@ index 2c6ef708ea41031c5b67ee87595616cdf5e1485c..28f5582f53e0c3c7713308c90b542faa
  mod pets;
  mod platform_actions;
  mod plugin_mentions;
-@@ -555,6 +556,8 @@ pub(crate) struct App {
+@@ -562,6 +563,8 @@ pub(crate) struct App {
      runtime_permission_profile_override: Option<RuntimePermissionProfileOverride>,
      /// In-flight remote selections; confirmed settings live in each task's server snapshot.
      pending_server_profiles: HashMap<ThreadId, PermissionProfileSelection>,
@@ -40,7 +40,7 @@ index ae6a8c92ac889a5a888061e3f2c9cf24cee0bfc0..f2b204c46f2d12efdfc9505391713821
                  submission_id: None,
                  thread_id: thread_id.to_string(),
 diff --git a/codex-rs/tui/src/app/app_server_events.rs b/codex-rs/tui/src/app/app_server_events.rs
-index 28065c8adcc7bb3c61e13a227ad34ae9fa6054a1..48a770bc9a6165ce831fa1b9d9f0f921c93065df 100644
+index dc794e80df77a13bf80eda3997f59c31b43ddd6d..056c0818b9e0e5e0e45fcf34476b570e23272dab 100644
 --- a/codex-rs/tui/src/app/app_server_events.rs
 +++ b/codex-rs/tui/src/app/app_server_events.rs
 @@ -119,6 +119,7 @@ impl App {
@@ -51,7 +51,7 @@ index 28065c8adcc7bb3c61e13a227ad34ae9fa6054a1..48a770bc9a6165ce831fa1b9d9f0f921
                  self.refresh_agents_overview_threads(app_server_client);
                  if let Some(primary_thread_id) = self.primary_thread_id
                      && !self
-@@ -222,6 +223,24 @@ impl App {
+@@ -238,6 +239,24 @@ impl App {
              }
          }
  
@@ -77,10 +77,10 @@ index 28065c8adcc7bb3c61e13a227ad34ae9fa6054a1..48a770bc9a6165ce831fa1b9d9f0f921
              let _ = self.dynamic_tool_status_updates.send(status.clone());
          }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index ecc00fa68bb9467281636f9d26fc5fd25487f0de..ded1376b8d35678f383b1064ecfe8c6c99ec1cce 100644
+index 5897c41d7e581e840d88e0720f0a754c297be9bc..312023226fd8bfc6c3a34927b75341828e2a1aca 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -1202,6 +1202,12 @@ impl App {
+@@ -1203,6 +1203,12 @@ impl App {
                          Some(owner) if parked_voice => owner,
                          _ => &mut self.chat_widget,
                      };
@@ -93,19 +93,18 @@ index ecc00fa68bb9467281636f9d26fc5fd25487f0de..ded1376b8d35678f383b1064ecfe8c6c
                      let unsupported_permissions = err
                          .downcast_ref::<UnsupportedLegacyPermissionProfile>()
                          .is_some();
-@@ -2220,6 +2226,7 @@ impl App {
-                         .chat_widget
-                         .thread_id()
-                         .is_some_and(|thread_id| self.pending_server_profiles.contains_key(&thread_id))
+@@ -2286,6 +2292,7 @@ impl App {
+                                                 })
+                                     })
+                         })
 +                    && !self.has_pending_permission_change_for_visible_thread()
                  {
                      let config = self.chat_widget.config_ref();
                      let permissions_override = Self::turn_permissions_override_from_config(
-@@ -2727,7 +2734,15 @@ impl App {
+@@ -2814,6 +2821,13 @@ impl App {
                  self.chat_widget.submit_initial_user_message_if_pending();
              }
              AppEvent::SelectPermissionProfile(selection) => {
--                self.select_permission_profile(app_server, selection).await;
 +                if app_server.has_managed_gateway() && !app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
 +                    self.chat_widget.add_error_message(managed_permission_changes::MANAGED_PERMISSION_ROOT_ONLY.into());
 +                } else if app_server.is_managed_gateway_thread(self.chat_widget.thread_id()) {
@@ -113,11 +112,17 @@ index ecc00fa68bb9467281636f9d26fc5fd25487f0de..ded1376b8d35678f383b1064ecfe8c6c
 +                        self.submit_managed_permission_change(app_server, thread_id, selection).await;
 +                    }
 +                } else {
-+                    self.select_permission_profile(app_server, selection).await;
-+                }
+                 let inline_selection = self
+                     .chat_widget
+                     .complete_inline_permission_profile_selection();
+@@ -2822,6 +2836,7 @@ impl App {
+                     self.app_event_tx.send(AppEvent::SettingsSelectionClosed);
+                 }
              }
++            }
              AppEvent::UpdateApprovalsReviewer(policy) => {
                  if self.reject_pending_permission_change() {
+                     return Ok(AppRunControl::Continue);
 diff --git a/codex-rs/tui/src/app/managed_permission_changes.rs b/codex-rs/tui/src/app/managed_permission_changes.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..760023688bcc19b5163f500c03704613fc991538
@@ -675,10 +680,10 @@ index e5e511c141d57a3a15b8cdac5f2faabf209834dd..7502b83954a48a8ed5be6e0ccb2c3c59
          self.chat_widget.complete_permission_shortcut(thread_id);
      }
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index 06078a7629f323d344a74d659330ed53ba012c42..3fc0088f51c6dbd53e2f09ea86aa10f4e26aabc3 100644
+index 4998a5b1bb48aee635636ce6b7fa9b51ab917266..ffe3f39c892731f194d5df5184cecc223642c1e1 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
-@@ -545,9 +545,19 @@ impl App {
+@@ -591,9 +591,19 @@ impl App {
              );
          }
          self.feedback_audience = bootstrap.feedback_audience;
@@ -700,10 +705,10 @@ index 06078a7629f323d344a74d659330ed53ba012c42..3fc0088f51c6dbd53e2f09ea86aa10f4
              &self.app_server_target,
              app_server.server_codex_home(),
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index c7e8e82de000c8909d3779e3a83adda526003633..9400a28b369c6040a7472490e5114a2b32c976e8 100644
+index 36a1edb2baba46ab0670f48988d5836fde4af82a..71d155179f4503fc4daa16c1234dd92fa251bf63 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -950,6 +950,8 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -1032,6 +1032,8 @@ See the Codex keymap documentation for supported actions and examples."
              runtime_approvals_reviewer_override: None,
              runtime_permission_profile_override: None,
              pending_server_profiles: HashMap::new(),
@@ -713,10 +718,10 @@ index c7e8e82de000c8909d3779e3a83adda526003633..9400a28b369c6040a7472490e5114a2b
              enhanced_keys_supported,
              keymap: runtime_keymap,
 diff --git a/codex-rs/tui/src/app/test_support.rs b/codex-rs/tui/src/app/test_support.rs
-index 9394604dd2c6cb01c34ef6c907b2a6d3e6a0befe..d99a3306fb1817a675bbc2650f58f19f7f6af986 100644
+index a0efb33101b4f3b5a31d15e10815cbf8064cb890..c6cd7e05e35e525a4c952865b7b6678566180569 100644
 --- a/codex-rs/tui/src/app/test_support.rs
 +++ b/codex-rs/tui/src/app/test_support.rs
-@@ -42,6 +42,8 @@ pub(crate) async fn make_test_app() -> Box<App> {
+@@ -43,6 +43,8 @@ pub(crate) async fn make_test_app() -> Box<App> {
          runtime_approvals_reviewer_override: None,
          runtime_permission_profile_override: None,
          pending_server_profiles: HashMap::new(),
@@ -726,10 +731,10 @@ index 9394604dd2c6cb01c34ef6c907b2a6d3e6a0befe..d99a3306fb1817a675bbc2650f58f19f
          transcript_cells: Vec::new(),
          native_history: Default::default(),
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 594dd2b64f54a4f2c0e9fd25de7061e12429d093..fc398932a63fd1addb84a1cdface9d946d58e553 100644
+index 3580e0660f9e4bb72b007d18f282ecc1c5837e19..3e92de15a46899d27f9dd19ddbd870f487b00c41 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -70,6 +70,8 @@ mod unavailable_commands;
+@@ -79,6 +79,8 @@ mod backend_sessions;
  mod history_hydration_tests;
  #[path = "tests/permission_shortcuts_tests.rs"]
  mod permission_shortcuts_tests;
@@ -738,7 +743,7 @@ index 594dd2b64f54a4f2c0e9fd25de7061e12429d093..fc398932a63fd1addb84a1cdface9d94
  mod plugin_catalog;
  mod rate_limits;
  #[path = "tests/realtime_handoff_e2e.rs"]
-@@ -6279,6 +6281,8 @@ async fn make_test_app() -> Box<App> {
+@@ -6429,6 +6431,8 @@ async fn make_test_app() -> Box<App> {
          runtime_approval_policy_override: None,
          runtime_approvals_reviewer_override: None,
          runtime_permission_profile_override: None,
@@ -747,7 +752,7 @@ index 594dd2b64f54a4f2c0e9fd25de7061e12429d093..fc398932a63fd1addb84a1cdface9d94
          file_search,
          transcript_cells: Vec::new(),
          native_history: Default::default(),
-@@ -6404,6 +6408,8 @@ pub(super) async fn make_test_app_with_channels() -> (
+@@ -6555,6 +6559,8 @@ pub(super) async fn make_test_app_with_channels() -> (
              runtime_approval_policy_override: None,
              runtime_approvals_reviewer_override: None,
              runtime_permission_profile_override: None,
@@ -756,7 +761,7 @@ index 594dd2b64f54a4f2c0e9fd25de7061e12429d093..fc398932a63fd1addb84a1cdface9d94
              file_search,
              transcript_cells: Vec::new(),
              native_history: Default::default(),
-@@ -9900,11 +9906,13 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
+@@ -10131,11 +10137,13 @@ async fn inactive_thread_settings_notification_updates_cached_collaboration_mode
      );
  
      let notification = ThreadSettingsUpdatedNotification {
@@ -1495,10 +1500,10 @@ index 0000000000000000000000000000000000000000..8f17c42f089a13cc3383d942f797806e
 +    Ok(())
 +}
 diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
-index c8d16dc9c6712a01640553f9b5b680faf535f2f9..36de3569ea0b2fae6fc611ed7ddb334692eed684 100644
+index e4ecae0ec92756ab19ad65dcb11779acb64794d6..c1f88503ab3a78a940e81f18beb515dc3b29b4f7 100644
 --- a/codex-rs/tui/src/app/thread_routing.rs
 +++ b/codex-rs/tui/src/app/thread_routing.rs
-@@ -1211,6 +1211,11 @@ impl App {
+@@ -1054,6 +1054,11 @@ impl App {
          }
          let mut confirmed_profile = None;
          if let ServerNotification::ThreadSettingsUpdated(notification) = &notification {
@@ -1511,10 +1516,10 @@ index c8d16dc9c6712a01640553f9b5b680faf535f2f9..36de3569ea0b2fae6fc611ed7ddb3346
                  .await;
              if self
 diff --git a/codex-rs/tui/src/app_server_session.rs b/codex-rs/tui/src/app_server_session.rs
-index 34700626a54fe653d6cb54de8dc4801bad477896..95b64cfeb41dc6b68cd37e9e18aed47926a1e429 100644
+index f6702693f2672c88b0b77030ca17267e0c22e399..11f518630ba2fb6fccfcd3dd06ccef0250a22c2d 100644
 --- a/codex-rs/tui/src/app_server_session.rs
 +++ b/codex-rs/tui/src/app_server_session.rs
-@@ -609,6 +609,10 @@ impl AppServerSession {
+@@ -650,6 +650,10 @@ impl AppServerSession {
          }
      }
  
@@ -1525,15 +1530,19 @@ index 34700626a54fe653d6cb54de8dc4801bad477896..95b64cfeb41dc6b68cd37e9e18aed479
      pub(crate) fn is_managed_gateway_thread(&self, thread_id: Option<ThreadId>) -> bool {
          thread_id.is_some_and(|thread_id| {
              self.client.managed_gateway_thread_id() == Some(thread_id.to_string().as_str())
-@@ -1482,7 +1486,7 @@ impl AppServerSession {
-                 params: TurnStartParams {
-                     disabled_plugin_ids: None,
-                     thread_id: thread_id.to_string(),
--                    turn_trigger: Some("user".to_string()),
-+                    turn_trigger: if self.is_managed_gateway_thread(Some(thread_id)) { None } else { Some("user".to_string()) },
-                     parent_turn_id: None,
-                     root_turn_id: None,
-                     client_user_message_id: Some(client_user_message_id),
+@@ -1568,7 +1572,11 @@ impl AppServerSession {
+         let request_id = self.next_request_id();
+         let mut params = TurnStartParams {
+             thread_id: thread_id.to_string(),
+-            turn_trigger: Some(turn_trigger.to_string()),
++            turn_trigger: if self.is_managed_gateway_thread(Some(thread_id)) {
++                None
++            } else {
++                Some(turn_trigger.to_string())
++            },
+             client_user_message_id: Some(client_user_message_id),
+             input: items,
+             output_schema,
 diff --git a/codex-rs/tui/src/chatwidget/managed_queue.rs b/codex-rs/tui/src/chatwidget/managed_queue.rs
 index 407f364ea252413b4901db1dcc24aff951905773..fba99c0b76f9e683bd5b6e3e56e5b43b16673e4d 100644
 --- a/codex-rs/tui/src/chatwidget/managed_queue.rs
@@ -1554,7 +1563,7 @@ index 407f364ea252413b4901db1dcc24aff951905773..fba99c0b76f9e683bd5b6e3e56e5b43b
              .input_queue
              .managed
 diff --git a/codex-rs/tui/src/chatwidget/permission_popups.rs b/codex-rs/tui/src/chatwidget/permission_popups.rs
-index 62877cfdf85af374be76d9e2186f926eb236ac3c..b15f761509a634ba7734a1236632857c0c259ec9 100644
+index a91e85ce9ff848e6e930656b2af7d3d6e7bfff67..d2f4a51fc8fce04b77c279236f31541c0a27967a 100644
 --- a/codex-rs/tui/src/chatwidget/permission_popups.rs
 +++ b/codex-rs/tui/src/chatwidget/permission_popups.rs
 @@ -17,6 +17,10 @@ impl ChatWidget {
@@ -1580,7 +1589,7 @@ index 62877cfdf85af374be76d9e2186f926eb236ac3c..b15f761509a634ba7734a1236632857c
                  profile_id: preset.active_permission_profile.id.clone(),
                  approval_policy: Some(AskForApproval::from(preset.approval)),
                  approvals_reviewer: Some(approvals_reviewer),
-@@ -431,6 +437,14 @@ impl ChatWidget {
+@@ -430,6 +436,14 @@ impl ChatWidget {
      ) {
          let selected_name = preset.label.to_string();
          let approval = AskForApproval::from(preset.approval);
@@ -1596,10 +1605,10 @@ index 62877cfdf85af374be76d9e2186f926eb236ac3c..b15f761509a634ba7734a1236632857c
              models.iter().any(|model| {
                  model.model == self.current_model()
 diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
-index b0b9674c6ae5849dabb63bf873ec5ea082da6dbe..a5e913118f25a09f09d12d1b1a96d5e09599ff00 100644
+index 432fa653e8213ad598a103665f645d9e58af0a9d..acbb8f4337e3c93bb12a2cae61f413bbb72734e9 100644
 --- a/codex-rs/tui/src/chatwidget/settings.rs
 +++ b/codex-rs/tui/src/chatwidget/settings.rs
-@@ -511,7 +511,7 @@ impl ChatWidget {
+@@ -499,7 +499,7 @@ impl ChatWidget {
          self.refresh_open_model_picker();
      }
  
@@ -1608,7 +1617,7 @@ index b0b9674c6ae5849dabb63bf873ec5ea082da6dbe..a5e913118f25a09f09d12d1b1a96d5e0
          self.invalidate_permission_discovery();
          let cwd_changed = self.config.cwd != settings.cwd;
          self.apply_thread_settings_cwd(settings.cwd.clone());
-@@ -529,10 +529,11 @@ impl ChatWidget {
+@@ -517,10 +517,11 @@ impl ChatWidget {
          }
          self.set_approvals_reviewer(settings.approvals_reviewer.to_core());
  
@@ -1625,10 +1634,10 @@ index b0b9674c6ae5849dabb63bf873ec5ea082da6dbe..a5e913118f25a09f09d12d1b1a96d5e0
              permission_profile,
              settings.active_permission_profile.take().map(Into::into),
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index 79c098708bdfa925c58b3bef2c5cdc719ceeaeab..ddf7ac8ed68fe216c1be76bccc381622ac6413b5 100644
+index bd930d7ab837cd1c2b2c0fa96a190ae02187aae9..3f814bfeac2930f5a415e645ff6c93949e933d1f 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-@@ -12,11 +12,13 @@ fn thread_settings_for_test(
+@@ -13,11 +13,13 @@ fn thread_settings_for_test(
      thread_id: ThreadId,
  ) -> codex_app_server_protocol::ThreadSettingsUpdatedNotification {
      codex_app_server_protocol::ThreadSettingsUpdatedNotification {
@@ -1743,10 +1752,10 @@ index 452370e71f44e9fc96e660afb814cad30129159c..96cdafd3720310a689b9356bfd63be0b
 +    assert!(rx.try_recv().is_err());
 +}
 diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-index e9cef310ea2f23c7d9a53228d1ed3f0e8bec7df8..55cf1b4a225f2823c305a28677e44e6869206ec2 100644
+index 3e11e087fab07948315ec33def53af74f2f4d239..74ffb4b1ec21d31b68834279cbb9ddbbcbd890dd 100644
 --- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
 +++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-@@ -383,6 +383,39 @@ impl ChatWidget {
+@@ -418,6 +418,39 @@ impl ChatWidget {
          self.maybe_send_next_queued_input();
      }
  

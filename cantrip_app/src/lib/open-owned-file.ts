@@ -1,3 +1,4 @@
+import { resolveFileOpeningMode } from "@/components/files/file-viewers";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   createFileDocument,
@@ -20,18 +21,26 @@ export async function openOwnedFile({
   queryClient,
   projectId,
   worktreeId,
+  cantripOsBindingId,
+  cantripOsRuntimeGeneration,
+  workerId,
   path,
   focusWindow,
   preview = false,
+  viewer,
   reservePreview,
 }: {
   controller: WorkspaceCommandClient;
   queryClient: QueryClient;
   projectId: string;
   worktreeId: string;
+  cantripOsBindingId?: string;
+  cantripOsRuntimeGeneration?: string;
+  workerId?: string;
   path: string;
   focusWindow: (id: string) => Promise<void>;
   preview?: boolean;
+  viewer?: string | null;
   reservePreview?: (resourceId: string) => (() => void) | null;
 }) {
   const session = JSON.stringify(getClientSessionIdentitySnapshot());
@@ -50,7 +59,14 @@ export async function openOwnedFile({
     requests = new Map();
     pending.set(controller, requests);
   }
-  const key = JSON.stringify([session, projectId, worktreeId, path]);
+  const key = JSON.stringify([
+    session,
+    projectId,
+    worktreeId,
+    path,
+    cantripOsBindingId,
+    cantripOsRuntimeGeneration,
+  ]);
   let request = requests.get(key);
   if (!request) {
     const resource = (async () => {
@@ -61,26 +77,40 @@ export async function openOwnedFile({
         (candidate) =>
           candidate.projectId === projectId &&
           candidate.worktreeId === worktreeId &&
+          candidate.cantripOsBindingId === cantripOsBindingId &&
+          candidate.cantripOsRuntimeGeneration === cantripOsRuntimeGeneration &&
           candidate.path === path,
       );
       if (existing) return existing;
-      const worktrees = await getProjectWorktrees(projectId);
+      const worktrees = cantripOsBindingId
+        ? []
+        : await getProjectWorktrees(projectId);
       assertCurrent();
       const worktree = worktrees.find(
         (candidate) =>
           candidate.id === worktreeId && candidate.projectId === projectId,
       );
-      if (!worktree) throw new Error("File document worktree was not found.");
+      if (!cantripOsBindingId && !worktree)
+        throw new Error("The selected worktree was not found.");
+      const owningWorkerId = cantripOsBindingId ? workerId : worktree?.workerId;
+      if (!owningWorkerId)
+        throw new Error(
+          "File document worker was not supplied for this source.",
+        );
       return createFileDocument({
         id: surfaceTitleEncryption.fileDocumentId({
           projectId,
-          workerId: worktree.workerId,
+          workerId: owningWorkerId,
           worktreeId,
+          cantripOsBindingId,
+          cantripOsRuntimeGeneration,
           path,
         }),
         projectId,
-        workerId: worktree.workerId,
+        workerId: owningWorkerId,
         worktreeId,
+        cantripOsBindingId,
+        cantripOsRuntimeGeneration,
         path,
       });
     })();
@@ -107,7 +137,16 @@ export async function openOwnedFile({
         definitionId: "project.file",
         resourceId: resource.id,
       },
-      { preview, reservePreview },
+      {
+        preview,
+        reservePreview,
+        ...(viewer !== undefined
+          ? {
+              fileViewer: viewer,
+              fileMode: resolveFileOpeningMode(path, viewer),
+            }
+          : {}),
+      },
     );
     assertCurrent();
     if (receipt.focusWindowId) await focusWindow(receipt.focusWindowId);

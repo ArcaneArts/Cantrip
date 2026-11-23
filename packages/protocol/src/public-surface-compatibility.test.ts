@@ -58,6 +58,12 @@ function stableFingerprint(value: unknown) {
   return `${firstHex}${secondHex}:${input.length}`;
 }
 
+// Reviewed retirement of selectable workspace profiles. Preserve the unrelated
+// export baseline while asserting the removed APIs stay absent.
+const retiredWorkspaceProfileExports = [
+  "workspaceLayoutProfilePlacement",
+  "workspaceLayoutProfileSchema",
+];
 // Reviewed removal of the embedded workbench. Adding these names back only to
 // the historical fingerprint keeps every unrelated compatibility assertion intact.
 const retiredWorkbenchExports = [
@@ -140,6 +146,23 @@ const retiredWorkbenchExports = [
   "parseCodeSessionRoutePath",
   "protectedCodeSettingsRecordSchema",
   "unavailableCodeCapabilities",
+];
+// Reviewed durable suspension contracts and privacy-preserving projections.
+const nativeSuspensionExports = [
+  "chatNativeSuspension",
+  "chatNativeSuspensionSchema",
+  "isNativeSuspensionResumable",
+  "nativeSuspensionActiveTurnSchema",
+  "nativeSuspensionActorSchema",
+  "nativeSuspensionErrorSchema",
+  "nativeSuspensionEvidenceSchema",
+  "nativeSuspensionExecutionAdmissionResultSchema",
+  "nativeSuspensionExecutionAdmissionSchema",
+  "nativeSuspensionPhaseSchema",
+  "nativeSuspensionRecordSchema",
+  "nativeSuspensionTargetSchema",
+  "nativeTurnSuspensionSchema",
+  "storedChatNativeSuspension",
 ];
 const cuaRuntimeExports = [
   "CUA_CHUNK_BYTES",
@@ -374,6 +397,7 @@ const chatFileReferencesExports = [
 const managedWorkerCommands = [
   "chat.account-defaults",
   "chat.automation.resume",
+  "chat.goal.recover",
   "chat.native-control",
   "chat.native-logical.cancel",
   "chat.native-logical.complete",
@@ -449,16 +473,507 @@ const legacyFileImportExports = [
   "workspaceLegacyFileImportRequestSchema",
   "workspaceLegacyFileImportSchema",
 ];
+const logTailExports = [
+  "LOG_TAIL_PAGE_BYTES",
+  "explorerLogTailSchema",
+  "logTailCursorSchema",
+];
+const textPreviewExports = [
+  "TEXT_PREVIEW_BYTES_LIMIT",
+  "TEXT_PREVIEW_PAGE_BYTES",
+  "TEXT_PREVIEW_PAGE_LINES",
+  "explorerTextPreviewPageSchema",
+];
+const binaryFileExports = [
+  "BINARY_FILE_PAGE_BYTES",
+  "explorerBinaryPageSchema",
+  "explorerBinaryReadSchema",
+];
 const explorerFileImportExports = ["EXPLORER_FILE_IMPORT_CHUNK_BYTES"];
+const binaryWriteExports = [
+  "BINARY_WRITE_CHUNK_BYTES",
+  "binaryWriteAbortSchema",
+  "binaryWriteBeginSchema",
+  "binaryWriteChunkSchema",
+  "binaryWriteCommitSchema",
+  "binaryWriteReceiptSchema",
+  "binaryWriteStatusSchema",
+  "binaryWriteVersionSchema",
+];
+
+const alertExports = [
+  "agentAlertMutationWireSchema",
+  "cantripMcpAlertRaiseInputSchema",
+  "cantripMcpAlertResolveInputSchema",
+  "projectGoalSnapshotSchema",
+  "projectGoalObservationSchema",
+  "projectGoalObservationResultSchema",
+  "projectAlertChangeSchema",
+  "projectAlertCountsSchema",
+  "projectAlertDetailSchema",
+  "projectAlertKindSchema",
+  "projectAlertPageSchema",
+  "projectAlertProjectionSchema",
+  "projectAlertProtectedDetailSchema",
+  "projectAlertQuerySchema",
+  "projectAlertSchema",
+  "projectAlertSourceSchema",
+  "projectAlertTargetSchema",
+].sort();
+
+const agentChatExports = [
+  "agentChatReadWireSchema",
+  "agentChatRuntimeText",
+  "agentChatSendWireSchema",
+  "agentChatWireDescriptorSchema",
+  "cantripMcpChatListInputSchema",
+  "cantripMcpChatReadInputSchema",
+  "cantripMcpChatSendInputSchema",
+  "cantripMcpChatWaitInputSchema",
+  "chatCommunicationSchema",
+  "uniqueChatCommunicationMessages",
+].sort();
+
+const cantripOsExports = [
+  "cantripOsSystemCreateSchema",
+  "cantripOsSystemControlSchema",
+  "cantripOsSystemTargetSummarySchema",
+  "cantripOsSystemStatusSchema",
+  "cantripOsSystemSummarySchema",
+  "cantripOsSystemListQuerySchema",
+  "cantripOsSystemPageSchema",
+  "CANTRIP_OS_SYSTEM_RESULT_BYTES",
+  "cantripOsSystemScopeSchema",
+  "cantripOsSystemTargetSchema",
+  "cantripOsSystemReferenceSchema",
+  "cantripOsSystemBaseImageSchema",
+  "cantripOsSystemSourceSchema",
+  "cantripOsSystemOperationCommandSchema",
+  "cantripOsSystemWorkerCommandSchema",
+  "workerCantripOsSystemCommandSchemas",
+  "cantripOsSystemStatusResultSchema",
+  "cantripOsSystemOperationContextSchema",
+  "cantripOsSystemProtectedOperationResultSchema",
+  "cantripOsSystemRootReceiptSchema",
+  "cantripOsSystemOperationResultSchema",
+  "cantripOsSystemPrivateOperationResultSchema",
+  "cantripOsPackageTargetSummarySchema",
+  "cantripOsPackageStatusSchema",
+  "cantripOsPackageCreateSchema",
+  "cantripOsPackageControlSchema",
+  "cantripOsPackageSummarySchema",
+  "cantripOsPackageListQuerySchema",
+  "cantripOsPackagePageSchema",
+  "CANTRIP_OS_PACKAGE_PRIVATE_BYTES",
+  "cantripOsGuestPackageRecordSchema",
+  "cantripOsGuestPackageRequestSchema",
+  "cantripOsPackageArtifactSchema",
+  "cantripOsPackageArtifactsSchema",
+  "cantripOsPackageCatalogResultSchema",
+  "cantripOsPackageCryptoContextSchema",
+  "cantripOsPackageExpectedSchema",
+  "cantripOsPackageInstalledSchema",
+  "cantripOsPackageManifestSchema",
+  "cantripOsPackageNameSchema",
+  "cantripOsPackageOperationCommandSchema",
+  "cantripOsPackageOperationResultSchema",
+  "cantripOsPackagePrivateResultSchema",
+  "cantripOsPackageProbeSchema",
+  "cantripOsPackageProtectedResultSchema",
+  "cantripOsPackageScopeSchema",
+  "cantripOsPackageShaSchema",
+  "cantripOsPackageTargetSchema",
+  "cantripOsPackageWorkerCommandSchema",
+  "workerCantripOsPackageCommandSchemas",
+
+  "cantripOsDesktopActionSchema",
+  "cantripOsGuestDesktopTargetSchema",
+  "cantripOsDesktopScopeSchema",
+  "cantripOsGuestDesktopRequestSchema",
+  "cantripOsGuestDesktopReceiptSchema",
+  "cantripOsGuestDesktopResultSchema",
+  "workerCantripOsDesktopCommandSchemas",
+  "cantripOsDesktopWorkerCommandSchema",
+  "cantripOsDesktopReceiptSchema",
+  "cantripOsDesktopOperationResultSchema",
+  "cantripOsDesktopCreateSchema",
+  "cantripOsDesktopTargetSummarySchema",
+  "cantripOsDesktopStatusSchema",
+  "cantripOsDesktopSummarySchema",
+  "cantripOsDesktopListQuerySchema",
+  "cantripOsDesktopPageSchema",
+  "cantripOsWorkspaceOperationSummarySchema",
+  "cantripOsWorkspaceOperationListQuerySchema",
+  "cantripOsWorkspaceOperationPageSchema",
+
+  "cantripOsDockerCarrierSchema",
+  "cantripOsPowerActionSchema",
+  "cantripOsPowerEvidenceSchema",
+  "cantripOsPowerObservationSchema",
+  "cantripOsPowerTargetSchema",
+  "workerCantripOsPowerCommandSchemas",
+  "cantripOsPowerWorkerCommandSchema",
+  "cantripOsPowerReceiptSchema",
+  "cantripOsPowerOperationResultSchema",
+  "cantripOsPowerCreateSchema",
+  "cantripOsPowerTargetSummarySchema",
+  "cantripOsPowerStatusSchema",
+  "cantripOsPowerSummarySchema",
+  "cantripOsPowerListQuerySchema",
+  "cantripOsPowerPageSchema",
+
+  "CANTRIP_OS_BACKUP_CHUNK_BYTES",
+  "CANTRIP_OS_BACKUP_METADATA_BYTES",
+  "CANTRIP_OS_BACKUP_END_BYTES",
+  "cantripOsBackupAdmissionSchema",
+  "cantripOsBackupCaptureCommandSchema",
+  "cantripOsBackupListQuerySchema",
+  "cantripOsBackupObserveCommandSchema",
+  "cantripOsBackupOperationResultSchema",
+  "cantripOsBackupPageSchema",
+  "cantripOsBackupPhaseSchema",
+  "cantripOsBackupPrivateRequestSchema",
+  "cantripOsBackupPrivateResultSchema",
+  "cantripOsBackupRecoverySchema",
+  "cantripOsBackupRequestEnvelopeSchema",
+  "cantripOsBackupRequestSequence",
+  "cantripOsBackupResetCommandSchema",
+  "cantripOsBackupResponseEnvelopeSchema",
+  "cantripOsBackupResponseSequence",
+  "cantripOsBackupRestoreCommandSchema",
+  "cantripOsBackupRollbackCommandSchema",
+  "cantripOsBackupSourceSchema",
+  "cantripOsBackupSummarySchema",
+  "cantripOsBackupWorkerCommandSchema",
+  "cantripOsBackupWorkspaceSchema",
+  "cantripOsResetPathsSchema",
+  "workerCantripOsBackupCommandSchemas",
+  "cantripOsBackupCryptoContextSchema",
+  "cantripOsBackupFrameSchema",
+  "cantripOsBackupFileHeaderSchema",
+  "cantripOsBackupArchiveMetadataSchema",
+  "cantripOsBackupEndSchema",
+  "cantripOsRecoveryRequestSchema",
+  "cantripOsRecoveryResultSchema",
+  "tunnelOsPrepareResultSchema",
+  "cantripOsDesktopPlacement",
+  "cantripOsDesktopPlacementSchema",
+  "cantripOsRunDefinitionRequestSchema",
+  "cantripOsRunDefinitionWorkerCommandSchema",
+  "cantripOsRunDefinitionApiSchema",
+  "cantripOsRunDefinitionResponseSchema",
+  "cantripOsRunPrimarySchema",
+  "cantripOsRunRootsSchema",
+  "cantripOsRunLaunchSchema",
+  "cantripOsRunCaptureSchema",
+  "cantripOsRunSelectionSchema",
+  "cantripOsRunSourceSchema",
+  "workerCantripOsRunCommandSchemas",
+  "cantripOsDispatchScopeSchema",
+  "cantripOsSourceDispatchScopeSchema",
+  "cantripOsExecutionSchema",
+  "cantripOsExecutionScopeSchema",
+  "cantripOsProvisionIntentSchema",
+  "cantripOsProvisionRequestContentSchema",
+  "cantripOsObservedInstanceSchema",
+  "cantripOsSourceReceiptSchema",
+  "cantripOsOperationResultSchema",
+  "workerCantripOsCommandSchemas",
+  "cantripOsInspectSchema",
+  "cantripOsWorkspaceCreateSchema",
+  "cantripOsBindingCreateSchema",
+  "cantripOsExistingSourceCreateSchema",
+  "cantripOsProvisionSchema",
+  "cantripOsAttachSchema",
+  "cantripOsDependencyOverlaySchema",
+  "cantripOsDependencyOverlaysSchema",
+  "cantripOsGuestPathSchema",
+  "cantripOsInstanceSummarySchema",
+  "cantripOsProjectSourceSummarySchema",
+  "cantripOsProjectWorktreeSummarySchema",
+  "cantripOsSourceBindingSummarySchema",
+  "cantripOsTransportSchema",
+  "cantripOsWorkspaceObservationSchema",
+  "cantripOsWorkspaceSummarySchema",
+  "projectSourceLocationSchema",
+].sort();
+
+const agentTaskExports = [
+  "agentTaskCreateWireSchema",
+  "agentTaskStatusWireSchema",
+  "agentTaskWireDescriptorSchema",
+  "cantripMcpTaskCreateInputSchema",
+  "cantripMcpTaskListInputSchema",
+  "cantripMcpTaskStatusInputSchema",
+  "cantripMcpTaskWaitInputSchema",
+].sort();
+
+const inferenceAdmissionExports = [
+  "DEFAULT_MAX_CONCURRENT_INFERENCE",
+  "inferenceOperationStatusSchema",
+  "inferencePoolStatusSchema",
+  "inferenceTicketStateSchema",
+  "providerInferenceConfigurationSchema",
+  "providerInferenceCatalogSchema",
+  "providerInferenceLimitSchema",
+  "providerInferenceRevisionSchema",
+  "workerInferenceStatusSchema",
+].sort();
+
+// Reviewed provider setup exports and the claimed initial-label command.
+const providerSetupAndLabelExports = [
+  "initialLabelCommandSchema",
+  "isAccountProviderKind",
+  "modelProviderKinds",
+  "providerDefinitions",
+  "providerSetupDefinition",
+].sort();
+
+// Reviewed additive endpoint discovery surface; legacy assertions stay intact.
+const endpointProviderExports = [
+  "endpointModelInventoryItemSchema",
+  "endpointModelInventorySchema",
+  "endpointProviderKinds",
+  "isWorkerEndpointProviderKind",
+  "nativeEndpointProviderKinds",
+  "providerUsesChatCompletions",
+].sort();
+
+// Reviewed native recovery identities/results and additive timing metadata.
+const inferenceRecoveryExports = [
+  "nativeGoalRecoveryAdmissionSchema",
+  "nativeGoalRecoveryFenceResultSchema",
+  "nativeGoalRecoveryFenceSchema",
+  "nativeGoalRecoveryReceiptSchema",
+  "nativeGoalRecoverySchema",
+  "nativeGoalRecoverySourceSchema",
+  "nativeGoalRecoveryWithdrawalSchema",
+  "TASK_GOAL_OUTCOME_MAX_BYTES",
+  "inferenceNativeExecutionSchema",
+  "taskGoalOutcomeCommitSchema",
+  "taskGoalOutcomeDeliverySchema",
+  "inferenceFailureEvidenceSchema",
+  "inferenceJournalIdentitySchema",
+  "inferenceJournalRecordSchema",
+  "inferenceNeverStarted",
+  "inferenceRecoveryIdentitySchema",
+  "inferenceTimingSchema",
+  "nativeInferenceRecoveryResultSchema",
+  "nativeInferenceRecoverySchema",
+  "taskInferenceInputDispatchResultSchema",
+  "taskInferenceInputDispatchSchema",
+  "taskInferenceInputReceiptSchema",
+].sort();
+
+const taskSuspensionExports = [
+  "nativeSuspensionTaskGoalCycleSchema",
+  "nativeSuspensionTaskRoundSchema",
+  "taskGoalCycleSuspensionSourceSchema",
+  "taskPauseRuntimeStateSchema",
+  "taskTurnResumptionSchema",
+  "taskTurnStopResultSchema",
+  "taskTurnStopSchema",
+];
+
+const desktopIoExports = [
+  "CUA_MAX_CLIPBOARD_BYTES",
+  "cuaClipboardResultSchema",
+  "remoteDesktopOsSourceSchema",
+].sort();
+
+// Reviewed canonical-resource authorization, physical outcome facts, timing and
+// captured OS tunnel source helpers. Preserve every unrelated export baseline.
+const nativeResourceAndTimingExports = [
+  "inferenceCommandTimingSchema",
+  "inferenceProviderCommandTimingSchema",
+  "nativeAutonomousAttemptSchema",
+  "nativeInferenceResourceAuthorizationResultSchema",
+  "nativeInferenceResourceAuthorizationSchema",
+  "nativeRuntimeHandoffQueuedSourceSchema",
+  "taskInferenceRouteChangeRequestSchema",
+  "taskInferenceRouteChangeSchema",
+  "taskInferenceRouteSettlementSchema",
+  "taskInferenceRouteViewSchema",
+  "tunnelContentOsSource",
+  "workerChatTurnOutcomeNotificationSchema",
+].sort();
+
+// Reviewed model-operation, catalog and Task Goal additions. Keep the legacy
+// export fingerprints unchanged and assert these additive names explicitly.
+const modelAndGoalExports = [
+  "MODEL_CATALOG_BYTES_LIMIT",
+  "MODEL_CATALOG_MODEL_LIMIT",
+  "MODEL_CATALOG_PAGE_BYTES",
+  "MODEL_CATALOG_PAGE_ITEMS",
+  "MODEL_OPERATION_CONTENT_BYTES_LIMIT",
+  "MODEL_OPERATION_USAGE_METRICS",
+  "MODEL_OPERATION_WIRE_BYTES_LIMIT",
+  "decisionAnswerSchema",
+  "decisionInputSchema",
+  "decisionOutcomeSchema",
+  "decisionQuestionSchema",
+  "decisionResultSchema",
+  "discoveredModelOperations",
+  "embeddingInputSchema",
+  "embeddingItemSchema",
+  "embeddingOutcomeSchema",
+  "embeddingResultSchema",
+  "embeddingSpaceIdentitySchema",
+  "endpointOperationMetadata",
+  "isLanguageModelProfile",
+  "modelAdapterSupportsOperation",
+  "modelCatalogPageRequestSchema",
+  "modelCatalogPageSchema",
+  "modelCatalogSnapshotSchema",
+  "modelDecisionCommandSchema",
+  "modelEmbeddingCommandSchema",
+  "modelInputPartSchema",
+  "modelOperationAdapterSchema",
+  "modelOperationCancelCommandSchema",
+  "modelOperationCancelResultSchema",
+  "modelOperationCancelSchema",
+  "modelOperationCapabilitiesSchema",
+  "modelOperationContentContext",
+  "modelOperationFailureSchema",
+  "modelOperationOptionsSchema",
+  "modelOperationRouteSchema",
+  "modelOperationSchema",
+  "modelOperationScopeSchema",
+  "modelOperationUsageConsistent",
+  "modelOperationUsageCoverage",
+  "modelOperationUsageCoverageSchema",
+  "modelOperationUsageEvidenceSchema",
+  "modelOperationUsageFitsIdentity",
+  "modelOperationUsageIdentitySchema",
+  "modelOperationUsageIncomplete",
+  "modelOperationUsageSchema",
+  "modelProfileOperation",
+  "nativeGoalClaimRecoveryReceiptSchema",
+  "nativeGoalClaimRecoverySchema",
+  "nativeRuntimeHandoffTaskContextSchema",
+  "observedModelTokenTotal",
+  "operationProviderFamily",
+  "protectedDecisionRequestSchema",
+  "protectedDecisionResponseSchema",
+  "protectedEmbeddingRequestSchema",
+  "protectedEmbeddingResponseSchema",
+  "providerOperationDocumentation",
+  "providerOperationRegistryVersion",
+  "providerOperationSupport",
+  "registeredModelOperations",
+  "taskGoalCycleCaptureSchema",
+  "taskGoalCycleDispatchPublicationResultSchema",
+  "taskGoalCycleDispatchResultSchema",
+  "taskGoalCycleDispatchSchema",
+  "taskGoalCycleIdentitySchema",
+  "taskGoalCycleRecoveryBinding",
+  "taskGoalCycleRecoveryReceiptSchema",
+  "taskGoalCycleRecoverySchema",
+  "taskGoalCycleSourceRecordSchema",
+  "taskGoalHandoffCaptureSchema",
+  "taskGoalHandoffCycle",
+  "taskGoalInputCaptureSchema",
+  "taskGoalInputSourceRecordSchema",
+  "taskGoalInputTransferContextSchema",
+  "taskPauseIntentSchema",
+  "taskPauseScopeSchema",
+  "usesWorkerModelCatalog",
+].sort();
 
 describe("protocol public surface compatibility", () => {
+  it("advertises Task continuation contracts independently of legacy snapshots", () => {
+    expect(
+      Object.keys(protocol)
+        .filter((name) => taskSuspensionExports.includes(name))
+        .sort(),
+    ).toEqual(taskSuspensionExports);
+    expect(
+      workerEventSchema.options
+        .map((option) => option.shape.type.value)
+        .filter((type) => type === "agent.task-resumed"),
+    ).toEqual(["agent.task-resumed"]);
+  });
+
+  it("advertises the reviewed CantripOS additions independently of legacy snapshots", () => {
+    expect(
+      Object.keys(protocol)
+        .filter((name) => cantripOsExports.includes(name))
+        .sort(),
+    ).toEqual(cantripOsExports);
+  });
+
   it("preserves the root runtime export baseline with reviewed CUA and managed-session additions", () => {
-    const exportNames = Object.keys(protocol).sort();
+    const currentExportNames = Object.keys(protocol).sort();
+    expect(
+      currentExportNames.filter((name) => desktopIoExports.includes(name)),
+    ).toEqual(desktopIoExports);
+    expect(
+      currentExportNames.filter((name) =>
+        endpointProviderExports.includes(name),
+      ),
+    ).toEqual(endpointProviderExports);
+    expect(
+      currentExportNames.filter((name) => modelAndGoalExports.includes(name)),
+    ).toEqual(modelAndGoalExports);
+    const allExportNames = currentExportNames.filter(
+      (name) =>
+        !modelAndGoalExports.includes(name) &&
+        !endpointProviderExports.includes(name) &&
+        !desktopIoExports.includes(name) &&
+        !taskSuspensionExports.includes(name),
+    );
+    expect(currentExportNames).toHaveLength(
+      allExportNames.length +
+        modelAndGoalExports.length +
+        endpointProviderExports.length +
+        desktopIoExports.length +
+        taskSuspensionExports.length,
+    );
+    expect(
+      allExportNames.filter((name) => agentTaskExports.includes(name)),
+    ).toEqual(agentTaskExports);
+    expect(
+      allExportNames.filter((name) => inferenceAdmissionExports.includes(name)),
+    ).toEqual(inferenceAdmissionExports);
+    expect(
+      allExportNames.filter((name) =>
+        providerSetupAndLabelExports.includes(name),
+      ),
+    ).toEqual(providerSetupAndLabelExports);
+    expect(
+      allExportNames.filter((name) => inferenceRecoveryExports.includes(name)),
+    ).toEqual(inferenceRecoveryExports);
+    expect(
+      allExportNames.filter((name) =>
+        nativeResourceAndTimingExports.includes(name),
+      ),
+    ).toEqual(nativeResourceAndTimingExports);
+    expect(allExportNames).toHaveLength(
+      2158 +
+        nativeSuspensionExports.length +
+        cantripOsExports.length +
+        inferenceAdmissionExports.length +
+        providerSetupAndLabelExports.length +
+        inferenceRecoveryExports.length +
+        nativeResourceAndTimingExports.length,
+    );
+    // Retain every existing 2,151-export assertion and baseline fingerprint;
+    // the reviewed Task schemas are checked explicitly above.
+    const exportNames = allExportNames.filter(
+      (name) =>
+        !agentTaskExports.includes(name) &&
+        !inferenceAdmissionExports.includes(name) &&
+        !inferenceRecoveryExports.includes(name) &&
+        !nativeResourceAndTimingExports.includes(name) &&
+        !providerSetupAndLabelExports.includes(name),
+    );
     const baselineNames = [
       ...retiredWorkbenchExports,
+      ...retiredWorkspaceProfileExports,
       ...exportNames.filter(
         (name) =>
           !cuaRuntimeExports.includes(name) &&
+          !nativeSuspensionExports.includes(name) &&
           !managedRuntimeExports.includes(name) &&
           !accountCreditsExports.includes(name) &&
           !browserCursorExports.includes(name) &&
@@ -469,6 +984,10 @@ describe("protocol public surface compatibility", () => {
           !fileDocumentExports.includes(name) &&
           !legacyFileImportExports.includes(name) &&
           !explorerFileImportExports.includes(name) &&
+          !textPreviewExports.includes(name) &&
+          !logTailExports.includes(name) &&
+          !binaryFileExports.includes(name) &&
+          !binaryWriteExports.includes(name) &&
           !conversationCatalogExports.includes(name) &&
           !conversationViewExports.includes(name) &&
           !taskAutomaticRetryExports.includes(name) &&
@@ -476,14 +995,48 @@ describe("protocol public surface compatibility", () => {
           !chatFileReferencesExports.includes(name) &&
           !editorBindingExports.includes(name) &&
           !labelingExports.includes(name) &&
-          !gitChangeSummaryExports.includes(name),
+          !gitChangeSummaryExports.includes(name) &&
+          !agentChatExports.includes(name) &&
+          !alertExports.includes(name) &&
+          !cantripOsExports.includes(name),
       ),
     ].sort();
 
     expect(
       exportNames.filter((name) => retiredWorkbenchExports.includes(name)),
     ).toEqual([]);
-    expect(exportNames).toHaveLength(2108);
+    expect(
+      exportNames.filter((name) =>
+        retiredWorkspaceProfileExports.includes(name),
+      ),
+    ).toEqual([]);
+    expect(exportNames).toHaveLength(
+      2151 + cantripOsExports.length + nativeSuspensionExports.length,
+    );
+    expect(
+      exportNames.filter((name) => nativeSuspensionExports.includes(name)),
+    ).toEqual(nativeSuspensionExports);
+    expect(
+      exportNames.filter((name) => cantripOsExports.includes(name)),
+    ).toEqual(cantripOsExports);
+    expect(exportNames.filter((name) => alertExports.includes(name))).toEqual(
+      alertExports,
+    );
+    expect(
+      exportNames.filter((name) => agentChatExports.includes(name)),
+    ).toEqual(agentChatExports);
+    expect(
+      exportNames.filter((name) => binaryWriteExports.includes(name)),
+    ).toEqual(binaryWriteExports);
+    expect(
+      exportNames.filter((name) => binaryFileExports.includes(name)),
+    ).toEqual(binaryFileExports);
+    expect(exportNames.filter((name) => logTailExports.includes(name))).toEqual(
+      logTailExports,
+    );
+    expect(
+      exportNames.filter((name) => textPreviewExports.includes(name)),
+    ).toEqual(textPreviewExports);
     expect(
       exportNames.filter((name) => explorerFileImportExports.includes(name)),
     ).toEqual(explorerFileImportExports);
@@ -546,17 +1099,181 @@ describe("protocol public surface compatibility", () => {
   });
 
   it("keeps worker discriminators stable and ordered", () => {
-    const commandTypes = workerCommandSchema.options.map(
+    const currentAdvertisedCommandTypes = workerCommandSchema.options.map(
       (option) => option.shape.type.value,
     );
-    const eventTypes = workerEventSchema.options.map(
+    const modelAndGoalCommands = [
+      "model.embedding",
+      "model.decision",
+      "model.operation.cancel",
+      "task.goal.source",
+      "chat.suspension.stop",
+      "chat.goal.claim-recover",
+      "task.goal.recover",
+    ];
+    expect(
+      currentAdvertisedCommandTypes.filter((type) =>
+        modelAndGoalCommands.includes(type),
+      ),
+    ).toEqual(modelAndGoalCommands);
+    const advertisedCommandTypes = currentAdvertisedCommandTypes.filter(
+      (type) => !modelAndGoalCommands.includes(type),
+    );
+    // Reviewed explicit cold recovery preserves every previous discriminator.
+    expect(
+      advertisedCommandTypes.filter(
+        (type) => type === "chat.suspension.resume",
+      ),
+    ).toEqual(["chat.suspension.resume"]);
+    // Retained carrier operations are additive; keep every legacy fingerprint intact.
+    expect(
+      advertisedCommandTypes.filter((type) =>
+        type.startsWith("cantrip-os.power."),
+      ),
+    ).toEqual(["cantrip-os.power.status", "cantrip-os.power.operation"]);
+    expect(
+      advertisedCommandTypes.filter((type) =>
+        type.startsWith("cantrip-os.desktop."),
+      ),
+    ).toEqual(["cantrip-os.desktop.status", "cantrip-os.desktop.operation"]);
+    expect(
+      advertisedCommandTypes.filter((type) =>
+        type.startsWith("cantrip-os.packages."),
+      ),
+    ).toEqual(["cantrip-os.packages.status", "cantrip-os.packages.operation"]);
+    expect(
+      advertisedCommandTypes.filter((type) =>
+        type.startsWith("cantrip-os.system."),
+      ),
+    ).toEqual([
+      "cantrip-os.system.status",
+      "cantrip-os.system.capture",
+      "cantrip-os.system.replace",
+      "cantrip-os.system.rollback",
+    ]);
+    expect(
+      advertisedCommandTypes.filter((type) =>
+        type.startsWith("cantrip-os.backup."),
+      ),
+    ).toEqual([
+      "cantrip-os.backup.capture",
+      "cantrip-os.backup.reset",
+      "cantrip-os.backup.restore",
+      "cantrip-os.backup.rollback",
+      "cantrip-os.backup.observe",
+    ]);
+    // Reviewed additive OS preparation leaves every legacy order/fingerprint intact.
+    expect(
+      advertisedCommandTypes.filter(
+        (type) =>
+          type === "surface.desktop.os-prepare" ||
+          type === "surface.tunnel.os-prepare",
+      ),
+    ).toEqual(["surface.tunnel.os-prepare", "surface.desktop.os-prepare"]);
+    expect(
+      advertisedCommandTypes.filter((type) => type === "inference.revoke"),
+    ).toEqual(["inference.revoke"]);
+    expect(
+      advertisedCommandTypes.filter((type) => type === "inference.task-revoke"),
+    ).toEqual(["inference.task-revoke"]);
+    expect(advertisedCommandTypes[7]).toBe("inference.task-revoke");
+    expect(advertisedCommandTypes[8]).toBe("inference.revoke");
+    expect(
+      advertisedCommandTypes.filter((type) => type === "chat.goal.recover"),
+    ).toEqual(["chat.goal.recover"]);
+    expect(advertisedCommandTypes.indexOf("chat.goal.recover")).toBe(
+      advertisedCommandTypes.indexOf("chat.automation.resume") + 1,
+    );
+    const inferenceStatusCommandTypes = advertisedCommandTypes.filter(
+      (type) =>
+        type !== "surface.desktop.os-prepare" &&
+        type !== "surface.tunnel.os-prepare" &&
+        type !== "inference.revoke" &&
+        type !== "inference.task-revoke" &&
+        type !== "chat.suspension.resume" &&
+        !type.startsWith("cantrip-os.power.") &&
+        !type.startsWith("cantrip-os.packages.") &&
+        !type.startsWith("cantrip-os.system.") &&
+        !type.startsWith("cantrip-os.backup.") &&
+        !type.startsWith("cantrip-os.desktop."),
+    );
+    expect(inferenceStatusCommandTypes).toHaveLength(296);
+    expect(inferenceStatusCommandTypes[6]).toBe("inference.status");
+    expect(
+      inferenceStatusCommandTypes.filter((type) => type === "inference.status"),
+    ).toEqual(["inference.status"]);
+    const currentCommandTypes = inferenceStatusCommandTypes.filter(
+      (type) => type !== "inference.status",
+    );
+    const allEventTypes = workerEventSchema.options
+      .map((option) => option.shape.type.value)
+      .filter((type) => type !== "agent.task-resumed");
+    const advertisedNotificationTypes = workerNotificationSchema.options.map(
       (option) => option.shape.type.value,
     );
-    const notificationTypes = workerNotificationSchema.options.map(
-      (option) => option.shape.type.value,
+    expect(advertisedNotificationTypes[0]).toBe("inference.task-settled");
+    expect(
+      advertisedNotificationTypes.filter(
+        (type) => type === "inference.task-settled",
+      ),
+    ).toEqual(["inference.task-settled"]);
+    const inferenceStatusNotificationTypes = advertisedNotificationTypes.filter(
+      (type) => type !== "inference.task-settled",
+    );
+    expect(inferenceStatusNotificationTypes).toHaveLength(16);
+    expect(inferenceStatusNotificationTypes[0]).toBe("inference.status");
+    const notificationTypes = inferenceStatusNotificationTypes.filter(
+      (type) => type !== "inference.status",
     );
 
-    expect(commandTypes).toHaveLength(278);
+    expect(currentCommandTypes).toHaveLength(295);
+    expect(
+      currentCommandTypes.filter((type) => type === "model.endpoint.catalog"),
+    ).toEqual(["model.endpoint.catalog"]);
+    expect(currentCommandTypes.indexOf("model.endpoint.catalog")).toBe(
+      currentCommandTypes.indexOf("model.ollama.catalog") + 1,
+    );
+    const allCommandTypes = currentCommandTypes.filter(
+      (type) => type !== "model.endpoint.catalog",
+    );
+
+    expect(allCommandTypes).toHaveLength(294);
+    expect(allCommandTypes[6]).toBe("inference.configure");
+    expect(
+      allCommandTypes.filter((type) => type === "inference.configure"),
+    ).toEqual(["inference.configure"]);
+    const commandTypes = allCommandTypes.filter(
+      (type) => type !== "inference.configure",
+    );
+    expect(allEventTypes).toHaveLength(24);
+    expect(allEventTypes.slice(0, 2)).toEqual([
+      "inference.command-state",
+      "agent.automatic-label",
+    ]);
+    const eventTypes = allEventTypes.filter(
+      (type) =>
+        type !== "inference.command-state" && type !== "agent.automatic-label",
+    );
+
+    expect(commandTypes).toHaveLength(293);
+    expect(
+      commandTypes.filter((type) => type.startsWith("cantrip-os.")),
+    ).toEqual([
+      "cantrip-os.inspect",
+      "cantrip-os.attach",
+      "cantrip-os.workspaces.list",
+      "cantrip-os.workspaces.create",
+      "cantrip-os.source.provision",
+      "cantrip-os.source.inspect",
+      "cantrip-os.operation.inspect",
+      "cantrip-os.run-definition",
+      "cantrip-os.run-runtime.start",
+      "cantrip-os.run-runtime.restart",
+      "cantrip-os.run-runtime.stop",
+      "cantrip-os.run-runtime.status",
+      "cantrip-os.run-runtime.output",
+      "cantrip-os.run-runtime.reconcile",
+    ]);
     expect(
       commandTypes.filter((type) => type === "file-document.operation"),
     ).toHaveLength(1);
@@ -578,6 +1295,7 @@ describe("protocol public surface compatibility", () => {
     const baselineCommands = commandTypes.filter(
       (type) =>
         !managedWorkerCommands.includes(type) &&
+        !type.startsWith("cantrip-os.") &&
         type !== "chat.files.references" &&
         type !== "label.generate" &&
         type !== "file-document.operation" &&

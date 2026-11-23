@@ -6,6 +6,7 @@ import {
   serviceLogReadResultSchema,
   directAttachmentTicketSchema,
   workerManagementListSchema,
+  workerInferenceStatusSchema,
   workerSummarySchema,
   workerUpdateSchema,
   workerRestartResultSchema,
@@ -204,5 +205,16 @@ export async function revokeWorkerCredential(
   await request(
     `/api/workers/${encodeURIComponent(workerId)}/credentials/${encodeURIComponent(credentialId)}`,
     { method: "DELETE" },
+  );
+}
+
+export async function getWorkerInferenceStatus(
+  workerId: string,
+  signal?: AbortSignal,
+) {
+  return workerInferenceStatusSchema.parse(
+    await request(`/api/workers/${encodeURIComponent(workerId)}/inference`, {
+      signal,
+    }),
   );
 }

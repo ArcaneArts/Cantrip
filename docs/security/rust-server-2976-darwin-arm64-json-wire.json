@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2976",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "scope": "The exact Rust server executable retained from the macOS desktop packaging run was started directly. The isolated TypeScript reference ran on Node. Paired tests exercised raw HTTP parsing, wire validation, Unicode and deeply nested JSON, response shape, and App Live WebSocket messages and cursors observed against real publications. Bundled and external PostgreSQL used the packaged PostgreSQL 18.6 binaries in private data directories.",
+  "rustExecutable": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-drain/runtime/server/bin/cantrip-server",
+    "bytes": 94259472,
+    "sha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2"
+  },
+  "candidatePackageRecord": "docs/security/rust-server-2976-darwin-arm64-acceptance.json",
+  "harnessBaseCommit": "fe88a5f31da4c214df3a465fefe5aac76c687c87",
+  "referenceSourceTree": "3b67d65df364e06ddd97e949564046e269101831",
+  "driverSha256": "4a35876e7359dcd011fe3d553ef105f605a44b421963d986ec75493e7ba75b25",
+  "pairedHttpCases": 156,
+  "pairedWebSocketCases": 81,
+  "databaseModes": [
+    {
+      "databaseMode": "pglite",
+      "pairedHttpCases": 52,
+      "pairedWebSocketCases": 27,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/json-wire-2976/pglite.json",
+        "bytes": 148351,
+        "sha256": "72943470ac14ad6bc893d12a6646459de54caf93065340e5b6b51281917131f5"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "pairedHttpCases": 52,
+      "pairedWebSocketCases": 27,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/json-wire-2976/bundled-postgres.json",
+        "bytes": 148361,
+        "sha256": "ba201772d16207b7795658b686300d02b6d87239775c08ebe03ee29ce4cf774d"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "pairedHttpCases": 52,
+      "pairedWebSocketCases": 27,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/json-wire-2976/postgres.json",
+        "bytes": 148353,
+        "sha256": "be674ece55f090f01951cb7b488fb428860c3dc9db8efd80125b18569e33e8e6"
+      }
+    }
+  ]
+}

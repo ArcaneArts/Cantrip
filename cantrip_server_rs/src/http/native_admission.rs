@@ -9,7 +9,7 @@ use crate::{
     wire::{self, Value, coercion::truthy, value::json},
     workers::credentials,
 };
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use axum::{
     Extension, Router,
     extract::{Request, State},
@@ -31,13 +31,8 @@ fn authority(service: &AuthService, owner: &str, mut result: Value) -> Result<Va
         && truthy(context.get("computerUseEnabled"))
         && truthy(receipt.get("executionLaneId"))
     {
-        let profile = crate::chats::managed_console::permission_profile(context);
-        let mut authority = crate::settings::parse_response(
-            "cuaPreviewAuthoritySchema",
-            Some(
-                &json!({"ownerId":owner,"serverId":service.server_id,"workerId":context["workerId"],"chatId":context["chatId"],"projectId":context["projectId"],"contextKind":context["contextKind"],"placementId":if context["contextKind"]=="project" {context["worktreeId"].clone()} else {context["scratchRootId"].clone()},"generation":context["computerUseAuthorityGeneration"],"profile":json!({"selectedId":profile["selectedId"],"effectiveId":profile["effectiveId"],"forcedByWorktreePolicy":profile["forcedByWorktreePolicy"],"usesDefault":profile["usesDefault"]})}),
-            ),
-        )?;
+        let mut authority =
+            crate::chats::computer_use_authority::preview(owner, &service.server_id, context)?;
         authority["executionLaneId"] = receipt["executionLaneId"].clone();
         authority
     } else {
@@ -51,8 +46,304 @@ async fn apply(
     owner: String,
     input: Value,
     phase: String,
+    include_goal_publication: bool,
 ) -> Result<Value> {
+    if phase == "suspension-execution" {
+        let worker = input["workerId"].as_str().unwrap();
+        let current = || {
+            service
+                .workers
+                .bridge
+                .connection_identity(worker)
+                .is_some_and(|identity| {
+                    identity.owner == owner
+                        && Some(identity.process_generation.as_str())
+                            == input["workerGeneration"].as_str()
+                })
+        };
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        let result = Repository::new(service.repository.database.clone())
+            .admit_suspended_execution(&owner, &input)
+            .await?;
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        if truthy(result.get("execution")) {
+            invalidation(
+                &service,
+                &owner,
+                json!({"kind":"chat","chatId":input["session"]["chatId"]}),
+                &Value::Null,
+            );
+        }
+        return crate::settings::parse_response(
+            "nativeSuspensionExecutionAdmissionResultSchema",
+            Some(&authority(&service, &owner, result)?),
+        );
+    }
+    if phase == "inference-resource-authorize" {
+        let worker = input["workerId"].as_str().unwrap();
+        let current = || {
+            service.server_id.as_str() == input["serverId"].as_str().unwrap()
+                && input["ownerId"] == owner.as_str()
+                && service
+                    .workers
+                    .bridge
+                    .connection_identity(worker)
+                    .is_some_and(|identity| {
+                        identity.owner == owner
+                            && Some(identity.process_generation.as_str())
+                                == input["workerGeneration"].as_str()
+                    })
+        };
+        // The bound process identity survives reconnect grace. Availability and
+        // provider catalogs are not authority for this actual resource lookup.
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        let result = Repository::new(service.repository.database.clone())
+            .authorize_inference_resource(&owner, &input)
+            .await?;
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        return crate::settings::parse_response(
+            "nativeInferenceResourceAuthorizationResultSchema",
+            Some(&result),
+        );
+    }
+    if phase == "task-goal-outcome" {
+        if input["serverId"].as_str() != Some(service.server_id.as_str())
+            || input["ownerId"].as_str() != Some(owner.as_str())
+        {
+            return Err(CommandError::new("stale-outcome-scope", None, 409).into());
+        }
+        let note = &input["notification"];
+        if input["inputKind"] == "goal-cycle" {
+            let tasks = crate::tasks::Repository::new(service.repository.database.clone());
+            let committed = tasks
+                .commit_goal_cycle_outcome(&owner, input["workerId"].as_str().unwrap(), &input)
+                .await?;
+            if committed["committed"] == true && !committed["message"].is_null() {
+                service
+                    .execution
+                    .publish_task_outcome_message(&owner, &committed["message"], &committed["chat"])
+                    .await;
+            }
+            let mut receipt = json!({"deliveryId":input["deliveryId"],"goalCycleSourceKey":input["goalCycleSource"]["sourceKey"],"committed":committed["committed"]});
+            if !committed["retiredReason"].is_null() {
+                receipt["retiredReason"] = committed["retiredReason"].clone();
+            }
+            return crate::settings::parse_response("taskGoalOutcomeCommitSchema", Some(&receipt));
+        }
+        if note["taskInferenceInputOperationId"].as_str().is_none()
+            || note["taskDispatchFence"].as_object().is_none()
+        {
+            return Err(CommandError::new("invalid-task-goal-outcome", None, 400).into());
+        }
+        // Captured facts can outlive a worker generation. The transaction
+        // validates exact original input authority, not current observer liveness.
+        let tasks = crate::tasks::Repository::new(service.repository.database.clone());
+        let captured = if input["inputKind"] == "round" {
+            tasks
+                .deliver_round_outcome(&owner, input["workerId"].as_str().unwrap(), note)
+                .await
+        } else {
+            tasks
+                .apply_goal_input_outcome(&owner, input["workerId"].as_str().unwrap(), note, true)
+                .await
+        };
+        let (captured, conflict) = match captured {
+            Ok(result) => (result, None),
+            Err(error) if error.is::<crate::task_dispatch::Conflict>() => (None, Some(error)),
+            Err(error) => return Err(error),
+        };
+        let committed = captured.is_some();
+        let retired = if committed {
+            None
+        } else if input["inputKind"] == "round" {
+            tasks
+                .round_outcome_retirement(&owner, input["workerId"].as_str().unwrap(), note)
+                .await?
+        } else {
+            tasks
+                .goal_outcome_retirement(&owner, note, input["workerId"].as_str().unwrap())
+                .await?
+        };
+        if retired.is_none()
+            && let Some(error) = conflict
+        {
+            return Err(error);
+        }
+        if let Some(captured) = &captured
+            && !captured["message"].is_null()
+        {
+            service
+                .execution
+                .publish_task_outcome_message(&owner, &captured["message"], &captured["chat"])
+                .await;
+        }
+        if committed {
+            service
+                .execution
+                .receive_committed_outcome(
+                    owner.clone(),
+                    input["workerId"].as_str().unwrap().to_owned(),
+                    Arc::new(note.clone()),
+                )
+                .await;
+        }
+        let mut receipt = json!({"deliveryId":input["deliveryId"],"taskInferenceInputOperationId":note["taskInferenceInputOperationId"],"committed":committed});
+        if let Some(reason) = retired {
+            receipt["retiredReason"] = json!(reason);
+        }
+        return crate::settings::parse_response("taskGoalOutcomeCommitSchema", Some(&receipt));
+    }
+    if matches!(
+        phase.as_str(),
+        "inference-recovery"
+            | "task-input-dispatch"
+            | "task-goal-cycle-dispatch"
+            | "goal-recovery-fence"
+    ) {
+        let worker = input["workerId"].as_str().unwrap();
+        let current = || {
+            service.server_id.as_str() == input["serverId"].as_str().unwrap()
+                && service
+                    .workers
+                    .bridge
+                    .connection_identity(worker)
+                    .is_some_and(|identity| {
+                        identity.owner == owner
+                            && Some(identity.process_generation.as_str())
+                                == input["workerGeneration"].as_str()
+                    })
+                && (phase == "goal-recovery-fence" || service.workers.bridge.is_connected(worker))
+        };
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        let repo = Repository::new(service.repository.database.clone());
+        let result = if phase == "goal-recovery-fence" {
+            repo.fence_goal_recovery_admission(&owner, &input).await?
+        } else if phase == "task-goal-cycle-dispatch" {
+            crate::tasks::Repository::new(service.repository.database.clone())
+                .dispatch_goal_cycle(&owner, &input, include_goal_publication)
+                .await?
+        } else if phase == "task-input-dispatch" {
+            crate::tasks::Repository::new(service.repository.database.clone())
+                .dispatch_inference_input_with_owner(
+                    &owner,
+                    worker,
+                    &input["receipt"],
+                    input["phase"].as_str().unwrap(),
+                    Some(&input),
+                )
+                .await?
+        } else if input["record"]["identity"]["recovery"]
+            .get("taskGoalCycle")
+            .is_some_and(|v| !v.is_null())
+        {
+            crate::tasks::Repository::new(service.repository.database.clone())
+                .reconcile_goal_cycle(&owner, &input)
+                .await?
+        } else if input["record"]["identity"]["recovery"]
+            .get("taskInput")
+            .is_some_and(|v| !v.is_null())
+        {
+            crate::tasks::Repository::new(service.repository.database.clone())
+                .reconcile_inference_input(&owner, &input)
+                .await?
+        } else {
+            repo.reconcile_inference(&owner, &input).await?
+        };
+        if !current() {
+            return Err(CommandError::new("stale-worker-generation", None, 409).into());
+        }
+        if truthy(result.get("chatId")) && result["disposition"] != "unresolved" {
+            invalidation(
+                &service,
+                &owner,
+                json!({"kind":"chat","chatId":result["chatId"]}),
+                &Value::Null,
+            );
+            if result["disposition"] == "requeued"
+                && ["taskInput", "taskGoalCycle"].iter().any(|key| {
+                    input["record"]["identity"]["recovery"]
+                        .get(key)
+                        .is_some_and(|v| !v.is_null())
+                })
+            {
+                service.execution.scheduler.queue_tick();
+            }
+        }
+        return crate::settings::parse_response(
+            if phase == "task-input-dispatch" {
+                "taskInferenceInputDispatchResultSchema"
+            } else if phase == "task-goal-cycle-dispatch" {
+                if include_goal_publication {
+                    "taskGoalCycleDispatchPublicationResultSchema"
+                } else {
+                    "taskGoalCycleDispatchResultSchema"
+                }
+            } else if phase == "goal-recovery-fence" {
+                "nativeGoalRecoveryFenceResultSchema"
+            } else {
+                "nativeInferenceRecoveryResultSchema"
+            },
+            Some(&result),
+        );
+    }
+    if phase == "receipt" {
+        if truthy(input.get("durableSuspension")) {
+            let worker = input["workerId"].as_str().unwrap();
+            if input["workerGeneration"].is_null()
+                || !service
+                    .workers
+                    .bridge
+                    .connection_identity(worker)
+                    .is_some_and(|identity| {
+                        identity.owner == owner
+                            && Some(identity.process_generation.as_str())
+                                == input["workerGeneration"].as_str()
+                    })
+            {
+                return Err(CommandError::new("stale-worker-generation", None, 409).into());
+            }
+        }
+        let result = service.execution.receipts.settle(&owner, &input).await?;
+        if result["receipt"]["resumeQueue"] == true {
+            let chat = result["receipt"]["chatId"]
+                .as_str()
+                .context("Native receipt chat")?;
+            drop(service.execution.recovery.dispatch(&owner, chat));
+        }
+        return Ok(result);
+    }
     let repo = Repository::new(service.repository.database.clone());
+    if phase == "admit" || phase == "dispatch" {
+        let generation = if phase == "admit" {
+            input["intent"].get("workerGeneration")
+        } else {
+            input.get("workerGeneration")
+        };
+        if let Some(generation) = generation.filter(|v| !v.is_null()) {
+            let worker = input["workerId"].as_str().unwrap();
+            if !service
+                .workers
+                .bridge
+                .connection_identity(worker)
+                .is_some_and(|identity| {
+                    identity.owner == owner
+                        && Some(identity.process_generation.as_str()) == generation.as_str()
+                })
+            {
+                return Err(CommandError::new("stale-worker-generation", None, 409).into());
+            }
+        }
+    }
     if phase == "continue" {
         return authority(
             &service,
@@ -61,7 +352,9 @@ async fn apply(
         );
     }
     if phase == "settings-evidence" {
-        let result = repo.record_settings_evidence(&owner, &input).await?;
+        let (result, permission_settled) = repo
+            .record_settings_evidence_and_permission(&owner, &input)
+            .await?;
         let worker = input["workerId"]
             .as_js_string()
             .unwrap()
@@ -79,6 +372,12 @@ async fn apply(
                 json!({"kind":"chat","chatId":receipt["chatId"]}),
                 &Value::Null,
             );
+            if permission_settled {
+                let chat = receipt["chatId"]
+                    .as_str()
+                    .context("Native settings receipt chat")?;
+                drop(service.execution.recovery.dispatch(&owner, chat));
+            }
         }
         return Ok(result);
     }
@@ -99,7 +398,10 @@ async fn apply(
         };
         invalidation(&service, &owner, scope, &execution["chatId"]);
     }
-    if result["receipt"]["method"] == "thread/settings/update" {
+    if matches!(
+        result["receipt"]["method"].as_str(),
+        Some("thread/settings/update" | "turn/pause" | "turn/interrupt")
+    ) {
         let chat = &result["receipt"]["chatId"];
         invalidation(
             &service,
@@ -117,21 +419,52 @@ async fn handle(
 ) -> Response {
     let phase = request.uri().path().rsplit('/').next().unwrap().to_owned();
     let authorization = middleware::value(request.headers(), "authorization");
-    let body = match body::parse_js(request, service.config.api_body_limit_bytes).await {
+    let include_goal_publication =
+        middleware::value(request.headers(), "x-cantrip-task-goal-publication").as_deref()
+            == Some("1");
+    // Match TASK_GOAL_OUTCOME_MAX_BYTES: protected 16 MiB responses expand in base64.
+    let limit = if phase == "task-goal-outcome" {
+        32 * 1_024 * 1_024
+    } else {
+        service.config.api_body_limit_bytes
+    };
+    let body = match body::parse_js(request, limit).await {
         Ok(v) => v,
         Err(r) => return r,
     };
     let input = match wire::parse(
         match phase.as_str() {
             "admit" => "nativeCommandAdmissionSchema",
+            "suspension-execution" => "nativeSuspensionExecutionAdmissionSchema",
             "continue" => "nativeCommandContinuationSchema",
             "settings-evidence" => "nativeSettingsEvidenceSchema",
+            "receipt" => "nativeCommandSettlementSchema",
+            "inference-recovery" => "nativeInferenceRecoverySchema",
+            "goal-recovery-fence" => "nativeGoalRecoveryFenceSchema",
+            "inference-resource-authorize" => "nativeInferenceResourceAuthorizationSchema",
+            "task-input-dispatch" => "taskInferenceInputDispatchSchema",
+            "task-goal-cycle-dispatch" => "taskGoalCycleDispatchSchema",
+            "task-goal-outcome" => "taskGoalOutcomeDeliverySchema",
             _ => "nativeCommandDispatchSchema",
         },
         body.as_ref(),
     ) {
         Ok(v) => v,
-        Err(_) => return code(400, "invalid-native-command"),
+        Err(_) => {
+            return code(
+                400,
+                match phase.as_str() {
+                    "suspension-execution" => "invalid-suspension-execution",
+                    "task-input-dispatch" => "invalid-task-input-dispatch",
+                    "task-goal-cycle-dispatch" => "invalid-task-goal-cycle-dispatch",
+                    "task-goal-outcome" => "invalid-task-goal-outcome",
+                    "inference-recovery" => "invalid-inference-recovery",
+                    "goal-recovery-fence" => "invalid-goal-recovery-fence",
+                    "inference-resource-authorize" => "invalid-inference-resource",
+                    _ => "invalid-native-command",
+                },
+            );
+        }
     };
     let worker = input["workerId"]
         .as_js_string()
@@ -157,15 +490,43 @@ async fn handle(
         Ok(None) => return code(404, "worker-not-found"),
         Err(cause) => return middleware::failure(&service, &ctx.id, &cause),
     };
+    let task_goal_cycle_dispatch = phase == "task-goal-cycle-dispatch";
+    let goal_cycle_outcome = phase == "task-goal-outcome" && input["inputKind"] == "goal-cycle";
+    let public_error_message = matches!(
+        phase.as_str(),
+        "inference-resource-authorize" | "suspension-execution"
+    );
     match service
         .scratch_roots
-        .owned(apply(service.clone(), owner, input, phase))
+        .owned(apply(
+            service.clone(),
+            owner,
+            input,
+            phase,
+            include_goal_publication,
+        ))
         .await
     {
         Ok(v) => json_response(StatusCode::OK, v),
         Err(cause) => {
             if let Some(e) = cause.downcast_ref::<CommandError>() {
-                code(e.status, &e.code)
+                if public_error_message && e.code != "stale-worker-generation" {
+                    json_response(
+                        StatusCode::from_u16(e.status).unwrap(),
+                        json!({"code":e.code,"error":e.message}),
+                    )
+                } else {
+                    code(e.status, &e.code)
+                }
+            } else if !goal_cycle_outcome && cause.is::<crate::task_dispatch::Conflict>() {
+                code(
+                    409,
+                    if task_goal_cycle_dispatch {
+                        "stale-task-goal-cycle"
+                    } else {
+                        "stale-task-input"
+                    },
+                )
             } else {
                 middleware::failure(&service, &ctx.id, &cause)
             }
@@ -175,8 +536,37 @@ async fn handle(
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/internal/native-commands/admit", post(handle))
+        .route(
+            "/api/internal/native-commands/suspension-execution",
+            post(handle),
+        )
         .route("/api/internal/native-commands/dispatch", post(handle))
         .route("/api/internal/native-commands/continue", post(handle))
+        .route("/api/internal/native-commands/receipt", post(handle))
+        .route(
+            "/api/internal/native-commands/goal-recovery-fence",
+            post(handle),
+        )
+        .route(
+            "/api/internal/native-commands/inference-resource-authorize",
+            post(handle),
+        )
+        .route(
+            "/api/internal/native-commands/task-input-dispatch",
+            post(handle),
+        )
+        .route(
+            "/api/internal/native-commands/task-goal-cycle-dispatch",
+            post(handle),
+        )
+        .route(
+            "/api/internal/native-commands/task-goal-outcome",
+            post(handle),
+        )
+        .route(
+            "/api/internal/native-commands/inference-recovery",
+            post(handle),
+        )
         .route(
             "/api/internal/native-commands/settings-evidence",
             post(handle),

@@ -1,0 +1,208 @@
+diff --git a/codex-rs/core/src/unified_exec/mod_tests.rs b/codex-rs/core/src/unified_exec/mod_tests.rs
+index cfaaa64..579d6ad 100644
+--- a/codex-rs/core/src/unified_exec/mod_tests.rs
++++ b/codex-rs/core/src/unified_exec/mod_tests.rs
+@@ -227,6 +227,7 @@ struct BlockingTerminateExecProcess {
+ impl BlockingTerminateExecProcess {
+     async fn read(&self) -> Result<ReadResponse, codex_exec_server::ExecServerError> {
+         Ok(ReadResponse {
++            output_evicted_through_seq: None,
+             chunks: Vec::new(),
+             next_seq: 1,
+             exited: false,
+diff --git a/codex-rs/core/src/unified_exec/process.rs b/codex-rs/core/src/unified_exec/process.rs
+index 3e55ca7..0fc85cc 100644
+--- a/codex-rs/core/src/unified_exec/process.rs
++++ b/codex-rs/core/src/unified_exec/process.rs
+@@ -628,6 +628,7 @@ impl UnifiedExecProcess {
+                         }
+                     };
+                     let ExecReadResponse {
++                        output_evicted_through_seq,
+                         chunks,
+                         next_seq,
+                         exited,
+@@ -636,6 +637,15 @@ impl UnifiedExecProcess {
+                         failure,
+                         sandbox_denied,
+                     } = response;
++                    if let Some(evicted) = output_evicted_through_seq.filter(|seq| *seq > last_seq)
++                    {
++                        let notice = format!("\n[Earlier command output through native sequence {evicted} was evicted.]\n").into_bytes();
++                        let mut guard = output_buffer.lock().await;
++                        guard.push_chunk(ExecOutputStream::Stderr, &notice);
++                        drop(guard);
++                        let _ = output_tx.send(notice);
++                        output_notify.notify_waiters();
++                    }
+                     for chunk in chunks.into_iter().filter(|chunk| chunk.seq > last_seq) {
+                         let bytes = chunk.chunk.into_inner();
+                         let mut guard = output_buffer.lock().await;
+diff --git a/codex-rs/core/src/unified_exec/process_tests.rs b/codex-rs/core/src/unified_exec/process_tests.rs
+index 29dabee..4b03bdc 100644
+--- a/codex-rs/core/src/unified_exec/process_tests.rs
++++ b/codex-rs/core/src/unified_exec/process_tests.rs
+@@ -33,6 +33,7 @@ impl MockExecProcess {
+             .await
+             .pop_front()
+             .unwrap_or(ReadResponse {
++                output_evicted_through_seq: None,
+                 chunks: Vec::new(),
+                 next_seq: 1,
+                 exited: false,
+diff --git a/codex-rs/exec-server-protocol/src/protocol.rs b/codex-rs/exec-server-protocol/src/protocol.rs
+index 5c69012..3522d4b 100644
+--- a/codex-rs/exec-server-protocol/src/protocol.rs
++++ b/codex-rs/exec-server-protocol/src/protocol.rs
+@@ -539,6 +539,11 @@ pub struct ProcessOutputChunk {
+ #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(rename_all = "camelCase")]
+ pub struct ReadResponse {
++    /// Last output sequence actually evicted from the server's retained buffer.
++    /// Some(0) means no eviction; None means this backend does not report coverage.
++    /// Lifecycle sequence gaps alone do not establish output loss.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub output_evicted_through_seq: Option<u64>,
+     pub chunks: Vec<ProcessOutputChunk>,
+     pub next_seq: u64,
+     pub exited: bool,
+diff --git a/codex-rs/exec-server/src/client.rs b/codex-rs/exec-server/src/client.rs
+index 53743bb..503a3c4 100644
+--- a/codex-rs/exec-server/src/client.rs
++++ b/codex-rs/exec-server/src/client.rs
+@@ -1628,6 +1628,7 @@ impl SessionState {
+     fn synthesized_failure(&self, message: String) -> ReadResponse {
+         let next_seq = (*self.wake_tx.borrow()).saturating_add(1);
+         ReadResponse {
++            output_evicted_through_seq: None,
+             chunks: Vec::new(),
+             next_seq,
+             exited: true,
+@@ -3140,6 +3141,7 @@ mod tests {
+                 JSONRPCMessage::Response(JSONRPCResponse {
+                     id: recovery_read.id,
+                     result: serde_json::to_value(ReadResponse {
++                        output_evicted_through_seq: None,
+                         chunks: Vec::new(),
+                         next_seq: 1,
+                         exited: false,
+diff --git a/codex-rs/exec-server/src/client_recovery.rs b/codex-rs/exec-server/src/client_recovery.rs
+index 7c6fdc8..a1baffb 100644
+--- a/codex-rs/exec-server/src/client_recovery.rs
++++ b/codex-rs/exec-server/src/client_recovery.rs
+@@ -93,6 +93,7 @@ impl SessionState {
+ 
+     fn recover_events(&self, response: ReadResponse) -> Result<bool, ExecServerError> {
+         let ReadResponse {
++            output_evicted_through_seq: _,
+             chunks,
+             next_seq,
+             exited,
+diff --git a/codex-rs/exec-server/src/client_recovery_tests.rs b/codex-rs/exec-server/src/client_recovery_tests.rs
+index 4abc939..dc4950f 100644
+--- a/codex-rs/exec-server/src/client_recovery_tests.rs
++++ b/codex-rs/exec-server/src/client_recovery_tests.rs
+@@ -165,6 +165,7 @@ fn recovery_handles_dense_tail_output_and_newer_notification() {
+     assert!(
+         !state
+             .recover_events(ReadResponse {
++                output_evicted_through_seq: None,
+                 chunks,
+                 next_seq: last_seq + 1,
+                 exited: true,
+@@ -196,6 +197,7 @@ fn recovery_rejects_output_at_closed_sequence() {
+ 
+     let error = state
+         .recover_events(ReadResponse {
++            output_evicted_through_seq: None,
+             chunks: vec![ProcessOutputChunk {
+                 seq: 1,
+                 stream: ExecOutputStream::Stdout,
+@@ -232,6 +234,7 @@ async fn recovery_adds_sandbox_denial_to_pending_exit_event() {
+ 
+     state
+         .recover_events(ReadResponse {
++            output_evicted_through_seq: None,
+             chunks: vec![ProcessOutputChunk {
+                 seq: 1,
+                 stream: ExecOutputStream::Stderr,
+diff --git a/codex-rs/exec-server/src/local_process.rs b/codex-rs/exec-server/src/local_process.rs
+index bdcbf98..6f961fc 100644
+--- a/codex-rs/exec-server/src/local_process.rs
++++ b/codex-rs/exec-server/src/local_process.rs
+@@ -107,6 +107,7 @@ struct RunningProcess {
+     accepted_stdin_write_ids: Arc<Mutex<AcceptedStdinWriteIds>>,
+     output: VecDeque<ProcessOutputChunk>,
+     retained_bytes: usize,
++    output_evicted_through_seq: u64,
+     next_seq: u64,
+     exit_code: Option<i32>,
+     wake_tx: watch::Sender<u64>,
+@@ -483,6 +484,7 @@ impl LocalProcess {
+                     ),
+                     output: VecDeque::new(),
+                     retained_bytes: 0,
++                    output_evicted_through_seq: 0,
+                     next_seq: 1,
+                     exit_code: None,
+                     wake_tx: wake_tx.clone(),
+@@ -596,6 +598,7 @@ impl LocalProcess {
+                 }
+                 (
+                     ReadResponse {
++                        output_evicted_through_seq: Some(process.output_evicted_through_seq),
+                         chunks,
+                         next_seq,
+                         exited: process.exit_code.is_some(),
+@@ -1055,6 +1058,7 @@ async fn stream_output(
+                 let Some(evicted) = process.output.pop_front() else {
+                     break;
+                 };
++                process.output_evicted_through_seq = evicted.seq;
+                 process.retained_bytes =
+                     process.retained_bytes.saturating_sub(evicted.chunk.0.len());
+             }
+@@ -1865,6 +1869,7 @@ mod tests {
+         assert_eq!(
+             exit_response,
+             ReadResponse {
++                output_evicted_through_seq: Some(0),
+                 chunks: Vec::new(),
+                 next_seq: 2,
+                 exited: true,
+@@ -1987,6 +1992,7 @@ mod tests {
+         assert_eq!(
+             response,
+             ReadResponse {
++                output_evicted_through_seq: Some(1),
+                 chunks: expected_chunks,
+                 next_seq: retained_chunk_count + 2,
+                 exited: false,
+@@ -2213,6 +2219,7 @@ mod tests {
+                 accepted_stdin_write_ids: Arc::new(Mutex::new(AcceptedStdinWriteIds::default())),
+                 output: VecDeque::new(),
+                 retained_bytes: 0,
++                output_evicted_through_seq: 0,
+                 next_seq: 1,
+                 exit_code: None,
+                 wake_tx: wake_tx.clone(),
+diff --git a/codex-rs/exec-server/tests/accepted_websocket.rs b/codex-rs/exec-server/tests/accepted_websocket.rs
+index c02472b..3442b09 100644
+--- a/codex-rs/exec-server/tests/accepted_websocket.rs
++++ b/codex-rs/exec-server/tests/accepted_websocket.rs
+@@ -633,6 +633,7 @@ async fn accepted_websocket_reconnect_recovers_running_process_and_output() -> R
+         JSONRPCMessage::Response(JSONRPCResponse {
+             id,
+             result: serde_json::to_value(ReadResponse {
++                output_evicted_through_seq: None,
+                 chunks: Vec::new(),
+                 next_seq: 1,
+                 exited: false,
+@@ -666,6 +667,7 @@ async fn accepted_websocket_reconnect_recovers_running_process_and_output() -> R
+         }
+     );
+     let response = ReadResponse {
++        output_evicted_through_seq: None,
+         chunks: Vec::new(),
+         next_seq: 1,
+         exited: false,

@@ -1,0 +1,1481 @@
+import { TaskDispatchConflictError } from "./task-dispatch.js";
+import {
+  persistHistoricalRoundOutcome,
+  roundOutcomeRetirement,
+} from "./task-round-input-history.js";
+import {
+  taskEncryptedOperationStartSchema,
+  taskOpaqueContentSchema,
+  taskOpaqueMutationSchema,
+  taskOpaqueSummarySchema,
+  taskOperationRelayResultSchema,
+  taskPlanningRoundOpaqueSummarySchema,
+  type TaskEncryptedOperationStart,
+  type TaskOpaqueContent,
+  type TaskOpaqueMutation,
+  type TaskOpaqueSummary,
+  type TaskOperationRelayRequest,
+  type TaskOperationRelayResult,
+  type TaskPlanningRoundOpaqueContent,
+  type TaskPlanningRoundOpaqueSummary,
+} from "@cantrip/protocol/tasks";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { PgDatabase } from "drizzle-orm/pg-core";
+import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
+
+import {
+  canTransitionTaskState,
+  TaskStateTransitionError,
+  validateTaskOperationStart,
+} from "../tasks/state.js";
+import * as schema from "./schema.js";
+import { toTaskDispatchCycleSummary } from "./task-dispatch.js";
+import {
+  assertTaskOperationDispatchFence,
+  type TaskOperationDispatchFence,
+  type TaskOperationLeaseFence,
+} from "./task-operation-fence.js";
+import { taskRetrySummary } from "../tasks/automatic-retry.js";
+import { TaskInferenceInputRepository } from "./task-inference-inputs.js";
+import {
+  TaskGoalObservationRepository,
+  type TaskGoalObservationFence,
+} from "./task-goal-observations.js";
+import type { ChatExecutionLaneRepository } from "./repository/chat-execution-lanes.js";
+import type { MessageWriteRepository } from "./repository/message-writes.js";
+import { detachProjectTab, projectTabKey } from "./tab-layouts.js";
+import {
+  recoverRoundOutcome,
+  failConfirmedExpiredRound,
+} from "./task-round-outcomes.js";
+import type { WorkerNotification } from "@cantrip/protocol";
+import type { NativeTurnRecoveryObservation } from "@cantrip/protocol";
+import {
+  captureTaskNativeTurnRecovery,
+  failObservedTaskNativeTurn,
+  type TaskNativeTurnRecovery,
+} from "./task-native-turn-recovery.js";
+
+type TaskDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
+type TaskRow = typeof schema.tasks.$inferSelect;
+type TaskPlanningRoundRow = typeof schema.taskPlanningRounds.$inferSelect;
+
+export interface TaskOperationLookup {
+  operationId?: string;
+  executionLaneId?: string;
+  userMessageId?: string;
+}
+
+export interface TaskOperationContext {
+  task: TaskOpaqueSummary;
+  round: TaskPlanningRoundOpaqueSummary;
+  relayRequest: TaskOperationRelayRequest;
+  relayResult: TaskOperationRelayResult | null;
+}
+
+export interface TaskOperationStartResult extends TaskOperationContext {
+  idempotent: boolean;
+}
+
+export function findTaskOperationRound<
+  T extends {
+    id: string;
+    executionLaneId: string | null;
+    userMessageId: string | null;
+  },
+>(rounds: readonly T[], lookup: TaskOperationLookup): T | null {
+  if (lookup.operationId) {
+    return rounds.find((round) => round.id === lookup.operationId) ?? null;
+  }
+  if (lookup.userMessageId) {
+    return (
+      rounds.find((round) => round.userMessageId === lookup.userMessageId) ??
+      null
+    );
+  }
+  if (lookup.executionLaneId) {
+    for (let index = rounds.length - 1; index >= 0; index -= 1) {
+      if (rounds[index]?.executionLaneId === lookup.executionLaneId) {
+        return rounds[index] ?? null;
+      }
+    }
+  }
+  return null;
+}
+
+export class TaskConflictError extends Error {
+  constructor(
+    message: string,
+    readonly code:
+      "idempotency-conflict" | "operation-active" | "stale-version",
+  ) {
+    super(message);
+  }
+}
+
+function iso(value: Date): string {
+  return value.toISOString();
+}
+
+export function taskOpaqueColumns(content: TaskOpaqueContent) {
+  return {
+    state: content.classification.state,
+    stableStateBeforeFailure: content.classification.stableStateBeforeFailure,
+    activeOperationKind: content.classification.activeOperationKind,
+    planAuthorship: content.classification.planAuthorship,
+    planningRound: content.classification.planningRound,
+    hasPlan: content.classification.hasPlan,
+    hasQuestions: content.classification.hasQuestions,
+    hasFinalPlan: content.classification.hasFinalPlan,
+    hasGoalPrompt: content.classification.hasGoalPrompt,
+    lastError: content.classification.lastError,
+    protectedContent: content.protectedContent,
+  };
+}
+
+function roundColumns(content: TaskPlanningRoundOpaqueContent) {
+  return {
+    ordinal: content.classification.ordinal,
+    kind: content.classification.kind,
+    status: content.classification.status,
+    hasOutputPlan: content.classification.hasOutputPlan,
+    hasOutputQuestions: content.classification.hasOutputQuestions,
+    hasOutputGoalPrompt: content.classification.hasOutputGoalPrompt,
+    error: content.classification.error,
+    protectedContent: content.protectedContent,
+  };
+}
+
+export function toTaskOpaqueSummary(
+  row: TaskRow,
+  dispatch: typeof schema.taskDispatchCycles.$inferSelect | null = null,
+): TaskOpaqueSummary {
+  return taskOpaqueSummarySchema.parse({
+    automaticRetry: taskRetrySummary(row.automaticRetry),
+    chatId: row.chatId,
+    planGoalEnabled: row.planGoalEnabled,
+    modelConfiguration: row.modelConfiguration,
+    priority: row.priority,
+    requestedTaskWorkerId: row.requestedTaskWorkerId,
+    continuityFamily: row.continuityFamily,
+    lastTaskWorkerId: row.lastTaskWorkerId,
+    dispatch: dispatch ? toTaskDispatchCycleSummary(dispatch) : null,
+    state: row.state,
+    stableStateBeforeFailure: row.stableStateBeforeFailure,
+    activeOperationId: row.activeOperationId,
+    activeOperationKind: row.activeOperationKind,
+    draftAttachmentIds: row.draftAttachmentIds,
+    planAuthorship: row.planAuthorship,
+    planningRound: row.planningRound,
+    hasPlan: row.hasPlan,
+    hasQuestions: row.hasQuestions,
+    hasFinalPlan: row.hasFinalPlan,
+    hasGoalPrompt: row.hasGoalPrompt,
+    lastError: row.lastError,
+    protectedContent: row.protectedContent,
+    implementationStartedAt: row.implementationStartedAt
+      ? iso(row.implementationStartedAt)
+      : null,
+    completedAt: row.completedAt ? iso(row.completedAt) : null,
+    schedulerRevision: row.schedulerRevision,
+    rowVersion: row.rowVersion,
+    createdAt: iso(row.createdAt),
+    updatedAt: iso(row.updatedAt),
+  });
+}
+
+function toRoundOpaqueSummary(
+  row: TaskPlanningRoundRow,
+): TaskPlanningRoundOpaqueSummary {
+  return taskPlanningRoundOpaqueSummarySchema.parse({
+    id: row.id,
+    chatId: row.chatId,
+    ordinal: row.ordinal,
+    kind: row.kind,
+    status: row.status,
+    hasOutputPlan: row.hasOutputPlan,
+    hasOutputQuestions: row.hasOutputQuestions,
+    hasOutputGoalPrompt: row.hasOutputGoalPrompt,
+    error: row.error,
+    protectedContent: row.protectedContent,
+    userMessageId: row.userMessageId,
+    assistantMessageId: row.assistantMessageId,
+    executionLaneId: row.executionLaneId,
+    turnId: row.turnId,
+    startedAt: iso(row.startedAt),
+    completedAt: row.completedAt ? iso(row.completedAt) : null,
+  });
+}
+
+function context(
+  task: TaskRow,
+  round: TaskPlanningRoundRow,
+): TaskOperationContext {
+  return {
+    task: toTaskOpaqueSummary(task),
+    round: toRoundOpaqueSummary(round),
+    relayRequest: round.relayRequest,
+    relayResult: round.relayResult,
+  };
+}
+
+function sameOperation(
+  request: TaskOperationRelayRequest,
+  prior: TaskOperationRelayRequest,
+): boolean {
+  return (
+    request.chatId === prior.chatId &&
+    request.operationId === prior.operationId &&
+    request.fingerprint === prior.fingerprint &&
+    request.classification.kind === prior.classification.kind &&
+    request.classification.ordinal === prior.classification.ordinal
+  );
+}
+
+function assertMutationKeepsOperationalState(
+  current: TaskOpaqueSummary,
+  mutation: TaskOpaqueMutation,
+): void {
+  const next = mutation.task.classification;
+  if (
+    next.state !== current.state ||
+    next.stableStateBeforeFailure !== current.stableStateBeforeFailure ||
+    next.activeOperationKind !== current.activeOperationKind ||
+    next.planningRound !== current.planningRound ||
+    next.hasFinalPlan !== current.hasFinalPlan ||
+    next.hasGoalPrompt !== current.hasGoalPrompt ||
+    JSON.stringify(next.lastError) !== JSON.stringify(current.lastError)
+  ) {
+    throw new TaskConflictError(
+      "The encrypted Task mutation changed server-owned state.",
+      "stale-version",
+    );
+  }
+}
+
+export class TaskRepository {
+  readonly inferenceInputs: TaskInferenceInputRepository;
+  readonly goalObservations: TaskGoalObservationRepository;
+  constructor(
+    private readonly database: TaskDatabase,
+    private readonly lanes?: ChatExecutionLaneRepository,
+    private readonly messages?: MessageWriteRepository,
+  ) {
+    this.goalObservations = new TaskGoalObservationRepository(database);
+    this.inferenceInputs = new TaskInferenceInputRepository(
+      database,
+      lanes,
+      messages,
+    );
+  }
+
+  async deliverRoundOutcome(
+    owner: string,
+    worker: string,
+    notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
+  ) {
+    try {
+      const result = await this.recoverRoundOutcome(
+        owner,
+        worker,
+        notification,
+      );
+      if (result?.terminal?.projectedAt) return result;
+    } catch (error) {
+      if (
+        !(error instanceof TaskDispatchConflictError) &&
+        !(error instanceof TaskConflictError)
+      )
+        throw error;
+    }
+    return persistHistoricalRoundOutcome(
+      this.database,
+      this.messages,
+      owner,
+      worker,
+      notification,
+    );
+  }
+
+  roundOutcomeRetirement(
+    owner: string,
+    worker: string,
+    notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
+  ) {
+    return roundOutcomeRetirement(this.database, owner, worker, notification);
+  }
+
+  recoverRoundOutcome(
+    owner: string,
+    worker: string,
+    notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
+  ) {
+    return recoverRoundOutcome(
+      {
+        database: this.database,
+        lanes: this.lanes,
+        messages: this.messages,
+        complete: (tx, result, turn, guard) =>
+          new TaskRepository(tx).completeOperation(
+            owner,
+            notification.chatId,
+            result.operationId,
+            result,
+            turn,
+            guard,
+          ),
+        fail: (tx, guard) =>
+          new TaskRepository(tx).failOperation(
+            owner,
+            notification.chatId,
+            notification.taskDispatchFence!.operationId,
+            undefined,
+            guard,
+          ),
+      },
+      owner,
+      worker,
+      notification,
+    );
+  }
+
+  failConfirmedExpiredRound(
+    owner: string,
+    chat: string,
+    guard: Extract<TaskOperationDispatchFence, { kind: "expired" }>,
+  ) {
+    return failConfirmedExpiredRound(
+      {
+        database: this.database,
+        fail: (tx, expected) =>
+          new TaskRepository(tx).failOperation(
+            owner,
+            chat,
+            guard.operationId,
+            undefined,
+            expected,
+          ),
+      },
+      owner,
+      chat,
+      guard,
+    );
+  }
+
+  captureNativeTurnRecovery(owner: string, chat: string) {
+    return captureTaskNativeTurnRecovery(this.database, owner, chat);
+  }
+
+  failObservedNativeTurn(
+    owner: string,
+    chat: string,
+    expected: TaskNativeTurnRecovery,
+    observed: NativeTurnRecoveryObservation,
+  ) {
+    return failObservedTaskNativeTurn(
+      {
+        database: this.database,
+        lanes: this.lanes,
+        fail: (tx, guard) =>
+          new TaskRepository(tx).failOperation(
+            owner,
+            chat,
+            expected.guard.operationId,
+            undefined,
+            guard,
+          ),
+      },
+      owner,
+      chat,
+      expected,
+      observed,
+    );
+  }
+
+  async list(ownerId: string, projectId: string): Promise<TaskOpaqueSummary[]> {
+    const rows = await this.database
+      .select({ task: schema.tasks })
+      .from(schema.tasks)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chats.projectId, projectId),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .orderBy(desc(schema.tasks.createdAt), desc(schema.tasks.chatId));
+    if (rows.length === 0) return [];
+
+    const dispatchRows = await this.database
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(
+        inArray(
+          schema.taskDispatchCycles.chatId,
+          rows.map(({ task }) => task.chatId),
+        ),
+      )
+      .orderBy(
+        desc(schema.taskDispatchCycles.createdAt),
+        desc(schema.taskDispatchCycles.id),
+      );
+    const latestDispatchByChat = new Map<
+      string,
+      (typeof dispatchRows)[number]
+    >();
+    for (const dispatch of dispatchRows) {
+      if (!latestDispatchByChat.has(dispatch.chatId)) {
+        latestDispatchByChat.set(dispatch.chatId, dispatch);
+      }
+    }
+    return rows.map(({ task }) =>
+      toTaskOpaqueSummary(task, latestDispatchByChat.get(task.chatId) ?? null),
+    );
+  }
+
+  async get(ownerId: string, chatId: string): Promise<any> {
+    const rows = await this.database
+      .select({ task: schema.tasks })
+      .from(schema.tasks)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.tasks.chatId, chatId))
+      .limit(1);
+    if (!rows[0]) return null;
+    const dispatchRows = await this.database
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(eq(schema.taskDispatchCycles.chatId, chatId))
+      .orderBy(
+        desc(schema.taskDispatchCycles.createdAt),
+        desc(schema.taskDispatchCycles.id),
+      )
+      .limit(1);
+    return toTaskOpaqueSummary(rows[0].task, dispatchRows[0] ?? null);
+  }
+
+  async deleteOwned(
+    ownerId: string,
+    chatId: string,
+  ): Promise<{ projectId: string } | null> {
+    return this.database.transaction(async (transaction) => {
+      const ownerRows = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!ownerRows[0]) return null;
+
+      const rows = await transaction
+        .select({ projectId: schema.projects.id })
+        .from(schema.tasks)
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(
+          and(eq(schema.tasks.chatId, chatId), isNull(schema.chats.archivedAt)),
+        )
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return null;
+
+      await detachProjectTab(
+        transaction,
+        row.projectId,
+        projectTabKey("chat", chatId),
+      );
+      await transaction
+        .delete(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            eq(schema.chats.ownerId, ownerId),
+            eq(schema.chats.experience, "task"),
+          ),
+        );
+      return { projectId: row.projectId };
+    });
+  }
+
+  async listRounds(ownerId: string, chatId: string): Promise<any[]> {
+    if (!(await this.get(ownerId, chatId))) return [];
+    const rows = await this.database
+      .select()
+      .from(schema.taskPlanningRounds)
+      .where(eq(schema.taskPlanningRounds.chatId, chatId))
+      .orderBy(asc(schema.taskPlanningRounds.ordinal));
+    return rows.map(toRoundOpaqueSummary);
+  }
+
+  async updateDraft(
+    ownerId: string,
+    chatId: string,
+    rawInput: TaskOpaqueMutation,
+  ): Promise<TaskOpaqueSummary | null> {
+    const input = taskOpaqueMutationSchema.parse(rawInput);
+    return this.database.transaction(async (transaction) => {
+      const ownerRows = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!ownerRows[0]) return null;
+      const dispatchRows = await transaction
+        .select({ dispatch: schema.taskDispatchCycles })
+        .from(schema.taskDispatchCycles)
+        .innerJoin(schema.tasks, eq(schema.tasks.chatId, chatId))
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.chatId, chatId),
+            inArray(schema.taskDispatchCycles.state, [
+              "queued",
+              "claimed",
+              "running",
+              "paused",
+            ]),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const activeDispatch = dispatchRows[0]?.dispatch ?? null;
+      if (activeDispatch && activeDispatch.state !== "queued") {
+        throw new TaskConflictError(
+          "The Task has already started and can no longer be edited.",
+          "operation-active",
+        );
+      }
+
+      const rows = await transaction
+        .select({ task: schema.tasks })
+        .from(schema.tasks)
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = rows[0]?.task;
+      if (!task) return null;
+      const current = toTaskOpaqueSummary(task, activeDispatch);
+      if (
+        current.state !== "draft" &&
+        !(
+          current.state === "failed" &&
+          current.stableStateBeforeFailure === "draft"
+        )
+      ) {
+        throw new TaskStateTransitionError(current.state, "draft");
+      }
+      assertMutationKeepsOperationalState(current, input);
+
+      if (input.modelConfiguration) {
+        for (const modelId of [
+          input.modelConfiguration.modelId,
+          ...(input.modelConfiguration.customSubagentModel
+            ? [input.modelConfiguration.subagentModelId]
+            : []),
+        ]) {
+          if (!modelId) continue;
+          const model = await transaction
+            .select({ id: schema.modelProfiles.id })
+            .from(schema.modelProfiles)
+            .where(
+              and(
+                eq(schema.modelProfiles.id, modelId),
+                eq(schema.modelProfiles.ownerId, ownerId),
+              ),
+            )
+            .limit(1);
+          if (!model[0])
+            throw new TaskConflictError(
+              "The selected model is unavailable.",
+              "stale-version",
+            );
+        }
+      }
+
+      const now = new Date();
+      const updated = await transaction
+        .update(schema.tasks)
+        .set({
+          ...taskOpaqueColumns(input.task),
+          ...(input.planGoalEnabled !== undefined
+            ? { planGoalEnabled: input.planGoalEnabled }
+            : {}),
+          ...(input.draftAttachmentIds !== undefined
+            ? { draftAttachmentIds: input.draftAttachmentIds }
+            : {}),
+          ...(input.priority !== undefined ? { priority: input.priority } : {}),
+          ...(input.modelConfiguration
+            ? { modelConfiguration: input.modelConfiguration }
+            : {}),
+          schedulerRevision: sql`${schema.tasks.schedulerRevision} + 1`,
+          rowVersion: current.rowVersion + 1,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.tasks.chatId, chatId),
+            eq(schema.tasks.rowVersion, input.rowVersion),
+          ),
+        )
+        .returning();
+      if (!updated[0]) {
+        throw new TaskConflictError(
+          "The Task draft changed in another client.",
+          "stale-version",
+        );
+      }
+
+      let updatedDispatch = activeDispatch;
+      if (activeDispatch) {
+        const planGoalEnabled =
+          input.planGoalEnabled ?? updated[0].planGoalEnabled;
+        const dispatch = await transaction
+          .update(schema.taskDispatchCycles)
+          .set({
+            operationKind: planGoalEnabled ? "initial-plan" : "direct",
+            modelConfiguration: updated[0].modelConfiguration,
+            fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+            eligibilityCode: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.id, activeDispatch.id),
+              eq(schema.taskDispatchCycles.state, "queued"),
+            ),
+          )
+          .returning();
+        if (!dispatch[0]) {
+          throw new TaskConflictError(
+            "The Task started before this edit could be saved.",
+            "operation-active",
+          );
+        }
+        updatedDispatch = dispatch[0];
+      }
+      return toTaskOpaqueSummary(updated[0], updatedDispatch);
+    });
+  }
+
+  async updatePlan(
+    ownerId: string,
+    chatId: string,
+    rawInput: TaskOpaqueMutation,
+  ): Promise<TaskOpaqueSummary | null> {
+    const input = taskOpaqueMutationSchema.parse(rawInput);
+    return this.database.transaction(async (transaction) => {
+      const ownerRows = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!ownerRows[0]) return null;
+
+      const activeDispatch = await transaction
+        .select({ id: schema.taskDispatchCycles.id })
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.chatId, chatId),
+            inArray(schema.taskDispatchCycles.state, [
+              "queued",
+              "claimed",
+              "running",
+              "paused",
+            ]),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (activeDispatch[0]) {
+        throw new TaskConflictError(
+          "The next Task cycle is already queued or running.",
+          "operation-active",
+        );
+      }
+
+      const rows = await transaction
+        .select({ task: schema.tasks })
+        .from(schema.tasks)
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = rows[0]?.task;
+      if (!task) return null;
+      const current = toTaskOpaqueSummary(task);
+      if (
+        current.state !== "review" &&
+        !(
+          current.state === "failed" &&
+          current.stableStateBeforeFailure === "review"
+        )
+      ) {
+        throw new TaskStateTransitionError(current.state, "review");
+      }
+      assertMutationKeepsOperationalState(current, input);
+      const updated = await transaction
+        .update(schema.tasks)
+        .set({
+          ...taskOpaqueColumns(input.task),
+          rowVersion: current.rowVersion + 1,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.tasks.chatId, chatId),
+            eq(schema.tasks.rowVersion, input.rowVersion),
+          ),
+        )
+        .returning();
+      if (!updated[0]) {
+        throw new TaskConflictError(
+          "The Task plan changed in another client.",
+          "stale-version",
+        );
+      }
+      return toTaskOpaqueSummary(updated[0]);
+    });
+  }
+
+  async beginOperation(
+    ownerId: string,
+    chatId: string,
+    rawInput: any,
+  ): Promise<any> {
+    const input = taskEncryptedOperationStartSchema.parse(rawInput);
+    const request = input.operation;
+    if (request.chatId !== chatId) {
+      throw new TaskConflictError(
+        "The encrypted Task operation belongs to another Task.",
+        "idempotency-conflict",
+      );
+    }
+    return this.database.transaction(async (transaction) => {
+      const priorRows = await transaction
+        .select({ round: schema.taskPlanningRounds, task: schema.tasks })
+        .from(schema.taskPlanningRounds)
+        .innerJoin(
+          schema.tasks,
+          eq(schema.tasks.chatId, schema.taskPlanningRounds.chatId),
+        )
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.taskPlanningRounds.id, request.operationId))
+        .limit(1);
+      const prior = priorRows[0];
+      if (prior) {
+        if (!sameOperation(request, prior.round.relayRequest)) {
+          throw new TaskConflictError(
+            "This Task operation ID was already used for different input.",
+            "idempotency-conflict",
+          );
+        }
+        return { ...context(prior.task, prior.round), idempotent: true };
+      }
+
+      const rows = await transaction
+        .select({ task: schema.tasks })
+        .from(schema.tasks)
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = rows[0]?.task;
+      if (!task) return null;
+      if (task.activeOperationId) {
+        throw new TaskConflictError(
+          "This Task already has an active operation.",
+          "operation-active",
+        );
+      }
+      if (task.rowVersion !== input.rowVersion) {
+        throw new TaskConflictError(
+          "The Task changed in another client.",
+          "stale-version",
+        );
+      }
+      if ((request.classification.kind === "direct") === task.planGoalEnabled) {
+        throw new TaskConflictError(
+          task.planGoalEnabled
+            ? "Disable Plan + Goal before starting this Task directly."
+            : "Enable Plan + Goal before starting a planning operation.",
+          "idempotency-conflict",
+        );
+      }
+      validateTaskOperationStart(
+        task.state,
+        task.stableStateBeforeFailure,
+        request.classification.kind,
+      );
+      if (request.classification.ordinal !== task.planningRound + 1) {
+        throw new TaskConflictError(
+          "The encrypted Task planning round is stale.",
+          "stale-version",
+        );
+      }
+      const now = new Date();
+      const inserted = await transaction
+        .insert(schema.taskPlanningRounds)
+        .values({
+          id: request.operationId,
+          chatId,
+          ...roundColumns({
+            classification: request.classification,
+            protectedContent: request.protectedInput,
+          }),
+          relayRequest: request,
+          failureTask: input.failure.task,
+          failureRound: input.failure.round,
+          startedAt: now,
+        })
+        .returning();
+      const updated = await transaction
+        .update(schema.tasks)
+        .set({
+          ...taskOpaqueColumns(request.task),
+          activeOperationId: request.operationId,
+          ...(request.classification.kind === "direct"
+            ? { implementationStartedAt: task.implementationStartedAt ?? now }
+            : {}),
+          rowVersion: task.rowVersion + 1,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.tasks.chatId, chatId),
+            eq(schema.tasks.rowVersion, input.rowVersion),
+          ),
+        )
+        .returning();
+      if (!updated[0]) {
+        throw new TaskConflictError(
+          "The Task changed in another client.",
+          "stale-version",
+        );
+      }
+      return { ...context(updated[0], inserted[0]!), idempotent: false };
+    });
+  }
+
+  async getOperationContext(
+    ownerId: string,
+    chatId: string,
+    lookup: TaskOperationLookup,
+  ): Promise<any> {
+    const rows = await this.database
+      .select({ task: schema.tasks, round: schema.taskPlanningRounds })
+      .from(schema.taskPlanningRounds)
+      .innerJoin(
+        schema.tasks,
+        eq(schema.tasks.chatId, schema.taskPlanningRounds.chatId),
+      )
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.taskPlanningRounds.chatId, chatId),
+          ...(lookup.operationId
+            ? [eq(schema.taskPlanningRounds.id, lookup.operationId)]
+            : lookup.userMessageId
+              ? [
+                  eq(
+                    schema.taskPlanningRounds.userMessageId,
+                    lookup.userMessageId,
+                  ),
+                ]
+              : lookup.executionLaneId
+                ? [
+                    eq(
+                      schema.taskPlanningRounds.executionLaneId,
+                      lookup.executionLaneId,
+                    ),
+                  ]
+                : []),
+        ),
+      )
+      .orderBy(asc(schema.taskPlanningRounds.ordinal));
+    const found = lookup.executionLaneId ? rows.at(-1) : rows[0];
+    return found ? context(found.task, found.round) : null;
+  }
+
+  async attachOperationExecution(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    input: { executionLaneId: string; userMessageId: string },
+    dispatchFence?: TaskOperationLeaseFence,
+  ): Promise<TaskOperationContext | null> {
+    if (dispatchFence)
+      return this.database.transaction(async (transaction) => {
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          operationId,
+          dispatchFence,
+          true,
+        );
+        return new TaskRepository(transaction).attachOperationExecution(
+          ownerId,
+          chatId,
+          operationId,
+          input,
+        );
+      });
+    if (!(await this.get(ownerId, chatId))) return null;
+    await this.database
+      .update(schema.taskPlanningRounds)
+      .set(input)
+      .where(
+        and(
+          eq(schema.taskPlanningRounds.id, operationId),
+          eq(schema.taskPlanningRounds.chatId, chatId),
+        ),
+      );
+    return this.getOperationContext(ownerId, chatId, { operationId });
+  }
+
+  async attachOperationAssistantMessage(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    assistantMessageId: string,
+  ): Promise<TaskOperationContext | null> {
+    if (!(await this.get(ownerId, chatId))) return null;
+    await this.database
+      .update(schema.taskPlanningRounds)
+      .set({ assistantMessageId })
+      .where(
+        and(
+          eq(schema.taskPlanningRounds.id, operationId),
+          eq(schema.taskPlanningRounds.chatId, chatId),
+        ),
+      );
+    return this.getOperationContext(ownerId, chatId, { operationId });
+  }
+
+  async completeOperation(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    rawResult: TaskOperationRelayResult,
+    turnId: string | null,
+    dispatchFence?: TaskOperationDispatchFence,
+  ): Promise<TaskOperationContext | null> {
+    const result = taskOperationRelayResultSchema.parse(rawResult);
+    if (!(await this.get(ownerId, chatId))) return null;
+    return this.database.transaction(async (transaction) => {
+      if (dispatchFence)
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          operationId,
+          dispatchFence,
+        );
+      const roundRows = await transaction
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, operationId),
+            eq(schema.taskPlanningRounds.chatId, chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const round = roundRows[0];
+      if (!round) return null;
+      if (
+        !sameOperation(
+          {
+            ...round.relayRequest,
+            fingerprint: result.fingerprint,
+          },
+          round.relayRequest,
+        ) ||
+        result.chatId !== chatId ||
+        result.operationId !== operationId ||
+        result.classification.kind !== round.kind ||
+        result.classification.ordinal !== round.ordinal
+      ) {
+        throw new TaskConflictError(
+          "The encrypted Task result does not match its operation.",
+          "idempotency-conflict",
+        );
+      }
+      const taskRows = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = taskRows[0];
+      if (!task) return null;
+      if (round.relayResult) {
+        if (round.relayResult.fingerprint !== result.fingerprint) {
+          throw new TaskConflictError(
+            "A different encrypted result already completed this operation.",
+            "idempotency-conflict",
+          );
+        }
+        return context(task, round);
+      }
+      if (
+        task.activeOperationId !== operationId ||
+        task.planningRound !== round.ordinal
+      ) {
+        throw new TaskConflictError(
+          "A newer Task operation superseded this result.",
+          "idempotency-conflict",
+        );
+      }
+      const now = new Date();
+      const updatedRounds = await transaction
+        .update(schema.taskPlanningRounds)
+        .set({
+          ...roundColumns({
+            classification: result.classification,
+            protectedContent: result.protectedResult,
+          }),
+          relayResult: result,
+          failureTask: result.goal?.failureTask ?? round.failureTask,
+          turnId,
+          completedAt: now,
+        })
+        .where(eq(schema.taskPlanningRounds.id, operationId))
+        .returning();
+      let updatedTask = task;
+      if (round.kind !== "finalize") {
+        const updatedTasks = await transaction
+          .update(schema.tasks)
+          .set({
+            ...taskOpaqueColumns(result.task),
+            activeOperationId: null,
+            completedAt:
+              result.task.classification.state === "complete" ? now : null,
+            rowVersion: task.rowVersion + 1,
+            updatedAt: now,
+          })
+          .where(eq(schema.tasks.chatId, chatId))
+          .returning();
+        updatedTask = updatedTasks[0]!;
+      }
+      return context(updatedTask, updatedRounds[0]!);
+    });
+  }
+
+  async completeFinalizationOperation(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    guard?: TaskOperationLeaseFence,
+  ): Promise<TaskOperationContext | null> {
+    if (!(await this.get(ownerId, chatId))) return null;
+    return this.database.transaction(async (transaction) => {
+      if (guard)
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          operationId,
+          guard,
+        );
+      const roundRows = await transaction
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, operationId),
+            eq(schema.taskPlanningRounds.chatId, chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const round = roundRows[0];
+      if (!round?.relayResult || round.kind !== "finalize") return null;
+      const taskRows = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = taskRows[0];
+      if (!task) return null;
+      if (
+        task.state === "implementing" &&
+        task.planningRound === round.ordinal &&
+        task.activeOperationId === null
+      ) {
+        return context(task, round);
+      }
+      if (
+        task.activeOperationId !== operationId &&
+        !(task.state === "failed" && task.planningRound === round.ordinal)
+      ) {
+        throw new TaskConflictError(
+          "A newer Task operation superseded Goal startup.",
+          "idempotency-conflict",
+        );
+      }
+      const now = new Date();
+      const updated = await transaction
+        .update(schema.tasks)
+        .set({
+          ...taskOpaqueColumns(round.relayResult.task),
+          activeOperationId: null,
+          implementationStartedAt: task.implementationStartedAt ?? now,
+          rowVersion: task.rowVersion + 1,
+          updatedAt: now,
+        })
+        .where(eq(schema.tasks.chatId, chatId))
+        .returning();
+      return context(updated[0]!, round);
+    });
+  }
+
+  async failOperation(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    goalLaunchFailure?: TaskOpaqueContent,
+    dispatchFence?: TaskOperationDispatchFence,
+  ): Promise<TaskOperationContext | null> {
+    if (!(await this.get(ownerId, chatId))) return null;
+    return this.database.transaction(async (transaction) => {
+      if (dispatchFence)
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          operationId,
+          dispatchFence,
+        );
+      const roundRows = await transaction
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, operationId),
+            eq(schema.taskPlanningRounds.chatId, chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const round = roundRows[0];
+      if (!round) return null;
+      const taskRows = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = taskRows[0];
+      if (!task) return null;
+      if (goalLaunchFailure) {
+        const failed = taskOpaqueContentSchema.parse(goalLaunchFailure);
+        const expected = round.relayResult?.task;
+        const classification = failed.classification;
+        if (
+          round.kind !== "finalize" ||
+          !expected ||
+          classification.state !== "failed" ||
+          classification.stableStateBeforeFailure !== "review" ||
+          classification.activeOperationKind !== null ||
+          classification.planningRound !== round.ordinal ||
+          !/^task-goal-start-(failed|timeout|capacity|rate-limit|connection|needs-input|configuration|usage-limit|budget-limit)$/u.test(
+            classification.lastError?.code ?? "",
+          ) ||
+          classification.lastError?.operationKind !== "finalize" ||
+          classification.planAuthorship !==
+            expected.classification.planAuthorship ||
+          classification.hasPlan !== expected.classification.hasPlan ||
+          classification.hasQuestions !==
+            expected.classification.hasQuestions ||
+          classification.hasFinalPlan !==
+            expected.classification.hasFinalPlan ||
+          classification.hasGoalPrompt !==
+            expected.classification.hasGoalPrompt ||
+          failed.protectedContent.keyRevision !==
+            expected.protectedContent.keyRevision
+        )
+          throw new TaskConflictError(
+            "The encrypted Goal startup failure does not match finalization.",
+            "idempotency-conflict",
+          );
+      }
+      if (task.state === "failed" && task.planningRound === round.ordinal) {
+        return context(task, round);
+      }
+      const now = new Date();
+      const updatedRounds = await transaction
+        .update(schema.taskPlanningRounds)
+        .set({
+          ...roundColumns(round.failureRound),
+          completedAt: now,
+        })
+        .where(eq(schema.taskPlanningRounds.id, operationId))
+        .returning();
+      let updatedTask = task;
+      if (task.planningRound === round.ordinal) {
+        const updatedTasks = await transaction
+          .update(schema.tasks)
+          .set({
+            ...taskOpaqueColumns(goalLaunchFailure ?? round.failureTask),
+            activeOperationId: null,
+            rowVersion: task.rowVersion + 1,
+            updatedAt: now,
+          })
+          .where(eq(schema.tasks.chatId, chatId))
+          .returning();
+        updatedTask = updatedTasks[0]!;
+      }
+      return context(updatedTask, updatedRounds[0]!);
+    });
+  }
+
+  async reconcileInterruptedOperations(): Promise<number> {
+    const active = await this.database
+      .select({ task: schema.tasks, round: schema.taskPlanningRounds })
+      .from(schema.tasks)
+      .innerJoin(
+        schema.taskPlanningRounds,
+        eq(schema.taskPlanningRounds.id, schema.tasks.activeOperationId),
+      )
+      .where(isNull(schema.taskPlanningRounds.inferenceInput));
+    let reconciled = 0;
+    for (const { task, round } of active) {
+      await this.database.transaction(async (transaction) => {
+        const now = new Date();
+        const changed = await transaction
+          .update(schema.taskPlanningRounds)
+          .set({ ...roundColumns(round.failureRound), completedAt: now })
+          .where(
+            and(
+              eq(schema.taskPlanningRounds.id, round.id),
+              isNull(schema.taskPlanningRounds.inferenceInput),
+            ),
+          )
+          .returning({ id: schema.taskPlanningRounds.id });
+        if (!changed.length) return;
+        await transaction
+          .update(schema.tasks)
+          .set({
+            ...taskOpaqueColumns(round.failureTask),
+            activeOperationId: null,
+            rowVersion: task.rowVersion + 1,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.tasks.chatId, task.chatId),
+              eq(schema.tasks.activeOperationId, round.id),
+            ),
+          );
+        reconciled += 1;
+      });
+    }
+    return reconciled;
+  }
+
+  /** @deprecated Plaintext Task completion was removed by the E2EE cutover. */
+  async completePlanningOperation(..._input: unknown[]): Promise<any> {
+    throw new Error("Plaintext Task completion is unavailable.");
+  }
+
+  /** @deprecated Plaintext Task finalization was removed by the E2EE cutover. */
+  async stageFinalizationResult(..._input: unknown[]): Promise<any> {
+    throw new Error("Plaintext Task finalization is unavailable.");
+  }
+
+  /** @deprecated Use the stored encrypted finalization result. */
+  async resumeFinalizationGoalLaunch(
+    ownerId: string,
+    chatId: string,
+    _rowVersion: number,
+  ): Promise<any> {
+    return this.getOperationContext(ownerId, chatId, {
+      operationId: (await this.get(ownerId, chatId))?.activeOperationId,
+    });
+  }
+
+  async syncImplementationState(
+    ownerId: string,
+    chatId: string,
+    input: { rowVersion: number; task: TaskOpaqueContent },
+    dispatchFence?: TaskOperationDispatchFence,
+    observationFence?: TaskGoalObservationFence,
+  ): Promise<TaskOpaqueSummary | null> {
+    const next = taskOpaqueContentSchema.parse(input.task);
+    if (!observationFence && !(await this.get(ownerId, chatId))) return null;
+    return this.database.transaction(async (transaction) => {
+      if (observationFence)
+        await this.goalObservations.assertInTransaction(
+          transaction,
+          ownerId,
+          chatId,
+          observationFence,
+        );
+      if (dispatchFence)
+        await assertTaskOperationDispatchFence(
+          transaction,
+          ownerId,
+          chatId,
+          dispatchFence.kind === "leased"
+            ? dispatchFence.lease.operationId
+            : dispatchFence.operationId,
+          dispatchFence,
+          true,
+        );
+      const rows = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const current = rows[0];
+      if (!current) return null;
+      if (current.rowVersion !== input.rowVersion) {
+        throw new TaskConflictError(
+          "The Task changed before its Goal status was synchronized.",
+          "stale-version",
+        );
+      }
+      if (
+        !["implementing", "paused", "blocked", "complete", "failed"].includes(
+          current.state,
+        ) ||
+        !["implementing", "paused", "blocked", "complete", "failed"].includes(
+          next.classification.state,
+        ) ||
+        next.classification.activeOperationKind !== null ||
+        next.classification.stableStateBeforeFailure !== null ||
+        next.classification.planningRound !== current.planningRound ||
+        next.classification.planAuthorship !== current.planAuthorship ||
+        next.classification.hasPlan !== current.hasPlan ||
+        next.classification.hasQuestions !== current.hasQuestions ||
+        next.classification.hasFinalPlan !== current.hasFinalPlan ||
+        next.classification.hasGoalPrompt !== current.hasGoalPrompt ||
+        next.protectedContent.keyRevision !==
+          current.protectedContent.keyRevision
+      ) {
+        throw new TaskConflictError(
+          "The encrypted Goal update changes protected planning metadata.",
+          "idempotency-conflict",
+        );
+      }
+      if (
+        current.state !== next.classification.state &&
+        !(
+          current.state === "failed" &&
+          next.classification.state === "complete" &&
+          current.implementationStartedAt &&
+          current.hasFinalPlan &&
+          current.hasGoalPrompt
+        ) &&
+        !canTransitionTaskState(current.state, next.classification.state)
+      ) {
+        throw new TaskStateTransitionError(
+          current.state,
+          next.classification.state,
+        );
+      }
+      const unchanged =
+        JSON.stringify({
+          classification: {
+            state: current.state,
+            stableStateBeforeFailure: current.stableStateBeforeFailure,
+            activeOperationKind: current.activeOperationKind,
+            planAuthorship: current.planAuthorship,
+            planningRound: current.planningRound,
+            hasPlan: current.hasPlan,
+            hasQuestions: current.hasQuestions,
+            hasFinalPlan: current.hasFinalPlan,
+            hasGoalPrompt: current.hasGoalPrompt,
+            lastError: current.lastError,
+          },
+          protectedContent: current.protectedContent,
+        }) === JSON.stringify(next);
+      if (unchanged) return toTaskOpaqueSummary(current);
+      const now = new Date();
+      const updated = await transaction
+        .update(schema.tasks)
+        .set({
+          ...taskOpaqueColumns(next),
+          completedAt:
+            next.classification.state === "complete"
+              ? (current.completedAt ?? now)
+              : null,
+          rowVersion: current.rowVersion + 1,
+          updatedAt: now,
+        })
+        .where(eq(schema.tasks.chatId, chatId))
+        .returning();
+      return toTaskOpaqueSummary(updated[0]!);
+    });
+  }
+}

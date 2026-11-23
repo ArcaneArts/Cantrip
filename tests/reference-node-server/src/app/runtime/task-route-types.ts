@@ -1,0 +1,210 @@
+import type {
+  AgentTurnResult,
+  ChatMessage,
+  ChatTurnCreate,
+  ModelConfiguration,
+  TaskDispatchCycleSummary,
+  TaskDispatchWorkerLease,
+} from "@cantrip/protocol";
+import type {
+  TaskMessageOpaqueContent,
+  TaskMessageOpaqueSummary,
+  TaskOpaqueSummary,
+  TaskOperationRelayRequest,
+  TaskGoalSyncContext,
+} from "@cantrip/protocol/tasks";
+import type { FastifyReply } from "fastify";
+import type { TaskGoalReadResult } from "./task-goal-runtime.js";
+import type {
+  ChatExecutionAttribution,
+  ChatExecutionContext,
+  ChatLiveRouting,
+  ModelRuntime,
+  ServerRepository,
+} from "../../db/repository.js";
+import type {
+  ClaimedTaskDispatch,
+  TaskDispatchEligibilityResolver,
+} from "../../db/task-dispatch.js";
+import type { ResolvedModelRoutePair } from "../../models/subagent-routing.js";
+import type { LimitedWorkerCommandBus } from "../../workers/limited-command-bus.js";
+import type { ChatLiveResource } from "../shared/live-resources.js";
+
+type TaskTurnInput = Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
+  attachmentIds?: string[];
+  customSubagentModel?: boolean;
+  mode?: ChatTurnCreate["mode"];
+  subagentModelId?: string | null;
+  subagentReasoningEffort?: ChatExecutionContext["reasoningEffort"];
+};
+
+interface TaskTurnCallbackInput {
+  attribution: ChatExecutionAttribution;
+  execution: ChatExecutionContext;
+  result: AgentTurnResult;
+  userMessage: ChatMessage;
+  taskInferenceInputOperationId?: string;
+}
+
+interface TaskTurnOptions extends Pick<
+  import("./chat-turn-types.js").ChatTurnOptions,
+  "taskResumption" | "onTaskResumed" | "onTaskRestoreFailed" | "messageRole"
+> {
+  encryptedTaskMessages?: {
+    userMessage: TaskMessageOpaqueContent;
+    response?: { id: string; idempotencyKey: string };
+  };
+  purpose?: string;
+  runtimes?: ModelRuntime[];
+  preflightWorkerCommandTimeoutMs?: number | null;
+  structuredResult?: {
+    taskOperation: TaskOperationRelayRequest;
+    afterCompleted?(input: TaskTurnCallbackInput): Promise<void>;
+    onCompleted(input: TaskTurnCallbackInput): Promise<void>;
+    onFailed(input: {
+      error: unknown;
+      execution: ChatExecutionContext;
+      userMessage: ChatMessage;
+    }): Promise<void>;
+  };
+  afterTurnCompleted?(input: TaskTurnCallbackInput): Promise<void>;
+  afterTurnFailed?(input: {
+    error: unknown;
+    execution: ChatExecutionContext;
+    userMessage: ChatMessage;
+  }): Promise<void>;
+  taskDispatchLease?: TaskDispatchWorkerLease;
+}
+
+interface TaskGoalLaunchOptions {
+  afterTurnCompleted?(input: TaskTurnCallbackInput): Promise<void>;
+  afterTurnFailed?(input: {
+    error: unknown;
+    execution: ChatExecutionContext;
+    userMessage: ChatMessage;
+  }): Promise<void>;
+  modelConfiguration?: ModelConfiguration;
+  runtimes?: ModelRuntime[];
+  taskDispatchLease?: TaskDispatchWorkerLease;
+}
+
+export interface PreparedTaskDispatchEligibility {
+  resolve: TaskDispatchEligibilityResolver;
+  runtimeForClaim(claim: ClaimedTaskDispatch): ModelRuntime | null;
+}
+
+export interface TaskRouteRuntimeDependencies {
+  continueTaskGoalInWorktree: (
+    context: ChatExecutionContext,
+    input: { text: string; idempotencyKey: string },
+    lease?: TaskDispatchWorkerLease,
+  ) => Promise<boolean>;
+  appendLiveTaskMessage: (
+    ownerId: string,
+    chatId: string,
+    message: TaskMessageOpaqueContent,
+    attribution?: ChatExecutionAttribution,
+    routing?: ChatLiveRouting,
+  ) => ReturnType<ServerRepository["appendTaskMessage"]>;
+  applicationOwnerId: () => string;
+  availableModelRuntimes: (
+    context: { providerAccountId?: string | null; workerId: string },
+    modelId: string,
+  ) => Promise<ModelRuntime[]>;
+  beginTurn: (
+    context: ChatExecutionContext,
+    input: TaskTurnInput,
+    options?: TaskTurnOptions,
+  ) => Promise<ChatMessage>;
+  bridge: LimitedWorkerCommandBus;
+  failTaskGoalLaunch: (
+    chatId: string,
+    operationId: string,
+    error: unknown,
+    guard?: import("../../db/task-operation-fence.js").TaskOperationLeaseFence,
+  ) => Promise<void>;
+  launchPreparedTaskGoal: (
+    chatId: string,
+    operationId: string,
+    options?: TaskGoalLaunchOptions,
+  ) => Promise<unknown>;
+  publishChatInvalidation: (
+    chatId: string,
+    resource: ChatLiveResource,
+    entityId?: string | null,
+    routing?: ChatLiveRouting,
+  ) => void;
+  publishTaskMessage: (
+    message: TaskMessageOpaqueSummary,
+    routing?: ChatLiveRouting,
+  ) => void;
+  publishChatSummary: (chatId: string, projectId: string | null) => void;
+  publishLiveInvalidation: (
+    resource: "task",
+    input: { projectId: string },
+  ) => void;
+  readEncryptedTaskGoal: (
+    context: ChatExecutionContext,
+    task: TaskOpaqueSummary,
+    message?: {
+      id: string;
+      idempotencyKey: string;
+      kind: "resume" | "start";
+    } | null,
+    observeExecution?: boolean,
+    activateGoal?: boolean,
+    runtimeFailure?: TaskGoalSyncContext["runtimeFailure"],
+    observationOnly?: boolean,
+  ) => Promise<TaskGoalReadResult>;
+  releaseTaskGoalLease: (
+    cycleId: string,
+    expected?: import("@cantrip/protocol").TaskDispatchFence,
+  ) => void;
+  synchronizeScheduledTaskGoal: (
+    chatId: string,
+    lease: import("@cantrip/protocol").TaskDispatchFence,
+    failed: boolean,
+    error?: unknown,
+    receipt?: import("@cantrip/protocol").TaskInferenceInputReceipt,
+  ) => Promise<void>;
+  reconcileTaskGoalDispatch: (
+    task: TaskOpaqueSummary,
+    state: TaskOpaqueSummary["state"],
+  ) => Promise<void>;
+  repository: ServerRepository;
+  resolveModelId: (
+    context: ChatExecutionContext,
+    requestedModelId?: string,
+  ) => Promise<string>;
+  retainTaskGoalLease: (lease: TaskDispatchWorkerLease) => Promise<void>;
+  resumeChatAutomation: (
+    chatId: string,
+    activateGoal?: boolean,
+    worktreeReconciled?: boolean,
+  ) => Promise<void>;
+  routePairsForConfiguration: (
+    context: ChatExecutionContext,
+    configuration: ModelConfiguration,
+    rootRuntimes?: ModelRuntime[],
+  ) => Promise<ResolvedModelRoutePair[]>;
+  runAsOwner: <T>(ownerId: string, operation: () => T) => T;
+  runtimeCanResumeContext: (
+    context: ChatExecutionContext,
+    runtime: ModelRuntime,
+  ) => boolean;
+  runtimeForContext: (
+    context: ChatExecutionContext,
+  ) => Promise<ModelRuntime | null>;
+  scheduledTaskGoalTurnOptions: (
+    lease: TaskDispatchWorkerLease,
+  ) => TaskGoalLaunchOptions;
+  sendModelConfigurationResolutionFailure: (
+    reply: FastifyReply,
+    error: unknown,
+  ) => FastifyReply | null;
+  serverId: string;
+  serverInstanceId: string;
+  taskDispatchCycleLease: (
+    dispatch: TaskDispatchCycleSummary | null,
+  ) => TaskDispatchWorkerLease | null;
+}

@@ -20,7 +20,7 @@ export class EditorLineIndex {
       this.offsets[i] =
         i === 0 ? 0 : this.offsets[i - 1]! + this.lines[i - 1]!.length + 1;
   }
-  private lineAt(offset: number): number {
+  lineAt(offset: number): number {
     let low = 0,
       high = this.offsets.length - 1;
     while (low < high) {

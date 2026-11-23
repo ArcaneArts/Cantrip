@@ -1,0 +1,28 @@
+//! Native Codex integration. Discovery does not admit execution or model input.
+pub(crate) mod account_auth;
+pub mod admission;
+pub mod catalog;
+mod customizations;
+pub mod diagnostics;
+pub mod discovery;
+pub(crate) mod external_home;
+pub(crate) mod goals;
+pub(crate) mod guest_environment;
+pub mod managed;
+pub(crate) mod observation;
+pub mod preparation;
+pub mod private_inference;
+pub mod process_transport;
+pub mod provider_errors;
+pub(crate) mod relocation;
+pub(crate) mod revocation;
+pub mod rpc_client;
+pub mod rpc_protocol;
+pub mod rpc_requests;
+pub mod session;
+pub(crate) mod skills;
+pub mod startup;
+pub mod suspension_store;
+pub(crate) mod task_inputs;
+mod task_pause;
+pub(crate) mod turn;

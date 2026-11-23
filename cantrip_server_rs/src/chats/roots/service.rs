@@ -130,6 +130,19 @@ impl Service {
         }
         Ok(())
     }
+    pub async fn purge_archived_for_owner(self: &Arc<Self>, owner: &str) -> Result<usize> {
+        let jobs = self
+            .repository
+            .purge_expired(owner, crate::auth::now())
+            .await?;
+        for job in &jobs {
+            self.publish(owner, job);
+        }
+        if !jobs.is_empty() {
+            self.queue();
+        }
+        Ok(jobs.len())
+    }
     pub fn worker_connected(self: &Arc<Self>, worker: String) {
         let Some(ticket) = self.callback() else {
             return;
@@ -396,6 +409,10 @@ impl Service {
             json!({"level":"warn","event":event,"subsystem":"standalone-chat-scratch"}).stringify()
         );
     }
+    pub(crate) fn shutdown_signal(&self) -> watch::Receiver<bool> {
+        self.stop.subscribe()
+    }
+
     pub fn stop(&self) {
         self.state.lock().unwrap().stopping = true;
         self.stop.send_replace(true);

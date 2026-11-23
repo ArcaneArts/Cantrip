@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
 import * as protocol from "../../packages/protocol/dist/index.js";
-import { ProjectTabLayoutRepository } from "../../cantrip_server/src/db/tab-layouts.ts";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
+import { ProjectTabLayoutRepository } from "../../tests/reference-node-server/src/db/tab-layouts.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
 import { projectLabel } from "./security-fixtures.mjs";
 
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 const { getTableColumns } = require("drizzle-orm");
@@ -25,12 +25,6 @@ const manifest = {
       definitionId: definition.id,
       resourceId: "resource",
     }),
-    profiles: Object.fromEntries(
-      protocol.workspaceLayoutProfileSchema.options.map((profile) => [
-        profile,
-        protocol.workspaceLayoutProfilePlacement(profile, definition.id),
-      ]),
-    ),
   })),
   queries: {},
 };
@@ -388,7 +382,6 @@ await prefix(
   [
     claim,
     ["builtin_create", []],
-    ["placement_profile", [["hybrid"]]],
     ["region_panes", []],
     ["insert_pane", []],
     ["insert_member", []],

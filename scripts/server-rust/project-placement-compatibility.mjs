@@ -391,9 +391,48 @@ try {
     },
     "worktree-unavailable",
   );
+  const mismatchedWorktree =
+    "UPDATE project_worktrees SET lifecycle_state='ready',worker_id='beta' WHERE id='github-alpha-main'";
+  report.constraintCases = [];
+  for (const [index, repo] of pair.entries()) {
+    const result = await repo.request({ op: "sql", sql: mismatchedWorktree });
+    assert.equal(
+      result.rejected,
+      true,
+      "current schema rejects worker mismatch",
+    );
+    // PostgreSQL drivers may format the same error as only "db error". Assert
+    // its exact SQLSTATE/message inside the database rather than its formatter.
+    await repo.seed(`DO $placement_constraint$
+      BEGIN
+        BEGIN
+          ${mismatchedWorktree};
+          RAISE EXCEPTION 'scope trigger unexpectedly accepted the mismatch';
+        EXCEPTION WHEN SQLSTATE 'P0001' THEN
+          IF SQLERRM <> 'worktree source and worker mismatch' THEN
+            RAISE;
+          END IF;
+        END;
+      END $placement_constraint$`);
+    report.constraintCases.push({
+      kind: index === 0 ? "node" : "rust",
+      ...result,
+      verifiedSqlState: "P0001",
+      verifiedMessage: "worktree source and worker mismatch",
+    });
+  }
+  // Simulate legacy corruption only in the disposable databases. Keep the
+  // current constraint enabled for every admission check and subsequent write.
   await seed(
-    "UPDATE project_worktrees SET lifecycle_state='ready',worker_id='beta' WHERE id='github-alpha-main'",
+    "ALTER TABLE project_worktrees DISABLE TRIGGER project_worktree_source_scope",
   );
+  try {
+    await seed(mismatchedWorktree);
+  } finally {
+    await seed(
+      "ALTER TABLE project_worktrees ENABLE TRIGGER project_worktree_source_scope",
+    );
+  }
   await check(
     "mismatched worktree/source worker",
     {

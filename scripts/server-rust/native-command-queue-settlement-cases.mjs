@@ -141,7 +141,20 @@ export async function runQueueSettlementCases({
     assert.equal(state.claims[0].goal_epoch, "goal-epoch");
     assert.equal(state.claims[0].awaiting_goal, true);
     assert.equal(state.prompts[0].state, "claimed");
-    assert.equal(state.queues[0].revision, 1);
+    // Dispatch publishes resumeAutonomy; the first applied setter publishes
+    // its newly durable native Goal epoch before Core requests a cycle.
+    assert.equal(state.queues[0].revision, 2);
+  }
+  const appliedGoalStates = states;
+  await settle(
+    "replayed Goal epoch does not publish another queue notice",
+    (i) => c.input(i, { goalEpoch: "goal-epoch" }),
+  );
+  states = await snapshot("replayed Goal epoch retains exact queue authority");
+  for (const [i, state] of states.entries()) {
+    assert.deepEqual(state.queues, appliedGoalStates[i].queues);
+    assert.deepEqual(state.claims, appliedGoalStates[i].claims);
+    assert.deepEqual(state.prompts, appliedGoalStates[i].prompts);
   }
   await unchanged(
     "captured Goal epoch cannot change",
@@ -188,7 +201,7 @@ export async function runQueueSettlementCases({
     assert.equal(state.claims[0].status, "consumed");
     assert.equal(state.claims[0].native_turn_id, "goal-child-turn");
     assert.equal(state.prompts[0].state, "consumed");
-    assert.equal(state.queues[0].revision, 2);
+    assert.equal(state.queues[0].revision, 3);
   }
   c = await start({ queueClaim, beforeAdmission: beforeAdmission() });
   await seed(

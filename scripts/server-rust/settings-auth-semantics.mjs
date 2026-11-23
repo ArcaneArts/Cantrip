@@ -1,4 +1,4 @@
-import { providerAccountAuthStatus } from "../../cantrip_server/src/models/provider-account-status.ts";
+import { providerAccountAuthStatus } from "../../tests/reference-node-server/src/models/provider-account-status.ts";
 
 export function accountAuthenticationSemantics(emit) {
   const base = {

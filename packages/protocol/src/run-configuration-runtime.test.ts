@@ -136,6 +136,57 @@ describe("Run configuration runtime protocol", () => {
     ).toThrow();
   });
 
+  it("accepts owned Linux source identities and captured runtime handles without guest paths", () => {
+    const selection = {
+      kind: "binding" as const,
+      bindingId: operationId,
+      bindingGeneration: operationId,
+      attachmentGeneration: operationId,
+      runtimeGeneration: operationId,
+    };
+    const request = {
+      operation: "start" as const,
+      operationId,
+      projectId,
+      configurationId,
+      targetWorktreeId: null,
+      osSource: selection,
+    };
+    expect(
+      runConfigurationRuntimeLifecycleRequestSchema.parse(request),
+    ).toEqual(request);
+    expect(() =>
+      runConfigurationRuntimeLifecycleRequestSchema.parse({
+        ...request,
+        osSource: { ...selection, guestPath: "/home/other" },
+      }),
+    ).toThrow();
+    expect(
+      runConfigurationRuntimeStatusQuerySchema.parse({
+        operationId,
+        projectId,
+        configurationId: null,
+        targetWorktreeId: null,
+        osSource: { kind: "runtime", runtimeId },
+      }).osSource,
+    ).toEqual({ kind: "runtime", runtimeId });
+    expect(
+      runConfigurationRuntimeOutputQuerySchema.parse({
+        operationId,
+        projectId,
+        configurationId,
+        worktreeId,
+        osSource: { kind: "runtime", runtimeId },
+      }).osSource,
+    ).toEqual({ kind: "runtime", runtimeId });
+    expect(() =>
+      runConfigurationRuntimeLifecycleRequestSchema.parse({
+        ...request,
+        osSource: { kind: "runtime", runtimeId, uid: 0 },
+      }),
+    ).toThrow();
+  });
+
   it("rejects malformed worker terminal observations", () => {
     const observation = {
       runtimeId,

@@ -12,6 +12,7 @@ use crate::{
 };
 use anyhow::{Context as _, Result};
 use axum::response::Response;
+use std::time::Duration;
 pub(super) async fn execute(
     service: &AuthService,
     ctx: &Context,
@@ -22,7 +23,7 @@ pub(super) async fn execute(
     if let Err(response) = parse("workerLinkTunnelGrantRequestSchema", body)? {
         return Ok(response);
     }
-    let Some(session) = authorized(service, ctx, session_id) else {
+    let Some(session) = authorized(service, ctx, session_id).await? else {
         return Ok(error(404, "WorkerLink session not found."));
     };
     let owner = &ctx
@@ -46,38 +47,63 @@ pub(super) async fn execute(
         let worker=auth["destination"]["workerId"].as_str().context("Tunnel destination worker")?;
         if !service.workers.bridge.is_connected(worker){return Ok(error(503,"Destination worker is offline."))}
         if !direct.bind_preparation(&lease,json!("tunnel"),auth["tunnelId"].clone()){return Ok(error(409,"The tunnel attachment changed while opening."))}
-        let grant=service.worker_links.local.issue_grant(json!({"absoluteExpiresAt":auth["expiresAt"],"attachmentId":auth["attachmentId"],"lanes":["stream"],"maxChannels":1,"operations":["stream:open","stream:read","stream:write","stream:half-close"],"resourceId":auth["tunnelId"],"resourceKind":"tunnel","sessionId":session["sessionId"]})).await?;
+        let listening=auth["source"]["kind"]=="worker-listener";
+        let guest=listening || (auth["destination"]["kind"]=="worker-adapter" && auth["destination"]["adapter"]=="cantrip-os");
+        let os_execution=repository.os_attachment_execution(&auth).await?;
+        let mut grant_input=json!({"absoluteExpiresAt":auth["expiresAt"],"attachmentId":auth["attachmentId"],"lanes":["stream"],"maxChannels":1,"operations":["stream:open","stream:read","stream:write","stream:half-close"],"resourceId":auth["tunnelId"],"resourceKind":"tunnel","sessionId":session["sessionId"]});
+        if guest {grant_input["operations"]=json!(["stream:open","stream:read","stream:write","stream:half-close",if listening {"stream:guest-listen"} else {"stream:guest-connect"}]);}
+        let grant=service.worker_links.authority.issue_grant(grant_input).await?;
         grant_id=Some(grant["binding"]["grantId"].as_str().context("Tunnel grant identity")?.to_owned());
+        let mut service_identity=auth["osServiceIdentity"].clone();
+        let mut ssh=Value::Null;
+        if let Some(execution)=&os_execution {
+            let mut command=json!({"type":"surface.tunnel.os-prepare","serverId":session["identity"]["serverId"],"projectId":auth["projectId"],"tunnelId":auth["tunnelId"],"attachmentId":auth["attachmentId"],"grantId":grant["binding"]["grantId"],"expiresAt":grant["binding"]["lease"]["absoluteExpiresAt"],"expectedIdentity":auth["osServiceIdentity"],"protectedRecord":auth["protectedRecord"],"osExecution":execution});
+            if listening {command["mode"]=json!("listen");}
+            let prepared=service.workers.commands.request(worker,command,Some(Duration::from_secs(30)),None).await?;
+            let prepared=crate::settings::parse_response("tunnelOsPrepareResultSchema",prepared.as_ref())?;
+            if !repository.pin_os_service_identity(&auth,prepared["identity"].as_str().context("OS service identity")?).await? {
+                return Err(crate::tunnels::ManagementError("The OS tunnel attachment was retired during preparation.").into());
+            }
+            service_identity=prepared["identity"].clone();
+            ssh=prepared["ssh"].clone();
+        }
         let current=repository.attachment(owner,attachment).await?;
-        if current.as_ref().is_none_or(|v|v["tunnelId"]!=auth["tunnelId"] || v["clientId"]!=auth["clientId"] || v["destination"]["workerId"]!=auth["destination"]["workerId"] || !direct.preparation_active(&lease)){
-            service.worker_links.local.revoke_grant(session_id,grant_id.as_deref().unwrap(),if current.is_some(){"resource-stopped"}else{"resource-deleted"}).await;grant_id=None;
+        let source_changed=if let Some(current)=&current {guest && (current["osServiceIdentity"]!=service_identity || repository.os_attachment_execution(current).await?!=os_execution)}else{guest};
+        if source_changed || current.as_ref().is_none_or(|v|v["tunnelId"]!=auth["tunnelId"] || v["clientId"]!=auth["clientId"] || v["destination"]!=auth["destination"] || v["source"]!=auth["source"] || v["osSource"]!=auth["osSource"] || v["protectedRecord"]["revision"]!=auth["protectedRecord"]["revision"] || v["protectedRecord"]["operationId"]!=auth["protectedRecord"]["operationId"] || v["secretExpiresAt"]!=auth["secretExpiresAt"] || !direct.preparation_active(&lease)){
+            service.worker_links.authority.revoke_grant(session_id,grant_id.as_deref().unwrap(),if current.is_some(){"resource-stopped"}else{"resource-deleted"}).await?;grant_id=None;
             return Ok(error(if current.is_some(){409}else{404},if current.is_some(){"The tunnel attachment changed while opening."}else{"Tunnel attachment not found."}));
         }
         let secret=chrono::DateTime::parse_from_rfc3339(auth["secretExpiresAt"].as_str().context("Tunnel credential generation")?)?.with_timezone(&chrono::Utc);
         if repository.activate_attachment(attachment,auth["clientId"].as_str().context("Tunnel client identity")?,Time::from_timestamp_millis(secret.timestamp_millis()).context("Tunnel date range")?).await?.is_none(){
-            service.worker_links.local.revoke_grant(session_id,grant_id.as_deref().unwrap(),"resource-stopped").await;grant_id=None;
+            service.worker_links.authority.revoke_grant(session_id,grant_id.as_deref().unwrap(),"resource-stopped").await?;grant_id=None;
             return Ok(error(409,"The tunnel attachment could not be activated."));
         }
-        let target_kind=if auth["destination"]["kind"]=="worker-tcp"{"tcp"}else if auth["destination"]["adapter"]=="project-share"{"project-share"}else{"code"};
+        let target_kind=if auth["destination"]["kind"]=="worker-tcp" || guest {"tcp"}else if auth["destination"]["adapter"]=="project-share"{"project-share"}else{"code"};
         let target=json!({"kind":"protected-tunnel","targetKind":target_kind,"recordId":auth["tunnelId"],"protectedRecord":auth["protectedRecord"]});
         let route=json!({"tunnelId":auth["tunnelId"],"attachmentId":auth["attachmentId"],"sourceEndpointId":format!("worker-link-client:{}",grant_id.as_deref().unwrap()),"destinationEndpointId":format!("worker-link-worker:{worker}"),"target":target});
         crate::tunnels::publish(&service.live,&json!({"attachmentId":auth["attachmentId"],"ownerId":auth["ownerId"],"projectId":auth["projectId"],"tunnelId":auth["tunnelId"]}));
-        output(201,"workerLinkTunnelGrantSchema",&json!({"grant":grant,"route":route}))
+        let mut result=json!({"grant":grant,"route":route});
+        if !ssh.is_null(){result["ssh"]=ssh;}
+        output(201,"workerLinkTunnelGrantSchema",&result)
     }.await;
     // Dropping this lease releases all early-return paths as the Source finally.
     let response = match result {
         Ok(response) => response,
         Err(cause) => {
             if let Some(id) = grant_id {
-                service
+                let _ = service
                     .worker_links
-                    .local
+                    .authority
                     .revoke_grant(session_id, &id, "resource-stopped")
                     .await;
             }
-            cause
-                .downcast_ref::<Error>()
-                .map_or_else(|| request_failure(&cause), failure)
+            if let Some(management) = cause.downcast_ref::<crate::tunnels::ManagementError>() {
+                error(409, management.0)
+            } else {
+                cause
+                    .downcast_ref::<Error>()
+                    .map_or_else(|| request_failure(&cause), failure)
+            }
         }
     };
     drop(lease);

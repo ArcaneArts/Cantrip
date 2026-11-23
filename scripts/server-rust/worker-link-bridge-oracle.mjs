@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.ts";
+import { WorkerBridge } from "../../tests/reference-node-server/src/workers/bridge.ts";
 import { createWorkerLinkFrame } from "../../packages/protocol/dist/worker-link.js";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
 class Socket extends EventEmitter {

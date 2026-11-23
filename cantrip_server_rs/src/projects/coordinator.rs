@@ -70,6 +70,20 @@ impl Coordinator {
         notify: bool,
         operation: impl FnOnce() -> BoxFuture<'static, Result<T>> + Send + 'static,
     ) -> BoxFuture<'static, Result<T>> {
+        // HTTP work remains admitted even after its response is dropped.
+        self.own(self.serialize_background(owner, project, notify, operation))
+    }
+
+    /// Use the same FIFO gate for an already-owned background consumer. Its
+    /// service drains after closing the worker bridge; counting it as an HTTP
+    /// admission would deadlock that earlier shutdown stage on a held command.
+    pub(crate) fn serialize_background<T: Send + 'static>(
+        self: &Arc<Self>,
+        owner: &str,
+        project: &str,
+        notify: bool,
+        operation: impl FnOnce() -> BoxFuture<'static, Result<T>> + Send + 'static,
+    ) -> BoxFuture<'static, Result<T>> {
         let mut gates = self.gates.lock().unwrap();
         let gate = gates
             .get(project)
@@ -96,9 +110,7 @@ impl Coordinator {
         drop(gates);
         let coordinator = self.clone();
         let owner = owner.to_owned();
-        // Source promise chains keep running when the HTTP caller goes away.
-        // Detach execution from the response future for the same guarantee.
-        self.own(async move {
+        Box::pin(async move {
             // Release the project gate before signaling that service work drained.
             let mut reservation = reservation;
             if reservation.lock.is_none() {

@@ -8,7 +8,7 @@ import {
   tunnelAttachmentReadySchema,
 } from "../../packages/protocol/dist/index.js";
 const WebSocket = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
 export async function until(read, name, timeout = 15000) {
   const end = Date.now() + timeout;

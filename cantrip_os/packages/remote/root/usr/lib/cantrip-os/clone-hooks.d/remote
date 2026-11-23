@@ -1,0 +1,11 @@
+#!/usr/bin/python3
+"""Keep workspace data while giving a copied OS fresh service host keys."""
+import json
+from pathlib import Path
+
+config = json.loads(Path('/etc/cantrip-os/remote.json').read_text())
+state = Path(config['state_dir'])
+if not state.is_absolute():
+    raise ValueError('Remote state_dir must be absolute')
+for name in ('ssh_host_ed25519_key', 'ssh_host_ed25519_key.pub'):
+    (state / name).unlink(missing_ok=True)

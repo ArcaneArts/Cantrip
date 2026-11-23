@@ -26,6 +26,7 @@ fn binding() -> SessionBinding {
 
 fn attach(binding: &SessionBinding, target: &str, generation: u64) -> Operation {
     Operation::TargetAttach {
+        allow_cantrip_app: true,
         binding: binding.clone(),
         target_id: target.into(),
         target_generation: generation,
@@ -121,7 +122,13 @@ fn move_cursor_target<B: CaptureBackend>(
 fn fake_monitor_and_window_return_decodable_png_with_matching_digest_and_metadata() {
     let mut service = CuaService::new(FakeBackend);
     let owner = binding();
-    let inventory = apply(&mut service, Operation::TargetsList { after: None });
+    let inventory = apply(
+        &mut service,
+        Operation::TargetsList {
+            after: None,
+            allow_cantrip_app: true,
+        },
+    );
     let targets: Vec<Target> = serde_json::from_value(inventory.data["targets"].clone()).unwrap();
     assert_eq!(targets.len(), 2);
     assert!(
@@ -182,7 +189,13 @@ fn unavailable_native_backend_reports_unsupported_without_creating_fake_targets(
     assert_eq!(capabilities["nativeInput"], false);
     assert_eq!(capabilities["javascript"], false);
     assert_eq!(
-        error_code(&mut service, Operation::TargetsList { after: None }),
+        error_code(
+            &mut service,
+            Operation::TargetsList {
+                after: None,
+                allow_cantrip_app: true
+            }
+        ),
         ErrorCode::Unsupported
     );
     assert_eq!(
@@ -543,10 +556,22 @@ fn bounded_inventory_discloses_truncation_without_changing_complete_inventory() 
     let backend = ControlledBackend::new();
     let control = backend.clone();
     let mut service = CuaService::new(backend);
-    let complete = apply(&mut service, Operation::TargetsList { after: None });
+    let complete = apply(
+        &mut service,
+        Operation::TargetsList {
+            after: None,
+            allow_cantrip_app: true,
+        },
+    );
     assert!(complete.data.get("truncated").is_none());
     control.0.lock().unwrap().inventory_truncated = true;
-    let limited = apply(&mut service, Operation::TargetsList { after: None });
+    let limited = apply(
+        &mut service,
+        Operation::TargetsList {
+            after: None,
+            allow_cantrip_app: true,
+        },
+    );
     assert_eq!(limited.data["truncated"], true);
     assert_eq!(limited.data["targets"], complete.data["targets"]);
 }
@@ -674,11 +699,18 @@ fn attach_resolves_a_discovered_target_beyond_the_first_public_page() {
         })
         .collect();
     let mut service = CuaService::new(ManyTargets(targets));
-    let first = apply(&mut service, Operation::TargetsList { after: None });
+    let first = apply(
+        &mut service,
+        Operation::TargetsList {
+            after: None,
+            allow_cantrip_app: true,
+        },
+    );
     let after = first.data["nextCursor"].as_str().unwrap();
     let second = apply(
         &mut service,
         Operation::TargetsList {
+            allow_cantrip_app: true,
             after: Some(after.into()),
         },
     );

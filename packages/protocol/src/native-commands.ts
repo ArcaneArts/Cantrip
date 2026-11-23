@@ -8,10 +8,35 @@ import { planModeSchema } from "./chat-runtime.js";
 import { worktreePolicySchema } from "./worktrees.js";
 import { cuaAgentAuthoritySchema } from "./computer-use-agent.js";
 import { z } from "zod";
+import { nativeGoalRecoverySourceSchema } from "./native-goal-recovery.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
+import {
+  nativeSuspensionEvidenceSchema,
+  nativeSuspensionRecordSchema,
+  nativeTurnSuspensionSchema,
+} from "./native-suspensions.js";
 
 const id = z.string().min(1).max(255);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
+const nativeOperationIdentitySchema = z
+  .object({
+    operationId: id,
+    operationGeneration: id,
+  })
+  .strict();
+/** Identity of an actual worker-observed native Goal admission, not a prompt. */
+export const nativeAutonomousAttemptSchema = z
+  .object({
+    runnerGeneration: id,
+    attemptId: id,
+    turnId: id,
+    trigger: z.literal("goal"),
+    goalEpoch: id.optional(),
+  })
+  .strict();
+export type NativeAutonomousAttempt = z.infer<
+  typeof nativeAutonomousAttemptSchema
+>;
 export const nativeCommandSessionSchema = z
   .object({
     chatId: id,
@@ -35,9 +60,30 @@ export const nativeCommandIntentSchema = z
     settingsBindingId: id.optional(),
     resumeAutonomy: z.boolean().optional(),
     paused: z.boolean().optional(),
+    durableSuspension: z.literal(true).optional(),
+    expectedSuspensionControlId: z.uuid().optional(),
+    /** Stamped only by the dedicated suspension observer admission. */
+    restoredSuspension: z
+      .object({
+        action: z.enum(["resume", "stop"]).optional(),
+        controlId: z.uuid(),
+        checkpoint: nativeTurnSuspensionSchema,
+        source: nativeOperationIdentitySchema,
+      })
+      .strict()
+      .optional(),
     goalStatus: z.enum(["active", "paused"]).optional(),
     settingKeys: z.array(z.string().min(1).max(120)).max(64).default([]),
     expectedTurnId: id.nullable().default(null),
+    autonomousAttempt: nativeAutonomousAttemptSchema.optional(),
+    workerGeneration: z.uuid().optional(),
+    goalRecovery: nativeGoalRecoverySourceSchema.optional(),
+    goalRecoveryOrderEpoch: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional(),
     permissionProfileId: id.optional(),
     permissionTransition: permissionTransitionSchema.optional(),
     configTarget: z.literal("account-defaults").optional(),
@@ -59,6 +105,14 @@ export const nativeCommandAdmissionSchema = z
       .optional(),
     queueClaim: z
       .object({ id, promptRevision: z.number().int().nonnegative() })
+      .strict()
+      .optional(),
+    /** Direct terminal input is retained atomically before waiting for capacity. */
+    retainedInput: z
+      .object({
+        prompt: queuedPromptOpaqueContentSchema,
+        attachments: z.array(chatAttachmentOpaqueSummarySchema),
+      })
       .strict()
       .optional(),
     origin: z.enum(["gui", "terminal", "autonomous"]),
@@ -128,6 +182,7 @@ export const nativeCommandReceiptSchema = z
 export const nativeCommandDispatchSchema = z
   .object({
     workerId: id,
+    workerGeneration: z.uuid().optional(),
     operationId: id,
     operationGeneration: id,
     payloadDigest: digest,
@@ -174,6 +229,9 @@ export type NativeCommandContinuation = z.infer<
 export const nativeCommandSettlementSchema = z
   .object({
     workerId: id,
+    workerGeneration: z.uuid().optional(),
+    durableSuspension: z.literal(true).optional(),
+    suspensionEvidence: nativeSuspensionEvidenceSchema.optional(),
     operationId: id,
     operationGeneration: id,
     status: z.enum(["applied", "rejected", "uncertain"]),
@@ -221,7 +279,13 @@ export const nativeCommandSettlementSchema = z
     executionComplete: z.boolean().default(false),
     executionStatus: z.enum(["idle", "failed"]).optional(),
     reconciliation: z
-      .object({ nativeTurnId: id, runtimeGeneration: id })
+      .object({
+        nativeTurnId: id,
+        runtimeGeneration: id,
+        terminalStatus: z
+          .enum(["completed", "failed", "interrupted"])
+          .optional(),
+      })
       .strict()
       .optional(),
   })
@@ -288,6 +352,32 @@ export const nativeCommandAdmissionResultSchema = z
     replayed: z.boolean().optional(),
   })
   .strict();
+/** Fresh observer admission for an explicitly requested, still-held native
+ * continuation. It contains no input replay, worker paths or old grants. */
+export const nativeSuspensionExecutionAdmissionSchema = z
+  .object({
+    action: z.enum(["resume", "stop"]).optional(),
+    workerId: id,
+    workerGeneration: z.uuid(),
+    operationId: id,
+    controlId: z.uuid(),
+    checkpoint: nativeSuspensionEvidenceSchema,
+    session: nativeCommandSessionSchema,
+    payloadDigest: digest,
+    protectedPayload: encryptedPayloadEnvelopeSchema,
+  })
+  .strict();
+export const nativeSuspensionExecutionAdmissionResultSchema =
+  nativeCommandAdmissionResultSchema
+    .extend({
+      suspension: nativeSuspensionRecordSchema,
+      source: nativeOperationIdentitySchema,
+      logicalRoot: nativeOperationIdentitySchema.nullable(),
+    })
+    .strict();
+export type NativeSuspensionExecutionAdmission = z.infer<
+  typeof nativeSuspensionExecutionAdmissionSchema
+>;
 export const nativeCommandSettlementResultSchema = z
   .object({ receipt: nativeCommandReceiptSchema })
   .strict();

@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "target": "darwin-arm64",
+  "databaseMode": "postgres",
+  "redisVersion": "8.10.3",
+  "rustPackageSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "rustServerSha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3",
+  "harnessBaseCommit": "9fa07b0cebbf1d0c5b5527f13130911236b479ae",
+  "workerVersion": "1.1.2976",
+  "scope": "Local macOS ARM64 with the existing browser and packaged full Node worker. Each two-peer pairing uses isolated external PostgreSQL and a local Redis process. The combined run stops and restarts Redis, verifies shared readiness and metrics, and observes the actual worker log request before checking replay, disconnect and lease release.",
+  "firstCombinedAttempt": {
+    "result": "failed",
+    "failure": "Node/Node returned HTTP 503 Worker is unavailable on the first log read after Redis readiness.",
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-operations-3059.efmCNPlR/postgres.json",
+      "bytes": 361818,
+      "sha256": "7f5d9f4b6d96a895d97f426a0a2663522801e65c9dbfc2ebe2a5618dbd6fbc31"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-operations-3059.efmCNPlR/postgres.log",
+      "bytes": 3185,
+      "sha256": "8c9f250e970112668c7c080ada0021af0001cea70689a05c97114b265714683b"
+    }
+  },
+  "independentControls": {
+    "operational-status": {
+      "exitCode": 0,
+      "stepsByPair": {
+        "node/node": 12,
+        "node/rust": 12,
+        "rust/node": 12,
+        "rust/rust": 12
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-isolation-3059.k7jLIVea/operational-status.json",
+        "bytes": 2096026,
+        "sha256": "6692cf3ee1619fa1588958f59b173936fe2937bf942bb6eb440249761b9f569c"
+      }
+    },
+    "worker-logs": {
+      "exitCode": 0,
+      "stepsByPair": {
+        "node/node": 13,
+        "node/rust": 13,
+        "rust/node": 13,
+        "rust/rust": 13
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-isolation-3059.k7jLIVea/worker-logs.json",
+        "bytes": 1918196,
+        "sha256": "ec69759c078c54a0bd0cedeb68b3e74116fa6a7aa4219280a1be40c51cebaeda"
+      }
+    }
+  },
+  "combinedRun": {
+    "exitCode": 0,
+    "logReadRecoveryBudgetMs": 30000,
+    "pairs": [
+      {
+        "pair": "node/node",
+        "steps": 16,
+        "readinessDuringRedisOutage": [503, 503],
+        "metricsDuringRedisOutage": [200, 200],
+        "logReadStatuses": [503, 503, 503, 200],
+        "firstSuccessfulLogReadMs": 331.5,
+        "recoveredWorkerPid": 73598,
+        "workerExitCodes": [0, 0, 0],
+        "serverGenerationExitCodes": [0, 0, 0, 0],
+        "logStreamDisconnectCodes": [1013, 1013]
+      },
+      {
+        "pair": "node/rust",
+        "steps": 16,
+        "readinessDuringRedisOutage": [503, 503],
+        "metricsDuringRedisOutage": [200, 200],
+        "logReadStatuses": [503, 503, 503, 503, 503, 503, 503, 503, 503, 200],
+        "firstSuccessfulLogReadMs": 952.2,
+        "recoveredWorkerPid": 74678,
+        "workerExitCodes": [0, 0, 0],
+        "serverGenerationExitCodes": [0, 0, 0, 0],
+        "logStreamDisconnectCodes": [1013, 1013]
+      },
+      {
+        "pair": "rust/node",
+        "steps": 16,
+        "readinessDuringRedisOutage": [503, 503],
+        "metricsDuringRedisOutage": [200, 200],
+        "logReadStatuses": [503, 503, 503, 503, 503, 503, 503, 503, 200],
+        "firstSuccessfulLogReadMs": 840.4,
+        "recoveredWorkerPid": 75799,
+        "workerExitCodes": [0, 0, 0],
+        "serverGenerationExitCodes": [0, 0, 0, 0],
+        "logStreamDisconnectCodes": [1013, 1013]
+      },
+      {
+        "pair": "rust/rust",
+        "steps": 16,
+        "readinessDuringRedisOutage": [503, 503],
+        "metricsDuringRedisOutage": [200, 200],
+        "logReadStatuses": [503, 503, 503, 503, 503, 503, 503, 503, 200],
+        "firstSuccessfulLogReadMs": 864.3,
+        "recoveredWorkerPid": 76782,
+        "workerExitCodes": [0, 0, 0],
+        "serverGenerationExitCodes": [0, 0, 0, 0],
+        "logStreamDisconnectCodes": [1013, 1013]
+      }
+    ],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-log-recovery-3059.YLONr54N/postgres.json",
+      "bytes": 2900985,
+      "sha256": "5121886fad69b480e3f777b9797f650fd09ebcdaa54ef1a6ff3b6efb51bbdc0f"
+    },
+    "harnessPatch": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-log-recovery-3059.YLONr54N/harness.patch",
+      "bytes": 3922,
+      "sha256": "ab7fc70892220c72af5163b283cfa7072fac8233e482e16a01e5df5e228541b8"
+    },
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/shared-log-recovery-3059.YLONr54N/inputs.sha256",
+      "bytes": 1449,
+      "sha256": "8089c10a1ccf6001f2f0527113e9f4419247452574217877c428a124199b1b5a"
+    }
+  },
+  "remaining": "Shared recovery acceptance on other packaged platforms and over longer dependency outages."
+}

@@ -1,0 +1,364 @@
+diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
+index f455ac4..47c1f2c 100644
+--- a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
++++ b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
+@@ -1089,10 +1089,12 @@ pub(super) async fn handle_pending_thread_resume_request(
+         .loaded_status_for_thread(&thread.id)
+         .await;
+ 
+-    set_thread_status_and_interrupt_stale_turns(
++    let suspended = conversation.has_live_durable_suspension();
++    set_thread_status_preserving_suspension(
+         &mut thread,
+         thread_status.clone(),
+         has_live_in_progress_turn,
++        suspended,
+     );
+     let active_turn = if pending.initial_turns_page.is_some() {
+         active_turn.or_else(|| active_turn_metadata.map(Turn::from))
+@@ -1118,14 +1120,14 @@ pub(super) async fn handle_pending_thread_resume_request(
+         super::thread_processor::normalize_thread_turns_status(
+             &mut page.data,
+             thread_status,
+-            has_live_in_progress_turn,
++            has_live_in_progress_turn || suspended,
+         );
+         Some(page)
+     } else if let Some(params) = pending.initial_turns_page.as_ref() {
+         match super::thread_processor::build_thread_resume_initial_turns_page(
+             &pending.history_items,
+             thread.status.clone(),
+-            has_live_in_progress_turn,
++            has_live_in_progress_turn || suspended,
+             active_turn,
+             params,
+         ) {
+@@ -1393,3 +1395,22 @@ pub(super) fn set_thread_status_and_interrupt_stale_turns(
+     }
+     thread.status = status;
+ }
++
++pub(super) fn set_thread_status_preserving_suspension(
++    thread: &mut Thread,
++    loaded_status: ThreadStatus,
++    has_live_in_progress_turn: bool,
++    suspended: bool,
++) {
++    if suspended {
++        // An unfinished held turn is not an interrupted historical turn. Keep
++        // its actual stored lifecycle without announcing admitted execution.
++        thread.status = loaded_status;
++    } else {
++        set_thread_status_and_interrupt_stale_turns(
++            thread,
++            loaded_status,
++            has_live_in_progress_turn,
++        );
++    }
++}
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index 27b28b0..7fdfdf5 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -15,6 +15,7 @@ use super::thread_enrichment::enrich_loaded_threads;
+ use super::thread_fork_goal::inherit_thread_goal_snapshot;
+ use super::thread_input::can_accept_direct_input;
+ use super::thread_input::ensure_direct_input_allowed;
++use super::thread_lifecycle::set_thread_status_preserving_suspension;
+ use super::thread_lifecycle::thread_closing_for_resume;
+ use super::*;
+ use crate::connection_rpc_gate::ConnectionRpcGate;
+@@ -3225,10 +3226,13 @@ impl ThreadRequestProcessor {
+                 .thread_watch_manager
+                 .loaded_status_for_thread(&thread.id)
+                 .await;
+-            set_thread_status_and_interrupt_stale_turns(
++            set_thread_status_preserving_suspension(
+                 &mut thread,
+                 status,
+                 has_live_in_progress_turn,
++                loaded
++                    .as_ref()
++                    .is_some_and(|thread| thread.has_live_durable_suspension()),
+             );
+             let current_turn_id = if let Some(loaded) = loaded.as_ref() {
+                 loaded.active_turn_id().await
+@@ -3347,10 +3351,13 @@ impl ThreadRequestProcessor {
+             .loaded_status_for_thread(&thread.id)
+             .await;
+ 
+-        set_thread_status_and_interrupt_stale_turns(
++        set_thread_status_preserving_suspension(
+             &mut thread,
+             thread_status,
+             has_live_in_progress_turn,
++            loaded_thread
++                .as_ref()
++                .is_some_and(|thread| thread.has_live_durable_suspension()),
+         );
+         Ok(thread)
+     }
+@@ -3551,7 +3558,10 @@ impl ThreadRequestProcessor {
+         // separately.
+         let loaded_thread = self.thread_manager.get_thread(thread_uuid).await.ok();
+         let has_live_running_thread = match loaded_thread.as_ref() {
+-            Some(thread) => matches!(thread.agent_status().await, AgentStatus::Running),
++            Some(thread) => {
++                matches!(thread.agent_status().await, AgentStatus::Running)
++                    || thread.has_live_durable_suspension()
++            }
+             None => false,
+         };
+         let active_turn = if loaded_thread.is_some() {
+@@ -3693,7 +3703,10 @@ impl ThreadRequestProcessor {
+         }
+         let loaded_thread = self.thread_manager.get_thread(thread_id).await.ok();
+         let has_live_running_thread = match loaded_thread.as_ref() {
+-            Some(thread) => matches!(thread.agent_status().await, AgentStatus::Running),
++            Some(thread) => {
++                matches!(thread.agent_status().await, AgentStatus::Running)
++                    || thread.has_live_durable_suspension()
++            }
+             None => false,
+         };
+         normalize_thread_turns_status(
+@@ -4726,10 +4739,11 @@ impl ThreadRequestProcessor {
+                     .loaded_status_for_thread(&thread.id)
+                     .await;
+ 
+-                set_thread_status_and_interrupt_stale_turns(
++                set_thread_status_preserving_suspension(
+                     &mut thread,
+                     thread_status,
+                     /*has_live_in_progress_turn*/ false,
++                    codex_thread.has_live_durable_suspension(),
+                 );
+                 let config_snapshot = codex_thread.config_snapshot().await;
+                 let (turns_backwards_cursor, items_backwards_cursor) =
+@@ -4761,7 +4775,8 @@ impl ThreadRequestProcessor {
+                         build_thread_resume_initial_turns_page(
+                             response_history.get_rollout_items(),
+                             thread.status.clone(),
+-                            /*has_live_running_thread*/ false,
++                            /*has_live_running_thread*/
++                            codex_thread.has_live_durable_suspension(),
+                             /*active_turn*/ None,
+                             params,
+                         )
+diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+index 21652f7..2297761 100644
+--- a/codex-rs/app-server/src/request_processors/turn_processor.rs
++++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
+@@ -1814,6 +1814,20 @@ impl TurnRequestProcessor {
+ 
+         let (thread_uuid, thread) = self.load_thread(&thread_id).await?;
+ 
++        if !is_startup_interrupt && thread.has_live_durable_suspension() {
++            // A cold suspension has no running task or fresh TurnStarted event.
++            // Stop still owns the original native turn and must commit its
++            // terminal history before replying, including unreadable checkpoints.
++            thread
++                .discard_durable_suspension(&turn_id)
++                .await
++                .map_err(|error| invalid_request(error.to_string()))?;
++            self.outgoing
++                .record_request_turn_id(request_id, &turn_id)
++                .await;
++            return Ok(Some(TurnInterruptResponse {}));
++        }
++
+         // Record turn interrupts so we can reply when TurnAborted arrives. Startup
+         // interrupts do not have a turn and are acknowledged after submission.
+         if !is_startup_interrupt {
+diff --git a/codex-rs/core/src/client_tests.rs b/codex-rs/core/src/client_tests.rs
+index 4f60892..dc5fce6 100644
+--- a/codex-rs/core/src/client_tests.rs
++++ b/codex-rs/core/src/client_tests.rs
+@@ -2288,6 +2288,7 @@ async fn intercepted_output_reaches_trace_and_websocket_bookkeeping() -> anyhow:
+         test_model_provider(),
+         vec![Box::new(ReplaceOutput)],
+         Some(last_response_tx),
++        /*inference*/ None,
+     );
+     let mut delivered = Vec::new();
+     while let Some(event) = stream.next().await {
+diff --git a/codex-rs/core/src/session/durable_suspension.rs b/codex-rs/core/src/session/durable_suspension.rs
+index 0c75331..40ac925 100644
+--- a/codex-rs/core/src/session/durable_suspension.rs
++++ b/codex-rs/core/src/session/durable_suspension.rs
+@@ -220,6 +220,43 @@ pub(crate) fn coordinator(session: &Session) -> Arc<DurableSuspension> {
+         .get_or_init(DurableSuspension::default)
+ }
+ 
++/// Runtime teardown is not Stop. A frozen continuation keeps its native history
++/// unfinished while the process-local task and execution authority are released.
++pub(super) async fn preserve_for_shutdown(session: &Arc<Session>) -> bool {
++    let Some(owner) = session
++        .services
++        .thread_extension_data
++        .get::<DurableSuspension>()
++    else {
++        return false;
++    };
++    let turn = {
++        let mut active = session.active_turn.lock().await;
++        let _control = owner.control();
++        if !owner.frozen.load(Ordering::Acquire)
++            || active.as_ref().is_some_and(|turn| {
++                turn.finishing.is_some()
++                    || turn
++                        .task
++                        .as_ref()
++                        .is_some_and(|task| task.kind != crate::state::TaskKind::Regular)
++            })
++        {
++            return false;
++        }
++        // Invalidate late readiness/grants before removing their task. Keep the
++        // stored payload and explicit hold, including an unreadable cold hold.
++        owner.epoch.fetch_add(1, Ordering::AcqRel);
++        owner.requested.store(false, Ordering::Release);
++        owner.cancel_live_resume("native runtime is shutting down while suspended");
++        active.take()
++    };
++    if let Some(turn) = turn {
++        let _ = super::turn_suspension::stop_detached_turn(session, turn).await;
++    }
++    true
++}
++
+ /// Run while a stored thread is being attached, before startup prewarm or
+ /// autonomous input admission. Loading a suspended thread never advances it.
+ pub(super) async fn restore_gate_on_load(session: &Session) {
+diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
+index 3d73d73..3682823 100644
+--- a/codex-rs/core/src/session/handlers.rs
++++ b/codex-rs/core/src/session/handlers.rs
+@@ -316,6 +316,7 @@ pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
+         startup_prewarm.abort().await;
+     }
+     let _ = sess.conversation.shutdown().await;
++    let suspended = super::durable_suspension::preserve_for_shutdown(sess).await;
+     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
+     super::async_compaction::shutdown(sess).await;
+     let shell_snapshot_prewarm = sess.state.lock().await.shell_snapshot_prewarm.take();
+@@ -350,7 +351,9 @@ pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
+ 
+     sess.drain_code_mode_messages().await;
+ 
+-    crate::hook_runtime::run_session_end_hooks(sess).await;
++    if !suspended {
++        crate::hook_runtime::run_session_end_hooks(sess).await;
++    }
+     emit_thread_stop_lifecycle(sess).await;
+ }
+ 
+diff --git a/codex-rs/core/src/session/turn_suspension.rs b/codex-rs/core/src/session/turn_suspension.rs
+index 324099b..6a23178 100644
+--- a/codex-rs/core/src/session/turn_suspension.rs
++++ b/codex-rs/core/src/session/turn_suspension.rs
+@@ -1,5 +1,6 @@
+ use super::handlers;
+ use super::session::Session;
++use crate::state::ActiveTurn;
+ use crate::state::TaskKind;
+ use codex_protocol::error::CodexErr;
+ use codex_protocol::error::Result as CodexResult;
+@@ -34,7 +35,7 @@ pub(super) async fn suspend_turn_and_shutdown(
+ 
+     // The flush can yield while the active turn completes or changes. Recheck its
+     // kind under the same lock used to remove it.
+-    let mut turn = {
++    let turn = {
+         let mut active = session.active_turn.lock().await;
+         let Some(active_turn) = active.as_ref() else {
+             return Ok(SuspendTurnOutcome::NotActive);
+@@ -50,39 +51,9 @@ pub(super) async fn suspend_turn_and_shutdown(
+         })?
+     };
+ 
+-    let task = turn.task.take().ok_or_else(|| {
++    let turn_id = stop_detached_turn(session, turn).await.ok_or_else(|| {
+         CodexErr::Fatal("accepted root turn suspension had no running task".to_string())
+     })?;
+-    let turn_id = task.turn_context.sub_id.clone();
+-    // Normal shutdown records a terminal turn event, preventing another worker from
+-    // recovering this turn under its original ID. Cancel the task without that event.
+-    task.cancellation_token.cancel();
+-    task.turn_context
+-        .turn_metadata_state
+-        .cancel_git_enrichment_task();
+-    let mut task_handle = task.handle.detach();
+-    match tokio::time::timeout(
+-        Duration::from_millis(crate::tasks::GRACEFULL_INTERRUPTION_TIMEOUT_MS),
+-        &mut task_handle,
+-    )
+-    .await
+-    {
+-        Ok(Ok(())) => {}
+-        Ok(Err(error)) => {
+-            warn!(thread_id = %session.thread_id, %error, "suspended turn task exited abnormally");
+-        }
+-        Err(_) => {
+-            warn!(
+-                thread_id = %session.thread_id,
+-                "suspended turn task did not stop gracefully; aborting it"
+-            );
+-            task_handle.abort();
+-            let _ = task_handle.await;
+-        }
+-    }
+-    // Pending accepted input and interactive waiters live only in this process. Handoff
+-    // intentionally drops that state; persisting or replaying it needs a separate protocol.
+-    session.input_queue.clear_pending(&turn).await;
+ 
+     // The root task has stopped without a terminal event. Fence new starts and stop every
+     // other local session, even if the suspension caller disconnects during cleanup.
+@@ -109,3 +80,47 @@ pub(super) async fn suspend_turn_and_shutdown(
+         .await;
+     Ok(SuspendTurnOutcome::Suspended { turn_id })
+ }
++
++/// Stop an already detached task without turn-terminal callbacks. Durable callers
++/// retain accepted input in their committed continuation; ordinary handoff keeps
++/// its existing best-effort input policy.
++pub(super) async fn stop_detached_turn(
++    session: &Arc<Session>,
++    mut turn: ActiveTurn,
++) -> Option<String> {
++    // Releasing the task's security lease wakes queued work in this thread.
++    // Both callers are tearing down the runtime; fence starts before release.
++    session.state.lock().await.shutting_down = true;
++    let turn_id = if let Some(task) = turn.task.take() {
++        let context = Arc::clone(&task.turn_context);
++        let turn_id = context.sub_id.clone();
++        task.cancellation_token.cancel();
++        context.turn_metadata_state.cancel_git_enrichment_task();
++        let mut task_handle = task.handle.detach();
++        match tokio::time::timeout(
++            Duration::from_millis(crate::tasks::GRACEFULL_INTERRUPTION_TIMEOUT_MS),
++            &mut task_handle,
++        )
++        .await
++        {
++            Ok(Ok(())) => {}
++            Ok(Err(error)) => {
++                warn!(thread_id = %session.thread_id, %error, "suspended turn task exited abnormally");
++            }
++            Err(_) => {
++                warn!(
++                    thread_id = %session.thread_id,
++                    "suspended turn task did not stop gracefully; aborting it"
++                );
++                task_handle.abort();
++                let _ = task_handle.await;
++            }
++        }
++        session.finish_security_execution(&context).await;
++        Some(turn_id)
++    } else {
++        None
++    };
++    session.input_queue.clear_pending(&turn).await;
++    turn_id
++}

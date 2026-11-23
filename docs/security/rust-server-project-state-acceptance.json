@@ -1,0 +1,624 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "e097e25cb6aa9da250c47e0929e10b695668f490",
+  "completeReplacement": false,
+  "scope": "Local macOS arm64 current repositories and real HTTP. Controlled worker replies, retained exited HTTP captures; repository tests also cover active states. No new full-worker/UI, Windows/Linux or production Winterhold acceptance.",
+  "reports": [
+    {
+      "report": "qa/matrix-v1/pglite/repository.json",
+      "sha256": "2e17961da067dbe7b2c8ba10e953b9824af3f689bf24e9640535252cc92b95cd",
+      "suite": "repository",
+      "mode": "pglite",
+      "pairedCases": 82,
+      "retainedPeers": 2,
+      "retainedDomains": [
+        "browsers",
+        "chats",
+        "code_tabs",
+        "explorers",
+        "model_providers",
+        "project_github_conversion_jobs",
+        "project_replica_jobs",
+        "project_sources",
+        "project_views",
+        "project_workspace_memberships",
+        "project_workspace_storage_profiles",
+        "project_workspaces",
+        "project_worktrees",
+        "projects",
+        "remote_surfaces",
+        "run_configuration_runtime_operations",
+        "run_configuration_runtimes",
+        "run_configuration_secrets",
+        "settings",
+        "skill_audiences",
+        "terminals"
+      ]
+    },
+    {
+      "report": "qa/matrix-v1/bundled-postgres/repository.json",
+      "sha256": "7bb6f345ed23dc1a46a6d9bdb1cf8401baab1be45bd9ac80911946ca268ee9a9",
+      "suite": "repository",
+      "mode": "bundled-postgres",
+      "pairedCases": 82,
+      "retainedPeers": 2,
+      "retainedDomains": [
+        "browsers",
+        "chats",
+        "code_tabs",
+        "explorers",
+        "model_providers",
+        "project_github_conversion_jobs",
+        "project_replica_jobs",
+        "project_sources",
+        "project_views",
+        "project_workspace_memberships",
+        "project_workspace_storage_profiles",
+        "project_workspaces",
+        "project_worktrees",
+        "projects",
+        "remote_surfaces",
+        "run_configuration_runtime_operations",
+        "run_configuration_runtimes",
+        "run_configuration_secrets",
+        "settings",
+        "skill_audiences",
+        "terminals"
+      ]
+    },
+    {
+      "report": "qa/matrix-v1/postgres/repository.json",
+      "sha256": "acf662a15b3cf54043b6698d50e2478fcc43b4a84eb72ceee5d93a9ce018b55c",
+      "suite": "repository",
+      "mode": "postgres",
+      "pairedCases": 82,
+      "retainedPeers": 2,
+      "retainedDomains": [
+        "browsers",
+        "chats",
+        "code_tabs",
+        "explorers",
+        "model_providers",
+        "project_github_conversion_jobs",
+        "project_replica_jobs",
+        "project_sources",
+        "project_views",
+        "project_workspace_memberships",
+        "project_workspace_storage_profiles",
+        "project_workspaces",
+        "project_worktrees",
+        "projects",
+        "remote_surfaces",
+        "run_configuration_runtime_operations",
+        "run_configuration_runtimes",
+        "run_configuration_secrets",
+        "settings",
+        "skill_audiences",
+        "terminals"
+      ]
+    },
+    {
+      "report": "qa/http-final-v4/pglite/http.json",
+      "sha256": "aa5e78a75035669b89651bca3b4a42c4552b5c7b0ae650ebeb97c8d5eabd5048",
+      "suite": "capture-http",
+      "mode": "pglite",
+      "productionRuntime": false,
+      "usesSqlHttpFixture": true,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 23,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 26,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 27,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        }
+      ]
+    },
+    {
+      "report": "qa/http-final-v4/bundled-postgres/http.json",
+      "sha256": "a271059dfb5ccbce1343d3d2cfdd2818102640acb12ca0cf53780a2d168508db",
+      "suite": "capture-http",
+      "mode": "bundled-postgres",
+      "productionRuntime": false,
+      "usesSqlHttpFixture": true,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 23,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 26,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 27,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        }
+      ]
+    },
+    {
+      "report": "qa/http-final-v4/postgres/http.json",
+      "sha256": "b956eadbc2d29ba472575c585781fdd5709e81a8d7403498c8e666aa6e5a298a",
+      "suite": "capture-http",
+      "mode": "postgres",
+      "productionRuntime": false,
+      "usesSqlHttpFixture": true,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 23,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 26,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 27,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        }
+      ]
+    },
+    {
+      "report": "qa/production-http-v1.json",
+      "sha256": "cd7b077c7662dfa107a57c83a0a0df559a410de6d1f9b1151424a9c961951f0d",
+      "suite": "capture-http",
+      "mode": "postgres",
+      "productionRuntime": true,
+      "usesSqlHttpFixture": false,
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 23,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 26,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 27,
+          "pairedValidationFailures": 5,
+          "pairedActualSqlFailures": 4,
+          "cleanServerExits": 2,
+          "exactRetainedRowsAndClocks": true,
+          "admittedReceipts": 0
+        }
+      ]
+    },
+    {
+      "report": "qa/github-pglite-v1.json",
+      "sha256": "f2abade1193d5121d0dfb5e605f2c7a8c76cb9573f1dc753e84f2debb9886e75",
+      "suite": "production-retired-github-http",
+      "mode": "pglite",
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 34,
+          "pairedRetiredResponses": 32
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 38,
+          "pairedRetiredResponses": 32
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 38,
+          "pairedRetiredResponses": 32
+        }
+      ]
+    },
+    {
+      "report": "qa/github-bundled-postgres-v1.json",
+      "sha256": "8906bb3534749579f3188eed5fdc1a2d6410b3fc2e07626d2de8df4a7a0e0d20",
+      "suite": "production-retired-github-http",
+      "mode": "bundled-postgres",
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 34,
+          "pairedRetiredResponses": 32
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 38,
+          "pairedRetiredResponses": 32
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 38,
+          "pairedRetiredResponses": 32
+        }
+      ]
+    },
+    {
+      "report": "qa/github-postgres-v1.json",
+      "sha256": "792a5ea9329f096245ab6baf097f8f12c400295664fed43c310b518ade41c697",
+      "suite": "production-retired-github-http",
+      "mode": "postgres",
+      "profiles": [
+        {
+          "profile": "none",
+          "pairedObservations": 34,
+          "pairedRetiredResponses": 32
+        },
+        {
+          "profile": "password",
+          "pairedObservations": 38,
+          "pairedRetiredResponses": 32
+        },
+        {
+          "profile": "accounts",
+          "pairedObservations": 38,
+          "pairedRetiredResponses": 32
+        }
+      ]
+    },
+    {
+      "report": "qa/relocated-package-v1.json",
+      "sha256": "eb2377232707bdc1e636e229cf61f017a953a50d5217f2a5c650d0d89505ee8e",
+      "suite": "relocated-native-package",
+      "verifiedFiles": 1762,
+      "modes": ["pglite", "bundled-postgres", "postgres"],
+      "serverRuntimePathHasNoNode": true,
+      "homebrewAccessDenied": true,
+      "artifactWritesDenied": true
+    }
+  ],
+  "bindings": [
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listChatSkillAudienceKeys",
+      "implementation": "cantrip_server_rs/src/chats/turn_storage.rs",
+      "positiveCase": "chat skill audiences {\"worker\":\"alpha\",\"provider\":\"fixture\"}",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "updateProjectWorktreePolicy",
+      "implementation": "cantrip_server_rs/src/projects/repository/preferences.rs",
+      "positiveCase": "owned policy update direct",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "updateProjectPreferredWorker",
+      "implementation": "cantrip_server_rs/src/projects/repository/preferences.rs",
+      "positiveCase": "preferred worker accepted {\"worker\":\"beta\"}",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getProjectReplica",
+      "implementation": "cantrip_server_rs/src/projects/repository.rs",
+      "positiveCase": "project replica github/github-alpha/00000000-0000-0000-0000-000000000001",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "resolveExecutionTargetSelector",
+      "implementation": "cantrip_server_rs/src/projects/targets/selectors.rs",
+      "positiveCase": "CLI selector [\"terminal\",\"terminal\"]",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listProjectWorktrees",
+      "implementation": "cantrip_server_rs/src/projects/targets/mod.rs",
+      "positiveCase": "project worktrees github",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getRunConfigurationSecretStatuses",
+      "implementation": "cantrip_server_rs/src/run_configurations/secrets.rs",
+      "positiveCase": "secret statuses preserve request order",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "listRunConfigurationProtectedSecrets",
+      "implementation": "cantrip_server_rs/src/run_configurations/secrets.rs",
+      "positiveCase": "opaque secrets ordered and deduplicated",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getRunConfigurationRuntimeOperationResult",
+      "implementation": "cantrip_server_rs/src/run_configurations/operations.rs",
+      "positiveCase": "owned operation receipt and current runtime",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "getRunConfigurationRuntimeCapture",
+      "implementation": "cantrip_server_rs/src/run_configurations/mod.rs",
+      "positiveCase": "owned OS runtime capture validates roots",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "hasGithubProject",
+      "implementation": "cantrip_server_rs/src/projects/replicas/github_import.rs",
+      "positiveCase": "GitHub project collision github-blind-index",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "createGithubProject",
+      "implementation": "cantrip_server_rs/src/projects/replicas/github_import.rs",
+      "positiveCase": "create GitHub project retains protected metadata",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    },
+    {
+      "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+      "method": "deleteProject",
+      "implementation": "cantrip_server_rs/src/projects/workspaces/project_cleanup.rs",
+      "positiveCase": "project deletion cascades linked state and clears mobile tab",
+      "evidence": [
+        "scripts/server-rust/project-state-repository-compatibility.mjs",
+        "docs/security/rust-server-project-state-acceptance.json"
+      ]
+    }
+  ],
+  "retiredHelpers": [
+    {
+      "method": "completeGithubProjectSetup",
+      "disposition": "No current production caller: only the facade declaration/forwarding and the child definition remain. Current encrypted import uses leased replica provision/completion; no unleased legacy completion adapter is added.",
+      "references": [
+        {
+          "file": "tests/reference-node-server/src/db/repository/project-lifecycle.ts",
+          "sha256": "5a66f7efe840e21d743ff12c88df036fabafd56de04d2dd83493155f90a79e97",
+          "occurrences": [
+            {
+              "line": 345,
+              "text": "async completeGithubProjectSetup("
+            }
+          ]
+        },
+        {
+          "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+          "sha256": "9714dc5f7f546b126878fdba635240d68ca6f8a560de367b0e50de34f819bf3a",
+          "occurrences": [
+            {
+              "line": 1271,
+              "text": "async completeGithubProjectSetup("
+            },
+            {
+              "line": 1277,
+              "text": "return this.projectLifecycle.completeGithubProjectSetup("
+            }
+          ]
+        }
+      ],
+      "activeAlternative": "cantrip_server_rs/src/projects/replicas/completion.rs"
+    },
+    {
+      "method": "listGithubRepositoryIds",
+      "disposition": "Its only current named app consumers are the plaintext GitHub catalog handlers, which are intercepted by the current HTTP410 contract. All9store/authcells execute those public retirement responses on the optimized executable. The native server does not restore those plaintext handlers.",
+      "references": [
+        {
+          "file": "tests/reference-node-server/src/app/routes/github-repository-catalog.ts",
+          "sha256": "e4dcbd42765d44a69e38496fdb9967b87ef46936cebe12ad099f786f608c3d6d",
+          "occurrences": [
+            {
+              "line": 21,
+              "text": "repository: Pick<ServerRepository, \"getWorker\" | \"listGithubRepositoryIds\">;"
+            },
+            {
+              "line": 75,
+              "text": "await repository.listGithubRepositoryIds(applicationOwnerId());"
+            },
+            {
+              "line": 131,
+              "text": "await repository.listGithubRepositoryIds(applicationOwnerId());"
+            }
+          ]
+        },
+        {
+          "file": "tests/reference-node-server/src/db/repository/project-lifecycle.ts",
+          "sha256": "5a66f7efe840e21d743ff12c88df036fabafd56de04d2dd83493155f90a79e97",
+          "occurrences": [
+            {
+              "line": 169,
+              "text": "async listGithubRepositoryIds(ownerId: string): Promise<Set<string>> {"
+            }
+          ]
+        },
+        {
+          "file": "tests/reference-node-server/src/db/repository-facade-project-execution.ts",
+          "sha256": "9714dc5f7f546b126878fdba635240d68ca6f8a560de367b0e50de34f819bf3a",
+          "occurrences": [
+            {
+              "line": 1250,
+              "text": "async listGithubRepositoryIds(ownerId: string): Promise<Set<string>> {"
+            },
+            {
+              "line": 1251,
+              "text": "return this.projectLifecycle.listGithubRepositoryIds(ownerId);"
+            }
+          ]
+        }
+      ],
+      "retiredRouteContract": "cantrip_server_rs/contracts/removed-repository-routes.json",
+      "retiredRouteContractSha256": "60554d5294daa6b0734212f8d17eafbf82730009a4ace536437d227095e140a0"
+    }
+  ],
+  "baselineDefects": [
+    {
+      "report": "qa/repository-v6.json",
+      "sha256": "47b95815c1357575f28ce5902e62034acbe4dca0a5edb893998cbb82cffb9211",
+      "scope": "Both peers observed: Source rejects invalid strict captured roots, native returns unchecked JSON."
+    },
+    {
+      "report": "qa/http-v3.json",
+      "sha256": "9a5b9e92359f310b7d6afd4673512a6dc018615668971f7fc0f754b26d434bbb",
+      "scope": "Source502 versus native500 after capture validation was added."
+    },
+    {
+      "report": "qa/http-v4.json",
+      "sha256": "da0316d1cdbcf6278dea8b52bb1710c4fcd571afb67e5d3665bbbc68369ae515",
+      "scope": "Both peers recover after actual table rename. Source canonical failed-query diagnostic differs from native raw DB error."
+    },
+    {
+      "log": "qa/package-v1.log",
+      "sha256": "ac41c4175167cbf2befd2010df33e8daea1de1908c925b32407b8427d93bb83e",
+      "scope": "Actual optimized build succeeds; reusing relocated PostgreSQL assets fails while resolving a dylib own install ID as a dependency. otool-D metadata now excludes own IDs before dependency resolution."
+    }
+  ],
+  "artifact": {
+    "path": "qa/production-package-v3",
+    "version": "1.1.2795",
+    "target": "darwin-arm64",
+    "bytes": 93676992,
+    "sha256": "f8c179cb44758f2df58d5c216d5eea86cd839ce857ae3fe15934a791ded35f9e",
+    "verifiedFiles": 1762,
+    "serverRequiresNode": false,
+    "retainedDistributionNotices": 15
+  },
+  "checks": [
+    {
+      "path": "qa/clippy-v1.log",
+      "sha256": "b22b118df62cf701b9c4cb9f3ea9fc3b7aace0451b5158f92c09485a4c94b6dd"
+    },
+    {
+      "path": "qa/library-v1.log",
+      "sha256": "4868b61b30128eb7fdf04f611d7eb57a26b2bcc42a5942de1dfd5d5a2bcaa975"
+    },
+    {
+      "path": "qa/native-authority-v1.log",
+      "sha256": "761828ede949a948f18d1717ebafbe20ef795df6078c4892db7ae5142fd64850"
+    },
+    {
+      "path": "qa/script-tests-final-v2.log",
+      "sha256": "600095325240b1da655cc058df085fc7b82ca42146ea00e3774143bae277b030"
+    },
+    {
+      "path": "qa/source-drift-v1.json",
+      "sha256": "37c17150706ebf34453af4d4866a2f6b57545b85732bbe1a6865943bd9024d40"
+    },
+    {
+      "path": "qa/capture-query-check-v1.log",
+      "sha256": "920c612781b5863189932f32a64813f2778a8bc53ac3a8a71257b0f81bc9d21d"
+    },
+    {
+      "path": "qa/decomposition-v1.log",
+      "sha256": "cce30c68203af3929993021fa1746cd3a47cb81ef3f16759d6dfc23c3cb3c2ef"
+    },
+    {
+      "path": "qa/large-files-v1.log",
+      "sha256": "40ecfe4f48a0ca58d4b8e7d946f663b4c2b12edc7697c704d2a6ca713dc379b8"
+    }
+  ],
+  "coverage": {
+    "repositoryMethods": [346, 370],
+    "behavioralRepositoryMappings": 344,
+    "retiredRepositoryDispositions": 2,
+    "durableTables": [110, 135],
+    "routes": [523, 584],
+    "workerCommands": [117, 323],
+    "liveResources": [29, 47]
+  },
+  "remaining": [
+    "24 repository identities remain unmapped, plus other category gaps and historical partial entries.",
+    "Final current supported-platform shipping artifacts, upgrades/post-write rollback scope and complete original-goal reconciliation remain open.",
+    "Other binding-selection error categories are not newly qualified by this captured-runtime milestone.",
+    "Worker rewrite/shared-crate extraction remain separate future work."
+  ]
+}

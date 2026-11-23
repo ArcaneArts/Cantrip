@@ -1,0 +1,320 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "darwin-arm64",
+  "sourceBase": "a851e19c1ca511a99395941512946cd74135f565",
+  "database": "external PostgreSQL 18.6",
+  "coordination": "Redis 8.10.3",
+  "scope": "Actual browser, enrolled packaged Node worker, its scheduler, and native Codex. Two local API peers share isolated PostgreSQL and Redis. The worker sends a second request for the same scheduled occurrence to the other peer while the first lease is active. The worker-owner peer is killed and replaced.",
+  "interruptionBoundaries": {
+    "protect": "Hold the worker\u2019s successful protection response before delivery to the server.",
+    "finish": "Hold the terminal run update in the test database. Confirm the original model stream opened before killing the peer and releasing the held update."
+  },
+  "packagedRustBaseline": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 94198000,
+    "sha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+  },
+  "candidate": {
+    "bytes": 179639808,
+    "sha256": "71cf9d66347f62d58d5f9a2fd7c3956c070243bcd7c4dfd2cf6ed80fc6d742cc",
+    "buildLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/candidate-build.log",
+      "bytes": 1032,
+      "sha256": "087b112fcebdd37e90a887483bcac5b1b99242e0446a0415483990cb52fe3dbf"
+    }
+  },
+  "baselineCompletionFailures": [
+    {
+      "pair": "rust/rust",
+      "phase": "finish",
+      "competingRequest": {
+        "httpStatus": 200,
+        "accepted": false,
+        "status": "skipped"
+      },
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/diagnostic/finish/rust-rust/matrix.json",
+        "bytes": 526271,
+        "sha256": "471d3b3d419792a58282301e6771625aff403b3959df0cf2331c38bd59a3b843"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/diagnostic/finish/rust-rust/matrix.log",
+        "bytes": 2782,
+        "sha256": "0a27f81ed709aa94d59dbccdb5d62a301ca98d727b4f110ea94f9b5112317ece"
+      },
+      "originalModelStreamPreserved": true,
+      "admissionAfterCrash": {
+        "message": true,
+        "history": false,
+        "queueState": null
+      },
+      "fencingToken": 2,
+      "finalStatus": "failed"
+    },
+    {
+      "pair": "rust/node",
+      "phase": "finish",
+      "competingRequest": {
+        "httpStatus": 200,
+        "accepted": false,
+        "status": "skipped"
+      },
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/baseline/finish/rust-node/matrix.json",
+        "bytes": 496190,
+        "sha256": "60a613ee70ed8b23e2459db9cb592d6cef6c0444e5721276908ed4639cbde7b1"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/baseline/finish/rust-node/matrix.log",
+        "bytes": 3345,
+        "sha256": "ff868681b0851e91090155f069399406a083ded30921b6ed063e3fc0cc4661cd"
+      },
+      "originalModelStreamPreserved": true,
+      "finalStatus": "failed"
+    },
+    {
+      "pair": "node/node",
+      "phase": "finish",
+      "competingRequest": {
+        "httpStatus": 200,
+        "accepted": false,
+        "status": "skipped"
+      },
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/diagnostic/finish/node-node/matrix.json",
+        "bytes": 439368,
+        "sha256": "02d3d5b590d08a5166b74ef94b8fc6d2a4bc9300343f880c2baf9bb5fc1e4506"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/diagnostic/finish/node-node/matrix.log",
+        "bytes": 3054,
+        "sha256": "97acfd0ec902ecfe161436e924962cc3fca338a30e2749be14b3fbf1219cee61"
+      },
+      "originalModelStreamPreserved": true,
+      "admissionAfterCrash": {
+        "message": true,
+        "history": false,
+        "queueState": null
+      },
+      "fencingToken": 2,
+      "finalStatus": "failed"
+    }
+  ],
+  "candidateCases": [
+    {
+      "pair": "rust/rust",
+      "phase": "protect",
+      "competingRequest": {
+        "httpStatus": 200,
+        "accepted": false,
+        "status": "skipped"
+      },
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/candidate/protect/rust-rust/matrix.json",
+        "bytes": 705841,
+        "sha256": "d734587011afaf11b3c7aca805a9fd3c8c42753813d234701e492d26a6930959"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/candidate/protect/rust-rust/matrix.log",
+        "bytes": 469,
+        "sha256": "380d0e972e83be68e6eac5f035045d2aa900efc2ca6f5b2a1a4b213103c0a093"
+      },
+      "result": "passed",
+      "finalStatus": "started",
+      "fencingToken": 2,
+      "attempts": 2,
+      "admissionAfterCrash": {
+        "message": false,
+        "history": false,
+        "queueState": null
+      },
+      "modelRequests": 1,
+      "completedNativeTurns": 1,
+      "stateAndHistoryRetainedAfterRestart": true
+    },
+    {
+      "pair": "node/rust",
+      "phase": "protect",
+      "competingRequest": {
+        "httpStatus": 200,
+        "accepted": false,
+        "status": "skipped"
+      },
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/candidate/protect/node-rust/matrix.json",
+        "bytes": 632159,
+        "sha256": "90ed5bf6110041617cb019da0dfbb53c83724a619a0bcc2cab37e9bd39295e5f"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/candidate/protect/node-rust/matrix.log",
+        "bytes": 1168,
+        "sha256": "d63511e5069098a210c996f023a6ab29edf0da104a385f243a033c7fb29ebedd"
+      },
+      "result": "passed",
+      "finalStatus": "started",
+      "fencingToken": 2,
+      "attempts": 2,
+      "admissionAfterCrash": {
+        "message": false,
+        "history": false,
+        "queueState": null
+      },
+      "modelRequests": 1,
+      "completedNativeTurns": 1,
+      "stateAndHistoryRetainedAfterRestart": true
+    },
+    {
+      "pair": "rust/rust",
+      "phase": "finish",
+      "competingRequest": {
+        "httpStatus": 200,
+        "accepted": false,
+        "status": "skipped"
+      },
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/candidate/finish/rust-rust/matrix.json",
+        "bytes": 689314,
+        "sha256": "47071a6624c563b14b393726f9ce8162d18d3c312a2640b0886c996659fbf965"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/candidate/finish/rust-rust/matrix.log",
+        "bytes": 469,
+        "sha256": "4be460995e3b3b3a71a8e90d224b3fe166aaeed8b6181c66ced12829b86ffd5b"
+      },
+      "originalModelStreamPreserved": true,
+      "result": "passed",
+      "finalStatus": "started",
+      "fencingToken": 2,
+      "attempts": 2,
+      "admissionAfterCrash": {
+        "message": true,
+        "history": false,
+        "queueState": null
+      },
+      "modelRequests": 1,
+      "completedNativeTurns": 1,
+      "stateAndHistoryRetainedAfterRestart": true
+    },
+    {
+      "pair": "node/rust",
+      "phase": "finish",
+      "competingRequest": {
+        "httpStatus": 200,
+        "accepted": false,
+        "status": "skipped"
+      },
+      "workerOwnerReplaced": true,
+      "sameWorkerReconnected": true,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/candidate/finish/node-rust/matrix.json",
+        "bytes": 615131,
+        "sha256": "f5672b972fb0a1cc2b7423c9cc99cba186f1ab03e668444027ebb14ea8a6d272"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/candidate/finish/node-rust/matrix.log",
+        "bytes": 1168,
+        "sha256": "4640dda373177052f9aac339be08f140885f33efb246e805a17f002b025b291e"
+      },
+      "originalModelStreamPreserved": true,
+      "result": "passed",
+      "finalStatus": "started",
+      "fencingToken": 2,
+      "attempts": 2,
+      "admissionAfterCrash": {
+        "message": true,
+        "history": false,
+        "queueState": null
+      },
+      "modelRequests": 1,
+      "completedNativeTurns": 1,
+      "stateAndHistoryRetainedAfterRestart": true
+    }
+  ],
+  "httpCompatibility": [
+    {
+      "mode": "pglite",
+      "authenticationProfiles": ["none", "password", "accounts"],
+      "matchingHttpObservations": 169,
+      "matchingWorkerCommands": 24,
+      "matchingAppLiveEvents": 105,
+      "protectedQueueRecoveryDifferences": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/http-aligned/pglite/matrix.json",
+        "bytes": 881361,
+        "sha256": "ecce0fe65393d393cedbbb666a655c0516e6776fc26c84da61558112b58db198"
+      }
+    },
+    {
+      "mode": "bundled-postgres",
+      "authenticationProfiles": ["none", "password", "accounts"],
+      "matchingHttpObservations": 169,
+      "matchingWorkerCommands": 24,
+      "matchingAppLiveEvents": 105,
+      "protectedQueueRecoveryDifferences": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/http-aligned/bundled-postgres/matrix.json",
+        "bytes": 881362,
+        "sha256": "ead7e54136cb00f0eba57ebc15edf68b1fb08326d80e9e920e9367c3871b18c2"
+      }
+    },
+    {
+      "mode": "postgres",
+      "authenticationProfiles": ["none", "password", "accounts"],
+      "matchingHttpObservations": 169,
+      "matchingWorkerCommands": 24,
+      "matchingAppLiveEvents": 105,
+      "protectedQueueRecoveryDifferences": 3,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/http-aligned/postgres/matrix.json",
+        "bytes": 881356,
+        "sha256": "33858d6ffb0266dc9e65f5758f2e11d53d4b1990144d931a5d93db905e00f0cf"
+      }
+    }
+  ],
+  "localChecks": {
+    "rustLibraryTests": 88,
+    "rustLibraryLog": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/rust-lib.log",
+      "bytes": 9335,
+      "sha256": "db383a2fde163af0e72d808ac002c7b2c74287c47cba929f107793f5a92f2408"
+    }
+  },
+  "initialHttpAttempts": {
+    "finding": "The first HTTP runs used different Rust and Node bootstrap versions. The aligned runs compare the same advertised version.",
+    "reports": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/http/pglite/matrix.json",
+        "bytes": 288741,
+        "sha256": "88d80b6d9a986547c62a74cf162cba8056abd70f8257dab219080354dee1b6b2"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/http/bundled-postgres/matrix.json",
+        "bytes": 288759,
+        "sha256": "62786be2f7222fd547a73fb53f4ae0cf376a55b9a8ad6de757d8022e2ca07408"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/3059-scheduled-automation.WsPYSV6h/http/postgres/matrix.json",
+        "bytes": 288741,
+        "sha256": "4028b6513d414f45fc0a1e1526f3f0d0d71a3dfd5d81b820ca7bec453b69caa4"
+      }
+    ]
+  },
+  "followUpQualification": "docs/security/rust-server-3059-scheduled-automation-handoff.json",
+  "directGitImportRelocation": "docs/security/rust-server-3059-relocation-source-revision.json",
+  "remainingQualification": [
+    "Packaged Windows tests of both interruption boundaries."
+  ]
+}

@@ -39,19 +39,22 @@ compile_error!("the `multiple-process` feature is unix-only (child postmaster ov
 mod db;
 mod engine;
 mod error;
+#[cfg(unix)]
+mod host_signals;
 mod live;
 #[cfg(feature = "multiple-process")]
 mod multiple_process;
 #[cfg(feature = "replica")]
 mod replica;
 mod row;
+mod runtime;
 #[cfg(all(unix, feature = "socket"))]
 mod socket;
 mod transaction;
 
-pub use db::{LocaleProvider, PGlite, PGliteOptions};
 #[cfg(not(feature = "multiple-process"))]
 pub use db::WireSession;
+pub use db::{LocaleProvider, PGlite, PGliteOptions};
 pub use error::Error;
 pub use live::LiveQuery;
 #[cfg(feature = "multiple-process")]
@@ -66,3 +69,12 @@ pub use transaction::Transaction;
 
 pub(crate) static RUNTIME_TAR: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/pglite-runtime.tar"));
+
+/// Materialize this binary's matching runtime into a new distribution directory.
+/// The directory can subsequently be read-only and selected with
+/// `PGLITE_RUNTIME_DIR`; no database initialization is performed here.
+pub fn materialize_runtime(destination: &std::path::Path) -> Result<(), Error> {
+    std::fs::create_dir(destination)?;
+    tar::Archive::new(RUNTIME_TAR).unpack(destination)?;
+    Ok(())
+}

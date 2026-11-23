@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "target": "darwin-arm64",
+  "completeReplacement": false,
+  "serverSourceCommit": "cdba080907df32759458d6efed55c4d38f8236dc",
+  "harnessCommit": "8911bd93abde07f3572acc072733b3d3a7a14f08",
+  "serverExecutable": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-871f62ae9.6GH2nOLA/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 94198000,
+    "sha256": "14dea9680a1a3c82918bc8d80a0a540b3bdc9ced18cee1d7bd51044ca2073fb1"
+  },
+  "workerEntry": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/worker/dist/index.js",
+    "bytes": 391720,
+    "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+  },
+  "browserDiscoveryAndConversion": {
+    "scope": "Existing browser SDK and packaged Node 1.1.3059 worker discover and import an attached, user-owned checkout. Conversion preflights and links matching public GitHub history. The cases exercise encrypted routing, restart retention and offline workspace removal while preserving the local checkout and dirty files.",
+    "comparisonScope": "The Node reference uses an isolated external PostgreSQL database for its control in the Rust bundled PostgreSQL case.",
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/inputs.sha256",
+      "bytes": 1730,
+      "sha256": "0ae5e901db1f5b40d142d91860a91b6713ee2e234bbc0b5156219da483b8d579"
+    },
+    "scratchCleanup": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/scratch-cleanup.json",
+      "bytes": 139,
+      "sha256": "a77a367a31c2f2735cdcff2bef2d182c6092d12a9eb0741532af4aeb699aa48e"
+    },
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "browserStepsPerPeer": 15,
+        "workerExitsPerPeer": 5,
+        "serverExitsPerPeer": 3,
+        "conversionEventRevisions": [1, 3],
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/pglite.json",
+          "bytes": 565916,
+          "sha256": "902aea7a5bb59173d17723c7b7c3853be8b09388e273646f9d6908ccab076bfb"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/pglite.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "browserStepsPerPeer": 15,
+        "workerExitsPerPeer": 5,
+        "serverExitsPerPeer": 3,
+        "conversionEventRevisions": [1, 3],
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/bundled-postgres.json",
+          "bytes": 567197,
+          "sha256": "a66e03e1179b49904c55623399b1a1dc5f28e966e7bb0edb61db837aee2dcc8c"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/bundled-postgres.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "browserStepsPerPeer": 15,
+        "workerExitsPerPeer": 5,
+        "serverExitsPerPeer": 3,
+        "conversionEventRevisions": [1, 3],
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/postgres.json",
+          "bytes": 565365,
+          "sha256": "69ffd377fd38d01688651436dd8f417bf6e9069eaa377b5084f2450948cdbd01"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/workspace-discovery-3059.sRGAVThy/postgres.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      }
+    ]
+  },
+  "workerCloseHandshake": {
+    "scope": "The existing Worker WebSocket fixture and real HTTP request compare close acknowledgement timing against the Node reference. A delayed acknowledgement allows the in-flight HTTP reply, an acknowledgement before the reply yields HTTP 503, and a withheld acknowledgement closes after the thirty-second deadline.",
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-close-3059.ZJkdBlI5/inputs.sha256",
+      "bytes": 821,
+      "sha256": "41c40c9d10b6a732ebf41c2985e8d4baf1773e1eb22c4a25c59d8df6ba768cb5"
+    },
+    "cases": [
+      {
+        "scenario": "pglite-delayed-ack",
+        "databaseMode": "pglite",
+        "httpStatus": 200,
+        "closeDurationMs": {
+          "node": 305,
+          "rust": 305
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-close-3059.ZJkdBlI5/pglite-delayed-ack.json",
+          "bytes": 24484,
+          "sha256": "c5c36c3e8adb51cd0c96770b5dbf478db64ee9454cbd4ea51ee5281e1d286327"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-close-3059.ZJkdBlI5/pglite-delayed-ack.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "scenario": "bundled-postgres-ack-first",
+        "databaseMode": "bundled-postgres",
+        "httpStatus": 503,
+        "closeDurationMs": {
+          "node": null,
+          "rust": null
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-close-3059.ZJkdBlI5/bundled-postgres-ack-first.json",
+          "bytes": 57605,
+          "sha256": "adf6c40be5a3f332c1c2960498048b759ef5e332ddf8a84a6e46df871780ee72"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-close-3059.ZJkdBlI5/bundled-postgres-ack-first.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "scenario": "postgres-withheld-ack",
+        "databaseMode": "postgres",
+        "httpStatus": 200,
+        "closeDurationMs": {
+          "node": 30000,
+          "rust": 30002
+        },
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-close-3059.ZJkdBlI5/postgres-withheld-ack.json",
+          "bytes": 57216,
+          "sha256": "670de75819132327dfaa21a88be712cd4785ab7df5e31851e955421c003f7025"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-close-3059.ZJkdBlI5/postgres-withheld-ack.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      }
+    ]
+  }
+}

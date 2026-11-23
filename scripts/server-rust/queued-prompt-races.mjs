@@ -8,7 +8,7 @@ import { repositoryFixture } from "./repository-fixture.mjs";
 import { retainedPrompt, promptId } from "./native-settlement-fixtures.mjs";
 import { queuedPromptCreateSchema } from "../../packages/protocol/dist/index.js";
 const require = createRequire(
-    new URL("../../cantrip_server/package.json", import.meta.url),
+    new URL("../../tests/reference-node-server/package.json", import.meta.url),
   ),
   postgres = require("postgres");
 async function waiters(sql, count, entry) {

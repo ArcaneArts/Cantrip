@@ -127,10 +127,10 @@ index db01ef193b531ad92aeb46e774479f04b026a169..2ea196b17f975a6dc7cdf18b3a1e4609
      fn canonical_identity_does_not_claim_unavailable_retention() {
          let mut thread = thread(&["old"]);
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 17492ee9f964b7a9198c03c3bea9c0204220715b..6d742af52927a0739c6d9b39445817aab342952b 100644
+index 2a3c6fc0c4835d50da785fdeaaad05ecc72d6773..86600f7f06ac30b7cb8793e32c70a6f528730849 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -2374,6 +2374,11 @@ pub struct ThreadHistoryTurnMetadata {
+@@ -2402,6 +2402,11 @@ pub struct ThreadHistoryTurnMetadata {
      /// `partial` has a retained canonical prefix or gap; `unavailable` predates retention.
      /// This is independent of item identity and the turn's execution status.
      pub retention: String,
@@ -142,7 +142,7 @@ index 17492ee9f964b7a9198c03c3bea9c0204220715b..6d742af52927a0739c6d9b39445817aa
      pub items: Vec<ThreadHistoryItemMetadata>,
      pub usage: Option<ThreadHistoryUsage>,
      /// Null means retention is unavailable or gapped. An empty list on a contiguous
-@@ -2384,6 +2389,17 @@ pub struct ThreadHistoryTurnMetadata {
+@@ -2412,6 +2417,17 @@ pub struct ThreadHistoryTurnMetadata {
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
  #[serde(rename_all = "camelCase")]
  #[ts(export_to = "v2/")]

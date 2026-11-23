@@ -3,14 +3,14 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
-import { ExplorerRepository } from "../../cantrip_server/src/db/repository/explorers.ts";
-import { CodeSurfaceRepository } from "../../cantrip_server/src/db/repository/code-surfaces.ts";
-import { ProjectRepository } from "../../cantrip_server/src/db/repository/projects.ts";
-import { ProjectViewRepository } from "../../cantrip_server/src/db/repository/project-views.ts";
-import * as schema from "../../cantrip_server/src/db/schema.ts";
+import { ExplorerRepository } from "../../tests/reference-node-server/src/db/repository/explorers.ts";
+import { CodeSurfaceRepository } from "../../tests/reference-node-server/src/db/repository/code-surfaces.ts";
+import { ProjectRepository } from "../../tests/reference-node-server/src/db/repository/projects.ts";
+import { ProjectViewRepository } from "../../tests/reference-node-server/src/db/repository/project-views.ts";
+import * as schema from "../../tests/reference-node-server/src/db/schema.ts";
 import { label, state } from "./project-target-state.mjs";
 const require = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 );
 const { drizzle } = require("drizzle-orm/pg-proxy");
 const { getTableColumns } = require("drizzle-orm");

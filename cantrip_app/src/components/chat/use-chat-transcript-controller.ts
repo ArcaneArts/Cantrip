@@ -1296,11 +1296,10 @@ export function useChatTranscriptController({
         projectId: chat.projectId,
         subsystem: "chat",
       });
-      await ensureChatWorkerEncryption({
-        worker: workers.data?.find(
-          ({ workerId }) => workerId === chat.activeWorkerId,
-        ),
-      });
+      const worker = workers.data?.find(
+        ({ workerId }) => workerId === chat.activeWorkerId,
+      );
+      await ensureChatWorkerEncryption({ worker });
       if (
         nativeModelSettings.observed.state.data?.binding &&
         nativeModeChange
@@ -1320,6 +1319,10 @@ export function useChatTranscriptController({
         },
         attachments,
         mode,
+        settings?.preferences.autoNameChats &&
+          !settings.preferences.randomAgentNames
+          ? worker
+          : undefined,
       ).then(
         (result) => {
           clientLogger.info("Chat turn submission accepted", {

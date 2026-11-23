@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertGeneratedAtInOperation } from "./operation-clock.mjs";
 
 export async function runRuntimeCases({
   pair,
@@ -35,7 +36,13 @@ export async function runRuntimeCases({
   };
   const verifiedClocks = pair.map(() => new Map());
   async function run(label, input, expectedError = null) {
-    const request = { owner, project: "github", worker: "alpha", ...input };
+    const request = {
+      owner,
+      project: "github",
+      worker: "alpha",
+      ...input,
+      observeOperationClock: true,
+    };
     const start = Date.now(),
       results = [];
     for (const repo of pair) results.push(await repo.request(request));
@@ -55,11 +62,13 @@ export async function runRuntimeCases({
       }
       const value = structuredClone(result.value);
       if (value?.applied === true) {
-        assert.ok(
-          Date.parse(value.runtime.updatedAt) >= start &&
-            Date.parse(value.runtime.updatedAt) <= end,
-          label + " transaction clock",
-        );
+        assertGeneratedAtInOperation({
+          label: label + " transaction clock",
+          kind: index === 0 ? "node" : "rust",
+          actualGeneratedAt: value.runtime.updatedAt,
+          parentClockWindow: [start, end],
+          operationClock: result.operationClock,
+        });
         verifiedClocks[index].set(value.runtime.id, value.runtime.updatedAt);
       }
       const runtime = value?.runtime ?? value;

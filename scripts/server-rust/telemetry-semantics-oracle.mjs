@@ -3,14 +3,14 @@
 import {
   quotaValueStatistics,
   deriveQuotaTokenAnalytics,
-} from "../../cantrip_server/src/analytics/quota-token.ts";
+} from "../../tests/reference-node-server/src/analytics/quota-token.ts";
 import {
   sumDetailedTokenUsage,
   summarizeModelBehavior,
   groupModelBehavior,
-} from "../../cantrip_server/src/analytics/telemetry-dashboard.ts";
-import { sampleProviderTelemetryQuotaHistory } from "../../cantrip_server/src/models/provider-telemetry.ts";
-import { detectTelemetryChanges } from "../../cantrip_server/src/analytics/telemetry-change-detection.ts";
+} from "../../tests/reference-node-server/src/analytics/telemetry-dashboard.ts";
+import { sampleProviderTelemetryQuotaHistory } from "../../tests/reference-node-server/src/models/provider-telemetry.ts";
+import { detectTelemetryChanges } from "../../tests/reference-node-server/src/analytics/telemetry-change-detection.ts";
 import assert from "node:assert/strict";
 let count = 0;
 const changeCoverage = {

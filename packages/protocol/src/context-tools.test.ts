@@ -24,6 +24,9 @@ describe("managed context tools", () => {
   it("keeps operation and tool catalogs index-aligned", () => {
     expect(CANTRIP_MCP_MUTATION_OPERATIONS[0]).toBe("context.compact");
     expect(CANTRIP_MCP_MUTATION_TOOL_NAMES[0]).toBe("context_compact");
+    expect(cantripMcpToolNamesForOperations(["task.create"])).toEqual([
+      "task_create",
+    ]);
     expect(
       cantripMcpToolNamesForOperations(["context.get", "context.compact"]),
     ).toEqual(["context_get", "context_compact"]);

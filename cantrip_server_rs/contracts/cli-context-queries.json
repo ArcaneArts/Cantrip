@@ -1,0 +1,10 @@
+{
+  "roots": {
+    "sql": "select \"projects\".\"id\", \"project_worktrees\".\"root_kind\", \"project_sources\".\"absolute_path\", \"project_worktrees\".\"worker_id\", \"project_worktrees\".\"id\", \"project_worktrees\".\"absolute_path\" from \"project_worktrees\" inner join \"project_sources\" on \"project_sources\".\"id\" = \"project_worktrees\".\"project_source_id\" inner join \"projects\" on (\"projects\".\"id\" = \"project_sources\".\"project_id\" and \"projects\".\"owner_id\" = $1) where (\"project_worktrees\".\"worker_id\" = $2 and \"project_worktrees\".\"lifecycle_state\" = $3 and \"project_sources\".\"removed_at\" is null) order by \"project_worktrees\".\"created_at\" asc limit $4",
+    "params": ["fixture-owner", "fixture-worker", "ready", 128]
+  },
+  "thread": {
+    "sql": "select \"chat_runtime_sessions\".\"chat_id\" from \"chat_runtime_sessions\" inner join \"chats\" on \"chats\".\"id\" = \"chat_runtime_sessions\".\"chat_id\" where (\"chats\".\"owner_id\" = $1 and \"chat_runtime_sessions\".\"worker_id\" = $2 and \"chat_runtime_sessions\".\"codex_thread_id\" = $3 and \"chats\".\"archived_at\" is null)",
+    "params": ["fixture-owner", "fixture-worker", "fixture-thread"]
+  }
+}

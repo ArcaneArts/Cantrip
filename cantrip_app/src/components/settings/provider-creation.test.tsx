@@ -1,10 +1,19 @@
-import { settingsBundleSchema, type SettingsBundle } from "@cantrip/protocol";
+import {
+  endpointProviderKinds,
+  settingsBundleSchema,
+  type ModelProviderKind,
+  type SettingsBundle,
+} from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ComponentProps, ReactNode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
-import { createModelProvider, updateModelProvider } from "@/lib/api";
+import {
+  createModelProvider,
+  updateModelProvider,
+  testModelProviderConnection,
+} from "@/lib/api";
 import type { ModelsSettings } from "./models-settings";
 import { SettingsPage } from "./settings-page";
 
@@ -13,6 +22,7 @@ vi.mock("@/lib/api", async (original) => ({
   getWorkers: vi.fn().mockResolvedValue([]),
   createModelProvider: vi.fn(),
   updateModelProvider: vi.fn(),
+  testModelProviderConnection: vi.fn(),
 }));
 vi.mock("@/components/ui/dialog", () => {
   const Pass = ({ children }: { children: ReactNode }) => <div>{children}</div>;
@@ -38,6 +48,11 @@ vi.mock("./models-settings", () => ({
     <div>
       <button onClick={() => onAddProvider("ollama")}>Add Ollama</button>
       <button onClick={() => onAddProvider("chatgpt")}>Add ChatGPT</button>
+      {endpointProviderKinds.map((kind) => (
+        <button key={kind} onClick={() => onAddProvider(kind)}>
+          Add {kind}
+        </button>
+      ))}
       {providers.map((provider) => (
         <button key={provider.id} onClick={() => onEditProvider(provider)}>
           Edit {provider.kind}
@@ -48,7 +63,7 @@ vi.mock("./models-settings", () => ({
 }));
 
 const now = "2026-10-07T12:00:00.000Z";
-function bundle(kinds: Array<"chatgpt" | "grok" | "ollama">): SettingsBundle {
+function bundle(kinds: ModelProviderKind[]): SettingsBundle {
   return settingsBundleSchema.parse({
     preferences: {
       theme: "system",
@@ -126,6 +141,87 @@ function typeSelect(view: TestRenderer.ReactTestRenderer) {
 }
 
 describe("provider dialog singleton protection", () => {
+  it("does not display a connection result from an older saved connection revision", async () => {
+    const settings = bundle(["ollama"]);
+    settings.providers[0]!.connectionRevision = 1;
+    const mounted = await mount(settings);
+    let finish!: (
+      result: Awaited<ReturnType<typeof testModelProviderConnection>>,
+    ) => void;
+    const pending = new Promise<
+      Awaited<ReturnType<typeof testModelProviderConnection>>
+    >((resolve) => {
+      finish = resolve;
+    });
+    vi.mocked(testModelProviderConnection).mockReturnValueOnce(pending);
+    try {
+      await act(async () => {
+        mounted.queryClient.setQueryData(
+          ["workers"],
+          [{ workerId: "worker", online: true, name: "Worker" }],
+        );
+      });
+      await click(mounted.view, "Edit ollama");
+      await click(mounted.view, "Test connection");
+      await act(async () => {
+        mounted.queryClient.setQueryData(["settings"], {
+          ...settings,
+          providers: [{ ...settings.providers[0]!, connectionRevision: 2 }],
+        });
+        finish({
+          ok: true,
+          stage: "completed",
+          message: "OLD_CONNECTION_SUCCESS",
+          workerId: "worker",
+          modelName: "model",
+          durationMs: 1,
+        });
+        await pending;
+      });
+      expect(JSON.stringify(mounted.view.toJSON())).not.toContain(
+        "OLD_CONNECTION_SUCCESS",
+      );
+    } finally {
+      finish({
+        ok: false,
+        stage: "provider-response",
+        message: "Finished",
+        workerId: "worker",
+        modelName: "model",
+        durationMs: 1,
+      });
+      await mounted.close();
+    }
+  });
+  it.each(endpointProviderKinds)(
+    "keeps %s repeatable and retains its kind when changing the address",
+    async (kind) => {
+      const mounted = await mount(bundle([kind]));
+      try {
+        await click(mounted.view, `Add ${kind}`);
+        expect(typeSelect(mounted.view).props.value).toBe(kind);
+        expect(
+          typeSelect(mounted.view)
+            .findAllByType("option")
+            .find((option) => option.props.value === kind)!.props.disabled,
+        ).toBe(false);
+        const input = mounted.view.root
+          .findAllByType("input")
+          .find((input) => input.props.type === "url")!;
+        await act(async () =>
+          input.props.onChange({
+            target: { value: "http://another-gpu.lan:9000/proxy/v1" },
+          }),
+        );
+        expect(typeSelect(mounted.view).props.value).toBe(kind);
+        expect(
+          mounted.view.root.findByProps({ type: "submit" }).props.disabled,
+        ).toBe(false);
+      } finally {
+        await mounted.close();
+      }
+    },
+  );
   it("disables occupied account types and rejects their selection in another provider's dialog", async () => {
     const mounted = await mount(bundle(["chatgpt", "grok", "ollama"]));
     try {

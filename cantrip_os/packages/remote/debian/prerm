@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+case "$1" in
+    remove|upgrade|deconfigure)
+        if [ -d /run/systemd/system ]; then
+            deb-systemd-invoke stop cantrip-os-remote.service
+        else
+            if [ "$1" = upgrade ] && cantrip-remote status | python3 -c 'import json,sys; sys.exit(json.load(sys.stdin)["service"] != "running")'; then
+                touch /run/cantrip-os-remote/upgrade-restart
+            fi
+            cantrip-remote service stop
+        fi
+        ;;
+esac

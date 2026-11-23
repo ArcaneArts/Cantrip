@@ -1,0 +1,400 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2976",
+  "driverBase": "87eab0cd7656e3deff412072967b92ece1078c3c",
+  "driverFileSha256": {
+    "scripts/server-rust/production-worker-link-acceptance.mjs": "5a22b2f36432846b59802271f94e66d932d58f4563a6447051c1fb4fd0d75f64",
+    "scripts/server-rust/production-worker-link-fixture.mjs": "72b3a2742be9f18ae035012e69d1e48ba8e93452294781deb6ddcc9bf9d231ff",
+    "scripts/server-rust/production-worker-link-cases.mjs": "2bdc66cb69d6646be5f44a6846eed3f1dfb93cab7beb5fede3d1421d51fa040f",
+    "scripts/server-rust/production-stream-container.mjs": "8d2201f4400167490ca79987660a73e16b76f30923518f05be20ff6ac469ef1f"
+  },
+  "environment": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/environment.txt",
+    "bytes": 580,
+    "sha256": "f390f6bc1e57b1a61dba012b27d279fec002a8d23662de3f4e103a2a4f70126f"
+  },
+  "host": "Apple Silicon macOS with Linux ARM64 Docker 27.4.0 and x64 execution through Rosetta",
+  "fixtureNodeVersion": "v24.22.1",
+  "casesPassed": 9,
+  "checksPassedInEachCase": {
+    "payloadBytesPerDirection": 67108864,
+    "payloadSha256": "76466877cfb853ec22ade91618e06ca6c462aa18f6e5db49bf810fa9f5a97892",
+    "exactEndpointFrameBytes": true,
+    "echoUploadCreditReturned": 67108864,
+    "selectiveRevocationPreservedSibling": true,
+    "slowConsumerCloseCode": 1013,
+    "gatewayReplacementPreservedEnrollment": true,
+    "serverCrashRetainedIdentityPreferenceAndProtectedTunnel": true,
+    "staleSessionHttpStatus": 404,
+    "staleGrantRejection": "unauthorized",
+    "replacementGenerationRelayedExactFrames": true,
+    "quotaPayloadFrames": 4079,
+    "gatewayChannelsGrantsAndSessionsAfterShutdown": 0
+  },
+  "cases": [
+    {
+      "server": "rust-arm64",
+      "database": "pglite",
+      "serverVersion": "1.1.2976",
+      "serverProcesses": [
+        {
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "6ff8f8de7e4ab0fd5f267f3ecac9c74ce3de0537fd5ceb0e91ec7f7ed8b2d3bd",
+          "bytes": 106263176,
+          "verifiedArtifactFiles": 2558
+        },
+        {
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "6ff8f8de7e4ab0fd5f267f3ecac9c74ce3de0537fd5ceb0e91ec7f7ed8b2d3bd",
+          "bytes": 106263176,
+          "verifiedArtifactFiles": 2558
+        }
+      ],
+      "ociManifestDigest": "sha256:22fdbe9949a4df66e3b348c8c0f9dddfadeab8d5822a5c0238df894df7de6097",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/matrix/rust-arm64/pglite/acceptance/rust/runs/1794601477993-15977/report.json",
+        "bytes": 10234,
+        "sha256": "864a1f4c60ea0a2cf55d326cc5e1b1c91ee73969f03b8d988e3fbd2d39b486e0"
+      },
+      "downloadMiBPerSecond": 63.25,
+      "echoMiBPerSecond": 32.22,
+      "serverRssKiBWhilePaused": 147672,
+      "pausedConsumerReceivedFrames": 299,
+      "retiredWhileConsumerPaused": true,
+      "serverRecoveryMs": 2097.86,
+      "serverKillExitCode": 137,
+      "orderlyServerExitCode": 0
+    },
+    {
+      "server": "rust-arm64",
+      "database": "bundled-postgres",
+      "serverVersion": "1.1.2976",
+      "serverProcesses": [
+        {
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "6ff8f8de7e4ab0fd5f267f3ecac9c74ce3de0537fd5ceb0e91ec7f7ed8b2d3bd",
+          "bytes": 106263176,
+          "verifiedArtifactFiles": 2558
+        },
+        {
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "6ff8f8de7e4ab0fd5f267f3ecac9c74ce3de0537fd5ceb0e91ec7f7ed8b2d3bd",
+          "bytes": 106263176,
+          "verifiedArtifactFiles": 2558
+        }
+      ],
+      "ociManifestDigest": "sha256:22fdbe9949a4df66e3b348c8c0f9dddfadeab8d5822a5c0238df894df7de6097",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/matrix/rust-arm64/bundled-postgres/acceptance/rust/runs/1794601609333-23504/report.json",
+        "bytes": 16016,
+        "sha256": "a4de23d67fc4a741b87fb5b7dde4f62027730ce5a47249823bd8bb93a6568e5a"
+      },
+      "downloadMiBPerSecond": 56.31,
+      "echoMiBPerSecond": 31.73,
+      "serverRssKiBWhilePaused": 417608,
+      "pausedConsumerReceivedFrames": 221,
+      "retiredWhileConsumerPaused": true,
+      "serverRecoveryMs": 2184.84,
+      "serverKillExitCode": 137,
+      "orderlyServerExitCode": 0
+    },
+    {
+      "server": "rust-arm64",
+      "database": "postgres",
+      "serverVersion": "1.1.2976",
+      "serverProcesses": [
+        {
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "6ff8f8de7e4ab0fd5f267f3ecac9c74ce3de0537fd5ceb0e91ec7f7ed8b2d3bd",
+          "bytes": 106263176,
+          "verifiedArtifactFiles": 2558
+        },
+        {
+          "observedExecutable": "/opt/cantrip/bin/cantrip-server",
+          "observation": "direct",
+          "elfMachine": 183,
+          "architecture": "arm64",
+          "sha256": "6ff8f8de7e4ab0fd5f267f3ecac9c74ce3de0537fd5ceb0e91ec7f7ed8b2d3bd",
+          "bytes": 106263176,
+          "verifiedArtifactFiles": 2558
+        }
+      ],
+      "ociManifestDigest": "sha256:22fdbe9949a4df66e3b348c8c0f9dddfadeab8d5822a5c0238df894df7de6097",
+      "externalPostgres": {
+        "imageId": "sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6",
+        "architecture": "arm64",
+        "version": "postgres (PostgreSQL) 18.6 (Debian 18.6-1.pgdg13+2)"
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/matrix/rust-arm64/postgres/acceptance/rust/runs/1794601729201-29796/report.json",
+        "bytes": 10457,
+        "sha256": "652081fcd83bc01a87e95fea3aa3516d7ee82c73097c3f098c0e59ef86161823"
+      },
+      "downloadMiBPerSecond": 72.67,
+      "echoMiBPerSecond": 42.18,
+      "serverRssKiBWhilePaused": 96944,
+      "pausedConsumerReceivedFrames": 296,
+      "retiredWhileConsumerPaused": false,
+      "serverRecoveryMs": 1863.85,
+      "serverKillExitCode": 137,
+      "orderlyServerExitCode": 0
+    },
+    {
+      "server": "rust-x64",
+      "database": "pglite",
+      "serverVersion": "1.1.2976",
+      "serverProcesses": [
+        {
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "f82bb3954f7285789db8284a12397435a515c6c284f38e96efd145f790dd2302",
+          "bytes": 111135528,
+          "verifiedArtifactFiles": 2558
+        },
+        {
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "f82bb3954f7285789db8284a12397435a515c6c284f38e96efd145f790dd2302",
+          "bytes": 111135528,
+          "verifiedArtifactFiles": 2558
+        }
+      ],
+      "ociManifestDigest": "sha256:e86916962804bc7467fb164926a82768af3d3063a4f35bbaafff2cb4bf715314",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/matrix/rust-x64/pglite/acceptance/rust/runs/1794601515114-17723/report.json",
+        "bytes": 10280,
+        "sha256": "292e7789b42e78abf569fd7fcff78d73c15ffd67c875ffc3b6b050bf763829c7"
+      },
+      "downloadMiBPerSecond": 80.98,
+      "echoMiBPerSecond": 38.99,
+      "serverRssKiBWhilePaused": 191168,
+      "pausedConsumerReceivedFrames": 290,
+      "retiredWhileConsumerPaused": false,
+      "serverRecoveryMs": 3453.19,
+      "serverKillExitCode": 137,
+      "orderlyServerExitCode": 0
+    },
+    {
+      "server": "rust-x64",
+      "database": "bundled-postgres",
+      "serverVersion": "1.1.2976",
+      "serverProcesses": [
+        {
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "f82bb3954f7285789db8284a12397435a515c6c284f38e96efd145f790dd2302",
+          "bytes": 111135528,
+          "verifiedArtifactFiles": 2558
+        },
+        {
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "f82bb3954f7285789db8284a12397435a515c6c284f38e96efd145f790dd2302",
+          "bytes": 111135528,
+          "verifiedArtifactFiles": 2558
+        }
+      ],
+      "ociManifestDigest": "sha256:e86916962804bc7467fb164926a82768af3d3063a4f35bbaafff2cb4bf715314",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/matrix/rust-x64/bundled-postgres/acceptance/rust/runs/1794601644567-24943/report.json",
+        "bytes": 16106,
+        "sha256": "f64f983c42dfe7c3233a27332f9e19b4eb2e366f2c966473e53d2d1415fabc5f"
+      },
+      "downloadMiBPerSecond": 92.34,
+      "echoMiBPerSecond": 42.67,
+      "serverRssKiBWhilePaused": 583804,
+      "pausedConsumerReceivedFrames": 292,
+      "retiredWhileConsumerPaused": false,
+      "serverRecoveryMs": 4129.72,
+      "serverKillExitCode": 137,
+      "orderlyServerExitCode": 0
+    },
+    {
+      "server": "rust-x64",
+      "database": "postgres",
+      "serverVersion": "1.1.2976",
+      "serverProcesses": [
+        {
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "f82bb3954f7285789db8284a12397435a515c6c284f38e96efd145f790dd2302",
+          "bytes": 111135528,
+          "verifiedArtifactFiles": 2558
+        },
+        {
+          "observedExecutable": "/run/rosetta/rosetta",
+          "observation": "mapped",
+          "elfMachine": 62,
+          "architecture": "amd64",
+          "sha256": "f82bb3954f7285789db8284a12397435a515c6c284f38e96efd145f790dd2302",
+          "bytes": 111135528,
+          "verifiedArtifactFiles": 2558
+        }
+      ],
+      "ociManifestDigest": "sha256:e86916962804bc7467fb164926a82768af3d3063a4f35bbaafff2cb4bf715314",
+      "externalPostgres": {
+        "imageId": "sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6",
+        "architecture": "arm64",
+        "version": "postgres (PostgreSQL) 18.6 (Debian 18.6-1.pgdg13+2)"
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/matrix/rust-x64/postgres/acceptance/rust/runs/1794601764123-31480/report.json",
+        "bytes": 10497,
+        "sha256": "7901e5c79744fbe34ab0c155d2e1f599134c9516a8698546bf294d5f8753019f"
+      },
+      "downloadMiBPerSecond": 94.55,
+      "echoMiBPerSecond": 53.9,
+      "serverRssKiBWhilePaused": 131112,
+      "pausedConsumerReceivedFrames": 271,
+      "retiredWhileConsumerPaused": true,
+      "serverRecoveryMs": 3093.69,
+      "serverKillExitCode": 137,
+      "orderlyServerExitCode": 0
+    },
+    {
+      "server": "node-x64",
+      "database": "pglite",
+      "serverVersion": "1.1.2739",
+      "serverProcesses": [
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        },
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        }
+      ],
+      "ociManifestDigest": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/matrix/node-x64/pglite/acceptance/node/runs/1794601553370-19779/report.json",
+        "bytes": 9189,
+        "sha256": "704e2c8636499ab4f66507d99ba7703fc91c809377ef4303c07e5f9808158465"
+      },
+      "downloadMiBPerSecond": 43.4,
+      "echoMiBPerSecond": 21.32,
+      "serverRssKiBWhilePaused": 1118724,
+      "pausedConsumerReceivedFrames": 261,
+      "retiredWhileConsumerPaused": false,
+      "serverRecoveryMs": 7512.32,
+      "serverKillExitCode": 137,
+      "orderlyServerExitCode": 0
+    },
+    {
+      "server": "node-x64",
+      "database": "bundled-postgres",
+      "serverVersion": "1.1.2739",
+      "serverProcesses": [
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        },
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        }
+      ],
+      "ociManifestDigest": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8",
+      "externalPostgres": {
+        "imageId": "sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6",
+        "architecture": "arm64",
+        "version": "postgres (PostgreSQL) 18.6 (Debian 18.6-1.pgdg13+2)"
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/matrix/node-x64/bundled-postgres/acceptance/node/runs/1794601685315-27001/report.json",
+        "bytes": 9420,
+        "sha256": "1f46540ac3368ef77bb034267ff4a5e037412c129c5b931fb44f92348291d5b0"
+      },
+      "downloadMiBPerSecond": 50.86,
+      "echoMiBPerSecond": 29.29,
+      "serverRssKiBWhilePaused": 609372,
+      "pausedConsumerReceivedFrames": 273,
+      "retiredWhileConsumerPaused": false,
+      "serverRecoveryMs": 3783.05,
+      "serverKillExitCode": 137,
+      "orderlyServerExitCode": 0
+    },
+    {
+      "server": "node-x64",
+      "database": "postgres",
+      "serverVersion": "1.1.2739",
+      "serverProcesses": [
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        },
+        {
+          "executableSha256": "904a6d3484241d466989f9df9ba3aab822b1496191bdb28230eb491a55c32a52",
+          "entrySha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310",
+          "nodeVersion": "v24.22.2"
+        }
+      ],
+      "ociManifestDigest": "sha256:e45a5bb676e4efec2ec75897dd24829fadfd23165a545de155fa1c5a7da5a9d8",
+      "externalPostgres": {
+        "imageId": "sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6",
+        "architecture": "arm64",
+        "version": "postgres (PostgreSQL) 18.6 (Debian 18.6-1.pgdg13+2)"
+      },
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/matrix/node-x64/postgres/acceptance/node/runs/1794601800568-33103/report.json",
+        "bytes": 9413,
+        "sha256": "2c5cbbe1ce993af4cf0d95333c5217cdb9d6b98fe1d42024336ab0fae0eea717"
+      },
+      "downloadMiBPerSecond": 44.3,
+      "echoMiBPerSecond": 34.35,
+      "serverRssKiBWhilePaused": 597660,
+      "pausedConsumerReceivedFrames": 275,
+      "retiredWhileConsumerPaused": false,
+      "serverRecoveryMs": 3696.64,
+      "serverKillExitCode": 137,
+      "orderlyServerExitCode": 0
+    }
+  ],
+  "nativeFixtureRegression": {
+    "platform": "macOS ARM64",
+    "database": "pglite",
+    "payloadMiBPerDirection": 1,
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/linux/worker-link-2976/native-macos-smoke/pglite/acceptance/rust/runs/1794601664117-26019/report.json",
+      "bytes": 8138,
+      "sha256": "a4b20ad81de121bc88e6c48f3d72454142d0ece32423f36718bf0f3391a41c30"
+    }
+  },
+  "limits": [
+    "The production server, WorkerConnection and WorkerLinkGateway use public HTTP-issued grants and controlled opaque binary endpoint bytes. Worker replacement recreates the endpoint, gateway and transport inside the driver.",
+    "Each row is one sequential observation on a shared host. There is no native ARM64 Node comparison. The historical Node container uses external PostgreSQL for the bundled PostgreSQL row.",
+    "These runs do not cover Windows, a full worker process restart, distributed WorkerLink, product encryption, or subsequent server changes."
+  ]
+}

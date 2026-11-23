@@ -1,0 +1,33 @@
+{
+  "update": {
+    "sql": "update \"chat_execution_lanes\" set \"acquiring_actor\" = $1, \"exclusive\" = $2, \"purpose\" = $3, \"state\" = $4, \"runtime_session_id\" = $5, \"codex_thread_id\" = $6, \"transition_kind\" = $7, \"updated_at\" = $8 where \"chat_execution_lanes\".\"id\" = $9",
+    "parameters": [
+      "acquiring_actor",
+      "exclusive",
+      "purpose",
+      "state",
+      "runtime_session_id",
+      "codex_thread_id",
+      "transition_kind",
+      "updated_at",
+      "id"
+    ]
+  },
+  "insert": {
+    "sql": "insert into \"chat_execution_lanes\" (\"id\", \"chat_id\", \"worktree_id\", \"scratch_root_id\", \"worker_id\", \"acquiring_actor\", \"exclusive\", \"purpose\", \"state\", \"base_revision\", \"starting_head\", \"runtime_session_id\", \"codex_thread_id\", \"transition_kind\", \"created_at\", \"activated_at\", \"released_at\", \"updated_at\") values ($1, $2, $3, default, $4, $5, $6, $7, $8, default, $9, $10, $11, $12, default, default, default, default) returning \"id\"",
+    "parameters": [
+      "id",
+      "chat_id",
+      "worktree_id",
+      "worker_id",
+      "acquiring_actor",
+      "exclusive",
+      "purpose",
+      "state",
+      "starting_head",
+      "runtime_session_id",
+      "codex_thread_id",
+      "transition_kind"
+    ]
+  }
+}

@@ -6,7 +6,6 @@ import {
   CUA_SIGNING_IDENTIFIER,
 } from "./cantrip-cua/build.mjs";
 import { smokeCantripCua } from "./cantrip-cua/smoke.mjs";
-import { smokeCuaModelImageEncoder } from "./cantrip-cua/model-image-smoke.mjs";
 
 export async function verifyPackagedWorkerCua(workerDirectory, options = {}) {
   const {
@@ -18,12 +17,10 @@ export async function verifyPackagedWorkerCua(workerDirectory, options = {}) {
   if (requireDeveloperId) verifyPackagedCuaSignature(binary, runCodesign);
   // Execute the final-layout binary, including after artifact extraction or
   // signing. No local Cargo build can hide a missing/broken packaged helper.
-  const native = await smokeCantripCua(binary, {
+  return smokeCantripCua(binary, {
     ...smokeOptions,
     backend: "fake",
   });
-  const modelImageEncoder = await smokeCuaModelImageEncoder(workerDirectory);
-  return { ...native, modelImageEncoder };
 }
 
 function codesign(args) {

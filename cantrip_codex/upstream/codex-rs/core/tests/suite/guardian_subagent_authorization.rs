@@ -373,6 +373,8 @@ async fn code_mode_messaging_fixture(
             }
             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
             config.approvals_reviewer = ApprovalsReviewer::AutoReview;
+            config.model_catalog =
+                Some(codex_models_manager::bundled_models_response().expect("valid catalog"));
             config
                 .permissions
                 .set_permission_profile(PermissionProfile::workspace_write())
@@ -801,7 +803,7 @@ async fn run_guardian_subagent_review(
         test.codex = super::guardian_checkpoint_migration::resume(
             &test,
             &test.codex,
-            vec![RolloutItem::Compacted(checkpoint)],
+            vec![RolloutItem::Compacted(Box::new(checkpoint))],
         )
         .await?;
         assert_eq!(
@@ -1678,7 +1680,7 @@ async fn run_guardian_subagent_review(
                 ));
             }
             checkpoint.replacement_history = Some(replacement_history);
-            root.append_rollout_items(&[RolloutItem::Compacted(checkpoint)])
+            root.append_rollout_items(&[RolloutItem::Compacted(Box::new(checkpoint))])
                 .await?;
             root.shutdown_and_wait().await?;
             test.thread_manager.remove_thread(&root_thread_id).await;

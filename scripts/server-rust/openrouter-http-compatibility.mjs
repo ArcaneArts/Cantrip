@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildRustExample } from "./build.mjs";
 import { repositoryFixture } from "./repository-fixture.mjs";
-import { OpenRouterCatalogCache } from "../../cantrip_server/src/models/openrouter-catalog.ts";
+import { OpenRouterCatalogCache } from "../../tests/reference-node-server/src/models/openrouter-catalog.ts";
 
 const reportAt = process.argv.indexOf("--report");
 const reportPath = reportAt < 0 ? null : process.argv[reportAt + 1];

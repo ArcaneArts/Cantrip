@@ -31,15 +31,22 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
     )
     .await?;
     let runtime = optional(&session["runtimeGeneration"])?;
-    guard::assert_runtime_writable(
+    guard::assert_runtime_writable_for_dispatch(
         tx,
         &chat,
         runtime.as_deref(),
         None,
         if row["kind"] == "attach" {
             Access::Attach
+        } else if row["kind"] == "control" || row["kind"] == "reply" {
+            Access::Control
         } else {
             Access::Write
+        },
+        if row["status"] == "accepted" && row["origin"] == "gui" && row["kind"] == "start" {
+            Some((operation.as_str(), generation.as_str()))
+        } else {
+            None
         },
     )
     .await?;
@@ -89,6 +96,7 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
         return reject("thread-identity-mismatch");
     }
     let intent = &row["intent"];
+    super::suspension_admission::assert_dispatch(tx, owner, &row, input).await?;
     if let Some(binding) =
         wire::property(Some(intent), "settingsBindingId")?.filter(|v| truthy(Some(v)))
     {
@@ -168,6 +176,7 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
     {
         queue::cancel_goal_handoffs(tx, &chat).await?;
     }
+    let durable_control = super::suspension::dispatch(tx, owner, &row, input).await?;
     if row["method"] == "turn/interrupt" {
         queue::stop_autonomy(tx, &chat).await?;
     } else if truthy(intent.get("resumeAutonomy")) {
@@ -177,7 +186,7 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
         )
         .await?;
     }
-    if row["method"] == "turn/pause" {
+    if row["method"] == "turn/pause" && !durable_control {
         let paused = intent["paused"].as_bool().context("Native pause intent")?;
         tx.query(
             "UPDATE chats SET automation_paused=$1 WHERE id=$2",
@@ -191,6 +200,7 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
     if truthy(intent.get("resumeAutonomy")) || row["method"] == "turn/pause" {
         queue::changed(tx, &chat).await?;
     }
+    super::goal_recovery::dispatch(tx, &row, &input["workerGeneration"]).await?;
     let settings = row["method"] == "thread/settings/update"
         && truthy(intent.get("nativeSettingsOperationId"));
     let application=json!({"nativeOperationId":intent["nativeSettingsOperationId"],"submissionId":Value::Null,"status":"pending","evidenceCount":0}).stringify();

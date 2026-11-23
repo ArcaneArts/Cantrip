@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "workerReportedVersion": "1.1.2976",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "testDriverBaseCommit": "e5d0ee5fdc119a2172a7c8ce3754479aee11986d",
+  "completeReplacement": false,
+  "platform": "darwin-arm64",
+  "guestPlatform": "linux-arm64",
+  "guestImage": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+  "nodeVersion": "v24.22.1",
+  "productCells": 6,
+  "productStepsPerPeer": 12,
+  "authenticatedReceiptsPerPeer": 5,
+  "droppedWorkerRepliesPerPeer": 3,
+  "intentionalWorkerKillsPerPeer": 2,
+  "scope": "Account-authenticated browser SDK, packaged Rust executable and packaged full worker, Node reference, and isolated Linux guests. The Rust bundled cell manages its packaged PostgreSQL and the Node bundled comparison uses isolated external PostgreSQL.",
+  "assertions": [
+    "The guest replaces the home once, removes only the selected synthetic file from the active home and retains the original inode and exact private file.",
+    "The browser recovers the encrypted reset outcome through a replacement worker after the successful result is dropped, then replay leaves the replacement inode unchanged.",
+    "Rollback restores the original inode and file while preserving a later write in the displaced home.",
+    "The reset receipt and private path survive detail and history reads through the browser, with no private path in the wire summary."
+  ],
+  "inputs": {
+    "server": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+    },
+    "worker": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    "cli": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/bin/cantrip",
+      "bytes": 1342656,
+      "sha256": "45e20cf3027b13938e705bb400830273c3458dd8ad2f3760f350ce619f639b3d"
+    },
+    "testDriverPatch": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-reset-3059.qbQWBKGK/test-driver.patch",
+      "bytes": 4895,
+      "sha256": "7218153657852609268c4ee83c5d26b0dedc531a59dee4f1d85547e7b7eb6d5f"
+    }
+  },
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "matchedSnapshots": 10,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-reset-3059.qbQWBKGK/pglite.json",
+        "bytes": 745302,
+        "sha256": "9d22ed2b7f6c43a93ade678ee87ebbfe0e3f04795e317222c7d7173da89cd4c5"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-reset-3059.qbQWBKGK/pglite.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "matchedSnapshots": 10,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-reset-3059.qbQWBKGK/bundled-postgres.json",
+        "bytes": 823520,
+        "sha256": "8297a312f0fb9de6f525d594bb4e2f82876ecb4def0e0c0d00d0feedb9e0edc5"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-reset-3059.qbQWBKGK/bundled-postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "matchedSnapshots": 10,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-reset-3059.qbQWBKGK/postgres.json",
+        "bytes": 818374,
+        "sha256": "4d0db30207781541644d2ea9af03fed8b6a02c84c7347ce6a202178a21c0222b"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-reset-3059.qbQWBKGK/postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    }
+  ]
+}

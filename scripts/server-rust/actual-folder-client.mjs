@@ -3,6 +3,38 @@ import {
   replicaProductJobEvents,
 } from "./actual-project-replicas.mjs";
 import { actualProjectWorktrees } from "./actual-project-worktrees.mjs";
+import { repositoryFixture } from "./repository-fixture.mjs";
+import { literal } from "./project-target-state.mjs";
+import { actualProjectAdministration } from "./actual-project-administration.mjs";
+import {
+  assertOfflineRemoteSurface,
+  prepareActualRemoteSurface,
+  actualRemoteSurface,
+} from "./actual-remote-surfaces-client.mjs";
+import { actualProjectInsights } from "./actual-project-insights-client.mjs";
+import {
+  prepareActualComputerUse,
+  actualComputerUse,
+} from "./actual-computer-use-client.mjs";
+import {
+  actualOperationalStatus,
+  operationalProductToken,
+} from "./actual-operational-status-client.mjs";
+import {
+  actualWorkerLogs,
+  actualWorkerLogsDisconnected,
+} from "./actual-worker-logs-client.mjs";
+import { actualTaskClient } from "./actual-task-client.mjs";
+import { interruptTaskGoalTransferDependency } from "./task-goal-transfer-dependency-outage.mjs";
+import { interruptTaskGoalTransferPeer } from "./task-goal-transfer-peer-outage.mjs";
+import { actualTaskLabelClient } from "./actual-task-label-client.mjs";
+import { actualInlineChatLabels } from "./actual-inline-chat-labels.mjs";
+import { actualAgentInteractionCancel } from "./actual-agent-interaction-cancel.mjs";
+import { actualProviderAuthClient } from "./actual-provider-auth-client.mjs";
+import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
+import { providerTestBoundary } from "./provider-test-boundary.mjs";
+import { observePostgresErrors } from "./postgres-error-observation.mjs";
+import { observeFolderLive } from "./folder-live-observation.mjs";
 import { actualGithubConversion } from "./actual-github-conversion.mjs";
 import { actualWorkspaceDiscovery } from "./actual-workspace-discovery.mjs";
 import {
@@ -13,12 +45,15 @@ import {
 // Filesystem assertions inspect only disposable test directories. No transport,
 // command handler, crypto adapter or repository implementation is substituted.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
 import {
   actualProjectGitViews,
   retainedProjectGitViews,
 } from "./actual-project-git-views.mjs";
 import { createRequire } from "node:module";
+import { once } from "node:events";
 import {
   mkdtemp,
   mkdir,
@@ -26,6 +61,7 @@ import {
   realpath,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -33,9 +69,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 import { createPasswordKdfParameters } from "../../packages/crypto/src/index.ts";
-import { loadStoredWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { deriveManagedFolderLocation } from "../../cantrip_worker/src/managed-folders.ts";
-import { normalizeProjectSourcePath } from "../../cantrip_worker/src/project-source-path.ts";
+import { loadStoredWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
+import { deriveManagedFolderLocation } from "../../tests/reference-node-worker/src/managed-folders.ts";
+import { normalizeProjectSourcePath } from "../../tests/reference-node-worker/src/project-source-path.ts";
 import {
   buildRustServer,
   buildRustExample,
@@ -45,9 +81,27 @@ import {
 } from "./build.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
+import { SharedProductFixture } from "./shared-product-fixture.mjs";
+import { verifySharedProductRolling } from "./shared-product-rolling.mjs";
+import { verifySharedProductOfflineShutdown } from "./shared-product-offline-shutdown.mjs";
+import { actualNativeInflightClient } from "./actual-native-inflight-client.mjs";
+import { SingleProductFixture } from "./single-product-fixture.mjs";
+import { ProfileRuntimeFixture } from "./profile-runtime-fixture.mjs";
+import { profileAgentInterruption } from "./profile-agent-interruption.mjs";
+import { actualSingleInflightClient } from "./actual-single-inflight-client.mjs";
+import { actualWorkerInflightClient } from "./actual-worker-inflight-client.mjs";
+import { actualTaskGoalWorkerInflightClient } from "./actual-task-goal-worker-inflight-client.mjs";
+import { actualModelOperationsClient } from "./actual-model-operations-client.mjs";
+import { actualCantripOsClient } from "./actual-cantrip-os-client.mjs";
+import {
+  actualProviderCatalogClient,
+  assertProviderCatalogSummary,
+} from "./actual-provider-catalog-client.mjs";
+import { nativeAgentInterruption } from "./native-agent-interruption.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
 import { password } from "./security-fixtures.mjs";
 import { actualTerminalServices } from "./actual-terminal-services.mjs";
+import { actualWorkerLinkRenewal } from "./actual-worker-link-renewal.mjs";
 import {
   actualWorkerFileDocuments,
   retainedWorkerFileDocument,
@@ -80,23 +134,349 @@ const option = (name) => {
   const i = process.argv.indexOf(name);
   return i < 0 ? undefined : process.argv[i + 1];
 };
+function startupTimeout(name) {
+  if (!process.argv.includes(name)) return undefined;
+  const timeout = Number(option(name));
+  assert.ok(
+    Number.isInteger(timeout) && timeout > 0 && timeout <= 2_147_483_647,
+    `${name} requires a positive timeout in milliseconds within the Node timer range`,
+  );
+  return timeout;
+}
+const serverStartupTimeoutMs = startupTimeout("--server-startup-timeout-ms");
+const workerStartupTimeoutMs = startupTimeout("--worker-startup-timeout-ms");
 const databaseMode = option("--database") ?? "pglite";
+const sharedPair = option("--server-pair");
+// A test-owned service can run on the host when the product runs in a guest.
+const externalRedisUrl = process.env.CANTRIP_TEST_EXTERNAL_REDIS_URL;
+if (externalRedisUrl) {
+  assert.ok(sharedPair, "External Redis requires --server-pair");
+  assert.ok(
+    !process.argv.includes("--operational-status") &&
+      !process.argv.includes("--redis-offline-shutdown"),
+    "Redis interruption tests require the harness to own the Redis process",
+  );
+}
+const automationInterruption = option("--project-automation-interruption");
+if (process.argv.includes("--project-automation-interruption")) {
+  assert.ok(
+    ["protect", "finish", "handoff"].includes(automationInterruption) &&
+      sharedPair &&
+      databaseMode === "postgres" &&
+      process.argv.includes("--project-automations"),
+    "Automation interruption requires protect, finish or handoff, a shared PostgreSQL pair, and --project-automations",
+  );
+}
+const sharedQueueRecovery = process.argv.includes("--shared-queue-recovery");
+const sharedQueueRetainedChat = process.argv.includes(
+  "--shared-queue-retained-chat",
+);
+const sharedQueueResumeRace = process.argv.includes(
+  "--shared-queue-resume-race",
+);
+const sharedQueueInterruption = option("--shared-queue-interruption");
+if (process.argv.includes("--shared-queue-interruption")) {
+  assert.ok(
+    ["claim", "stream", "resume-ack", "resume-ack-paused"].includes(
+      sharedQueueInterruption,
+    ),
+    "Shared queue interruption requires claim, stream, resume-ack or resume-ack-paused",
+  );
+  assert.ok(
+    sharedQueueRecovery && !sharedQueueResumeRace,
+    "Shared queue interruption requires --shared-queue-recovery without the Resume race",
+  );
+}
+assert.ok(
+  !sharedQueueResumeRace || sharedQueueRecovery,
+  "Shared queue resume race requires --shared-queue-recovery",
+);
+assert.ok(
+  !sharedQueueRetainedChat || sharedQueueRecovery,
+  "Retained chat queue recovery requires --shared-queue-recovery",
+);
+assert.ok(
+  !sharedQueueRecovery || sharedPair,
+  "Shared queue recovery requires --server-pair",
+);
+assert.ok(
+  !process.argv.includes("--replica-redis-outage") ||
+    (sharedPair && process.argv.includes("--replicas")),
+  "Replica Redis interruption requires --server-pair and --replicas",
+);
+const postgresOutage = option("--inflight-peer") === "postgres";
+const modelPostgresOutage = process.argv.includes(
+  "--model-operation-postgres-outage",
+);
+const modelPostgresOutageOperation = option(
+  "--model-operation-postgres-outage-operation",
+);
+if (process.argv.includes("--model-operation-postgres-outage-operation"))
+  assert.ok(
+    modelPostgresOutage &&
+      ["embedding", "decision"].includes(modelPostgresOutageOperation),
+    "Select embedding or decision with --model-operation-postgres-outage-operation and --model-operation-postgres-outage",
+  );
+const settleModelWhilePostgresOffline = process.argv.includes(
+  "--model-operation-postgres-offline-settlement",
+);
+const modelPostgresOutageDurationMs = startupTimeout(
+  "--model-operation-postgres-outage-duration-ms",
+);
+assert.ok(
+  !settleModelWhilePostgresOffline || modelPostgresOutage,
+  "Offline settlement requires --model-operation-postgres-outage",
+);
+assert.ok(
+  modelPostgresOutageDurationMs === undefined ||
+    (settleModelWhilePostgresOffline &&
+      modelPostgresOutageDurationMs >= 60_000),
+  "A custom PostgreSQL outage duration requires offline settlement and at least 60000 milliseconds",
+);
+const modelRedisOutage = process.argv.includes(
+  "--model-operation-redis-outage",
+);
+const modelRedisOutageOperation = option(
+  "--model-operation-redis-outage-operation",
+);
+if (process.argv.includes("--model-operation-redis-outage-operation"))
+  assert.ok(
+    modelRedisOutage &&
+      ["embedding", "decision"].includes(modelRedisOutageOperation),
+    "Select embedding or decision with --model-operation-redis-outage-operation and --model-operation-redis-outage",
+  );
+const replyWhileRedisOffline = process.argv.includes(
+  "--model-operation-redis-offline-reply",
+);
+const modelRedisAndPostgresOutage = process.argv.includes(
+  "--model-operation-redis-and-postgres-outage",
+);
+const restoreRedisBeforePostgres = process.argv.includes(
+  "--model-operation-redis-first-recovery",
+);
+assert.ok(
+  !replyWhileRedisOffline || modelRedisOutage,
+  "Offline Redis reply requires --model-operation-redis-outage",
+);
+assert.ok(
+  !modelRedisAndPostgresOutage || (modelRedisOutage && replyWhileRedisOffline),
+  "Overlapping model dependency loss requires --model-operation-redis-outage and --model-operation-redis-offline-reply",
+);
+assert.ok(
+  !restoreRedisBeforePostgres || modelRedisAndPostgresOutage,
+  "Redis-first recovery requires --model-operation-redis-and-postgres-outage",
+);
+const modelServerAndPostgresLoss = process.argv.includes(
+  "--model-operation-server-and-postgres-loss",
+);
+const modelServerLoss =
+  modelServerAndPostgresLoss ||
+  process.argv.includes("--model-operation-server-loss");
+assert.ok(
+  !modelServerAndPostgresLoss ||
+    (process.argv.includes("--model-operations") &&
+      databaseMode === "postgres" &&
+      !sharedPair),
+  "Overlapping model-operation server and PostgreSQL loss requires --model-operations --database postgres with one server",
+);
+assert.ok(
+  !modelPostgresOutage ||
+    (process.argv.includes("--model-operations") &&
+      databaseMode === "postgres" &&
+      !modelServerLoss),
+  "Model-operation PostgreSQL interruption requires --model-operations --database postgres and runs separately from server loss",
+);
+assert.ok(
+  !modelRedisOutage ||
+    (process.argv.includes("--model-operations") &&
+      sharedPair &&
+      databaseMode === "postgres" &&
+      !modelServerLoss &&
+      !modelPostgresOutage),
+  "Model-operation Redis interruption requires --model-operations --database postgres --server-pair and runs separately from other faults",
+);
+const goalLaneDependency = option("--task-goal-lane-dependency");
+const taskGoalFirstInputPhase = option("--task-goal-first-input-order");
+assert.ok(
+  taskGoalFirstInputPhase === undefined ||
+    ["claim", "dispatch"].includes(taskGoalFirstInputPhase),
+  "Task Goal first-input order expects claim or dispatch",
+);
+const cantripOsRun = process.argv.includes("--cantrip-os-run");
+const cantripOsSurfaces = process.argv.includes("--cantrip-os-surfaces");
+const fakeHostDesktopInventory = process.argv.includes(
+  "--fake-host-desktop-inventory",
+);
+assert.ok(!fakeHostDesktopInventory || cantripOsSurfaces);
+const cantripOsSourceBackup = process.argv.includes(
+  "--cantrip-os-source-backup",
+);
+const workerLinkRenewal = process.argv.includes("--worker-link-renewal");
+const taskGoalTransferFaultMode = option("--task-goal-provider-transfer-fault");
+const taskGoalTransferDependency = ["postgres", "redis"].find(
+  (dependency) => taskGoalTransferFaultMode === `${dependency}-after-commit`,
+);
+const taskGoalTransferPeer = ["client", "worker"].find(
+  (peer) => taskGoalTransferFaultMode === `${peer}-peer-after-commit`,
+);
+const taskGoalSharedFault = taskGoalTransferDependency || taskGoalTransferPeer;
+const taskGoalTransferredPause = process.argv.includes(
+  "--task-goal-transferred-pause",
+);
+const taskGoalAutonomousTransfer =
+  Boolean(taskGoalSharedFault) ||
+  taskGoalTransferredPause ||
+  process.argv.includes("--task-goal-autonomous-provider-transfer");
+assert.ok(
+  taskGoalTransferFaultMode === undefined ||
+    taskGoalSharedFault ||
+    ["cancel-prepared", "worker-after-commit"].includes(
+      taskGoalTransferFaultMode,
+    ),
+  "Task Goal transfer fault expects cancel-prepared, worker-after-commit, postgres-after-commit, redis-after-commit, client-peer-after-commit, or worker-peer-after-commit",
+);
+assert.ok(
+  !taskGoalSharedFault || sharedPair,
+  "Shared Task Goal transfer interruption requires --server-pair",
+);
+const taskGoalProviderTransfer =
+  Boolean(taskGoalTransferFaultMode) ||
+  taskGoalAutonomousTransfer ||
+  process.argv.includes("--task-goal-provider-transfer");
+const runTaskProduct =
+  process.argv.includes("--tasks") ||
+  Boolean(taskGoalFirstInputPhase) ||
+  taskGoalProviderTransfer;
+const providerAuth = process.argv.includes("--provider-auth");
+const taskLabel = process.argv.includes("--task-label");
+const inlineChatLabels = process.argv.includes("--inline-chat-labels");
+const approvalCancellation = process.argv.includes("--approval-cancellation");
+const remoteSurfaces = process.argv.includes("--remote-surfaces");
+const computerUseProduct = process.argv.includes("--computer-use");
+const fakeComputerUse = process.argv.includes("--computer-use-fake-capture");
+assert.ok(!fakeComputerUse || computerUseProduct);
+assert.ok(!workerLinkRenewal || !sharedPair);
+const cliWorktreeAcquire = process.argv.includes("--cli-worktree-acquire");
+const gitProjectChat =
+  cliWorktreeAcquire ||
+  automationInterruption === "handoff" ||
+  process.argv.includes("--chat-controls");
+const singleProduct =
+  cliWorktreeAcquire ||
+  cantripOsRun ||
+  cantripOsSurfaces ||
+  cantripOsSourceBackup ||
+  workerLinkRenewal ||
+  providerAuth ||
+  taskLabel ||
+  inlineChatLabels ||
+  approvalCancellation ||
+  process.argv.includes("--production-server") ||
+  process.argv.includes("--native-task-goal-worker-recovery") ||
+  process.argv.includes("--native-worker-recovery") ||
+  process.argv.includes("--native-single-recovery") ||
+  process.argv.includes("--native-single-agent-recovery") ||
+  process.argv.includes("--model-operations") ||
+  process.argv.includes("--provider-catalog") ||
+  process.argv.includes("--cantrip-os") ||
+  process.argv.includes("--cantrip-os-system");
+const selectedRuntime = option("--runtime");
+assert.ok(!selectedRuntime || ["node", "rust"].includes(selectedRuntime));
+const runtimeCases = sharedPair
+  ? (sharedPair === "all"
+      ? ["node/node", "node/rust", "rust/node", "rust/rust"]
+      : [sharedPair]
+    ).map((value) => {
+      const pair = value.split("/");
+      assert.ok(
+        pair.length === 2 &&
+          pair.every((kind) => ["node", "rust"].includes(kind)),
+      );
+      assert.equal(
+        databaseMode,
+        "postgres",
+        "shared product runs require their own shared PostgreSQL database",
+      );
+      return pair;
+    })
+  : selectedRuntime
+    ? [[selectedRuntime]]
+    : [["node"], ["rust"]];
+const needsRemoteSurface =
+  process.argv.includes("--surfaces") || remoteSurfaces;
 const workerLinkRoute = option("--worker-link-route") ?? "relay";
 const reportPath = option("--report");
+const githubInitialPush = process.argv.includes("--github-initial-push");
+const githubConversion =
+  githubInitialPush || process.argv.includes("--github-conversion");
+const liveTaskDiagnostics =
+  process.argv.includes("--task-diagnostics") ||
+  process.argv.includes("--postgres-errors");
+const fullServerLogs =
+  cantripOsSurfaces ||
+  cantripOsSourceBackup ||
+  workerLinkRenewal ||
+  liveTaskDiagnostics ||
+  process.argv.includes("--project-insights") ||
+  process.argv.includes("--operational-status") ||
+  process.argv.includes("--worker-logs") ||
+  remoteSurfaces ||
+  computerUseProduct ||
+  process.argv.includes("--project-administration") ||
+  gitProjectChat;
 const surfaceFixtureRequests = [];
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-actual-folder-"));
+const fakeCuaLauncher =
+  fakeComputerUse || fakeHostDesktopInventory
+    ? path.join(root, "fake-cua")
+    : null;
 const appRoot = path.join(repositoryRoot, "cantrip_app");
 const appRequire = createRequire(path.join(appRoot, "package.json"));
-const { createServer } = await import(
+const { createServer, searchForWorkspaceRoot } = await import(
   pathToFileURL(appRequire.resolve("vite")).href
 );
 const report = {
   suite: "actual-browser-server-worker-folders",
   databaseMode,
+  serverPair: sharedPair ?? null,
+  ...(sharedPair && {
+    redisFixture: externalRedisUrl ? "external" : "owned",
+  }),
+  serverStartupTimeoutMs,
+  workerStartupTimeoutMs,
   completeReplacement: false,
   scope:
-    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Not whole UI, packaging or multi-instance acceptance.",
+    "Existing browser account encryption, project and protected repository APIs; full worker startup, real managed/existing folders, failure/retry, reconnect and retained server state. Optional --worktrees exercises actual local Git create/lock/unlock/reconcile/remove/prune, retained identity and real Run process retirement before deletion, with only disposable catalog classification seeded. Optional --replicas uses two full workers for direct local Git attachment, replay, restart and detach; --github-replicas adds real public gh clone/fetch and managed checkout deletion. Optional --github-conversion uses the existing encrypted APIs and full worker to link matching public history in a fresh managed folder, preserve dirty bytes and identities, and restart without SQL seeding or command substitutions. Optional --github-initial-push exercises explicit initial commit and actual Git push to an owned local bare remote. Optional --tasks uses existing encrypted Task APIs, the full production worker and bundled Codex for direct execution, planning, native Goal completion, failure/retry, paused admissions and retained restart; only public model HTTP responses are controlled. Optional --project-chats exercises retained Agent creation and usage, real managed native preparation, encrypted turns, completed canonical history, native Goal tools, exact restart retention and Goal clear; only public model HTTP responses are controlled. Optional --chat-controls adds real native compaction and continuation, dirty Git worktree/lane release, encrypted system-message replay and exact committed restart retention to the existing Agent/worktree flows. Optional --chat-customizations adds actual skills, extra roots, MCP and bound permission configuration with native restart recovery. Optional --skill-settings adds actual project/account skill files, audiences, encrypted recovery deletion and retained restart. Optional --mcp-settings uses an acceptance-only owned worker home and the existing encrypted browser SDK for MCP CRUD, full discovery, copy, native resource access and restart. Shared --server-pair runs exercise production peers on private shared PostgreSQL/Redis with the browser and full worker on opposite peers; --rolling-servers replaces application and worker-owner peers without restarting that worker. Optional --native-shared-agent-recovery interrupts actual Agent/Goal execution on the selected --agent-crash-peer while retaining native authority and the original full worker. Full UI, packaged/platform, worker/native-process loss, long-outage/Redis TLS and whole replacement acceptance remain separate.",
   runtimes: [],
+  cliWorktreeAcquireScope: cliWorktreeAcquire
+    ? "Packaged CLI, full worker and native Agent turn on an attached local Git checkout. Only project catalog classification and local model replies are supplied by the fixture."
+    : null,
+  operationalStatusScope: process.argv.includes("--operational-status")
+    ? "Existing browser getSystemHealth, authenticated Prometheus and full worker/Live before and after retained server restart. Shared peers additionally exercise actual Redis stop/restart, readiness and cached coordination collectors without replacing the worker. Active-job failover, TLS deployment and supported-platform/package acceptance remain separate."
+    : null,
+  workerLinkRenewalScope: workerLinkRenewal
+    ? "Browser SDK, production servers, full Node worker and native LOCAL broker verifier. Real lease extensions, worker and server process kills, old authority rejection and explicit release."
+    : null,
+  providerAuthScope: providerAuth
+    ? "Browser provider-account SDK, production server, and full worker with isolated legacy credential files. Includes native Codex logout and worker-local Grok logout."
+    : null,
+  taskLabelScope: taskLabel
+    ? "Existing browser Task APIs, production server, full worker, and native Codex stateless labeling through a disposable model HTTP endpoint."
+    : null,
+  inlineChatLabelScope: inlineChatLabels
+    ? "Existing browser Chat and Agent APIs, production server, full worker and native initial labeling through disposable model HTTP endpoints."
+    : null,
+  sharedQueueRecoveryScope: sharedQueueRecovery
+    ? `Encrypted browser queue on ${sharedQueueRetainedChat ? "the retained Agent chat after normal restart and Goal clear" : "a separately prepared Agent chat"} with ${sharedQueueInterruption === "resume-ack-paused" ? "one paused prompt" : "two paused prompts"}. SIGKILL and replace the worker-owner peer, reconnect the same full worker, and verify ordered native turns and exactly-once model requests after resume.`
+    : null,
+  sharedQueueResumeRace,
+  sharedQueueInterruption: sharedQueueInterruption ?? null,
+  approvalCancellationScope: approvalCancellation
+    ? "Production serving paths, browser SDK, full worker, and actual native Codex approval with an isolated database write failure and a normal approval control."
+    : null,
+  taskDiagnostics: liveTaskDiagnostics
+    ? "Development SQL fixture executable; unchanged production startup, routes, worker and native runtime. Failed Task runs retain scoped read-only database snapshots before teardown."
+    : null,
 };
 let vite, browser, postgres, failure, surfaceRepositoryBinary;
 async function flow(
@@ -108,15 +488,48 @@ async function flow(
 ) {
   const context = await browser.newContext();
   const page = await context.newPage();
+  const taskOutcomeOrderKind = ["goal", "round"].find((kind) =>
+    process.argv.includes(`--task-${kind}-outcome-order`),
+  );
+  const taskOutcomeOrder = taskOutcomeOrderKind
+    ? {
+        kind: taskOutcomeOrderKind,
+        file: path.join(
+          root,
+          fixture.kind,
+          `task-${taskOutcomeOrderKind}-outcome-order.json`,
+        ),
+      }
+    : undefined;
+  const goalLaneFault =
+    goalLaneDependency || process.argv.includes("--task-goal-lane-owner-loss")
+      ? path.join(root, fixture.kind, "goal-lane-observation.json")
+      : undefined;
+  const taskGoalFirstInputOrder = taskGoalFirstInputPhase
+    ? path.join(root, fixture.kind, "task-goal-first-input-order.json")
+    : undefined;
+  const taskGoalTransferFaultFile = taskGoalTransferFaultMode
+    ? path.join(root, fixture.kind, "task-goal-handoff-fault.json")
+    : undefined;
   const errors = [],
     requests = [];
   result.requests = requests;
+  const liveObservation = observeFolderLive(page, fixture.server.origin);
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
     const pathname = new URL(request.url()).pathname;
     if (
       pathname.startsWith("/api/projects") ||
+      pathname.startsWith("/api/cantrip-os") ||
+      pathname.startsWith("/api/run-configuration-runtimes/") ||
+      pathname.startsWith("/api/model-operations/") ||
       pathname.startsWith("/api/chats/") ||
+      pathname.startsWith("/api/skills") ||
+      pathname.startsWith("/api/settings/mcp-") ||
+      pathname.startsWith("/api/settings/providers") ||
+      pathname.startsWith("/api/skill-audiences") ||
+      pathname.startsWith("/api/agent-requests") ||
+      pathname.startsWith("/api/tasks/") ||
       pathname.startsWith("/api/tunnel") ||
       pathname.startsWith("/api/project-shares/") ||
       pathname.endsWith("/repository-operation") ||
@@ -128,27 +541,251 @@ async function flow(
         body: request.postData(),
       });
   });
-  const dataDirectory = path.join(root, fixture.kind, "worker");
+  const canonicalDataDirectory = path.join(root, fixture.kind, "worker");
+  const dataDirectory = process.argv.includes("--skill-settings")
+    ? path.join(root, fixture.kind, "worker-path-alias")
+    : canonicalDataDirectory;
+  const resumeRaceFile = sharedQueueResumeRace
+    ? path.join(dataDirectory, "test-queue-resume-race")
+    : undefined;
+  const resumeAckFile = sharedQueueInterruption?.startsWith("resume-ack")
+    ? path.join(dataDirectory, "test-queue-resume-ack")
+    : undefined;
+  if (dataDirectory !== canonicalDataDirectory) {
+    await mkdir(canonicalDataDirectory, { recursive: true });
+    // SkillManager returns lexical account paths; native discovery returns
+    // canonical paths. Exercise that real rejection on every platform instead
+    // of accidentally depending on macOS's /var alias.
+    await symlink(
+      await realpath(canonicalDataDirectory),
+      dataDirectory,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  }
   const existingPath = path.join(root, fixture.kind, "private-existing-folder");
   const missingPath = path.join(root, fixture.kind, "private-repaired-folder");
   const workerId = "actual-folder-worker";
-  let worker, tunnel;
-  const startWorker = async (enrollmentCode) => {
-    worker = launchActualWorker(fixture, dataDirectory, {
-      cliBinary,
-      enrollmentCode,
-      workerId,
-      traceShutdown:
-        process.argv.includes("--replicas") ||
-        process.argv.includes("--worktrees"),
-      ...(process.argv.includes("--surfaces")
-        ? {
-            chromiumExecutable: chromium.executablePath(),
-            chromiumTraceDirectory: path.resolve(".qa/rust-server"),
-          }
-        : {}),
-    });
+  const providerBoundary = process.argv.includes("--provider-test")
+    ? await providerTestBoundary(
+        path.join(root, fixture.kind, "provider-test-boundary"),
+      )
+    : undefined;
+  let worker, tunnel, productFailed;
+  const startWorker = async (
+    enrollmentCode,
+    { providerTest = false, environment = {} } = {},
+  ) => {
+    const isolateHome =
+      workerLinkRenewal ||
+      taskGoalProviderTransfer ||
+      providerAuth ||
+      taskLabel ||
+      inlineChatLabels ||
+      approvalCancellation ||
+      remoteSurfaces ||
+      cantripOsSurfaces ||
+      computerUseProduct ||
+      [
+        "--mcp-settings",
+        "--terminals",
+        "--terminal-direct",
+        "--project-administration",
+      ].some((flag) => process.argv.includes(flag));
+    const homeDirectory = isolateHome
+      ? path.join(dataDirectory, "mcp-test-home")
+      : undefined;
+    if (homeDirectory) await mkdir(homeDirectory, { recursive: true });
+    const backupResponseDirectory = path.join(
+      dataDirectory,
+      "test-backup-responses",
+    );
+    if (cantripOsSourceBackup)
+      await mkdir(backupResponseDirectory, { recursive: true });
+    worker = launchActualWorker(
+      fixture.workerFixture ?? fixture,
+      dataDirectory,
+      {
+        cliBinary,
+        enrollmentCode,
+        startupTimeoutMs: workerStartupTimeoutMs,
+        workerId,
+        homeDirectory,
+        environment: {
+          ...(workerLinkRenewal ||
+          providerAuth ||
+          taskLabel ||
+          inlineChatLabels ||
+          approvalCancellation ||
+          remoteSurfaces ||
+          computerUseProduct ||
+          cantripOsSurfaces
+            ? { CANTRIP_LOG_LEVEL: "debug" }
+            : {}),
+          ...(fakeCuaLauncher ? { CANTRIP_CUA_BIN: fakeCuaLauncher } : {}),
+          ...(providerTest ? providerBoundary?.environment : {}),
+          ...(resumeAckFile
+            ? {
+                CANTRIP_TEST_QUEUE_RESUME_ACK: resumeAckFile,
+                CANTRIP_TEST_QUEUE_RESUME_ACK_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL(
+                      "./worker-queue-resume-ack-loss.mjs",
+                      import.meta.url,
+                    ).href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
+          ...(resumeRaceFile
+            ? {
+                CANTRIP_TEST_QUEUE_RESUME_RACE: resumeRaceFile,
+                CANTRIP_TEST_QUEUE_RESUME_RACE_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL("./worker-queue-resume-race.mjs", import.meta.url)
+                      .href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
+          ...(cantripOsSourceBackup
+            ? {
+                CANTRIP_TEST_BACKUP_RESPONSE_DIRECTORY: backupResponseDirectory,
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL("./os-backup-response-fault.mjs", import.meta.url)
+                      .href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
+          ...(goalLaneFault
+            ? {
+                CANTRIP_TEST_GOAL_LANE_OWNER_LOSS: goalLaneFault,
+                ...(goalLaneDependency
+                  ? { CANTRIP_TEST_GOAL_LANE_DEPENDENCY: goalLaneDependency }
+                  : {}),
+                CANTRIP_TEST_GOAL_LANE_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL(
+                      "./worker-goal-lane-owner-loss.mjs",
+                      import.meta.url,
+                    ).href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
+          ...(taskOutcomeOrder
+            ? {
+                CANTRIP_TEST_TASK_ROUND_ORDER_FILE: taskOutcomeOrder.file,
+                CANTRIP_TEST_TASK_OUTCOME_ORDER_KIND: taskOutcomeOrder.kind,
+                CANTRIP_TEST_TASK_ROUND_ORDER_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL("./worker-task-round-order.mjs", import.meta.url)
+                      .href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
+          ...(taskGoalFirstInputOrder
+            ? {
+                CANTRIP_TEST_TASK_GOAL_FIRST_INPUT_FILE:
+                  taskGoalFirstInputOrder,
+                CANTRIP_TEST_TASK_GOAL_FIRST_INPUT_PHASE:
+                  taskGoalFirstInputPhase,
+                CANTRIP_TEST_TASK_GOAL_FIRST_INPUT_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL(
+                      "./worker-task-goal-first-input-order.mjs",
+                      import.meta.url,
+                    ).href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
+          ...(taskGoalTransferFaultFile
+            ? {
+                CANTRIP_TEST_TASK_GOAL_HANDOFF_FILE: taskGoalTransferFaultFile,
+                CANTRIP_TEST_TASK_GOAL_HANDOFF_SOURCE:
+                  taskGoalAutonomousTransfer ? "autonomous" : "first-input",
+                ...(taskGoalSharedFault
+                  ? { CANTRIP_TEST_TASK_GOAL_HANDOFF_RELEASE: "1" }
+                  : {}),
+                CANTRIP_TEST_TASK_GOAL_HANDOFF_ACTION:
+                  taskGoalTransferFaultMode === "cancel-prepared"
+                    ? "prepared"
+                    : "commit",
+                CANTRIP_TEST_TASK_GOAL_HANDOFF_WORKER_ENTRY: path.resolve(
+                  process.env.CANTRIP_TEST_WORKER_PACKAGE ??
+                    path.join(repositoryRoot, "tests/reference-node-worker"),
+                  "dist/index.js",
+                ),
+                NODE_OPTIONS: [
+                  process.env.NODE_OPTIONS,
+                  "--import=" +
+                    new URL(
+                      "./worker-task-goal-handoff-fault.mjs",
+                      import.meta.url,
+                    ).href,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : {}),
+          ...environment,
+        },
+        traceShutdown:
+          process.argv.includes("--trace-worker-shutdown") ||
+          process.argv.includes("--replicas") ||
+          process.argv.includes("--worktrees") ||
+          process.argv.includes("--project-administration"),
+        ...(needsRemoteSurface
+          ? {
+              chromiumExecutable: chromium.executablePath(),
+              chromiumTraceDirectory: path.resolve(".qa/rust-server"),
+            }
+          : {}),
+      },
+    );
     await worker.ready();
+    if (sharedPair) await fixture.assertRemoteWorker(workerId);
+    return worker;
   };
   const stopWorker = async () => {
     if (!worker) return;
@@ -159,6 +796,22 @@ async function flow(
     } finally {
       result.workerDiagnostics.push(current.diagnostics());
     }
+  };
+  const crashWorker = async () => {
+    const current = worker;
+    assert.ok(current);
+    const ended = once(current.child, "close");
+    assert.equal(current.child.kill("SIGKILL"), true);
+    const [code, signal] = await ended;
+    assert.equal(code, null);
+    assert.equal(signal, "SIGKILL");
+    worker = undefined;
+    result.workerStops.push({
+      code,
+      signal,
+      intentionalInterruption: "SIGKILL",
+    });
+    result.workerDiagnostics.push(current.diagnostics());
   };
   const workers = () => page.evaluate(() => window.folderWorkers.getWorkers());
   const job = (id) =>
@@ -185,13 +838,20 @@ async function flow(
         undefined,
       id,
     );
-    await eventually(
-      () => page.evaluate(() => window.folderLive.snapshot()),
-      (snapshot) => {
-        assert.equal(snapshot.status, "live");
-        assert.equal(snapshot.activeScopeCount, snapshot.desiredScopeCount);
-      },
-    );
+    let lastSnapshot;
+    try {
+      await eventually(
+        () => page.evaluate(() => window.folderLive.snapshot()),
+        (snapshot) => {
+          lastSnapshot = snapshot;
+          assert.equal(snapshot.status, "live");
+          assert.equal(snapshot.activeScopeCount, snapshot.desiredScopeCount);
+        },
+      );
+    } catch (error) {
+      result.failedLiveScope = liveObservation(lastSnapshot);
+      throw error;
+    }
   };
   const filesystem = async (id) => {
     const target = deriveManagedFolderLocation(dataDirectory, id).target;
@@ -220,7 +880,9 @@ async function flow(
     if (
       process.argv.includes("--project-surfaces") ||
       process.argv.includes("--worktrees") ||
-      process.argv.includes("--replicas")
+      gitProjectChat ||
+      process.argv.includes("--replicas") ||
+      process.argv.includes("--project-administration")
     ) {
       execFileSync("git", ["init", "--initial-branch=main", existingPath]);
       execFileSync("git", ["-C", existingPath, "add", "retained.txt"]);
@@ -323,6 +985,8 @@ async function flow(
     result.steps.push(
       "existing browser initializes account, session and durable endpoint encryption",
     );
+    if (process.argv.includes("--postgres-errors"))
+      await observePostgresErrors(fixture, page);
     await startWorker(enrollment.code);
     await eventually(workers, (workers) => {
       assert.equal(workers.length, 1);
@@ -342,9 +1006,20 @@ async function flow(
     );
     const credential = loadStoredWorkerCredential(
       dataDirectory,
-      fixture.server.origin,
+      (fixture.workerFixture ?? fixture).server.origin,
     );
     assert.ok(credential);
+    if (providerAuth) {
+      await actualProviderAuthClient({
+        page,
+        workerId,
+        workerDirectory: dataDirectory,
+        diagnostics: () => worker.diagnostics(),
+        result,
+      });
+      assert.deepEqual(errors, []);
+      return;
+    }
     if (nativeProbeBinary)
       await actualNativeDirectProbe({
         page,
@@ -382,7 +1057,10 @@ async function flow(
       "existing browser repository API authorizes and refreshes its key",
     );
     assert.deepEqual(
-      loadStoredWorkerCredential(dataDirectory, fixture.server.origin),
+      loadStoredWorkerCredential(
+        dataDirectory,
+        (fixture.workerFixture ?? fixture).server.origin,
+      ),
       credential,
     );
     result.steps.push(
@@ -391,6 +1069,50 @@ async function flow(
     result.steps.push(
       "existing project client encrypts label and full worker creates a real managed directory",
     );
+    if (taskLabel) {
+      await actualTaskLabelClient({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        startWorker,
+        stopWorker,
+        diagnostics: () => worker.diagnostics(),
+        result,
+      });
+      assert.deepEqual(errors, []);
+      return;
+    }
+    if (inlineChatLabels) {
+      await actualInlineChatLabels({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        stopWorker,
+        diagnostics: () => worker.diagnostics(),
+        result,
+      });
+      assert.deepEqual(errors, []);
+      return;
+    }
+    if (approvalCancellation) {
+      await actualAgentInteractionCancel({
+        fixture,
+        page,
+        projectId: first.id,
+        projectRoot: first.source.path,
+        workerId,
+        startWorker,
+        stopWorker,
+        diagnostics: () => worker.diagnostics(),
+        result,
+        requests,
+        repositoryBinary: surfaceRepositoryBinary,
+      });
+      assert.deepEqual(errors, []);
+      return;
+    }
     const attached = await create(names[1], existingPath);
     await waitJob(attached.id, "succeeded");
     const opened = await openedProject(
@@ -399,7 +1121,9 @@ async function flow(
       normalizeProjectSourcePath(await realpath(existingPath)),
       process.argv.includes("--project-surfaces") ||
         process.argv.includes("--worktrees") ||
-        process.argv.includes("--replicas")
+        gitProjectChat ||
+        process.argv.includes("--replicas") ||
+        process.argv.includes("--project-administration")
         ? "git"
         : "folder",
     );
@@ -481,6 +1205,17 @@ async function flow(
     result.steps.push(
       "offline folder job resumes on actual worker reconnect and existing AppLiveClient receives completion",
     );
+    if (workerLinkRenewal)
+      await actualWorkerLinkRenewal({
+        page,
+        workerId,
+        getWorker: () => worker,
+        startWorker,
+        crashWorker,
+        restartServer: () => fixture.restart({ crash: true }),
+        binary: directBrokerBinary,
+        result,
+      });
     if (
       process.argv.includes("--terminals") ||
       process.argv.includes("--terminal-direct")
@@ -490,6 +1225,8 @@ async function flow(
         projectId: created.id,
         directory: await filesystem(created.id),
         workerId,
+        cliBinary,
+        workerDataDirectory: dataDirectory,
         startWorker,
         stopWorker,
         result,
@@ -500,7 +1237,8 @@ async function flow(
     // The preceding terminal offline case intentionally stops the worker.
     // Subsequent document/browser flows use the worker through the public API.
     if (
-      (process.argv.includes("--surfaces") ||
+      (needsRemoteSurface ||
+        computerUseProduct ||
         process.argv.includes("--project-shares") ||
         process.argv.includes("--file-documents") ||
         process.argv.includes("--workspaces") ||
@@ -561,7 +1299,35 @@ async function flow(
           requests,
         })
       : undefined;
-    // Capture after browser creation has committed its project layout update.
+    if (process.argv.includes("--project-insights"))
+      await actualProjectInsights({
+        page,
+        projectId: created.id,
+        workerId,
+        directory: await filesystem(created.id),
+        result,
+        phase: "connected",
+      });
+    // Capture after optional resource creation commits its project updates.
+    const computerUse = computerUseProduct
+      ? await prepareActualComputerUse({
+          page,
+          projectId: created.id,
+          workerId,
+          result,
+          fakeCapture: fakeComputerUse,
+        })
+      : undefined;
+    const legacySurface = remoteSurfaces
+      ? await prepareActualRemoteSurface({
+          page,
+          projectId: created.id,
+          workerId,
+          origin: vite.resolvedUrls.local[0],
+          protocolUrl: `/@fs${pathToFileURL(path.join(repositoryRoot, "packages/protocol/src/index.ts")).pathname}`,
+          result,
+        })
+      : undefined;
     const wire = await page.evaluate(() =>
       window.folderWire.getProjectWireList(),
     );
@@ -583,6 +1349,8 @@ async function flow(
       existingPath,
       missingPath,
       dataDirectory,
+      ...(legacySurface ? [legacySurface.token, legacySurface.url] : []),
+      ...(computerUse ? [computerUse.title] : []),
       ...(surface
         ? [surface.token, surface.url, "Private WorkerLink browser"]
         : []),
@@ -595,20 +1363,66 @@ async function flow(
     result.steps.push(
       "server receives opaque labels, encrypted repository operations and routing handles without private names or paths",
     );
+    if (process.argv.includes("--operational-status"))
+      await actualOperationalStatus({
+        fixture,
+        page,
+        worker,
+        result,
+        databaseMode,
+        phase: "connected",
+        secrets: [...names, existingPath, missingPath],
+      });
+    if (process.argv.includes("--worker-logs"))
+      await actualWorkerLogs({
+        page,
+        fixture,
+        workerId,
+        result,
+        phase: "connected",
+        recoveringWorker:
+          fixture.redis && process.argv.includes("--operational-status")
+            ? worker.child
+            : undefined,
+      });
     await stopWorker();
+    if (legacySurface) {
+      await eventually(workers, (values) =>
+        assert.equal(
+          values.find((entry) => entry.workerId === workerId)?.online,
+          false,
+        ),
+      );
+      result.legacySurfaceOffline = await assertOfflineRemoteSurface(
+        page,
+        legacySurface,
+      );
+    }
+    if (process.argv.includes("--worker-logs"))
+      await actualWorkerLogsDisconnected({ page, result, phase: "connected" });
     const scratch = projectShares
       ? await prepareExistingScratch(dataDirectory)
       : undefined;
     await page.evaluate(() => window.folderLive.stop());
     const retainedPort =
+      computerUse ||
       surface ||
+      legacySurface ||
       tunnel ||
       projectShares ||
       fileDocuments ||
       projectSurfaces ||
       process.argv.includes("--worktrees") ||
+      process.argv.includes("--project-administration") ||
       process.argv.includes("--replicas") ||
-      process.argv.includes("--github-conversion") ||
+      githubConversion ||
+      runTaskProduct ||
+      singleProduct ||
+      process.argv.includes("--project-chats") ||
+      gitProjectChat ||
+      process.argv.includes("--operational-status") ||
+      process.argv.includes("--worker-logs") ||
+      process.argv.includes("--project-insights") ||
       process.argv.includes("--workspace-discovery")
         ? Number(new URL(fixture.server.origin).port)
         : 0;
@@ -631,7 +1445,7 @@ async function flow(
         workerId,
       });
     await fixture.start({ port: retainedPort });
-    const retained = await page.evaluate(
+    await page.evaluate(
       async ({ serverUrl, password }) => {
         const servers = await import("/src/lib/server-connections.ts");
         const account = await import("/src/lib/api/account.ts");
@@ -664,28 +1478,43 @@ async function flow(
         });
         if (access.status !== "ready")
           throw new Error("Retained encryption was not ready");
-        const projects = await window.folderWire.getProjectWireList();
-        const { decodePrivateDisplayLabelForClient } =
-          await import("/src/lib/private-label-encryption.ts");
-        const labels = await Promise.all(
-          projects.map((project) =>
-            decodePrivateDisplayLabelForClient({
-              identity: window.folderIdentity,
-              opaque: project.nameProtection,
-              recordKind: "project",
-              rowId: project.id,
-            }),
-          ),
-        );
-        return { projects, labels };
       },
       { serverUrl: fixture.server.origin, password },
     );
-    assert.deepEqual(retained.projects, wire);
-    assert.deepEqual(retained.labels, names);
+    // The worker was stopped before restarting the server. Replica presence
+    // ages out of the heartbeat window while the persisted fields stay equal.
+    const offlineWire = wire.map((project) => ({
+      ...project,
+      replicas: project.replicas.map((replica) =>
+        replica.workerId === workerId
+          ? { ...replica, workerOnline: false }
+          : replica,
+      ),
+    }));
+    const retainedProjects = await eventually(
+      () => page.evaluate(() => window.folderWire.getProjectWireList()),
+      (projects) => assert.deepEqual(projects, offlineWire),
+    );
+    const retainedLabels = await page.evaluate(async (projects) => {
+      const { decodePrivateDisplayLabelForClient } =
+        await import("/src/lib/private-label-encryption.ts");
+      return Promise.all(
+        projects.map((project) =>
+          decodePrivateDisplayLabelForClient({
+            identity: window.folderIdentity,
+            opaque: project.nameProtection,
+            recordKind: "project",
+            rowId: project.id,
+          }),
+        ),
+      );
+    }, retainedProjects);
+    assert.deepEqual(retainedLabels, names);
     if (workspace) await retainedWorkspaceClient({ page, workspace, result });
     if (
       surface ||
+      legacySurface ||
+      computerUse ||
       tunnel ||
       projectShares ||
       fileDocuments ||
@@ -693,6 +1522,13 @@ async function flow(
       process.argv.includes("--replicas")
     ) {
       await startWorker();
+      if (computerUse)
+        await actualComputerUse({
+          page,
+          prepared: computerUse,
+          result,
+          phase: "retained",
+        });
       if (projectSurfaces)
         await retainedWorkerProjectSurfaces({
           page,
@@ -707,6 +1543,13 @@ async function flow(
           workerId,
           document: fileDocuments,
           result,
+        });
+      if (legacySurface)
+        await actualRemoteSurface({
+          page,
+          surface: legacySurface,
+          result,
+          diagnostics: () => worker.diagnostics(),
         });
       if (surface)
         await actualWorkerBrowserSurface({
@@ -745,11 +1588,57 @@ async function flow(
         });
       await stopWorker();
     }
-    for (const project of retained.projects)
+    for (const project of retainedProjects)
       assert.equal((await job(project.id)).state, "succeeded");
     result.steps.push(
       "server restart retains identity, encrypted labels, source handles and all completed job states",
     );
+    if (
+      process.argv.includes("--operational-status") ||
+      process.argv.includes("--worker-logs") ||
+      process.argv.includes("--project-insights")
+    ) {
+      await startWorker();
+      await page.evaluate(() => window.folderLive.start());
+      await eventually(workers, (values) =>
+        assert.equal(values[0].online, true),
+      );
+      if (process.argv.includes("--operational-status"))
+        await actualOperationalStatus({
+          fixture,
+          page,
+          worker,
+          result,
+          databaseMode,
+          phase: "restarted",
+          secrets: [...names, existingPath, missingPath],
+        });
+      if (process.argv.includes("--worker-logs"))
+        await actualWorkerLogs({
+          page,
+          fixture,
+          workerId,
+          result,
+          phase: "restarted",
+        });
+      if (process.argv.includes("--project-insights"))
+        await actualProjectInsights({
+          page,
+          projectId: created.id,
+          workerId,
+          directory: await filesystem(created.id),
+          result,
+          phase: "restarted",
+        });
+      await stopWorker();
+      if (process.argv.includes("--worker-logs"))
+        await actualWorkerLogsDisconnected({
+          page,
+          result,
+          phase: "restarted",
+        });
+      await page.evaluate(() => window.folderLive.stop());
+    }
     result.projects = wire.map((project) => ({
       originKind: project.originKind,
       setupStatus: project.setupStatus,
@@ -768,7 +1657,10 @@ async function flow(
         cliBinary,
         result,
       });
-    if (process.argv.includes("--worktrees"))
+    if (
+      process.argv.includes("--worktrees") ||
+      process.argv.includes("--chat-controls")
+    )
       await actualProjectWorktrees({
         page,
         fixture,
@@ -790,7 +1682,7 @@ async function flow(
         stopWorker,
         result,
       });
-    if (process.argv.includes("--github-conversion"))
+    if (githubConversion)
       await actualGithubConversion({
         page,
         fixture,
@@ -799,39 +1691,434 @@ async function flow(
         startWorker,
         stopWorker,
         result,
+        initialPush: githubInitialPush,
       });
+    if (process.argv.includes("--native-single-recovery")) {
+      if (!worker) await startWorker();
+      await actualSingleInflightClient({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        worker,
+        dataDirectory,
+        requests,
+        result,
+      });
+    }
+    if (process.argv.includes("--native-task-goal-worker-recovery")) {
+      if (worker) await stopWorker();
+      await actualTaskGoalWorkerInflightClient({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        dataDirectory,
+        getWorker: () => worker,
+        startWorker,
+        stopWorker,
+        crashWorker,
+        requests,
+        result,
+      });
+    }
+    if (process.argv.includes("--native-worker-recovery")) {
+      if (worker) await stopWorker();
+      await actualWorkerInflightClient({
+        operationKind: option("--worker-recovery-kind") ?? "direct",
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        dataDirectory,
+        getWorker: () => worker,
+        startWorker,
+        stopWorker,
+        crashWorker,
+        requests,
+        result,
+      });
+    }
+    if (process.argv.includes("--native-inflight-recovery")) {
+      if (!worker) await startWorker();
+      await actualNativeInflightClient({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        worker,
+        dataDirectory,
+        postgresCluster: postgres?.cluster,
+        requests,
+        result,
+      });
+    }
+    if (runTaskProduct)
+      await actualTaskClient({
+        page,
+        fixture,
+        projectId: first.id,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+        requests,
+        taskOutcomeOrder,
+        taskGoalFirstInputOrder,
+        taskGoalTransferWorkerData: taskGoalProviderTransfer
+          ? dataDirectory
+          : undefined,
+        taskGoalAutonomousTransfer,
+        taskGoalTransferredPause,
+        taskGoalTransferFault: taskGoalTransferFaultFile
+          ? {
+              mode: taskGoalTransferFaultMode,
+              file: taskGoalTransferFaultFile,
+              ...(taskGoalSharedFault
+                ? {
+                    interruptAfterCommit: (held, interruption) => {
+                      const context = {
+                        fixture,
+                        workerId,
+                        worker,
+                        file: taskGoalTransferFaultFile,
+                        held,
+                        interruption,
+                      };
+                      return taskGoalTransferPeer
+                        ? interruptTaskGoalTransferPeer({
+                            ...context,
+                            peer: taskGoalTransferPeer,
+                          })
+                        : interruptTaskGoalTransferDependency({
+                            ...context,
+                            dependency: taskGoalTransferDependency,
+                            cluster: postgres?.cluster,
+                          });
+                    },
+                  }
+                : {}),
+              restartWorker: async (previousPid) => {
+                assert.equal(worker.child.pid, previousPid);
+                await crashWorker();
+                return (await startWorker()).child.pid;
+              },
+            }
+          : undefined,
+        goalLaneScenario:
+          goalLaneFault || process.argv.includes("--task-goal-recovered-lane")
+            ? {
+                faultFile: goalLaneFault,
+                dependency: goalLaneDependency,
+                cluster: postgres?.cluster,
+              }
+            : undefined,
+      });
+    if (cliWorktreeAcquire) {
+      if (worker) await stopWorker();
+      const port = Number(new URL(fixture.server.origin).port);
+      await fixture.close();
+      const repository = await repositoryFixture({
+        kind: fixture.kind,
+        root: path.join(root, fixture.name),
+        executable: surfaceRepositoryBinary,
+        databaseMode: fixture.databaseMode,
+        databaseUrl: fixture.environment.DATABASE_URL,
+      });
+      try {
+        // The browser attached a real local Git checkout. Seed only the
+        // catalog classification used by existing worktree acceptance.
+        await repository.seed(
+          `UPDATE projects SET origin_kind='github',folder_management=NULL,git_capability=true,github_capability=true,worktree_policy='agent-managed',github_repository_blind_index='actual-cli-worktree-fixture' WHERE id=${literal(attached.id)}`,
+        );
+      } finally {
+        await repository.close();
+      }
+      await fixture.start({ port });
+    }
+    if (
+      process.argv.includes("--project-chats") ||
+      automationInterruption ||
+      sharedQueueRecovery ||
+      gitProjectChat ||
+      process.argv.includes("--native-single-agent-recovery") ||
+      process.argv.includes("--native-shared-agent-recovery")
+    ) {
+      if (worker) await stopWorker();
+      await actualProjectChatClient({
+        page,
+        fixture,
+        sharedQueueRecovery,
+        sharedQueueRetainedChat,
+        sharedQueueInterruption,
+        automationInterruption,
+        resumeAckFile,
+        resumeRaceFile,
+        projectId: gitProjectChat ? attached.id : first.id,
+        projectRoot: gitProjectChat ? opened.source.path : first.source.path,
+        ...(cliWorktreeAcquire ? { cliWorktreeAcquire: cliBinary } : {}),
+        workerDataDirectory: dataDirectory,
+        workerId,
+        cliBinary,
+        startWorker,
+        stopWorker,
+        result,
+        requests,
+        providerBoundary,
+        ...(process.argv.includes("--native-single-agent-recovery") ||
+        process.argv.includes("--native-shared-agent-recovery")
+          ? {
+              interruptNativeStream: (process.argv.includes(
+                "--profile-runtime-recovery",
+              )
+                ? profileAgentInterruption
+                : nativeAgentInterruption)({
+                fixture,
+                page,
+                projectId: first.id,
+                workerId,
+                getWorker: () => worker,
+                dataDirectory,
+                result,
+                ...(process.argv.includes("--native-shared-agent-recovery")
+                  ? { peer: option("--agent-crash-peer") ?? "client" }
+                  : {}),
+              }),
+            }
+          : {}),
+      });
+    }
+    if (
+      cantripOsRun ||
+      cantripOsSurfaces ||
+      cantripOsSourceBackup ||
+      process.argv.includes("--cantrip-os") ||
+      process.argv.includes("--cantrip-os-system")
+    ) {
+      if (!worker) await startWorker();
+      await actualCantripOsClient({
+        runProjectId: cantripOsRun ? first.id : undefined,
+        surfaceProjectId: cantripOsSurfaces ? first.id : undefined,
+        fakeHostDesktopInventory,
+        backupProjectId: cantripOsSourceBackup ? first.id : undefined,
+        page,
+        fixture,
+        root,
+        dataDirectory,
+        workerId,
+        startWorker,
+        stopWorker,
+        crashWorker,
+        result,
+      });
+    }
+    if (process.argv.includes("--provider-catalog")) {
+      if (!worker) await startWorker();
+      await actualProviderCatalogClient({
+        page,
+        fixture,
+        root,
+        dataDirectory,
+        workerId,
+        cliBinary,
+        startWorker,
+        stopWorker,
+        requests,
+        result,
+      });
+    }
+    if (process.argv.includes("--model-operations")) {
+      if (modelServerLoss) assert.ok(fixture instanceof SingleProductFixture);
+      if (!worker) await startWorker();
+      await actualModelOperationsClient({
+        page,
+        fixture,
+        workerId,
+        startWorker,
+        stopWorker,
+        crashWorker,
+        workerProcessForInterruption:
+          modelServerLoss || modelPostgresOutage || modelRedisOutage
+            ? () => worker?.child
+            : undefined,
+        postgresOutage: modelPostgresOutage ? postgres.cluster : undefined,
+        modelPostgresOutageOperation,
+        serverAndPostgresOutage: modelServerAndPostgresLoss
+          ? postgres.cluster
+          : undefined,
+        settleModelWhilePostgresOffline,
+        modelPostgresOutageDurationMs,
+        redisOutage: modelRedisOutage,
+        postgresDuringRedisOutage: modelRedisAndPostgresOutage
+          ? postgres.cluster
+          : undefined,
+        restoreRedisBeforePostgres,
+        modelRedisOutageOperation,
+        replyWhileRedisOffline,
+        requests,
+        result,
+      });
+    }
+    if (process.argv.includes("--rolling-servers")) {
+      if (!worker) await startWorker();
+      await verifySharedProductRolling({
+        fixture,
+        page,
+        projectId: first.id,
+        workerId,
+        directory: await filesystem(first.id),
+        dataDirectory,
+        worker,
+        credential,
+        result,
+      });
+    }
+    if (process.argv.includes("--redis-offline-shutdown")) {
+      if (!worker) await startWorker();
+      await verifySharedProductOfflineShutdown({
+        fixture,
+        worker,
+        workerId,
+        result,
+      });
+    }
     result.requests = requests;
+    if (process.argv.includes("--project-administration")) {
+      if (!worker) await startWorker();
+      await actualProjectAdministration({
+        page,
+        fixture,
+        root,
+        executable: surfaceRepositoryBinary,
+        workerId,
+        workerDataDirectory: dataDirectory,
+        attached: opened,
+        existingPath,
+        create,
+        waitJob,
+        filesystem,
+        startWorker,
+        stopWorker,
+        result,
+      });
+    }
     result.events = await page.evaluate(() => window.folderEvents);
     assert.deepEqual(errors, []);
+  } catch (error) {
+    productFailed = true;
+    throw error;
   } finally {
-    await stopWorker();
-    await tunnel?.close();
-    await page.evaluate(() => window.folderLive?.stop()).catch(() => {});
-    await context.close();
+    if (providerBoundary) {
+      result.providerBoundaryDiagnostics = {
+        failures: providerBoundary.failures,
+        requests: providerBoundary.requests,
+        tunnels: providerBoundary.tunnels,
+        blockedTunnels: providerBoundary.blockedTunnels,
+        discoveryProbes: providerBoundary.discoveryProbes,
+      };
+    }
+    const cleanup = [
+      ["worker", stopWorker],
+      ["tunnel", () => tunnel?.close()],
+      ["provider boundary", () => providerBoundary?.close()],
+      [
+        "browser context",
+        async () => {
+          await page.evaluate(() => window.folderLive?.stop()).catch(() => {});
+          await context.close();
+        },
+      ],
+    ];
+    let firstCleanupError;
+    for (const [resource, close] of cleanup) {
+      try {
+        await close();
+      } catch (error) {
+        firstCleanupError ??= error;
+        (result.productCleanupFailures ??= []).push({
+          resource,
+          message: error.message,
+          stack: error.stack,
+          code: error.code,
+          signal: error.signal,
+          killed: error.killed,
+        });
+      }
+    }
+    if (!productFailed && firstCleanupError) throw firstCleanupError;
   }
 }
 try {
-  const executable = await buildRustServer();
+  if (fakeCuaLauncher) {
+    const binary = path.resolve(
+      process.env.CANTRIP_TEST_CUA_BIN ??
+        path.join(repositoryRoot, "cantrip_worker/bin/cantrip-cua"),
+    );
+    const quotedBinary = "'" + binary.replaceAll("'", "'\\''") + "'";
+    await writeFile(
+      fakeCuaLauncher,
+      `#!/bin/sh\nexec ${quotedBinary} --backend fake\n`,
+      {
+        mode: 0o700,
+      },
+    );
+  }
+  const usesNative = runtimeCases.some((kinds) => kinds.includes("rust"));
+  const executable = !usesNative
+    ? undefined
+    : liveTaskDiagnostics
+      ? await buildRustExample("http-sql-fixture")
+      : (process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer()));
   if (
-    process.argv.includes("--surfaces") ||
+    approvalCancellation ||
     process.argv.includes("--tunnels") ||
     process.argv.includes("--project-shares") ||
-    process.argv.includes("--worktrees")
+    process.argv.includes("--worktrees") ||
+    cliWorktreeAcquire ||
+    process.argv.includes("--chat-controls") ||
+    process.argv.includes("--project-administration")
   )
-    surfaceRepositoryBinary = await buildRustExample(
-      "project-repository-fixture",
-    );
-  const cliBinary = await buildWorkerCli();
+    surfaceRepositoryBinary = !usesNative
+      ? undefined
+      : (process.env.CANTRIP_TEST_PROJECT_REPOSITORY_BINARY ??
+        (await buildRustExample("project-repository-fixture")));
+  const cliBinary =
+    process.env.CANTRIP_TEST_CLI_BIN ?? (await buildWorkerCli());
   const nativeProbeBinary = process.argv.includes("--native-probe")
     ? await buildDesktopDirectProbe()
     : undefined;
-  const directBrokerBinary = process.argv.includes("--terminal-direct")
-    ? await buildRustExample("desktop-direct-broker")
-    : undefined;
+  const directBrokerBinary =
+    process.argv.includes("--terminal-direct") || workerLinkRenewal
+      ? (process.env.CANTRIP_TEST_DESKTOP_BROKER_BINARY ??
+        (await buildRustExample("desktop-direct-broker")))
+      : undefined;
   vite = await createServer({
     root: appRoot,
     configFile: path.join(appRoot, "vite.config.ts"),
-    server: { host: "127.0.0.1", port: 0, strictPort: false },
+    cacheDir: path.join(root, "vite"),
+    server: {
+      host: "127.0.0.1",
+      port: 0,
+      strictPort: false,
+      // Packaged QA fixtures can contain the workspace packages without the
+      // workspace marker that Vite normally uses to discover them.
+      fs: {
+        allow: [
+          searchForWorkspaceRoot(appRoot),
+          path.join(repositoryRoot, "packages/protocol"),
+        ],
+      },
+    },
+    // These optional workspace imports otherwise trigger a Vite page reload
+    // halfway through a cold acceptance run, discarding its real client state.
+    optimizeDeps: {
+      include: [
+        "@capacitor/network",
+        "@tauri-apps/api/dpi",
+        "@tauri-apps/api/webviewWindow",
+        "@tauri-apps/api/window",
+      ],
+    },
     plugins: [
       {
         name: "actual-folder-client",
@@ -852,11 +2139,17 @@ try {
           );
           server.middlewares.use(
             "/__actual_folder_fixture",
-            (_request, response) => {
-              response.setHeader("content-type", "text/html");
-              response.end(
-                "<!doctype html><html><title>Actual folder client</title><body>Disposable folder acceptance</body></html>",
-              );
+            async (_request, response, next) => {
+              try {
+                const html = await server.transformIndexHtml(
+                  "/__actual_folder_fixture",
+                  "<!doctype html><html><title>Actual folder client</title><body>Disposable folder acceptance</body></html>",
+                );
+                response.setHeader("content-type", "text/html");
+                response.end(html);
+              } catch (error) {
+                next(error);
+              }
             },
           );
         },
@@ -864,56 +2157,167 @@ try {
     ],
   });
   await vite.listen();
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.CANTRIP_TEST_BROWSER_BINARY || undefined,
+  });
   if (databaseMode !== "pglite")
-    postgres = await postgresFixture(path.join(root, "postgres"));
-  for (const kind of ["node", "rust"]) {
-    const fixture = new HttpFixture({
+    postgres = await postgresFixture(path.join(root, "postgres"), {
+      startupTimeoutMs: serverStartupTimeoutMs,
+      restartable:
+        postgresOutage ||
+        modelPostgresOutage ||
+        modelRedisOutage ||
+        modelServerAndPostgresLoss ||
+        goalLaneDependency === "postgres" ||
+        Boolean(taskGoalTransferDependency),
+    });
+  for (const kinds of runtimeCases) {
+    const kind = kinds[0];
+    const fixtureOptions = {
       kind,
       executable,
       root,
-      name: "actual-folder",
+      name: sharedPair ? "actual-folder-" + kinds.join("-") : "actual-folder",
       databaseMode,
+      startupTimeoutMs: serverStartupTimeoutMs,
       providerAuthDrain: true,
+      liveSqlFixture: liveTaskDiagnostics,
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
-        ...(process.argv.includes("--worker-links")
-          ? workerLinkRoute === "relay"
-            ? { CANTRIP_WORKER_LINK_RELAY_ONLY: "true" }
-            : {
+        // Retained-session product flows use the normal server lifetime. The
+        // short HTTP fixture lifetime can expire during an emulated restart.
+        CANTRIP_SESSION_TTL_SECONDS: String(30 * 24 * 60 * 60),
+        ...(automationInterruption
+          ? { CANTRIP_SCHEDULER_LEASE_TTL_MS: "30000" }
+          : {}),
+        ...(process.argv.includes("--operational-status")
+          ? { CANTRIP_METRICS_TOKEN: operationalProductToken }
+          : {}),
+        ...(cantripOsSurfaces
+          ? { CANTRIP_WORKER_LINK_RELAY_ONLY: "true" }
+          : workerLinkRenewal
+            ? {
                 CANTRIP_WORKER_LINK_RELAY_ONLY: "false",
-                CANTRIP_WORKER_LINK_LOCAL_ENABLED: "false",
+                CANTRIP_WORKER_LINK_LOCAL_ENABLED: "true",
                 CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
                 CANTRIP_WORKER_LINK_WAN_ENABLED: "false",
               }
-          : {}),
+            : process.argv.includes("--worker-links")
+              ? workerLinkRoute === "relay"
+                ? { CANTRIP_WORKER_LINK_RELAY_ONLY: "true" }
+                : {
+                    CANTRIP_WORKER_LINK_RELAY_ONLY: "false",
+                    CANTRIP_WORKER_LINK_LOCAL_ENABLED: "false",
+                    CANTRIP_WORKER_LINK_LAN_ENABLED: "true",
+                    CANTRIP_WORKER_LINK_WAN_ENABLED: "false",
+                  }
+              : {}),
         CANTRIP_APP_ORIGINS: `http://127.0.0.1:5173,${new URL(vite.resolvedUrls.local[0]).origin}`,
       },
-    });
-    if (postgres) {
+    };
+    const fixture = sharedPair
+      ? await SharedProductFixture.create({
+          ...fixtureOptions,
+          clientKind: kinds[0],
+          workerKind: kinds[1],
+          databaseUrl: await postgres.database(),
+          redisUrl: externalRedisUrl,
+        })
+      : process.argv.includes("--profile-runtime-recovery")
+        ? new ProfileRuntimeFixture({
+            ...fixtureOptions,
+            nativeAssets: option("--native-assets"),
+            profileConverter: option("--profile-converter"),
+            profileSnapshotProbe: option("--profile-snapshot-probe"),
+            createProfileDatabase: () => postgres.database(),
+            samePostgres: process.argv.includes("--profile-same-postgres"),
+          })
+        : singleProduct
+          ? new SingleProductFixture(fixtureOptions)
+          : new HttpFixture(fixtureOptions);
+    if (postgres && !sharedPair) {
       if (kind === "node" || databaseMode === "postgres")
         fixture.environment.DATABASE_URL = await postgres.database();
       else
         fixture.environment.CANTRIP_POSTGRES_BIN_DIR =
           process.env.CANTRIP_TEST_POSTGRES_BIN_DIR;
     }
-    const result = { kind, steps: [], workerStops: [], workerDiagnostics: [] };
+    const result = {
+      kind: sharedPair ? kinds.join("/") : kind,
+      steps: [],
+      workerStops: [],
+      workerDiagnostics: [],
+    };
     report.runtimes.push(result);
+    if (fixture instanceof ProfileRuntimeFixture) {
+      result.profileRuntimeTransfers = fixture.transfers;
+      result.profileRuntimeGenerations = fixture.generations;
+    }
+    if (fullServerLogs) {
+      const start = fixture.start.bind(fixture);
+      fixture.start = async (...args) => {
+        await start(...args);
+        for (const peer of fixture.peers ?? [fixture]) {
+          const child = peer.server.child;
+          const observation = {
+            kind: peer.kind,
+            pid: child.pid,
+            command: child.spawnfile,
+            arguments: child.spawnargs.slice(1),
+          };
+          try {
+            const bytes = await readFile(child.spawnfile);
+            observation.executableSha256 = createHash("sha256")
+              .update(bytes)
+              .digest("hex");
+            observation.executableBytes = bytes.length;
+          } catch (error) {
+            observation.executableObservationError = error.message;
+          }
+          (result.serverProcesses ??= []).push(observation);
+        }
+        const generation = (result.serverDiagnosticFiles ??= []).length + 1;
+        const file = path.join(root, `${kind}-server-${generation}.stderr.log`);
+        appendFileSync(file, "");
+        result.serverDiagnosticFiles.push(file);
+        fixture.server.child.stderr.on("data", (chunk) =>
+          appendFileSync(file, chunk),
+        );
+      };
+    }
     const close = fixture.close.bind(fixture);
     fixture.close = async (...args) => {
       const server = fixture.server;
       try {
         return await close(...args);
       } finally {
-        if (server)
-          (result.serverShutdowns ??= []).push({
+        if (server) {
+          const observation = {
+            exit: {
+              code: server.child.exitCode,
+              signal: server.child.signalCode,
+            },
             stages: server.events.filter(
               (event) => event.event === "server.shutdown.stage",
             ),
             diagnostics: server.diagnostics(),
-          });
+          };
+          if (fullServerLogs) {
+            try {
+              observation.fullDiagnostics = await readFile(
+                result.serverDiagnosticFiles.at(-1),
+                "utf8",
+              );
+            } catch (cause) {
+              observation.diagnosticFileError = cause.message;
+            }
+          }
+          (result.serverShutdowns ??= []).push(observation);
+        }
       }
     };
+    let productFailed = false;
     try {
       await fixture.start();
       await flow(
@@ -923,35 +2327,145 @@ try {
         nativeProbeBinary,
         directBrokerBinary,
       );
+    } catch (error) {
+      productFailed = true;
+      throw error;
     } finally {
-      await fixture.close();
+      try {
+        if (sharedPair) await fixture.dispose();
+        else await fixture.close();
+      } catch (error) {
+        result.serverCleanupFailure = {
+          message: error.message,
+          stack: error.stack,
+        };
+        if (!productFailed) throw error;
+      } finally {
+        if (sharedPair) result.sharedServerGenerations = fixture.generations;
+        else if (fixture.generations)
+          result.singleServerGenerations = fixture.generations;
+      }
     }
   }
-  assert.deepEqual(report.runtimes[1].steps, report.runtimes[0].steps);
-  assert.deepEqual(report.runtimes[1].projects, report.runtimes[0].projects);
-  if (
-    process.argv.includes("--github-conversion") ||
-    process.argv.includes("--workspace-discovery")
-  )
-    assert.deepEqual(
-      report.runtimes[1].githubConversionSummary,
-      report.runtimes[0].githubConversionSummary,
-    );
-  if (process.argv.includes("--workspace-discovery"))
-    assert.deepEqual(
-      report.runtimes[1].workspaceDiscoverySummary,
-      report.runtimes[0].workspaceDiscoverySummary,
-    );
-  if (process.argv.includes("--github-replicas"))
-    assert.deepEqual(
-      report.runtimes[1].githubReplicaSummary,
-      report.runtimes[0].githubReplicaSummary,
-    );
-  if (process.argv.includes("--replicas")) {
-    assert.deepEqual(
-      replicaProductJobEvents(report.runtimes[1]),
-      replicaProductJobEvents(report.runtimes[0]),
-    );
+  for (const runtime of report.runtimes.slice(1)) {
+    assert.deepEqual(runtime.steps, report.runtimes[0].steps);
+    assert.deepEqual(runtime.projects, report.runtimes[0].projects);
+    if (providerAuth)
+      assert.deepEqual(runtime.providerAuth, report.runtimes[0].providerAuth);
+    if (taskLabel)
+      assert.deepEqual(
+        runtime.taskLabel.summary,
+        report.runtimes[0].taskLabel.summary,
+      );
+    if (inlineChatLabels)
+      assert.deepEqual(
+        runtime.inlineChatLabels.summary,
+        report.runtimes[0].inlineChatLabels.summary,
+      );
+    if (approvalCancellation)
+      assert.deepEqual(
+        runtime.approvalCancellation.summary,
+        report.runtimes[0].approvalCancellation.summary,
+      );
+    if (
+      cantripOsRun ||
+      cantripOsSurfaces ||
+      cantripOsSourceBackup ||
+      process.argv.includes("--cantrip-os") ||
+      process.argv.includes("--cantrip-os-system")
+    )
+      assert.deepEqual(
+        runtime.cantripOs.summary,
+        report.runtimes[0].cantripOs.summary,
+      );
+    if (process.argv.includes("--provider-catalog"))
+      assertProviderCatalogSummary(
+        runtime.providerCatalog.summary,
+        report.runtimes[0].providerCatalog.summary,
+      );
+    if (process.argv.includes("--model-operations"))
+      assert.deepEqual(
+        runtime.modelOperations.summary,
+        report.runtimes[0].modelOperations.summary,
+      );
+    if (process.argv.includes("--native-single-recovery"))
+      assert.deepEqual(
+        runtime.singleInflight.summary,
+        report.runtimes[0].singleInflight.summary,
+      );
+    if (process.argv.includes("--native-task-goal-worker-recovery"))
+      assert.deepEqual(
+        runtime.taskGoalWorkerInflight.summary,
+        report.runtimes[0].taskGoalWorkerInflight.summary,
+      );
+    if (process.argv.includes("--native-worker-recovery"))
+      assert.deepEqual(
+        runtime.workerInflight.summary,
+        report.runtimes[0].workerInflight.summary,
+      );
+    if (process.argv.includes("--native-inflight-recovery"))
+      assert.deepEqual(
+        runtime.nativeInflight.summary,
+        report.runtimes[0].nativeInflight.summary,
+      );
+    if (process.argv.includes("--native-shared-agent-recovery"))
+      assert.deepEqual(
+        runtime.sharedAgentInflight.summary,
+        report.runtimes[0].sharedAgentInflight.summary,
+      );
+    if (process.argv.includes("--tasks")) {
+      const { chatId: currentId, ...current } = runtime.taskExecution;
+      const { chatId: baselineId, ...baseline } =
+        report.runtimes[0].taskExecution;
+      assert.ok(currentId && baselineId);
+      assert.deepEqual(current, baseline);
+    }
+    if (process.argv.includes("--chat-customizations"))
+      assert.deepEqual(
+        runtime.chatCustomizationSummary,
+        report.runtimes[0].chatCustomizationSummary,
+      );
+    if (process.argv.includes("--mcp-settings"))
+      assert.deepEqual(
+        runtime.mcpSettingsSummary,
+        report.runtimes[0].mcpSettingsSummary,
+      );
+    if (process.argv.includes("--skill-settings"))
+      assert.deepEqual(
+        runtime.skillSettingsSummary,
+        report.runtimes[0].skillSettingsSummary,
+      );
+    if (process.argv.includes("--provider-test")) {
+      assert.deepEqual(
+        runtime.nativeProviderProbeResults,
+        report.runtimes[0].nativeProviderProbeResults,
+      );
+      assert.deepEqual(
+        runtime.providerConnectionSummary,
+        report.runtimes[0].providerConnectionSummary,
+      );
+    }
+    if (githubConversion || process.argv.includes("--workspace-discovery"))
+      assert.deepEqual(
+        runtime.githubConversionSummary,
+        report.runtimes[0].githubConversionSummary,
+      );
+    if (process.argv.includes("--workspace-discovery"))
+      assert.deepEqual(
+        runtime.workspaceDiscoverySummary,
+        report.runtimes[0].workspaceDiscoverySummary,
+      );
+    if (process.argv.includes("--github-replicas"))
+      assert.deepEqual(
+        runtime.githubReplicaSummary,
+        report.runtimes[0].githubReplicaSummary,
+      );
+    if (process.argv.includes("--replicas")) {
+      assert.deepEqual(
+        replicaProductJobEvents(runtime),
+        replicaProductJobEvents(report.runtimes[0]),
+      );
+    }
   }
 } catch (error) {
   failure = error;
@@ -960,10 +2474,24 @@ try {
   await browser?.close();
   await vite?.close();
   await postgres?.close();
-  if (failure) {
+  if (failure || process.argv.includes("--keep-fixture")) {
     report.fixtureRoot = root;
-    console.error("Retained failed full-worker fixture:", root);
-  } else await rm(root, { recursive: true, force: true });
+    console.error("Retained full-worker fixture:", root);
+  } else {
+    try {
+      await rm(root, { recursive: true, force: true });
+    } catch (error) {
+      failure = error;
+      report.fixtureRoot = root;
+      report.failure = { message: error.message, stack: error.stack };
+      report.cleanupFailure = {
+        code: error.code,
+        syscall: error.syscall,
+        path: error.path,
+      };
+      console.error("Retained full-worker fixture after cleanup failed:", root);
+    }
+  }
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     report.surfaceFixtureRequests = surfaceFixtureRequests;

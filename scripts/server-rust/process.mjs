@@ -23,13 +23,26 @@ export function fixtureEnvironment(dataDirectory) {
   };
 }
 
-export async function startServer(command, arguments_, options) {
+export async function startServer(
+  command,
+  arguments_,
+  { startupTimeoutMs = 60_000, ...options } = {},
+) {
   const startedAt = performance.now();
   const child = spawn(command, arguments_, {
     ...options,
     stdio: ["pipe", "pipe", "pipe"],
   });
   let diagnostics = "";
+  let startupOutput = "";
+  const captureStartupOutput = (chunk) => {
+    startupOutput = `${startupOutput}${chunk}`.slice(-32_768);
+  };
+  child.stdout.on("data", captureStartupOutput);
+  const startupDiagnostics = () =>
+    [diagnostics, startupOutput ? `Startup stdout:\n${startupOutput}` : ""]
+      .filter(Boolean)
+      .join("\n");
   const events = [];
   const collect = (line) => {
     try {
@@ -52,14 +65,22 @@ export async function startServer(command, arguments_, options) {
   try {
     origin = await new Promise((resolve, reject) => {
       timer = setTimeout(
-        () => reject(new Error(`Server startup timed out.\n${diagnostics}`)),
-        60_000,
+        () =>
+          reject(
+            new Error(
+              `Server startup timed out after ${startupTimeoutMs}ms.\n${startupDiagnostics()}`,
+            ),
+          ),
+        startupTimeoutMs,
       );
       child.once("error", reject);
       child.once("exit", (code, signal) =>
-        reject(
-          new Error(
-            `Server exited before listening (${code ?? signal}).\n${diagnostics}`,
+        // close follows the output streams, so retain their final startup logs.
+        completion.then(() =>
+          reject(
+            new Error(
+              `Server exited before listening (${code ?? signal}).\n${startupDiagnostics()}`,
+            ),
           ),
         ),
       );
@@ -79,6 +100,8 @@ export async function startServer(command, arguments_, options) {
     throw error;
   } finally {
     clearTimeout(timer);
+    child.stdout.off("data", captureStartupOutput);
+    startupOutput = "";
   }
   return {
     child,

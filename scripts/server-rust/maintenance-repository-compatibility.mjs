@@ -93,6 +93,18 @@ try {
   assert.equal(first.length, 1);
   assert.equal(first[0].terminalId, "terminal");
   assert.deepEqual(first[0].stateProtection, state("terminal-state"));
+  // A guest checkout has no host cwd. It must not suppress this worker's
+  // unrelated local services or enter the worker-local reconciliation list.
+  for (const sql of [
+    "INSERT INTO project_source_identities(id,project_id,worker_id,location_kind) VALUES('maintenance-guest-source','github','alpha','cantrip-os')",
+    "INSERT INTO project_worktrees(id,project_source_id,worker_id,name,location_kind,absolute_path,guest_path,display_path,is_primary,origin,lifecycle_state) VALUES('maintenance-guest-tree','maintenance-guest-source','alpha','Guest','cantrip-os',NULL,'/workspace','Guest workspace',true,'cantrip','ready')",
+    "INSERT INTO terminals(id,project_id,active_worker_id,worktree_id,protected_label,protected_state,service_enabled) SELECT 'maintenance-guest-terminal',project_id,active_worker_id,'maintenance-guest-tree',protected_label,protected_state,true FROM terminals WHERE id='terminal'",
+  ])
+    await seed(sql);
+  assert.deepEqual(
+    await list("guest services are omitted without suppressing local services"),
+    first,
+  );
   await list("foreign worker selects only its own worktree", "foreign");
   await list("missing worker has no services", "missing");
   for (const [field, value] of [["active_worker_id", "beta"]]) {

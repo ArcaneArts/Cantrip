@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -b && vite build",
+    "build": "pnpm --filter @cantrip/nbt build && tsc -b && vite build",
     "dev": "vite",
     "dev:desktop": "vite --port 1420",
     "icons:generate:desktop": "node ../scripts/generate-glint-desktop-icons.mjs",
@@ -26,6 +26,7 @@
     "@cantrip/crypto": "workspace:*",
     "@cantrip/glitch": "workspace:*",
     "@cantrip/logging": "workspace:*",
+    "@cantrip/nbt": "workspace:*",
     "@cantrip/protocol": "workspace:*",
     "@cantrip/version": "workspace:*",
     "@capacitor/android": "^8.5.0",

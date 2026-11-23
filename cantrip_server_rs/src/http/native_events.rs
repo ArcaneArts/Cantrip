@@ -61,7 +61,7 @@ async fn handle(
             let publication = Repository::new(apply_service.repository.database.clone())
                 .apply_event(&owner, &input)
                 .await?;
-            publication::publish(&apply_service, &owner, publication);
+            publication::publish(&apply_service, &owner, publication).await;
             Ok::<_, anyhow::Error>(())
         })
         .await

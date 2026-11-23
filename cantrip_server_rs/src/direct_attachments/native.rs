@@ -1,11 +1,12 @@
 use super::*;
 use crate::workers::command_bus::LimitedCommandBus;
+use crate::workers::transport::WorkerTransport;
 use anyhow::Context;
 use std::time::Duration;
 impl Coordinator {
     pub fn native(
         commands: Arc<LimitedCommandBus>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         mut options: Options,
     ) -> Arc<Self> {
         let connected = Arc::downgrade(&bridge);

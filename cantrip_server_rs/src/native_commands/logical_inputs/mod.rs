@@ -1,12 +1,15 @@
 //! One accepted GUI input may own several native executions and one durable closure.
 mod continuation;
 mod outcomes;
+mod pending;
+mod restored;
 use super::{Repository, admit::text, context};
 use crate::{
     database::{Executor, Transaction},
     wire::Value,
 };
 use anyhow::Result;
+pub(super) use restored::finish as finish_restored;
 
 async fn activation(tx: &Transaction<'_>, chat: &str) -> Result<Value> {
     Ok(super::admit::raw_one(
@@ -45,6 +48,18 @@ impl Repository {
         generation: &str,
         status: &str,
     ) -> Result<bool> {
+        self.finish_logical_gui_with_transport(owner, worker, root, generation, status, false)
+            .await
+    }
+    pub async fn finish_logical_gui_with_transport(
+        &self,
+        owner: &str,
+        worker: &str,
+        root: &str,
+        generation: &str,
+        status: &str,
+        transport_ended: bool,
+    ) -> Result<bool> {
         let (owner, worker, root, generation, status) = (
             owner.to_owned(),
             worker.to_owned(),
@@ -55,7 +70,16 @@ impl Repository {
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
-                    outcomes::finish(tx, &owner, &worker, &root, &generation, &status).await
+                    outcomes::finish(
+                        tx,
+                        &owner,
+                        &worker,
+                        &root,
+                        &generation,
+                        &status,
+                        transport_ended,
+                    )
+                    .await
                 })
             })
             .await
@@ -76,7 +100,7 @@ impl Repository {
         self.database.transaction(|tx|Box::pin(async move {
             let root=context::read(Executor::Transaction(tx),&owner,&worker,&operation,&generation).await?;
             if root["origin"]!="gui" || root.get("logical_operation_id")!=root.get("operation_id") {return Ok(false);}
-            Ok(!tx.query("SELECT operation_id FROM native_commands WHERE owner_id=$1 AND worker_id=$2 AND logical_operation_id=$3 AND status='rejected' AND rejection_code='native-settings-pending' AND terminal_evidence->>'kind'='deferred' AND execution_completed_at IS NOT NULL LIMIT 1",&[&owner,&worker,&text(&root["operation_id"])?]).await?.is_empty())
+            Ok(!tx.query("SELECT operation_id FROM native_commands WHERE owner_id=$1 AND worker_id=$2 AND logical_operation_id=$3 AND status='rejected' AND ((rejection_code='native-settings-pending' AND terminal_evidence->>'kind'='deferred') OR (rejection_code='worker-inference-deferred' AND terminal_evidence->>'kind'='not-started' AND terminal_evidence->>'source'='worker-inference-journal')) AND execution_completed_at IS NOT NULL LIMIT 1",&[&owner,&worker,&text(&root["operation_id"])?]).await?.is_empty())
         })).await
     }
 }

@@ -59,7 +59,6 @@ pub(crate) enum EngineCommand {
 
 pub(crate) struct Engine {
     data_dir: PathBuf,
-    runtime_dir: PathBuf,
     options: PGliteOptions,
     boot_strings: Vec<CString>,
     boot_argv: Vec<*mut c_char>,
@@ -82,13 +81,12 @@ impl Engine {
             .spawn(move || {
                 let mut engine = Engine {
                     data_dir,
-                    runtime_dir: Self::runtime_dir(),
                     options,
                     boot_strings: Vec::new(),
                     boot_argv: Vec::new(),
                     saved_cwd: std::env::current_dir().ok(),
                 };
-                match engine.boot() {
+                match engine.boot_preserving_host_interrupts() {
                     Ok(()) => {
                         let _ = boot_tx.send(Ok(()));
                     }
@@ -103,16 +101,23 @@ impl Engine {
         (cmd_tx, handle, boot_rx)
     }
 
-    pub(crate) fn runtime_dir() -> PathBuf {
-        std::env::var("PGLITE_RUNTIME_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                std::env::temp_dir().join(format!(
-                    "pglite-rs-runtime-{}-{:x}",
-                    env!("CARGO_PKG_VERSION"),
-                    Self::runtime_fingerprint()
-                ))
-            })
+    fn boot_preserving_host_interrupts(&mut self) -> Result<(), Error> {
+        #[cfg(unix)]
+        let mut interrupts = crate::host_signals::InterruptHandlers::capture()?;
+        let result = self.boot();
+        // PostgreSQL installs its backend handlers during boot. A host such
+        // as Tokio chains the previous handler, so leaving those installed
+        // makes host shutdown terminate/cancel the still-draining database.
+        // Restore on successful and failed boot before publishing readiness.
+        #[cfg(unix)]
+        {
+            let restored = interrupts.restore().map_err(Error::from);
+            result.and(restored)
+        }
+        #[cfg(not(unix))]
+        {
+            result
+        }
     }
 
     #[cfg(any(feature = "multiple-process", feature = "socket"))]
@@ -129,17 +134,6 @@ impl Engine {
             }
         }
         std::env::temp_dir()
-    }
-
-    fn runtime_fingerprint() -> u64 {
-        let mut hash: u64 = 0xcbf29ce484222325;
-        for chunk in crate::RUNTIME_TAR.chunks(8) {
-            let mut word = [0u8; 8];
-            word[..chunk.len()].copy_from_slice(chunk);
-            hash ^= u64::from_le_bytes(word);
-            hash = hash.wrapping_mul(0x100000001b3);
-        }
-        hash
     }
 
     fn run(&mut self, cmd_rx: mpsc::Receiver<EngineCommand>) {
@@ -201,8 +195,13 @@ impl Engine {
     }
 
     fn boot(&mut self) -> Result<(), Error> {
-        self.extract_runtime()?;
-        self.run_initdb()?;
+        let runtime_dir = crate::runtime::prepare()?;
+        Self::run_initdb_at(
+            &runtime_dir,
+            &self.data_dir,
+            &self.options.username,
+            self.options.locale_provider,
+        )?;
 
         std::env::set_var("PGUSER", &self.options.username);
         std::env::set_var("PGDATABASE", &self.options.database);
@@ -212,10 +211,11 @@ impl Engine {
         std::env::set_var("LANG", "C");
 
         self.boot_strings
-            .push(CString::new(self.runtime_dir.join("bin/postgres").to_str().unwrap()).unwrap());
+            .push(CString::new(runtime_dir.join("bin/postgres").to_str().unwrap()).unwrap());
         self.boot_strings
             .push(CString::new(self.data_dir.to_str().unwrap()).unwrap());
-        let devnull = CString::new("/dev/null").unwrap();
+        // The native library passes this path directly to the platform CRT.
+        let devnull = CString::new(if cfg!(windows) { "NUL" } else { "/dev/null" }).unwrap();
         let rmode = CString::new("r").unwrap();
 
         let mut arg_strings: Vec<String> = [
@@ -330,44 +330,6 @@ impl Engine {
         pkt
     }
 
-    fn extract_runtime(&self) -> Result<(), Error> {
-        Self::extract_runtime_to(&self.runtime_dir)
-    }
-
-    pub(crate) fn extract_runtime_to(runtime_dir: &Path) -> Result<(), Error> {
-        if runtime_dir.join(".extracted").exists() {
-            return Ok(());
-        }
-        let staging = runtime_dir.with_file_name(format!(
-            "{}.staging-{}",
-            runtime_dir.file_name().unwrap().to_string_lossy(),
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&staging);
-        std::fs::create_dir_all(&staging)?;
-        let mut archive = tar::Archive::new(crate::RUNTIME_TAR);
-        archive.unpack(&staging)?;
-        std::fs::write(staging.join(".extracted"), b"")?;
-        if std::fs::rename(&staging, runtime_dir).is_err() {
-            let _ = std::fs::remove_dir_all(&staging);
-            if !runtime_dir.join(".extracted").exists() {
-                return Err(Error::Boot(
-                    "runtime extraction race lost and target invalid".into(),
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    fn run_initdb(&self) -> Result<(), Error> {
-        Self::run_initdb_at(
-            &self.runtime_dir,
-            &self.data_dir,
-            &self.options.username,
-            self.options.locale_provider,
-        )
-    }
-
     pub(crate) fn run_initdb_at(
         runtime_dir: &Path,
         data_dir: &Path,
@@ -390,7 +352,8 @@ impl Engine {
             .output()?;
         if !output.status.success() {
             return Err(Error::Boot(format!(
-                "initdb failed: {}",
+                "initdb failed ({}): {}",
+                output.status,
                 String::from_utf8_lossy(&output.stderr)
             )));
         }

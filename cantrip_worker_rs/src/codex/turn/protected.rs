@@ -1,0 +1,509 @@
+//! Protected conversation input and the wire forms for observed output.
+use super::{Emit, Signal, protected_mode, receipt};
+use crate::{
+    chat_content::{Scope, runtime_text},
+    encryption::Service,
+    history::live::identity,
+    http::checked,
+    metadata::Abort,
+    native_items::{array, concat, join, text},
+};
+use anyhow::{Context, Result, anyhow, bail};
+use cantrip_crypto::content::{Communication, decrypt_communication, encrypt_communication};
+use cantrip_history::{canonical::open_message, content::Encryption, projection::Work};
+use cantrip_wire::{JsString, Value, value::json};
+use sha2::{Digest, Sha256};
+use std::sync::{Arc, Mutex};
+
+pub(super) struct Protected {
+    scope: Scope,
+    chat: Value,
+    response: Value,
+    plan: Mutex<Value>,
+}
+
+impl Protected {
+    pub(super) fn open(
+        service: Arc<Service>,
+        command: &Value,
+        owner: &JsString,
+        server: &JsString,
+    ) -> Result<(JsString, Self)> {
+        let scope = Scope::new(service)?;
+        if &scope.owner != owner || &scope.server != server {
+            bail!("The worker binding changed before protected chat preparation.");
+        }
+        let grant = scope.material(None)?;
+        let prompt = &command["protectedPrompt"];
+        let role = &prompt["classification"]["role"];
+        // Core's worktree handoff starts an authenticated project turn with
+        // its own system message. User queue commands still require user input.
+        let system_continuation = role == "system"
+            && command["type"] == "chat.turn"
+            && command["contextKind"] == "project"
+            && !super::queued::is_queued(command);
+        if prompt["id"] != command["clientMessageId"] || (role != "user" && !system_continuation) {
+            bail!("Protected chat input does not match the admitted message.");
+        }
+        if !super::queued::is_queued(command) {
+            let ids = array(&prompt["classification"]["attachmentIds"])?;
+            if command["executionProfile"] == "cantrip-os" {
+                let attachments = array(&command["attachments"])?;
+                if attachments.len() != ids.len()
+                    || ids.iter().any(|id| {
+                        attachments
+                            .iter()
+                            .filter(|entry| entry["id"] == *id)
+                            .count()
+                            != 1
+                    })
+                {
+                    bail!("The protected Chat attachments do not match the admitted message.");
+                }
+            } else if !ids.is_empty() {
+                bail!("This native text turn cannot open attachment input.");
+            }
+        }
+        let owner = json!(grant.owner_id);
+        let content = open_message(&grant.key, &owner, prompt)
+            .map_err(|_| anyhow!("Unable to authenticate protected chat input."))?;
+        let prompt_text = user_prompt_text(&content)?;
+        let chat = &command["chatId"];
+        let input = if command["threadId"].is_null() && command["protectedNativeInput"].is_null() {
+            let mut history = Vec::new();
+            for message in array(&command["protectedHistory"])? {
+                if message["chatId"] != *chat || message["contextKind"] != command["contextKind"] {
+                    bail!("Protected chat history belongs to another conversation.");
+                }
+                if message["id"] == prompt["id"] {
+                    continue;
+                }
+                let parts = open_message(&grant.key, &owner, message)
+                    .map_err(|_| anyhow!("Unable to authenticate protected chat history."))?;
+                history.push((message["role"].clone(), parts));
+            }
+            continuation(&history, prompt_text)?
+        } else {
+            prompt_text
+        };
+        let plan = &command["protectedPlan"];
+        let plan = if plan.is_null() {
+            json!({"explanation": Value::Null, "steps": Vec::<Value>::new(), "question": Value::Null})
+        } else {
+            decrypt_communication(
+                Communication::Plan,
+                &grant.key,
+                &json!({"ownerId": owner, "chatId": chat, "keyRevision": plan["protectedContent"]["keyRevision"]}),
+                &plan["protectedContent"],
+                plan.get("classification"),
+            ).map_err(|_| anyhow!("Unable to authenticate protected chat plan state."))?
+        };
+        scope.identity()?;
+        Ok((
+            input,
+            Self {
+                scope,
+                chat: chat.clone(),
+                response: command["resultMode"].clone(),
+                plan: Mutex::new(plan),
+            },
+        ))
+    }
+
+    pub(super) fn for_native_output(scope: Scope, chat: Value) -> Arc<Self> {
+        Arc::new(Self {
+            scope,
+            chat,
+            response: Value::Null,
+            plan: Mutex::new(
+                json!({"explanation":Value::Null,"steps":Vec::<Value>::new(),"question":Value::Null}),
+            ),
+        })
+    }
+
+    pub(super) fn scope(&self) -> &Scope {
+        &self.scope
+    }
+
+    pub(super) fn computer_use_activity(&self, activity: &Value) -> Result<Value> {
+        let activity = checked("agentActivitySchema", activity)?;
+        let binding = &activity["binding"];
+        let actor = &activity["agentScope"];
+        if activity["type"] != "computerUse"
+            || activity["source"] != "agent-mcp"
+            || binding["chatId"] != self.chat
+        {
+            bail!("The computer-use activity belongs to a different conversation.");
+        }
+        let turn = &binding["turnId"];
+        let key = concat(&[
+            "activity:".into(),
+            text(&actor["rootTurnId"])?.clone(),
+            ":".into(),
+            text(&actor["agentThreadId"])?.clone(),
+            ":".into(),
+            text(turn)?.clone(),
+            ":".into(),
+            text(&activity["id"])?.clone(),
+        ]);
+        let message = self.scope.protect(&json!({
+            "id": event_id(text(&self.chat)?, &key),
+            "role": "assistant",
+            "content": vec![json!({"type":"activity","activity":activity})],
+            "idempotencyKey": idempotency_key(key),
+        }))?;
+        Ok(json!({
+            "type":"agent.protected-message","message":message,
+            "telemetry":json!({"kind":"activity","activityType":"computerUse","turnId":turn}),
+        }))
+    }
+
+    pub(super) fn attach(self: &Arc<Self>, downstream: Emit) -> Emit {
+        let protection = self.clone();
+        Arc::new(move |event| {
+            let protected = protection
+                .event(&event, None)
+                .map_err(|_| anyhow!("The worker could not protect a chat event."))?;
+            downstream(protected)
+        })
+    }
+
+    pub(super) fn publish_canonical(
+        self: &Arc<Self>,
+        downstream: Emit,
+        identity: identity::Managed,
+    ) -> (Emit, Work<()>) {
+        self.publish_with(Some(identity), move |event| {
+            std::future::ready(downstream(event))
+        })
+    }
+
+    pub(super) fn publish_receipt(
+        self: &Arc<Self>,
+        identity: Option<identity::Managed>,
+        client: receipt::Client,
+        operation: receipt::Operation,
+    ) -> (Emit, Work<()>, Signal) {
+        let publisher = self.clone();
+        let (abort, signal) = Abort::new();
+        let abort = Arc::new(abort);
+        let (emit, published) = self.publish_with(identity, move |event| {
+            let (client, operation, publisher, abort) = (
+                client.clone(),
+                operation.clone(),
+                publisher.clone(),
+                abort.clone(),
+            );
+            async move {
+                let result = client.event(publisher.scope(), &operation, event).await;
+                if result.is_err() {
+                    abort.abort(anyhow!("Core could not apply a protected native event."));
+                }
+                result
+            }
+        });
+        (emit, published, signal)
+    }
+
+    pub(super) fn publish_with<F, P>(
+        self: &Arc<Self>,
+        identity: Option<identity::Managed>,
+        downstream: F,
+    ) -> (Emit, Work<()>)
+    where
+        F: Fn(Value) -> P + Send + Sync + 'static,
+        P: Future<Output = Result<()>> + Send,
+    {
+        let (send, mut receive) = tokio::sync::mpsc::unbounded_channel::<Value>();
+        let emit: Emit = Arc::new(move |event| {
+            send.send(event)
+                .map_err(|_| anyhow!("Protected chat publication ended."))
+        });
+        let protection = self.clone();
+        let work = cantrip_transport::lifecycle::owned(async move {
+            let mut error = None;
+            while let Some(event) = receive.recv().await {
+                let result = async {
+                    let resolved = if event["type"] == "agent.message"
+                        && let Some(identity) = &identity
+                    {
+                        identity
+                            .resolve(json!({"kind": "message", "message": event["message"]}))
+                            .await?
+                    } else {
+                        None
+                    };
+                    downstream(protection.event(&event, resolved.as_ref())?).await
+                }
+                .await;
+                if let Err(cause) = result {
+                    error.get_or_insert(cause);
+                }
+            }
+            error.map_or(Ok(()), |_| {
+                Err(anyhow!(
+                    "The worker could not publish canonical chat output."
+                ))
+            })
+        });
+        (emit, work)
+    }
+
+    fn event(&self, event: &Value, identity: Option<&Value>) -> Result<Value> {
+        match event["type"].as_str() {
+            Some("agent.message") => {
+                let message = &event["message"];
+                let turn = &message["correlation"]["turnId"];
+                let (id, idempotency, mode) = if let Some(identity) = identity {
+                    (
+                        identity["id"].clone(),
+                        identity["idempotencyKey"].clone(),
+                        identity["mode"].clone(),
+                    )
+                } else {
+                    let key = concat(&[
+                        "agent-message:root:".into(),
+                        turn.as_js_string()
+                            .cloned()
+                            .unwrap_or_else(|| "turn".into()),
+                        ":".into(),
+                        text(&message["id"])?.clone(),
+                    ]);
+                    let id = event_id(text(&self.chat)?, &key);
+                    (json!(id), json!(idempotency_key(key)), Value::Null)
+                };
+                let mut content =
+                    json!({"type": "text", "text": message["text"], "phase": message["phase"]});
+                let mut telemetry =
+                    json!({"kind": "message", "phase": message["phase"], "turnId": turn});
+                if message["streaming"] == true {
+                    content["streaming"] = json!(true);
+                    telemetry["streaming"] = json!(true);
+                }
+                if !message["correlation"].is_null() {
+                    content["correlation"] = message["correlation"].clone();
+                }
+                let protected = self.scope.protect(&json!({
+                    "id": id, "role": "assistant", "mode": mode, "content": vec![content], "idempotencyKey": idempotency,
+                }))?;
+                Ok(
+                    json!({"type": "agent.protected-message", "message": protected, "telemetry": telemetry}),
+                )
+            }
+            Some("agent.plan.updated" | "agent.plan.question" | "agent.plan.question-resolved") => {
+                self.plan_event(event)
+            }
+            Some(
+                "agent.interaction.requested.protected"
+                | "agent.interaction.cleared"
+                | "agent.interaction.expired"
+                | "computer-use.approval.request"
+                | "computer-use.approval.terminal",
+            ) => Ok(event.clone()),
+            Some("agent.protected-message")
+                if event["telemetry"]["activityType"] == "computerUse" =>
+            {
+                Ok(event.clone())
+            }
+            _ => bail!("The protected turn cannot publish this event."),
+        }
+    }
+
+    fn plan_event(&self, event: &Value) -> Result<Value> {
+        let mut plan = self.plan.lock().unwrap();
+        let mut next = plan.clone();
+        let turn = match event["type"].as_str() {
+            Some("agent.plan.updated") => {
+                next["explanation"] = event["explanation"].clone();
+                next["steps"] = event["steps"].clone();
+                &event["turnId"]
+            }
+            Some("agent.plan.question") => {
+                next["question"] = event["question"].clone();
+                &event["question"]["turnId"]
+            }
+            _ => {
+                if next["question"]["id"] == event["questionId"] {
+                    next["question"] = Value::Null;
+                }
+                &Value::Null
+            }
+        };
+        let grant = self.scope.material(None)?;
+        let classification = json!({"hasQuestion": !next["question"].is_null()});
+        let content = json!({
+            "version": 1, "classification": classification,
+            "explanation": next["explanation"], "steps": next["steps"], "question": next["question"],
+        });
+        let sealed = encrypt_communication(
+            Communication::Plan,
+            &grant.key,
+            &json!({"ownerId": grant.owner_id, "chatId": self.chat, "keyRevision": grant.key_revision}),
+            &content,
+        )?;
+        *plan = content;
+        Ok(json!({
+            "type": "agent.plan.protected", "turnId": turn,
+            "state": json!({"classification": classification, "protectedContent": sealed}),
+        }))
+    }
+
+    pub(super) fn result(&self, mut result: Value) -> Result<Value> {
+        let answer = text(&result["text"])?;
+        let message = self.scope.protect(&json!({
+            "id": self.response["messageId"], "role": "assistant",
+            "idempotencyKey": self.response["idempotencyKey"],
+            "content": vec![json!({
+                "type": "text", "phase": "final_answer",
+                "text": if answer.is_empty() { "The agent completed without a message.".into() } else { answer.clone() },
+            })],
+        })).map_err(|_| anyhow!("The worker could not protect the chat response."))?;
+        result["text"] = json!("");
+        result["structuredResult"] =
+            checked("chatMessageRelayResultSchema", &json!({"message": message}))?;
+        checked("agentTurnResultSchema", &result)
+    }
+}
+
+fn event_id(chat: &JsString, key: &JsString) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"cantrip:protected-agent-event\0");
+    hash.update(chat.lossy().as_bytes());
+    hash.update(b"\0");
+    hash.update(key.lossy().as_bytes());
+    let mut bytes: [u8; 16] = hash.finalize()[..16].try_into().unwrap();
+    bytes[6] = (bytes[6] & 0x0f) | 0x50;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    uuid::Uuid::from_bytes(bytes).to_string()
+}
+
+fn idempotency_key(key: JsString) -> JsString {
+    if key.len() <= 200 {
+        return key;
+    }
+    let digest = Sha256::digest(key.lossy().as_bytes());
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("agent-output:sha256:{hex}").into()
+}
+
+pub(super) fn user_prompt_text(content: &Value) -> Result<JsString> {
+    let prompt_text = join(
+        array(content)?
+            .iter()
+            .filter(|item| item["type"] == "text")
+            .map(runtime_text)
+            .collect::<Result<Vec<_>>>()?,
+        "\n\n",
+    )
+    .trim();
+    Ok(if prompt_text.is_empty() {
+        "Review the attached files and respond to the user.".into()
+    } else {
+        prompt_text
+    })
+}
+
+fn continuation(history: &[(Value, Value)], prompt: JsString) -> Result<JsString> {
+    if history.is_empty() {
+        return Ok(prompt);
+    }
+    let mut lines = Vec::new();
+    for (role, content) in history.iter().skip(history.len().saturating_sub(100)) {
+        let items = array(content)?;
+        let scope = |item: &Value| {
+            if item["type"] == "activity" {
+                item["activity"]["agentScope"].clone()
+            } else {
+                item["agentScope"].clone()
+            }
+        };
+        let scopes = items
+            .iter()
+            .map(scope)
+            .filter(Value::is_object)
+            .collect::<Vec<_>>();
+        if !scopes.is_empty() && scopes.iter().all(|scope| scope["isRoot"] != true) {
+            continue;
+        }
+        let mut parts = Vec::new();
+        for item in items {
+            let scope = scope(item);
+            if scope.is_object() && scope["isRoot"] != true {
+                continue;
+            }
+            parts.push(match item["type"].as_str() {
+                Some("text") => runtime_text(item)?,
+                Some("attachment") => concat(&[
+                    "[attachment: ".into(),
+                    text(&item["attachment"]["fileName"])?.clone(),
+                    " (".into(),
+                    text(&item["attachment"]["mimeType"])?.clone(),
+                    ")]".into(),
+                ]),
+                Some("activity") => summarize(&item["activity"])?,
+                _ => continue,
+            });
+        }
+        if !parts.is_empty() {
+            lines.push(concat(&[
+                role.as_str()
+                    .context("Invalid protected chat role")?
+                    .to_uppercase()
+                    .into(),
+                ": ".into(),
+                join(parts, "\n"),
+            ]));
+        }
+    }
+    Ok(concat(&[
+        "Continue this existing Cantrip conversation. The encrypted endpoint history follows:\n\n"
+            .into(),
+        join(lines, "\n\n"),
+        "\n\nUSER: ".into(),
+        prompt,
+    ]))
+}
+
+fn summarize(activity: &Value) -> Result<JsString> {
+    Ok(match activity["type"].as_str() {
+        Some("instructionContext") => concat(&[
+            "[effective instructions: ".into(),
+            text(&activity["provenance"])?.clone(),
+            "]".into(),
+        ]),
+        Some("usage") => format!(
+            "[usage: {} tokens]",
+            activity["last"]["totalTokens"].stringify()
+        )
+        .into(),
+        Some("rateLimit") => {
+            let percent = activity["primary"]
+                .get("usedPercent")
+                .map(Value::stringify)
+                .unwrap_or_else(|| "unknown".into());
+            format!("[rate limit: {percent}% used]").into()
+        }
+        _ => {
+            let mut reduced = activity.clone();
+            if let Value::Object(fields) = &mut reduced {
+                fields.shift_remove("agentScope");
+                fields.shift_remove("raw");
+            }
+            concat(&[
+                "[".into(),
+                text(&activity["type"])?.clone(),
+                ": ".into(),
+                reduced.stringify().into(),
+                "]".into(),
+            ])
+        }
+    })
+}
+
+pub(super) fn redact(command: &Value, error: anyhow::Error) -> anyhow::Error {
+    if protected_mode(command) && error.is::<super::Failure>() {
+        anyhow!("Codex could not complete this protected turn.")
+    } else {
+        error
+    }
+}

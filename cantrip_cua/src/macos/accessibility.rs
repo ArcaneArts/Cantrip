@@ -6,6 +6,7 @@ use crate::{
     cancellation::Cancellation,
     error::{CuaError, ErrorCode, Result},
     input::{Control, Controls, InputReceipt},
+    interaction::MAX_HOST_CLIPBOARD_UNITS,
     target::{Bounds, Target, TargetKind},
     window_traversal::WindowTraversal,
 };
@@ -17,6 +18,7 @@ use std::{
     time::{Duration, Instant},
 };
 type Ref = *const c_void;
+const CF_RANGE_TYPE: u32 = 4; // kAXValueCFRangeType
 #[repr(C)]
 #[derive(Default)]
 struct Pair {
@@ -24,6 +26,7 @@ struct Pair {
     y: f64,
 }
 #[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Range {
     location: isize,
     length: isize,
@@ -36,6 +39,12 @@ unsafe extern "C" {
     fn AXUIElementSetAttributeValue(element: Ref, attribute: Ref, value: Ref) -> i32;
     fn AXUIElementGetTypeID() -> usize;
     fn AXUIElementCopyAttributeValue(element: Ref, attribute: Ref, value: *mut Ref) -> i32;
+    fn AXUIElementCopyParameterizedAttributeValue(
+        element: Ref,
+        attribute: Ref,
+        parameter: Ref,
+        value: *mut Ref,
+    ) -> i32;
     fn AXUIElementGetAttributeValueCount(element: Ref, attribute: Ref, count: *mut isize) -> i32;
     fn AXUIElementCopyAttributeValues(
         element: Ref,
@@ -47,6 +56,8 @@ unsafe extern "C" {
     fn AXUIElementCopyActionNames(element: Ref, value: *mut Ref) -> i32;
     fn AXUIElementPerformAction(element: Ref, action: Ref) -> i32;
     fn AXUIElementSetMessagingTimeout(element: Ref, seconds: f32) -> i32;
+    #[cfg(test)]
+    fn AXValueCreate(kind: u32, value: Ref) -> Ref;
     fn AXValueGetTypeID() -> usize;
     fn AXValueGetValue(value: Ref, kind: u32, result: *mut c_void) -> u8;
 }
@@ -61,6 +72,8 @@ unsafe extern "C" {
     fn CFArrayGetTypeID() -> usize;
     fn CFArrayGetCount(array: Ref) -> isize;
     fn CFArrayGetValueAtIndex(array: Ref, index: isize) -> Ref;
+    fn CFAttributedStringGetTypeID() -> usize;
+    fn CFAttributedStringGetString(value: Ref) -> Ref;
     fn CFStringGetTypeID() -> usize;
     fn CFStringCreateWithBytes(
         allocator: Ref,
@@ -120,6 +133,14 @@ impl Owned {
         let key = Self::string(name);
         let mut value = ptr::null();
         read_result(unsafe { AXUIElementCopyAttributeValue(self.0, key.0, &mut value) })?;
+        Self::take(value)
+    }
+    fn parameterized_attr(&self, name: &str, parameter: &Self) -> Result<Self> {
+        let key = Self::string(name);
+        let mut value = ptr::null();
+        read_result(unsafe {
+            AXUIElementCopyParameterizedAttributeValue(self.0, key.0, parameter.0, &mut value)
+        })?;
         Self::take(value)
     }
     fn request_enhanced_ui(&self) {
@@ -686,6 +707,335 @@ pub(super) fn activate_for_click(
     }
 }
 
+fn window_number(window: &Owned) -> Option<u32> {
+    type WindowId = unsafe extern "C" fn(Ref, *mut u32) -> i32;
+    unsafe extern "C" {
+        fn dlsym(handle: *mut c_void, name: *const std::ffi::c_char) -> *mut c_void;
+    }
+    static GET_WINDOW: OnceLock<Option<WindowId>> = OnceLock::new();
+    let get = GET_WINDOW
+        .get_or_init(|| unsafe {
+            let symbol = dlsym((-2_isize) as *mut c_void, c"_AXUIElementGetWindow".as_ptr());
+            (!symbol.is_null()).then(|| std::mem::transmute::<*mut c_void, WindowId>(symbol))
+        })
+        .as_ref()?;
+    let mut id = 0;
+    (unsafe { get(window.0, &mut id) } == 0 && id != 0).then_some(id)
+}
+
+/// Read the selection exported by the focused editor of the attached window.
+/// This reads the app's AX element without changing focus or using the general pasteboard.
+pub(super) fn copy_window_text(target: &Target, cancel: &Cancellation) -> Result<Option<String>> {
+    cancel.check()?;
+    let pid = target
+        .process_id
+        .and_then(|pid| i32::try_from(pid).ok())
+        .ok_or_else(stale)?;
+    let number = target
+        .id
+        .strip_prefix("macos-window-")
+        .and_then(|id| id.parse::<u32>().ok())
+        .ok_or_else(stale)?;
+    let app = Owned::take(unsafe { AXUIElementCreateApplication(pid) })?;
+    read_result(unsafe { AXUIElementSetMessagingTimeout(app.0, 0.2) })?;
+    app.request_enhanced_ui();
+    let Ok(element) = app.attr("AXFocusedUIElement") else {
+        return Ok(None);
+    };
+    if !element.is(unsafe { AXUIElementGetTypeID() }) {
+        return Ok(None);
+    }
+    read_result(unsafe { AXUIElementSetMessagingTimeout(element.0, 0.2) })?;
+    let Ok(window) = element.attr("AXWindow") else {
+        return Ok(None);
+    };
+    if !window.is(unsafe { AXUIElementGetTypeID() }) {
+        return Ok(None);
+    }
+    let owns_window = match window_number(&window) {
+        Some(id) => id == number,
+        None => Accessibility::window(target, cancel).is_ok_and(|owner| window.same(&owner)),
+    };
+    if !owns_window || is_secure_input(&element) {
+        return Ok(None);
+    }
+    let selection = selected_text(&element, cancel)?;
+    if selection.is_none() {
+        return Ok(None);
+    }
+    if !app
+        .attr("AXFocusedUIElement")
+        .is_ok_and(|focused| element.same(&focused))
+        || !element
+            .attr("AXWindow")
+            .is_ok_and(|current| window.same(&current))
+        || is_secure_input(&element)
+    {
+        return Ok(None);
+    }
+    cancel.check()?;
+    Ok(selection)
+}
+
+fn is_secure_input(element: &Owned) -> bool {
+    ["AXRole", "AXSubrole"].into_iter().any(|attribute| {
+        element
+            .attr(attribute)
+            .ok()
+            .and_then(|role| role.text(64))
+            .as_deref()
+            == Some("AXSecureTextField")
+    })
+}
+
+fn selected_text(element: &Owned, cancel: &Cancellation) -> Result<Option<String>> {
+    cancel.check()?;
+    let mut single_range_array = None;
+    if let Ok(ranges) = element.attr("AXSelectedTextRanges")
+        && ranges.is(unsafe { CFArrayGetTypeID() })
+    {
+        let count = unsafe { CFArrayGetCount(ranges.0) };
+        if count > 1 {
+            return selected_ranges_text(element, &ranges, count as usize, cancel);
+        }
+        if count == 1 {
+            single_range_array = Some(ranges);
+        }
+    }
+    if let Ok(value) = element.attr("AXSelectedText")
+        && let Some(text) = decode_selection(&value)?
+    {
+        return Ok(Some(text));
+    }
+
+    cancel.check()?;
+    let range = element.attr("AXSelectedTextRange").ok();
+    let selection = range.as_ref().and_then(selection_range);
+    if let (Some(range), Some(selection)) = (&range, selection) {
+        if selection.length as usize > MAX_HOST_CLIPBOARD_UNITS {
+            return Err(selection_too_large());
+        }
+        if let Some(text) = text_for_range(element, range, cancel)? {
+            let current = element
+                .attr("AXSelectedTextRange")
+                .ok()
+                .and_then(|range| selection_range(&range));
+            return Ok((current == Some(selection)).then_some(text));
+        }
+    }
+
+    // WebKit and Chromium can expose selection endpoints as opaque markers.
+    // Round-trip them to the same element and accept only its text response.
+    cancel.check()?;
+    if let Ok(range) = element.attr("AXSelectedTextMarkerRange")
+        && let Ok(value) = element.parameterized_attr("AXStringForTextMarkerRange", &range)
+        && let Some(text) = decode_selection(&value)?
+    {
+        return Ok(Some(text));
+    }
+
+    let Some(selection) = selection else {
+        // The list attribute can be the only way to read a single selected range.
+        return match single_range_array {
+            Some(ranges) => selected_ranges_text(element, &ranges, 1, cancel),
+            None => Ok(None),
+        };
+    };
+    // Confirm that the same range still applies after reading the text value.
+    cancel.check()?;
+    if let Ok(value) = element.attr("AXValue")
+        && element
+            .attr("AXSelectedTextRange")
+            .ok()
+            .and_then(|range| selection_range(&range))
+            == Some(selection)
+    {
+        return decode_selection_text(value.0, Some(selection));
+    }
+    Ok(None)
+}
+
+fn selected_ranges_text(
+    element: &Owned,
+    ranges: &Owned,
+    count: usize,
+    cancel: &Cancellation,
+) -> Result<Option<String>> {
+    if count > MAX_HOST_CLIPBOARD_UNITS {
+        return Err(selection_too_large());
+    }
+    cancel.check()?;
+    let value = element
+        .attr("AXValue")
+        .ok()
+        .filter(|value| value.is(unsafe { CFStringGetTypeID() }));
+    let mut selection = String::new();
+    let mut remaining = MAX_HOST_CLIPBOARD_UNITS;
+    let mut end = 0;
+    for range in ranges.array(count)? {
+        cancel.check()?;
+        let Some(slice) = selection_range(&range) else {
+            return Ok(None);
+        };
+        if slice.location < end {
+            return Ok(None);
+        }
+        end = slice.location + slice.length;
+        if slice.length as usize > remaining {
+            return Err(selection_too_large());
+        }
+        let part = match &value {
+            Some(value) => decode_selection_text(value.0, Some(slice)),
+            None => text_for_range(element, &range, cancel),
+        }?;
+        let Some(part) = part else {
+            return Ok(None);
+        };
+        remaining = remaining
+            .checked_sub(part.encode_utf16().count())
+            .ok_or_else(selection_too_large)?;
+        // AppKit's plain-text Copy joins the ordered selections directly.
+        selection.push_str(&part);
+    }
+    cancel.check()?;
+    Ok(element
+        .attr("AXSelectedTextRanges")
+        .is_ok_and(|current| ranges.same(&current))
+        .then_some(selection))
+}
+
+fn text_for_range(element: &Owned, range: &Owned, cancel: &Cancellation) -> Result<Option<String>> {
+    cancel.check()?;
+    if let Ok(value) = element.parameterized_attr("AXStringForRange", range)
+        && let Some(text) = decode_selection(&value)?
+    {
+        return Ok(Some(text));
+    }
+    cancel.check()?;
+    if let Ok(value) = element.parameterized_attr("AXAttributedStringForRange", range)
+        && value.is(unsafe { CFAttributedStringGetTypeID() })
+    {
+        // The attributed value owns the plain string for the duration of the read.
+        return decode_selection_text(unsafe { CFAttributedStringGetString(value.0) }, None);
+    }
+    Ok(None)
+}
+
+fn selection_range(value: &Owned) -> Option<Range> {
+    if !value.is(unsafe { AXValueGetTypeID() }) {
+        return None;
+    }
+    let mut range = Range {
+        location: 0,
+        length: 0,
+    };
+    let accepted =
+        unsafe { AXValueGetValue(value.0, CF_RANGE_TYPE, (&mut range as *mut Range).cast()) };
+    (accepted != 0
+        && range.location >= 0
+        && range.length > 0
+        && range.location.checked_add(range.length).is_some())
+    .then_some(range)
+}
+
+fn decode_selection(selection: &Owned) -> Result<Option<String>> {
+    decode_selection_text(selection.0, None)
+}
+
+fn decode_selection_text(selection: Ref, range: Option<Range>) -> Result<Option<String>> {
+    if selection.is_null() || unsafe { CFGetTypeID(selection) != CFStringGetTypeID() } {
+        return Ok(None);
+    }
+    let length = unsafe { CFStringGetLength(selection) };
+    let range = range.unwrap_or(Range {
+        location: 0,
+        length,
+    });
+    if range.location < 0
+        || range.length <= 0
+        || range.location > length
+        || range.length > length - range.location
+    {
+        return Ok(None);
+    }
+    if range.length as usize > MAX_HOST_CLIPBOARD_UNITS {
+        return Err(selection_too_large());
+    }
+    let mut units = vec![0; range.length as usize];
+    unsafe {
+        CFStringGetCharacters(selection, range, units.as_mut_ptr());
+    }
+    Ok(Some(String::from_utf16_lossy(&units)))
+}
+
+fn selection_too_large() -> CuaError {
+    CuaError::new(
+        ErrorCode::Capacity,
+        "Clipboard text exceeds the supported limit.",
+    )
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    fn value(location: isize, length: isize) -> Owned {
+        let range = Range { location, length };
+        Owned::take(unsafe { AXValueCreate(CF_RANGE_TYPE, (&range as *const Range).cast()) })
+            .expect("native range")
+    }
+
+    #[test]
+    fn reads_only_nonempty_nonoverflowing_native_selection_ranges() {
+        assert_eq!(
+            selection_range(&value(12, 7)),
+            Some(Range {
+                location: 12,
+                length: 7
+            })
+        );
+        for (location, length) in [(0, 0), (-1, 7), (1, -1), (isize::MAX, 1)] {
+            assert_eq!(selection_range(&value(location, length)), None);
+        }
+        assert_eq!(selection_range(&Owned::string("wrong type")), None);
+    }
+
+    #[test]
+    fn extracts_only_the_valid_utf16_range_from_a_text_value() {
+        let text = Owned::string("🚆before λ🚋\n\tafter");
+        let range = |location, length| Some(Range { location, length });
+        assert_eq!(
+            decode_selection_text(text.0, range(9, 5))
+                .unwrap()
+                .as_deref(),
+            Some("λ🚋\n\t")
+        );
+        assert_eq!(
+            decode_selection_text(text.0, range(9, isize::MAX)).unwrap(),
+            None
+        );
+        assert_eq!(decode_selection_text(text.0, range(80, 1)).unwrap(), None);
+    }
+
+    #[test]
+    fn preserves_clipboard_whitespace_and_unicode_with_a_native_size_bound() {
+        let text = "  selected λ🚋\n\t";
+        assert_eq!(
+            decode_selection(&Owned::string(text)).unwrap().as_deref(),
+            Some(text)
+        );
+        assert!(decode_selection(&Owned::string("")).unwrap().is_none());
+        assert!(decode_selection(&value(0, 1)).unwrap().is_none());
+        let too_large = "🚋".repeat(MAX_HOST_CLIPBOARD_UNITS / 2 + 1);
+        assert_eq!(
+            decode_selection(&Owned::string(&too_large))
+                .unwrap_err()
+                .code,
+            ErrorCode::Capacity
+        );
+    }
+}
+
 /// Read-only focus samples. AX errors are unavailable evidence, not input gates.
 pub(super) struct FocusSample {
     pid: Option<u32>,
@@ -698,21 +1048,7 @@ impl FocusSample {
             let app = Owned::take(unsafe { AXUIElementCreateApplication(pid as i32) }).ok()?;
             read_result(unsafe { AXUIElementSetMessagingTimeout(app.0, 0.05) }).ok()?;
             let focused = app.attr("AXFocusedWindow").ok()?;
-            type WindowId = unsafe extern "C" fn(Ref, *mut u32) -> i32;
-            unsafe extern "C" {
-                fn dlsym(handle: *mut c_void, name: *const std::ffi::c_char) -> *mut c_void;
-            }
-            static GET_WINDOW: OnceLock<Option<WindowId>> = OnceLock::new();
-            let get = GET_WINDOW
-                .get_or_init(|| unsafe {
-                    let symbol =
-                        dlsym((-2_isize) as *mut c_void, c"_AXUIElementGetWindow".as_ptr());
-                    (!symbol.is_null())
-                        .then(|| std::mem::transmute::<*mut c_void, WindowId>(symbol))
-                })
-                .as_ref()?;
-            let mut id = 0;
-            (unsafe { get(focused.0, &mut id) } == 0 && id != 0).then_some(id)
+            window_number(&focused)
         });
         Self { pid, window }
     }

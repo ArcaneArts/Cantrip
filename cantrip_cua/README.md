@@ -5,7 +5,7 @@ process/session/image/cursor core and build-chain integration use an explicit
 deterministic test backend. A lazy worker service owns the actual process and
 private protocol. Encrypted server routing, existing durable permission requests,
 and the experimental shared client preview are implemented. The native macOS
-backend uses ScreenCaptureKit. The managed `cantrip_cua` MCP connects bounded
+backend uses ScreenCaptureKit. The Linux Host backend supports X11 and Wayland. The managed `cantrip_cua` MCP connects bounded
 JavaScript to that same service through the authenticated worker broker. Native
 acceptance and protected operation Trajectory verification are tracked in
 [the CUA plan](../docs/planned/CUA.md). Ordinary Cantrip worker startup
@@ -14,6 +14,152 @@ tests the helper without capturing a real desktop or requesting capture permissi
 
 For the short product walkthrough, sample MCP calls and native fixture commands,
 see [first-tranche acceptance](../docs/COMPUTER_USE_ACCEPTANCE.md).
+
+## macOS Host window clipboard
+
+Remote copy reads the selection that the attached window's focused control
+exports through Accessibility. The helper accepts selected text and text
+returned for a plain or attributed selection range or a browser text-marker
+range. For a control that supplies a text value and a selection range, the
+helper can extract that range from the value after confirming the range is
+still current. Secure fields and other windows are excluded. Copy leaves
+host focus and the system pasteboard in place.
+
+The framed fixture uses two background AppKit windows and requires a local
+session with Screen Recording and Accessibility access.
+
+```sh
+fixture_dir="$(mktemp -d)"
+swiftc -parse-as-library cantrip_cua/tests/fixtures/macos_clipboard.swift -o "$fixture_dir/fixture"
+CANTRIP_CUA_MACOS_CLIPBOARD_FIXTURE="$fixture_dir/fixture" \
+  cargo test --locked --manifest-path cantrip_cua/Cargo.toml --test process \
+  copies_only_the_bound_macos_selection_without_a_focus_or_clipboard_change -- --ignored
+rm "$fixture_dir/fixture"
+rmdir "$fixture_dir"
+```
+
+## Windows Host backend
+
+Remote viewers of a shared Windows display or window use one input owner
+per worker desktop. Windows can bring the selected window forward when a
+viewer clicks, scrolls, types, or requests copy. Clicking and scrolling
+require the point to belong to the selected window. Attaching and hovering
+leave the host's focus and pointer in place. Ending the viewer's input
+releases its held keys and buttons. Agent input to individual windows uses
+window-directed messages.
+
+## Linux Host X11 backend
+
+The default Linux helper uses the worker's local X11 session from `DISPLAY`
+and the session's X authority. It lists displays and application windows.
+Window capture uses X11 Composite so an overlapping application stays out of
+the selected window's frame. Input is directed to the selected window and
+leaves the physical pointer and keyboard focus in place. An X11 application
+decides whether to act on synthetic window events. A shared X11 monitor has
+one active viewer for physical pointer and keyboard input. Pointer coordinates
+stay within the selected monitor. Keyboard input follows focus on that
+monitor, and ending the viewer's input releases its held keys and buttons.
+
+The isolated Host process tests run against Xvfb with X11 Composite and RandR.
+
+```sh
+xvfb-run -a sh -c 'CANTRIP_CUA_HOST_X11_TEST_DISPLAY="$DISPLAY" \
+  cargo test --locked --manifest-path cantrip_cua/Cargo.toml --test process \
+  linux_host_x11 -- --ignored --test-threads=1'
+```
+
+## Linux Host Wayland backend
+
+When the desktop provides the Remote Desktop portal, a full-display viewer
+can request control through the desktop's approval dialog. Select the same
+display in the dialog and in Cantrip. An approved session maps pointer input
+to that display's stream. The compositor delivers keyboard events, and its
+optional Clipboard portal supplies fresh text after an explicit copy.
+Closing the viewer releases its held input and ends the portal session.
+
+When Remote Desktop portal support is unavailable, compositors that expose
+version 2 of the wlroots virtual pointer protocol can bind pointer input to
+the selected output. Keyboard input uses the host's running `ydotoold` and
+follows the host keyboard focus. Set `YDOTOOL_SOCKET` if the daemon uses a
+custom socket. The default is `.ydotool_socket` in `XDG_RUNTIME_DIR`, or
+`/tmp/.ydotool_socket` when the runtime directory is unset. Clipboard copy
+requires the compositor's wlroots data control protocol. Unicode text input
+uses `wl-copy` to publish text to the session clipboard before pasting.
+The desktop's consent decision governs sessions opened through the portal.
+
+The local process fixture uses a separate D-Bus session, a headless Weston
+output, and a controlled portal. It requires Weston, Python D-Bus bindings,
+and the Python GLib bindings.
+
+```sh
+dbus-run-session -- python3 cantrip_cua/tests/fixtures/wayland_portal_control.py /path/to/cantrip-cua
+```
+
+Run the local input fixture as an unprivileged user with Sway, Xwayland,
+`xev`, and `wl-clipboard` installed. It uses a disposable two-output desktop
+and records the daemon requests through a local Unix datagram socket.
+
+```sh
+dbus-run-session -- python3 cantrip_cua/tests/fixtures/wayland_local_control.py /path/to/cantrip-cua
+```
+
+On an isolated Linux system, start a fixture-owned `ydotoold` with a
+dedicated socket. Give the test user access to that socket and read access
+to the daemon's virtual event device. Pass both paths to read the actual
+kernel events, including the key release on disconnect.
+
+```sh
+dbus-run-session -- python3 cantrip_cua/tests/fixtures/wayland_local_control.py \
+  /path/to/cantrip-cua --kernel-keyboard /path/to/event-device /path/to/ydotool-socket
+```
+
+Add `--verify-focus` when the fixture's virtual keyboard is available to
+libinput on the isolated seat. Sway then delivers the events to the focused
+XWayland test window, where `xev` verifies the Ctrl+C press and release.
+
+## Assigned Linux X11 backend
+
+The Linux helper has an explicit X11 backend for a selected desktop:
+
+```sh
+cantrip-cua --x11-display :100 --desktop-generation DESKTOP_GENERATION
+```
+
+The caller supplies the authorized workspace display and generation. The helper
+opens one local X connection, captures that root display, and posts XTEST input
+there. It never discovers an inherited display or reconnects to a replacement X
+server. Its target generation also changes with each helper lifetime. Capture,
+input and interaction requests use the existing framed protocol and shared input
+ownership and cleanup. This explicit guest mode is selected by the guest service.
+
+Pointer input moves the real pointer and focus inside that selected desktop.
+The backend supports click/hold, buttons, key combinations, text, wheel, drag and
+balanced timelines. Unicode text uses stable keyboard mappings for the helper
+lifetime, restored on teardown; this avoids racing application XKB refreshes.
+Only empty keymap slots are allocated, and exhaustion reports an actual capacity
+error. Text does not overwrite the clipboard. Accessibility, media controls and
+window-specific inventory are not supplied by this display backend.
+
+This is the native Phase 4 component. Guest package lifecycle, captured Linux
+agent routing, clipboard APIs, integrated viewing/takeover and managed services
+are subsequent dependent cycles; this command alone does not supply those
+product features or authorization.
+
+The real Linux acceptance test runs against two explicitly selected disposable
+workspace desktops, with xterm and xwininfo installed:
+
+```sh
+CANTRIP_CUA_X11_TEST_DISPLAY=:100 \
+CANTRIP_CUA_X11_TEST_OTHER_DISPLAY=:101 \
+  cargo test --locked --manifest-path cantrip_cua/Cargo.toml \
+  --test linux_x11 -- --ignored --nocapture
+```
+
+Use `CANTRIP_CUA_X11_TEST_TIMEOUT_MS=120000` for an emulated VM. The fixture
+checks actual UTF-8 bytes received by xterm, native capture pixels, button/wheel/
+drag events delivered to another X client, stale display identity rejection,
+input sequence rejection, held-key cleanup and cancellation of a long hold. It
+is component acceptance, not a real-model product test.
 
 ## Build and verify
 
@@ -176,7 +322,7 @@ recorded in the [first-tranche progress ledger](../docs/planned/CUA.md#first-tra
 
 ### Worker ownership and lifecycle
 
-`cantrip_worker/src/computer-use/service.ts` is the only worker process owner.
+`tests/reference-node-worker/src/computer-use/service.ts` is the only worker process owner.
 Construction, status inspection, idle disconnect, and shutdown perform no CUA
 launch, filesystem lookup, or native permission request. First authorized use
 launches one helper and performs its actual capability handshake. The worker
@@ -239,8 +385,9 @@ Open any project or standalone agent chat and choose **Computer use ·
 Experimental** above the transcript. Desktop, browser and responsive mobile
 clients use the same encrypted app → server → agent-worker route. Opening the
 panel does not launch the helper; **Connect to agent worker** in **Manual preview**
-performs its real capability request. The default backend uses ScreenCaptureKit on supported
-macOS versions; fake pixels are used only by explicitly configured tests.
+performs its real capability request. Default backends use ScreenCaptureKit on
+supported macOS versions and X11 on Linux. Explicit test configuration selects
+the fake backend.
 
 The first operation also prepares this worker's existing encrypted control,
 approval and history channels, including on a new chat that has never run an
@@ -405,7 +552,7 @@ archival. The importer preserves existing keychains and removes only the
 successfully created temporary signing keychain on failure or job cleanup.
 The CUA verifier checks the actual code signature, `art.cantrip.cua` identifier,
 Developer ID authority and hardened runtime, then launches that exact executable
-and exercises the final worker's Sharp image encoder. To reproduce the signing
+and exercises its native protocol with synthetic frames. To reproduce the signing
 and verification portion after `pnpm package:worker --target darwin-arm64`:
 
 ```sh
@@ -418,14 +565,10 @@ capture authorization, or a signature on unrelated worker binaries. Desktop
 packaging retains its existing nested-runtime and enclosing-app signing path.
 See the progress ledger for actual artifact and permission evidence.
 
-The CUA native CI matrix runs actual fake-backend tests on macOS, Windows, and
-Linux. Windows/Linux native capture remains unavailable. Fake CI intentionally
-does not request Screen Recording or claim permission/capture verification.
-
-On platforms without the macOS backend, default execution advertises unavailable
-native capture and returns a real `unsupported` result. `--backend fake` explicitly selects two fixture
-targets; it is never an automatic fallback. `--version` is a standalone CLI
-diagnostic, not the worker's capability handshake.
+The native helper has focused fake-backend process tests for macOS, Windows and
+Linux, along with the isolated X11 test. Default execution reports unavailable
+when the platform backend or its session is unavailable. `--backend fake`
+explicitly selects two fixture targets. `--version` is a standalone CLI diagnostic.
 
 ## Wire contract: version 1
 

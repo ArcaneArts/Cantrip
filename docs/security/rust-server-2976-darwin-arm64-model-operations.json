@@ -1,0 +1,438 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2976",
+  "referenceVersion": "1.1.2964",
+  "target": "darwin-arm64",
+  "serverSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "driverCommit": "b7aa8c2c3d70c424b5749f2ff944cd41d399af0e",
+  "scope": "Existing browser SDK in Chromium, full packaged Node worker and production server entrypoints on macOS ARM64. Only the local provider responses were scripted. In the bundled PostgreSQL case, Rust manages its own PostgreSQL and the Node reference uses the fixture PostgreSQL service.",
+  "rustExecutable": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone/bin/cantrip-server",
+    "bytes": 94259472,
+    "sha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2"
+  },
+  "packagedInputs": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/inputs.sha256",
+    "bytes": 865,
+    "sha256": "deeda17f15ffc55cc75d33d02bdfe570f0230cc7b813ffec88e013b1cfd29562"
+  },
+  "aggregate": {
+    "totals": {
+      "inputTokens": 36,
+      "outputTokens": 9,
+      "totalTokens": 45,
+      "cachedInputTokens": 6,
+      "cacheWriteInputTokens": 3,
+      "reasoningOutputTokens": 3
+    },
+    "coverage": {
+      "attemptCount": 12,
+      "reportedAttemptCount": 11,
+      "observedRequestCount": 12,
+      "incompleteUsageCount": 7
+    }
+  },
+  "singleServerScenarios": [
+    {
+      "databaseMode": "pglite",
+      "cells": [
+        {
+          "peers": "node",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        },
+        {
+          "peers": "rust",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/pglite.json",
+        "bytes": 605212,
+        "sha256": "18f7b1bf3aa55ead62d8f06e3903a1b4e5a83a5175180489db32f7403a6119c8"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/pglite.log",
+        "bytes": 3065,
+        "sha256": "37f5d27f6e3c28b32fbdabfe86e4db9fc1cdb3c92d04ed8985db2ab27f84cef8"
+      },
+      "retainedFixture": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/pglite.archive-input.fixture.tar.zst",
+        "bytes": 268051554,
+        "sha256": "ee4e4601340e3d1aa7a72666713c09b6e99c1dd5c322d25ee4a9d5776db91ed5"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "cells": [
+        {
+          "peers": "node",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        },
+        {
+          "peers": "rust",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/bundled-postgres.json",
+        "bytes": 675217,
+        "sha256": "19a58b6d4963cf5373008326151cf0c4282329085d951b8cad6c448f68483026"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/bundled-postgres.log",
+        "bytes": 3075,
+        "sha256": "5059355651db2fc1aa369e273eaba0a0bb96313ac201a6462531a621fa305c59"
+      },
+      "retainedFixture": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/bundled-postgres.archive-input.fixture.tar.zst",
+        "bytes": 311784054,
+        "sha256": "b7438a835101ed5d17543b74e7d168a4855023dc231c87c85593ccd2312053ce"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "cells": [
+        {
+          "peers": "node",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        },
+        {
+          "peers": "rust",
+          "productSteps": 19,
+          "operationCases": 12,
+          "providerHttpRequests": 13,
+          "workerSigkills": 1,
+          "cleanWorkerExits": 4,
+          "cleanServerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/postgres.json",
+        "bytes": 673523,
+        "sha256": "9862305c5b305a07f4e62443669c4f0a38d30b06998942c514710979af6ad7f0"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/postgres.log",
+        "bytes": 3067,
+        "sha256": "7b8f0f27a8318d4a298ca8c7a1a86efd87921c4c9e1d0db716ac542ee2f8cf3b"
+      },
+      "retainedFixture": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/postgres.archive-input.fixture.tar.zst",
+        "bytes": 236968805,
+        "sha256": "05712d2aaee278d0b8d98e5c992c09686c7914b190790c3f5302d10cc5a8a1a8"
+      }
+    }
+  ],
+  "sharedPostgres": {
+    "scope": "The browser and full worker connected to opposite peers on the same disposable PostgreSQL database and Redis instance. Each pairing repeated the existing model-operation assertions and two orderly restarts of both peers.",
+    "redisVersion": "8.10.3",
+    "redisBinaryDigest": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/redis.sha256",
+      "bytes": 198,
+      "sha256": "480a3b56a1b20baa144f231260b79bf812a39b0b21f764eb6b8ead4babbef240"
+    },
+    "cells": [
+      {
+        "peers": "node/node",
+        "productSteps": 19,
+        "operationCases": 12,
+        "providerHttpRequests": 13,
+        "workerSigkills": 1,
+        "cleanWorkerExits": 4,
+        "cleanServerExits": 6
+      },
+      {
+        "peers": "node/rust",
+        "productSteps": 19,
+        "operationCases": 12,
+        "providerHttpRequests": 13,
+        "workerSigkills": 1,
+        "cleanWorkerExits": 4,
+        "cleanServerExits": 6
+      },
+      {
+        "peers": "rust/node",
+        "productSteps": 19,
+        "operationCases": 12,
+        "providerHttpRequests": 13,
+        "workerSigkills": 1,
+        "cleanWorkerExits": 4,
+        "cleanServerExits": 6
+      },
+      {
+        "peers": "rust/rust",
+        "productSteps": 19,
+        "operationCases": 12,
+        "providerHttpRequests": 13,
+        "workerSigkills": 1,
+        "cleanWorkerExits": 4,
+        "cleanServerExits": 6
+      }
+    ],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/shared-postgres.json",
+      "bytes": 1592897,
+      "sha256": "3a67471c8b92eb7975bf410d997666b946a45c51c6051dab44cbbfa3c69571cf"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/shared-postgres.log",
+      "bytes": 5915,
+      "sha256": "0a66f0b5497736a4e0f14df491f5c2ea9a4ef4f097392592622e3d0ea3f14419"
+    },
+    "retainedFixture": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operations/shared-postgres.archive-input.fixture.tar.zst",
+      "bytes": 598554982,
+      "sha256": "ce3ca92ba03053926207ae021b52baa7419d099c42b31027d0f9780f85c4a4b3"
+    }
+  },
+  "externalPostgresOutage": {
+    "scope": "One local server and the full worker keep an already-dispatched embedding in flight while the fixture immediately stops external PostgreSQL and restarts the same cluster on the same port. The provider replies after readiness recovers.",
+    "rustServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-drain/runtime/server/bin/cantrip-server",
+      "bytes": 94259472,
+      "sha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2"
+    },
+    "workerIndex": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/macos-canonical-continuation/worker/dist/index.js",
+      "bytes": 391638,
+      "sha256": "3505b8913f656e5b6171948ecc8170b4134519ad0e2b3694ee533c4527b6d586"
+    },
+    "nodeReferenceSource": "58cd0ee43b94dd1a1c80191125e6d177e37aaa3a",
+    "cells": [
+      {
+        "runtime": "node",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "databaseUnavailableMs": 45002,
+        "initialReadinessStatus": 503,
+        "prolongedReadiness": {
+          "timeoutMs": 5000
+        },
+        "livenessStatus": 200,
+        "recoveredReadinessStatus": 200,
+        "cleanServerExits": 3,
+        "cleanWorkerExits": 4
+      },
+      {
+        "runtime": "rust",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "databaseUnavailableMs": 45002,
+        "initialReadinessStatus": 503,
+        "prolongedReadiness": {
+          "status": 503
+        },
+        "livenessStatus": 200,
+        "recoveredReadinessStatus": 200,
+        "cleanServerExits": 3,
+        "cleanWorkerExits": 4
+      }
+    ],
+    "sharedAssertions": [
+      "The same server and worker processes remain alive. The original provider connection stays open and sees exactly one embedding request.",
+      "The original attempt records one completed receipt after database recovery. Existing usage rows remain identical. Replaying the same operation is rejected without another provider request.",
+      "A fresh decision completes with its own receipt after recovery. The 14 normalized operation outcomes match across the two implementations."
+    ],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-outage/paired-postgres-outage-liveness.json",
+      "bytes": 927541,
+      "sha256": "2af13949dc68f008f5cac16382cbd68167cad5b567fc9e83a9a279b843e5de15"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-outage/paired-postgres-outage-liveness.log",
+      "bytes": 3602,
+      "sha256": "0a98a04f19b6062db70bdbd23829b9b2124f5549e1bcf7180f5bd25b147b324f"
+    }
+  },
+  "sharedRedisOutage": {
+    "scope": "A real Redis process is killed while the unchanged packaged Node worker is waiting for the provider to finish a protected embedding. The browser connects to the opposite server peer. External PostgreSQL remains available. All four Node and Rust peer pairings are exercised on macOS ARM64.",
+    "rustServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-redis-outage/cantrip-server-model-unavailable-cancel",
+      "bytes": 179713264,
+      "sha256": "64cd242b032183ee53c6695ba3d2d1d8bf01614246e9b148b0fe03575808f0b4"
+    },
+    "rustModelOperationsSourceSha256": "4e40d96d93192ca6777ba5a195ab0698f2e576d468e711c74a2aae0f1359b73e",
+    "nodeReferenceSourceTree": "3b67d65df364e06ddd97e949564046e269101831",
+    "redisVersion": "8.10.3",
+    "redis": {
+      "path": "rust-redis-coordination-local-11b8ad27a-20261106-v1/.qa/rust-redis/redis-source/src/redis-server",
+      "bytes": 3482208,
+      "sha256": "a18144d2e5d0f1792b4af8cff9524a376c1ebd7271d1981ffcf1c4a330ad51ee"
+    },
+    "workerIndex": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/macos-canonical-continuation/worker/dist/index.js",
+      "bytes": 391638,
+      "sha256": "3505b8913f656e5b6171948ecc8170b4134519ad0e2b3694ee533c4527b6d586"
+    },
+    "cells": [
+      {
+        "pairing": "node/node",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "offlineMs": 45002,
+        "providerClosedOnReconnect": false,
+        "initialReadiness": [503, 503],
+        "prolongedReadiness": [503, 503],
+        "recoveredReadiness": [200, 200],
+        "interruptedHttpStatus": 502,
+        "interruptedAttemptStatus": "unknown",
+        "transportAfterRejectedReplay": "replied",
+        "cleanPeerExits": 6,
+        "cleanWorkerExits": 4
+      },
+      {
+        "pairing": "node/rust",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "offlineMs": 45002,
+        "providerClosedOnReconnect": false,
+        "initialReadiness": [503, 503],
+        "prolongedReadiness": [503, 503],
+        "recoveredReadiness": [200, 200],
+        "interruptedHttpStatus": 502,
+        "interruptedAttemptStatus": "unknown",
+        "transportAfterRejectedReplay": "replied",
+        "cleanPeerExits": 6,
+        "cleanWorkerExits": 4
+      },
+      {
+        "pairing": "rust/node",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "offlineMs": 45004,
+        "providerClosedOnReconnect": false,
+        "initialReadiness": [503, 503],
+        "prolongedReadiness": [503, 503],
+        "recoveredReadiness": [200, 200],
+        "interruptedHttpStatus": 502,
+        "interruptedAttemptStatus": "unknown",
+        "transportAfterRejectedReplay": "replied",
+        "cleanPeerExits": 6,
+        "cleanWorkerExits": 4
+      },
+      {
+        "pairing": "rust/rust",
+        "productSteps": 20,
+        "operationCases": 14,
+        "providerHttpRequests": 15,
+        "offlineMs": 45004,
+        "providerClosedOnReconnect": false,
+        "initialReadiness": [503, 503],
+        "prolongedReadiness": [503, 503],
+        "recoveredReadiness": [200, 200],
+        "interruptedHttpStatus": 502,
+        "interruptedAttemptStatus": "unknown",
+        "transportAfterRejectedReplay": "replied",
+        "cleanPeerExits": 6,
+        "cleanWorkerExits": 4
+      }
+    ],
+    "assertions": [
+      "Both peers report unready while PostgreSQL remains healthy. The original provider response stays open and the browser request stays unsettled throughout the outage.",
+      "After Redis restarts the same worker process and continuity identity return. The interrupted response is HTTP 502 and retains one unknown usage attempt with no receipt.",
+      "Replaying the operation produces a protected rejection without another provider request or a usage receipt. A fresh decision completes with its own receipt, and earlier rows remain identical.",
+      "The other model cases still exercise explicit cancellation, SDK abort, raw HTTP disconnect, worker SIGKILL, timeout and a new operation after restart."
+    ],
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-redis-outage/all-redis-outage-unavailable-cancel.json",
+      "bytes": 1939715,
+      "sha256": "326edd550244081bbd9aae1515d341f99ddbc5970d927de64f78c827cc097c20"
+    },
+    "log": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-redis-outage/all-redis-outage-unavailable-cancel.log",
+      "bytes": 7367,
+      "sha256": "16cd03080cde7e710e6db39a738d064c1742f0d91697dc00e8b2040c26d90d6e"
+    },
+    "priorReproduction": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-redis-outage/all-redis-outage-after-reconnect.json",
+      "bytes": 1390909,
+      "sha256": "43ab34c868c5ca414f00713baadf985ca1828eb25bb5b6407636613e015e1bc9"
+    }
+  },
+  "externalPostgresOfflineSettlement": {
+    "scope": "The full worker finishes the original protected embedding while a real external PostgreSQL cluster is stopped for 60 seconds. The browser receives the inference result before the cluster restarts. The Rust retry persists the worker receipt under the existing immutable source key after PostgreSQL recovers.",
+    "rustServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-settlement/cantrip-server-postgres-settlement",
+      "bytes": 179746576,
+      "sha256": "13eb607db636569c6aa3b9b5f40eb8f6c3615bbb38862b9e2cb0d9cf251f67ef"
+    },
+    "retryWindowSeconds": 120,
+    "productSteps": 20,
+    "operationCases": 14,
+    "providerHttpRequests": 15,
+    "runs": [
+      {
+        "variant": "node-baseline",
+        "offlineMs": 60004,
+        "inferenceCompletedAfterStopMs": 32,
+        "statusAfterRecovery": "running",
+        "providerRequestsForInterruptedOperation": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-settlement/node-baseline.json",
+          "bytes": 429165,
+          "sha256": "ef739c3f9fe28ec97848e10ac2f13cc8848e746f25b3553536dfe338e84ac4f5"
+        }
+      },
+      {
+        "variant": "rust-baseline",
+        "offlineMs": 60000,
+        "inferenceCompletedAfterStopMs": 10,
+        "statusAfterRecovery": "running",
+        "providerRequestsForInterruptedOperation": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-settlement/rust-baseline.json",
+          "bytes": 432781,
+          "sha256": "aaac7e115713048475849fec2f7950146453732f1a145fa2d298c6a1cd029695"
+        }
+      },
+      {
+        "variant": "rust-retry",
+        "offlineMs": 60000,
+        "inferenceCompletedAfterStopMs": 9,
+        "statusAfterRecovery": "completed",
+        "providerRequestsForInterruptedOperation": 1,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-postgres-settlement/rust-retry.json",
+          "bytes": 471902,
+          "sha256": "279c591efd32d764c644c45d7db7965211e1fbf69565f81b92a34ef60c989e1f"
+        }
+      }
+    ],
+    "limits": "The receipt retry is owned by the live Rust process. Loss of the process before persistence and PostgreSQL outages beyond the retry window remain outside this result."
+  },
+  "remaining": [
+    "Windows package model-operation acceptance and active server-process interruption outside macOS.",
+    "Dependency outages beyond the exercised durations, receipt durability across a simultaneous server process loss and database outage, and packaged cross-platform fault coverage."
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "target": "win32-x64",
+  "candidateVersion": "1.1.2976",
+  "serverSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "desktopSourceCommit": "f1201f3e2d6a947ecb59d784f067743708b22713",
+  "workerSourceCommit": "f5329dc3ec941035cd2afcd55b7bfe578d24990a",
+  "verifiedInstalledRuntime": {
+    "installerSha256": "2d68d24bb3ce69603c9cf698a8fcc2388b6f86dd59564edec6fcbdd66f7139c8",
+    "appSha256": "8b823adccdc5897f919c445450e4ccacebdcbc49772b42ad6594f36cd67e6e25",
+    "serverSha256": "d678aacfb2d0d063812f84c1ae47766dce222f25382183f85b8c7d7b3fee7168",
+    "workerSha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+    "workerEncryptionSha256": "01288d5fc14c7e7455fc137ccb9325afbad8e5f68edff0398f2b9629ee0eb3d0"
+  },
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "cells": [
+    {
+      "databaseMode": "pglite",
+      "productSteps": 19,
+      "operationCases": 12,
+      "providerRequests": 13,
+      "serverExits": 3,
+      "workerCrashCases": 1,
+      "reapedWorkerTrees": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/guest-pglite-installed-grant-model-protocol-verified.json",
+        "bytes": 328499,
+        "sha256": "cc91a36bcb5663147fbcc35ad9448c74c8536b06894351d7dae671bd95680b54"
+      },
+      "guestSuite": "cantrip-2976-win32-x64-installed-grant-model-protocol"
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "productSteps": 19,
+      "operationCases": 12,
+      "providerRequests": 13,
+      "serverExits": 3,
+      "workerCrashCases": 1,
+      "reapedWorkerTrees": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/guest-bundled-postgres-installed-grant-model-protocol-verified.json",
+        "bytes": 331097,
+        "sha256": "02f5dd38cf2916d1e4a42447475c831ef06e9df987c4bc7562899f6037c661c5"
+      },
+      "guestSuite": "cantrip-2976-win32-x64-installed-grant-model-protocol"
+    },
+    {
+      "databaseMode": "postgres",
+      "productSteps": 19,
+      "operationCases": 12,
+      "providerRequests": 13,
+      "serverExits": 3,
+      "workerCrashCases": 1,
+      "reapedWorkerTrees": 4,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/guest-postgres-installed-grant-model-postgres-snapshot-v2-verified.json",
+        "bytes": 344880,
+        "sha256": "8a4297be76f230aff85b68bb7f2fb6a06026eb77482ea9e3b887209b51e3305b"
+      },
+      "guestSuite": "cantrip-2976-win32-x64-installed-grant-model-postgres-snapshot-v2"
+    }
+  ],
+  "earlierPostgresRun": {
+    "report": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/guest-postgres-installed-grant-model-protocol-verified.json",
+      "bytes": 264569,
+      "sha256": "e5387e3f258782de85b4bed5f5aed20bd68646c885c150c5fdd25539dc2b37d9"
+    },
+    "failure": "The QA snapshot recorded an exiting process without its creation time during worker crash cleanup."
+  },
+  "postgresRetry": {
+    "inputs": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/installed-grant-model-postgres-snapshot-v2-media/input-digests.json",
+      "bytes": 3918,
+      "sha256": "6920ca4c56afcb90934fd2649502f45f09a30905cf63f2eca21debe8dd9210a0"
+    },
+    "isoChecksums": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/installed-grant-model-postgres-snapshot-v2.iso.sha256",
+      "bytes": 317,
+      "sha256": "b2d41c15c3ecb14945caec85a8c644ec00c83702edc2f070f493bb2f88ecd6ad"
+    },
+    "receipt": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/guest-receipt-installed-grant-model-postgres-snapshot-v2.json",
+      "bytes": 1172,
+      "sha256": "ff5c2fcb3e491b6bc90412de6f65e467382a2472a31a7cfa6a830d916a2e455b"
+    }
+  },
+  "serialEvidence": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/cli-worktree/installed-grant-model-matrix-serial.jsonl",
+    "bytes": 5917,
+    "sha256": "ee50bbd2992f1e921b873ec2e4c9102c224790129e246244c8fcabac42831ce9"
+  },
+  "scope": "Installed Windows x64 package with the signed worker grant refresh, real Edge and unchanged server runtime in the local emulated Windows guest. The QA overlay adjusted the worker MCP startup timeout and process enumeration. Worker cleanup used Windows process-tree termination. Public provider HTTP responses were controlled."
+}

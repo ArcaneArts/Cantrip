@@ -1,13 +1,11 @@
 //! Debounced worker observation configuration and fenced path reconciliation.
 use super::{coordinator::Coordinator, targets::TargetRepository};
+use crate::workers::transport::WorkerTransport;
 use crate::{
     database::Database,
     operations::logging::{self, LogCall},
     wire::{Value, value::json},
-    workers::{
-        bridge::WorkerBridge,
-        command_bus::{CommandFailure, LimitedCommandBus},
-    },
+    workers::command_bus::{CommandFailure, LimitedCommandBus},
 };
 use anyhow::{Context, Result};
 use std::{
@@ -17,6 +15,8 @@ use std::{
 };
 use tokio::sync::oneshot;
 mod codegraph;
+mod git;
+mod git_publication;
 mod notifications;
 
 struct Timer {
@@ -26,6 +26,7 @@ struct Timer {
 #[derive(Default)]
 struct State {
     codegraph: codegraph::Registry,
+    git: git::Registry,
     stopped: bool,
     timers: HashMap<(String, String), Timer>,
     subscriptions: HashMap<String, crate::workers::bridge::NotificationSubscription>,
@@ -33,24 +34,29 @@ struct State {
 pub struct Service {
     live: std::sync::Weak<crate::live::LiveService>,
     repository: TargetRepository,
-    bridge: Arc<WorkerBridge>,
+    git_operations: super::git_operations::Repository,
+    bridge: Arc<dyn WorkerTransport>,
     commands: Arc<LimitedCommandBus>,
     tasks: Arc<Coordinator>,
+    project_operations: Arc<Coordinator>,
     state: Mutex<State>,
 }
 impl Service {
     pub fn new(
         database: Arc<Database>,
-        bridge: Arc<WorkerBridge>,
+        bridge: Arc<dyn WorkerTransport>,
         commands: Arc<LimitedCommandBus>,
         live: &Arc<crate::live::LiveService>,
+        project_operations: Arc<Coordinator>,
     ) -> Arc<Self> {
         Arc::new(Self {
             live: Arc::downgrade(live),
-            repository: TargetRepository::new(database),
+            repository: TargetRepository::new(database.clone()),
+            git_operations: super::git_operations::Repository::new(database),
             bridge,
             commands,
             tasks: Coordinator::new(Arc::new(|_, _| {})),
+            project_operations,
             state: Mutex::new(State::default()),
         })
     }
@@ -189,6 +195,7 @@ impl Service {
         state.stopped = true;
         state.subscriptions.clear();
         state.codegraph.clear();
+        state.git.clear();
         for (_, timer) in state.timers.drain() {
             let _ = timer.cancel.send(());
         }

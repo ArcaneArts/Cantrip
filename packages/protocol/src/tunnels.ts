@@ -1,5 +1,13 @@
 import { z } from "zod";
 import {
+  cantripOsListenerSourceSchema,
+  cantripOsTcpDestinationSchema,
+  cantripOsSshDestinationSchema,
+  cantripOsVncDestinationSchema,
+  tunnelSshConnectionInfoSchema,
+  cantripOsTunnelSourceSchema,
+} from "./cantrip-os-tunnels.js";
+import {
   protectedTunnelContentRecordSchema,
   tunnelContentErrorCodeSchema,
   tunnelPublicDestinationEndpointSchema,
@@ -71,7 +79,7 @@ export const tunnelDestinationEndpointSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("worker-adapter"),
       workerId: tunnelResourceIdSchema,
-      adapter: z.enum(["project-share"]),
+      adapter: z.enum(["project-share", "cantrip-os"]),
       resourceId: tunnelResourceIdSchema,
     })
     .strict(),
@@ -90,14 +98,25 @@ export const tunnelUserCreateSchema = z
     description: tunnelDescriptionSchema.default(null),
     projectId: tunnelResourceIdSchema.nullable().default(null),
     protocolHint: tunnelProtocolHintSchema,
-    destination: z
-      .object({
-        kind: z.literal("worker-tcp"),
-        workerId: tunnelResourceIdSchema,
-        host: tunnelWorkerHostSchema.default("127.0.0.1"),
-        port: z.number().int().min(1).max(65_535),
-      })
-      .strict(),
+    source: z
+      .union([
+        z.strictObject({ kind: z.literal("desktop-loopback") }),
+        cantripOsListenerSourceSchema,
+      ])
+      .optional(),
+    destination: z.union([
+      cantripOsTcpDestinationSchema,
+      cantripOsSshDestinationSchema,
+      cantripOsVncDestinationSchema,
+      z
+        .object({
+          kind: z.literal("worker-tcp"),
+          workerId: tunnelResourceIdSchema,
+          host: tunnelWorkerHostSchema.default("127.0.0.1"),
+          port: z.number().int().min(1).max(65_535),
+        })
+        .strict(),
+    ]),
   })
   .strict();
 
@@ -107,6 +126,7 @@ export const tunnelUserUpdateSchema = z
     description: tunnelDescriptionSchema.optional(),
     projectId: tunnelResourceIdSchema.nullable().optional(),
     protocolHint: tunnelProtocolHintSchema.optional(),
+    source: tunnelUserCreateSchema.shape.source,
     destination: tunnelUserCreateSchema.shape.destination.optional(),
   })
   .strict()
@@ -119,12 +139,40 @@ export const tunnelUserWireCreateSchema = z
     id: z.string().uuid(),
     projectId: tunnelResourceIdSchema.nullable().default(null),
     protocolHint: tunnelProtocolHintSchema,
-    destination: tunnelPublicDestinationEndpointSchema.and(
-      z.object({ kind: z.literal("worker-tcp") }).strict(),
-    ),
+    source: tunnelPublicSourceEndpointSchema.optional(),
+    destination: z.union([
+      z.strictObject({
+        kind: z.literal("worker-tcp"),
+        workerId: tunnelResourceIdSchema,
+      }),
+      z.strictObject({
+        kind: z.literal("worker-adapter"),
+        workerId: tunnelResourceIdSchema,
+        adapter: z.literal("cantrip-os"),
+        resourceId: z.uuid(),
+      }),
+    ]),
+    osSource: cantripOsTunnelSourceSchema.optional(),
     protectedRecord: protectedTunnelContentRecordSchema,
   })
   .strict()
+  .refine(
+    ({ id, source, destination, osSource, projectId }) =>
+      source?.kind === "worker-listener"
+        ? destination.kind === "worker-tcp" &&
+          source.workerId === destination.workerId &&
+          Boolean(osSource) &&
+          projectId !== null
+        : destination.kind === "worker-adapter"
+          ? destination.resourceId === id &&
+            Boolean(osSource) &&
+            projectId !== null
+          : osSource === undefined,
+    {
+      message:
+        "OS tunnels require a project and a captured source bound to their tunnel ID.",
+    },
+  )
   .refine(({ id, protectedRecord }) => id === protectedRecord.operationId, {
     message: "A new tunnel record must use its tunnel id as operation id.",
     path: ["protectedRecord", "operationId"],
@@ -138,9 +186,9 @@ export const tunnelUserWireUpdateSchema = z
   .object({
     projectId: tunnelResourceIdSchema.nullable().optional(),
     protocolHint: tunnelProtocolHintSchema.optional(),
-    destination: tunnelPublicDestinationEndpointSchema
-      .and(z.object({ kind: z.literal("worker-tcp") }).strict())
-      .optional(),
+    source: tunnelPublicSourceEndpointSchema.optional(),
+    destination: tunnelUserWireCreateSchema.shape.destination.optional(),
+    osSource: cantripOsTunnelSourceSchema.optional(),
     protectedRecord: protectedTunnelContentRecordSchema,
   })
   .strict();
@@ -181,7 +229,10 @@ export const tunnelManagedRegistrationSchema = z
     }
   });
 
-export const tunnelAttachmentKindSchema = z.enum(["desktop-loopback"]);
+export const tunnelAttachmentKindSchema = z.enum([
+  "desktop-loopback",
+  "worker-listener",
+]);
 
 export const tunnelAttachmentSummarySchema = z
   .object({
@@ -203,7 +254,9 @@ export const tunnelAttachmentSummarySchema = z
   })
   .strict()
   .superRefine((attachment, context) => {
-    const desktop = attachment.kind === "desktop-loopback";
+    const desktop =
+      attachment.kind === "desktop-loopback" ||
+      attachment.kind === "worker-listener";
     if (desktop !== (attachment.clientId !== null)) {
       context.addIssue({
         code: "custom",
@@ -255,6 +308,8 @@ export const tunnelAttachmentWireSummarySchema = z
 export const tunnelAttachmentCreateSchema = z
   .object({
     clientId: tunnelResourceIdSchema,
+    kind: tunnelAttachmentKindSchema.optional(),
+    expectedRevision: z.number().int().positive().safe().optional(),
   })
   .strict();
 
@@ -315,9 +370,18 @@ export const tunnelSummarySchema = z
     origin: tunnelOriginSchema,
     management: tunnelManagementSchema,
     protocolHint: tunnelProtocolHintSchema,
-    source: tunnelSourceEndpointSchema,
-    destination: tunnelDestinationEndpointSchema,
+    source: z.union([
+      tunnelSourceEndpointSchema,
+      cantripOsListenerSourceSchema,
+    ]),
+    destination: z.union([
+      tunnelDestinationEndpointSchema,
+      cantripOsTcpDestinationSchema,
+      cantripOsSshDestinationSchema,
+      cantripOsVncDestinationSchema,
+    ]),
     managedBy: tunnelManagedResourceSchema.nullable(),
+    osSource: cantripOsTunnelSourceSchema.optional(),
     desiredState: tunnelDesiredStateSchema,
     status: tunnelStatusSchema,
     lastError: z.string().min(1).max(4_000).nullable(),
@@ -350,6 +414,11 @@ export const tunnelSummarySchema = z
 
 export const tunnelListSchema = z.array(tunnelSummarySchema).max(10_000);
 
+export const tunnelOsPrepareResultSchema = z.strictObject({
+  ssh: tunnelSshConnectionInfoSchema.optional(),
+  identity: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
 export const tunnelWireSummarySchema = z
   .object({
     id: tunnelResourceIdSchema,
@@ -360,6 +429,7 @@ export const tunnelWireSummarySchema = z
     protocolHint: tunnelProtocolHintSchema,
     source: tunnelPublicSourceEndpointSchema,
     destination: tunnelPublicDestinationEndpointSchema,
+    osSource: cantripOsTunnelSourceSchema.optional(),
     managedBy: tunnelManagedResourceSchema.nullable(),
     desiredState: tunnelDesiredStateSchema,
     status: tunnelStatusSchema,

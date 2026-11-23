@@ -1,4 +1,4 @@
-import { OpenRouterCatalogCache } from "../../cantrip_server/src/models/openrouter-catalog.ts";
+import { OpenRouterCatalogCache } from "../../tests/reference-node-server/src/models/openrouter-catalog.ts";
 const deferred = () => {
   let resolve, reject;
   const promise = new Promise((yes, no) => {

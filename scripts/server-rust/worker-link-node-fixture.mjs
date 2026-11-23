@@ -3,7 +3,7 @@ import { createInterface } from "node:readline";
 import {
   WorkerLinkCoordinator,
   WorkerLinkUnavailableError,
-} from "../../cantrip_server/src/worker-links/coordinator.ts";
+} from "../../tests/reference-node-server/src/worker-links/coordinator.ts";
 let coordinator, now, generation, server;
 const commands = [],
   logs = [],

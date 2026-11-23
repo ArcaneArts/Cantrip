@@ -1,0 +1,10 @@
+#!/usr/bin/python3
+"""Retain accounts/files/configuration; remove copied machine enrollment."""
+import json
+from pathlib import Path
+
+config = json.loads(Path('/etc/cantrip-os/executor.json').read_text())
+state = Path(config['state_dir'])
+if not state.is_absolute():
+    raise ValueError('Executor state_dir must be absolute')
+(state / 'instance.json').unlink(missing_ok=True)

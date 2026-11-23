@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "platform": "darwin-arm64",
+  "scope": "Packaged Rust executable and Node reference with existing browser status and log clients, the packaged 1.1.2976 Node worker, and isolated profiles.",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "driverSourceCommit": "d1ae33abdbf85704292ff210bc5c29a89f8e6dc8",
+  "workerVersion": "1.1.2976",
+  "server": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+    "bytes": 94198000,
+    "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+  },
+  "worker": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/dist/index.js",
+    "bytes": 391720,
+    "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+  },
+  "databaseFixtureSha256": "0811d2ce6a53ef242d7b9175804fed727c2a852c915800489b2392a941114780",
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "observations": [
+        {
+          "runtime": "node",
+          "steps": 15,
+          "operationalSnapshots": 2,
+          "boundedLogReplays": 2,
+          "leaseDisconnects": 2,
+          "disconnectCode": 1013,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        },
+        {
+          "runtime": "rust",
+          "steps": 15,
+          "operationalSnapshots": 2,
+          "boundedLogReplays": 2,
+          "leaseDisconnects": 2,
+          "disconnectCode": 1013,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/operations-3059.OuKo2h5O/pglite.json",
+        "bytes": 919977,
+        "sha256": "859c782ba97d36a1e38c5c302e911c3b50ba957c6c2cd277d21f3ce182dea244"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/operations-3059.OuKo2h5O/pglite.log",
+        "bytes": 750,
+        "sha256": "e62ebeef8a719a34f2ba6455fdfb539785dafbdeb27988c2abe5522e16dc6171"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "observations": [
+        {
+          "runtime": "node",
+          "steps": 15,
+          "operationalSnapshots": 2,
+          "boundedLogReplays": 2,
+          "leaseDisconnects": 2,
+          "disconnectCode": 1013,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        },
+        {
+          "runtime": "rust",
+          "steps": 15,
+          "operationalSnapshots": 2,
+          "boundedLogReplays": 2,
+          "leaseDisconnects": 2,
+          "disconnectCode": 1013,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/operations-3059.OuKo2h5O/bundled-postgres.json",
+        "bytes": 989911,
+        "sha256": "ba8bf4fa0bd7e81240bb7edc44244deadf19fd169fbd4ae766de6be5424e33ec"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/operations-3059.OuKo2h5O/bundled-postgres.log",
+        "bytes": 760,
+        "sha256": "b2efea67a2a8f7e8b44c44bb4a3da59eb6b5271e2ca8a0c7eff7dc8c90fa3a47"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "observations": [
+        {
+          "runtime": "node",
+          "steps": 15,
+          "operationalSnapshots": 2,
+          "boundedLogReplays": 2,
+          "leaseDisconnects": 2,
+          "disconnectCode": 1013,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        },
+        {
+          "runtime": "rust",
+          "steps": 15,
+          "operationalSnapshots": 2,
+          "boundedLogReplays": 2,
+          "leaseDisconnects": 2,
+          "disconnectCode": 1013,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 3
+        }
+      ],
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/operations-3059.OuKo2h5O/postgres.json",
+        "bytes": 982726,
+        "sha256": "a229f97e1b27e7f78c05e5f0e5144e8f111c4704d860d461cf67ab810a889ee4"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/operations-3059.OuKo2h5O/postgres.log",
+        "bytes": 752,
+        "sha256": "4218fa7916fa0bc2fb9b7cb4658518a592c4e79e00aa222904884ef52585f5ef"
+      }
+    }
+  ]
+}

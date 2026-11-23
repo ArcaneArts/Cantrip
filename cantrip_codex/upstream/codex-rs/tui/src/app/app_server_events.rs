@@ -25,7 +25,7 @@ use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerRequest;
 use codex_app_server_protocol::SessionSource;
-use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadReadParams;
 use codex_app_server_protocol::ThreadReadResponse;
 use codex_app_server_protocol::ThreadSource;
@@ -147,6 +147,12 @@ impl App {
                 self.repaint_agents_overview();
             }
             AppServerEvent::Disconnected { message } => {
+                // The request result distinguishes a refused start from a lost reply.
+                if self.pending_startup_thread_start
+                    && !matches!(self.app_server_target, crate::AppServerTarget::Embedded)
+                {
+                    return;
+                }
                 if self.begin_reconnect() {
                     return;
                 }
@@ -160,8 +166,18 @@ impl App {
     async fn handle_server_notification_event(
         &mut self,
         app_server_client: &AppServerSession,
-        notification: ServerNotification,
+        mut notification: ServerNotification,
     ) {
+        if let ServerNotification::TurnModerationMetadata(metadata) = &mut notification
+            && (!super::safety_recourse::supports_server(app_server_client)
+                || self
+                    .primary_thread_id
+                    .is_none_or(|id| id.to_string() != metadata.thread_id))
+            && let Some(metadata) = metadata.metadata.as_object_mut()
+        {
+            metadata.remove("safety_block");
+            metadata.remove("safety_recourse");
+        }
         // A picker can leave an old runtime's close notification queued while the same thread
         // is resumed. Thread IDs survive reloads, so confirm that the displayed thread is still
         // unloaded before routing a close that would exit the TUI or switch away from it.
@@ -463,10 +479,10 @@ impl App {
             ServerNotificationThreadTarget::Thread(thread_id) => {
                 if self.current_displayed_thread_id() != Some(thread_id)
                     && let ServerNotification::ItemCompleted(item) = &notification
-                    && let ThreadItem::UserMessage {
+                    && let ThreadItemPayload::UserMessage {
                         client_id: Some(client_id),
                         ..
-                    } = &item.item
+                    } = &item.item.payload
                 {
                     // Acknowledge by ID before routing can discard the receipt. ID-less receipts
                     // cannot safely distinguish identical pending submissions.
@@ -537,7 +553,8 @@ impl App {
 
         #[cfg(any(target_os = "windows", test))]
         if let ServerNotification::WindowsSandboxSetupCompleted(result) = notification {
-            let Some((mode, preset, profile_selection)) = self.windows_sandbox.pending_setup.take()
+            let Some((mode, preset, profile_selection)) =
+                self.windows_sandbox.pending_setup.clone()
             else {
                 return;
             };
@@ -550,7 +567,6 @@ impl App {
                 }
             };
             if result.mode != expected_mode {
-                self.windows_sandbox.pending_setup = Some((mode, preset, profile_selection));
                 return;
             }
             if result.success {
@@ -567,10 +583,18 @@ impl App {
                         profile_selection,
                     });
             } else {
+                self.windows_sandbox.pending_setup = None;
                 self.chat_widget.clear_windows_sandbox_setup_status();
                 self.windows_sandbox.setup_started_at = None;
-                self.chat_widget
-                    .retain_input_after_failed_permission_selection();
+                if self
+                    .chat_widget
+                    .recover_inline_permission_profile_selection()
+                {
+                    self.app_event_tx.send(AppEvent::SettingsSelectionClosed);
+                } else {
+                    self.chat_widget
+                        .retain_input_after_failed_permission_selection();
+                }
                 self.chat_widget.add_error_message(format!(
                     "Windows sandbox setup failed: {}",
                     result.error.unwrap_or_else(|| "unknown error".to_string())

@@ -23,6 +23,7 @@ let client: QueryClient;
 let settings: SettingsBundle;
 
 beforeEach(async () => {
+  localStorage.clear();
   vi.clearAllMocks();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -86,6 +87,26 @@ async function search(
 }
 
 describe("inline settings search", () => {
+  it("shows the matching editor control under Editors and saves without leaving search", async () => {
+    await search("JSON");
+    const group = container.querySelector('[data-settings-section="editors"]')!;
+    expect(group.textContent).toContain("Editors");
+    const select = group.querySelector<HTMLSelectElement>(
+      '[aria-label="JSON default mode"]',
+    )!;
+    expect(select.value).toBe("edit");
+    expect(group.querySelector('[aria-label="TOML default mode"]')).toBeNull();
+    expect(group.querySelector('[aria-label="Show line numbers"]')).toBeNull();
+    await act(async () => {
+      select.value = "visual";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(select.value).toBe("visual");
+    expect(
+      container.querySelector<HTMLInputElement>('[role="searchbox"]')!.value,
+    ).toBe("JSON");
+    expect(api.updateSettings).not.toHaveBeenCalled();
+  });
   it("edits Elite Mode directly under Appearance without leaving the search", async () => {
     await search("elite");
     const group = container.querySelector(
@@ -129,13 +150,12 @@ describe("inline settings search", () => {
     ).toHaveLength(1);
   });
 
-  it("shows the real workspace profile option for a multi-word search", async () => {
+  it("does not find the removed workspace profile setting", async () => {
     await search("hybrid panes");
-    const group = container.querySelector('[data-settings-section="general"]')!;
+    expect(container.textContent).toContain("No settings match");
     expect(
-      group.querySelector('select[aria-label="Project workspace profile"]'),
-    ).not.toBeNull();
-    expect(group.textContent).not.toContain("Default agent permissions");
+      container.querySelector('select[aria-label="Project workspace profile"]'),
+    ).toBeNull();
   });
 
   it("opens a matching provider's real options inside Models", async () => {
@@ -176,7 +196,7 @@ describe("inline settings search", () => {
       container.querySelector('[data-slot="settings-search-results"]'),
     ).toBeNull();
     expect(
-      container.querySelector('select[aria-label="Project workspace profile"]'),
+      container.querySelector('[aria-label="Show current prompt header"]'),
     ).not.toBeNull();
   });
 

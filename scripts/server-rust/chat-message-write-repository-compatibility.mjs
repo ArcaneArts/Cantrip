@@ -15,7 +15,7 @@ import {
   literal,
   stamp,
 } from "./project-target-state.mjs";
-import { protectedEventId } from "../../cantrip_server/src/db/repository/native-history-output-alias.ts";
+import { protectedEventId } from "../../tests/reference-node-server/src/db/repository/native-history-output-alias.ts";
 import {
   nativeCommandSessionSchema,
   nativeCommandIntentSchema,

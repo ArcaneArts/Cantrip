@@ -1,0 +1,410 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "version": "1.1.2881",
+  "target": "linux-x64",
+  "platform": "linux/amd64",
+  "systemdHost": "linux/arm64",
+  "elfMachine": 62,
+  "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+  "verifiedPackageFiles": 2546,
+  "binary": {
+    "path": "linux-x64-distribution/bin/cantrip-server",
+    "bytes": 110957920,
+    "sha256": "2b247d16a9ad93b2e59bc8db7c105b234d73505f333c5920279ea759e076e58c"
+  },
+  "manifest": {
+    "path": "linux-x64-distribution/native-server.json",
+    "bytes": 488934,
+    "sha256": "346410495db2d8a0eb853d6f5c6d2f20963a0a31fe5a33123dde2d2ee562b268"
+  },
+  "standaloneArchive": {
+    "path": "winterhold-linux-x64/native.tar.gz",
+    "bytes": 142638879,
+    "sha256": "8b2d24644452683503ee1f9477305cd4823c3c3d71261231a21e8b33d6f5a9c9"
+  },
+  "container": {
+    "image": "cantrip-server-rust:current-2881-linux-x64-qa",
+    "imageId": "sha256:059dc3842a2a8810219fc7920c9ee3a5fbae777a84505eba74d5b78570847ad7",
+    "archive": {
+      "path": "cantrip-server-1.1.2881-linux-x64.tar.zst",
+      "bytes": 180468097,
+      "sha256": "7c7c6680a76a6424c22b3ebcb7d6a5b374da0d97c92d7709979ac65a452d5de1"
+    },
+    "report": {
+      "path": "linux-x64-container-acceptance.json",
+      "bytes": 5412,
+      "sha256": "388bb60c7b215e06ca80df581da1966fb26eb2de308ff2d65f3240aaa3d91586"
+    },
+    "fixtureVolumes": [
+      {
+        "path": "linux-x64-container-volumes/cantrip-native-package-9885f09a-database-data.tar.zst",
+        "bytes": 8104815,
+        "sha256": "3611d6df7050130665d89f72b9adf19be46f028e2131ff2aa28066d998ef308e"
+      },
+      {
+        "path": "linux-x64-container-volumes/cantrip-native-package-9885f09a-pglite-data.tar.zst",
+        "bytes": 6058348,
+        "sha256": "e57f3e86357977958fb7690221bac1e7a3d3f02e83e35efe3d6dc5c7595aac99"
+      },
+      {
+        "path": "linux-x64-container-volumes/cantrip-native-package-9885f09a-bundled-postgres-data.tar.zst",
+        "bytes": 7136333,
+        "sha256": "65252073a7cdfb225f608d57ed2751b58cc4fe59caab7ba3ec80ecaa8188d24a"
+      },
+      {
+        "path": "linux-x64-container-volumes/cantrip-native-package-9885f09a-postgres-data.tar.zst",
+        "bytes": 73873,
+        "sha256": "51fa9fe7978d52568c3616ccac1152e2c99857346c571b9ed9bffc5943fff9dc"
+      }
+    ],
+    "nodeAbsentFromServerPath": true,
+    "nonRootReadOnlyRoot": true,
+    "temporaryMountMiB": 256,
+    "temporaryMountNoexec": true
+  },
+  "winterhold": {
+    "report": {
+      "path": "winterhold-linux-x64/report.json",
+      "bytes": 1092728,
+      "sha256": "abb795c653bca48ac90afb7929748cf2664cf169f4f2af7ac04c1958103193ca"
+    },
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningExecutableHashesCompared": 10,
+    "localRollbackVersion": "1.1.2783",
+    "externalPostgresRollbackVersion": "1.1.2739",
+    "externalPostgresTlsConnections": 6,
+    "readOnlyServiceMountObserved": true,
+    "serviceStopped": true,
+    "retainedProfiles": {
+      "path": "winterhold-linux-x64/retained-systemd-profiles.tar.zst",
+      "bytes": 13357351,
+      "sha256": "1f5ca0f1832b423cbb54c8d9df85488b660a89ba7cc8266482b8e5267190a568"
+    },
+    "retainedPostgresDump": {
+      "path": "winterhold-linux-x64/retained-external-postgres.dump",
+      "bytes": 677184,
+      "sha256": "4c3d2da9eef82d3a075782602e9633869595d9ea8bf6bb797619e778fab8cc7a"
+    },
+    "verifiedCaddyHttpsAndAppLive": true,
+    "sessionsAndAcceptedWritesRetainedAcrossRollback": true,
+    "legacyNodeArchitecture": "linux/amd64",
+    "storageFailureBeforeSuccessfulRetry": {
+      "path": "docker-desktop-x64-guest-storage-failure.log",
+      "bytes": 5407,
+      "sha256": "ee440e1152d3ff521ed38d62429b31d0d03cc7bd87fe345a41544ec5e3dc70a2"
+    },
+    "readOnlyMountWitness": {
+      "path": "winterhold-linux-x64/current-namespace-write.txt",
+      "bytes": 116,
+      "sha256": "e85cc9b6aa2998e11e37f64999269bb81354e71def4175feeefcb93f3f5df56d"
+    },
+    "tlsConnectionWitness": {
+      "path": "winterhold-linux-x64/current-postgres-tls.txt",
+      "bytes": 4,
+      "sha256": "c6a4dcbd0b5f57d17ee7fc7336b7e0475709ac680bc26d75e2063727a53f8766"
+    }
+  },
+  "evidenceDirectory": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112",
+  "scope": "Local Linux x64 production container and Ubuntu systemd/Caddy rehearsal with x64 emulation on an ARM64 Linux host. The external PostgreSQL rollback uses the retained Linux x64 Node image.",
+  "rebuiltWinterhold": {
+    "sourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+    "version": "1.1.2881",
+    "imageDigest": "sha256:da8090ab4346ba0dd42507095fa857523858862c3b5be975f27d2cba85a697c3",
+    "nativeArchive": {
+      "path": "rebuilt-ff6a4b060/cantrip-server-1.1.2881-ff6a4b060-linux-x64.native.tar.gz",
+      "bytes": 156292394,
+      "sha256": "39d385169d664928e190255314ba65512799efc8d42434b81e062da5fa14d78f"
+    },
+    "nativeExecutableSha256": "cb02d8daafcf8153bca74f90605378d9607034f17e379e067a941e536df27fe8",
+    "report": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/report.json",
+      "bytes": 1092887,
+      "sha256": "ec7c82fee138b9a7f3d5f2bc15ea637261e00801074e2596570298b19785b0a4"
+    },
+    "localDriver": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/retained-artifact-acceptance.mjs",
+      "bytes": 23302,
+      "sha256": "c511d68e34fd92e5b77c5c4f5be4ac775e236a00f960ee702d8ba11ee9d2d7ff"
+    },
+    "systemdHost": {
+      "id": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+      "architecture": "arm64"
+    },
+    "releaseStorage": "tmpfs",
+    "profileStorage": "container writable filesystem",
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningExecutableHashesCompared": 10,
+    "rebuiltExecutableHashesCompared": 6,
+    "rollbackRuntimes": {
+      "pglite": "rust",
+      "bundled-postgres": "rust",
+      "postgres": "node"
+    },
+    "sessionsAndAcceptedWritesRetainedAcrossRollback": true,
+    "verifiedCaddyHttpsAndAppLive": true,
+    "retainedProfiles": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/retained-systemd-profiles.tar.zst",
+      "bytes": 13354534,
+      "sha256": "e45cecb741ffd53f8dcd54a29cc178a88f059cc02e6010fb796701749852659c"
+    },
+    "retainedPostgresDump": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/retained-external-postgres.dump",
+      "bytes": 677181,
+      "sha256": "c90f86960e00d5135d7bf808cd85dc464e2aed5667e958649a86bd647d44dcf7"
+    },
+    "externalPostgresTlsConnections": 6,
+    "tlsConnectionWitness": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/external-postgres-tls-connections.txt",
+      "bytes": 2,
+      "sha256": "06e9d52c1720fca412803e3b07c4b228ff113e303f4c7ab94665319d832bbfb7"
+    },
+    "cleanServiceStopWitness": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64/post-rehearsal-stop.txt",
+      "bytes": 32,
+      "sha256": "2e53c1060c795356d29fa8abee67dad2afd83357dbe4f719dc4ad7b0150f690c"
+    },
+    "productionDeployment": false
+  },
+  "rebuiltWinterholdWithStartLimitRecovery": {
+    "sourceCommit": "ff6a4b060c60ee1f391b70161fdffd0c933c38c7",
+    "version": "1.1.2881",
+    "imageDigest": "sha256:da8090ab4346ba0dd42507095fa857523858862c3b5be975f27d2cba85a697c3",
+    "nativeArchive": {
+      "path": "rebuilt-ff6a4b060/cantrip-server-1.1.2881-ff6a4b060-linux-x64.native.tar.gz",
+      "bytes": 156292394,
+      "sha256": "39d385169d664928e190255314ba65512799efc8d42434b81e062da5fa14d78f"
+    },
+    "nativeExecutableSha256": "cb02d8daafcf8153bca74f90605378d9607034f17e379e067a941e536df27fe8",
+    "report": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/report.json",
+      "bytes": 1092919,
+      "sha256": "076a68210cc120590b3a03365f1290fb04f96c0d6e4c2f008b9bc267941d114c"
+    },
+    "localDriver": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/retained-artifact-acceptance.mjs",
+      "bytes": 24548,
+      "sha256": "a18c9ae9ed5fa280faca3674bd7c9bf37b5eb240ab92735243798d1beae38b00"
+    },
+    "testedInstaller": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/pglite-fault-startup/install.sh",
+      "bytes": 7206,
+      "sha256": "c5b55fa449e47f0b12c50baf61240a11c68430f5d5c5011d17ae11b69d91e872"
+    },
+    "systemdHost": {
+      "id": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+      "architecture": "arm64"
+    },
+    "releaseStorage": "tmpfs",
+    "profileStorage": "container writable filesystem",
+    "installerCalls": 18,
+    "recoveredInstallerFailures": 6,
+    "runningExecutableHashesCompared": 10,
+    "rebuiltExecutableHashesCompared": 6,
+    "rollbackRuntimes": {
+      "pglite": "rust",
+      "bundled-postgres": "rust",
+      "postgres": "node"
+    },
+    "sessionsAndAcceptedWritesRetainedAcrossRollback": true,
+    "verifiedCaddyHttpsAndAppLive": true,
+    "recoveredAfterSystemdStartLimit": true,
+    "startLimitJournal": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/journal.log",
+      "bytes": 696831,
+      "sha256": "f4bbf7a6cf89bc2cb7230dc59e9f9864c1af56c92aefe5b6084d8832bea83a17"
+    },
+    "retainedProfiles": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/retained-systemd-profiles.tar.zst",
+      "bytes": 13354218,
+      "sha256": "fe94ebd05240b1d0cd549a3269ad17ce899f41f150d98adc229cf5b419c489f3"
+    },
+    "retainedPostgresDump": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/retained-external-postgres.dump",
+      "bytes": 677177,
+      "sha256": "df33e6267488001d0344b458d2788216c4e4072d8f85b33da3626a0bc2a62e12"
+    },
+    "externalPostgresTlsConnections": 6,
+    "tlsConnectionWitness": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/external-postgres-tls-connections.txt",
+      "bytes": 2,
+      "sha256": "06e9d52c1720fca412803e3b07c4b228ff113e303f4c7ab94665319d832bbfb7"
+    },
+    "cleanServiceStopWitness": {
+      "path": "rebuilt-ff6a4b060/winterhold-linux-x64-restart-limit/post-rehearsal-stop.txt",
+      "bytes": 32,
+      "sha256": "2e53c1060c795356d29fa8abee67dad2afd83357dbe4f719dc4ad7b0150f690c"
+    },
+    "productionDeployment": false
+  },
+  "workspaceRemovalRebuild": {
+    "sourceCommit": "01928fcffe97701e36e0bf51a1639bffaf1ef0c3",
+    "target": "linux-x64",
+    "version": "1.1.2881",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "verifiedFiles": 2546,
+    "ociArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-server-1.1.2881-01928fcff-linux-x64.oci.tar",
+      "bytes": 172283904,
+      "sha256": "79aae3153248294540dac168da8814501b403fd7ecec8744b5c25e252d43f33e"
+    },
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/cantrip-server-1.1.2881-01928fcff-linux-x64.native.tar.gz",
+      "bytes": 142939072,
+      "sha256": "fa4864515f78d3c5fe37c94728966bcb4c54238e2e9003cf4b25c209902850cb"
+    },
+    "archiveVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-x64-artifact-verification.json",
+      "bytes": 495,
+      "sha256": "f813277b0ae09af72d4fbdfca4f615519dcac7671f9c801f5fbdc9e5a9ef7c8e"
+    },
+    "containerReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/linux-x64-container.json",
+      "bytes": 5408,
+      "sha256": "631697374413bb236e9bf1d1972fd79899e410795abf90b35a74a554d8633b08"
+    },
+    "winterhold": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/winterhold-linux-x64/acceptance.json",
+        "bytes": 1093003,
+        "sha256": "fa14f72e2fbb279316429f45ff757c633f83675b3637a598485e02046555e56a"
+      },
+      "installationOperations": 18,
+      "systemdHostArchitecture": "arm64",
+      "rollbackRuntimes": {
+        "pglite": "rust",
+        "bundled-postgres": "rust",
+        "postgres": "node"
+      },
+      "startLimitRecoveryObserved": true,
+      "retainedProfiles": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/winterhold-linux-x64/retained-profiles.tar.gz",
+        "bytes": 15797368,
+        "sha256": "50cd4dd7fba46576180921e9de4fb5f7b91079013a45f84fd0d57f44bb2b1d0e"
+      },
+      "retainedExternalPostgres": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-01928fcff/winterhold-linux-x64/retained-external-postgres.dump",
+        "bytes": 677157,
+        "sha256": "4520b81996a523c45c73fa755bf7e5da7e6118d6f18d0eb9a34782c8677861ee"
+      }
+    }
+  },
+  "replicaRepairRebuild": {
+    "sourceCommit": "9e2dd57116aca8d0525427f7963d3cc26ef3febb",
+    "target": "linux-x64",
+    "version": "1.1.2881",
+    "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+    "ociArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/cantrip-server-1.1.2881-9e2dd5711-linux-x64.oci.tar",
+      "bytes": 181450240,
+      "sha256": "e55b8e6d687b0513a8ef58ef7ff1bb3ff2b6fba2cec0159a7800dbd83013461c"
+    },
+    "nativeArchive": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/cantrip-server-1.1.2881-9e2dd5711-linux-x64.native.tar.gz",
+      "bytes": 146505408,
+      "sha256": "0f4b90f46d45133f64f2c2fa693a1e2a52a2b31ce1d880d2edab9242121720f8"
+    },
+    "artifactVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/native-package-verification.json",
+      "bytes": 637,
+      "sha256": "42d886db2ebd8b8498ec6f144349939df8a069df6451f04f92fba2d5f47c8143"
+    },
+    "dockerRootfsVerification": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/docker-rootfs.json",
+      "bytes": 298,
+      "sha256": "8ecd4b6e219faccc173d1977d1d2fdaf2c5cd8fba86e2c660e3859d6d2cfef59"
+    },
+    "containerReport": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/container-acceptance.json",
+      "bytes": 5406,
+      "sha256": "334a77ab65e8bb5deb8d3a4a8bf7159eb2bb1f34840e1f2cf2d632f184493d09"
+    },
+    "containerProfileArchives": [
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/container-volumes/cantrip-native-package-7e6da88c-bundled-postgres-data.tar.gz",
+        "bytes": 8427979,
+        "sha256": "7342eba3fc7d17f8d9944a03fdde6197ad8d84f7105c012f1fa91039bc474594"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/container-volumes/cantrip-native-package-7e6da88c-database-data.tar.gz",
+        "bytes": 9422408,
+        "sha256": "95f505d7af6273afb3234a9dec1e6674a9b1a71a9bef0050b86c10faf66eb844"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/container-volumes/cantrip-native-package-7e6da88c-pglite-data.tar.gz",
+        "bytes": 7145995,
+        "sha256": "7a6e18b4e7fc95925585105da5395d653a070cf45dda187aa5f9c406a765cd51"
+      },
+      {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/container-volumes/cantrip-native-package-7e6da88c-postgres-data.tar.gz",
+        "bytes": 72011,
+        "sha256": "8106313edbbf9450d99137098ba067d95586f9257cc7df02423002881f131c47"
+      }
+    ],
+    "compilerCacheCleanup": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/target-cache-cleanup.log",
+      "bytes": 133,
+      "sha256": "25e1ea880e0e43e6188bbad7ed28dde614b194f371aa7d7b89a539bfa7160eb5"
+    },
+    "winterhold": {
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/winterhold/acceptance.json",
+        "bytes": 1092887,
+        "sha256": "6d956fd257698e14c7d92b4ca5388ef617d9882ce1dc9f0acc42195fb52adfdb"
+      },
+      "deploymentArchive": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/winterhold/native.tar.gz",
+        "bytes": 142703299,
+        "sha256": "d19aac349ff200bae67b4429ceff078b7993275d2592ac104858fefdbdfe4952"
+      },
+      "binarySha256": "13cf1e265e5d448b0073512061459b9fd0d3bce8bde98e0a31443dee2021319a",
+      "systemdImage": {
+        "id": "sha256:1a4719cffced31ab606bf1b4ccd0625d218a2d885708708435f66a7da36c6b92",
+        "architecture": "arm64"
+      },
+      "databaseModes": ["pglite", "bundled-postgres", "postgres"],
+      "installerCalls": 18,
+      "expectedRejectedCandidates": 6,
+      "runningExecutableHashesCompared": 10,
+      "rollbackRuntimes": {
+        "pglite": "rust",
+        "bundled-postgres": "rust",
+        "postgres": "node"
+      },
+      "startLimitRecoveryObserved": true,
+      "retainedSessionsAndAcceptedWrites": true,
+      "verifiedCaddyHttpsAndAppLive": true,
+      "externalPostgresTlsRequired": true,
+      "retainedProfiles": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/winterhold/retained-profiles.tar.gz",
+        "bytes": 15797383,
+        "sha256": "63345e439a46c850ca287a06b48f484699b29af62b542a0b34fc69140fe11ac0"
+      },
+      "retainedExternalPostgres": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/winterhold/retained-external-postgres.dump",
+        "bytes": 677150,
+        "sha256": "1125ad1cef4df126c70ffe8a68c3bae608d369edb5bbfb8f988e520ad42a5a55"
+      },
+      "verifiedDistributionCleanup": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-recovered/winterhold/verified-distribution-cleanup.json",
+        "bytes": 1710,
+        "sha256": "2daa253819ca422b044f83527f81ab224d50f720170244e35a3657558510ad96"
+      }
+    },
+    "interruptedBuild": {
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-oci-build.log",
+        "bytes": 8041,
+        "sha256": "404555d198798716ce5b2870fe41acc9cddb327ec6f199ea31f7ab5191ebd818"
+      },
+      "dockerGuestKernelLog": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/rebuilt-cb41197c6/linux-x64-docker-kernel.log",
+        "bytes": 13953,
+        "sha256": "ec671e790ea677bd9ea67305e22be00ce3bf6c47349987b50a8d79cf41b5c0c7"
+      }
+    }
+  }
+}

@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { protectChatMessage } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import {
   protectChatPlanState,
   openChatPlanState,
-} from "../../cantrip_worker/src/chat-plan-encryption.ts";
+} from "../../tests/reference-node-worker/src/chat-plan-encryption.ts";
 import {
   protectAgentInteractionRequest,
   protectAgentInteractionResponse,
   openAgentInteractionResponse,
-} from "../../cantrip_worker/src/interaction-encryption.ts";
+} from "../../tests/reference-node-worker/src/interaction-encryption.ts";
 import {
   encryptTaskMessageProtectedContent,
   decryptTaskMessageProtectedContent,
@@ -219,11 +219,11 @@ export async function proveEventStorage(h, state, result) {
     assert.equal(row.payload, null);
     assert.equal(row.response, null);
   }
-  assert.equal(state.messages.length, 1);
+  assert.equal(state.messages.length, 2);
   assert.equal(state.interactions.length, 2);
   assert.equal(JSON.stringify(state).includes(eventPrivateMarker), false);
   assert.equal(
     state.messages.some((m) => m.chat_id === standalone),
-    false,
+    true,
   );
 }

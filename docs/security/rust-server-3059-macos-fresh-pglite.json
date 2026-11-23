@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "harnessCommit": "140f03c7036add1e8ac281e8261268d266de2316",
+  "baselineReportedVersion": "1.1.3077",
+  "driverNodeVersion": "v24.22.1",
+  "databaseMode": "pglite",
+  "host": {
+    "model": "Mac16,6",
+    "cpuCount": 16,
+    "osRelease": "27.0.0"
+  },
+  "schedule": {
+    "warmupPairs": 5,
+    "measuredPairs": 20,
+    "order": "Alternated Node-first and Rust-first across fresh profiles."
+  },
+  "scope": "Small fresh local profiles on one active macOS ARM64 host. The benchmark measures process spawn to the first successful /readyz response. All standard HTTP and App Live checks and clean shutdowns also ran. The embedded package and compiled Node reference use their production entry points.",
+  "readinessMs": {
+    "node": {
+      "count": 20,
+      "min": 2868.935,
+      "median": 3066.195125,
+      "p95": 16725.780625,
+      "max": 30949.649959
+    },
+    "rust": {
+      "count": 20,
+      "min": 1059.266292,
+      "median": 1258.6783540000001,
+      "p95": 15059.01875,
+      "max": 23995.989833000003
+    }
+  },
+  "migrationMs": {
+    "node": {
+      "count": 20,
+      "min": 1934,
+      "median": 2080.0,
+      "p95": 15730,
+      "max": 29924
+    },
+    "rust": {
+      "count": 20,
+      "min": 984,
+      "median": 1111.0,
+      "p95": 14879,
+      "max": 23778
+    }
+  },
+  "idleProcessTreeRssKiB": {
+    "node": {
+      "count": 20,
+      "min": 1327488,
+      "median": 1352344.0,
+      "p95": 1362832,
+      "max": 1374448
+    },
+    "rust": {
+      "count": 20,
+      "min": 95120,
+      "median": 95568.0,
+      "p95": 96624,
+      "max": 97104
+    }
+  },
+  "oneMinuteHostLoad": {
+    "node": {
+      "count": 20,
+      "min": 5.8515625,
+      "median": 7.62890625,
+      "p95": 15.30078125,
+      "max": 17.16357421875
+    },
+    "rust": {
+      "count": 20,
+      "min": 5.85986328125,
+      "median": 7.549072265625,
+      "p95": 12.61572265625,
+      "max": 16.65576171875
+    }
+  },
+  "rustFasterPairs": 17,
+  "cleanExits": 50,
+  "medianReadinessChangePercent": -58.95,
+  "p95ReadinessChangePercent": -9.97,
+  "guard": {
+    "medianRegressionThresholdPercent": 5,
+    "verdict": "pass",
+    "comparison": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/fresh-pglite-readiness.Vj3zaiqE/guard-comparison.md",
+      "bytes": 839,
+      "sha256": "afff8aa3006ff76c7957d14fe3dca6d31c8c21b950a65d7015dd979e331d4fa0"
+    }
+  },
+  "longTail": "Both runtimes had long fresh-start samples. The earlier 32.7-second Rust report attributed 32.4 seconds to migrations. The slowest new Rust sample took 24.0 seconds, with 23.8 seconds recorded inside migrations. The host was active. These observations leave the cause of the migration-time variation unresolved and do not establish a worst-case startup bound.",
+  "matrixDriver": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/fresh-pglite-readiness.Vj3zaiqE/run.sh",
+    "bytes": 1356,
+    "sha256": "b02ec28c76cee8e302888a1e2d3f4abde93f68cd45df7a7491c75a67e3df04a1"
+  },
+  "inputChecksums": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/fresh-pglite-readiness.Vj3zaiqE/inputs.sha256",
+    "bytes": 1154,
+    "sha256": "8c56e6bdb43301c6d5ac75167471a4a1bced662e28a10ef71d071c4ded73471d"
+  },
+  "measuredBaseline": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/fresh-pglite-readiness.Vj3zaiqE/node-readiness.json",
+    "bytes": 543,
+    "sha256": "e39b5ec5ccd36d54b4a217f61c914018a19c0495a19ebffcfd352be1f6d87f80"
+  },
+  "measuredCandidate": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/fresh-pglite-readiness.Vj3zaiqE/rust-readiness.json",
+    "bytes": 560,
+    "sha256": "75eab8738a2fa23924df606b7a07b6242555900837a3218552d41728fbb928e3"
+  },
+  "rawSummary": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/fresh-pglite-readiness.Vj3zaiqE/readiness-summary.json",
+    "bytes": 21304,
+    "sha256": "6c2cfeafaa25b4f7061b31bb180dce37125d7eb1eaee858df626e624412c0a9c"
+  },
+  "exit": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/fresh-pglite-readiness.Vj3zaiqE/matrix.exit",
+    "bytes": 2,
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "restoredPriorSmallReports": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/performance/restored-archived-acceptance-reports.json",
+    "bytes": 7937,
+    "sha256": "3dd378f7fcdc7a400d8b2711c4fa510c1a4dbfb6a8f1256f4256a9a6bb0c8902"
+  }
+}

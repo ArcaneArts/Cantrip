@@ -1,3 +1,10 @@
+import { surfaceOsFilePlacement } from "@/lib/os-file-placement";
+import { surfaceWorktreeId } from "@/lib/sidebar-file-tabs";
+import { useProjectAlertCounts } from "@/lib/project-alert-counts";
+import {
+  readAlertNavigation,
+  subscribeAlertNavigation,
+} from "@/lib/alert-navigation";
 import { useConversationPlacement } from "./use-conversation-placement";
 import { useSidebarFileReveal } from "@/components/sidebar/use-sidebar-file-reveal";
 import { useProjectSidebarPage } from "@/components/sidebar/use-project-sidebar-page";
@@ -5,7 +12,6 @@ import { useProjectToolNavigationBridge } from "./project-tool-navigation-bridge
 import { useWorkspaceConnection } from "./use-workspace-connection";
 import { useWorkspaceEditorTransfer } from "./use-workspace-editor-transfer";
 import { detachWorkspaceEditors } from "./detach-workspace-editors";
-import { useOwnedFileWindow } from "./use-owned-file-window";
 import { useWorkspaceWindowReturn } from "./use-workspace-window-return";
 import { useWorkspaceWindowRecovery } from "./use-workspace-window-recovery";
 import { openOwnedFile } from "@/lib/open-owned-file";
@@ -131,6 +137,7 @@ import type {
   GitHistoryHeaderState,
   GitViewSection,
 } from "@/components/git/git-history";
+import { GitFileHistoryHost } from "@/components/git/git-file-history-host";
 import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
 import type { ProjectSurfacePlacementContext } from "@/components/workspace/project-surface-create-menu";
 import { type FolderSourceMode } from "@/components/projects/folder-project-dialog";
@@ -178,11 +185,8 @@ import {
   selectWorkspaceTab,
 } from "@/lib/workspace-selection";
 import {
-  defaultGitHistoryOptions,
-  openGitFileHistoryEvent,
-  parseGitHistoryRoute,
   pushGitHistoryRoute,
-  type OpenGitFileHistoryRequest,
+  type GitHistoryRouteState,
 } from "@/lib/git-history-navigation";
 import { useGitHistoryNavigation } from "@/lib/use-git-history-navigation";
 import { workspaceWorkerObservationDemands } from "@/lib/workspace-worker-observation";
@@ -272,6 +276,7 @@ export function App() {
     seedWorkspaceSelection,
   );
   const workspaceSelection = workspaceConnection.workspaceSelection;
+  const projectAlertCounts = useProjectAlertCounts();
   const [conversationArchiveRequest, setConversationArchiveRequest] = useState<{
     projectId: string;
     id: string;
@@ -338,51 +343,38 @@ export function App() {
     setWorkspaceSelection,
     workspace: ownedWorkspace?.controller ?? null,
   });
-  useEffect(() => {
-    const openFileHistory = (event: Event) => {
-      const { projectId, worktreeId, path } = (
-        event as CustomEvent<OpenGitFileHistoryRequest>
-      ).detail;
-      const current = parseGitHistoryRoute(window.location.search);
-      pushGitHistoryRoute({
-        projectId,
-        worktreeId,
-        commit: null,
-        selectedCommits: [],
-        comparison: null,
-        filePath: path,
-        options:
-          current.projectId === projectId && current.worktreeId === worktreeId
-            ? current.options
-            : defaultGitHistoryOptions,
-      });
+  // Only explicit History/Graph actions navigate; opening file history is an overlay.
+  const openGitHistory = useCallback(
+    (
+      route: GitHistoryRouteState & { projectId: string; worktreeId: string },
+      section: GitViewSection = "history",
+    ) => {
+      pushGitHistoryRoute(route);
       setAppMode("ide");
-      setSelectedProjectId(projectId);
-      setProjectOverviewSection("history");
-      setProjectOverviewWorktreeId(worktreeId);
-      setWorkspaceSelection(emptyWorkspaceSelection(projectId));
+      setSelectedProjectId(route.projectId);
+      setProjectOverviewSection(section);
+      setProjectOverviewWorktreeId(route.worktreeId);
+      setWorkspaceSelection(emptyWorkspaceSelection(route.projectId));
       setShowArchivedStandaloneChats(false);
       setShowImporter(false);
       setShowProjectSettings(false);
       setShowServerAdmin(false);
       setShowSettings(false);
       window.dispatchEvent(new PopStateEvent("popstate"));
-    };
-    window.addEventListener(openGitFileHistoryEvent, openFileHistory);
-    return () =>
-      window.removeEventListener(openGitFileHistoryEvent, openFileHistory);
-  }, [
-    setAppMode,
-    setProjectOverviewSection,
-    setProjectOverviewWorktreeId,
-    setSelectedProjectId,
-    setShowArchivedStandaloneChats,
-    setShowImporter,
-    setShowProjectSettings,
-    setShowServerAdmin,
-    setShowSettings,
-    setWorkspaceSelection,
-  ]);
+    },
+    [
+      setAppMode,
+      setProjectOverviewSection,
+      setProjectOverviewWorktreeId,
+      setSelectedProjectId,
+      setShowArchivedStandaloneChats,
+      setShowImporter,
+      setShowProjectSettings,
+      setShowServerAdmin,
+      setShowSettings,
+      setWorkspaceSelection,
+    ],
+  );
   const sidebarFileState = useSidebarFileState();
   const { explorerGraphRequest, setExplorerGraphRequest } = sidebarFileState;
   const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
@@ -464,13 +456,39 @@ export function App() {
     !showServerAdmin &&
     !showProjectSettings &&
     (projectOverviewPopoutTarget !== null ||
-      selectedBuiltInDefinitionId !== null ||
-      showProjectOverview);
+      selectedBuiltInDefinitionId !== null);
   const activeProjectOverviewSection =
-    (showProjectOverview ? "overview" : projectOverviewPopoutTarget?.section) ??
+    projectOverviewPopoutTarget?.section ??
     (selectedBuiltInDefinitionId
       ? projectOverviewSectionForBuiltInDefinition(selectedBuiltInDefinitionId)
       : projectOverviewSection);
+  useEffect(() => {
+    if (
+      !selectedProjectId ||
+      !projectOverviewSelected ||
+      activeProjectOverviewSection !== "tasks"
+    )
+      return;
+    const receive = () => {
+      const request = readAlertNavigation(selectedProjectId);
+      if (!request?.task || !request.target.chatId) return;
+      const chatId = request.target.chatId;
+      setProjectTaskChatIds((current) => {
+        if (current.get(selectedProjectId) === request.target.chatId)
+          return current;
+        const next = new Map(current);
+        next.set(selectedProjectId, chatId);
+        return next;
+      });
+    };
+    const unsubscribe = subscribeAlertNavigation(receive);
+    receive();
+    return unsubscribe;
+  }, [
+    selectedProjectId,
+    projectOverviewSelected,
+    activeProjectOverviewSection,
+  ]);
   const activeProjectTaskChatId =
     projectOverviewSelected &&
     activeProjectOverviewSection === "tasks" &&
@@ -699,8 +717,10 @@ export function App() {
     });
   const projectWorkspaceResources = useProjectWorkspaceResources({
     tabLayout,
-    activeProjectOverviewSection,
-    projectOverviewSelected,
+    activeProjectOverviewSection: showProjectOverview
+      ? "overview"
+      : activeProjectOverviewSection,
+    projectOverviewSelected: projectOverviewSelected || showProjectOverview,
     projectResourcesLive,
     projects: projects.data,
     queryClient,
@@ -778,6 +798,22 @@ export function App() {
   });
   const newTerminal = useTerminalCreationOperation({
     ownedPlacement: true,
+    defaultPlacement: () => {
+      const placement = surfaceOsFilePlacement(
+        selectedSurface,
+        remoteDesktop.data,
+      );
+      if (placement === null)
+        throw new Error(
+          "The selected surface's file destination is unavailable.",
+        );
+      return {
+        ...placement,
+        projectId: selectedSurface?.projectId,
+        worktreeId:
+          surfaceWorktreeId(selectedSurface, remoteDesktop.data) ?? undefined,
+      };
+    },
     openCreatedTab,
     queryClient,
     setPendingTerminalInputs,
@@ -799,17 +835,35 @@ export function App() {
     () => ({
       pendingActionIds: new Set<AppActionId>([
         ...(newChat.isPending ? [APP_ACTION_IDS.newAgentChat] : []),
+        ...(newTask.isPending ? [APP_ACTION_IDS.newTask] : []),
         ...(newTerminal.isPending ? [APP_ACTION_IDS.newTerminal] : []),
       ]),
       projectId: projectActionProjectId,
     }),
-    [newChat.isPending, newTerminal.isPending, projectActionProjectId],
+    [
+      newChat.isPending,
+      newTask.isPending,
+      newTerminal.isPending,
+      projectActionProjectId,
+    ],
   );
   const executeAppAction = (actionId: AppActionId) => {
     const projectId = appActionContext.projectId;
     if (!projectId) return;
     if (actionId === APP_ACTION_IDS.newAgentChat) {
       newChat.mutate({ projectId });
+    } else if (actionId === APP_ACTION_IDS.newTask) {
+      newTask.mutate(
+        { projectId },
+        {
+          onError: (error) =>
+            showAppToast({
+              title: "Could not create task",
+              tone: "error",
+              message: errorText(error),
+            }),
+        },
+      );
     } else if (actionId === APP_ACTION_IDS.newTerminal) {
       newTerminal.mutate({ projectId });
     }
@@ -841,6 +895,7 @@ export function App() {
     explorer: ExplorerSummary,
     path: string,
     preview: boolean,
+    viewer?: string | null,
   ) => {
     if (!ownedWorkspace) throw new Error("Workspace connection is not ready.");
     await openOwnedFile({
@@ -848,8 +903,16 @@ export function App() {
       queryClient,
       projectId: explorer.projectId,
       worktreeId: explorer.worktreeId,
+      ...(explorer.cantripOsBindingId
+        ? {
+            cantripOsBindingId: explorer.cantripOsBindingId,
+            cantripOsRuntimeGeneration: explorer.cantripOsRuntimeGeneration,
+            workerId: explorer.activeWorkerId,
+          }
+        : {}),
       path,
       preview,
+      viewer,
       reservePreview: (resourceId) =>
         explorerLifecycleRef.current
           .get(resourceId)
@@ -893,7 +956,7 @@ export function App() {
     [openOrFocusSurface, tabLayout.data, workspaceSelection.focusedPaneId],
   );
   const openProjectBuiltinSurface = useCallback(
-    (projectId: string, section: "overview" | "tasks") =>
+    (projectId: string, section: "overview" | "tasks" | "alerts") =>
       openProjectNavigatorSurface(
         projectId,
         projectBuiltInSurfaceResourceRef(
@@ -1093,13 +1156,6 @@ export function App() {
       resources: projectWorkspaceResources,
       selectedTabKey,
     });
-  const openExplorerFileWindow = useOwnedFileWindow({
-    workspace: ownedWorkspace,
-    queryClient,
-    surfaces: projectSurfaceIndex.byTabKey,
-    explorers: explorerLifecycleRef.current,
-    lifecycleRevision: fileLifecycleRevision,
-  });
   const legacyDocumentMigration = useLegacyDocumentMigration({
     workspace: ownedWorkspace,
     explorers: explorers.data,
@@ -1117,6 +1173,7 @@ export function App() {
     },
   );
   const sidebarExplorerModel = useSidebarExplorerModel({
+    remoteDesktop: remoteDesktop.data,
     revealedWorktreeId: sidebarFileReveal?.worktreeId,
     unavailablePaneIds: unavailableDetachedPaneIds,
     environment: {
@@ -1138,6 +1195,7 @@ export function App() {
     selectedProjectIdRef,
     sidebarDesiredWorktreeId,
     sidebarExplorer,
+    sidebarFileDestinationError,
   } = sidebarExplorerModel;
   const {
     onlineWorkerIds,
@@ -1195,7 +1253,8 @@ export function App() {
       : undefined;
   const projectOverviewGitSection: GitViewSection | null =
     activeProjectOverviewSection === "overview" ||
-    activeProjectOverviewSection === "tasks"
+    activeProjectOverviewSection === "tasks" ||
+    activeProjectOverviewSection === "alerts"
       ? null
       : activeProjectOverviewSection;
   const projectOverviewGitProject =
@@ -1543,7 +1602,9 @@ export function App() {
             : selectedBuiltInSurface &&
                 selectedBuiltInSurface.entity.definitionId !==
                   "project.overview" &&
-                selectedBuiltInSurface.entity.definitionId !== "project.tasks"
+                selectedBuiltInSurface.entity.definitionId !==
+                  "project.tasks" &&
+                selectedBuiltInSurface.entity.definitionId !== "project.alerts"
               ? {
                   kind: "builtin",
                   projectId: selectedBuiltInSurface.projectId,
@@ -1914,6 +1975,7 @@ export function App() {
       returnToLegacyCompactProjectOverview();
       return;
     }
+    setDesktopSidebarDrawerOpen(false);
     setShowProjectOverview(true);
   };
   useShellClientControlNavigation({
@@ -2011,6 +2073,7 @@ export function App() {
     importSidebarFiles,
     deleteSidebarFileEntry,
     openSidebarFilePreview,
+    openSidebarFileAs,
     openSidebarFilePreviewPath,
     openSidebarFolderGraph,
     openSidebarFolderNative,
@@ -2021,10 +2084,12 @@ export function App() {
     renameSidebarFileEntry,
     retrySidebarFileTree,
   } = createSidebarExplorerCommands({
-    openOwnedFile: (explorer, path, preview) =>
-      preview
-        ? openSidebarOwnedFile(explorer, path, true)
-        : pinSidebarFileMutation.mutateAsync({ explorer, path }),
+    openOwnedFile: (explorer, path, preview, viewer) =>
+      viewer !== undefined
+        ? openSidebarOwnedFile(explorer, path, false, viewer)
+        : preview
+          ? openSidebarOwnedFile(explorer, path, true)
+          : pinSidebarFileMutation.mutateAsync({ explorer, path }),
     createSidebarExplorerMutation,
     explorers: explorers.data,
     lifecycle: explorerLifecycle,
@@ -2043,11 +2108,12 @@ export function App() {
   });
   const { openChatFileLink, openProjectExplorerFile } =
     createProjectExplorerFileOpening({
-      openOwnedFile: async (projectId, worktreeId, path) => {
+      openOwnedFile: async (projectId, worktreeId, path, placement) => {
         if (!ownedWorkspace)
           throw new Error("Workspace connection is not ready.");
         await openOwnedFile({
           ...ownedWorkspace,
+          ...placement,
           queryClient,
           projectId,
           worktreeId,
@@ -2177,14 +2243,14 @@ export function App() {
     newRemoteDesktop, newStandaloneChat, newTask, newTerminal,
     onlineWorker, onlineWorkerIds, openChatConsole, openChatExplorerHere, openChatFileLink,
     openChatHistoryHere, openChatTerminalHere, openCompactRootSettings, openCreatedProject, openCreatedTab,
-    openExplorerFileWindow, openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, openProjectNavigatorSurface, openProjectToolSection, openRunTerminal, ownedTerminals,
-    openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFolderGraph,
+    openExplorers, openOrFocusSurface, openProjectCreateSource, openProjectExplorerFile, openProjectNavigatorSurface, openProjectToolSection, openRunTerminal, ownedTerminals,
+    openProjectSettings, openProjectTask, openServerAdmin, openSidebarFilePreview, openSidebarFileAs, openSidebarFolderGraph,
     openSidebarFolderNative, openSidebarRootNative, openSidebarFolderTerminal, openTerminalLink, openTerminalLinkExternally, openTunnelOwner,
     overlayTitlebar, pendingTerminalInputs, permanentlyDeleteStandaloneChat, pinSidebarFile, pinSidebarFileMutation,
     pinSidebarFilePath, popOutActiveView, popOutTab, popOutPane, popOutProjectOverviewView, popoutError, popoutPending,
     prepareExplorerRebind, projectOverviewGitProject, projectOverviewGitSection, projectOverviewPopoutTarget, projectOverviewSelected,
     projectInventorySurfaces, projectRevealButtonLabel, projectRevealLabel, projectSettingsSection, projectSetupJobs, projectSurfaceIndex, projectSurfaces,
-    projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
+    projectAlertCounts, projectTaskChatIds, projectTokenUsage, projectViews, projectWorkspaces,
     projects, queryClient, remoteDesktop,
     removeProjectMutation, renameChatMutation, renameExplorerMutation, renameProjectViewMutation, renameSidebarFileEntry,
     renamePaneMutation, renameStandaloneChat, renameSurface, renameTerminalMutation, repositoryStats,
@@ -2209,7 +2275,7 @@ export function App() {
     setStandaloneFilesOpen, setTerminalCommandPaletteTerminalId, setTerminalServiceTerminalId, setWorkspaceDragError, setWorktreeCreateTarget,
     settings, settingsPolicyId, settingsSection, showAppToast, showArchivedStandaloneChats,
     showChatConsole, showContentTitlebar, showCustomizations, showImporter, showProjectSettings,
-    showServerAdmin, showSettings, sidebarCollapsed, sidebarExplorer,
+    showServerAdmin, showSettings, sidebarCollapsed, sidebarExplorer, sidebarFileDestinationError,
     sidebarFileWorkerId, sidebarFileWorkerOnline,
     sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
@@ -2219,5 +2285,16 @@ export function App() {
     visibleProjects, workers, workspaceConnection, legacyDocumentMigration, workspaceDragError, workspaceSelection, worktreeActionError,
     worktreeCreateTarget, worktreeStatuses, worktrees,
   };
-  return <ApplicationShellRender bindings={renderBindings} />;
+  return (
+    <>
+      <ApplicationShellRender bindings={renderBindings} />
+      <GitFileHistoryHost
+        onOpenFile={openProjectExplorerFile}
+        onOpenHistory={openGitHistory}
+        projects={projects.data ?? []}
+        statuses={worktreeStatuses}
+        worktrees={worktrees.data ?? []}
+      />
+    </>
+  );
 }

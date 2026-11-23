@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { workspaceState, workspaceTab } from "./workspace-wire-fixtures.mjs";
 import { literal, json, state, stamp } from "./project-target-state.mjs";
 const postgres = createRequire(
-  new URL("../../cantrip_server/package.json", import.meta.url),
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("postgres");
 function deferred() {
   let resolve, reject;

@@ -80,9 +80,12 @@ async fn test_step(
     );
     let tool_catalog = Arc::new(ClientToolCatalog::new(
         vec![tool.clone()],
+        /*meta*/ None,
         /*updates*/ None,
     ));
     let managed_client = Arc::new(ManagedClient {
+        connection_sharing: Default::default(),
+        shared_elicitation: None,
         _auth_change_notifications: None,
         client: Arc::clone(&client),
         server_info: McpServerInfo {
@@ -97,6 +100,7 @@ async fn test_step(
         tool_timeout: None,
         server_instructions: None,
         server_supports_sandbox_state_meta_capability: supports_sandbox_state_meta,
+        client_supports_network_policy_meta_capability: false,
         codex_apps_tools_cache_context: None,
     });
     let clients = Arc::new(McpBindingClients::new(HashMap::from([(
@@ -313,8 +317,8 @@ async fn prepared_call_is_rejected_after_catalog_refresh() {
 
     step.tool_catalog
         .refresh(
-            || async { Ok((step.step.tools().to_vec(), ())) },
-            |_, ()| {},
+            || async { Ok((step.step.tools().to_vec(), None, ())) },
+            |_, _, ()| {},
         )
         .await
         .expect("refresh tool catalog");
@@ -347,8 +351,8 @@ async fn stale_prepared_call_does_not_run_preparation() {
         .expect("step should prepare the advertised tool");
     step.tool_catalog
         .refresh(
-            || async { Ok((step.step.tools().to_vec(), ())) },
-            |_, ()| {},
+            || async { Ok((step.step.tools().to_vec(), None, ())) },
+            |_, _, ()| {},
         )
         .await
         .expect("refresh tool catalog");
@@ -394,8 +398,8 @@ async fn preparation_holds_catalog_authority_until_it_finishes() {
 
     preparation_started.notified().await;
     let refresh = step.tool_catalog.refresh(
-        || async { Ok((step.step.tools().to_vec(), ())) },
-        |_, ()| {},
+        || async { Ok((step.step.tools().to_vec(), None, ())) },
+        |_, _, ()| {},
     );
     tokio::pin!(refresh);
     assert!(

@@ -11,6 +11,13 @@ export function TaskDispatchStatus({
 }) {
   const code = dispatch?.eligibilityCode;
   if (!code) return null;
+  if (code === "provider-transfer-pending")
+    return (
+      <span role="status" className="text-muted-foreground">
+        Waiting for the previous provider command to settle
+        {paused ? " (paused)" : ""}
+      </span>
+    );
   if (dispatch.state === "queued" && code === "encryption-grant-unavailable") {
     return (
       <span

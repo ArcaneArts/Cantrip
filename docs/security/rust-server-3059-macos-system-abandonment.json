@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.3059",
+  "workerVersion": "1.1.3059",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "testDriverBaseCommit": "9b82ad6ca289de309b6ec19bc2ea9f271afdb993",
+  "platform": "darwin-arm64",
+  "result": "passed",
+  "productCells": 6,
+  "scope": "Chromium with the existing browser SDK, the macOS native server package or the Node reference, the rebuilt full Node worker and a disposable Docker guest. In the bundled PostgreSQL cell Rust launches its packaged PostgreSQL and the Node reference uses an isolated external PostgreSQL fixture.",
+  "guestImageId": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+  "inputs": {
+    "rustServer": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+    },
+    "workerEntry": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    "workerVersion": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/worker/node_modules/@cantrip/version/dist/version.json",
+      "bytes": 179,
+      "sha256": "670e042a512cdeb01c97573139acd5f63589f9bf64f56c924e0363d2367376a9"
+    },
+    "cli": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/worker-rebuilt-3059.JCtAqfsU/worker/bin/cantrip",
+      "bytes": 1342656,
+      "sha256": "45e20cf3027b13938e705bb400830273c3458dd8ad2f3760f350ce619f639b3d"
+    }
+  },
+  "testDriverPatch": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-system-abandon-3059.GGGAKFDK/test-driver.patch",
+    "bytes": 6999,
+    "sha256": "cb3747e78bdc4d3ee9f4c1c04a87799c9484278caf2b34f98d9c16d31a0c1ab4"
+  },
+  "prepareReplyFault": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-system-abandon-3059.GGGAKFDK/os-system-prepare-reply-fault.mjs",
+    "bytes": 1459,
+    "sha256": "df2c4cab7aa33285a9bd462065d15ee67e0f591d9fe27e1d675d2d9ed68aaf7d"
+  },
+  "matrixExit": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-system-abandon-3059.GGGAKFDK/matrix.exit",
+    "bytes": 2,
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "perCell": {
+    "productSteps": 17,
+    "historyEntriesAfterRestart": 6,
+    "authenticatedPrivateOutcomes": 5,
+    "intentionalWorkerCrashes": 2,
+    "abandonedCapture": {
+      "preparedDispatchStage": "preparing",
+      "preparedPhase": "prepared",
+      "state": "rejected",
+      "phase": "not-dispatched",
+      "additionalDockerEffects": 0,
+      "sameContainerIdAndStartTime": true,
+      "continueAndObserveReturnSameOutcome": true
+    },
+    "dockerRootEffects": {
+      "commits": 1,
+      "creates": 2,
+      "renames": 8,
+      "starts": 5,
+      "stops": 5
+    }
+  },
+  "cases": [
+    {
+      "databaseMode": "pglite",
+      "matchedSnapshots": 44,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-system-abandon-3059.GGGAKFDK/pglite.json",
+        "bytes": 1038781,
+        "sha256": "b6c6c0aeb96f4e6348938885a9de640935fcdf08464501f2882248974ee56fd5"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-system-abandon-3059.GGGAKFDK/pglite.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "matchedSnapshots": 44,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-system-abandon-3059.GGGAKFDK/bundled-postgres.json",
+        "bytes": 1114884,
+        "sha256": "0320be0a1dc8694a4dd4d7fdfe7e6de3cb260823a67c019efa0f01f2b6fcb18a"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-system-abandon-3059.GGGAKFDK/bundled-postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    {
+      "databaseMode": "postgres",
+      "matchedSnapshots": 44,
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-system-abandon-3059.GGGAKFDK/postgres.json",
+        "bytes": 1122763,
+        "sha256": "0b7e4bb342c63cc50b779d7df80220bf3d4e3ef5d50476b60a618774805e8b88"
+      },
+      "exit": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-system-abandon-3059.GGGAKFDK/postgres.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    }
+  ]
+}

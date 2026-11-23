@@ -1,14 +1,19 @@
 # Cantrip Worker distribution
 
-Copy `.env.example` to `.env` and run `start.sh` (Unix) or `start.cmd`
-(Windows); the launchers load `.env` themselves with Node's
-`--env-file-if-exists`. A supervisor may instead inject the equivalent
-variables. The package includes its own platform-matched Node.js runtime and the pinned Codex
-CLI built and verified with this worker release. It also includes the native
-`cantrip` CLI. The worker places that CLI on the `PATH` of its managed Codex
-and terminal processes and gives it a protected connection to a local
-authenticated broker; the worker credential is never copied into the CLI
-connection cache. Generate a short-lived worker link code while signed into
+Copy `.env.example` to `.env` and run `start.sh` on Unix or `start.cmd`
+on Windows. The launcher opens the native worker in the package directory
+and forwards arguments. The worker loads `.env` and gives variables from
+its supervisor precedence. The package includes the pinned Codex runtime
+and native `cantrip` CLI. Managed Codex and terminal processes use that
+CLI through a protected connection to the local worker broker.
+The launcher and bundled first-party helpers run without Node.js.
+
+When replacing an existing installation, stop its worker and launch the new
+package with the same `CANTRIP_WORKER_DATA_DIR`. If the prior setting was
+relative to its package directory, use the original directory’s absolute path.
+A normal upgrade retains the stored identity and credential.
+
+For a new worker, generate a short-lived link code while signed into
 the target server, place it in
 `CANTRIP_WORKER_ENROLLMENT_CODE`, and start the worker once. The code is
 single-use. On first enrollment the worker stores its stable ID in
@@ -33,7 +38,10 @@ worker identity.
 
 The worker package also includes `bin/cantrip-cua` (`.exe` on Windows), the
 first-party computer-use helper. Packaging executes its actual private protocol
-and deterministic capture smoke. Native capture and worker CUA service activation
-are not available yet; this build-chain milestone does not start the helper
-during ordinary worker startup. The desktop distribution signs its nested macOS
-helper separately from the standalone worker artifact.
+and deterministic capture smoke. The desktop distribution signs its nested
+macOS helper separately from the standalone worker artifact.
+
+Windows x64 packages place the Visual C++ runtime DLLs alongside the native
+helpers. When building a package on Windows, the packager finds the DLLs
+through Visual Studio or `VCToolsRedistDir`. Set
+`CANTRIP_WINDOWS_VC_REDIST_DIR` to specify the x64 redistributable directory.

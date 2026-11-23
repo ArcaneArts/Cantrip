@@ -94,6 +94,7 @@ impl Control {
                 unavailable: spec["unavailable"] == true,
                 request_id: None,
                 encoding_error: None,
+                inference: None,
             }
             .into());
         }

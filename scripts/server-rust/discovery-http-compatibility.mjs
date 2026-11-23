@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
 import { buildRustServer } from "./build.mjs";
 import { HttpFixture } from "./http-fixture.mjs";
 import { postgresFixture } from "./postgres-fixture.mjs";
@@ -16,9 +16,9 @@ import {
   initialization,
 } from "./security-fixtures.mjs";
 import { discoveryWireFixtures } from "./discovery-wire-fixtures.mjs";
-import { WorkerConnection } from "../../cantrip_worker/src/transport.ts";
-import { saveWorkerCredential } from "../../cantrip_worker/src/credential-store.ts";
-import { sendHeartbeat } from "../../cantrip_worker/src/heartbeat.ts";
+import { WorkerConnection } from "../../tests/reference-node-worker/src/transport.ts";
+import { saveWorkerCredential } from "../../tests/reference-node-worker/src/credential-store.ts";
+import { sendHeartbeat } from "../../tests/reference-node-worker/src/heartbeat.ts";
 import { discoveryLifecycleCases } from "./discovery-lifecycle-cases.mjs";
 import { discoveryExpiryCases } from "./discovery-expiry-cases.mjs";
 import { discoveryLifetimeCases } from "./discovery-lifetime-cases.mjs";

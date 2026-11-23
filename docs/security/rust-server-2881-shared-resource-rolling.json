@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "platform": "darwin-arm64",
+  "databaseMode": "external-postgres",
+  "completeReplacement": false,
+  "scope": "Existing browser SDK and full packaged Node worker using shared PostgreSQL and Redis, encrypted resource APIs and rolling replacement of both peers with Rust.",
+  "artifacts": {
+    "rustServer": {
+      "path": "cantrip-server",
+      "bytes": 94198976,
+      "sha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+    },
+    "nodeReferenceSchema": {
+      "path": "schema.js",
+      "bytes": 218621,
+      "sha256": "f19e8659d587e0ddf5b1180a6d9ce4ffa51448307e2e410ba09d4b89ca8fd1b8"
+    },
+    "workerEntrypoint": {
+      "path": "index.js",
+      "bytes": 391601,
+      "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
+    }
+  },
+  "report": {
+    "path": "report.json",
+    "bytes": 2145036,
+    "sha256": "4e032dcf5bc93be16352ddf927f955f372417682cfa027c962a67240a8723739"
+  },
+  "totals": {
+    "completeCases": 4,
+    "productSteps": 128,
+    "peerReplacements": 8,
+    "cleanServerExits": 8,
+    "cleanWorkerExits": 24
+  },
+  "cases": [
+    {
+      "initialServerPair": "node/node",
+      "productSteps": 32,
+      "peerReplacements": 2,
+      "encryptedFileBytes": 65536,
+      "cleanServerExits": 2,
+      "cleanWorkerExits": 6
+    },
+    {
+      "initialServerPair": "node/rust",
+      "productSteps": 32,
+      "peerReplacements": 2,
+      "encryptedFileBytes": 65536,
+      "cleanServerExits": 2,
+      "cleanWorkerExits": 6
+    },
+    {
+      "initialServerPair": "rust/node",
+      "productSteps": 32,
+      "peerReplacements": 2,
+      "encryptedFileBytes": 65536,
+      "cleanServerExits": 2,
+      "cleanWorkerExits": 6
+    },
+    {
+      "initialServerPair": "rust/rust",
+      "productSteps": 32,
+      "peerReplacements": 2,
+      "encryptedFileBytes": 65536,
+      "cleanServerExits": 2,
+      "cleanWorkerExits": 6
+    }
+  ]
+}

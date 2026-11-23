@@ -1,6 +1,7 @@
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { errorMessage } from "@/lib/error-message";
+import { ProjectOverviewDialog } from "./project-overview-dialog";
 
 export function ProjectOverviewWorkspace({
   bindings: b,
@@ -9,7 +10,7 @@ export function ProjectOverviewWorkspace({
 }) {
   const exit = () => b.setShowProjectOverview(false);
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+    <ProjectOverviewDialog onClose={exit}>
       <ProjectOverview
         compact={b.compactShell}
         creatingKinds={b.creatingSurfaceKinds}
@@ -57,6 +58,6 @@ export function ProjectOverviewWorkspace({
         }
         revealLabel={b.projectRevealButtonLabel}
       />
-    </div>
+    </ProjectOverviewDialog>
   );
 }

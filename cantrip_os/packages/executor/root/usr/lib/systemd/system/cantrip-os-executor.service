@@ -1,0 +1,14 @@
+[Unit]
+Description=CantripOS optional native executor
+After=cantrip-os-workspaces.service
+Wants=cantrip-os-workspaces.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cantrip-executor daemon
+Restart=on-failure
+KillMode=control-group
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.3059",
+  "workerReportedVersion": "1.1.2976",
+  "serverSourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "testDriverCommit": "f52a6d9c9eaf311c83a055b78bc891434ffa87bc",
+  "completeReplacement": false,
+  "platform": "darwin-arm64",
+  "guestImage": "sha256:2310a9cf3d6c6a59dead96664dfac559df3539e4ce8c2eae133558c8b31c14c4",
+  "guestPlatform": "linux-arm64",
+  "nodeVersion": "v24.22.1",
+  "scope": "Account-authenticated browser SDK, full packaged worker, and disposable Docker guests. Each database case compares Rust and the Node reference on isolated stores. The Rust bundled PostgreSQL case uses the native package database. Its Node comparison uses isolated external PostgreSQL.",
+  "inputs": {
+    "server": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone-86dc1f0a1/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94198000,
+      "sha256": "98158f98aa453ad802282bc6119cf37f66251923d77f53b6fe08fe55c14107a3"
+    },
+    "workerEntry": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/dist/index.js",
+      "bytes": 391720,
+      "sha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c"
+    },
+    "cli": {
+      "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/desktop-3059/runtime/worker/bin/cantrip",
+      "bytes": 1342656,
+      "sha256": "45e20cf3027b13938e705bb400830273c3458dd8ad2f3760f350ce619f639b3d"
+    }
+  },
+  "sourceBackup": {
+    "productCells": 6,
+    "productStepsPerPeer": 12,
+    "exactGuestFileProofsPerPeer": 5,
+    "protectedReceiptsPerPeer": 3,
+    "droppedSuccessfulWorkerRepliesPerPeer": 2,
+    "conflictsPerPeer": 7,
+    "assertions": [
+      "Capture retains the protected archive and validates its content hash.",
+      "Restore and rollback recover the original protected receipts after server loss and worker loss respectively.",
+      "Repeated requests preserve guest home identities. Rollback restores the original home inode and retains the later write in the displaced home."
+    ],
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "matchedSnapshots": 8,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/source-backup-pglite.json",
+          "bytes": 690919,
+          "sha256": "18424fa6e0d47f7579cea1fd23113a0a17c9ddfa1c37e3a3c9523b07cb093903"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/source-backup-pglite.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "matchedSnapshots": 8,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/source-backup-bundled-postgres.json",
+          "bytes": 754520,
+          "sha256": "ec9deeb8e195c17fc8f3f012c576fc06a18b127ea24cda42c2b76a8755857134"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/source-backup-bundled-postgres.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "matchedSnapshots": 8,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/source-backup-postgres.json",
+          "bytes": 750267,
+          "sha256": "9ba1e50beb3d990a294728c1b62df820e4d2d3843f8ef8d00e58e3c5bef21b6f"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/source-backup-postgres.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      }
+    ]
+  },
+  "runLifecycle": {
+    "productCells": 6,
+    "productStepsPerPeer": 12,
+    "encryptedOutputReadsPerPeer": 4,
+    "assertions": [
+      "Start replay, server replacement, and worker replacement retain the same live guest PID and generation.",
+      "Restart advances the generation, retains runtime and terminal identities, and replaces the guest PID.",
+      "Stop reaps the replacement PID and its replay returns the original durable receipt.",
+      "The browser decrypts the output marker and verifies that the environment secret is redacted."
+    ],
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "matchedSnapshots": 10,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/run-pglite.json",
+          "bytes": 522922,
+          "sha256": "332ccfebc49b0f0a19166c8a5e9ddef040c6e87133951855c76ef8cc8bdd505f"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/run-pglite.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "matchedSnapshots": 10,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/run-bundled-postgres.json",
+          "bytes": 578301,
+          "sha256": "02597e975c5685a41e41678798e39c8fc89f6d07dc2c68ecdd0d331495371b29"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/run-bundled-postgres.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      {
+        "databaseMode": "postgres",
+        "matchedSnapshots": 10,
+        "report": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/run-postgres.json",
+          "bytes": 551512,
+          "sha256": "f93f0e9929217c23ef518f17b3f581193974476479655594000c8d678db0db78"
+        },
+        "exit": {
+          "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/cantrip-os-backup-and-run-3059.N7gPKRt9/run-postgres.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      }
+    ]
+  }
+}

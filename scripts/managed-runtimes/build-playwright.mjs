@@ -12,7 +12,6 @@ import {
   hostTarget,
   mkdir,
   readFile,
-  rename,
   rm,
   run,
   sha256,
@@ -56,7 +55,7 @@ const packageArchive = path.join(
   `playwright-core-${lock.playwright.version}.tgz`,
 );
 await rm(work, { recursive: true, force: true });
-await mkdir(path.join(runtime, "node_modules"), { recursive: true });
+await mkdir(runtime, { recursive: true });
 await downloadPinned({
   url: lock.playwright.packageUrl,
   destination: packageArchive,
@@ -65,6 +64,7 @@ await downloadPinned({
 });
 
 const packageStage = path.join(work, "package-stage");
+const playwright = path.join(packageStage, "package");
 await mkdir(packageStage, { recursive: true });
 await run(
   "tar",
@@ -76,16 +76,8 @@ await run(
   ],
   { cwd: work },
 );
-await rename(
-  path.join(packageStage, "package"),
-  path.join(runtime, "node_modules", "playwright-core"),
-);
-
 const browsers = JSON.parse(
-  await readFile(
-    path.join(runtime, "node_modules", "playwright-core", "browsers.json"),
-    "utf8",
-  ),
+  await readFile(path.join(playwright, "browsers.json"), "utf8"),
 );
 for (const browserName of ["chromium", "chromium-headless-shell"]) {
   const browser = browsers.browsers.find((item) => item.name === browserName);
@@ -101,7 +93,7 @@ const browserPath = path.join(runtime, "browsers");
 await run(
   process.execPath,
   [
-    path.join(runtime, "node_modules", "playwright-core", "cli.js"),
+    path.join(playwright, "cli.js"),
     "install",
     "chromium",
     "chromium-headless-shell",
@@ -116,17 +108,12 @@ await run(
   },
 );
 
-await mkdir(path.join(runtime, "launcher"), { recursive: true });
-await cp(
-  path.join(inputRoot, "smoke.mjs"),
-  path.join(runtime, "launcher", "smoke.mjs"),
-);
 await collectPortableHostFiles(runtime);
 await writeCompliance(runtime, lock, target);
 
 await run(
   process.execPath,
-  [path.join(runtime, "launcher", "smoke.mjs"), runtime],
+  [path.join(inputRoot, "smoke.mjs"), runtime, playwright],
   {
     env: {
       ...process.env,
@@ -136,6 +123,7 @@ await run(
 );
 await rm(path.join(runtime, ".smoke-home"), { recursive: true, force: true });
 await rm(path.join(runtime, ".smoke-cache"), { recursive: true, force: true });
+await rm(path.join(browserPath, ".links"), { recursive: true, force: true });
 await materializeLinks(runtime);
 
 const artifactName = `cantrip-playwright-${lock.bundleVersion}-${target}.zip`;
@@ -253,40 +241,22 @@ async function collectPortableHostFiles(runtimeRoot) {
 }
 
 async function writeCompliance(runtimeRoot, runtimeLock, runtimeTarget) {
-  const playwrightRoot = path.join(
-    runtimeRoot,
-    "node_modules",
-    "playwright-core",
-  );
-  const licenseFiles = [];
-  for (const name of ["LICENSE", "NOTICE", "ThirdPartyNotices.txt"]) {
-    const source = path.join(playwrightRoot, name);
-    if (await exists(source))
-      licenseFiles.push(path.relative(runtimeRoot, source));
-  }
   const linuxLicenseFiles = await findFiles(
     path.join(runtimeRoot, "licenses", "linux-packages"),
     () => true,
   );
-  const packages = [
-    {
-      name: "playwright-core",
-      version: runtimeLock.playwright.version,
-      license: runtimeLock.playwright.license,
-      licenseFiles,
-    },
-    {
-      name: "Chromium",
-      version: runtimeLock.chromium.version,
-      revision: runtimeLock.chromium.revision,
-      license: runtimeLock.chromium.license,
-      licenseFiles: (
-        await findFiles(path.join(runtimeRoot, "browsers"), (name) =>
-          /^(license|credits)/iu.test(name),
-        )
-      ).map((value) => path.relative(runtimeRoot, value)),
-    },
-  ];
+  const chromium = {
+    name: "Chromium",
+    version: runtimeLock.chromium.version,
+    revision: runtimeLock.chromium.revision,
+    license: runtimeLock.chromium.license,
+    licenseFiles: (
+      await findFiles(path.join(runtimeRoot, "browsers"), (name) =>
+        /^(license|credits)/iu.test(name),
+      )
+    ).map((value) => path.relative(runtimeRoot, value)),
+  };
+  const packages = [chromium];
   if (linuxLicenseFiles.length > 0)
     packages.push({
       name: "Linux browser dependency closure",
@@ -330,12 +300,14 @@ async function writeCompliance(runtimeRoot, runtimeLock, runtimeTarget) {
         bomFormat: "CycloneDX",
         specVersion: "1.6",
         version: 1,
-        components: packages.slice(0, 2).map((item, index) => ({
-          type: index === 0 ? "library" : "application",
-          name: item.name,
-          version: item.version,
-          licenses: [{ license: { id: item.license } }],
-        })),
+        components: [
+          {
+            type: "application",
+            name: chromium.name,
+            version: chromium.version,
+            licenses: [{ license: { id: chromium.license } }],
+          },
+        ],
       },
       null,
       2,

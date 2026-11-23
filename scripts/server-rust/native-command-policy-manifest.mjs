@@ -12,7 +12,7 @@ import {
 const source = parse(
   await readFile(
     new URL(
-      "../../cantrip_server/src/db/repository/native-commands.ts",
+      "../../tests/reference-node-server/src/db/repository/native-commands.ts",
       import.meta.url,
     ),
     "utf8",

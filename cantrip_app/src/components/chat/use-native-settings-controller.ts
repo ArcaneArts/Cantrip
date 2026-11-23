@@ -293,7 +293,11 @@ export function useNativeSettingsController(input: {
         ) ?? null,
     setUpdateError,
     updateError,
-    pending: observed.state.data?.pending.length ?? 0,
+    pending: binding
+      ? (observed.state.data?.pending.filter(
+          (entry) => entry.bindingId === binding.bindingId,
+        ).length ?? 0)
+      : 0,
     localStatus:
       local.at(-1)?.bindingId === binding?.bindingId &&
       local.at(-1)?.identity === identity

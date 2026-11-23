@@ -9,12 +9,21 @@ use std::sync::{Arc, Mutex};
 pub struct RelayLimitError {
     pub message: &'static str,
     pub retry_after_seconds: u64,
+    not_dispatched: bool,
 }
 impl RelayLimitError {
+    pub(crate) fn before_dispatch(mut self) -> Self {
+        self.not_dispatched = true;
+        self
+    }
+    pub fn not_dispatched(&self) -> bool {
+        self.not_dispatched
+    }
     pub fn new(message: &'static str, retry_after_seconds: u64) -> Self {
         Self {
             message,
             retry_after_seconds,
+            not_dispatched: false,
         }
     }
 }

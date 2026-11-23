@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "target": "win32-x64",
+  "candidateVersion": "1.1.3059",
+  "scope": "Local NSIS composition with the current compiled Node worker and verified existing Windows-native dependency files. Payload and QA updater signature verified. Installed runtime acceptance is tracked separately.",
+  "sourceCommit": "86dc1f0a1120dcc96a7dc26fb40c8efff1933696",
+  "workerVersion": "1.1.3059",
+  "workerSha256": "d1ebb376e943545b2ca58b0ba89aeb49ce697b82c7f831c88ca15938b219826c",
+  "appSha256": "114d4530406b82bda4cf2d27356a9086764f4a17b6c7d29fe8fd864af5f1ea5d",
+  "serverSha256": "c2bee345723f75ec694d21ca9dbfe1e4d0bf34ad4ba5f4566511af5f408d1114",
+  "installer": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/current-worker.rw0IaVIZ/Cantrip_1.1.3059_x64-setup.exe",
+    "bytes": 256855939,
+    "sha256": "a4b8c0ebc0dc167340b794c8c80163c94fcd331ee2e12737ec688c4f1dda523f"
+  },
+  "updaterSignature": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/current-worker.rw0IaVIZ/Cantrip_1.1.3059_x64-setup.exe.sig",
+    "bytes": 420,
+    "sha256": "08428b9160500f1bf875dcf1decf19416e8f85f1fb15ff0795aa276e40523fae"
+  },
+  "updaterSignatureVerification": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/current-worker.rw0IaVIZ/desktop-minisign-verification.log",
+    "bytes": 115,
+    "sha256": "fde36d911de1c5006e25cd6e0a1233320efd5d53c1616c38440c066aa0cdfb00"
+  },
+  "authenticodeVerified": false,
+  "verifiedFiles": 14085,
+  "runtimeManifest": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/current-worker.rw0IaVIZ/desktop-nsis-runtime-manifest.json",
+    "bytes": 2505120,
+    "sha256": "1352c388aeffa26902e6a625f66bb7437ee1cfbf0e8551123609312374f198cf"
+  },
+  "workerComposition": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/current-worker.rw0IaVIZ/composition.json",
+    "bytes": 618,
+    "sha256": "818735c161e0b48453cf890a3ea235b01296672fc13b4b3d8b7d47c4a23333f8"
+  },
+  "workerDependencyLocks": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/windows/desktop-3059/current-worker.rw0IaVIZ/dependency-lock-comparison.json",
+    "bytes": 3615,
+    "sha256": "00584fc5fa42fc8a0aa79fbc07550995ae67c61655dbdf6982e5ae0b100cd266"
+  },
+  "unchangedFilesOutsideWorker": true
+}

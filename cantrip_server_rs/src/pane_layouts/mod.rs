@@ -271,7 +271,10 @@ impl Repository {
         definition: &Value,
         worktree: &Value,
     ) -> Result<Option<Value>> {
-        if definition == "project.overview" || definition == "project.tasks" {
+        if definition == "project.overview"
+            || definition == "project.tasks"
+            || definition == "project.alerts"
+        {
             return Err(invariant("This built-in surface does not use a worktree."));
         }
         let executor = Executor::Database(&self.database);

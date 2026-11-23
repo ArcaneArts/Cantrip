@@ -6,7 +6,7 @@ use crate::{
 use anyhow::Result;
 
 #[derive(Debug)]
-pub(super) struct LeaseError {
+pub(crate) struct LeaseError {
     pub busy: bool,
     pub message: String,
 }
@@ -44,7 +44,7 @@ fn unique(error: &anyhow::Error) -> bool {
             || message.contains("duplicate key")
     })
 }
-pub(super) async fn acquire(
+pub(crate) async fn acquire(
     tx: &Transaction<'_>,
     project: &str,
     chat: &str,
@@ -104,7 +104,7 @@ pub(super) async fn acquire(
         other => other.map(|_| ()),
     }
 }
-pub(super) async fn release(tx: &Transaction<'_>, lane: &str) -> Result<()> {
+pub(crate) async fn release(tx: &Transaction<'_>, lane: &str) -> Result<()> {
     let now = crate::auth::now();
     query(Executor::Transaction(tx),"UPDATE project_branch_leases SET state='released',released_at=$1,updated_at=$1 WHERE chat_execution_lane_id=$2 AND state='active'",&[&now,&lane],&[json!(crate::auth::iso(now)),json!(lane)]).await?;
     Ok(())

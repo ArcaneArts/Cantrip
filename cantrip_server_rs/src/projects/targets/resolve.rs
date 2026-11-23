@@ -1,7 +1,4 @@
-use super::{
-    TargetRepository,
-    reads::{Reads, copy},
-};
+use super::{TargetRepository, reads::copy};
 use crate::{
     projects::{
         placement::{Connected, PlacementRepository, unavailable},
@@ -45,7 +42,7 @@ impl TargetRepository {
         let Some(project) = projects.get(owner, project_id).await? else {
             return unavailable("project-not-found", "Project not found.");
         };
-        let reads = Reads::new(self.database.clone());
+        let reads = self.reads();
         let mut capability = None;
         let mut resource_code = None;
         let mut resource_reason = None;

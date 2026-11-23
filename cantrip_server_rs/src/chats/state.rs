@@ -8,6 +8,46 @@ use crate::wire::{Value, value::json};
 use anyhow::Result;
 
 impl Repository {
+    pub async fn set_automation_paused(
+        &self,
+        owner: &str,
+        chat: &str,
+        paused: bool,
+    ) -> Result<Option<Value>> {
+        self.write_automation_pause(owner, chat, paused, false)
+            .await
+    }
+
+    pub async fn resume_agent_automation(&self, owner: &str, chat: &str) -> Result<Option<Value>> {
+        self.write_automation_pause(owner, chat, false, true).await
+    }
+
+    async fn write_automation_pause(
+        &self,
+        owner: &str,
+        chat: &str,
+        paused: bool,
+        retry_undispatched: bool,
+    ) -> Result<Option<Value>> {
+        let (owner, chat) = (owner.to_owned(), chat.to_owned());
+        self.database.transaction(|tx|Box::pin(async move{
+            let at=crate::auth::now();
+            let rows=crate::database::task_pause_queries::context(tx.query("UPDATE chats SET automation_paused=$3,managed_input_revision=CASE WHEN experience='task' THEN managed_input_revision+1 ELSE managed_input_revision END,updated_at=$4 WHERE id=$1 AND owner_id=$2 RETURNING to_jsonb(chats)::text",&[&chat,&owner,&paused,&at]).await,"chat",&[json!(paused),json!(crate::auth::iso(at)),json!(chat),json!(owner)])?;
+            let Some(row) = rows.first() else { return Ok(None); };
+            let chat_row = raw(row)?;
+            if retry_undispatched && chat_row["experience"] == "agent" {
+                crate::native_commands::managed_queue::retry_undispatched(
+                    tx, &owner, &chat,
+                ).await?;
+            }
+            if chat_row["experience"] == "task" {
+                tx.query("INSERT INTO managed_queue_states(chat_id,revision) VALUES($1,1) ON CONFLICT(chat_id) DO UPDATE SET revision=managed_queue_states.revision+1,notification_due_at=now()", &[&chat]).await?;
+            } else {
+                crate::database::task_pause_queries::context(tx.query("UPDATE managed_queue_states SET revision=revision+1 WHERE chat_id=$1",&[&chat]).await,"queue",&[json!(chat)])?;
+            }
+            Ok(Some(wire_summary(&chat_row)?))
+        })).await
+    }
     pub async fn update_label(
         &self,
         owner: &str,

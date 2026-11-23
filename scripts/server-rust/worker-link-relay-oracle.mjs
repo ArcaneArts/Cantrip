@@ -1,4 +1,4 @@
-import { WorkerLinkRelay } from "../../cantrip_server/src/worker-links/relay.ts";
+import { WorkerLinkRelay } from "../../tests/reference-node-server/src/worker-links/relay.ts";
 import { createWorkerLinkFrame } from "../../packages/protocol/dist/worker-link.js";
 import { workerLinkWireFixtures } from "./worker-link-wire-fixtures.mjs";
 const clone = structuredClone;

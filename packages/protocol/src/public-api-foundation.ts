@@ -298,6 +298,7 @@ export {
   codexExternalImportFailureSchema,
   codexExternalImportTypeResultSchema,
   codexExternalImportStatusSchema,
+  codexExternalImportStatusRequestSchema,
   mentionedSkillNames,
 } from "./customization.js";
 
@@ -523,13 +524,6 @@ export {
   settingsBundleSchema,
   settingsBundleWireSchema,
 } from "./settings.js";
-
-export {
-  workspaceLayoutProfileSchema,
-  workspaceLayoutProfilePlacement,
-} from "./workspace-layout-profiles.js";
-
-export type { WorkspaceLayoutProfile } from "./workspace-layout-profiles.js";
 
 export type {
   ThemePreference,

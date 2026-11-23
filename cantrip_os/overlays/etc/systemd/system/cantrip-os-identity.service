@@ -1,0 +1,12 @@
+[Unit]
+Description=Initialize CantripOS machine identity
+After=local-fs.target
+Before=ssh.service display-manager.service lightdm.service cantrip-os-executor.service cantrip-os-remote.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cantrip-os-identity initialize
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -110,7 +110,10 @@ export async function terminalDirectCases({
     (result.terminalDirectEvents ??= []).push({ name, events });
     assert.deepEqual(
       events,
-      ["terminal", "terminal", "project-tab-layout"].map((resource) => ({
+      (state.mode === "ready-exited"
+        ? ["terminal", "terminal", "terminal", "project-tab-layout"]
+        : ["terminal", "terminal", "project-tab-layout"]
+      ).map((resource) => ({
         resource,
         scope: { kind: "current-user" },
         entityId: id,

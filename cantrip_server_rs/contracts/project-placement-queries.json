@@ -1,0 +1,18 @@
+{
+  "project": {
+    "sql": "select \"git_capability\", \"id\", \"origin_kind\", \"preferred_worker_id\" from \"projects\" where (\"projects\".\"id\" = $1 and \"projects\".\"owner_id\" = $2) limit $3",
+    "params": ["fixture-project", "fixture-owner", 1]
+  },
+  "settings": {
+    "sql": "select \"default_worker_id\" from \"user_settings\" where \"user_settings\".\"user_id\" = $1 limit $2",
+    "params": ["fixture-owner", 1]
+  },
+  "workers": {
+    "sql": "select \"project_goal_generation\", \"id\", \"owner_id\", \"name\", \"display_name\", \"platform\", \"architecture\", \"codex_version\", \"codex_runtime\", \"remote_surface_capabilities\", \"direct_broker_advertisement\", \"codegraph_status\", \"web_runtime_capabilities\", \"encryption_status\", \"project_replica_capabilities\", \"managed_folder_capabilities\", \"standalone_chat_capabilities\", \"chat_relocation_capability\", \"external_codex_history_capability\", \"started_at\", \"last_seen_at\", \"unlinked_at\", \"created_at\", \"updated_at\" from \"workers\" where (\"workers\".\"owner_id\" = $1 and \"workers\".\"unlinked_at\" is null) order by \"workers\".\"id\" asc",
+    "params": ["fixture-owner"]
+  },
+  "replicas": {
+    "sql": "select \"project_sources\".\"id\", \"project_sources\".\"project_id\", \"project_sources\".\"worker_id\", \"project_sources\".\"source_kind\", \"project_sources\".\"absolute_path\", \"project_sources\".\"display_path\", \"project_sources\".\"placement_mode\", \"project_sources\".\"ownership_kind\", \"project_sources\".\"requested_path\", \"project_sources\".\"link_path\", \"project_sources\".\"repository_fingerprint\", \"project_sources\".\"removed_at\", \"project_sources\".\"created_at\", \"project_sources\".\"updated_at\", \"project_worktrees\".\"id\", \"project_worktrees\".\"project_source_id\", \"project_worktrees\".\"worker_id\", \"project_worktrees\".\"root_kind\", \"project_worktrees\".\"name\", \"project_worktrees\".\"location_kind\", \"project_worktrees\".\"absolute_path\", \"project_worktrees\".\"guest_path\", \"project_worktrees\".\"display_path\", \"project_worktrees\".\"is_primary\", \"project_worktrees\".\"is_default\", \"project_worktrees\".\"origin\", \"project_worktrees\".\"lifecycle_state\", \"project_worktrees\".\"branch\", \"project_worktrees\".\"head\", \"project_worktrees\".\"detached\", \"project_worktrees\".\"locked\", \"project_worktrees\".\"lock_reason\", \"project_worktrees\".\"status_snapshot\", \"project_worktrees\".\"status_observed_at\", \"project_worktrees\".\"last_scanned_at\", \"project_worktrees\".\"created_at\", \"project_worktrees\".\"updated_at\" from \"project_sources\" left join \"project_worktrees\" on \"project_worktrees\".\"project_source_id\" = \"project_sources\".\"id\" where (\"project_sources\".\"project_id\" = $1 and \"project_sources\".\"removed_at\" is null)",
+    "params": ["fixture-project"]
+  }
+}

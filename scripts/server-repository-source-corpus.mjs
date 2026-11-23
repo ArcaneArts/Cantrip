@@ -24,7 +24,10 @@ async function matchingTypescriptFiles(directory, predicate) {
 }
 
 export async function serverRepositorySourcePaths(repositoryRoot) {
-  const databaseSourcePath = resolve(repositoryRoot, "cantrip_server/src/db");
+  const databaseSourcePath = resolve(
+    repositoryRoot,
+    "tests/reference-node-server/src/db",
+  );
   return [
     resolve(databaseSourcePath, "repository.ts"),
     resolve(databaseSourcePath, "tab-layouts.ts"),

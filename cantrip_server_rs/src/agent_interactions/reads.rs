@@ -14,8 +14,22 @@ impl Repository<'_, '_> {
         self.rows("SELECT to_jsonb(r)::text FROM agent_interaction_requests r WHERE owner_id=$1 AND ($2::text IS NULL OR chat_id=$2) AND ($3::text IS NULL OR status=$3) ORDER BY created_at DESC LIMIT $4", &[&owner,&chat,&status,&limit]).await?.iter().map(map).collect()
     }
     pub async fn get(&self, owner: &str, id: &str) -> Result<Option<Value>> {
+        self.get_with_query_context(owner, id, None).await
+    }
+    pub async fn get_with_query_context(
+        &self,
+        owner: &str,
+        id: &str,
+        captured: Option<(&str, &[Value])>,
+    ) -> Result<Option<Value>> {
         self.expire(None).await?;
-        self.rows("SELECT to_jsonb(r)::text FROM agent_interaction_requests r WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&id,&owner]).await?.first().map(map).transpose()
+        let rows=self.rows("SELECT to_jsonb(r)::text FROM agent_interaction_requests r WHERE id=$1 AND owner_id=$2 LIMIT 1", &[&id,&owner]).await;
+        let rows = if let Some((sql, params)) = captured {
+            crate::database::query_error::context(rows, sql, params)?
+        } else {
+            rows?
+        };
+        rows.first().map(map).transpose()
     }
     pub async fn get_by_key(&self, owner: &str, key: &str) -> Result<Option<Value>> {
         self.expire(None).await?;

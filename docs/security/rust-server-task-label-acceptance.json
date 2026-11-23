@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "productBaseCommit": "64a31fc7b6a6dc4d7dcf6467f9eb85e4c20b0bec",
+  "servingExecutableSourceCommit": "020254f3c3aabb5e2e1e712c2c597a5cc73a5950",
+  "platform": "darwin-arm64",
+  "workerRuntime": "Node v24.22.2",
+  "codexVersion": "0.166.0",
+  "postgresVersion": "18.6",
+  "authentication": "accounts",
+  "servingExecutable": {
+    "path": "current-binaries/cantrip-server",
+    "bytes": 94116304,
+    "sha256": "129dfce547025b0bdfaaaf57d7fb4b86dc5cdd075b20012348d96b0ab4a97bf4"
+  },
+  "nodeReferenceEntrypoint": {
+    "path": "tests/reference-node-server/dist/index.js",
+    "bytes": 106,
+    "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+  },
+  "workerEntrypoint": {
+    "path": "cantrip_worker/dist/index.js",
+    "bytes": 391660,
+    "sha256": "ed0cd85f4756c5960b20b1283b680fb0c5701d54dc13e187a92c86923093beab"
+  },
+  "nativeCodexExecutable": {
+    "path": "codex-bundle/codex",
+    "bytes": 281161744,
+    "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+  },
+  "currentWorkerCommandCoverage": {
+    "mapped": 311,
+    "total": 323
+  },
+  "originalMissingGrant": [
+    {
+      "kind": "node",
+      "report": {
+        "path": "pglite-node-v2.json",
+        "bytes": 247512,
+        "sha256": "409e5676a1c64b240d9ab9cb77293d68604cac439cdbb2ebd78b3fd948bfd200"
+      }
+    },
+    {
+      "kind": "rust",
+      "report": {
+        "path": "pglite-rust-v2.json",
+        "bytes": 271852,
+        "sha256": "f1550728f4ede99472d5bd3d948f19a95c20f1ddeb910efd9226014d5b572ac3"
+      }
+    }
+  ],
+  "product": [
+    {
+      "mode": "pglite",
+      "report": {
+        "path": "pglite-matrix-v2.json",
+        "bytes": 899174,
+        "sha256": "bc2c0f12515e21f612dbb43c14152663bf8e95deeed0ad52d65ad5c76dee7cb4"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "standaloneLabels": 1,
+          "exactLabelsRetained": 1,
+          "resumedTaskCompletions": 1,
+          "planningQueuedAfterHttp503": 1,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 2
+        },
+        {
+          "kind": "rust",
+          "standaloneLabels": 1,
+          "exactLabelsRetained": 1,
+          "resumedTaskCompletions": 1,
+          "planningQueuedAfterHttp503": 1,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 2
+        }
+      ]
+    },
+    {
+      "mode": "bundled-postgres",
+      "report": {
+        "path": "bundled-postgres-matrix-v2.json",
+        "bytes": 992919,
+        "sha256": "7c57830f07b85ba61691b76dbc45455f042d1c34d836d93aa1cdd441cfc25602"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "standaloneLabels": 1,
+          "exactLabelsRetained": 1,
+          "resumedTaskCompletions": 1,
+          "planningQueuedAfterHttp503": 1,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 2
+        },
+        {
+          "kind": "rust",
+          "standaloneLabels": 1,
+          "exactLabelsRetained": 1,
+          "resumedTaskCompletions": 1,
+          "planningQueuedAfterHttp503": 1,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 2
+        }
+      ]
+    },
+    {
+      "mode": "postgres",
+      "report": {
+        "path": "postgres-matrix-v2.json",
+        "bytes": 971260,
+        "sha256": "66478c9358cca22e1a945fb2550ad7673d48e6d9a67b3fc32328256032acebff"
+      },
+      "peers": [
+        {
+          "kind": "node",
+          "standaloneLabels": 1,
+          "exactLabelsRetained": 1,
+          "resumedTaskCompletions": 1,
+          "planningQueuedAfterHttp503": 1,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 2
+        },
+        {
+          "kind": "rust",
+          "standaloneLabels": 1,
+          "exactLabelsRetained": 1,
+          "resumedTaskCompletions": 1,
+          "planningQueuedAfterHttp503": 1,
+          "cleanServerExits": 2,
+          "cleanWorkerExits": 2
+        }
+      ]
+    }
+  ],
+  "appValidation": {
+    "focusedPassed": 17,
+    "reports": [
+      {
+        "path": "app-tests-schema.log",
+        "bytes": 421,
+        "sha256": "c8025f6ef34f9621786e78b8ca4496e1009dc64a2b410ee45752241e5dde4b6c"
+      },
+      {
+        "path": "app-typecheck-schema.log",
+        "bytes": 24,
+        "sha256": "5cfb036289d819b2a87e947d65f4532031dd37753f3cf2def0f77d398eea1737"
+      },
+      {
+        "path": "app-build.log",
+        "bytes": 18672,
+        "sha256": "9dc33e4ef957ce88c6ca12e59dd582d6a17e5f14e11daa8c6b8577803234439b"
+      }
+    ]
+  },
+  "verifiedFixtureArchive": {
+    "path": "fixture-evidence.tar.zst",
+    "bytes": 307086406,
+    "sha256": "767920731c4d1d62da80dce343ff4003ba2600ab37093500fcdce2d61133a1f9",
+    "verifiedRegularFiles": 50411,
+    "redactedServerProcessLogs": 24,
+    "excludedRebuildablePaths": [
+      "*/worker/managed-runtimes",
+      "*/worker/tools/codegraph/versions"
+    ]
+  },
+  "retainedEvidenceDirectory": "rust-server-task-label-20261111-v1",
+  "limitations": [
+    "The native runtime contacts a local Responses fixture for model output.",
+    "Inline Chat/Agent naming, shared-server interruption, and final supported-platform shipping retain separate acceptance scope."
+  ]
+}

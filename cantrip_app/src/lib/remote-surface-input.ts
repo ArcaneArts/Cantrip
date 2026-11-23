@@ -35,6 +35,7 @@ export interface RemoteSurfaceWheelEventLike
   extends RemoteSurfacePoint, RemoteSurfaceModifierState {
   deltaX: number;
   deltaY: number;
+  deltaMode?: number;
 }
 
 export interface RemoteSurfaceKeyEventLike extends RemoteSurfaceModifierState {
@@ -183,6 +184,7 @@ export function remoteSurfaceWheelInput(
   target: RemoteSurfaceSize,
   coordinateLimit: RemoteSurfaceCoordinateLimit,
 ): RemoteSurfacePointerInput {
+  const unit = event.deltaMode === 1 ? 16 : 1;
   return {
     type: "pointer",
     event: "wheel",
@@ -190,8 +192,8 @@ export function remoteSurfaceWheelInput(
     button: "none",
     buttons: 0,
     clickCount: 0,
-    deltaX: event.deltaX,
-    deltaY: event.deltaY,
+    deltaX: event.deltaX * (event.deltaMode === 2 ? target.width : unit),
+    deltaY: event.deltaY * (event.deltaMode === 2 ? target.height : unit),
     modifiers: remoteSurfaceModifiers(event),
   };
 }

@@ -1,9 +1,18 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, ensure};
-use cantrip_server::{database::Database, managed_postgres::ManagedPostgres};
+use axum::{body::Body, extract::ConnectInfo, http::Request};
+use cantrip_server::{
+    auth::service::AuthService,
+    config::{Environment, ServerConfig},
+    database::Database,
+    http,
+    managed_postgres::ManagedPostgres,
+    migrations::migrate,
+};
 use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_postgres::{Client, Config, NoTls};
+use tower::ServiceExt;
 
 const APPLICATION: &str = "cantrip-native-pool-contract";
 const DEADLINE: Duration = Duration::from_secs(5);
@@ -59,6 +68,83 @@ async fn listener_pid(inspector: &Client) -> Result<i32> {
         )
         .await?
         .get(0))
+}
+
+#[tokio::test]
+async fn postgres_readiness_reports_unavailable_while_request_pool_is_busy() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let binaries = PathBuf::from(std::env::var("CANTRIP_TEST_POSTGRES_BIN_DIR")?);
+    let runtime = ManagedPostgres::start_with_owner(
+        root.path(),
+        &binaries,
+        std::path::Path::new(env!("CARGO_BIN_EXE_cantrip-server")),
+    )
+    .await?;
+    let mut configuration = runtime.configuration().clone();
+    configuration.application_name(APPLICATION);
+    let database = Arc::new(Database::postgres(&configuration).await?);
+    migrate(&database).await?;
+    let config = ServerConfig::read(
+        &Environment::from([("CANTRIP_AUTH_MODE".into(), "none".into())]),
+        root.path(),
+    )?;
+    let service = AuthService::initialize(database.clone(), Arc::new(config)).await?;
+    let app = http::router(service);
+    let probe = |route: &'static str| {
+        let request = Request::builder()
+            .uri(route)
+            .extension(ConnectInfo(std::net::SocketAddr::from((
+                [127, 0, 0, 1],
+                4310,
+            ))))
+            .body(Body::empty())
+            .unwrap();
+        let app = app.clone();
+        async move {
+            Ok::<_, anyhow::Error>(tokio::time::timeout(DEADLINE, app.oneshot(request)).await??)
+        }
+    };
+    assert_eq!(probe("/readyz").await?.status(), 200);
+
+    let (inspector, inspector_driver) = raw(&configuration).await?;
+    let (locker, locker_driver) = raw(&configuration).await?;
+    database
+        .execute("CREATE TABLE readiness_pool_contract(id int)")
+        .await?;
+    locker
+        .batch_execute("BEGIN; LOCK TABLE readiness_pool_contract IN ACCESS EXCLUSIVE MODE")
+        .await?;
+    let mut requests = tokio::task::JoinSet::new();
+    for _ in 0..5 {
+        let database = database.clone();
+        requests.spawn(async move {
+            database
+                .query("SELECT id FROM readiness_pool_contract", &[])
+                .await
+        });
+    }
+    wait_blocked(&inspector, 5).await?;
+    let (ready, live) = tokio::try_join!(probe("/readyz"), probe("/healthz"))?;
+    assert_eq!(live.status(), 200);
+    assert_eq!(ready.status(), 503);
+    let body = axum::body::to_bytes(ready.into_body(), 4096).await?;
+    let body: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(body["database"]["status"], "unavailable");
+    assert_eq!(blocked(&inspector).await?.len(), 5);
+
+    locker.batch_execute("ROLLBACK").await?;
+    while let Some(result) = requests.join_next().await {
+        result??;
+    }
+    assert_eq!(probe("/readyz").await?.status(), 200);
+    drop(app);
+    database.close().await?;
+    drop(locker);
+    drop(inspector);
+    locker_driver.await??;
+    inspector_driver.await??;
+    runtime.close().await?;
+    Ok(())
 }
 
 #[tokio::test]

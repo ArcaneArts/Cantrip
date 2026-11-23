@@ -10,8 +10,8 @@ import { postgresFixture } from "./postgres-fixture.mjs";
 import { LiveProbe, currentUser } from "./live-sockets.mjs";
 import { heartbeat, password } from "./security-fixtures.mjs";
 import { label, json, literal, stamp } from "./project-target-state.mjs";
-import { hashPassword } from "../../cantrip_server/src/auth/service.ts";
-import { protectChatMessage } from "../../cantrip_worker/src/chat-message-encryption.ts";
+import { hashPassword } from "../../tests/reference-node-server/src/auth/service.ts";
+import { protectChatMessage } from "../../tests/reference-node-worker/src/chat-message-encryption.ts";
 import { decryptChatMessageProtectedContent } from "../../packages/crypto/dist/index.js";
 import { chatMessageHttpRaces } from "./chat-message-http-races.mjs";
 const option = (k) => {
@@ -390,19 +390,34 @@ try {
             `/api/chats/${agent}/messages?${query}`,
             { status: 500 },
           );
-        const created = await protect(50, agent, [
+        const appendedContent = [
           { type: "text", text: "SENTINEL appended message" },
-        ]);
-        await visit("append message", "POST", `/api/chats/${agent}/messages`, {
-          status: 201,
-          json: created,
-        });
-        await live.ping("append complete");
-        await visit(
-          "unchanged Source duplicate response",
+        ];
+        const created = await protect(50, agent, appendedContent);
+        const appended = await visit(
+          "append message",
           "POST",
           `/api/chats/${agent}/messages`,
-          { status: 500, json: created },
+          { status: 201, json: created },
+        );
+        await live.ping("append complete");
+        const replayed = await visit(
+          "exact message retry reuses the stored message",
+          "POST",
+          `/api/chats/${agent}/messages`,
+          { status: 201, json: created },
+        );
+        assert.deepEqual(replayed, appended);
+        const conflict = await protect(50, agent, appendedContent);
+        assert.notDeepEqual(
+          conflict.protectedContent,
+          created.protectedContent,
+        );
+        await visit(
+          "same key with different protected content fails",
+          "POST",
+          `/api/chats/${agent}/messages`,
+          { status: 500, json: conflict },
         );
         const stand = await protect(51, standalone, [
           { type: "text", text: "SENTINEL appended standalone" },
@@ -536,11 +551,11 @@ try {
         );
         assert.equal(
           result.events.filter((e) => e.resource === "chat-message").length,
-          3,
+          4,
         );
         assert.equal(
           result.events.filter((e) => e.resource === "chat").length,
-          3,
+          4,
         );
         if (databaseMode === "postgres") {
           result.races = await chatMessageHttpRaces({
@@ -589,6 +604,11 @@ try {
         });
         assert.equal(state.rejected, false, state.diagnostic);
         result.rawState = state.value;
+        assert.equal(
+          state.value.messages.filter((message) => message.id === created.id)
+            .length,
+          1,
+        );
         for (const m of state.value.messages) {
           assert.equal(m.content, null);
           if (m.protected_content) {

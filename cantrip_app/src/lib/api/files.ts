@@ -1,3 +1,4 @@
+import { FileOperationError } from "@/lib/file-operation-error";
 import {
   type StandaloneChatFileOperationIntent,
   type StandaloneChatFileBinding,
@@ -35,6 +36,7 @@ import {
 } from "@cantrip/protocol";
 import type {
   ExplorerFileWrite,
+  ExplorerMediaKind,
   ExplorerDirectoryCreate,
   ExplorerEntry,
   ExplorerEntryRename,
@@ -361,7 +363,9 @@ export async function executeExplorerOperation(
   operationId = crypto.randomUUID(),
   sequence = 0,
   binding?: ExplorerFileBinding,
+  signal?: AbortSignal,
 ): Promise<ExplorerOperationResultContent> {
+  signal?.throwIfAborted();
   const protectedRequest = await protectSurfaceStreamContent({
     context: {
       surfaceKind: "explorer",
@@ -373,11 +377,13 @@ export async function executeExplorerOperation(
     content,
     schema: explorerOperationRequestContentSchema,
   });
+  signal?.throwIfAborted();
   const wire = surfaceStreamWireResponseSchema.parse(
     await request(
       `/api/explorers/${encodeURIComponent(explorerId)}/operation`,
       {
         method: "POST",
+        signal,
         body: JSON.stringify({
           operationId,
           sequence,
@@ -387,6 +393,7 @@ export async function executeExplorerOperation(
       },
     ),
   );
+  signal?.throwIfAborted();
   if (wire.operationId !== operationId || wire.sequence !== sequence) {
     throw new Error("Explorer returned a stale protected operation.");
   }
@@ -401,7 +408,8 @@ export async function executeExplorerOperation(
     opaque: wire.protectedResponse,
     schema: surfaceOperationOutcomeContentSchema,
   });
-  if (!outcome.ok) throw new Error(outcome.error);
+  signal?.throwIfAborted();
+  if (!outcome.ok) throw new FileOperationError(outcome.error, outcome.code);
   return explorerOperationResultContentSchema.parse(outcome.result);
 }
 
@@ -479,9 +487,16 @@ function decodeExplorerMediaBytes(value: string): Uint8Array {
 export async function loadExplorerMedia(
   explorerId: string,
   path: string,
+  mediaType?: {
+    kind: ExplorerMediaKind;
+    mimeType: string;
+  },
 ): Promise<Blob> {
-  return loadProtectedFileMedia(path, (content, operationId, sequence) =>
-    executeExplorerOperation(explorerId, content, operationId, sequence),
+  return loadProtectedFileMedia(
+    path,
+    (content, operationId, sequence) =>
+      executeExplorerOperation(explorerId, content, operationId, sequence),
+    mediaType,
   );
 }
 
@@ -495,6 +510,10 @@ export async function loadProtectedFileMedia(
     operationId: ReturnType<typeof crypto.randomUUID>,
     sequence: number,
   ) => Promise<ExplorerOperationResultContent>,
+  mediaType?: {
+    kind: ExplorerMediaKind;
+    mimeType: string;
+  },
 ): Promise<Blob> {
   const operationId = crypto.randomUUID();
   const parts: BlobPart[] = [];
@@ -507,6 +526,7 @@ export async function loadProtectedFileMedia(
     const result = await read(
       {
         type: "explorer.media.read",
+        ...(mediaType ? { mediaType } : {}),
         path,
         offset,
         limit: 256 * 1_024,

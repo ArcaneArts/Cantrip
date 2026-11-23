@@ -1,3 +1,5 @@
+import type { CantripOsRunSelection } from "@cantrip/protocol";
+import { getClientSessionIdentitySnapshot } from "@/lib/client-session";
 import type {
   RunConfigurationDeleteResult,
   RunConfigurationDetectionCandidate,
@@ -41,7 +43,7 @@ import {
   type RunConfigurationSecretSummary,
 } from "@cantrip/protocol/run-configuration-secrets";
 
-import { request, requestResponse } from "@/lib/api-client";
+import { request, requestResponse, CantripApiError } from "@/lib/api-client";
 import { ensureRunOperationWorker } from "@/lib/api";
 import { openRunContent } from "@/lib/run-content-encryption";
 import { protectRunConfigurationSecretValue } from "@/lib/run-configuration-secret-encryption";
@@ -286,7 +288,10 @@ export async function operateRunConfigurationRuntime(
   input: Omit<RunConfigurationRuntimeLifecycleRequest, "operationId">,
   operationId = crypto.randomUUID(),
 ): Promise<RunConfigurationRuntimeOperationResult> {
-  if (input.operation === "start" || input.operation === "restart") {
+  if (
+    !input.osSource &&
+    (input.operation === "start" || input.operation === "restart")
+  ) {
     await ensureRunOperationWorker({
       projectId: input.projectId,
       ...(input.targetWorktreeId === null
@@ -294,11 +299,25 @@ export async function operateRunConfigurationRuntime(
         : { worktreeId: input.targetWorktreeId }),
     });
   }
+  const identity = input.osSource
+    ? getClientSessionIdentitySnapshot()
+    : undefined;
+  if (input.osSource && !identity)
+    throw new CantripApiError("An authenticated session is required.", 401);
   const result = runConfigurationRuntimeOperationResultSchema.parse(
-    await request("/api/run-configuration-runtimes/operations", {
-      method: "POST",
-      body: JSON.stringify({ ...input, operationId }),
-    }),
+    await request(
+      "/api/run-configuration-runtimes/operations",
+      {
+        method: "POST",
+        body: JSON.stringify({ ...input, operationId }),
+      },
+      input.osSource
+        ? {
+            allowCsrfRecovery: false,
+            expectedIdentity: identity!,
+          }
+        : undefined,
+    ),
   );
   if (
     result.operation.id !== operationId ||
@@ -318,6 +337,8 @@ export async function listRunConfigurationRuntimes(
   input: {
     configurationId?: string | null;
     targetWorktreeId?: string | null;
+    runtimeId?: string;
+    osSource?: CantripOsRunSelection;
     limit?: number;
   } = {},
   operationId = crypto.randomUUID(),
@@ -331,6 +352,8 @@ export async function listRunConfigurationRuntimes(
         configurationId: input.configurationId ?? null,
         targetWorktreeId: input.targetWorktreeId ?? null,
         limit: input.limit ?? 256,
+        ...(input.runtimeId ? { runtimeId: input.runtimeId } : {}),
+        ...(input.osSource ? { osSource: input.osSource } : {}),
       }),
     }),
   );
@@ -345,14 +368,16 @@ export async function readRunConfigurationRuntimeOutput(
     projectId: string;
     configurationId: string;
     worktreeId: string;
+    osSource?: CantripOsRunSelection;
     tail?: number;
   },
   operationId = crypto.randomUUID(),
 ): Promise<RunConfigurationRuntimeOutputContent & { generation: number }> {
-  await ensureRunOperationWorker({
-    projectId: input.projectId,
-    worktreeId: input.worktreeId,
-  });
+  if (!input.osSource)
+    await ensureRunOperationWorker({
+      projectId: input.projectId,
+      worktreeId: input.worktreeId,
+    });
   const result = protectedRunConfigurationRuntimeOutputResultSchema.parse(
     await request("/api/run-configuration-runtimes/output", {
       method: "POST",
@@ -362,6 +387,7 @@ export async function readRunConfigurationRuntimeOutput(
         configurationId: input.configurationId,
         worktreeId: input.worktreeId,
         tail: input.tail ?? 100_000,
+        ...(input.osSource ? { osSource: input.osSource } : {}),
       }),
     }),
   );

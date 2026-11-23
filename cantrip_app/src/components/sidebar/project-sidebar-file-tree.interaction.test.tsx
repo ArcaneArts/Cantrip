@@ -64,6 +64,7 @@ async function flush() {
 async function mount(
   createWait?: Promise<void>,
   onImportFiles?: SidebarFileImporter,
+  onOpenAs?: (entry: ExplorerEntry, viewer: string | null) => void,
 ) {
   await act(async () => {
     root.render(
@@ -79,6 +80,7 @@ async function mount(
         }
         loading={false}
         onImportFiles={onImportFiles}
+        onOpenAs={onOpenAs}
         onCreateFolder={async (parent) => {
           if (createWait) await createWait;
           const created = folder(
@@ -381,4 +383,30 @@ it("retires an unfinished drop when its project binding changes", async () => {
   await act(async () => fail(new Error("old failure")));
   expect(host.textContent).not.toContain("old failure");
   expect(host.textContent).not.toContain("Adding");
+});
+
+it("offers Open As on an unknown file without requiring ordinary preview support", async () => {
+  const entry = {
+    ...folder("opaque.xyz"),
+    kind: "file" as const,
+    viewable: false,
+    size: 10,
+  };
+  runtime.entries.set("", [entry]);
+  const onOpenAs = vi.fn();
+  await mount(undefined, undefined, onOpenAs);
+  await openMenu(host.querySelector('[role="treeitem"]')!);
+  const trigger = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((item) => item.textContent?.trim() === "Open As")!;
+  expect(trigger).toBeDefined();
+  await act(async () => {
+    trigger.focus();
+    trigger.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+    );
+  });
+  await flush();
+  await choose("JSON");
+  expect(onOpenAs).toHaveBeenCalledWith(entry, "json");
 });

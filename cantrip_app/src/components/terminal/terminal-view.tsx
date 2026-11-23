@@ -13,7 +13,12 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { getWorkers } from "@/lib/api";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
-import { ResizablePanel } from "@/components/ui/resizable-panel";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import {
   openSurfaceStreamContent,
@@ -52,11 +57,6 @@ import {
 
 import "@xterm/xterm/css/xterm.css";
 import { registerTerminalTransferLifecycle } from "./terminal-transfer-lifecycle";
-
-const DEFAULT_SERVICE_PANEL_WIDTH = 360;
-const MIN_SERVICE_PANEL_WIDTH = 280;
-const MAX_SERVICE_PANEL_WIDTH = 640;
-const SERVICE_PANEL_WIDTH_STORAGE_KEY = "cantrip:terminal-service-panel-width";
 
 export interface TerminalTransferLifecycle {
   /** Stop accepting new input. Release only after ownership cancellation. */
@@ -137,9 +137,12 @@ export function TerminalView({
   const pendingInputRef = useRef(pendingInput);
   const [connectionKey, setConnectionKey] = useState(0);
   const [state, setState] = useState<
-    "connecting" | "reconnecting" | "ready" | "exited"
+    "connecting" | "reconnecting" | "ready" | "exited" | "disconnected"
   >("connecting");
   const [exitCode, setExitCode] = useState<number | null>(null);
+  const [executionOutcome, setExecutionOutcome] = useState<
+    "exited" | "interrupted" | "unknown" | undefined
+  >();
   const [error, setError] = useState<string | null>(null);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [loadedTerminalId, setLoadedTerminalId] = useState<string | null>(null);
@@ -164,6 +167,7 @@ export function TerminalView({
     }
     setState(reconnectAttemptRef.current === 0 ? "connecting" : "reconnecting");
     setExitCode(null);
+    setExecutionOutcome(undefined);
     setError(null);
     setRecoveryError(null);
     const connectionStartedAt = performance.now();
@@ -259,6 +263,12 @@ export function TerminalView({
         reconnectTimer
       )
         return;
+      if (terminal.cantripOsBindingId) {
+        // A failed attachment cannot establish that the captured Linux process
+        // exited. Keep its target and require an explicit reconnect.
+        setState("disconnected");
+        return;
+      }
       const delay = Math.min(500 * 2 ** reconnectAttemptRef.current, 5_000);
       reconnectAttemptRef.current += 1;
       setState("reconnecting");
@@ -745,7 +755,7 @@ export function TerminalView({
           event: "surface.terminal.exited",
           exitCode: message.exitCode,
           operation: "process-exit",
-          status: "exited",
+          status: message.executionOutcome === "unknown" ? "unknown" : "exited",
           subsystem: "terminal",
           surfaceId: terminal.id,
         });
@@ -758,18 +768,23 @@ export function TerminalView({
         // allowing a linked console's owner to unmount it.
         outputQueue = outputQueue.then(async () => {
           if (disposed || transferRetired) return;
-          if (onExitRef.current && !stagingRef.current) {
+          if (
+            onExitRef.current &&
+            !stagingRef.current &&
+            message.executionOutcome !== "unknown"
+          ) {
             onExitRef.current();
           } else {
             await new Promise<void>((resolve) => {
               xterm.write(
-                `\r\n\x1b[90m[Process exited ${message.exitCode}]\x1b[0m\r\n`,
+                `\r\n\x1b[90m[${message.executionOutcome === "unknown" ? "Linux terminal disconnected; command outcome unknown" : message.executionOutcome === "interrupted" ? "Linux command interrupted" : `Process exited ${message.exitCode}`}]\x1b[0m\r\n`,
                 resolve,
               );
             });
             if (disposed) return;
             setLoadedTerminalId(terminal.id);
             setExitCode(message.exitCode);
+            setExecutionOutcome(message.executionOutcome);
             setState("exited");
           }
           connection?.close("normal");
@@ -1036,14 +1051,44 @@ export function TerminalView({
                   ? `${error} Retrying…`
                   : "Starting terminal…"
             }
-            visible={!hasLoaded}
+            visible={!hasLoaded && state !== "disconnected"}
           />
-          {hasLoaded && state === "exited" ? (
+          {state === "disconnected" ? (
+            <div
+              className="absolute inset-x-4 top-3 rounded-md bg-muted/90 px-3 py-2 text-xs text-muted-foreground"
+              role="status"
+            >
+              {error ?? "The Linux terminal is unavailable."} Its captured
+              target has been retained. Command outcome is unknown.{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => setConnectionKey((value) => value + 1)}
+              >
+                Reconnect to Linux
+              </button>
+            </div>
+          ) : hasLoaded && state === "exited" ? (
             <div
               className="pointer-events-none absolute right-4 top-3 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground"
               role="status"
             >
-              Process exited {exitCode}
+              {executionOutcome === "unknown" ? (
+                <>
+                  Command outcome unknown.{" "}
+                  <button
+                    type="button"
+                    className="pointer-events-auto underline"
+                    onClick={() => setConnectionKey((value) => value + 1)}
+                  >
+                    Reconnect to Linux
+                  </button>
+                </>
+              ) : executionOutcome === "interrupted" ? (
+                "Linux command interrupted"
+              ) : (
+                <>Process exited {exitCode}</>
+              )}
             </div>
           ) : hasLoaded && state !== "ready" ? (
             <div className="pointer-events-none absolute right-4 top-3 flex items-center gap-2 rounded-md bg-muted/90 px-2 py-1 text-xs text-muted-foreground">
@@ -1066,25 +1111,30 @@ export function TerminalView({
           ) : null}
         </div>
         {onServicePanelOpenChange ? (
-          <ResizablePanel
-            ariaLabel="Resize terminal service panel"
-            className="absolute inset-y-0 right-0 z-20 max-w-full md:relative md:inset-auto md:z-auto"
-            defaultWidth={DEFAULT_SERVICE_PANEL_WIDTH}
-            handleDataSlot="terminal-service-panel-resize-handle"
-            maxWidth={MAX_SERVICE_PANEL_WIDTH}
-            minWidth={MIN_SERVICE_PANEL_WIDTH}
-            open={servicePanelOpen}
-            shellDataSlot="terminal-service-panel-shell"
-            storageKey={SERVICE_PANEL_WIDTH_STORAGE_KEY}
-            surfaceClassName="max-w-[100vw] bg-background"
-            surfaceDataSlot="terminal-service-panel-surface"
-            title="Drag to resize terminal service panel"
+          <Dialog
+            open={visible && servicePanelOpen}
+            onOpenChange={setServicePanelOpen}
           >
-            <TerminalServicePanel
-              onClose={() => setServicePanelOpen(false)}
-              terminal={terminal}
-            />
-          </ResizablePanel>
+            <DialogContent
+              className="flex max-h-[min(88svh,720px)] max-w-xl flex-col gap-0 overflow-hidden p-0"
+              showClose={false}
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                if (visibleRef.current) xtermRef.current?.focus();
+              }}
+            >
+              <DialogTitle className="sr-only">
+                Configure terminal service
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Configure the background command for {terminal.title}.
+              </DialogDescription>
+              <TerminalServicePanel
+                onClose={() => setServicePanelOpen(false)}
+                terminal={terminal}
+              />
+            </DialogContent>
+          </Dialog>
         ) : null}
         {onCommandPaletteOpenChange ? (
           <TerminalScriptCommandDialog

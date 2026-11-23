@@ -2,11 +2,14 @@
 use super::{
     ConnectionContext, Hub, Options, SessionRegistry, Transports, repository::LiveRepository,
 };
-use crate::{auth::service::Revocation, config::ServerConfig, database::Database, wire::Value};
+use crate::{
+    auth::service::Revocation, config::ServerConfig, coordination::RelayCoordinator,
+    database::Database, wire::Value,
+};
 use anyhow::Result;
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -20,6 +23,8 @@ pub struct LiveService {
     repository: Arc<LiveRepository>,
     publishing: Arc<AtomicBool>,
     validation: AbortHandle,
+    alerts: AbortHandle,
+    coordination: Mutex<Option<super::coordination::Subscription>>,
 }
 fn invalidation(
     hub: &Hub,
@@ -54,11 +59,22 @@ impl LiveService {
         config: &ServerConfig,
         usage: Option<super::UsageRecorder>,
     ) -> Result<Arc<Self>> {
+        Self::with_coordination(database, config, usage, None)
+    }
+    pub fn with_coordination(
+        database: Arc<Database>,
+        config: &ServerConfig,
+        usage: Option<super::UsageRecorder>,
+        coordination: Option<Arc<dyn RelayCoordinator>>,
+    ) -> Result<Arc<Self>> {
+        let alert_database = database.clone();
         let repository = Arc::new(LiveRepository::new(database)?);
         let hub = Hub::new(Options {
             record_usage: usage,
+            publish_external: coordination.clone().map(super::coordination::publisher),
             ..Options::default()
         })?;
+        let coordination = coordination.map(|c| super::coordination::Subscription::new(c, &hub));
         let publishing = Arc::new(AtomicBool::new(true));
         let weak = Arc::downgrade(&hub);
         let enabled = publishing.clone();
@@ -96,6 +112,7 @@ impl LiveService {
             }
         })
         .abort_handle();
+        let alerts = super::project_alerts::watch(alert_database, hub.clone(), publishing.clone());
         Ok(Arc::new(Self {
             hub,
             sessions,
@@ -103,6 +120,8 @@ impl LiveService {
             repository,
             publishing,
             validation,
+            alerts,
+            coordination: Mutex::new(coordination),
         }))
     }
     pub fn context(&self, owner: String, session: Option<String>) -> ConnectionContext {
@@ -148,6 +167,15 @@ impl LiveService {
         }
         Ok(())
     }
+    pub fn publish_group(&self, events: Vec<Value>) -> Result<()> {
+        if self.publishing.load(Ordering::Acquire) {
+            self.hub.publish_group(events)?;
+        }
+        Ok(())
+    }
+    pub fn publishing_enabled(&self) -> bool {
+        self.publishing.load(Ordering::Acquire)
+    }
     pub fn revoke(&self, revocation: &Revocation) {
         self.revoke_live(revocation);
         self.close_revoked_sockets(revocation);
@@ -173,7 +201,9 @@ impl LiveService {
     }
     pub fn close(&self) {
         self.publishing.store(false, Ordering::Release);
+        self.coordination.lock().unwrap().take();
         self.validation.abort();
+        self.alerts.abort();
         self.sessions.close_all("Server is shutting down");
         self.hub.close();
     }

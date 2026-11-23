@@ -182,10 +182,10 @@ index 574cc93222be99e49a66cf026c32af490ad25fd6..112c0c9fb46edf9bce40fd6c21f66264
  mod inheritance_tests {
      use super::*;
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index dc23b2d407cf7a782ff9f182538c3fa009766c6b..d3d955b3675557fa5c43eec12650b3ad869f003e 100644
+index 014afa258403648f0707084d195c9ada409d7323..12949967c624bf3e13c622ef4901432607535faf 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -1039,6 +1039,7 @@ impl Session {
+@@ -1086,6 +1086,7 @@ impl Session {
              | InitialHistory::Resumed(_)
              | InitialHistory::Forked(_) => None,
          };
@@ -193,7 +193,7 @@ index dc23b2d407cf7a782ff9f182538c3fa009766c6b..d3d955b3675557fa5c43eec12650b3ad
          if parent_thread_id.is_none() {
              if let Some(gate) = config
                  .managed_thread_configuration
-@@ -1057,7 +1058,10 @@ impl Session {
+@@ -1104,7 +1105,10 @@ impl Session {
                      config = Arc::new(fork_config);
                      session_configuration.original_config_do_not_use = config.clone();
                  } else {
@@ -205,7 +205,7 @@ index dc23b2d407cf7a782ff9f182538c3fa009766c6b..d3d955b3675557fa5c43eec12650b3ad
                  }
              }
          }
-@@ -2148,6 +2152,9 @@ impl Session {
+@@ -2222,6 +2226,9 @@ impl Session {
          .await;
          match session_result {
              Ok(sess) => {

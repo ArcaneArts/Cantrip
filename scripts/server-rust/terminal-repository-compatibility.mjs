@@ -33,6 +33,7 @@ const root = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-repository-"));
 const report = {
   suite: "actual-terminal-resource-repositories",
   databaseMode,
+  root,
   completeReplacement: false,
   cases: [],
   snapshots: [],
@@ -207,7 +208,9 @@ async function rollback(label, run) {
     );
 }
 try {
-  executable = await buildRustExample("project-repository-fixture");
+  executable =
+    process.env.CANTRIP_RUST_PROJECT_FIXTURE_BINARY ??
+    (await buildRustExample("project-repository-fixture"));
   if (databaseMode !== "pglite")
     pg = await postgresFixture(path.join(root, "postgres"));
   for (const [i, kind] of ["node", "rust"].entries()) {
@@ -247,7 +250,7 @@ try {
   await seed(
     "UPDATE terminals SET active_worker_id='alpha' WHERE id='terminal'",
   );
-  await create("hybrid profile creates bottom pane", 0);
+  await create("terminal defaults to bottom pane", 0);
   let snap = await snapshot("new bottom membership and revision");
   assert.equal(snap[0].groups.length, 1);
   assert.equal(snap[0].groups[0].region, "bottom");
@@ -267,8 +270,9 @@ try {
   await seed(
     `UPDATE user_settings SET workspace_layout_profile='agent' WHERE user_id=${literal(owner)}`,
   );
-  await create("agent profile creates another center pane", 4);
-  await snapshot("agent default updates center topology");
+  await create("retired agent profile still uses bottom dock", 4);
+  snap = await snapshot("retired profile does not add a center pane");
+  assert.equal(snap[0].groups.filter((p) => p.region === "center").length, 2);
   await seed(
     `UPDATE user_settings SET workspace_layout_profile='ide' WHERE user_id=${literal(owner)}`,
   );
@@ -758,6 +762,24 @@ try {
       for (const tab of pane.tabs)
         if (tab.resource.resourceId === "terminal")
           tab.resource.resourceId = ids[1];
+  const unrelatedTransfer = {
+    ...structuredClone(pendingLayout.pendingTransfers[0]),
+    id: "unrelated-transfer",
+    destinationWindowId: "unrelated-destination",
+    tabIds: ["b"],
+    sourcePlacement: {
+      ...structuredClone(pendingLayout.pendingTransfers[0].sourcePlacement),
+      tabPosition: 1,
+    },
+    destinationPaneId: "unrelated-destination-pane",
+  };
+  pendingLayout.windows.push({
+    ...structuredClone(
+      pendingLayout.windows.find((window) => window.id === "destination"),
+    ),
+    id: unrelatedTransfer.destinationWindowId,
+  });
+  pendingLayout.pendingTransfers.push(unrelatedTransfer);
   await seed(
     `INSERT INTO workspace_layouts(owner_id,project_id,workspace_id,layout) VALUES(${literal(owner)},'github','workspace-pending',${json(pendingLayout)})`,
   );
@@ -765,15 +787,35 @@ try {
     await remove("delete remaining dock terminal " + index, ids[index]);
     await snapshot("dock membership cleanup " + index);
   }
-  assert.deepEqual(
-    (
-      await snapshot(
-        "resource removal retains source pending-transfer semantics",
-      )
-    )[0].workspaces.find((w) => w.workspace_id === "workspace-pending").layout
-      .pendingTransfers,
-    pendingLayout.pendingTransfers,
+  const removedPending = await snapshot(
+    "resource removal cancels affected transfers and preserves unrelated work",
   );
+  for (const state of removedPending) {
+    const layout = state.workspaces.find(
+      (w) => w.workspace_id === "workspace-pending",
+    ).layout;
+    assert.deepEqual(
+      layout.pendingTransfers,
+      [unrelatedTransfer],
+      "only the affected tab's transfer is cancelled",
+    );
+    const tabs = layout.windows.flatMap((window) =>
+      window.panes.flatMap((pane) => pane.tabs),
+    );
+    assert.equal(
+      tabs.some((tab) => ["a", "c", "detached-tab"].includes(tab.id)),
+      false,
+      "deleted terminal views are removed from every window",
+    );
+    assert.equal(
+      tabs.some(
+        (tab) =>
+          tab.id === "b" && tab.resource.resourceId === "retained-terminal",
+      ),
+      true,
+      "unrelated retained view remains available for transfer",
+    );
+  }
   assert.equal(
     (await snapshot("last dock membership removes empty groups"))[0].groups
       .length,
@@ -831,7 +873,8 @@ try {
 } finally {
   for (const repo of pair) await repo.close();
   await pg?.close();
-  await rm(root, { recursive: true, force: true });
+  if (!process.argv.includes("--keep-fixture"))
+    await rm(root, { recursive: true, force: true });
   if (reportPath) {
     await mkdir(path.dirname(path.resolve(reportPath)), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");

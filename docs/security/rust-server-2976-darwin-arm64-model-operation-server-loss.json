@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "completeReplacement": false,
+  "candidateVersion": "1.1.2976",
+  "target": "darwin-arm64",
+  "rustSourceCommit": "92ed534fa5b1bef8dfcf60a21b9784e159c6a655",
+  "referenceSourceCommit": "3bcd99270444247b60bbb588930984c5c8006efa",
+  "scope": "Single production server, Chromium browser SDK and packaged Node worker. The local OpenAI-compatible provider holds one real inference HTTP response open. Both server peers are SIGKILLed after the usage admission is durable. Rust owns its private bundled PostgreSQL process while the Node reference uses a fixture PostgreSQL service.",
+  "driver": "node --import tsx scripts/server-rust/actual-folder-client.mjs --model-operations --model-operation-server-loss --database MODE",
+  "driverPatch": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-server-loss/driver.patch",
+    "bytes": 5019,
+    "sha256": "0eabb538b7397a0d3d56b7be7632db330b3b9c99a7d9b5e10b10c430ee1b831a"
+  },
+  "rustExecutable": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/standalone/bin/cantrip-server",
+    "bytes": 94259472,
+    "sha256": "eba01be07448e2505235dcaf8585e96ae7b9c797c0e2f9082abaae44f92d7af2"
+  },
+  "inputChecksums": {
+    "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-server-loss/inputs.sha256",
+    "bytes": 1525,
+    "sha256": "9bc4bcb178cccbf5a3edc3f52fdbe298c149df57fbd20501a7e2bc32bc1a5452"
+  },
+  "observations": [
+    {
+      "databaseMode": "pglite",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-server-loss/pglite-final.json",
+        "bytes": 657668,
+        "sha256": "30fb95c08bcb2bb1f79be27b0313d9f07f8507e6a4191f90d2993192fb7ee8b0"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-server-loss/pglite-final.log",
+        "bytes": 3440,
+        "sha256": "9d54c415752cf3fa0a63473da654a529211c6fc1d9c04c401a343b394d2f9410"
+      },
+      "cells": [
+        {
+          "runtime": "node",
+          "productSteps": 20,
+          "operationCases": 14,
+          "providerHttpRequests": 15,
+          "serverSigkills": 1,
+          "workerSigkills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "workerPidAcrossServerInterruption": 30210,
+          "providerClosedObservedAfterMs": 1925,
+          "retainedAttemptStatus": "running",
+          "retainedTerminalReceipt": null,
+          "freshOperationAfterReconnect": "completed"
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 20,
+          "operationCases": 14,
+          "providerHttpRequests": 15,
+          "serverSigkills": 1,
+          "workerSigkills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "workerPidAcrossServerInterruption": 30762,
+          "providerClosedObservedAfterMs": 824,
+          "retainedAttemptStatus": "running",
+          "retainedTerminalReceipt": null,
+          "freshOperationAfterReconnect": "completed"
+        }
+      ]
+    },
+    {
+      "databaseMode": "bundled-postgres",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-server-loss/bundled-postgres-final.json",
+        "bytes": 727856,
+        "sha256": "1c0ee587aa1d0e7b3ec7b342f4dd934acc83cfeb963461727f8116764a6c8321"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-server-loss/bundled-postgres-final.log",
+        "bytes": 3407,
+        "sha256": "f004e5b6b391a1c04d881359e04ab7f4c6239913253177d48a44ac0f71a3eb4d"
+      },
+      "cells": [
+        {
+          "runtime": "node",
+          "productSteps": 20,
+          "operationCases": 14,
+          "providerHttpRequests": 15,
+          "serverSigkills": 1,
+          "workerSigkills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "workerPidAcrossServerInterruption": 31457,
+          "providerClosedObservedAfterMs": 1918,
+          "retainedAttemptStatus": "running",
+          "retainedTerminalReceipt": null,
+          "freshOperationAfterReconnect": "completed"
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 20,
+          "operationCases": 14,
+          "providerHttpRequests": 15,
+          "serverSigkills": 1,
+          "workerSigkills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "workerPidAcrossServerInterruption": 32121,
+          "providerClosedObservedAfterMs": 932,
+          "retainedAttemptStatus": "running",
+          "retainedTerminalReceipt": null,
+          "freshOperationAfterReconnect": "completed"
+        }
+      ]
+    },
+    {
+      "databaseMode": "postgres",
+      "report": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-server-loss/postgres-final.json",
+        "bytes": 725785,
+        "sha256": "1b525a9b18054c096e94ade1fc1f71d9669f1e28f6b1f75ea30058bfa077a92e"
+      },
+      "log": {
+        "path": "rust-server-final-native-2e60d2042-20261111-v1/shipping-ccafd3cd-20261112/windows-release-5015c89a4/current-canonical-history/post-parity-92ed534fa/macos/model-operation-server-loss/postgres-final.log",
+        "bytes": 3399,
+        "sha256": "9427f53d1e4635d548ce686fd4444bb8d5afbbd05528b81050fc5b4f3ac0649a"
+      },
+      "cells": [
+        {
+          "runtime": "node",
+          "productSteps": 20,
+          "operationCases": 14,
+          "providerHttpRequests": 15,
+          "serverSigkills": 1,
+          "workerSigkills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "workerPidAcrossServerInterruption": 32831,
+          "providerClosedObservedAfterMs": 1769,
+          "retainedAttemptStatus": "running",
+          "retainedTerminalReceipt": null,
+          "freshOperationAfterReconnect": "completed"
+        },
+        {
+          "runtime": "rust",
+          "productSteps": 20,
+          "operationCases": 14,
+          "providerHttpRequests": 15,
+          "serverSigkills": 1,
+          "workerSigkills": 1,
+          "cleanServerExits": 3,
+          "cleanWorkerExits": 4,
+          "workerPidAcrossServerInterruption": 33469,
+          "providerClosedObservedAfterMs": 872,
+          "retainedAttemptStatus": "running",
+          "retainedTerminalReceipt": null,
+          "freshOperationAfterReconnect": "completed"
+        }
+      ]
+    }
+  ],
+  "remaining": [
+    "Windows package model-operation acceptance, active database and Redis interruption, and long outages.",
+    "The interrupted record has no terminal worker receipt and retains the last durable running status. The run measures observation of the provider close, without attributing it to an explicit cancellation after SIGKILL."
+  ]
+}

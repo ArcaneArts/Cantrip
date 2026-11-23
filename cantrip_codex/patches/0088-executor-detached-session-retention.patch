@@ -1,0 +1,282 @@
+diff --git a/codex-rs/exec-server/src/runtime_options.rs b/codex-rs/exec-server/src/runtime_options.rs
+--- a/codex-rs/exec-server/src/runtime_options.rs
++++ b/codex-rs/exec-server/src/runtime_options.rs
+@@ -1,6 +1,7 @@
+ //! Executor-local paths and trusted startup settings used when preparing execution.
+ 
+ use std::path::PathBuf;
++use std::time::Duration;
+ 
+ use codex_sandboxing::LinuxSandboxPidNamespace;
+ use codex_utils_absolute_path::AbsolutePathBuf;
+@@ -19,6 +20,8 @@
+     pub proxy_private_ips_via_upstream: bool,
+     /// Only the sandbox preference from CLI flags, never other startup config or secrets.
+     pub prefer_mxc: Option<bool>,
++    /// Trusted provisioning policy for detached sessions; requests cannot extend it.
++    pub detached_session_ttl: Option<Duration>,
+     /// User-config opt-out of writable-root symlink checks beneath this host's home.
+     #[cfg(target_os = "macos")]
+     pub allowed_symlinked_codex_home: Option<AbsolutePathBuf>,
+@@ -46,6 +49,7 @@
+             linux_sandbox_pid_namespace: LinuxSandboxPidNamespace::default(),
+             proxy_private_ips_via_upstream: false,
+             prefer_mxc: None,
++            detached_session_ttl: None,
+             codex_self_exe: absolute_path(codex_self_exe)?,
+             codex_linux_sandbox_exe: codex_linux_sandbox_exe.map(absolute_path).transpose()?,
+             #[cfg(target_os = "macos")]
+diff --git a/codex-rs/exec-server/src/server/processor.rs b/codex-rs/exec-server/src/server/processor.rs
+--- a/codex-rs/exec-server/src/server/processor.rs
++++ b/codex-rs/exec-server/src/server/processor.rs
+@@ -61,7 +61,10 @@
+             }
+         });
+         Self {
+-            session_registry: SessionRegistry::new(telemetry.clone()),
++            session_registry: SessionRegistry::with_retention(
++                telemetry.clone(),
++                runtime_paths.detached_session_ttl,
++            ),
+             capability_manager,
+             capability_prewarm: Arc::new(AbortOnDropHandle::new(prewarm)),
+             runtime_paths,
+diff --git a/codex-rs/exec-server/src/server/session_registry.rs b/codex-rs/exec-server/src/server/session_registry.rs
+--- a/codex-rs/exec-server/src/server/session_registry.rs
++++ b/codex-rs/exec-server/src/server/session_registry.rs
+@@ -22,6 +22,7 @@
+ pub(crate) struct SessionRegistry {
+     sessions: Mutex<HashMap<String, Arc<SessionEntry>>>,
+     telemetry: ExecServerTelemetry,
++    detached_session_ttl: Duration,
+ }
+ 
+ struct SessionEntry {
+@@ -57,10 +58,19 @@
+ }
+ 
+ impl SessionRegistry {
++    #[cfg(test)]
+     pub(crate) fn new(telemetry: ExecServerTelemetry) -> Arc<Self> {
++        Self::with_retention(telemetry, None)
++    }
++
++    pub(crate) fn with_retention(
++        telemetry: ExecServerTelemetry,
++        detached_session_ttl: Option<Duration>,
++    ) -> Arc<Self> {
+         Arc::new(Self {
+             sessions: Mutex::new(HashMap::new()),
+             telemetry,
++            detached_session_ttl: detached_session_ttl.unwrap_or(DETACHED_SESSION_TTL),
+         })
+     }
+ 
+@@ -134,7 +144,7 @@
+     }
+ 
+     async fn expire_if_detached(&self, session_id: String, connection_id: ConnectionId) {
+-        tokio::time::sleep(DETACHED_SESSION_TTL).await;
++        tokio::time::sleep(self.detached_session_ttl).await;
+ 
+         let removed = {
+             let mut sessions = self.sessions.lock().await;
+@@ -158,6 +168,7 @@
+         Self {
+             sessions: Mutex::new(HashMap::new()),
+             telemetry: ExecServerTelemetry::default(),
++            detached_session_ttl: DETACHED_SESSION_TTL,
+         }
+     }
+ }
+@@ -179,7 +190,7 @@
+         *attachment = AttachmentState::Attached { connection_id };
+     }
+ 
+-    fn detach(&self, connection_id: ConnectionId) -> bool {
++    fn detach(&self, connection_id: ConnectionId, retention: Duration) -> bool {
+         let mut attachment = self
+             .attachment
+             .lock()
+@@ -192,7 +203,7 @@
+         self.process.set_notification_sender(/*notifications*/ None);
+         *attachment = AttachmentState::Detached {
+             connection_id,
+-            expires_at: tokio::time::Instant::now() + DETACHED_SESSION_TTL,
++            expires_at: tokio::time::Instant::now() + retention,
+         };
+         true
+     }
+@@ -250,7 +261,10 @@
+     }
+ 
+     pub(crate) async fn detach(&self) {
+-        if !self.entry.detach(self.connection_id) {
++        if !self
++            .entry
++            .detach(self.connection_id, self.registry.detached_session_ttl)
++        {
+             return;
+         }
+ 
+@@ -262,3 +276,89 @@
+         });
+     }
+ }
++
++#[cfg(test)]
++mod retention_tests {
++    use super::*;
++    use tokio::sync::mpsc;
++
++    async fn attach(
++        registry: &Arc<SessionRegistry>,
++        id: Option<String>,
++    ) -> Result<SessionHandle, JSONRPCErrorError> {
++        let (sender, _receiver) = mpsc::channel(16);
++        registry
++            .attach(
++                id,
++                RpcNotificationSender::new(sender),
++                ExecServerRuntimeOptions::new(
++                    std::env::current_exe().expect("current executable"),
++                    None,
++                )
++                .expect("runtime paths"),
++            )
++            .await
++    }
++
++    #[tokio::test(start_paused = true)]
++    async fn configured_retention_keeps_identity_and_rejects_stale_detach_timers() {
++        let registry = SessionRegistry::with_retention(
++            ExecServerTelemetry::default(),
++            Some(Duration::from_secs(3600)),
++        );
++        let first = attach(&registry, None).await.expect("first attachment");
++        let id = first.session_id().to_owned();
++        first.detach().await;
++        tokio::task::yield_now().await;
++        tokio::time::advance(Duration::from_secs(1800)).await;
++        let second = attach(&registry, Some(id.clone()))
++            .await
++            .expect("same session after ordinary TTL");
++        assert_eq!(second.session_id(), id);
++        let error = attach(&registry, Some(id.clone()))
++            .await
++            .err()
++            .expect("exclusive attachment");
++        assert_eq!(error.code, crate::rpc::SESSION_ALREADY_ATTACHED_ERROR_CODE);
++        // A stale carrier cannot detach the replacement connection.
++        first.detach().await;
++        assert!(second.is_session_attached());
++        second.detach().await;
++        tokio::task::yield_now().await;
++        // First connection's timer fires while the new connection is detached.
++        tokio::time::advance(Duration::from_secs(1801)).await;
++        tokio::task::yield_now().await;
++        let third = attach(&registry, Some(id.clone()))
++            .await
++            .expect("stale timer must not evict new owner");
++        assert_eq!(third.session_id(), id);
++        third.detach().await;
++        tokio::task::yield_now().await;
++        tokio::time::advance(Duration::from_secs(3601)).await;
++        tokio::task::yield_now().await;
++        let error = attach(&registry, Some(id.clone()))
++            .await
++            .err()
++            .expect("configured TTL expires");
++        assert_eq!(error.message, format!("unknown session id {id}"));
++        assert!(registry.sessions.lock().await.is_empty());
++        registry.shutdown().await;
++    }
++
++    #[tokio::test(start_paused = true)]
++    async fn default_retention_still_expires_detached_sessions() {
++        let registry = SessionRegistry::new(ExecServerTelemetry::default());
++        let first = attach(&registry, None).await.expect("first attachment");
++        let id = first.session_id().to_owned();
++        first.detach().await;
++        tokio::task::yield_now().await;
++        tokio::time::advance(DETACHED_SESSION_TTL + Duration::from_millis(1)).await;
++        tokio::task::yield_now().await;
++        let error = attach(&registry, Some(id.clone()))
++            .await
++            .err()
++            .expect("ordinary TTL expires");
++        assert_eq!(error.message, format!("unknown session id {id}"));
++        assert!(registry.sessions.lock().await.is_empty());
++    }
++}
+diff --git a/codex-rs/exec-server-cli/src/command.rs b/codex-rs/exec-server-cli/src/command.rs
+--- a/codex-rs/exec-server-cli/src/command.rs
++++ b/codex-rs/exec-server-cli/src/command.rs
+@@ -48,6 +48,11 @@
+         global = true
+     )]
+     proxy_private_ips_via_upstream: bool,
++
++    /// Retain disconnected sessions for this many seconds. Trusted provisioning only;
++    /// omitted values preserve the normal 30-second recovery window.
++    #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u32).range(1..))]
++    detached_session_retention_seconds: Option<u32>,
+ 
+     /// Maximum number of requests to process concurrently on each connection.
+     #[arg(
+@@ -181,6 +186,9 @@
+         )?
+         .with_linux_sandbox_pid_namespace(self.linux_sandbox_pid_namespace)
+         .with_proxy_private_ips_via_upstream(self.proxy_private_ips_via_upstream);
++        runtime_paths.detached_session_ttl = self
++            .detached_session_retention_seconds
++            .map(|seconds| std::time::Duration::from_secs(u64::from(seconds)));
+         // Config loading below owns error handling (non-strict stdio can proceed
+         // without config). Never retain other startup flags in the executor.
+         if let Ok(overrides) = root_config_overrides.parse_overrides() {
+diff --git a/codex-rs/exec-server-cli/src/exec_server_args_tests.rs b/codex-rs/exec-server-cli/src/exec_server_args_tests.rs
+--- a/codex-rs/exec-server-cli/src/exec_server_args_tests.rs
++++ b/codex-rs/exec-server-cli/src/exec_server_args_tests.rs
+@@ -337,3 +337,27 @@
+         .join("\n");
+     insta::assert_snapshot!(help);
+ }
++
++#[test]
++fn detached_session_retention_is_explicit_and_positive() {
++    assert_eq!(
++        exec_server_from_args(&[]).detached_session_retention_seconds,
++        None
++    );
++    assert_eq!(
++        exec_server_from_args(&["--detached-session-retention-seconds", "86400"])
++            .detached_session_retention_seconds,
++        Some(86400)
++    );
++    for invalid in ["0", "-1", "1.5", "4294967296"] {
++        assert!(
++            ExecServerCli::try_parse_from([
++                "codex-exec-server",
++                "--detached-session-retention-seconds",
++                invalid,
++            ])
++            .is_err(),
++            "invalid retention {invalid}"
++        );
++    }
++}
+diff --git a/codex-rs/exec-server-cli/src/snapshots/codex_exec_server_cli__command__tests__standalone_help_documents_executor_options.snap b/codex-rs/exec-server-cli/src/snapshots/codex_exec_server_cli__command__tests__standalone_help_documents_executor_options.snap
+--- a/codex-rs/exec-server-cli/src/snapshots/codex_exec_server_cli__command__tests__standalone_help_documents_executor_options.snap
++++ b/codex-rs/exec-server-cli/src/snapshots/codex_exec_server_cli__command__tests__standalone_help_documents_executor_options.snap
+@@ -40,6 +40,11 @@
+           upstream routing
+ 
+           [env: CODEX_EXEC_SERVER_PROXY_PRIVATE_IPS_VIA_UPSTREAM]
++
++      --detached-session-retention-seconds <SECONDS>
++          Retain disconnected sessions for this many seconds. Trusted
++          provisioning only; omitted values preserve the normal 30-second
++          recovery window
+ 
+       --concurrent-requests <COUNT>
+           Maximum number of requests to process concurrently on each connection

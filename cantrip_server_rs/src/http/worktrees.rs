@@ -51,6 +51,25 @@ fn failure(error_value: anyhow::Error, fallback: u16) -> Result<Response> {
         crate::settings::operation_error_message(&error_value),
     ))
 }
+async fn capability(
+    service: &Arc<AuthService>,
+    owner: &str,
+    project: &str,
+) -> Result<Option<Response>> {
+    let project_context =
+        crate::projects::repository::ProjectRepository::new(service.repository.database.clone())?
+            .get(owner, project)
+            .await?;
+    if let Some(project_context) = project_context
+        && project_context["capabilities"]["worktrees"] != true
+    {
+        return Ok(Some(super::json_response(
+            axum::http::StatusCode::CONFLICT,
+            serde_json::json!({"code":"project-capability-unavailable","capability":"worktrees","error":format!("This {} project does not support the worktrees capability.",project_context["originKind"].as_str().unwrap_or("undefined"))}),
+        )));
+    }
+    Ok(None)
+}
 async fn execute(
     service: Arc<AuthService>,
     owner: String,
@@ -58,8 +77,16 @@ async fn execute(
     route: &str,
     request: Request,
 ) -> Result<Response> {
+    let read = request.method() == Method::GET || request.method() == Method::HEAD;
     let project = &params["projectId"];
-    if request.method() == Method::GET {
+    if read {
+        // Source exempts GET catalog reads from its worktrees capability guard,
+        // but its automatic HEAD route still runs that project pre-handler.
+        if request.method() == Method::HEAD
+            && let Some(response) = capability(&service, &owner, project).await?
+        {
+            return Ok(response);
+        }
         let repository = TargetRepository::new(service.repository.database.clone());
         let rows = repository.worktrees(&owner, project).await?;
         if rows.is_empty()
@@ -77,17 +104,8 @@ async fn execute(
         Ok(body) => body,
         Err(response) => return Ok(response),
     };
-    let project_context =
-        crate::projects::repository::ProjectRepository::new(service.repository.database.clone())?
-            .get(&owner, project)
-            .await?;
-    if let Some(project_context) = project_context
-        && project_context["capabilities"]["worktrees"] != true
-    {
-        return Ok(super::json_response(
-            axum::http::StatusCode::CONFLICT,
-            serde_json::json!({"code":"project-capability-unavailable","capability":"worktrees","error":format!("This {} project does not support the worktrees capability.",project_context["originKind"].as_str().unwrap_or("undefined"))}),
-        ));
+    if let Some(response) = capability(&service, &owner, project).await? {
+        return Ok(response);
     }
     let action = if removing {
         "remove"

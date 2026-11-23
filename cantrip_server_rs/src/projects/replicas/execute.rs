@@ -135,6 +135,7 @@ impl ReplicaService {
                     unavailable: false,
                     request_id: None,
                     encoding_error: None,
+                    inference: None,
                 })
             })
         });

@@ -1,0 +1,378 @@
+import type {
+  RemoteSurfaceFrameHeader,
+  TunnelDataPlaneFrameHeader,
+  ValidatedWorkerLinkFrame,
+  WorkerCommand,
+} from "@cantrip/protocol";
+
+import {
+  ActiveLimit,
+  RelayLimitError,
+  SlidingWindowRateLimiter,
+} from "../security/abuse-limits.js";
+import { serverLogger } from "../logger.js";
+import { serializedJsonBytes } from "../security/json-bytes.js";
+import type {
+  WorkerCommandBus,
+  WorkerNotificationListener,
+  WorkerRequestOptions,
+  WorkerSurfaceFrameListener,
+  WorkerTunnelDataPlaneFrameListener,
+  WorkerLinkFrameListener,
+  WorkerCommandBusStats,
+} from "./bridge.js";
+
+interface LimitedWorkerCommandBusOptions {
+  accountConcurrency: number;
+  accountRatePerMinute: number;
+  consumeRelayBytes?(ownerId: string, workerId: string, bytes: number): boolean;
+  resolveOwnerId(workerId: string): Promise<string | null>;
+  workerConcurrency: number;
+  workerRatePerMinute: number;
+}
+
+// Keep this narrow allowlist aligned with workers/command_bus.rs. Commands
+// carrying new inference input use the ordinary lane, including native steer.
+const EXECUTION_CONTROL_COMMANDS = new Set<WorkerCommand["type"]>([
+  "model.operation.cancel",
+  "inference.configure",
+  "inference.revoke",
+  "inference.task-revoke",
+  "inference.status",
+  "worker.version",
+  "worker.restart",
+  "worker.credential.rotate",
+  "worker.encryption.refresh",
+  "chat.interrupt",
+  "chat.pause.set",
+  "chat.queue.changed",
+  "chat.settings.read",
+  "chat.queue.prepare",
+  "chat.automation.resume",
+  "chat.goal.recover",
+  "chat.goal.claim-recover",
+  "task.goal.recover",
+  "task.goal.source",
+  "agent.interaction.respond",
+  "agent.interaction.respond.protected",
+  "agent.interaction.cancel",
+  "chat.native-logical.cancel",
+  "chat.native-logical.complete",
+  "chat.goal.get",
+  "chat.goal.clear",
+]);
+function isExecutionControl(command: WorkerCommand): boolean {
+  if (command.type === "chat.runtime.handoff")
+    return command.intent === "cancel";
+  if (command.type === "chat.native-control") {
+    const kind = command.control?.kind;
+    return kind === "interrupt" || kind === "pause" || kind === "reply";
+  }
+  return EXECUTION_CONTROL_COMMANDS.has(command.type);
+}
+
+class CommandLane {
+  readonly accountActive: ActiveLimit;
+  readonly accountRate: SlidingWindowRateLimiter;
+  readonly workerActive: ActiveLimit;
+  readonly workerRate: SlidingWindowRateLimiter;
+
+  constructor(options: LimitedWorkerCommandBusOptions, control: boolean) {
+    this.accountActive = new ActiveLimit(
+      control
+        ? Math.min(8, options.accountConcurrency)
+        : options.accountConcurrency,
+    );
+    this.workerActive = new ActiveLimit(
+      control
+        ? Math.min(8, options.workerConcurrency)
+        : options.workerConcurrency,
+    );
+    this.accountRate = new SlidingWindowRateLimiter(
+      options.accountRatePerMinute,
+    );
+    this.workerRate = new SlidingWindowRateLimiter(options.workerRatePerMinute);
+  }
+}
+
+export class LimitedWorkerCommandBus implements WorkerCommandBus {
+  readonly #ordinary: CommandLane;
+  readonly #control: CommandLane;
+  readonly #ownerIds = new Map<string, string>();
+  #activeRequests = 0;
+  #failedRequests = 0;
+  #routedRequests = 0;
+  #succeededRequests = 0;
+
+  constructor(
+    readonly delegate: WorkerCommandBus,
+    readonly options: LimitedWorkerCommandBusOptions,
+  ) {
+    this.#ordinary = new CommandLane(options, false);
+    this.#control = new CommandLane(options, true);
+  }
+
+  attach(
+    workerId: string,
+    socket: Parameters<WorkerCommandBus["attach"]>[1],
+    ownerId?: string,
+    continuityIdentity?: Parameters<WorkerCommandBus["attach"]>[3],
+  ) {
+    return this.delegate.attach(workerId, socket, ownerId, continuityIdentity);
+  }
+
+  close(): Promise<void> | void {
+    return this.delegate.close();
+  }
+
+  disconnect(workerId: string, reason?: string, code?: number): void {
+    if (code === undefined) this.delegate.disconnect?.(workerId, reason);
+    else this.delegate.disconnect?.(workerId, reason, code);
+  }
+
+  connectionIdentity(workerId: string) {
+    return this.delegate.connectionIdentity?.(workerId) ?? null;
+  }
+  isConnected(workerId: string): boolean {
+    return this.delegate.isConnected(workerId);
+  }
+
+  stats(): WorkerCommandBusStats {
+    const delegate = this.delegate.stats?.();
+    return {
+      activeRequests: this.#activeRequests,
+      connectedWorkers: delegate?.connectedWorkers ?? 0,
+      failedRequests: this.#failedRequests,
+      routedRequests: this.#routedRequests,
+      succeededRequests: this.#succeededRequests,
+    };
+  }
+
+  sendSurfaceFrame(
+    workerId: string,
+    header: RemoteSurfaceFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    return this.delegate.sendSurfaceFrame(workerId, header, payload);
+  }
+
+  sendTunnelDataPlaneFrame(
+    workerId: string,
+    header: TunnelDataPlaneFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    return (
+      this.delegate.sendTunnelDataPlaneFrame?.(workerId, header, payload) ??
+      false
+    );
+  }
+
+  sendWorkerLinkFrame(
+    workerId: string,
+    frame: ValidatedWorkerLinkFrame,
+  ): boolean {
+    return this.delegate.sendWorkerLinkFrame?.(workerId, frame) ?? false;
+  }
+
+  subscribeWorkerDisconnect(workerId: string, listener: () => void) {
+    return this.delegate.subscribeWorkerDisconnect(workerId, listener);
+  }
+
+  subscribeWorkerOffline(workerId: string, listener: () => void) {
+    return (
+      this.delegate.subscribeWorkerOffline?.(workerId, listener) ??
+      this.delegate.subscribeWorkerDisconnect(workerId, listener)
+    );
+  }
+
+  subscribeSurfaceFrames(
+    workerId: string,
+    listener: WorkerSurfaceFrameListener,
+  ) {
+    return this.delegate.subscribeSurfaceFrames(workerId, listener);
+  }
+
+  subscribeTunnelDataPlaneFrames(
+    workerId: string,
+    listener: WorkerTunnelDataPlaneFrameListener,
+  ) {
+    return (
+      this.delegate.subscribeTunnelDataPlaneFrames?.(workerId, listener) ??
+      (() => undefined)
+    );
+  }
+
+  subscribeWorkerLinkFrames(
+    workerId: string,
+    listener: WorkerLinkFrameListener,
+  ) {
+    return (
+      this.delegate.subscribeWorkerLinkFrames?.(workerId, listener) ??
+      (() => undefined)
+    );
+  }
+
+  subscribeNotifications(
+    workerId: string,
+    listener: WorkerNotificationListener,
+  ) {
+    return (
+      this.delegate.subscribeNotifications?.(workerId, listener) ??
+      (() => undefined)
+    );
+  }
+
+  async request(
+    workerId: string,
+    command: WorkerCommand,
+    options?: WorkerRequestOptions,
+  ): Promise<unknown> {
+    const ownerId = await this.#ownerId(workerId);
+    if (
+      this.options.consumeRelayBytes &&
+      !this.options.consumeRelayBytes(
+        ownerId,
+        workerId,
+        serializedJsonBytes(command),
+      )
+    ) {
+      this.#failedRequests += 1;
+      this.#logLimit(workerId, command.type, "relay-bandwidth-quota");
+      throw new RelayLimitError(
+        "Relay bandwidth quota reached. Retry later.",
+        1,
+        true,
+      );
+    }
+    // A full inference queue cannot consume cancellation/configuration headroom.
+    // These are transport resource limits, never provider inference permits.
+    const lane = isExecutionControl(command) ? this.#control : this.#ordinary;
+    const accountRetry = lane.accountRate.consume(ownerId);
+    const workerRetry = lane.workerRate.consume(workerId);
+    const retryAfter = Math.max(accountRetry ?? 0, workerRetry ?? 0);
+    if (retryAfter > 0) {
+      this.#failedRequests += 1;
+      this.#logLimit(workerId, command.type, "command-rate-limit");
+      throw new RelayLimitError(
+        "Worker command rate limit reached. Retry shortly.",
+        retryAfter,
+        true,
+      );
+    }
+    const releaseAccount = lane.accountActive.acquire(ownerId);
+    if (!releaseAccount) {
+      this.#failedRequests += 1;
+      this.#logLimit(workerId, command.type, "account-concurrency-limit");
+      throw new RelayLimitError(
+        "Account worker-command concurrency limit reached.",
+        1,
+        true,
+      );
+    }
+    const releaseWorker = lane.workerActive.acquire(workerId);
+    if (!releaseWorker) {
+      releaseAccount();
+      this.#failedRequests += 1;
+      this.#logLimit(workerId, command.type, "worker-concurrency-limit");
+      throw new RelayLimitError(
+        "Worker command concurrency limit reached.",
+        1,
+        true,
+      );
+    }
+    this.#routedRequests += 1;
+    this.#activeRequests += 1;
+    let admissionReleased = false;
+    const releaseAdmission = () => {
+      if (admissionReleased) return;
+      admissionReleased = true;
+      releaseWorker();
+      releaseAccount();
+    };
+    try {
+      const delegatedOptions: WorkerRequestOptions = {
+        ...options,
+        ownerId,
+        onEvent: async (event) => {
+          // Only a correlated durable worker ACK transfers transport admission.
+          // The RPC, bandwidth quotas, stream and final outcome retain their
+          // existing lifetime; this is not a server-owned provider semaphore.
+          if (event.type === "inference.command-state" && event.admitted)
+            releaseAdmission();
+          if (
+            this.options.consumeRelayBytes &&
+            !this.options.consumeRelayBytes(
+              ownerId,
+              workerId,
+              serializedJsonBytes(event),
+            )
+          )
+            throw new RelayLimitError(
+              "Relay bandwidth quota reached. Retry later.",
+            );
+          if (
+            event.type !== "inference.command-state" ||
+            options?.forwardInferenceTiming
+          )
+            await options?.onEvent?.(event);
+        },
+      };
+      const result = await this.delegate.request(
+        workerId,
+        command,
+        delegatedOptions,
+      );
+      if (
+        this.options.consumeRelayBytes &&
+        !this.options.consumeRelayBytes(
+          ownerId,
+          workerId,
+          serializedJsonBytes(result),
+        )
+      ) {
+        throw new RelayLimitError(
+          "Relay bandwidth quota reached. Retry later.",
+        );
+      }
+      this.#succeededRequests += 1;
+      return result;
+    } catch (error) {
+      this.#failedRequests += 1;
+      throw error;
+    } finally {
+      releaseAdmission();
+      this.#activeRequests -= 1;
+    }
+  }
+
+  async #ownerId(workerId: string): Promise<string> {
+    const cached = this.#ownerIds.get(workerId);
+    if (cached) return cached;
+    const ownerId = await this.options.resolveOwnerId(workerId);
+    if (!ownerId) {
+      throw new Error(`Worker ${workerId} is not enrolled.`);
+    }
+    this.#ownerIds.set(workerId, ownerId);
+    return ownerId;
+  }
+
+  #logLimit(
+    workerId: string,
+    operation: WorkerCommand["type"],
+    reasonCode: string,
+  ): void {
+    serverLogger.rateLimited(
+      `worker-command-limit:${workerId}:${operation}:${reasonCode}`,
+      "warn",
+      "Worker command rejected by relay limits",
+      {
+        event: "worker.command.rate-limited",
+        subsystem: "worker-command",
+        operation,
+        reasonCode,
+        status: "rejected",
+        workerId,
+      },
+    );
+  }
+}

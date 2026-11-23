@@ -1,0 +1,686 @@
+// Existing Agent conversation SDK -> server -> full worker -> actual Codex.
+import assert from "node:assert/strict";
+import { eventually } from "./full-worker.mjs";
+import { taskModelProvider } from "./task-model-provider.mjs";
+import { actualProjectAutomationsClient } from "./actual-project-automations-client.mjs";
+import { actualAgentInteractionsClient } from "./actual-agent-interactions-client.mjs";
+import { actualChatCustomizationsClient } from "./actual-chat-customizations-client.mjs";
+import { actualSkillSettingsClient } from "./actual-skill-settings-client.mjs";
+import { actualMcpSettingsClient } from "./actual-mcp-settings-client.mjs";
+import { actualProviderTestClient } from "./actual-provider-test-client.mjs";
+import { actualAgentTaskClient } from "./actual-agent-task-client.mjs";
+import { actualChatControls } from "./actual-chat-controls.mjs";
+import { actualSharedQueueRecovery } from "./actual-shared-queue-recovery.mjs";
+import { actualCliWorktreeAcquire } from "./actual-cli-worktree-acquire.mjs";
+
+export async function actualProjectChatClient({
+  page,
+  fixture,
+  projectId,
+  projectRoot,
+  workerDataDirectory,
+  workerId,
+  cliBinary,
+  startWorker,
+  stopWorker,
+  result,
+  requests,
+  providerBoundary,
+  sharedQueueRecovery,
+  sharedQueueRetainedChat,
+  sharedQueueInterruption,
+  automationInterruption,
+  resumeAckFile,
+  resumeRaceFile,
+  interruptNativeStream,
+  cliWorktreeAcquire,
+}) {
+  const model = await taskModelProvider({
+    allowMcpDiscoveryProbe: process.argv.includes("--mcp-settings"),
+    observeStreams: Boolean(
+      interruptNativeStream ||
+      sharedQueueInterruption ||
+      automationInterruption,
+    ),
+  });
+  const prompt = "Private actual Agent prompt 🌲",
+    answer = "Private actual Agent answer 🍄",
+    objective = "Private actual Agent Goal objective 🌙",
+    goalAnswer = "Private actual Agent Goal completed ☀";
+  const observedMessageSnapshots = {};
+  let primaryFailure;
+  const responseIdentity = (messages, text) => {
+    const item = messages
+      .flatMap((message) => message.content)
+      .find((item) => item.type === "text" && item.text === text);
+    assert.ok(item, "the browser decrypted the expected native response");
+    assert.ok(item.correlation?.threadId, "the response identifies its thread");
+    assert.ok(item.correlation?.turnId, "the response identifies its turn");
+    return {
+      threadId: item.correlation.threadId,
+      turnId: item.correlation.turnId,
+    };
+  };
+  try {
+    await page.evaluate(() => window.folderLive.start());
+    await startWorker();
+    const configuration = await page.evaluate(
+      async ({ baseUrl, nativeModel, workerId }) => {
+        const models = await import("/src/lib/api/models.ts"),
+          settings = await import("/src/lib/api/settings.ts");
+        const provider = await models.createModelProvider({
+          name: "Disposable Agent provider",
+          kind: "openai-compatible",
+          baseUrl,
+          apiKey: null,
+        });
+        const profile = await models.createModelProfile({
+          name: "Disposable Agent model",
+          routes: [
+            { providerId: provider.id, modelName: nativeModel, enabled: true },
+          ],
+        });
+        await settings.updateSettings({
+          defaultModelId: profile.id,
+          autoNameChats: false,
+          autoNameTasks: false,
+        });
+        const workers = await import("/src/lib/api/worker-wire.ts");
+        await (
+          await import("/src/lib/chat-worker-encryption.ts")
+        ).ensureChatWorkerEncryption({
+          worker: (await workers.getWorkers()).find(
+            (w) => w.workerId === workerId,
+          ),
+        });
+        await (
+          await import("/src/lib/private-label-worker-encryption.ts")
+        ).ensurePrivateLabelWorkerEncryption({
+          worker: (await workers.getWorkers()).find(
+            (w) => w.workerId === workerId,
+          ),
+        });
+        await (
+          await import("/src/lib/surface-private-state-worker-encryption.ts")
+        ).ensureSurfacePrivateStateWorkerEncryption({
+          worker: (await workers.getWorkers()).find(
+            (w) => w.workerId === workerId,
+          ),
+        });
+        return {
+          modelId: profile.id,
+          reasoningEffort: null,
+          customSubagentModel: false,
+          subagentModelId: null,
+          subagentReasoningEffort: null,
+        };
+      },
+      { baseUrl: model.baseUrl, nativeModel: model.model, workerId },
+    );
+    const chat = await page.evaluate(
+      async ({ projectId, pinPrimary }) => {
+        const api = await import("/src/lib/api/conversations.ts");
+        window.agentProjectId = projectId;
+        window.agentCreation = await api.prepareConversationCreation(
+          projectId,
+          "Private actual Agent title",
+          false,
+        );
+        const created = await window.agentCreation();
+        if (pinPrimary)
+          await (
+            await import("/src/lib/api/chats.ts")
+          ).updateChatWorktree(created.id, {
+            worktreeId: created.activeWorktreeId,
+            mode: "pinned",
+          });
+        window.folderLive.retainScope({ kind: "chat", chatId: created.id });
+        return created;
+      },
+      { projectId, pinPrimary: process.argv.includes("--chat-controls") },
+    );
+    const replay = await page.evaluate(() => window.agentCreation());
+    result.projectChatId = chat.id;
+    assert.equal(replay.id, chat.id);
+    assert.equal(replay.title, chat.title);
+    assert.equal(chat.experience, "agent");
+    await eventually(
+      () =>
+        page.evaluate(
+          async (chatId) =>
+            (
+              await (
+                await import("/src/lib/api-client.ts")
+              ).request(`/api/chats/${chatId}/preparation`)
+            ).preparation,
+          chat.id,
+        ),
+      (preparation) => assert.equal(preparation?.phase, "ready"),
+      // A cold installed Windows worker can spend over three minutes starting
+      // the native runtime and preparing the thread on an emulated host.
+      process.platform === "win32" ? 240_000 : undefined,
+    );
+    const usage = await page.evaluate(async (chatId) => {
+      const api = await import("/src/lib/api/conversations.ts");
+      window.agentUsage = {
+        clientId: crypto.randomUUID(),
+        operationId: crypto.randomUUID(),
+        sequence: 1,
+      };
+      const used = await api.recordConversationUsage(chatId, window.agentUsage);
+      const page = await api.getConversationCatalog(window.agentProjectId);
+      return { used, page };
+    }, chat.id);
+    assert.equal(usage.used.applied, true);
+    assert.equal(usage.page.items[0].id, chat.id);
+    if (cliWorktreeAcquire) {
+      await actualCliWorktreeAcquire({
+        page,
+        fixture,
+        projectId,
+        projectRoot,
+        workerDataDirectory,
+        chat,
+        configuration,
+        model,
+        cliBinary: cliWorktreeAcquire,
+        startWorker,
+        stopWorker,
+        result,
+      });
+      return;
+    }
+    const reply = model.reply({
+      text: answer,
+      hold: Boolean(interruptNativeStream),
+    });
+    const admitted = await page.evaluate(
+      async ({ chatId, prompt, configuration }) =>
+        (await import("/src/lib/api/chats.ts")).startTurn(
+          chatId,
+          prompt,
+          configuration,
+        ),
+      { chatId: chat.id, prompt, configuration },
+    );
+    // The production managed-session route durably queues every new GUI input,
+    // independently of whether this scenario also exercises native Task tools.
+    assert.equal(admitted.status, "queued");
+    assert.equal(admitted.prompt.chatId, chat.id);
+    assert.equal(admitted.prompt.text, prompt);
+    assert.equal(typeof admitted.prompt.id, "string");
+    const readMessages = () =>
+      page.evaluate(async (chatId) => {
+        const messages = await (
+          await import("/src/lib/api/chats.ts")
+        ).getMessages(chatId);
+        window.actualProjectChatCanonicalSnapshot = messages;
+        return messages;
+      }, chat.id);
+    if (interruptNativeStream)
+      await interruptNativeStream({
+        phase: "agent",
+        reply,
+        model,
+        chatId: chat.id,
+        admitted,
+      });
+    observedMessageSnapshots.afterAgentAnswer = await eventually(
+      readMessages,
+      (messages) => {
+        assert.ok(JSON.stringify(messages).includes(answer));
+        responseIdentity(messages, answer);
+      },
+    );
+    const idle = () =>
+      eventually(
+        () =>
+          page.evaluate(
+            async (project) =>
+              (await import("/src/lib/api/chats.ts")).getChats(project),
+            projectId,
+          ),
+        (chats) =>
+          assert.equal(chats.find((c) => c.id === chat.id)?.status, "idle"),
+      );
+    await idle();
+    assert.equal(reply.request.completed, true);
+    result.steps.push(
+      "the existing Agent conversation SDK replays one creation identity, prepares the real native CLI, records usage and decrypts a full-worker native response",
+    );
+
+    if (process.argv.includes("--agent-tasks")) {
+      await actualAgentTaskClient({
+        page,
+        fixture,
+        projectId,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+        requests,
+        model,
+        chat,
+        configuration,
+        readMessages,
+        idle,
+        reply,
+      });
+      return;
+    }
+
+    model.reply({
+      calls: [
+        { name: "create_goal", arguments: { objective, token_budget: 1000 } },
+      ],
+    });
+    const goalUpdate = model.reply({
+      calls: [{ name: "update_goal", arguments: { status: "complete" } }],
+      hold: Boolean(interruptNativeStream),
+    });
+    const final = model.reply({ text: goalAnswer });
+    const goalTurn = await page.evaluate(
+      async ({ chatId, configuration }) =>
+        (await import("/src/lib/api/chats.ts")).startTurn(
+          chatId,
+          "Private actual Agent Goal request 🌙",
+          configuration,
+        ),
+      { chatId: chat.id, configuration },
+    );
+    assert.equal(goalTurn.status, "queued");
+    assert.equal(goalTurn.prompt.chatId, chat.id);
+    assert.equal(goalTurn.prompt.text, "Private actual Agent Goal request 🌙");
+    assert.equal(typeof goalTurn.prompt.id, "string");
+    if (interruptNativeStream)
+      await interruptNativeStream({
+        phase: "goal",
+        reply: goalUpdate,
+        model,
+        chatId: chat.id,
+        admitted: goalTurn,
+        objective,
+      });
+    observedMessageSnapshots.afterGoalAnswer = await eventually(
+      readMessages,
+      (messages) => {
+        assert.ok(JSON.stringify(messages).includes(goalAnswer));
+        responseIdentity(messages, goalAnswer);
+      },
+    );
+    await idle();
+    const goal = await page.evaluate(
+      async (chatId) =>
+        (await import("/src/lib/api/chats.ts")).getChatGoal(chatId),
+      chat.id,
+    );
+    assert.equal(goal.goal.status, "complete");
+    assert.equal(goal.goal.objective, objective);
+    assert.equal(goal.goal.tokenBudget, 1000);
+    const native = final.request.input.input
+      .filter((i) => i.type === "function_call_output")
+      .map((i) => JSON.parse(i.output))
+      .find((i) => i.goal?.status === "complete");
+    assert.ok(native, "actual native Goal completion tool result");
+    assert.equal(native.goal.objective, goal.goal.objective);
+    assert.equal(native.goal.threadId, goal.goal.threadId);
+    assert.equal(model.requests.filter((r) => r.method === "POST").length, 4);
+    assert.deepEqual(model.failures, []);
+    // Live responses identify the turns. Canonical projection commits on an
+    // independent pump; wait for its archive before requiring the final view.
+    const completedTurns = [
+      responseIdentity(observedMessageSnapshots.afterAgentAnswer, answer),
+      responseIdentity(observedMessageSnapshots.afterGoalAnswer, goalAnswer),
+    ];
+    const canonical = await eventually(
+      () =>
+        page.evaluate(
+          async ({ chatId, turns }) =>
+            (await import("/src/lib/api-client.ts")).request(
+              `/api/chats/${chatId}/native-history/turns/read`,
+              {
+                method: "POST",
+                body: JSON.stringify({ turns }),
+              },
+            ),
+          { chatId: chat.id, turns: completedTurns },
+        ),
+      (archive) => {
+        assert.equal(
+          archive.turns.length,
+          2,
+          "both real native turns are durably archived before restart",
+        );
+        for (const entry of archive.turns)
+          assert.equal(entry.turn.status, "completed");
+      },
+    );
+    await eventually(readMessages, (messages) => {
+      for (const text of [answer, goalAnswer]) {
+        if (interruptNativeStream)
+          assert.equal(
+            messages
+              .flatMap((m) => m.content)
+              .filter((i) => i.type === "text" && i.text === text).length,
+            1,
+            "the interrupted native turn has one canonical response",
+          );
+        const message = messages.find((m) =>
+          m.content.some((i) => i.type === "text" && i.text === text),
+        );
+        assert.equal(
+          message.modelId,
+          configuration.modelId,
+          "canonical native attribution resolves the original model",
+        );
+        const item = message.content.find(
+          (i) => i.type === "text" && i.text === text,
+        );
+        assert.equal(item.correlation.sourceMethod, "native-history");
+        assert.equal(item.streaming, false);
+      }
+    });
+    result.projectChatCanonicalTurns = canonical.turns.map(({ turn }) => ({
+      threadId: turn.threadId,
+      turnId: turn.turnId,
+      status: turn.status,
+    }));
+    result.steps.push(
+      "the actual Agent native Goal tools create and complete a persistent Goal; the browser decrypts exactly the native objective and history",
+    );
+
+    const synchronize = async (name) => {
+      const before = await readMessages();
+      const sync = await page.evaluate(
+        async (chatId) =>
+          (await import("/src/lib/api/chats.ts")).syncChat(chatId),
+        chat.id,
+      );
+      assert.equal(sync.threadId, completedTurns[0].threadId, name);
+      assert.equal(sync.status, "idle", name);
+      assert.equal(sync.statusSource, "native-thread", name);
+      assert.deepEqual(
+        sync.turns,
+        [],
+        "protected canonical history is omitted from the legacy console reply",
+      );
+      assert.deepEqual(
+        await readMessages(),
+        before,
+        "console synchronization preserves the complete protected transcript",
+      );
+      assert.equal(
+        model.requests.filter((r) => r.method === "POST").length,
+        4,
+        "console observation does not repeat model inference",
+      );
+      (result.projectChatSynchronizations ??= []).push({
+        name,
+        threadId: sync.threadId,
+        status: sync.status,
+        statusSource: sync.statusSource,
+        turns: sync.turns.length,
+      });
+    };
+    await synchronize(
+      "existing SDK synchronizes the live managed native runtime",
+    );
+    result.steps.push(
+      "the existing browser syncChat SDK reads the actual managed native thread without exposing or duplicating canonical history or starting inference",
+    );
+
+    await stopWorker();
+    // Graceful worker shutdown drains canonical history writes. Capture that
+    // committed transcript before restarting the server, then require exact
+    // retention both before and after the worker reconnects.
+    const messages = await readMessages();
+    const port = Number(new URL(fixture.server.origin).port);
+    await fixture.close();
+    await fixture.start({ port });
+    assert.deepEqual(await readMessages(), messages);
+    const recoveredWorker = await startWorker();
+    await page.evaluate(async (workerId) => {
+      const api = await import("/src/lib/api/worker-wire.ts");
+      await (
+        await import("/src/lib/chat-worker-encryption.ts")
+      ).ensureChatWorkerEncryption({
+        worker: (await api.getWorkers()).find((w) => w.workerId === workerId),
+      });
+      await (
+        await import("/src/lib/private-label-worker-encryption.ts")
+      ).ensurePrivateLabelWorkerEncryption({
+        worker: (await api.getWorkers()).find((w) => w.workerId === workerId),
+      });
+      await (
+        await import("/src/lib/surface-private-state-worker-encryption.ts")
+      ).ensureSurfacePrivateStateWorkerEncryption({
+        worker: (await api.getWorkers()).find((w) => w.workerId === workerId),
+      });
+    }, workerId);
+    assert.deepEqual(await readMessages(), messages);
+    await synchronize(
+      "existing SDK synchronizes after server and full-worker restart",
+    );
+    const retained = await page.evaluate(async (chatId) => {
+      const conversations = await import("/src/lib/api/conversations.ts");
+      return {
+        chat: await window.agentCreation(),
+        usage: await conversations.recordConversationUsage(
+          chatId,
+          window.agentUsage,
+        ),
+        page: await conversations.getConversationCatalog(window.agentProjectId),
+        goal: await (await import("/src/lib/api/chats.ts")).getChatGoal(chatId),
+      };
+    }, chat.id);
+    assert.equal(retained.chat.id, chat.id);
+    assert.equal(retained.chat.title, chat.title);
+    assert.deepEqual(retained.usage, usage.used);
+    assert.equal(retained.page.items[0].id, chat.id);
+    assert.equal(retained.goal.goal.status, "complete");
+    assert.equal(retained.goal.goal.threadId, goal.goal.threadId);
+    assert.equal(retained.goal.goal.objective, objective);
+    const cleared = await page.evaluate(async (chatId) => {
+      const api = await import("/src/lib/api/chats.ts");
+      return {
+        cleared: await api.clearChatGoal(chatId),
+        goal: await api.getChatGoal(chatId),
+      };
+    }, chat.id);
+    assert.equal(cleared.cleared.cleared, true);
+    assert.equal(cleared.goal.goal, null);
+    assert.equal(
+      model.requests.filter((r) => r.method === "POST").length,
+      4,
+      "restarts, receipt replay and Goal clear do not repeat inference",
+    );
+    for (const marker of [
+      prompt,
+      answer,
+      objective,
+      goalAnswer,
+      "Private actual Agent title",
+      "Private actual Agent Goal request 🌙",
+    ]) {
+      assert.equal(
+        JSON.stringify(requests).includes(marker),
+        false,
+        "private Agent content stays out of browser-to-server requests",
+      );
+      assert.equal(
+        fixture.server.diagnostics().includes(marker),
+        false,
+        "private Agent content stays out of server diagnostics",
+      );
+    }
+    assert.deepEqual(model.failures, []);
+    result.projectChatExecution = {
+      completed: true,
+      nativeGoalCompleted: true,
+      retainedAfterRestart: true,
+      synchronizedBeforeAndAfterRestart: true,
+      modelRequests: 4,
+      modelFailures: [],
+      chatId: chat.id,
+    };
+    result.steps.push(
+      "Agent creation and usage receipts, encrypted history and native Goal survive server/worker restart; public Goal clear succeeds without duplicate inference",
+    );
+    if (sharedQueueRecovery)
+      await actualSharedQueueRecovery({
+        page,
+        fixture,
+        worker: recoveredWorker.child,
+        workerId,
+        projectId,
+        retainedChatId: sharedQueueRetainedChat ? chat.id : undefined,
+        retainedThreadId: sharedQueueRetainedChat
+          ? completedTurns[0].threadId
+          : undefined,
+        resumeRaceFile,
+        interruption: sharedQueueInterruption,
+        resumeAckFile,
+        configuration,
+        model,
+        result,
+        requests,
+      });
+    if (process.argv.includes("--chat-controls"))
+      await actualChatControls({
+        page,
+        fixture,
+        projectId,
+        chatId: chat.id,
+        workerDataDirectory,
+        configuration,
+        readMessages,
+        idle,
+        model,
+        startWorker,
+        stopWorker,
+        result,
+        requests,
+      });
+    if (process.argv.includes("--project-automations"))
+      await actualProjectAutomationsClient({
+        page,
+        fixture,
+        projectId,
+        chatId: chat.id,
+        projectRoot,
+        cliBinary,
+        workerId,
+        workerDataDirectory,
+        interruption: automationInterruption,
+        startWorker,
+        stopWorker,
+        model,
+        result,
+        requests,
+      });
+    if (process.argv.includes("--agent-interactions"))
+      await actualAgentInteractionsClient({
+        page,
+        fixture,
+        projectId,
+        chatId: chat.id,
+        configuration,
+        model,
+        result,
+        requests,
+      });
+    if (process.argv.includes("--chat-customizations"))
+      await actualChatCustomizationsClient({
+        page,
+        fixture,
+        chatId: chat.id,
+        projectRoot,
+        startWorker,
+        stopWorker,
+        model,
+        result,
+        requests,
+      });
+    if (process.argv.includes("--skill-settings"))
+      await actualSkillSettingsClient({
+        page,
+        fixture,
+        projectId,
+        chatId: chat.id,
+        projectRoot,
+        workerDataDirectory,
+        workerId,
+        startWorker,
+        stopWorker,
+        model,
+        result,
+        requests,
+      });
+    if (process.argv.includes("--mcp-settings"))
+      await actualMcpSettingsClient({
+        page,
+        fixture,
+        projectId,
+        projectRoot,
+        workerDataDirectory,
+        workerId,
+        startWorker,
+        stopWorker,
+        model,
+        result,
+        requests,
+      });
+    if (providerBoundary)
+      await actualProviderTestClient({
+        page,
+        fixture,
+        workerId,
+        startWorker,
+        stopWorker,
+        result,
+        requests,
+        boundary: providerBoundary,
+      });
+  } catch (error) {
+    primaryFailure = error;
+    result.projectChatFailure = {
+      message: error.message,
+      stack: error.stack,
+      observedMessageSnapshots,
+    };
+    result.projectChatFailure.canonicalMessageSnapshot = await page
+      .evaluate(() => window.actualProjectChatCanonicalSnapshot)
+      .catch((cause) => ({ diagnosticError: cause.message }));
+    throw error;
+  } finally {
+    result.projectChatModel = {
+      failures: model.failures,
+      requests: model.requests.map(({ method, path, completed, input }) => ({
+        method,
+        path,
+        completed,
+        model: input?.model,
+        toolResults: input?.input?.filter(
+          (i) => i.type === "function_call_output",
+        ),
+      })),
+    };
+    let firstCleanupError;
+    for (const [resource, close] of [
+      ["worker", stopWorker],
+      ["model", () => model.close()],
+    ]) {
+      try {
+        await close();
+      } catch (error) {
+        firstCleanupError ??= error;
+        (result.projectChatCleanupFailures ??= []).push({
+          resource,
+          message: error.message,
+          stack: error.stack,
+        });
+      }
+    }
+    if (!primaryFailure && firstCleanupError) throw firstCleanupError;
+  }
+}

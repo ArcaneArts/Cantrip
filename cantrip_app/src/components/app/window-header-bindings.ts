@@ -15,7 +15,6 @@ export function windowHeaderBindings(bindings: Readonly<Record<string, any>>) {
     bindings.showImporter ||
     bindings.showSettings ||
     bindings.showProjectSettings ||
-    bindings.showProjectOverview ||
     bindings.showServerAdmin ||
     bindings.showArchivedStandaloneChats
   ) {

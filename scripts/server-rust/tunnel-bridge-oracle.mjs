@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { WorkerBridge } from "../../cantrip_server/src/workers/bridge.ts";
+import { WorkerBridge } from "../../tests/reference-node-server/src/workers/bridge.ts";
 import { encodeTunnelDataPlaneFrame } from "../../packages/protocol/dist/index.js";
 class Socket extends EventEmitter {
   readyState = 1;

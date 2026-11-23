@@ -1,0 +1,303 @@
+{
+  "completeReplacement": false,
+  "scope": "Actual product recovery of a reactivated autonomous Goal lane, with and without worker-owning Rust peer loss after the original HTTP commit. Standalone compatibility includes all three stores.",
+  "baseCommit": "44f2bc26824b953be5546ff5808587abbb196b3e",
+  "localEvidenceRoot": "rust-server-final-native-2e60d2042-20261111-v1",
+  "sourcePatch": {
+    "path": "goal-lane-settlement/final-rust-source.patch",
+    "bytes": 29670,
+    "sha256": "fae5552021d80d15cf04a03755bac2fd7e135f349abe657da94a7f5040d591b4"
+  },
+  "package": {
+    "target": "darwin-arm64",
+    "version": "1.1.2864",
+    "serverRequiresNode": false,
+    "verifiedFiles": 1762,
+    "manifest": {
+      "path": "goal-lane-settlement/cantrip-server-darwin-arm64/native-server.json",
+      "bytes": 325804,
+      "sha256": "bdb26441a06751725565dfcadae5669e18ec10a22f71f1559f4e3511492142b0"
+    },
+    "executable": {
+      "path": "goal-lane-settlement/cantrip-server-darwin-arm64/bin/cantrip-server",
+      "bytes": 94218144,
+      "sha256": "72b66bbc117c5ef267685a6a3fec7415a0d59314f638ed4fd9eb3d1d43787539"
+    }
+  },
+  "baselineFailures": [
+    {
+      "store": "postgres",
+      "runtime": "rust/rust",
+      "steps": 10,
+      "outcomeStatuses": {
+        "200": 5
+      },
+      "report": {
+        "path": "goal-lane-settlement/recovered-lane-baseline/product.json",
+        "bytes": 315503,
+        "sha256": "86113389f61c0aa97f70a3c39aba04b0399160e1a17ad88bf4859dcc344d8e90"
+      },
+      "failure": "Expected values to be strictly equal:"
+    },
+    {
+      "store": "postgres",
+      "runtime": "rust/rust",
+      "steps": 10,
+      "outcomeStatuses": {
+        "200": 5
+      },
+      "report": {
+        "path": "goal-lane-settlement/baseline-owner-loss-v2/product.json",
+        "bytes": 326461,
+        "sha256": "18bf7ce653d0f822da3fd468d95fa2c543690e3cb02e98b2431551591f90e13c"
+      },
+      "failure": "Expected values to be strictly equal:"
+    }
+  ],
+  "packagedBrowser": [
+    {
+      "store": "postgres",
+      "runtime": "rust/rust",
+      "steps": 16,
+      "outcomeStatuses": {
+        "200": 8
+      },
+      "report": {
+        "path": "goal-lane-settlement/final-recovered-lane/product.json",
+        "bytes": 852132,
+        "sha256": "46a28baadf040474a72c0fa13ba602986e71ce407f2ee74b64b1c7d3abdcf89f"
+      },
+      "recoveredLane": {
+        "projectedAfterMs": 193,
+        "sameLaneAndThread": true,
+        "durableRevisionAcknowledged": true
+      }
+    },
+    {
+      "store": "postgres",
+      "runtime": "rust/rust",
+      "steps": 17,
+      "outcomeStatuses": {
+        "200": 8
+      },
+      "report": {
+        "path": "goal-lane-settlement/final-owner-loss/product.json",
+        "bytes": 865163,
+        "sha256": "9e785be0b92ba7a893ec7f9f1f8a2c688f15e43bc8b5048fda58523c0cda082a"
+      },
+      "recoveredLane": {
+        "projectedAfterMs": 6690,
+        "sameLaneAndThread": true,
+        "durableRevisionAcknowledged": true
+      },
+      "peerLoss": {
+        "sameWorkerProcess": true,
+        "heldExecutionObservations": 1,
+        "originalReceiptDeliveries": 1
+      }
+    },
+    {
+      "store": "pglite",
+      "runtime": "rust",
+      "steps": 15,
+      "outcomeStatuses": {
+        "200": 8
+      },
+      "report": {
+        "path": "goal-lane-settlement/final-normal-pglite/product.json",
+        "bytes": 712870,
+        "sha256": "24c59e18fc990c498053b97abbfcad89dc6c8dd7ccd785ccaf2c27f827b2bd53"
+      }
+    },
+    {
+      "store": "bundled-postgres",
+      "runtime": "rust",
+      "steps": 15,
+      "outcomeStatuses": {
+        "200": 8
+      },
+      "report": {
+        "path": "goal-lane-settlement/final-normal-bundled-postgres/product.json",
+        "bytes": 685729,
+        "sha256": "3b99f678a12ea2fef5cfdba8a67c9329bbdf0996b807706dc5e180279deeb4fd"
+      }
+    },
+    {
+      "store": "postgres",
+      "runtime": "rust",
+      "steps": 15,
+      "outcomeStatuses": {
+        "200": 8
+      },
+      "report": {
+        "path": "goal-lane-settlement/final-normal-postgres/product.json",
+        "bytes": 683097,
+        "sha256": "3d6e07e2b7b6829512e830995710dc3f8d19af1b2497481e09c42436ba1ed109"
+      }
+    },
+    {
+      "store": "pglite",
+      "runtime": "rust",
+      "steps": 16,
+      "outcomeStatuses": {
+        "200": 9,
+        "409": 1
+      },
+      "report": {
+        "path": "goal-lane-settlement/final-streamed-goal/product.json",
+        "bytes": 728060,
+        "sha256": "73713b5d7c8d55f95a5488a3485ba9dbba0efd985bf75a320f116e313e063500"
+      }
+    }
+  ],
+  "controlledHttp": {
+    "goal": [
+      {
+        "store": "pglite",
+        "cells": 3,
+        "observations": 83,
+        "paired": true,
+        "report": {
+          "path": "goal-lane-settlement/controlled-goal-pglite.json",
+          "bytes": 618845,
+          "sha256": "edd949a87a9bf1c24113f89b89d690fc7b94d5098684a552cd180ed997e1b5e9"
+        }
+      },
+      {
+        "store": "bundled-postgres",
+        "cells": 3,
+        "observations": 83,
+        "paired": true,
+        "report": {
+          "path": "goal-lane-settlement/controlled-goal-bundled-postgres.json",
+          "bytes": 633857,
+          "sha256": "5e23100041cd86310c4cc79bd160707e23e930e48bd4d8cc2914ac27ccd059a9"
+        }
+      },
+      {
+        "store": "postgres",
+        "cells": 3,
+        "observations": 83,
+        "paired": true,
+        "report": {
+          "path": "goal-lane-settlement/controlled-goal-postgres.json",
+          "bytes": 631559,
+          "sha256": "eb2aa714eaad564ccdfee521ad40606d831c2077b910b689f6f8bfaa553132d4"
+        }
+      }
+    ],
+    "round": [
+      {
+        "store": "pglite",
+        "cells": 3,
+        "observations": 50,
+        "paired": true,
+        "report": {
+          "path": "goal-lane-settlement/controlled-round-pglite.json",
+          "bytes": 446170,
+          "sha256": "8ef752689ba783ab9aaf0da7ddce87bb98342a8f6e5074b695d4d2f63b415df1"
+        }
+      },
+      {
+        "store": "bundled-postgres",
+        "cells": 3,
+        "observations": 50,
+        "paired": true,
+        "report": {
+          "path": "goal-lane-settlement/controlled-round-bundled-postgres.json",
+          "bytes": 446665,
+          "sha256": "55f1307f5c2942527730eb3c9acfee600eeaeb7f1ae9fb31d3b2e6d6a1874ca1"
+        }
+      },
+      {
+        "store": "postgres",
+        "cells": 3,
+        "observations": 50,
+        "paired": true,
+        "report": {
+          "path": "goal-lane-settlement/controlled-round-postgres.json",
+          "bytes": 445999,
+          "sha256": "9a07a0194d4252a29fa2d5a0c787ea80da967cc239b4498636dd985a1ac26fdc"
+        }
+      }
+    ],
+    "cycle": [
+      {
+        "store": "pglite",
+        "cells": 1,
+        "observations": 29,
+        "paired": false,
+        "report": {
+          "path": "goal-lane-settlement/controlled-cycle-pglite.json",
+          "bytes": 112763,
+          "sha256": "afdc25bfd290f1b4fec33a91d165620139c2fa0ed70519eea8be598f7c2d7f9a"
+        }
+      },
+      {
+        "store": "bundled-postgres",
+        "cells": 1,
+        "observations": 29,
+        "paired": false,
+        "report": {
+          "path": "goal-lane-settlement/controlled-cycle-bundled-postgres.json",
+          "bytes": 112976,
+          "sha256": "d01592bb128bf511d04060c006f5bb50c4fd5710a84caeaec45fea7eb60e938b"
+        }
+      },
+      {
+        "store": "postgres",
+        "cells": 1,
+        "observations": 29,
+        "paired": false,
+        "report": {
+          "path": "goal-lane-settlement/controlled-cycle-postgres.json",
+          "bytes": 113603,
+          "sha256": "33f8e97aa6c585fc43a9674b5abd0975abdaadd1252bbf80625ce5d0c3a0ec1a"
+        }
+      }
+    ]
+  },
+  "bundledGoalAdmission": {
+    "retainedFailureAnalysis": {
+      "path": "goal-lane-settlement/bundled-preterminal-diagnosis.json",
+      "bytes": 1333,
+      "sha256": "980f396c6328a11fffb7c7bca11952ab2229bb382ef38305f6ebaecbebd8fc23"
+    },
+    "tracedBaselineRerun": {
+      "store": "bundled-postgres",
+      "runtime": "rust",
+      "steps": 15,
+      "outcomeStatuses": {
+        "200": 8
+      },
+      "report": {
+        "path": "goal-lane-settlement/diagnostic-bundled-baseline/product.json",
+        "bytes": 679636,
+        "sha256": "f892675abc871f7a8b93df5fc0115e9eefcf10273897960a3b615a34309ad2fe"
+      }
+    }
+  },
+  "sourceAudit": {
+    "path": "goal-lane-settlement/current-source-drift.json",
+    "bytes": 54005,
+    "sha256": "a64d3dd4e88f1b58ca7caba3d6bbfbdad396dd06d98607b4134054d8727cbd1f"
+  },
+  "rustLibrary": {
+    "passed": 87,
+    "failed": 0,
+    "log": {
+      "path": "goal-lane-settlement/rust-library-tests.log",
+      "bytes": 9212,
+      "sha256": "2b56ef232f563e65c112d32da107c2ade3737496d6890a1b6cb9779833a38ef5"
+    }
+  },
+  "strictClippy": {
+    "path": "goal-lane-settlement/rust-library-clippy.log",
+    "bytes": 158,
+    "sha256": "01afad1c8199cbe6337bb4f216068baf931e9cae98ab1c6eb89bb7b81a5ece1e"
+  },
+  "remaining": [
+    "The separately retained bundled PostgreSQL Goal started a native turn before its model request and never delivered a terminal outcome. Its traced rerun passed, leaving the underlying inference admission stall open.",
+    "Qualify autonomous observation during PostgreSQL and Redis interruption and final shipping platforms. Worker-owner interruption was exercised with a Rust/Rust pair."
+  ]
+}

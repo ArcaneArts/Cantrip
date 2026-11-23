@@ -12,6 +12,7 @@ use crate::{
 use anyhow::{Context, Result, bail};
 use std::sync::Arc;
 mod changes;
+mod queries;
 pub(crate) use changes::replace_with;
 pub(crate) use reads::{encrypted_get, encrypted_list};
 mod reads;

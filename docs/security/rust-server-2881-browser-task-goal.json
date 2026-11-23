@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "scope": "The existing browser SDK, one server, and one packaged Node worker execute protected folders, encrypted Task and autonomous Goal flows through native Codex. The model endpoint is controlled. Each runtime and storage combination uses isolated fixture state.",
+  "artifacts": {
+    "rustServer": {
+      "name": "cantrip-server",
+      "bytes": 94198976,
+      "sha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+    },
+    "nodeReferenceEntrypoint": {
+      "name": "index.js",
+      "bytes": 106,
+      "sha256": "ffb166928f6e7b6e0bbc928a0471fa5c3a5f59b7da620ae9472a39f27f5c5310"
+    },
+    "nodeReferenceDatabaseSchema": {
+      "name": "schema.js",
+      "bytes": 218621,
+      "sha256": "f19e8659d587e0ddf5b1180a6d9ce4ffa51448307e2e410ba09d4b89ca8fd1b8"
+    },
+    "workerEntrypoint": {
+      "name": "index.js",
+      "bytes": 391601,
+      "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
+    },
+    "nativeCodex": {
+      "name": "codex",
+      "bytes": 281161744,
+      "sha256": "159efa081468910fbe00493d12d3cb18fbb9e3a091e2ea63745432d35fccbecc"
+    }
+  },
+  "taskAndGoal": {
+    "totals": {
+      "runs": 6,
+      "productSteps": 90,
+      "cleanServerExits": 24,
+      "cleanWorkerExits": 30,
+      "controlledModelRequests": 54
+    },
+    "cases": [
+      {
+        "databaseMode": "pglite",
+        "report": {
+          "name": "autonomous-goal-pglite.json",
+          "bytes": 1569289,
+          "sha256": "4016c74da96a649c1479c812dcecd18de180f0c3d87ada9d8de9fda70df6e813"
+        },
+        "runs": [
+          {
+            "runtime": "node",
+            "productSteps": 15,
+            "cleanServerExits": 4,
+            "cleanWorkerExits": 5,
+            "controlledModelRequests": 9
+          },
+          {
+            "runtime": "rust",
+            "productSteps": 15,
+            "cleanServerExits": 4,
+            "cleanWorkerExits": 5,
+            "controlledModelRequests": 9
+          }
+        ]
+      },
+      {
+        "databaseMode": "bundled-postgres",
+        "report": {
+          "name": "autonomous-goal-bundled-postgres.json",
+          "bytes": 1652396,
+          "sha256": "6f0ebc5bd2b34d7c8f69de00a497c1339977b789c3cd07b9b93d25804fec6274"
+        },
+        "runs": [
+          {
+            "runtime": "node",
+            "productSteps": 15,
+            "cleanServerExits": 4,
+            "cleanWorkerExits": 5,
+            "controlledModelRequests": 9
+          },
+          {
+            "runtime": "rust",
+            "productSteps": 15,
+            "cleanServerExits": 4,
+            "cleanWorkerExits": 5,
+            "controlledModelRequests": 9
+          }
+        ]
+      },
+      {
+        "databaseMode": "postgres",
+        "report": {
+          "name": "autonomous-goal-postgres.json",
+          "bytes": 1605612,
+          "sha256": "6f94a6a4e856866491c7cfc636d2b699f9389d23ab0d951ca44c26968063392f"
+        },
+        "runs": [
+          {
+            "runtime": "node",
+            "productSteps": 15,
+            "cleanServerExits": 4,
+            "cleanWorkerExits": 5,
+            "controlledModelRequests": 9
+          },
+          {
+            "runtime": "rust",
+            "productSteps": 15,
+            "cleanServerExits": 4,
+            "cleanWorkerExits": 5,
+            "controlledModelRequests": 9
+          }
+        ]
+      }
+    ]
+  },
+  "emptyProfileHttpDiscovery": {
+    "requestsPerRuntime": 584,
+    "report": {
+      "name": "http-route-inventory.json",
+      "bytes": 2448327,
+      "sha256": "45ba85accbd6b6b739aa6d4859b6709135e27f300f128fe547db5bbd78197e69"
+    },
+    "inventorySha256": "ec3dcca773d4bd48334befa5125d5f39f8f7ded284a5aedc439188230ea41a3d"
+  }
+}

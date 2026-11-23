@@ -76,8 +76,10 @@ pub enum Operation {
     EffectsGet {},
     #[serde(rename = "capabilities.get")]
     CapabilitiesGet {},
-    #[serde(rename = "targets.list")]
+    #[serde(rename = "targets.list", rename_all = "camelCase")]
     TargetsList {
+        #[serde(default)]
+        allow_cantrip_app: bool,
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
@@ -87,6 +89,8 @@ pub enum Operation {
     },
     #[serde(rename = "target.attach", rename_all = "camelCase")]
     TargetAttach {
+        #[serde(default)]
+        allow_cantrip_app: bool,
         binding: SessionBinding,
         target_id: String,
         target_generation: u64,
@@ -112,6 +116,27 @@ pub enum Operation {
         target_id: String,
         target_generation: u64,
         position: Point,
+    },
+    #[serde(rename = "clipboard.read", rename_all = "camelCase")]
+    ClipboardRead {
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+    },
+    #[serde(rename = "clipboard.write", rename_all = "camelCase")]
+    ClipboardWrite {
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+        text: String,
+    },
+    #[serde(rename = "desktop.resize", rename_all = "camelCase")]
+    DesktopResize {
+        binding: SessionBinding,
+        target_id: String,
+        target_generation: u64,
+        width: u32,
+        height: u32,
     },
     #[serde(rename = "controls.inspect", rename_all = "camelCase")]
     ControlsInspect {
@@ -168,6 +193,9 @@ impl Operation {
             | Self::Snapshot { binding, .. }
             | Self::CursorConfigure { binding, .. }
             | Self::CursorMove { binding, .. }
+            | Self::ClipboardRead { binding, .. }
+            | Self::ClipboardWrite { binding, .. }
+            | Self::DesktopResize { binding, .. }
             | Self::ControlsInspect { binding, .. }
             | Self::InputPress { binding, .. }
             | Self::InputClick { binding, .. }
@@ -205,6 +233,10 @@ pub(crate) struct InputPlan {
 }
 pub(crate) enum Dispatch {
     Complete(Result<OperationResult>),
+    Capture {
+        plan: crate::remote_capture::FramePlan,
+        work: crate::remote_capture::FrameWork,
+    },
     Input {
         plan: Box<InputPlan>,
         work: crate::input_job::InputWork,
@@ -237,6 +269,7 @@ impl OperationResult {
 pub struct CuaService<B: CaptureBackend> {
     backend: B,
     sessions: HashMap<String, SessionState>,
+    cantrip_app_grants: HashMap<String, bool>,
     javascript: bool,
     interactions: crate::interaction::Participants,
     remote_captures: crate::remote_capture::Captures,
@@ -247,6 +280,7 @@ impl<B: CaptureBackend> CuaService<B> {
         Self {
             backend,
             sessions: HashMap::new(),
+            cantrip_app_grants: HashMap::new(),
             javascript: false,
             interactions: crate::interaction::Participants::default(),
             remote_captures: crate::remote_capture::Captures::default(),
@@ -254,6 +288,13 @@ impl<B: CaptureBackend> CuaService<B> {
     }
     pub(crate) fn enable_javascript(&mut self) {
         self.javascript = true;
+    }
+    pub(crate) fn finish_capture(
+        &mut self,
+        plan: crate::remote_capture::FramePlan,
+        result: Result<crate::remote_capture::EncodedFrame>,
+    ) -> Result<OperationResult> {
+        self.remote_captures.finish_frame(plan, result)
     }
     pub fn session_count(&self) -> usize {
         self.sessions.len()
@@ -311,6 +352,13 @@ impl<B: CaptureBackend> CuaService<B> {
             .target
             .as_ref()
             .ok_or_else(|| CuaError::new(ErrorCode::TargetNotFound, "No CUA target attached."))?;
+        self.authorize_target(
+            target,
+            self.cantrip_app_grants
+                .get(&binding.session_id)
+                .copied()
+                .unwrap_or(false),
+        )?;
         if target.id != target_id || target.generation != generation {
             return Err(CuaError::new(
                 ErrorCode::StaleTarget,
@@ -320,12 +368,59 @@ impl<B: CaptureBackend> CuaService<B> {
         Ok(state.clone())
     }
 
+    fn target_access(&self, target: &Target, allowed: bool) -> Result<crate::target::TargetAccess> {
+        use crate::target::{DenialReason, TargetAccess, TargetKind};
+        let reason = if allowed {
+            None
+        } else if target.kind == TargetKind::Monitor && self.backend.protects_host_displays() {
+            Some(DenialReason::DisplayMayIncludeCantrip)
+        } else if self.backend.is_cantrip_application(target)? {
+            Some(DenialReason::CantripAppProtected)
+        } else {
+            None
+        };
+        Ok(TargetAccess {
+            allowed: reason.is_none(),
+            reason,
+        })
+    }
+
+    fn authorize_target(&self, target: &Target, allowed: bool) -> Result<()> {
+        if let Some(reason) = self.target_access(target, allowed)?.reason {
+            return Err(CuaError::new(
+                ErrorCode::PermissionDenied,
+                match reason {
+                    crate::target::DenialReason::CantripAppProtected => {
+                        "Computer use on Cantrip is disabled in Settings > Computer Use. This restriction cannot be approved per operation."
+                    }
+                    crate::target::DenialReason::DisplayMayIncludeCantrip => {
+                        "Full displays may expose protected Cantrip windows. Select an allowed application window, or enable computer use on Cantrip in Settings > Computer Use."
+                    }
+                },
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn dispatch(
         &mut self,
         operation: Operation,
         cancel: &Cancellation,
         now_ms: u64,
     ) -> Dispatch {
+        if let Operation::RemoteCapture {
+            request: crate::remote_capture::Request::Frame { binding, handle },
+        } = &operation
+        {
+            match self
+                .remote_captures
+                .prepare_frame(&mut self.backend, binding, *handle, cancel)
+            {
+                Ok(Some((plan, work))) => return Dispatch::Capture { plan, work },
+                Err(error) => return Dispatch::Complete(Err(error)),
+                Ok(None) => {}
+            }
+        }
         let Operation::InputPerform {
             binding,
             target_id,
@@ -402,6 +497,7 @@ impl<B: CaptureBackend> CuaService<B> {
             }
         }
         let position = match &command {
+            crate::gesture::InputCommand::Move { point } => *point,
             crate::gesture::InputCommand::Drag { start, end, .. } => {
                 target.bounds.to_global(*end)?;
                 *start
@@ -573,6 +669,9 @@ impl<B: CaptureBackend> CuaService<B> {
                         "input.perform",
                     ]);
                 }
+                if self.backend.desktop_io() {
+                    operations.extend(["clipboard.read", "clipboard.write", "desktop.resize"]);
+                }
                 if self.javascript {
                     operations.extend(["javascript.evaluate", "javascript.reset"]);
                 }
@@ -580,6 +679,7 @@ impl<B: CaptureBackend> CuaService<B> {
                     "protocolVersion": PROTOCOL_VERSION, "runtimeVersion": env!("CARGO_PKG_VERSION"),
                     "backend": self.backend.name(), "capture": self.backend.available(),
                     "nativeInput": self.backend.native_input(), "javascript": self.javascript, "cursorAppearanceVersion": 1,
+                    "hostMonitorInput": self.backend.remote_monitor_input() == crate::backend::RemoteMonitorInput::ExclusiveHost,
                     "operations": operations,
                     "maxSessions": MAX_SESSIONS, "maxImageBytes": MAX_PAYLOAD_BYTES,
                 })))
@@ -590,8 +690,14 @@ impl<B: CaptureBackend> CuaService<B> {
                     "JavaScript requires the framed runtime owner.",
                 ))
             }
-            Operation::TargetsList { after } => {
-                let page = self.inventory(after.as_deref(), cancel)?;
+            Operation::TargetsList {
+                after,
+                allow_cantrip_app,
+            } => {
+                let mut page = self.inventory(after.as_deref(), cancel)?;
+                for target in &mut page.targets {
+                    target.access = Some(self.target_access(target, allow_cantrip_app)?);
+                }
                 cancel.check()?;
                 let mut data = json!({ "targets": page.targets });
                 if page.truncated {
@@ -603,6 +709,7 @@ impl<B: CaptureBackend> CuaService<B> {
                 Ok(OperationResult::json(data))
             }
             Operation::TargetAttach {
+                allow_cantrip_app,
                 binding,
                 target_id,
                 target_generation,
@@ -621,6 +728,7 @@ impl<B: CaptureBackend> CuaService<B> {
                     .backend
                     .resolve_target(&target_id, target_generation, cancel)?;
                 target.validate()?;
+                self.authorize_target(&target, allow_cantrip_app)?;
                 if target.generation != target_generation {
                     return Err(CuaError::new(
                         ErrorCode::StaleTarget,
@@ -655,6 +763,8 @@ impl<B: CaptureBackend> CuaService<B> {
                 }
                 state.target = Some(target);
                 cancel.check()?;
+                self.cantrip_app_grants
+                    .insert(binding.session_id.clone(), allow_cantrip_app);
                 self.sessions.insert(binding.session_id, state.clone());
                 Ok(OperationResult::session(&state, "targetAttached"))
             }
@@ -693,6 +803,65 @@ impl<B: CaptureBackend> CuaService<B> {
                 cancel.check()?;
                 self.sessions.insert(binding.session_id, state.clone());
                 Ok(OperationResult::session(&state, "cursorChanged"))
+            }
+            Operation::ClipboardRead {
+                binding,
+                target_id,
+                target_generation,
+            } => {
+                let state = self.attached(&binding, &target_id, target_generation)?;
+                let text = self
+                    .backend
+                    .clipboard_read(state.target.as_ref().unwrap(), cancel)?;
+                Ok(OperationResult::json(
+                    json!({"session": state, "text": text}),
+                ))
+            }
+            Operation::ClipboardWrite {
+                binding,
+                target_id,
+                target_generation,
+                text,
+            } => {
+                if text.len() > 1024 * 1024 {
+                    return Err(CuaError::invalid("Clipboard text exceeds 1 MiB."));
+                }
+                let state = self.attached(&binding, &target_id, target_generation)?;
+                self.backend
+                    .clipboard_write(state.target.as_ref().unwrap(), &text, cancel)?;
+                Ok(OperationResult::session(&state, "clipboardChanged"))
+            }
+            Operation::DesktopResize {
+                binding,
+                target_id,
+                target_generation,
+                width,
+                height,
+            } => {
+                let mut state = self.attached(&binding, &target_id, target_generation)?;
+                let target = self.backend.resize_desktop(
+                    state.target.as_ref().unwrap(),
+                    width,
+                    height,
+                    cancel,
+                )?;
+                target.validate()?;
+                if target.id != target_id || target.generation != target_generation {
+                    return Err(CuaError::new(
+                        ErrorCode::StaleTarget,
+                        "Desktop resize changed its target identity.",
+                    ));
+                }
+                if !target.bounds.contains_local(state.cursor.position) {
+                    state
+                        .cursor
+                        .move_to(Point::default(), &target.bounds, now_ms)?;
+                }
+                state.cursor.trail_points.clear();
+                state.target = Some(target);
+                cancel.check()?;
+                self.sessions.insert(binding.session_id, state.clone());
+                Ok(OperationResult::session(&state, "desktopResized"))
             }
             Operation::Snapshot {
                 binding,
@@ -852,6 +1021,18 @@ impl<B: CaptureBackend> CuaService<B> {
                 global_input,
                 delivery,
             } => {
+                if global_input
+                    && !self
+                        .cantrip_app_grants
+                        .get(&binding.session_id)
+                        .copied()
+                        .unwrap_or(false)
+                {
+                    return Err(CuaError::new(
+                        ErrorCode::PermissionDenied,
+                        "Shared-pointer input can reach protected Cantrip windows. Use window-directed input, or enable computer use on Cantrip in Settings > Computer Use.",
+                    ));
+                }
                 if global_input && delivery.is_some() {
                     return Err(CuaError::invalid(
                         "Global input and process delivery are mutually exclusive.",
@@ -914,6 +1095,7 @@ impl<B: CaptureBackend> CuaService<B> {
                 // the framed runtime, but execute their owned work in this call.
                 match self.dispatch(operation, cancel, now_ms) {
                     Dispatch::Complete(result) => result,
+                    Dispatch::Capture { plan, work } => self.finish_capture(plan, work()),
                     Dispatch::Input { plan, work } => {
                         let progress = plan.progress.clone();
                         let result = work(&mut |point| progress.set(point));
@@ -927,6 +1109,7 @@ impl<B: CaptureBackend> CuaService<B> {
                 self.backend.close_input(&binding.session_id)?;
                 self.backend.clear_controls(&binding.session_id);
                 self.sessions.remove(&binding.session_id);
+                self.cantrip_app_grants.remove(&binding.session_id);
                 Ok(OperationResult {
                     data: json!({ "closed": true }),
                     payload: vec![],

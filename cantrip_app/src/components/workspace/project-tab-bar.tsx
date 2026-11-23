@@ -56,6 +56,7 @@ import {
 } from "@/lib/workspace-dnd-model";
 
 export interface ProjectPaneTabStripProps {
+  titlebar?: boolean;
   revealInFiles?: boolean;
   activeTabKey: string;
   allowedCreateKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
@@ -135,6 +136,7 @@ function SurfaceTabIcon({ surface }: { surface: ProjectSurface }) {
 }
 
 export function ProjectPaneTabStrip({
+  titlebar = false,
   revealInFiles = true,
   activeTabKey,
   allowedCreateKinds,
@@ -221,10 +223,17 @@ export function ProjectPaneTabStrip({
   );
   return (
     <>
-      <div className="relative z-20 flex h-10 shrink-0 items-stretch">
+      <div
+        className={cn(
+          "relative z-20 flex h-10 shrink-0 items-stretch",
+          titlebar && "min-w-0 flex-1",
+        )}
+        data-tauri-drag-region={titlebar ? "" : undefined}
+      >
         <div
           ref={stripRef}
           data-tab-display={displayMode}
+          data-tauri-drag-region={titlebar ? "" : undefined}
           className={cn(
             "flex min-w-0 flex-1 items-stretch overflow-x-auto overscroll-x-contain px-1 transition-colors [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             paneStripDrop.isOver && "bg-muted/30",

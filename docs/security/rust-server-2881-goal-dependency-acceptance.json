@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "candidateVersion": "1.1.2881",
+  "sourceCommit": "ccafd3cd4baea444ab43c1b84471ab3225f718e3",
+  "platform": "darwin-arm64",
+  "completeReplacement": false,
+  "scope": "Local browser Task and autonomous Goal outcome recovery through real Redis and PostgreSQL process interruption. The packaged Node worker remains live and public model HTTP uses a controlled endpoint.",
+  "artifacts": {
+    "rustServer": {
+      "path": "cantrip-server",
+      "bytes": 94198976,
+      "sha256": "fbb5069e83c4d9a7b5824713900b62477ad6d3ba90419c71702abd11d3815244"
+    },
+    "nodeReferenceSchema": {
+      "path": "schema.js",
+      "bytes": 218621,
+      "sha256": "f19e8659d587e0ddf5b1180a6d9ce4ffa51448307e2e410ba09d4b89ca8fd1b8"
+    },
+    "workerEntrypoint": {
+      "path": "index.js",
+      "bytes": 391601,
+      "sha256": "c632631c9a6d250d2e56d938441b5d39dc972d1b03a6b521d4ddf6c85569e4a9"
+    },
+    "redisServer": {
+      "path": "redis-server",
+      "bytes": 3482208,
+      "sha256": "a18144d2e5d0f1792b4af8cff9524a376c1ebd7271d1981ffcf1c4a330ad51ee"
+    }
+  },
+  "totals": {
+    "completeCases": 6,
+    "productSteps": 102,
+    "cleanServerExits": 24,
+    "cleanWorkerExits": 30
+  },
+  "cases": [
+    {
+      "dependency": "redis",
+      "serverPair": "rust/node",
+      "offlineMs": 5266,
+      "productSteps": 17,
+      "recoveredOriginalOutcome": true,
+      "report": {
+        "path": "redis-rust-node.json",
+        "bytes": 828602,
+        "sha256": "a58f1a00795f1f8eaa33abdb8261e105433a872c1d9211d8a283407adad0b5ee"
+      },
+      "cleanServerExits": 4,
+      "cleanWorkerExits": 5
+    },
+    {
+      "dependency": "redis",
+      "serverPair": "node/rust",
+      "offlineMs": 4980,
+      "productSteps": 17,
+      "recoveredOriginalOutcome": true,
+      "report": {
+        "path": "redis-node-rust.json",
+        "bytes": 1065542,
+        "sha256": "65a2b40f6073d30d7b7f3d537dad6e05b74f1607eff78c3e0ac9fca78c75072a"
+      },
+      "cleanServerExits": 4,
+      "cleanWorkerExits": 5
+    },
+    {
+      "dependency": "redis",
+      "serverPair": "rust/rust",
+      "offlineMs": 4265,
+      "productSteps": 17,
+      "recoveredOriginalOutcome": true,
+      "report": {
+        "path": "redis-rust-rust.json",
+        "bytes": 862724,
+        "sha256": "d7a1ed62de3bc84d331911969f2a6f3ec87ff6d49475579b5f1b6ec281ae4bcf"
+      },
+      "cleanServerExits": 4,
+      "cleanWorkerExits": 5
+    },
+    {
+      "dependency": "postgres",
+      "serverPair": "rust/node",
+      "offlineMs": 5309,
+      "productSteps": 17,
+      "recoveredOriginalOutcome": true,
+      "report": {
+        "path": "postgres-rust-node-repeat.json",
+        "bytes": 839522,
+        "sha256": "07bd46cdeda0f0322b5bcf3dd2aa74752732b2e7ac0e04d70bbba52eff6826b1"
+      },
+      "cleanServerExits": 4,
+      "cleanWorkerExits": 5
+    },
+    {
+      "dependency": "postgres",
+      "serverPair": "node/rust",
+      "offlineMs": 5312,
+      "productSteps": 17,
+      "recoveredOriginalOutcome": true,
+      "report": {
+        "path": "postgres-node-rust.json",
+        "bytes": 1059614,
+        "sha256": "e50ada407d0b88dafc0d5305c3ad52a89668dee0225cd5c9e315b3a51831494c"
+      },
+      "cleanServerExits": 4,
+      "cleanWorkerExits": 5
+    },
+    {
+      "dependency": "postgres",
+      "serverPair": "rust/rust",
+      "offlineMs": 60,
+      "productSteps": 17,
+      "recoveredOriginalOutcome": true,
+      "report": {
+        "path": "postgres-rust-rust.json",
+        "bytes": 850142,
+        "sha256": "c7d02e22cf2afcf4d368469b93199c5070f601f7bd5f84b058328e1de6afb16d"
+      },
+      "cleanServerExits": 4,
+      "cleanWorkerExits": 5
+    }
+  ],
+  "initialMixedPostgresFailure": {
+    "dependency": "postgres",
+    "serverPair": "rust/node",
+    "offlineMs": 5310,
+    "productSteps": 14,
+    "recoveredOriginalOutcome": true,
+    "report": {
+      "path": "postgres-rust-node.json",
+      "bytes": 482865,
+      "sha256": "b73a6606f27598b2a54833dc1eae06f37a0cacdbc8f36eafd7d4b77779b4e545"
+    },
+    "failure": "actual-folder-rust-node-1/node: Packaged Node shutdown: {\"code\":null,\"signal\":\"SIGKILL\"}"
+  },
+  "nodeOnlyPostgresControl": {
+    "report": {
+      "path": "report.json",
+      "bytes": 11091,
+      "sha256": "6f70fc2526db701257e7e9991ccfc9db5220b81aac5fa962480dffeeaa55a5d2"
+    },
+    "offlineHttp503": 4,
+    "offlineTimeouts": 44,
+    "recoveredReadiness": [200, 200],
+    "cleanShutdown": false,
+    "failure": "readiness-0/node: Packaged Node shutdown: {\"code\":null,\"signal\":\"SIGKILL\"}"
+  }
+}

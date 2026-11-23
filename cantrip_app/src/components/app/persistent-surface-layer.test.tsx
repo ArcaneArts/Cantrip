@@ -46,10 +46,39 @@ vi.mock("@/components/app/application-shell-surfaces", () => ({
 }));
 
 vi.mock("@/components/workspace/project-tab-bar", () => ({
-  ProjectPaneTabStrip: ({ children }: { children?: ReactNode }) => children,
+  ProjectPaneTabStrip: ({ children }: { children?: ReactNode }) => (
+    <div data-pane-tabs="">{children}</div>
+  ),
 }));
 
 describe("persistent surface layer", () => {
+  it.each([false, true])(
+    "leaves popout tabs to the titlebar without duplicating a strip (popout=%s)",
+    async (isPopout) => {
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = true;
+      let tree!: TestRenderer.ReactTestRenderer;
+      await act(async () => {
+        tree = TestRenderer.create(
+          <PersistentSurfaceLayer
+            bindings={{
+              appMode: "ide",
+              isPopout,
+              selectedProject: { id: "project" },
+              selectedPaneSurfaces: [],
+              openExplorers: [],
+              projectSurfaces: [],
+            }}
+          />,
+        );
+      });
+      expect(
+        tree.root.findAll((node) => node.props["data-pane-tabs"] === ""),
+      ).toHaveLength(isPopout ? 0 : 1);
+      await act(async () => tree.unmount());
+    },
+  );
   it.each(
     [
       "showSettings",
@@ -60,7 +89,7 @@ describe("persistent surface layer", () => {
       "showArchivedStandaloneChats",
     ].flatMap((screen) => [false, true].map((docked) => ({ screen, docked }))),
   )(
-    "hides retained file content for $screen (docked=$docked) and restores selection on return",
+    "preserves the right file visibility for $screen (docked=$docked) and restores selection on return",
     async ({ screen, docked }) => {
       (
         globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -100,10 +129,16 @@ describe("persistent surface layer", () => {
           <PersistentSurfaceLayer bindings={{ ...bindings, [screen]: true }} />,
         );
       });
-      expect(surfaceProps.documents?.activeTabId).toBeNull();
-      expect(surfaceProps.documents?.placements).toEqual(
-        docked ? [] : undefined,
+      expect(surfaceProps.documents?.activeTabId).toBe(
+        screen === "showProjectOverview" ? "readme" : null,
       );
+      if (docked && screen === "showProjectOverview") {
+        expect(surfaceProps.documents?.placements).toHaveLength(1);
+      } else {
+        expect(surfaceProps.documents?.placements).toEqual(
+          docked ? [] : undefined,
+        );
+      }
       expect(surfaceProps.documents?.surfaces).toEqual([surface]);
       await act(async () => {
         tree.update(<PersistentSurfaceLayer bindings={bindings} />);
@@ -115,13 +150,12 @@ describe("persistent surface layer", () => {
     },
   );
   it.each([false, true])(
-    "routes Explorer files through ownership on desktop=%s",
+    "opens Explorer files as workspace tabs on desktop=%s",
     async (desktopRuntime) => {
       (
         globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
       ).IS_REACT_ACT_ENVIRONMENT = true;
       const openProjectExplorerFile = vi.fn();
-      const openExplorerFileWindow = vi.fn(async () => {});
       const explorer = { projectId: "project", worktreeId: "checkout" };
       const entry = { path: "src/main.rs" };
       let tree!: TestRenderer.ReactTestRenderer;
@@ -134,7 +168,6 @@ describe("persistent surface layer", () => {
               projectSurfaces: [],
               desktopRuntime,
               openProjectExplorerFile,
-              openExplorerFileWindow,
             }}
           />,
         );
@@ -143,20 +176,12 @@ describe("persistent surface layer", () => {
         const open = surfaceProps.explorer!.onOpenFile as Function;
         expect(open).toBeTypeOf("function");
         await open(explorer, entry);
-        if (desktopRuntime) {
-          expect(openExplorerFileWindow).toHaveBeenCalledExactlyOnceWith(
-            explorer,
-            entry,
-          );
-          expect(openProjectExplorerFile).not.toHaveBeenCalled();
-        } else {
-          expect(openProjectExplorerFile).toHaveBeenCalledExactlyOnceWith(
-            "project",
-            "checkout",
-            "src/main.rs",
-          );
-          expect(openExplorerFileWindow).not.toHaveBeenCalled();
-        }
+        expect(openProjectExplorerFile).toHaveBeenCalledExactlyOnceWith(
+          "project",
+          "checkout",
+          "src/main.rs",
+          undefined,
+        );
       } finally {
         await act(async () => tree.unmount());
       }
