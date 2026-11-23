@@ -71,7 +71,7 @@ Build and test the Linux image locally:
 
 ```sh
 docker buildx build --platform linux/amd64 \
-  --build-arg CANTRIP_VERSION_PATCH="$(git rev-list --count HEAD)" \
+  --build-arg CANTRIP_VERSION_PATCH="$(node scripts/version.mjs --patch)" \
   -f deploy/docker/server.Dockerfile --load -t cantrip-rust:qa .
 node scripts/server-rust/container-server-acceptance.mjs \
   --image cantrip-rust:qa --report .qa/native-container.json
@@ -83,7 +83,7 @@ the Debian runtime image:
 
 ```sh
 docker buildx build --platform linux/amd64 \
-  --build-arg CANTRIP_VERSION_PATCH="$(git rev-list --count HEAD)" \
+  --build-arg CANTRIP_VERSION_PATCH="$(node scripts/version.mjs --patch)" \
   -f deploy/docker/server.Dockerfile --target distribution \
   --output type=local,dest=artifacts/native-linux-x64 .
 docker buildx build --platform linux/amd64 \

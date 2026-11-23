@@ -15,7 +15,13 @@ const rootDir = path.resolve(
   "..",
 );
 
-const version = { major: 1, minor: 1, patch: 314, version: "1.1.314" };
+const version = {
+  major: 1,
+  minor: 2,
+  patch: 1,
+  buildNumber: 3567,
+  version: "1.2.1",
+};
 
 test("prefers an explicit macOS build number", () => {
   assert.equal(
@@ -35,7 +41,7 @@ test("uses the Git commit count for local macOS builds", () => {
       environment: {},
       version,
     }),
-    "314",
+    "3567",
   );
 });
 
@@ -68,7 +74,7 @@ test("allows a Windows build to request only the NSIS installer", () => {
       "tauri",
       "build",
       "--config",
-      JSON.stringify({ version: "1.1.314" }),
+      JSON.stringify({ version: "1.2.1" }),
       "--bundles",
       "nsis",
     ],
@@ -99,8 +105,8 @@ test("embeds the official version in every Tauri build", () => {
       "build",
       "--config",
       JSON.stringify({
-        version: "1.1.314",
-        bundle: { macOS: { bundleVersion: "314" } },
+        version: "1.2.1",
+        bundle: { macOS: { bundleVersion: "3567" } },
       }),
       "--debug",
     ],
@@ -110,7 +116,7 @@ test("embeds the official version in every Tauri build", () => {
     "tauri",
     "build",
     "--config",
-    JSON.stringify({ version: "1.1.314" }),
+    JSON.stringify({ version: "1.2.1" }),
   ]);
 });
 
@@ -119,7 +125,7 @@ test("keeps the macOS bundle number numeric for synthetic versions", () => {
     tauriBuildArguments({
       platform: "darwin",
       environment: {},
-      version: { ...version, version: "1.1.314-x", synthetic: true },
+      version: { ...version, version: "1.2.1-x", synthetic: true },
     }),
     [
       "exec",
@@ -127,10 +133,10 @@ test("keeps the macOS bundle number numeric for synthetic versions", () => {
       "build",
       "--config",
       JSON.stringify({
-        version: "1.1.314-x",
+        version: "1.2.1-x",
         bundle: {
           createUpdaterArtifacts: false,
-          macOS: { bundleVersion: "314", signingIdentity: "-" },
+          macOS: { bundleVersion: "3567", signingIdentity: "-" },
         },
       }),
     ],
@@ -142,7 +148,7 @@ test("disables official updater artifacts for synthetic Windows builds", () => {
     tauriBuildArguments({
       platform: "win32",
       environment: { CANTRIP_WINDOWS_BUNDLE: "nsis" },
-      version: { ...version, version: "1.1.314-x", synthetic: true },
+      version: { ...version, version: "1.2.1-x", synthetic: true },
     }),
     [
       "exec",
@@ -150,7 +156,7 @@ test("disables official updater artifacts for synthetic Windows builds", () => {
       "build",
       "--config",
       JSON.stringify({
-        version: "1.1.314-x",
+        version: "1.2.1-x",
         bundle: { createUpdaterArtifacts: false },
       }),
       "--bundles",

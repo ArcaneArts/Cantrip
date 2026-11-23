@@ -20,6 +20,19 @@ const pnpm = (...args) =>
       stdio: "inherit",
     },
   );
+// App Platform may check out only the release tip. The version needs its
+// full commit history to calculate the patch against the pinned baseline.
+const shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], {
+  cwd: root,
+  encoding: "utf8",
+}).trim();
+if (shallow === "true") {
+  execFileSync("git", ["fetch", "--unshallow", "--no-tags", "origin"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+}
+
 const filter = `@cantrip/${component}...`;
 pnpm("install", "--frozen-lockfile", "--ignore-scripts", "--prod=false");
 pnpm("--filter", filter, "build");

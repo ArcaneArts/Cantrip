@@ -29,7 +29,11 @@ async function repositoryFixture() {
   git(repository, "config", "user.email", "cantrip@example.test");
   git(repository, "remote", "add", "origin", remote);
   await writeFile(path.join(repository, "state.txt"), "one\n");
-  git(repository, "add", "state.txt");
+  await writeFile(
+    path.join(repository, "version.json"),
+    '{"major":1,"minor":1}\n',
+  );
+  git(repository, "add", "state.txt", "version.json");
   git(repository, "commit", "-m", "initial");
   git(repository, "push", "-u", "origin", "main");
   return { remote, repository, root };
@@ -132,6 +136,10 @@ test("reconciles release-only history with main's exact tree and deploys the pro
     git(fixture.repository, "push", "origin", "release");
     git(fixture.repository, "switch", "main");
     await writeFile(path.join(fixture.repository, "state.txt"), "new main\n");
+    await writeFile(
+      path.join(fixture.repository, "version.json"),
+      '{"major":1,"minor":2,"patchOffset":1}\n',
+    );
     git(fixture.repository, "commit", "-am", "main changes");
     git(fixture.repository, "push", "origin", "main");
     const main = git(fixture.repository, "rev-parse", "HEAD");
@@ -159,7 +167,7 @@ test("reconciles release-only history with main's exact tree and deploys the pro
             "/tmp/server-output",
             versionPatch,
           ).includes(
-            `CANTRIP_VERSION_PATCH=${git(root, "rev-list", "--count", commit)}`,
+            `CANTRIP_VERSION_PATCH=${Number(git(root, "rev-list", "--count", commit)) - 1}`,
           ),
         );
       },

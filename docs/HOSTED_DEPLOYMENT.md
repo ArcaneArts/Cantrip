@@ -92,7 +92,7 @@ and set a random URL-safe PostgreSQL password in both `POSTGRES_PASSWORD` and
 protect provider or MCP content. Then validate and start the control plane:
 
 ```bash
-export CANTRIP_VERSION_PATCH="$(git rev-list --count HEAD)"
+export CANTRIP_VERSION_PATCH="$(node scripts/version.mjs --patch)"
 docker compose --env-file deploy/hosted.env \
   -f deploy/compose.hosted.yml config --quiet
 docker compose --env-file deploy/hosted.env \
@@ -141,7 +141,7 @@ host's desktop or normal GUI browser sessions. Generate a one-time worker link
 code in Settings, place it in `CANTRIP_WORKER_ENROLLMENT_CODE`, and run:
 
 ```bash
-export CANTRIP_VERSION_PATCH="$(git rev-list --count HEAD)"
+export CANTRIP_VERSION_PATCH="$(node scripts/version.mjs --patch)"
 docker compose --env-file deploy/hosted.env \
   -f deploy/compose.hosted.yml --profile worker up -d --build worker
 ```

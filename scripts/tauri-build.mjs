@@ -26,7 +26,10 @@ export function resolveMacBundleVersion({
     return validateMacBundleVersion(override, "CANTRIP_APP_BUILD_VERSION");
   }
 
-  return validateMacBundleVersion(String(version.patch), "Git commit count");
+  return validateMacBundleVersion(
+    String(version.buildNumber),
+    "Git commit count",
+  );
 }
 
 export function resolveWindowsBundle({ environment = process.env } = {}) {
