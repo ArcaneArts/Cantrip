@@ -36,7 +36,7 @@ const scanRoots = [
   "README.md",
   "docs",
   "cantrip_app/src",
-  "cantrip_server_rs/src",
+  "cantrip_server/src",
   "crates",
   "tests/reference-node-server/src",
   "tests/reference-node-server/test",

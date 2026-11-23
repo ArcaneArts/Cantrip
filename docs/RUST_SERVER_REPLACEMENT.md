@@ -5436,7 +5436,7 @@ acceptance.
 
 ## Foundation
 
-`cantrip_server_rs` currently contains native database execution, the existing
+`cantrip_server` currently contains native database execution, the existing
 SQL migration chain and Drizzle journal, private PostgreSQL provisioning, and
 the foundation HTTP routes, version/bootstrap responses, and account/session
 authentication. Other domains remain unported. The existing Node service
@@ -5720,7 +5720,7 @@ pglite-rs patch. It retains the existing session mutex without issuing BEGIN;
 pg_dump establishes its own snapshot and transaction settings. Dropping the guard
 queues rollback before another caller can proceed. A real SQL-written filesystem
 witness verifies cancellation during execution. Upstream source, MIT license and
-patch provenance are retained under `cantrip_server_rs/third-party/pglite-rs`.
+patch provenance are retained under `cantrip_server/third-party/pglite-rs`.
 
 PostgreSQL exports use a temporary loopback relay authenticated by a random
 startup token. Rust opens the actual backend connection with its existing TLS

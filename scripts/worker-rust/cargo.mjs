@@ -10,7 +10,7 @@ import {
 } from "../build-rust-executable.mjs";
 
 const execute = promisify(execFile);
-const manifest = "cantrip_worker_rs/Cargo.toml";
+const manifest = "cantrip_worker/Cargo.toml";
 
 async function workerCargoEnvironment() {
   const environment = { ...process.env };

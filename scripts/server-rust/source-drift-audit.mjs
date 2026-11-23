@@ -35,38 +35,43 @@ const { values } = parseArgs({
 });
 const git = (...args) =>
   execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
-// The reference moved after the production cutover. Include both locations so
-// an audit crossing that commit still examines the original server history.
-const nodeSourceRoots = [
-  "cantrip_server/src/",
-  "tests/reference-node-server/src/",
-];
+// The old Node and current Rust server use the same path at different commits.
+const serverSourceRoot = "cantrip_server/src/";
+const nodeReferenceRoot = "tests/reference-node-server/src/";
 const commits = git(
   "log",
   "--first-parent",
   "--format=%H%x00%s",
   `${values.baseline}..${values.head}`,
   "--",
-  ...nodeSourceRoots.map((root) => root.slice(0, -1)),
+  serverSourceRoot.slice(0, -1),
+  nodeReferenceRoot.slice(0, -1),
 )
   .split("\n")
   .filter(Boolean)
   .map((line) => {
     const [commit, subject] = line.split("\0");
     const files = git("diff", "--name-only", `${commit}^`, commit).split("\n");
+    const canonicalServerIsRust = Boolean(
+      git("ls-tree", commit, "cantrip_server/Cargo.toml"),
+    );
     return {
       commit,
       subject,
-      nodeFiles: files.filter((file) =>
-        nodeSourceRoots.some((root) => file.startsWith(root)),
+      nodeFiles: files.filter(
+        (file) =>
+          file.startsWith(nodeReferenceRoot) ||
+          (!canonicalServerIsRust && file.startsWith(serverSourceRoot)),
       ),
       rustCoreFiles: files.filter(
         (file) =>
           file.startsWith("cantrip_server_rs/src/") ||
+          (canonicalServerIsRust && file.startsWith(serverSourceRoot)) ||
           file.startsWith("crates/"),
       ),
     };
-  });
+  })
+  .filter((commit) => commit.nodeFiles.length > 0);
 const generatedContracts = [];
 for (const [file, roots] of [
   ["security.json", undefined],
@@ -91,7 +96,7 @@ for (const [file, roots] of [
     path.join(
       repositoryRoot,
       roots === null
-        ? "cantrip_server_rs/contracts"
+        ? "cantrip_server/contracts"
         : "crates/cantrip-protocol/contracts",
       file,
     ),

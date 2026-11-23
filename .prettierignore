@@ -13,11 +13,11 @@ cantrip_os/.state/
 cantrip_codex/upstream/
 
 # Preserve the pinned Redis crate; its original archive checksum is documented.
-cantrip_server_rs/third-party/redis/
+cantrip_server/third-party/redis/
 
 # Preserve the upstream README files imported with these crates.
-cantrip_server_rs/third-party/icu_collator/README.md
-cantrip_server_rs/third-party/pglite-rs/README.md
+cantrip_server/third-party/icu_collator/README.md
+cantrip_server/third-party/pglite-rs/README.md
 
 # Packaged skills may preserve licensed third-party instructions verbatim.
 skill_templates/

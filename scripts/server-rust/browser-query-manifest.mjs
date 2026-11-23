@@ -110,7 +110,7 @@ for (const [key, input] of Object.entries({
 phase = "delete";
 await repo.deleteBrowser("owner", "browser");
 const destination = new URL(
-  "../../cantrip_server_rs/src/browsers/queries.json",
+  "../../cantrip_server/src/browsers/queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write"))

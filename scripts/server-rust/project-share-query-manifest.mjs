@@ -49,7 +49,7 @@ await repository.getProjectSource("owner", "project", { workerId: "worker" });
 phase = "worktree";
 await repository.getProjectWorktreeContext("owner", "project", "worktree");
 const destination = new URL(
-  "../../cantrip_server_rs/src/project_shares/queries.json",
+  "../../cantrip_server/src/project_shares/queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write"))

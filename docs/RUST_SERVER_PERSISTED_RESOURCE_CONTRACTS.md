@@ -60,8 +60,8 @@ materialized projections retain their explicit scope.
 New table bindings are `account_bandwidth_flushes`,
 `account_storage_reconciliation_leases`, `account_storage_usage_current` and
 `account_storage_usage_snapshots`. Their native implementations are in
-`cantrip_server_rs/src/usage/repository.rs` with history maintenance in
-`cantrip_server_rs/src/usage/maintenance.rs`.
+`cantrip_server/src/usage/repository.rs` with history maintenance in
+`cantrip_server/src/usage/maintenance.rs`.
 
 ## Browser and remote-surface persistence
 

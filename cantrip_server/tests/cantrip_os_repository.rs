@@ -261,7 +261,7 @@ async fn exercise_run_captures(
     database.execute(&format!("DO $$ BEGIN ALTER TABLE terminals DISABLE TRIGGER terminal_os_capture_immutable; UPDATE terminals SET cantrip_os_binding_id=NULL,os_binding_generation=NULL,os_attachment_generation=NULL,os_runtime_generation=NULL WHERE id='{terminal_id}'; ALTER TABLE terminals ENABLE TRIGGER terminal_os_capture_immutable; END $$;")).await?;
     database
         .execute(include_str!(
-            "../../cantrip_server/drizzle/0249_cantrip_os_run_terminal_files.sql"
+            "../drizzle/0249_cantrip_os_run_terminal_files.sql"
         ))
         .await?;
     let backfilled = terminal_repo

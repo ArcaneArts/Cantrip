@@ -143,7 +143,7 @@ for (const [name, query] of Object.entries(captured)) {
   output[name] = { sql: query.sql, parameters };
 }
 const destination = new URL(
-  "../../cantrip_server_rs/contracts/mcp-worktree-queries.json",
+  "../../cantrip_server/contracts/mcp-worktree-queries.json",
   import.meta.url,
 );
 const encoded = JSON.stringify(output, null, 2) + "\n";

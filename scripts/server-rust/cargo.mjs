@@ -71,7 +71,7 @@ export async function rustEnvironment(overrides = {}) {
       "--locked",
       "--format-version=1",
       "--manifest-path",
-      "cantrip_server_rs/Cargo.toml",
+      "cantrip_server/Cargo.toml",
     ],
     { cwd: repositoryRoot, env: environment, maxBuffer: 16 * 1024 * 1024 },
   );
@@ -97,7 +97,7 @@ if (
       command,
       "--locked",
       "--manifest-path",
-      "cantrip_server_rs/Cargo.toml",
+      "cantrip_server/Cargo.toml",
       ...arguments_,
     ],
     { cwd: repositoryRoot, env: await rustEnvironment(), stdio: "inherit" },

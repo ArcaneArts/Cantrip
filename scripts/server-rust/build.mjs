@@ -7,7 +7,7 @@ export { repositoryRoot } from "../build-rust-executable.mjs";
 
 async function buildServerTool({ environment, ...options } = {}) {
   return buildRustExecutable({
-    manifest: "cantrip_server_rs/Cargo.toml",
+    manifest: "cantrip_server/Cargo.toml",
     binary: "cantrip-server",
     ...options,
     environment: environment ?? (await rustEnvironment()),

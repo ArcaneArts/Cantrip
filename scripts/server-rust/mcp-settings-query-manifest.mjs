@@ -123,7 +123,7 @@ try {
     new WorkerRepository(db).getWorker("owner", "worker"),
   );
   const destination = new URL(
-    "../../cantrip_server_rs/contracts/mcp-settings-queries.json",
+    "../../cantrip_server/contracts/mcp-settings-queries.json",
     import.meta.url,
   );
   const encoded = await format(JSON.stringify({ queries: captured }), {

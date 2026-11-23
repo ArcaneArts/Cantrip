@@ -23,7 +23,7 @@ assert.equal(calls.length, 1);
 assert.deepEqual(calls[0].params, ["fixture-interaction", "fixture-owner", 1]);
 const output = JSON.stringify({ interactionGet: calls[0].sql }, null, 2) + "\n";
 const destination = new URL(
-  "../../cantrip_server_rs/contracts/mcp-surface-queries.json",
+  "../../cantrip_server/contracts/mcp-surface-queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write")) await writeFile(destination, output);

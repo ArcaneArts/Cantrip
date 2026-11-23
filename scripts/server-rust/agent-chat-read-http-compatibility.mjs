@@ -30,7 +30,7 @@ const databaseMode = option("--database") ?? "pglite";
 const readQueries = JSON.parse(
   await readFile(
     new URL(
-      "../../cantrip_server_rs/contracts/mcp-read-queries.json",
+      "../../cantrip_server/contracts/mcp-read-queries.json",
       import.meta.url,
     ),
     "utf8",

@@ -50,7 +50,7 @@ if (
   else {
     await writeFile(
       new URL(
-        "../../cantrip_server_rs/contracts/resource-usage.json",
+        "../../cantrip_server/contracts/resource-usage.json",
         import.meta.url,
       ),
       JSON.stringify(contract, null, 2) + "\n",

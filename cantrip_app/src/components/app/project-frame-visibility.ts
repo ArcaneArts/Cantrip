@@ -1,6 +1,4 @@
-import type { WorkspaceSelection } from "@/lib/workspace-selection";
-
-export function projectFrameVisibility({
+export function projectFrameVisible({
   desktopProjectFrame,
   mobileProjectSelectorOpen,
   showArchivedStandaloneChats,
@@ -8,7 +6,6 @@ export function projectFrameVisibility({
   showProjectSettings,
   showServerAdmin,
   showSettings,
-  workspaceDestination,
 }: {
   desktopProjectFrame: boolean;
   mobileProjectSelectorOpen: boolean;
@@ -17,9 +14,9 @@ export function projectFrameVisibility({
   showProjectSettings: boolean;
   showServerAdmin: boolean;
   showSettings: boolean;
-  workspaceDestination: WorkspaceSelection["destination"];
 }) {
-  const railsVisible = Boolean(
+  // A pane can show its selected tab even when the project has no focused pane.
+  return Boolean(
     desktopProjectFrame &&
     !mobileProjectSelectorOpen &&
     !showImporter &&
@@ -28,10 +25,4 @@ export function projectFrameVisibility({
     !showServerAdmin &&
     !showProjectSettings,
   );
-  // A transient file preview owns its target pane instead of switching the
-  // whole frame back to the legacy single-surface host.
-  return {
-    docked: railsVisible && workspaceDestination !== "overview",
-    railsVisible,
-  } as const;
 }

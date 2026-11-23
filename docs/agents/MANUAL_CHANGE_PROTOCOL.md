@@ -99,7 +99,7 @@ Use relevant focused checks as needed:
 pnpm --filter @cantrip/protocol test
 pnpm server:check
 pnpm server:test
-pnpm --filter @cantrip/worker test
+pnpm worker:rust:test
 pnpm --filter @cantrip/app test
 pnpm --filter @cantrip/app build
 cargo fmt --manifest-path cantrip_app/src-tauri/Cargo.toml -- --check

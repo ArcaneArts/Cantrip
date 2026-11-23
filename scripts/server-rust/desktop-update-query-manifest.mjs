@@ -67,7 +67,7 @@ assert.deepEqual(
 assert.deepEqual(pending, []);
 assert.deepEqual(Object.keys(queries), names);
 const destination = new URL(
-  "../../cantrip_server_rs/contracts/desktop-update-queries.json",
+  "../../cantrip_server/contracts/desktop-update-queries.json",
   import.meta.url,
 );
 const encoded = await format(JSON.stringify({ queries }), {

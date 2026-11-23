@@ -32,7 +32,7 @@ if (
 ) {
   const target = path.join(
     repositoryRoot,
-    "cantrip_server_rs/contracts/removed-repository-routes.json",
+    "cantrip_server/contracts/removed-repository-routes.json",
   );
   const contract = await removedRepositoryContract();
   if (process.argv.includes("--write"))

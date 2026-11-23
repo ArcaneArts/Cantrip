@@ -4,12 +4,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { deployAppPlatform } from "./deploy-app-platform.mjs";
-import {
-  deployProduction,
-  prepareProductionSecrets,
-} from "./deploy-production.mjs";
-
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -225,7 +219,7 @@ function promotePreparedReleaseBranch(root, mainCommit) {
     inherit: true,
   });
   console.log(
-    `Promoted origin/release to ${promotionCommit.slice(0, 12)}. GitHub Actions will build and publish the native release artifacts.`,
+    `Promoted origin/release to ${promotionCommit.slice(0, 12)}. The release workflow builds, publishes, and deploys this snapshot.`,
   );
   return finishPromotion(root, promotionCommit, true, skipped);
 }
@@ -252,37 +246,14 @@ export function verifyInstallationCompatibility({ root = scriptRoot } = {}) {
   }
 }
 
-export async function releaseCantrip({
-  root = scriptRoot,
-  deploy = deployProduction,
-  deployWeb = deployAppPlatform,
-  prepareSecrets = prepareProductionSecrets,
-  verifyCompatibility = verifyInstallationCompatibility,
-} = {}) {
-  const mainCommit = prepareReleaseSource(root, verifyCompatibility);
-  // Perform the actual authenticated production read before publishing anything.
-  // Reuse it for deployment instead of making a second read after promotion.
-  const preparedSecrets = await prepareSecrets({ root });
-  const promotion = promotePreparedReleaseBranch(root, mainCommit);
-  const appPlatformDeployment = await deployWeb({
-    root,
-    commit: promotion.commit,
-    waitForActivation: false,
-  });
-  const deployment = await deploy({
-    root,
-    commit: promotion.commit,
-    preparedSecrets,
-  });
-  return { appPlatformDeployment, deployment, promotion };
-}
-
 const isMain =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  releaseCantrip().catch((error) => {
+  try {
+    promoteReleaseBranch();
+  } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
-  });
+  }
 }

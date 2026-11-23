@@ -18,64 +18,32 @@ application origin must appear exactly in `CANTRIP_APP_ORIGINS`.
 
 ## Production Droplet release
 
-The committed `deploy/production/` lane deploys Cantrip's control plane to the
-current DigitalOcean Droplet as a native, self-contained Linux x64 Server behind
-host Caddy. It does not install Docker, Node.js, pnpm, Git, or Infisical on the
-Droplet. The release workstation needs:
+The release workflow installs the native Linux x64 Server on the DigitalOcean
+Droplet behind host Caddy. Run `pnpm release` from synchronized `main` to
+promote the snapshot and start the GitHub Actions release. The Linux build
+exports and smoke-tests the Rust distribution. After artifact publication the
+Winterhold job downloads the same archive, installs it, and checks HTTPS
+readiness and the live native version. The DigitalOcean App Platform components
+build from the same `release` branch and the workflow checks their live revisions.
 
-- a clean `main` checkout equal to `origin/main` for branch promotion;
-- Docker Engine with Buildx and Linux AMD64 build support;
-- an authenticated `doctl` CLI session authorized to update the Cantrip App
-  Platform app;
-- authenticated Infisical CLI access to the project in `.infisical.json`;
-- OpenSSH, SCP, and tar; and
-- working SSH access to the `sshHost` in `deploy/production/deploy.json` and
-  HTTPS routing for the production API name.
+Configure the GitHub Actions `production` environment to allow the `release`
+branch. Store an Infisical service token with read access to the configured
+production environment as its `INFISICAL_TOKEN` secret. That job uses the
+deployment configuration in `deploy/production/deploy.json` and the pinned
+SSH host key in `deploy/production/known_hosts`.
 
-The Infisical environment named by that file must define the administrator,
-allowed application origins, API domain and public origin, database URL, the
-currently required hosted server keyring and active key ID, metrics token, and
-SSH private deployment key. The server keyring is a compatibility startup
-input at this revision; provider and MCP payloads use account endpoint
-encryption and cannot be decrypted with it. The deployer reads the values
-locally and sends only an explicit server-variable allowlist to the host. The
-SSH key is never included in the service environment. Secret values are not
-printed by the deployment script.
+Infisical holds the host deployment key and the server environment. The deployer
+sends the allowed server variables to the host, stages them in a root-only file,
+and uses the deployment key to connect with OpenSSH. The deployment key is
+separate from the service environment. See the
+[distribution guide](DISTRIBUTION.md) to apply App Platform spec changes.
 
-Run a full release from synchronized `main`:
-
-```bash
-pnpm release
-```
-
-The command first synchronizes `main` and reads and validates the actual
-production secrets through Infisical. Missing authentication, project access,
-or required secrets stops the release before advancing `release` or triggering
-App Platform. Run `infisical login` if authentication is missing. The successful
-secret read stays in memory and is reused by the host deployment; values are
-not printed or committed.
-
-It then promotes main’s exact contents to the `release` branch, preserving divergent
-release history through a reconciliation commit when needed, validates the DigitalOcean App
-Platform specification and triggers deployment of its `app` and `site`
-components, cross-builds the Server bundle, writes the root-only environment,
-uploads the immutable release, runs the matching forward migration, switches
-the active symlink, and restarts Caddy and Cantrip. App Platform activation is
-not awaited by this command; the host phase waits for the single public API
-`/readyz` endpoint before succeeding. If branch promotion already succeeded
-but the Droplet deployment failed, retry only the host phase:
-
-```bash
-pnpm deploy:server
-```
-
-The host phase builds an isolated checkout of the exact promoted commit,
-including its commit-count version and deployment files. A reconciliation or
-CI-trigger commit does not need the same SHA as `main`. The standalone retry
-fetches the current remote `release` snapshot without changing the local branch
-or including uncommitted work. SSH connection errors and the actual API readiness
-response determine deployment success; there is no preliminary DNS-to-host-IP
-equality gate.
+Retry a failed Winterhold job from the release run so it can reuse the signed
+release's Linux archive. The standalone recovery command `pnpm deploy:server`
+fetches an isolated copy of the current remote `release`, builds locally with
+Docker Buildx, and uses the authenticated Infisical CLI and OpenSSH. An operator
+can also pass an exact commit and a published Linux archive with
+`node scripts/deploy-production.mjs --commit <sha> --artifact <archive>`.
 
 The host layout is:
 

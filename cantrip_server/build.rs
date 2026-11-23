@@ -42,7 +42,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {}
     }
-    let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join("..");
+    let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
+    let root = manifest.join("..");
     println!(
         "cargo:rerun-if-changed={}",
         root.join("version.json").display()
@@ -99,7 +100,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         println!("cargo:rerun-if-changed={}", root.join(path).display());
     }
-    let directory = root.join("cantrip_server/drizzle");
+    let directory = manifest.join("drizzle");
     let journal_path = directory.join("meta/_journal.json");
     println!("cargo:rerun-if-changed={}", journal_path.display());
     let journal: serde_json::Value = serde_json::from_slice(&fs::read(journal_path)?)?;

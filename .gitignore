@@ -48,7 +48,8 @@ playwright-report/
 
 # Rust/Tauri build output.
 cantrip_cli/target/
-cantrip_server_rs/target/
+cantrip_server/target/
+cantrip_worker/target/
 cantrip_app/src-tauri/target/
 cantrip_app/src-tauri/gen/
 cantrip_app/src-tauri/resources/runtime/*

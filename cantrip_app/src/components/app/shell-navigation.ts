@@ -1075,9 +1075,11 @@ export function createShellNavigationCommands({
     setShowProjectSettings(false);
   };
   const openCompactRootSettings = (section: SettingsSection = "general") => {
-    setSelectedProjectId(null);
-    setWorkspaceSelection(emptyWorkspaceSelection());
-    setPendingSurfaceSelection(null);
+    if (compactShell) {
+      setSelectedProjectId(null);
+      setWorkspaceSelection(emptyWorkspaceSelection());
+      setPendingSurfaceSelection(null);
+    }
     setSettingsSection(section);
     setShowSettings(true);
     setShowArchivedStandaloneChats(false);

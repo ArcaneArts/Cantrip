@@ -41,23 +41,23 @@ ingress:
 static_sites:
   - name: app
     environment_slug: node-js
-    build_command: pnpm --filter @cantrip/app... build
+    build_command: node build.mjs app
     github:
       branch: release
       deploy_on_push: true
       repo: ArcaneArts/Cantrip
-    source_dir: /
-    output_dir: cantrip_app/dist
+    source_dir: /.do/web-build
+    output_dir: dist
     index_document: index.html
     catchall_document: index.html
   - name: site
     environment_slug: node-js
-    build_command: pnpm --filter @cantrip/site... build
+    build_command: node build.mjs site
     github:
       branch: release
       deploy_on_push: true
       repo: ArcaneArts/Cantrip
-    source_dir: /
-    output_dir: cantrip_site/dist
+    source_dir: /.do/web-build
+    output_dir: dist
     index_document: index.html
     catchall_document: index.html

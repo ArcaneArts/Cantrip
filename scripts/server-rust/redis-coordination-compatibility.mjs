@@ -50,7 +50,7 @@ const save = async () => {
 const environment = await rustEnvironment();
 const executable = path.join(
   environment.CARGO_TARGET_DIR ??
-    path.join(repositoryRoot, "cantrip_server_rs/target"),
+    path.join(repositoryRoot, "cantrip_server/target"),
   environment.CARGO_BUILD_TARGET,
   "debug/examples/redis-coordinator-fixture" +
     (process.platform === "win32" ? ".exe" : ""),
@@ -61,7 +61,7 @@ const build = spawn(
     "build",
     "--locked",
     "--manifest-path",
-    "cantrip_server_rs/Cargo.toml",
+    "cantrip_server/Cargo.toml",
     "--example",
     "redis-coordinator-fixture",
   ],

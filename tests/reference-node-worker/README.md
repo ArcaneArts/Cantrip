@@ -3,7 +3,7 @@
 The retired TypeScript worker provides compatibility evidence for the Rust
 worker. Its source, dependencies, and the historical guest helpers live
 here for explicit development comparisons. Normal builds and packages use
-`cantrip_worker_rs`.
+`cantrip_worker`.
 
 From the repository root, use `pnpm worker:reference:build` or
 `pnpm worker:reference:test`. To launch the reference worker for comparison,

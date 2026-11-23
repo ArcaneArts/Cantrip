@@ -36,7 +36,7 @@ const tree = `github-${worker}-main`;
 const sourceQueries = JSON.parse(
   await readFile(
     new URL(
-      "../../cantrip_server_rs/contracts/mcp-target-queries.json",
+      "../../cantrip_server/contracts/mcp-target-queries.json",
       import.meta.url,
     ),
     "utf8",
@@ -46,7 +46,7 @@ sourceQueries.worker = {
   sql: JSON.parse(
     await readFile(
       new URL(
-        "../../cantrip_server_rs/contracts/mcp-read-queries.json",
+        "../../cantrip_server/contracts/mcp-read-queries.json",
         import.meta.url,
       ),
       "utf8",

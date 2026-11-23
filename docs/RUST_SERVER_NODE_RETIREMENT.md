@@ -1,10 +1,11 @@
-# Production Node server retirement
+# Production Node server retirement record
 
 The production `@cantrip/server` workspace and its build, development, start and
-migration commands are removed. Normal service builds, desktop launch and
-deployment use `cantrip_server_rs`. The unchanged worker still uses Node.
-`cantrip_server/drizzle` retains the existing SQL migration chain, which Rust
-embeds and applies without loading JavaScript.
+migration commands were removed. Normal service builds, desktop launch and
+deployment now use the Rust crate in [`cantrip_server/`](../cantrip_server/).
+The worker was ported separately in [`cantrip_worker/`](../cantrip_worker/).
+`cantrip_server/drizzle` contains the SQL migration chain that the Rust server
+embeds and applies.
 
 ## Development compatibility baseline
 

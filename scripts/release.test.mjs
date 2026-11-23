@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { promoteReleaseBranch, releaseCantrip } from "./release.mjs";
+import { promoteReleaseBranch } from "./release.mjs";
 import {
   productionServerBuildArguments,
   withProductionSource,
@@ -118,94 +118,6 @@ test("refuses to promote when installation compatibility verification fails", as
   }
 });
 
-test("deploys the exact commit promoted to release", async () => {
-  const fixture = await repositoryFixture();
-  try {
-    let deployed;
-    let webDeployed;
-    const preparedSecrets = {
-      privateKey: "deployment key",
-      environmentFile: "",
-    };
-    const calls = [];
-    const result = await releaseCantrip({
-      root: fixture.repository,
-      prepareSecrets: async ({ root }) => {
-        calls.push("secrets");
-        assert.equal(root, fixture.repository);
-        assert.throws(() => git(fixture.remote, "rev-parse", "release"));
-        await Promise.resolve();
-        return preparedSecrets;
-      },
-      deploy: async (options) => {
-        calls.push("server");
-        deployed = options;
-        return { commit: options.commit };
-      },
-      deployWeb: async (options) => {
-        calls.push("web");
-        webDeployed = options;
-        return { commit: options.commit };
-      },
-      verifyCompatibility: () => calls.push("compatibility"),
-    });
-    assert.deepEqual(calls, ["compatibility", "secrets", "web", "server"]);
-    assert.equal(deployed.preparedSecrets, preparedSecrets);
-    assert.equal(deployed.root, fixture.repository);
-    assert.equal(webDeployed.root, fixture.repository);
-    assert.equal(webDeployed.waitForActivation, false);
-    assert.equal(
-      deployed.commit,
-      git(fixture.repository, "rev-parse", "refs/heads/main"),
-    );
-    assert.equal(webDeployed.commit, deployed.commit);
-    assert.equal(result.appPlatformDeployment.commit, deployed.commit);
-    assert.equal(result.deployment.commit, deployed.commit);
-  } finally {
-    await rm(fixture.root, { force: true, recursive: true });
-  }
-});
-
-for (const existingRelease of [false, true]) {
-  test(`does not publish anything when Infisical fails (${existingRelease ? "existing" : "first"} release)`, async () => {
-    const fixture = await repositoryFixture();
-    try {
-      const previous = git(fixture.repository, "rev-parse", "HEAD");
-      if (existingRelease)
-        git(fixture.repository, "push", "origin", "HEAD:release");
-      git(
-        fixture.repository,
-        "commit",
-        "--allow-empty",
-        "-m",
-        "next [skip ci]",
-      );
-      git(fixture.repository, "push", "origin", "main");
-      const calls = [];
-      const failure = new Error("Infisical session expired");
-      await assert.rejects(
-        releaseCantrip({
-          root: fixture.repository,
-          verifyCompatibility: () => undefined,
-          prepareSecrets: async () => {
-            calls.push("secrets");
-            throw failure;
-          },
-          deployWeb: async () => calls.push("web"),
-          deploy: async () => calls.push("server"),
-        }),
-        (error) => error === failure,
-      );
-      assert.deepEqual(calls, ["secrets"]);
-      if (existingRelease)
-        assert.equal(git(fixture.remote, "rev-parse", "release"), previous);
-      else assert.throws(() => git(fixture.remote, "rev-parse", "release"));
-    } finally {
-      await rm(fixture.root, { force: true, recursive: true });
-    }
-  });
-}
-
 test("reconciles release-only history with main's exact tree and deploys the promoted SHA", async () => {
   const fixture = await repositoryFixture();
   try {
@@ -223,49 +135,35 @@ test("reconciles release-only history with main's exact tree and deploys the pro
     git(fixture.repository, "commit", "-am", "main changes");
     git(fixture.repository, "push", "origin", "main");
     const main = git(fixture.repository, "rev-parse", "HEAD");
-    const deployed = [];
-    const result = await releaseCantrip({
+    const result = promoteReleaseBranch({
       root: fixture.repository,
-      prepareSecrets: async () => ({}),
       verifyCompatibility: () => undefined,
-      deploy: async (options) =>
-        withProductionSource(
-          options,
-          async ({ root, commit, versionPatch }) => {
-            deployed.push(commit);
-            assert.equal(
-              await readFile(path.join(root, "state.txt"), "utf8"),
-              "new main\n",
-            );
-            await assert.rejects(
-              readFile(path.join(root, "release-only.txt")),
-              {
-                code: "ENOENT",
-              },
-            );
-            assert.equal(
-              versionPatch,
-              git(root, "rev-list", "--count", commit),
-            );
-            assert.ok(
-              productionServerBuildArguments(
-                { platform: "linux/amd64" },
-                "/tmp/server-output",
-                versionPatch,
-              ).includes(`CANTRIP_VERSION_PATCH=${versionPatch}`),
-            );
-            return { commit };
-          },
-        ),
-      deployWeb: async ({ commit }) => {
-        deployed.push(commit);
-      },
     });
     const promoted = git(fixture.remote, "rev-parse", "release");
     assert.notEqual(promoted, main);
-    assert.deepEqual(deployed, [promoted, promoted]);
-    assert.equal(result.promotion.commit, promoted);
-    assert.equal(result.deployment.commit, promoted);
+    assert.equal(result.commit, promoted);
+    await withProductionSource(
+      { root: fixture.repository, commit: promoted },
+      async ({ root, commit, versionPatch }) => {
+        assert.equal(commit, promoted);
+        assert.equal(
+          await readFile(path.join(root, "state.txt"), "utf8"),
+          "new main\n",
+        );
+        await assert.rejects(readFile(path.join(root, "release-only.txt")), {
+          code: "ENOENT",
+        });
+        assert.ok(
+          productionServerBuildArguments(
+            { platform: "linux/amd64" },
+            "/tmp/server-output",
+            versionPatch,
+          ).includes(
+            `CANTRIP_VERSION_PATCH=${git(root, "rev-list", "--count", commit)}`,
+          ),
+        );
+      },
+    );
     assert.equal(
       git(fixture.repository, "rev-parse", `${promoted}^{tree}`),
       git(fixture.repository, "rev-parse", `${main}^{tree}`),
@@ -388,38 +286,35 @@ test("pushes skip-marked history separately from a clean release trigger and ret
   }
 });
 
-test("builds the promoted snapshot even if local main advances and becomes dirty during web deployment", async () => {
+test("builds the promoted snapshot even if local main advances and becomes dirty after promotion", async () => {
   const fixture = await repositoryFixture();
   try {
     const main = git(fixture.repository, "rev-parse", "HEAD");
     let sourceRoot;
-    const result = await releaseCantrip({
+    const result = promoteReleaseBranch({
       root: fixture.repository,
-      prepareSecrets: async () => ({}),
       verifyCompatibility: () => undefined,
-      deployWeb: async () => {
-        await writeFile(
-          path.join(fixture.repository, "state.txt"),
-          "future main\n",
-        );
-        git(fixture.repository, "commit", "-am", "next development commit");
-        await writeFile(
-          path.join(fixture.repository, "state.txt"),
-          "uncommitted draft\n",
+    });
+    await writeFile(
+      path.join(fixture.repository, "state.txt"),
+      "future main\n",
+    );
+    git(fixture.repository, "commit", "-am", "next development commit");
+    await writeFile(
+      path.join(fixture.repository, "state.txt"),
+      "uncommitted draft\n",
+    );
+    await withProductionSource(
+      { root: fixture.repository, commit: result.commit },
+      async ({ root, commit }) => {
+        sourceRoot = root;
+        assert.equal(commit, main);
+        assert.equal(
+          await readFile(path.join(root, "state.txt"), "utf8"),
+          "one\n",
         );
       },
-      deploy: (options) =>
-        withProductionSource(options, async ({ root, commit }) => {
-          sourceRoot = root;
-          assert.equal(commit, main);
-          assert.equal(
-            await readFile(path.join(root, "state.txt"), "utf8"),
-            "one\n",
-          );
-          return { commit };
-        }),
-    });
-    assert.equal(result.deployment.commit, main);
+    );
     assert.equal(
       await readFile(path.join(fixture.repository, "state.txt"), "utf8"),
       "uncommitted draft\n",

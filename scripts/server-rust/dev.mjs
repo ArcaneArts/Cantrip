@@ -164,12 +164,12 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 if (!stopping && values.watch) {
   for (const [relative, recursive, selected] of [
-    ["cantrip_server_rs/src", true],
+    ["cantrip_server/src", true],
     ["crates", true],
     [".", false, new Set(["Cargo.toml", "Cargo.lock"])],
-    ["cantrip_server_rs/third-party", true],
+    ["cantrip_server/third-party", true],
     ["cantrip_server/drizzle", true],
-    ["cantrip_server_rs", false, new Set(["Cargo.toml", "build.rs"])],
+    ["cantrip_server", false, new Set(["Cargo.toml", "build.rs"])],
   ]) {
     watchers.push(
       watch(
