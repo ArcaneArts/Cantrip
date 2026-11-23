@@ -1,4 +1,10 @@
-import { useId, useLayoutEffect, useRef, type ReactNode } from "react";
+import {
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { ProjectSidebarPage } from "./use-project-sidebar-page";
 import { cn } from "@/lib/utils";
 
@@ -12,10 +18,11 @@ export function ProjectSidebarPages({
   page: ProjectSidebarPage;
   onChange(page: ProjectSidebarPage): void;
   files: ReactNode;
-  conversations: ReactNode;
+  conversations(actionsHost: HTMLDivElement | null): ReactNode;
   tabsVisible?: boolean;
 }) {
   const id = useId();
+  const [actionsHost, setActionsHost] = useState<HTMLDivElement | null>(null);
   const fileScroll = useRef<HTMLDivElement>(null);
   const fileOffset = useRef(0);
   const restoringOffset = useRef<number | null>(null);
@@ -40,50 +47,55 @@ export function ProjectSidebarPages({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
-        role="tablist"
-        aria-label="Project sidebar"
         hidden={!tabsVisible}
         className={cn(
           "mb-1 h-8 shrink-0 items-center gap-1 border-t border-transparent pt-1 group-hover/sidebar-shell:border-border/70",
           tabsVisible ? "flex" : "hidden",
         )}
       >
-        {pages.map((value, index) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            id={`${id}-${value}-tab`}
-            aria-controls={`${id}-${value}-panel`}
-            aria-selected={page === value}
-            tabIndex={page === value ? 0 : -1}
-            className={cn(
-              "h-6 rounded px-2 text-[10px] font-medium uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              page === value
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:bg-muted/60",
-            )}
-            onClick={() => onChange(value)}
-            onKeyDown={(event) => {
-              const next =
-                event.key === "ArrowRight"
-                  ? pages[(index + 1) % pages.length]
-                  : event.key === "ArrowLeft"
-                    ? pages[(index + pages.length - 1) % pages.length]
-                    : event.key === "Home"
-                      ? pages[0]
-                      : event.key === "End"
-                        ? pages[1]
-                        : null;
-              if (!next) return;
-              event.preventDefault();
-              onChange(next);
-              document.getElementById(`${id}-${next}-tab`)?.focus();
-            }}
-          >
-            {value === "files" ? "Files" : "Chats"}
-          </button>
-        ))}
+        <div
+          role="tablist"
+          aria-label="Project sidebar"
+          className="flex items-center gap-1"
+        >
+          {pages.map((value, index) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              id={`${id}-${value}-tab`}
+              aria-controls={`${id}-${value}-panel`}
+              aria-selected={page === value}
+              tabIndex={page === value ? 0 : -1}
+              className={cn(
+                "h-6 rounded px-2 text-[10px] font-medium uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                page === value
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:bg-muted/60",
+              )}
+              onClick={() => onChange(value)}
+              onKeyDown={(event) => {
+                const next =
+                  event.key === "ArrowRight"
+                    ? pages[(index + 1) % pages.length]
+                    : event.key === "ArrowLeft"
+                      ? pages[(index + pages.length - 1) % pages.length]
+                      : event.key === "Home"
+                        ? pages[0]
+                        : event.key === "End"
+                          ? pages[1]
+                          : null;
+                if (!next) return;
+                event.preventDefault();
+                onChange(next);
+                document.getElementById(`${id}-${next}-tab`)?.focus();
+              }}
+            >
+              {value === "files" ? "Files" : "Chats"}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto flex shrink-0" ref={setActionsHost} />
       </div>
       <div
         ref={fileScroll}
@@ -121,7 +133,7 @@ export function ProjectSidebarPages({
           page === "conversations" && "flex flex-col",
         )}
       >
-        {conversations}
+        {conversations(actionsHost)}
       </div>
     </div>
   );

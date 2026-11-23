@@ -22,7 +22,7 @@ it("switches by keyboard while preserving edits, mounted panels, and file scroll
         page={page}
         onChange={setPage}
         files={<input aria-label="File name" defaultValue="draft.ts" />}
-        conversations={<button>Agent one</button>}
+        conversations={() => <button>Agent one</button>}
       />
     );
   }
@@ -71,7 +71,7 @@ it("restores file scroll after asynchronous directory content becomes available"
         page="files"
         onChange={onChange}
         files={<p>Loaded files</p>}
-        conversations={null}
+        conversations={() => null}
       />,
     ),
   );
@@ -93,7 +93,7 @@ it("restores file scroll after asynchronous directory content becomes available"
         page="conversations"
         onChange={onChange}
         files={null}
-        conversations={null}
+        conversations={() => null}
       />,
     ),
   );
@@ -105,7 +105,7 @@ it("restores file scroll after asynchronous directory content becomes available"
         page="files"
         onChange={onChange}
         files={<p>Loading</p>}
-        conversations={null}
+        conversations={() => null}
       />,
     ),
   );
@@ -119,7 +119,7 @@ it("restores file scroll after asynchronous directory content becomes available"
         page="files"
         onChange={onChange}
         files={<div>Directory contents</div>}
-        conversations={null}
+        conversations={() => null}
       />,
     ),
   );

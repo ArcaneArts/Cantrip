@@ -432,11 +432,12 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                     }
                     page={projectSidebarPage ?? "files"}
                     onChange={setProjectSidebarPage}
-                    conversations={
+                    conversations={(actionsHost) =>
                       selectedProjectId ? (
                         <ProjectConversationList
                           key={selectedProjectId}
                           projectId={selectedProjectId}
+                          actionsHost={actionsHost}
                           placementPending={bindings.placeConversation?.pending}
                           onPlace={(chatId, region) =>
                             bindings.placeConversation(

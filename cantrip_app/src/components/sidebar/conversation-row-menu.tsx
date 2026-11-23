@@ -1,5 +1,6 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import {
   StyledDropdownMenuContent,
@@ -8,6 +9,7 @@ import {
 export function ConversationRowMenu({
   title,
   pending,
+  revealOnHover = false,
   archive,
   rename,
   fork,
@@ -17,6 +19,7 @@ export function ConversationRowMenu({
 }: {
   title: string;
   pending: boolean;
+  revealOnHover?: boolean;
   archive?: () => void;
   rename?: () => void;
   fork?: () => void;
@@ -47,7 +50,11 @@ export function ConversationRowMenu({
           disabled={pending}
           data-conversation-menu=""
           aria-label={`Actions for ${title}`}
-          className="grid size-7 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            "grid size-7 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+            revealOnHover &&
+              "opacity-0 transition-opacity group-hover/conversation-tile:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100",
+          )}
         >
           <MoreHorizontal className="size-3.5" />
         </button>

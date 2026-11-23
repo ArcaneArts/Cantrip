@@ -16,6 +16,7 @@ import { useAppLiveStatus } from "@/lib/app-live-react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Loader2, Plus, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ChatSummary, WorkerSummary } from "@cantrip/protocol";
 import { newAgentChatTitle } from "@/components/chat/agent-chat-name";
 import { ChatActivityStatus } from "@/components/chat/chat-activity-status";
@@ -35,6 +36,7 @@ import { cn } from "@/lib/utils";
 
 export function ProjectConversationList({
   projectId,
+  actionsHost,
   onPlace,
   placementPending = new Set<string>(),
   archiveFocusRequest,
@@ -49,6 +51,7 @@ export function ProjectConversationList({
   focusWindow,
 }: {
   projectId: string;
+  actionsHost?: HTMLDivElement | null;
   placementPending?: ReadonlySet<string>;
   onPlace?: (
     chatId: string,
@@ -70,6 +73,7 @@ export function ProjectConversationList({
   const liveStatus = useAppLiveStatus();
   const lifecycle = useConversationLifecycle(projectId, controller);
   const listRoot = useRef<HTMLElement>(null);
+  const createButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!visible || !archiveFocusRequest) return;
     const heading = listRoot.current?.querySelector<HTMLElement>(
@@ -94,6 +98,7 @@ export function ProjectConversationList({
       !root ||
       (!fromDialog &&
         document.activeElement !== document.body &&
+        document.activeElement !== createButton.current &&
         !root.contains(document.activeElement))
     )
       return;
@@ -104,11 +109,9 @@ export function ProjectConversationList({
       : null;
     (
       row ??
-      root.querySelector<HTMLElement>(
-        target.attribute === "data-archived-conversation-id"
-          ? "[data-archive-heading]"
-          : '[aria-label="New agent chat"]',
-      )
+      (target.attribute === "data-archived-conversation-id"
+        ? root.querySelector<HTMLElement>("[data-archive-heading]")
+        : createButton.current)
     )?.focus();
   }
   useEffect(() => {
@@ -275,24 +278,28 @@ export function ProjectConversationList({
       aria-label="Agent chats"
       className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex h-8 shrink-0 items-center justify-between px-2 text-xs text-muted-foreground">
-        <span>{query.data?.pages[0]?.total ?? ""} Chats</span>
-        <Button
-          aria-label="New agent chat"
-          title="New agent chat"
-          size="icon"
-          variant="ghost"
-          className="size-6"
-          disabled={creating}
-          onClick={() => void create()}
-        >
-          {creating ? (
-            <Loader2 className="size-3 animate-spin" />
-          ) : (
-            <Plus className="size-3" />
-          )}
-        </Button>
-      </div>
+      {actionsHost
+        ? createPortal(
+            <Button
+              ref={createButton}
+              type="button"
+              aria-label="New agent chat"
+              title="New agent chat"
+              size="icon"
+              variant="ghost"
+              className="size-6 text-muted-foreground"
+              disabled={creating}
+              onClick={() => void create()}
+            >
+              {creating ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Plus className="size-3" />
+              )}
+            </Button>,
+            actionsHost,
+          )
+        : null}
       {error || query.error ? (
         <div role="alert" className="px-2 py-2 text-xs text-destructive">
           {errorMessage(error ?? query.error)}
@@ -331,7 +338,12 @@ export function ProjectConversationList({
                   : undefined
               }
             >
-              <div className="flex items-center">
+              <div
+                className={cn(
+                  "group/conversation-tile flex items-center rounded pr-1",
+                  selectedChatId === chat.id ? "bg-muted" : "hover:bg-muted/60",
+                )}
+              >
                 <ConversationRowButton
                   projectId={projectId}
                   chatId={chat.id}
@@ -344,10 +356,7 @@ export function ProjectConversationList({
                   type="button"
                   data-conversation-id={chat.id}
                   aria-current={selectedChatId === chat.id ? "true" : undefined}
-                  className={cn(
-                    "flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selectedChatId === chat.id && "bg-muted",
-                  )}
+                  className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded px-2 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onMouseDown={preventMiddleMouseDefault}
                   onAuxClick={(event) => {
                     if (event.button === 1) {
@@ -388,6 +397,7 @@ export function ProjectConversationList({
                   <ChatActivityStatus chat={chat} />
                 </ConversationRowButton>
                 <ConversationRowMenu
+                  revealOnHover
                   title={chat.title}
                   pending={
                     lifecycle.pending.has(chat.id) ||
