@@ -221,7 +221,7 @@ test("validates the committed production target", () => {
   );
 });
 
-test("passes the release commit count into the production Docker build", () => {
+test("passes the resolved release patch into the production Docker build", () => {
   const arguments_ = productionServerBuildArguments(
     config,
     "/tmp/cantrip-server-output",
@@ -239,7 +239,7 @@ test("passes the release commit count into the production Docker build", () => {
   ]);
   assert.throws(
     () => productionServerBuildArguments(config, "/tmp/output", "release"),
-    /must be a Git commit count/u,
+    /must be a non-negative integer/u,
   );
 });
 

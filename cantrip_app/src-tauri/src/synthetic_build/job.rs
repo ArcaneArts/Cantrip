@@ -688,10 +688,7 @@ pub async fn start_synthetic_build(
     let worktree = coordinator.prepare_worktree(sha.clone()).await?;
     let digest = write_overlay(&worktree)
         .map_err(|error| SyntheticBuildError::new("synthetic_overlay_failed", error, true))?;
-    let version = format!(
-        "{}.{}.{}-x",
-        source.version.major, source.version.minor, source.commit_count
-    );
+    let version = source.synthetic_version();
     let now = Utc::now().to_rfc3339();
     let mut job = SyntheticBuildJob {
         id: Uuid::new_v4().to_string(),

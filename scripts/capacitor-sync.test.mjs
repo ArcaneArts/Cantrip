@@ -10,16 +10,22 @@ import {
   writeCapacitorVersionFiles,
 } from "./capacitor-sync.mjs";
 
-const version = { major: 1, minor: 1, patch: 1375, version: "1.1.1375" };
+const version = {
+  major: 1,
+  minor: 2,
+  patch: 1,
+  buildNumber: 3567,
+  version: "1.2.1",
+};
 
 test("renders native Capacitor version values", () => {
   assert.match(
     renderAndroidVersionProperties(version),
-    /CANTRIP_VERSION_NAME=1\.1\.1375\nCANTRIP_VERSION_CODE=1375/u,
+    /CANTRIP_VERSION_NAME=1\.2\.1\nCANTRIP_VERSION_CODE=3567/u,
   );
   assert.match(
     renderIosVersionConfiguration(version),
-    /CANTRIP_VERSION = 1\.1\.1375\nCANTRIP_BUILD_NUMBER = 1375/u,
+    /CANTRIP_VERSION = 1\.2\.1\nCANTRIP_BUILD_NUMBER = 3567/u,
   );
 });
 

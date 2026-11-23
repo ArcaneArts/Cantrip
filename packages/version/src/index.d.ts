@@ -2,6 +2,7 @@ export interface CantripVersion {
   readonly major: number;
   readonly minor: number;
   readonly patch: number;
+  readonly buildNumber: number;
   readonly version: string;
   readonly synthetic: boolean;
   readonly commitSha: string | null;
