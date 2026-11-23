@@ -16,7 +16,7 @@ import { errorMessage as errorText } from "@/lib/error-message";
 import { GlobalContentHost } from "@/components/app/global-content-host";
 import { PersistentSurfaceLayer } from "@/components/app/persistent-surface-layer";
 import { ProjectWorkspaceFrame } from "@/components/app/project-workspace-frame";
-import { projectFrameVisibility } from "@/components/app/project-frame-visibility";
+import { projectFrameVisible } from "@/components/app/project-frame-visibility";
 import { ShellHeader } from "@/components/app/shell-header";
 import { ShellOverlays } from "@/components/app/shell-overlays";
 import { ShellSidebar } from "@/components/app/shell-sidebar";
@@ -47,7 +47,6 @@ function ShellContent({
     showServerAdmin,
     showSettings,
     tabLayout,
-    workspaceSelection,
   } = bindings;
   const desktopProjectFrame = Boolean(
     appMode === "ide" &&
@@ -56,7 +55,7 @@ function ShellContent({
     selectedProject &&
     tabLayout.data,
   );
-  const { docked, railsVisible } = projectFrameVisibility({
+  const docked = projectFrameVisible({
     desktopProjectFrame,
     mobileProjectSelectorOpen,
     showArchivedStandaloneChats,
@@ -64,7 +63,6 @@ function ShellContent({
     showProjectSettings,
     showServerAdmin,
     showSettings,
-    workspaceDestination: workspaceSelection.destination,
   });
   return (
     <section className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -86,11 +84,7 @@ function ShellContent({
         />
       ) : null}
       {desktopProjectFrame ? (
-        <ProjectWorkspaceFrame
-          bindings={bindings}
-          docked={docked}
-          railsVisible={railsVisible}
-        />
+        <ProjectWorkspaceFrame bindings={bindings} docked={docked} />
       ) : (
         <>
           <PersistentSurfaceLayer bindings={bindings} />

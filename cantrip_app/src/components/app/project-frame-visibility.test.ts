@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { projectFrameVisibility } from "./project-frame-visibility";
+import { projectFrameVisible } from "./project-frame-visibility";
 
 const visibleProjectFrame = {
   desktopProjectFrame: true,
@@ -13,52 +13,17 @@ const visibleProjectFrame = {
 } as const;
 
 describe("project frame visibility", () => {
-  it.each([
-    {
-      docked: false,
-      name: "project overview",
-      workspaceDestination: "overview" as const,
-    },
-    {
-      docked: true,
-      name: "sidebar file preview",
-      workspaceDestination: "surface" as const,
-    },
-  ])("keeps rails visible while showing the $name", ({ docked, ...state }) => {
-    expect(
-      projectFrameVisibility({ ...visibleProjectFrame, ...state }),
-    ).toEqual({
-      docked,
-      railsVisible: true,
-    });
-  });
-
-  it("keeps panes and rails visible behind the Overview dialog", () => {
+  it("keeps the workspace visible behind the Overview dialog", () => {
     const state = { ...visibleProjectFrame, showProjectOverview: true };
-    expect(
-      projectFrameVisibility({ ...state, workspaceDestination: "surface" }),
-    ).toEqual({ docked: true, railsVisible: true });
+    expect(projectFrameVisible(state)).toBe(true);
   });
 
-  it("shows the pane workspace and rails for a selected project surface", () => {
-    expect(
-      projectFrameVisibility({
-        ...visibleProjectFrame,
-        workspaceDestination: "surface",
-      }),
-    ).toEqual({ docked: true, railsVisible: true });
-  });
-
-  it.each(["showSettings", "showProjectSettings"])(
+  it.each(["showSettings", "showProjectSettings"] as const)(
     "hides panes and rails while %s owns the content area",
     (setting) => {
       expect(
-        projectFrameVisibility({
-          ...visibleProjectFrame,
-          [setting]: true,
-          workspaceDestination: "surface",
-        }),
-      ).toEqual({ docked: false, railsVisible: false });
+        projectFrameVisible({ ...visibleProjectFrame, [setting]: true }),
+      ).toBe(false);
     },
   );
 });

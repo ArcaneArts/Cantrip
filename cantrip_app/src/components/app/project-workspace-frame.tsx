@@ -48,7 +48,6 @@ import { PersistentSurfaceLayer } from "@/components/app/persistent-surface-laye
 import { projectPaneRenderBindings } from "@/components/app/project-pane-render-bindings";
 import {
   createKindsForPaneRegion,
-  legacyTopStripPresentation,
   partitionVisibleWorkspacePanes,
   responsiveProjectWorkspaceGridModel,
   visibleWorkspacePanes,
@@ -613,11 +612,9 @@ function PaneBodyHost({
 export function ProjectWorkspaceFrame({
   bindings,
   docked,
-  railsVisible,
 }: {
   bindings: Readonly<Record<string, any>>;
   docked: boolean;
-  railsVisible: boolean;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const resizePointerRef = useRef<{
@@ -1111,37 +1108,23 @@ export function ProjectWorkspaceFrame({
     bindings.dockPresentationMutation.isPending ||
     bindings.tabLayoutMutation.isPending,
   );
-  const legacyTopStrip = legacyTopStripPresentation(presentations);
-  const persistentSurfaceBindings = docked
-    ? {
-        ...bindings,
-        dockPanePresentations: livePresentations,
-        excludedPersistentSurfaceIds,
-      }
-    : railsVisible
-      ? {
-          ...bindings,
-          selectedPane: legacyTopStrip?.pane,
-          selectedPaneOwnedElsewhere: legacyTopStrip
-            ? Boolean(bindings.paneOwnedElsewhere?.(legacyTopStrip.pane.id))
-            : false,
-          selectedPaneSurfaces: legacyTopStrip?.surfaces ?? [],
-          selectedTabKey: legacyTopStrip?.activeTabKey ?? null,
-        }
-      : bindings;
+  // Keep the owners in pane mode while Settings replaces the workspace.
+  const persistentSurfaceBindings = {
+    ...bindings,
+    dockPanePresentations: docked ? livePresentations : [],
+    excludedPersistentSurfaceIds,
+  };
 
   return (
     <div
       className="group/workspace-docks grid min-h-0 min-w-0 flex-1 overflow-hidden"
       data-docked={docked ? "true" : "false"}
-      data-rails-visible={railsVisible ? "true" : "false"}
+      data-rails-visible={docked ? "true" : "false"}
       style={{
-        gridTemplateColumns: railsVisible
+        gridTemplateColumns: docked
           ? "minmax(0, 1fr) 2.5rem"
           : "minmax(0, 1fr) 0",
-        gridTemplateRows: railsVisible
-          ? "minmax(0, 1fr) 2.5rem"
-          : "minmax(0, 1fr) 0",
+        gridTemplateRows: docked ? "minmax(0, 1fr) 2.5rem" : "minmax(0, 1fr) 0",
       }}
     >
       <div
@@ -1270,7 +1253,7 @@ export function ProjectWorkspaceFrame({
         />
         {!docked ? <GlobalContentHost bindings={bindings} /> : null}
       </div>
-      {railsVisible ? (
+      {docked ? (
         <DockRail
           revealInFiles={!bindings.isPopout}
           activeTabKey={right?.activeTabKey ?? null}
@@ -1301,7 +1284,7 @@ export function ProjectWorkspaceFrame({
           surfaces={right?.surfaces ?? []}
         />
       ) : null}
-      {railsVisible ? (
+      {docked ? (
         <DockRail
           revealInFiles={!bindings.isPopout}
           activeTabKey={bottom?.activeTabKey ?? null}
