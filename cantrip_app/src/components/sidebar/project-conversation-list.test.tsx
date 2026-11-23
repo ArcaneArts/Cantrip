@@ -3,7 +3,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { chatSummarySchema } from "@cantrip/protocol";
+import {
+  chatSummarySchema,
+  DEFAULT_ELITE_REVEAL_CONFIG,
+} from "@cantrip/protocol";
+import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
 import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 const mocks = vi.hoisted(() => ({
   catalog: vi.fn(),
@@ -108,6 +112,65 @@ afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
   client.clear();
+});
+it("replays the Elite reveal for active and archived rows when reopening Chats", async () => {
+  client.setQueryDefaults(["chats", "project", "conversations"], {
+    staleTime: Infinity,
+  });
+  client.setQueryData(["chats", "project", "conversations", "archived"], {
+    pages: [
+      {
+        state: "archived",
+        items: [
+          {
+            ...chat,
+            id: "archived-agent",
+            archivedAt: chat.createdAt,
+            expiresAt: "2027-01-28T00:00:00.000Z",
+            lastUsedAt: chat.createdAt,
+          },
+        ],
+        total: 1,
+        nextCursor: null,
+      },
+    ],
+    pageParams: [undefined],
+  });
+  const switchTo = (chats: boolean) =>
+    act(async () =>
+      root.render(
+        <>
+          <EliteGlobalEffects config={DEFAULT_ELITE_REVEAL_CONFIG} enabled />
+          {view(chats)}
+        </>,
+      ),
+    );
+  const rows = () => [
+    ...host.querySelectorAll<HTMLElement>("[data-conversation-row]"),
+  ];
+  const isRevealing = (row: HTMLElement) =>
+    row.hasAttribute("data-elite-global-state");
+
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    await switchTo(false);
+    const mountedRows = rows();
+    expect(mountedRows).toHaveLength(2);
+    expect(mountedRows.some(isRevealing)).toBe(false);
+
+    await switchTo(true);
+    expect(mountedRows.every(isRevealing)).toBe(true);
+    await switchTo(false);
+    expect(mountedRows.some(isRevealing)).toBe(false);
+
+    await switchTo(true);
+    expect(rows()).toEqual(mountedRows);
+    expect(mountedRows.every(isRevealing)).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(mountedRows.some(isRevealing)).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 it("opens an offline Agent directly and focuses an existing window without creating a tab", async () => {
   openConversation.mockResolvedValue({ focusWindowId: "other-window" });

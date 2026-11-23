@@ -276,6 +276,7 @@ export function ProjectConversationList({
     <section
       ref={listRoot}
       aria-label="Agent chats"
+      data-elite-ignore={visible ? undefined : ""}
       className="flex min-h-0 flex-1 flex-col"
     >
       {actionsHost

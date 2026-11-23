@@ -45,6 +45,7 @@ export const ELITE_GLOBAL_BOUNDARY_SELECTOR =
 export const ELITE_GLOBAL_SCROLL_SUPPRESSION_MS = 120;
 export const ELITE_GLOBAL_SEEN_KEY_LIMIT = 10_000;
 export const ELITE_GLOBAL_OBSERVER_OPTIONS: MutationObserverInit = {
+  attributeOldValue: true,
   attributeFilter: ["data-elite-global", "data-elite-global-key"],
   attributes: true,
   childList: true,
@@ -320,11 +321,19 @@ export function EliteGlobalEffects({
     const observer = new MutationObserver((records) => {
       records.forEach((record) => {
         if (record.type === "attributes") {
+          const element = record.target;
+          if (!(element instanceof HTMLElement)) return;
           if (
-            record.target instanceof HTMLElement &&
-            record.target.matches(ELITE_GLOBAL_BOUNDARY_SELECTOR)
+            record.attributeName === "data-elite-global-key" &&
+            record.oldValue !== null &&
+            !element.hasAttribute("data-elite-global-key")
           ) {
-            queueRoot(record.target);
+            // A mounted panel withdraws its row keys while hidden.
+            animated.delete(element);
+            seenKeys.delete(record.oldValue.trim());
+            settle(element);
+          } else if (element.matches(ELITE_GLOBAL_BOUNDARY_SELECTOR)) {
+            queueRoot(element);
           }
           return;
         }
