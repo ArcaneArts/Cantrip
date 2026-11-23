@@ -233,11 +233,15 @@ try {
       path.join(installed, "COPYRIGHT.winpthreads"),
     );
   }
-  await mkdir(output);
+  // Windows cannot rename a directory over an existing directory. Its rename
+  // already rejects a collision. Reserve the name on POSIX, where rename
+  // can otherwise replace an existing empty directory.
+  const reserveOutput = process.platform !== "win32";
+  if (reserveOutput) await mkdir(output);
   try {
     await rename(installed, output);
   } catch (error) {
-    await rmdir(output);
+    if (reserveOutput) await rmdir(output);
     throw error;
   }
 } finally {
