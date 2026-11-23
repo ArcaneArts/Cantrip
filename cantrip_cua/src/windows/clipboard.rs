@@ -40,12 +40,12 @@ pub(super) fn read_focused(
         if sequence() != original
             && owns_clipboard(window)
             && let Some(clipboard) = Clipboard::open()
+            && sequence() != original
+            && owns_clipboard(window)
         {
-            if sequence() != original && owns_clipboard(window) {
-                let text = clipboard.text()?;
-                cancel.check()?;
-                return Ok(text);
-            }
+            let text = clipboard.text()?;
+            cancel.check()?;
+            return Ok(text);
         }
         if Instant::now() >= deadline {
             return Ok(None);
