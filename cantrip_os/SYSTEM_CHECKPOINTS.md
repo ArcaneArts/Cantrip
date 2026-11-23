@@ -122,7 +122,7 @@ incomplete ciphertext, which is not a published checkpoint.
 The actual transfer integration can be run against a disposable Docker Engine:
 
 ```sh
-pnpm --filter '@cantrip/worker^...' build
+pnpm --filter '@cantrip/worker-reference^...' build
 pnpm --filter @cantrip/worker-reference reference:build
 CANTRIP_OS_SYSTEM_INTEGRATION=1 \
 CANTRIP_OS_SYSTEM_EVIDENCE=/absolute/private/evidence \

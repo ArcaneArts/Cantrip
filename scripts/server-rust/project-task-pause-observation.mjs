@@ -9,7 +9,7 @@ export function projectPauseDiagnostic(value, normalizeClock) {
       JSON.parse(
         readFileSync(
           new URL(
-            "../../cantrip_server_rs/contracts/task-pause-queries.json",
+            "../../cantrip_server/contracts/task-pause-queries.json",
             import.meta.url,
           ),
           "utf8",

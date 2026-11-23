@@ -6,7 +6,7 @@ import { terminalDeletionFixture } from "./terminal-deletion-fixture.mjs";
 const { queries } = JSON.parse(
   await readFile(
     new URL(
-      "../../cantrip_server_rs/src/database/resource_layout_queries.json",
+      "../../cantrip_server/src/database/resource_layout_queries.json",
       import.meta.url,
     ),
     "utf8",

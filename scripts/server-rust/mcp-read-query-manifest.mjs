@@ -109,7 +109,7 @@ const output =
     2,
   ) + "\n";
 const target = new URL(
-  "../../cantrip_server_rs/contracts/mcp-read-queries.json",
+  "../../cantrip_server/contracts/mcp-read-queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write")) await writeFile(target, output);

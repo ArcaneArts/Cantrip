@@ -52,7 +52,7 @@ const manifest = {
   sets,
 };
 const destination = new URL(
-  "../../cantrip_server_rs/contracts/native-command-policy.json",
+  "../../cantrip_server/contracts/native-command-policy.json",
   import.meta.url,
 );
 if (process.argv.includes("--check"))

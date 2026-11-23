@@ -15,4 +15,4 @@ the native executable. Node remains required by the unchanged worker and by
 explicit development compatibility tests.
 
 Use `pnpm server:reference:build` and `pnpm server:reference:test` when working
-on those comparisons. New server behavior belongs in `cantrip_server_rs`.
+on those comparisons. New server behavior belongs in `cantrip_server`.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { label, json, literal } from "./project-target-state.mjs";
-import queries from "../../cantrip_server_rs/contracts/mcp-target-queries.json" with { type: "json" };
+import queries from "../../cantrip_server/contracts/mcp-target-queries.json" with { type: "json" };
 import {
   settingsChat as chat,
   settingsWorker as worker,

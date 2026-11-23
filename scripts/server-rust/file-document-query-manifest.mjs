@@ -104,7 +104,7 @@ for (phase of ["create", "retry"])
 phase = "context";
 await repository.executionContext("owner", document);
 const destination = new URL(
-  "../../cantrip_server_rs/src/file_documents/queries.json",
+  "../../cantrip_server/src/file_documents/queries.json",
   import.meta.url,
 );
 if (process.argv.includes("--write"))

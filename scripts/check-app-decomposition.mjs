@@ -5,8 +5,8 @@ import { sourceLineCount } from "./application-source-corpus.mjs";
 import { readRustServerSources } from "./rust-server-source-corpus.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const applicationFacade = "cantrip_server_rs/src/lib.rs";
-const applicationCompositionRoot = "cantrip_server_rs/src/main.rs";
+const applicationFacade = "cantrip_server/src/lib.rs";
+const applicationCompositionRoot = "cantrip_server/src/main.rs";
 const applicationFacadeMaximum = 200;
 const applicationCompositionRootMaximum = 1_500;
 const applicationModuleMaximum = 1_999;

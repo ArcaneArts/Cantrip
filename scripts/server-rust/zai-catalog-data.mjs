@@ -10,7 +10,7 @@ import {
 } from "../../tests/reference-node-server/src/models/zai-catalog.ts";
 
 const target = new URL(
-  "../../cantrip_server_rs/contracts/zai-catalog.json",
+  "../../cantrip_server/contracts/zai-catalog.json",
   import.meta.url,
 );
 const source =

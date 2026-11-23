@@ -27,7 +27,7 @@ const sha = (value) =>
 const queryManifest = JSON.parse(
   await readFile(
     new URL(
-      "../../cantrip_server_rs/contracts/queued-prompt-queries.json",
+      "../../cantrip_server/contracts/queued-prompt-queries.json",
       import.meta.url,
     ),
     "utf8",

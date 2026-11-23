@@ -22,7 +22,7 @@ const manifest = { list: captured[0], status: captured[1] };
 if (process.argv.includes("--write"))
   await writeFile(
     new URL(
-      "../../cantrip_server_rs/src/workers/maintenance/queries.json",
+      "../../cantrip_server/src/workers/maintenance/queries.json",
       import.meta.url,
     ),
     JSON.stringify(manifest, null, 2) + "\n",

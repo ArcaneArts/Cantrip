@@ -84,7 +84,7 @@ for (const [key, { params }] of Object.entries(entries)) {
   );
 }
 const destination = new URL(
-  "../../cantrip_server_rs/contracts/mcp-target-queries.json",
+  "../../cantrip_server/contracts/mcp-target-queries.json",
   import.meta.url,
 );
 const filename = fileURLToPath(destination);

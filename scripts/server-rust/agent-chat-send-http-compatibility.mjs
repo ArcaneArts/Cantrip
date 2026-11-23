@@ -27,7 +27,7 @@ import { chatMessageOpaqueContentSchema } from "../../packages/protocol/dist/ind
 const deliveryQueries = JSON.parse(
   await readFile(
     new URL(
-      "../../cantrip_server_rs/contracts/mcp-delivery-queries.json",
+      "../../cantrip_server/contracts/mcp-delivery-queries.json",
       import.meta.url,
     ),
     "utf8",

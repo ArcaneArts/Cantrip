@@ -29,7 +29,7 @@ assert.equal(
 assert.equal(queries.length, 1);
 assert.deepEqual(queries[0].params, ["fixture-runtime", "fixture-owner", 1]);
 const destination = new URL(
-    "../../cantrip_server_rs/contracts/run-capture-query.json",
+    "../../cantrip_server/contracts/run-capture-query.json",
     import.meta.url,
   ),
   filename = fileURLToPath(destination);

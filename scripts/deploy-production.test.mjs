@@ -311,22 +311,27 @@ test("strips macOS metadata from the uploaded production server archive", async 
   }
 });
 
-test("builds the canonical server image without the Node server workspace", async () => {
-  const dockerfile = await readFile(
-    new URL("../deploy/docker/server.Dockerfile", import.meta.url),
-    "utf8",
-  );
-  for (const source of [
-    "version.json",
-    "policy_templates",
-    "cantrip_server_rs",
-    "cantrip_interaction",
-    "cantrip_server/drizzle",
-  ]) {
-    assert.match(dockerfile, new RegExp(`^COPY ${source}`, "mu"));
+test("copies the canonical Rust service paths into both server image builds", async () => {
+  for (const file of ["server.Dockerfile", "server-rust.Dockerfile"]) {
+    const dockerfile = await readFile(
+      new URL(`../deploy/docker/${file}`, import.meta.url),
+      "utf8",
+    );
+    assert.match(dockerfile, /^COPY version\.json \.\/$/mu);
+    for (const source of [
+      "policy_templates",
+      "cantrip_server",
+      "cantrip_worker",
+      "cantrip_interaction",
+    ]) {
+      assert.ok(
+        dockerfile.split("\n").includes(`COPY ${source} ./${source}`),
+        file,
+      );
+    }
+    assert.match(dockerfile, /^ARG CANTRIP_VERSION_PATCH$/mu);
+    assert.doesNotMatch(dockerfile, /^COPY .*tests\/reference-node-server/mu);
   }
-  assert.match(dockerfile, /^ARG CANTRIP_VERSION_PATCH$/mu);
-  assert.doesNotMatch(dockerfile, /^COPY cantrip_server \.\/cantrip_server$/mu);
 });
 
 test("includes the shared Rust build module in both Linux server build contexts", async () => {

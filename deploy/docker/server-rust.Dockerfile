@@ -46,10 +46,9 @@ RUN apt-get update \
 COPY version.json ./
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
-COPY cantrip_server_rs ./cantrip_server_rs
-COPY cantrip_worker_rs ./cantrip_worker_rs
+COPY cantrip_server ./cantrip_server
+COPY cantrip_worker ./cantrip_worker
 COPY cantrip_interaction ./cantrip_interaction
-COPY cantrip_server/drizzle ./cantrip_server/drizzle
 COPY scripts/build-rust-executable.mjs scripts/version.mjs ./scripts/
 COPY scripts/server-rust/build.mjs scripts/server-rust/build-version.mjs \
     scripts/server-rust/cargo.mjs ./scripts/server-rust/

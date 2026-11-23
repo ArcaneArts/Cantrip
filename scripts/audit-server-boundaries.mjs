@@ -44,7 +44,7 @@ for (const [suite, filter] of [
       "test",
       "--locked",
       "--manifest-path",
-      "cantrip_server_rs/Cargo.toml",
+      "cantrip_server/Cargo.toml",
       "--test",
       suite,
       filter,

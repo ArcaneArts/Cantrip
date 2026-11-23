@@ -96,10 +96,7 @@ manifest.runtime_active = captured.findLast((query) =>
 );
 if (process.argv.includes("--write"))
   await writeFile(
-    new URL(
-      "../../cantrip_server_rs/src/terminals/queries.json",
-      import.meta.url,
-    ),
+    new URL("../../cantrip_server/src/terminals/queries.json", import.meta.url),
     JSON.stringify(manifest, null, 2) + "\n",
   );
 else console.log(JSON.stringify(manifest));

@@ -122,7 +122,7 @@ Reproduce the focused checks from the repository root:
 ```sh
 node scripts/server-rust/cargo.mjs test --lib --test chat_import_contracts
 node scripts/server-rust/cargo.mjs clippy --all-targets -- -D warnings
-cargo fmt --manifest-path cantrip_server_rs/Cargo.toml -- --check
+cargo fmt --manifest-path cantrip_server/Cargo.toml -- --check
 pnpm --filter @cantrip/server test test/chat-import-jobs.test.ts test/chat-import-batching.test.ts test/external-chat-history-api.test.ts
 node --import tsx scripts/server-rust/chat-import-repository-compatibility.mjs --database pglite --report /tmp/chat-import-repository-pglite.json
 node --import tsx scripts/server-rust/chat-import-http-compatibility.mjs --database pglite --leases --lifecycle --discovery --report /tmp/chat-import-http-pglite.json

@@ -21,7 +21,7 @@ import { LiveProbe } from "./live-sockets.mjs";
 const queries = JSON.parse(
   await readFile(
     new URL(
-      "../../cantrip_server_rs/contracts/mcp-settings-queries.json",
+      "../../cantrip_server/contracts/mcp-settings-queries.json",
       import.meta.url,
     ),
     "utf8",

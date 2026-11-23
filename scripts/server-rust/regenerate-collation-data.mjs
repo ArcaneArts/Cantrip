@@ -16,10 +16,7 @@ import { fileURLToPath } from "node:url";
 const option = process.argv.indexOf("--generator");
 const generator = option < 0 ? "icu4x-datagen" : process.argv[option + 1];
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const target = path.join(
-  root,
-  "cantrip_server_rs/third-party/icu_collator_data",
-);
+const target = path.join(root, "cantrip_server/third-party/icu_collator_data");
 const temporary = await mkdtemp(path.join(tmpdir(), "cantrip-collation-data-"));
 const output = path.join(temporary, "data");
 try {

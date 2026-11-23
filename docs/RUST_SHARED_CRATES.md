@@ -3,7 +3,7 @@
 The Rust server consumes eight shared libraries under `crates/`. This record
 describes their extraction from the server, including server adapters and
 compatibility re-exports at the original paths. The
-[native worker](../cantrip_worker_rs/README.md) builds on these foundations.
+[native worker](../cantrip_worker/README.md) builds on these foundations.
 
 The baseline is `86f7963df5a87d5da977ff2bcc6f8016a64627ab`, the completed Rust
 server replacement. The implementation milestones and local evidence are recorded
@@ -50,7 +50,7 @@ The root Cargo workspace contains the server, native worker package and the shar
 shares the original lockfile, dependency patches, release profile, and Rust 1.93
 baseline. Desktop, CLI, interaction, CUA, vendored Codex and other third-party
 workspaces remain separately owned. `cargo build` defaults to the server; the
-existing `cantrip_server_rs/Cargo.toml` entry point and `cantrip-server` executable
+existing `cantrip_server/Cargo.toml` entry point and `cantrip-server` executable
 remain supported. The exact-match workspace glob avoids Cargo 1.93 treating
 nested vendored paths as explicit members.
 

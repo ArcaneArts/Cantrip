@@ -1,9 +1,0 @@
-{
-  "name": "@cantrip/worker",
-  "version": "0.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "node ../scripts/worker-rust/dev.mjs --watch",
-    "start": "node ../scripts/worker-rust/dev.mjs"
-  }
-}

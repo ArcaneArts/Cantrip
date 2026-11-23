@@ -74,7 +74,7 @@ await assert.rejects(
 );
 assert.deepEqual(Object.keys(captured).sort(), Object.values(tables).sort());
 const destination = new URL(
-  "../../cantrip_server_rs/contracts/project-placement-queries.json",
+  "../../cantrip_server/contracts/project-placement-queries.json",
   import.meta.url,
 );
 const filename = fileURLToPath(destination);

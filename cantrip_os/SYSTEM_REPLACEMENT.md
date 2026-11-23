@@ -264,7 +264,7 @@ schema. This is not a full Worker/Server/client process acceptance test.
 Build normal Worker dependencies/modules, then opt into disposable Engine tests:
 
 ```sh
-pnpm --filter '@cantrip/worker^...' build
+pnpm --filter '@cantrip/worker-reference^...' build
 pnpm --filter @cantrip/worker-reference reference:build
 CANTRIP_OS_REPLACEMENT_INTEGRATION=1 \
 CANTRIP_OS_REPLACEMENT_EVIDENCE=/absolute/private/evidence \

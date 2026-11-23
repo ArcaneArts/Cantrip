@@ -108,10 +108,10 @@ const [
   readClientApiSourceText(repositoryRoot),
   read("cantrip_app/src/lib/desktop-tunnel.ts"),
   readApplication(),
-  read("cantrip_server_rs/src/http/operational_status.rs"),
+  read("cantrip_server/src/http/operational_status.rs"),
   Promise.all([
-    read("cantrip_server_rs/src/operations/metrics.rs"),
-    read("cantrip_server_rs/src/operations/metrics/prometheus.rs"),
+    read("cantrip_server/src/operations/metrics.rs"),
+    read("cantrip_server/src/operations/metrics/prometheus.rs"),
   ]).then((parts) => parts.join("\n")),
   tsImport("../packages/protocol/src/index.ts", import.meta.url).then(
     (protocol) => protocol.serverOperationalStatsSchema,

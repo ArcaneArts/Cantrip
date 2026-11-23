@@ -172,8 +172,8 @@ Cantrip is split into three deployable applications plus one shared protocol pac
 ```mermaid
 flowchart LR
     APP["cantrip_app<br/>React + Vite<br/>Browser / Tauri / Capacitor"]
-    SERVER["cantrip_server_rs<br/>Rust + PGlite/PostgreSQL<br/>Identity, configuration, history, routing"]
-    WORKER["cantrip_worker_rs<br/>Rust<br/>Codex, files, Git, PTYs, Chromium, desktop capture"]
+    SERVER["cantrip_server<br/>Rust + PGlite/PostgreSQL<br/>Identity, configuration, history, routing"]
+    WORKER["cantrip_worker<br/>Rust<br/>Codex, files, Git, PTYs, Chromium, desktop capture"]
     CODEX["Codex CLI / app-server"]
     FILES["Project source folders"]
 
@@ -193,13 +193,13 @@ mutations only through the server and never assumes project files exist on the
 client device. After server authorization, live feature bytes may use a scoped
 WorkerLink carrier directly between the app and worker, with relay fallback.
 
-### `cantrip_server_rs`
+### `cantrip_server`
 
 The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings and Policies, stores projects and durable conversation history, tracks worker presence, persists worktree observations plus project-wide logical branch leases, reconciles per-account logical storage and meters server-carried bandwidth, and authorizes operations on the correct worker checkout. It stores ChatGPT and Grok OAuth bundles only as opaque endpoint-encrypted envelopes. Authorized workers decrypt, refresh, and reseal them locally; the server authorizes revision-fenced envelope fetch/reseal and global sign-out.
 
 Local development uses embedded PGlite. Browser development stores it under `.cantrip/browser-dev/`; default desktop development uses `.cantrip/dev/`, and named desktop profiles use `.cantrip/dev-profiles/<name>/`. A private PostgreSQL process can be selected with `CANTRIP_DATABASE_MODE=bundled-postgres`, and an external PostgreSQL `DATABASE_URL` retains its existing selection behavior. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 
-### `cantrip_worker_rs`
+### `cantrip_worker`
 
 The worker is the machine that actually performs work. It owns Cantrip-managed
 folder directories, managed and direct repository clones, placement ownership
@@ -380,11 +380,10 @@ writes follow the selected permission profile.
 Cantrip/
 ├── cantrip_app/       # React/Vite UI, Tauri shell, Capacitor configuration
 ├── cantrip_site/      # Public React/Vite marketing site
-├── cantrip_server_rs/ # Rust API, persistence, identity, and worker routing
-├── cantrip_server/    # SQL migration chain embedded by the Rust server
-├── cantrip_worker_rs/ # Native Codex runtime, terminals, files, and Git access
-├── cantrip_worker/    # Rust worker development working directory
-├── tests/reference-node-worker/ # Retired worker for compatibility tests
+├── cantrip_server/    # Rust API, persistence, embedded SQL migrations, and worker routing
+├── cantrip_worker/    # Rust worker for Codex, terminals, files, and Git
+├── tests/reference-node-server/ # Retired server for opt-in comparisons
+├── tests/reference-node-worker/ # Retired worker for opt-in comparisons
 ├── cantrip_cli/       # Worker-authenticated Rust command-line interface
 ├── cantrip_codex/     # Pinned upstream Codex source and source manifest
 ├── packages/          # Protocol, crypto, logging, version, and shared UI packages

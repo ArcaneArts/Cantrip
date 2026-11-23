@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { LiveProbe, initialize } from "./live-sockets.mjs";
-import targetQueries from "../../cantrip_server_rs/contracts/mcp-target-queries.json" with { type: "json" };
-import surfaceQueries from "../../cantrip_server_rs/contracts/mcp-surface-queries.json" with { type: "json" };
+import targetQueries from "../../cantrip_server/contracts/mcp-target-queries.json" with { type: "json" };
+import surfaceQueries from "../../cantrip_server/contracts/mcp-surface-queries.json" with { type: "json" };
 import { argumentsFor, target } from "./agent-surface-http-fixtures.mjs";
 import { literal, json, label, state, stamp } from "./project-target-state.mjs";
 import {

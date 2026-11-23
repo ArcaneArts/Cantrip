@@ -25,7 +25,7 @@ Rust is the default server and the worker remains Node.
 
 The Redis client is pinned to the vendored upstream 1.8.1 crate. Its original
 archive checksum, connection-observation methods and additional TLS constructor
-are documented in [the client provenance note](../cantrip_server_rs/third-party/redis/README.cantrip.md).
+are documented in [the client provenance note](../cantrip_server/third-party/redis/README.cantrip.md).
 Inherited trailing whitespace is removed from its README, changelog and the
 two changed Rust files; other upstream file bytes remain unchanged.
 The Redis connection uses the native TLS backend. For a `rediss://` deployment
