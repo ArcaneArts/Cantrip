@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -20,6 +22,33 @@ test("publishes native releases only when the release branch advances", async ()
   assert.doesNotMatch(workflow, /^\s*(?:pull_request|workflow_dispatch):/mu);
   assert.match(workflow, /blacksmith-6vcpu-macos-15/u);
   assert.match(workflow, /blacksmith-8vcpu-windows-2025/u);
+});
+
+test("shortens oversized release notes and preserves the full comparison", async (t) => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-release-notes-"),
+  );
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const notesFile = path.join(directory, "release.md");
+  const heading = "## Changes\n";
+  const change = "- Résumé and 🦀 updates\n";
+  const changelog =
+    "**Full Changelog**: https://github.com/ArcaneArts/Cantrip/compare/v1...v2";
+  await writeFile(notesFile, heading + change.repeat(5_000) + "\n" + changelog);
+
+  execFileSync(process.execPath, [
+    path.join(root, "scripts/trim-release-notes.mjs"),
+    notesFile,
+  ]);
+
+  const notes = await readFile(notesFile, "utf8");
+  assert.ok(Buffer.byteLength(notes) <= 125_000);
+  const [excerpt] = notes.split("\n\n_Release notes shortened");
+  const [title, ...changes] = excerpt.split("\n");
+  assert.equal(title, heading.trimEnd());
+  assert.ok(changes.length > 0);
+  assert.ok(changes.every((line) => line === change.trimEnd()));
+  assert.ok(notes.endsWith(changelog + "\n"));
 });
 
 test("caches verified heavyweight runtimes and publishes the requested assets", async () => {

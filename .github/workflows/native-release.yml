@@ -700,6 +700,7 @@ jobs:
               -f "tag_name=$tag" \
               -f "target_commitish=$GITHUB_SHA" \
               --jq .body > "$release_notes"
+            node scripts/trim-release-notes.mjs "$release_notes"
           fi
           node scripts/generate-updater-manifest.mjs \
             --assets release-assets \
