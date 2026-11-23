@@ -13,16 +13,12 @@ Store Connect for TestFlight processing rather than attached publicly.
 
 The two browser-only surfaces are deployed separately through DigitalOcean App
 Platform using `.do/app.yaml`. Both static components watch `release` with
-automatic deploys enabled. `pnpm release` validates and reapplies the committed
-spec with source updates, then continues without waiting for App Platform
-activation or verifying the active component commit before deploying the
-production Server. Host-based ingress serves the marketing site at
+automatic deploys enabled. The release workflow verifies the promoted commit
+from the deployed `release.json` at both origins. Host-based ingress serves the marketing site at
 `cantrip.art`, the browser application at `app.cantrip.art`, and redirects the
-DigitalOcean starter hostname to the marketing site. The components build from
-the repository root so pnpm can resolve the shared workspace packages.
-Each component has an explicit browser-only build command; App Platform must
-not invoke the root native distribution build, which requires Rust and other
-desktop toolchains that are intentionally absent from its Node.js build image.
+DigitalOcean starter hostname to the marketing site. App Platform detects Node
+from `.do/web-build`. Its browser-only build command accesses the shared pnpm
+workspace and emits static files for the selected component.
 The `cantrip.art` DigitalOcean DNS zone manages routing explicitly: the apex
 uses App Platform's static ingress addresses and `app` is a CNAME to the app's
 DigitalOcean starter hostname.
@@ -57,7 +53,7 @@ components.
 | `pnpm package:app`             | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                                           |
 | `pnpm bundle`                  | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host                                           |
 | `pnpm deploy:server`           | Builds and deploys the current production server                  | Clean synchronized `main`, Docker, Infisical, and SSH               |
-| `pnpm release`                 | Promotes `release`, deploys App Platform, and deploys the Server  | Same as `deploy:server`, plus `doctl` and push access               |
+| `pnpm release`                 | Promotes `release` and starts the build and deploy workflow        | Synchronized `main` and push access                                 |
 
 Worker packaging runs the bundled `cantrip-worker` executable and checks its
 `mcp` and `cua-mcp` subcommands. Both must return the expected
@@ -86,7 +82,8 @@ App Bundle and APK while iOS archives and uploads to TestFlight. A final job
 waits for every lane, creates a GitHub release tagged
 `v<major>.<minor>.<commit-count>`, and uploads the DMG, NSIS executable, Android
 App Bundle and APK, signed Tauri updater artifacts, and both standalone Server
-and Worker archives for both platforms.
+and Worker archives for both platforms. The workflow also publishes
+`cantrip-server-linux-x64.tar.gz` and installs that same archive on Winterhold.
 
 Release caches are content-addressed and platform-specific. They retain the
 verified Codex runtime bundle, pnpm downloads, Cargo dependencies and incremental
