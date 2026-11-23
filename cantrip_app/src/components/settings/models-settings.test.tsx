@@ -73,14 +73,16 @@ vi.mock("@/components/ui/styled-menu", () => ({
   StyledDropdownMenuItem: ({
     children,
     onSelect,
+    textValue,
     ...props
   }: {
     children: ReactNode;
     onSelect(): void;
     disabled?: boolean;
     title?: string;
+    textValue?: string;
   }) => (
-    <button {...props} onClick={onSelect}>
+    <button {...props} data-label={textValue} onClick={onSelect}>
       {children}
     </button>
   ),
@@ -341,11 +343,15 @@ describe("Models provider navigation", () => {
     });
     const buttons = view.root.findAllByType("button");
     for (const setup of providerSetupOptions) {
-      await act(async () =>
-        buttons
-          .find((button) => button.props.children === setup.label)!
-          .props.onClick(),
-      );
+      const item = buttons.find(
+        (button) => button.props["data-label"] === setup.label,
+      )!;
+      expect(
+        item.findByProps({ "data-slot": "provider-setup-icon" }).props[
+          "aria-hidden"
+        ],
+      ).toBe("true");
+      await act(async () => item.props.onClick());
       expect(inputs.onAddProvider).toHaveBeenLastCalledWith(setup.id);
     }
     const edits = buttons.filter(
@@ -399,7 +405,7 @@ describe("Models provider navigation", () => {
       )) {
         const item = view.root
           .findAllByType("button")
-          .find((button) => button.props.children === setup.label)!;
+          .find((button) => button.props["data-label"] === setup.label)!;
         expect(item.props.disabled).toBe(false);
         await act(async () => item.props.onClick());
         expect(inputs.onAddProvider).toHaveBeenLastCalledWith(setup.id);
@@ -411,7 +417,7 @@ describe("Models provider navigation", () => {
         .findAllByType("button")
         .find(
           (button) =>
-            button.props.children === providerSetupDefaults(kind).label,
+            button.props["data-label"] === providerSetupDefaults(kind).label,
         )!;
       expect(item.props.disabled).toBe(false);
       await act(async () => item.props.onClick());

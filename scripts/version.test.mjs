@@ -20,6 +20,7 @@ test("builds the official version from version.json and Git commit count", () =>
       major: 1,
       minor: 1,
       patch: 1375,
+      buildNumber: 1375,
       version: "1.1.1375",
       synthetic: false,
       commitSha: null,
@@ -28,6 +29,43 @@ test("builds the official version from version.json and Git commit count", () =>
       overlayDigest: null,
     },
   );
+});
+
+test("starts the new patch series at the pinned Git count", () => {
+  for (const [count, patch] of [
+    ["3566", 0],
+    ["3567", 1],
+    ["3597", 31],
+  ]) {
+    const version = resolveCantripVersion({
+      environment: {},
+      loadVersionConfig: () => ({ major: 1, minor: 2, patchOffset: 3566 }),
+      loadGitCommitCount: () => count,
+    });
+    assert.equal(version.version, `1.2.${patch}`);
+    assert.equal(version.buildNumber, Number(count));
+  }
+  assert.throws(
+    () =>
+      resolveCantripVersion({
+        environment: {},
+        loadVersionConfig: () => ({ major: 1, minor: 2, patchOffset: 3566 }),
+        loadGitCommitCount: () => "3565",
+      }),
+    /Git count minus patchOffset must be a non-negative safe integer/u,
+  );
+});
+
+test("uses an already resolved patch without subtracting the baseline again", () => {
+  const version = resolveCantripVersion({
+    environment: { CANTRIP_VERSION_PATCH: "1" },
+    loadVersionConfig: () => ({ major: 1, minor: 2, patchOffset: 3566 }),
+    loadGitCommitCount: () => {
+      throw new Error("A Git-free build should not read Git.");
+    },
+  });
+  assert.equal(version.version, "1.2.1");
+  assert.equal(version.buildNumber, 3567);
 });
 
 test("accepts an explicit patch when Git metadata is outside the build context", () => {
@@ -43,6 +81,7 @@ test("accepts an explicit patch when Git metadata is outside the build context",
       major: 1,
       minor: 1,
       patch: 1375,
+      buildNumber: 1375,
       version: "1.1.1375",
       synthetic: false,
       commitSha: null,
@@ -80,6 +119,7 @@ test("builds a synthetic version with immutable build identity", () => {
       major: 1,
       minor: 1,
       patch: 1375,
+      buildNumber: 1375,
       version: "1.1.1375-x",
       synthetic: true,
       commitSha: "0123456789abcdef0123456789abcdef01234567",
@@ -126,7 +166,7 @@ test("rejects patch fields and invalid version components", () => {
         loadVersionConfig: () => ({ major: 1, minor: 1, patch: 2 }),
         loadGitCommitCount: () => "10",
       }),
-    /only major and minor/,
+    /must contain major and minor/,
   );
   assert.throws(
     () =>
@@ -143,7 +183,7 @@ test("the root version file contains only the human-controlled components", asyn
   const versionConfig = JSON.parse(
     await readFile(path.join(repositoryRoot, "version.json"), "utf8"),
   );
-  assert.deepEqual(versionConfig, { major: 1, minor: 1 });
+  assert.deepEqual(versionConfig, { major: 1, minor: 2, patchOffset: 3566 });
 });
 
 test("renders an immutable runtime module", () => {

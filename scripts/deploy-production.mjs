@@ -12,6 +12,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { resolveCantripVersion } from "./version.mjs";
 
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -359,7 +360,9 @@ export async function withProductionSource(
     return await deploy({
       root: sourceRoot,
       commit: git(sourceRoot, ["rev-parse", "HEAD"]),
-      versionPatch: git(sourceRoot, ["rev-list", "--count", "HEAD"]),
+      versionPatch: String(
+        resolveCantripVersion({ root: sourceRoot, environment: {} }).patch,
+      ),
     });
   } finally {
     try {
@@ -439,7 +442,7 @@ export function productionServerBuildArguments(
 ) {
   const normalizedVersionPatch = String(versionPatch).trim();
   if (!/^\d+$/u.test(normalizedVersionPatch)) {
-    throw new Error("Production version patch must be a Git commit count.");
+    throw new Error("Production version patch must be a non-negative integer.");
   }
   return [
     "buildx",
@@ -481,7 +484,9 @@ export async function buildProductionArchive(root, artifactPath) {
     path.join(os.tmpdir(), "cantrip-production-build-"),
   );
   try {
-    const versionPatch = git(root, ["rev-list", "--count", "HEAD"]);
+    const versionPatch = String(
+      resolveCantripVersion({ root, environment: {} }).patch,
+    );
     buildServerBundle(config, directory, artifactPath, versionPatch, root);
   } finally {
     await rm(directory, { force: true, recursive: true });

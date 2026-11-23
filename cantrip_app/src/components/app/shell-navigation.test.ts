@@ -72,20 +72,23 @@ function commandHarness(
 }
 
 describe("shell navigation commands", () => {
-  it("opens model settings without dropping the desktop project or tab selection", () => {
-    const options = commandHarness();
-    const commands = createShellNavigationCommands(options);
+  it.each([false, true])(
+    "opens model settings without dropping the project or tab selection (compact=%s)",
+    (compactShell) => {
+      const options = commandHarness({ compactShell });
+      const commands = createShellNavigationCommands(options);
 
-    commands.openCompactRootSettings("models");
+      commands.openRootSettings("models");
 
-    expect(options.navigation.setSettingsSection).toHaveBeenCalledWith(
-      "models",
-    );
-    expect(options.navigation.setShowSettings).toHaveBeenCalledWith(true);
-    expect(options.navigation.setSelectedProjectId).not.toHaveBeenCalled();
-    expect(options.setWorkspaceSelection).not.toHaveBeenCalled();
-    expect(options.setPendingSurfaceSelection).not.toHaveBeenCalled();
-  });
+      expect(options.navigation.setSettingsSection).toHaveBeenCalledWith(
+        "models",
+      );
+      expect(options.navigation.setShowSettings).toHaveBeenCalledWith(true);
+      expect(options.navigation.setSelectedProjectId).not.toHaveBeenCalled();
+      expect(options.setWorkspaceSelection).not.toHaveBeenCalled();
+      expect(options.setPendingSurfaceSelection).not.toHaveBeenCalled();
+    },
+  );
 
   it("switches to standalone Chat and persists the selected chat", () => {
     const options = commandHarness();

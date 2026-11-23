@@ -148,7 +148,7 @@ export function GlobalContentHost({
     newTerminal,
     onlineWorker,
     openChatFileLink,
-    openCompactRootSettings,
+    openRootSettings,
     openCreatedProject,
     openCreatedTab,
     openProjectCreateSource,
@@ -267,10 +267,10 @@ export function GlobalContentHost({
           onCreateWorkspace={(input) =>
             createWorkspaceMutation.mutateAsync(input)
           }
-          onManageWorkspaces={() => openCompactRootSettings("workspaces")}
+          onManageWorkspaces={() => openRootSettings("workspaces")}
           onNewProject={(source) => openProjectCreateSource(source, true)}
           onOpenAdmin={openServerAdmin}
-          onOpenSettings={() => openCompactRootSettings()}
+          onOpenSettings={() => openRootSettings()}
           onSwitchChat={switchToChat}
           onSelectProject={selectProjectFromSidebar}
           onSelectWorkspace={selectProjectWorkspace}

@@ -3,6 +3,7 @@ import {
   modelProfileOperation,
   providerOperationSupport,
 } from "@cantrip/protocol";
+import { ProviderSetupIcon } from "./provider-setup-icon";
 import { OperationDefaultPicker } from "./operation-default-picker";
 import { useProviderCatalog } from "./use-provider-catalog";
 import {
@@ -506,7 +507,9 @@ export function ModelsSettings({
                       if (!unavailableReason) onAddProvider(setup.id);
                     }}
                     title={unavailableReason ?? undefined}
+                    textValue={setup.label}
                   >
+                    <ProviderSetupIcon setup={setup.id} />
                     {unavailableReason ? (
                       <span className="grid gap-0.5">
                         <span>{setup.label}</span>

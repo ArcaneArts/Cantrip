@@ -246,10 +246,12 @@ struct GithubCommit {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct VersionConfig {
     pub(crate) major: u64,
     pub(crate) minor: u64,
+    #[serde(default)]
+    patch_offset: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -261,7 +263,17 @@ struct PackageConfig {
 pub(super) struct SourceMetadata {
     pub(super) commit_count: u64,
     pub(super) package_manager: String,
-    pub(super) version: VersionConfig,
+    version: VersionConfig,
+    patch: u64,
+}
+
+impl SourceMetadata {
+    fn synthetic_version(&self) -> String {
+        format!(
+            "{}.{}.{}-x",
+            self.version.major, self.version.minor, self.patch
+        )
+    }
 }
 
 fn command_output(mut command: Command, description: &str) -> Result<Output, SyntheticBuildError> {
@@ -386,6 +398,15 @@ fn parse_source_metadata(
             false,
         )
     })?;
+    let patch = commit_count
+        .checked_sub(version.patch_offset)
+        .ok_or_else(|| {
+            SyntheticBuildError::new(
+                "synthetic_commit_unsupported",
+                "The selected commit count is below the version patch offset.",
+                false,
+            )
+        })?;
     let package = serde_json::from_str::<PackageConfig>(package_json).map_err(|error| {
         SyntheticBuildError::new(
             "synthetic_commit_unsupported",
@@ -404,6 +425,7 @@ fn parse_source_metadata(
         commit_count,
         package_manager: package.package_manager,
         version,
+        patch,
     })
 }
 
@@ -910,10 +932,7 @@ pub async fn resolve_synthetic_build_target(
 
     let source = coordinator.resolve_source(sha).await?;
     commit.commit_count = Some(source.commit_count);
-    commit.synthetic_version = Some(format!(
-        "{}.{}.{}-x",
-        source.version.major, source.version.minor, source.commit_count
-    ));
+    commit.synthetic_version = Some(source.synthetic_version());
     commit.buildable = Some(true);
     Ok(commit)
 }
@@ -960,6 +979,7 @@ mod tests {
         assert_eq!(metadata.commit_count, 1375);
         assert_eq!(metadata.version.major, 1);
         assert_eq!(metadata.version.minor, 2);
+        assert_eq!(metadata.synthetic_version(), "1.2.1375-x");
         assert_eq!(metadata.package_manager, "pnpm@11.15.1");
         assert!(parse_source_metadata(
             "1375",
@@ -967,6 +987,16 @@ mod tests {
             r#"{"packageManager":"npm@11.0.0"}"#,
         )
         .is_err());
+    }
+
+    #[test]
+    fn applies_the_patch_offset_to_synthetic_versions() {
+        let config = r#"{"major":1,"minor":2,"patchOffset":3566}"#;
+        let package = r#"{"packageManager":"pnpm@11.15.1"}"#;
+        let metadata = parse_source_metadata("3567", config, package).unwrap();
+        assert_eq!(metadata.commit_count, 3567);
+        assert_eq!(metadata.synthetic_version(), "1.2.1-x");
+        assert!(parse_source_metadata("3565", config, package).is_err());
     }
 
     #[test]

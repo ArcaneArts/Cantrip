@@ -51,7 +51,7 @@ Before continuing, the native coordinator:
 1. refreshes the local bare mirror;
 2. resolves and validates the full SHA;
 3. verifies that the commit is reachable from refreshed `origin/main`;
-4. reads the version family and commit count; and
+4. reads the version family, patch offset, and commit count; and
 5. scans host prerequisites and prepares the private toolchain.
 
 A mirror-refresh failure aborts the operation. The implementation does not fall
@@ -150,7 +150,7 @@ not guarantee each component is built only once.
 The synthetic version is derived from the selected commit:
 
 ```text
-<version.json major>.<version.json minor>.<git commit count>-x
+<version.json major>.<version.json minor>.<git commit count minus patch offset>-x
 ```
 
 The full SHA, build ID, build time, and overlay digest are also embedded in the

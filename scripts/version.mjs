@@ -113,12 +113,18 @@ export function resolveCantripVersion({
     throw new Error("version.json must contain a JSON object.");
   }
   const keys = Object.keys(config).sort();
-  if (keys.join(",") !== "major,minor") {
-    throw new Error("version.json must contain only major and minor fields.");
+  if (!["major,minor", "major,minor,patchOffset"].includes(keys.join(","))) {
+    throw new Error(
+      "version.json must contain major and minor fields and may contain patchOffset.",
+    );
   }
 
   const major = nonNegativeInteger(config.major, "version.json major");
   const minor = nonNegativeInteger(config.minor, "version.json minor");
+  const patchOffset = nonNegativeInteger(
+    Object.hasOwn(config, "patchOffset") ? config.patchOffset : 0,
+    "version.json patchOffset",
+  );
   const patchOverride = environment.CANTRIP_VERSION_PATCH?.trim();
   const rawPatch = patchOverride || loadGitCommitCount(root);
   if (!/^\d+$/u.test(rawPatch)) {
@@ -126,17 +132,26 @@ export function resolveCantripVersion({
       `${patchOverride ? "CANTRIP_VERSION_PATCH" : "Git commit count"} must be a non-negative integer.`,
     );
   }
-  const patch = nonNegativeInteger(
+  const countOrPatch = nonNegativeInteger(
     Number(rawPatch),
     patchOverride ? "CANTRIP_VERSION_PATCH" : "Git commit count",
   );
 
+  // An explicit patch has already been resolved outside the build context.
+  const patch = patchOverride
+    ? countOrPatch
+    : nonNegativeInteger(
+        countOrPatch - patchOffset,
+        "Git count minus patchOffset",
+      );
+  const buildNumber = nonNegativeInteger(patch + patchOffset, "Build number");
   const syntheticIdentity = resolveSyntheticIdentity(environment);
 
   return Object.freeze({
     major,
     minor,
     patch,
+    buildNumber,
     version: `${major}.${minor}.${patch}${syntheticIdentity.synthetic ? "-x" : ""}`,
     ...syntheticIdentity,
   });
@@ -172,10 +187,12 @@ if (isMain) {
   if (process.argv[2] === "build-package") {
     const version = await buildVersionPackage();
     console.log(`Built @cantrip/version ${version.version}`);
+  } else if (process.argv[2] === "--patch" && process.argv.length === 3) {
+    console.log(resolveCantripVersion({ environment: {} }).patch);
   } else if (process.argv.length === 2) {
     console.log(resolveCantripVersion().version);
   } else {
-    console.error("Usage: node scripts/version.mjs [build-package]");
+    console.error("Usage: node scripts/version.mjs [build-package | --patch]");
     process.exitCode = 1;
   }
 }

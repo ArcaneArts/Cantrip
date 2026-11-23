@@ -55,12 +55,12 @@ headers; it is not the separate systemd/Caddy HTTPS rehearsal.
 
 ## Local reproduction
 
-Build each architecture locally with a positive commit-count patch version:
+Build each architecture locally with a patch version resolved from the source checkout:
 
 ```sh
 docker buildx build --platform linux/arm64 \
   --file deploy/docker/server-rust.Dockerfile \
-  --build-arg CANTRIP_VERSION_PATCH=2783 \
+  --build-arg CANTRIP_VERSION_PATCH="$(node scripts/version.mjs --patch)" \
   --tag cantrip-server-rust:local-arm64 --load .
 
 node scripts/server-rust/container-server-acceptance.mjs \

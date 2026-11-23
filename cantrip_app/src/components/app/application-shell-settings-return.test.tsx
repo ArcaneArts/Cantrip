@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { ProjectSummary } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useState, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
@@ -6,14 +7,18 @@ import { expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { EmptyWorkspace } from "./empty-workspace";
 import { ApplicationShellRender } from "./application-shell-render";
+import { useProjectSelectionReconciliation } from "./shell-navigation";
 
 vi.mock("./shell-sidebar", () => ({
   ShellSidebar: ({
     bindings,
   }: {
-    bindings: { setShowSettings: (open: boolean) => void };
+    bindings: { openSettings: () => void; selectedProjectId: string | null };
   }) => (
-    <button onClick={() => bindings.setShowSettings(true)}>
+    <button
+      onClick={bindings.openSettings}
+      data-project-id={bindings.selectedProjectId}
+    >
       Open settings
     </button>
   ),
@@ -44,13 +49,27 @@ vi.mock("./application-shell-surfaces", () => ({
 }));
 
 it.each([false, true])(
-  "returns the agent draft to its pane after Settings (project focus=%s)",
+  "returns to the same project and draft after Settings (project focus=%s)",
   async (focused) => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
     const queryClient = new QueryClient();
+    const firstProject = {
+      id: "first",
+      name: "First project",
+      capabilities: {},
+    } as ProjectSummary;
+    const project = {
+      id: "project",
+      name: "Selected project",
+      capabilities: {},
+    } as ProjectSummary;
+    const projects = [firstProject, project];
+    const startupNavigationResolvedRef = { current: true };
+    const setWorkspaceSelection = vi.fn();
+    const noop = () => {};
     const chat = { id: "chat", title: "New agent" };
     const surface = {
       kind: "chat",
@@ -70,8 +89,6 @@ it.each([false, true])(
     };
     const bindings = {
       appMode: "ide",
-      selectedProject: { id: "project", name: "Project", capabilities: {} },
-      selectedProjectId: "project",
       workspaceSelection: selection,
       selectedTabKey: focused ? surface.tabKey : null,
       selectedChat: focused ? chat : undefined,
@@ -107,15 +124,51 @@ it.each([false, true])(
       terminals: { data: [] },
       workers: { data: [] },
       worktrees: { data: [] },
-      visibleProjects: [],
     };
     function Harness() {
       const [showSettings, setShowSettings] = useState(false);
+      const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+        project.id,
+      );
+      const [visibleProjects, setVisibleProjects] = useState(projects);
+      useProjectSelectionReconciliation({
+        compactShell: false,
+        explorerFileTarget: null,
+        navigation: {
+          appMode: "ide",
+          selectedProjectId,
+          setSelectedProjectId,
+          setShowImporter: noop,
+          setShowProjectSettings: noop,
+          setShowSettings,
+          showServerAdmin: false,
+          showSettings,
+          startupNavigationResolvedRef,
+        },
+        projects,
+        setPendingSurfaceSelection: noop,
+        setWorkspaceSelection,
+        visibleProjects,
+      });
       return (
         <QueryClientProvider client={queryClient}>
           <TooltipProvider>
             <ApplicationShellRender
-              bindings={{ ...bindings, showSettings, setShowSettings }}
+              bindings={{
+                ...bindings,
+                showSettings,
+                setShowSettings,
+                selectedProjectId,
+                selectedProject: projects.find(
+                  ({ id }) => id === selectedProjectId,
+                ),
+                visibleProjects,
+                openSettings: () => {
+                  setShowSettings(true);
+                  // Inventory can change while Settings owns the window.
+                  setVisibleProjects([firstProject]);
+                },
+              }}
             />
           </TooltipProvider>
         </QueryClientProvider>
@@ -135,6 +188,8 @@ it.each([false, true])(
       expect(container.querySelector('[role="tablist"]')).toBeNull();
       expect(draft.isConnected).toBe(false);
       await act(async () => button("Back to Project").click());
+      expect(button("Open settings").dataset.projectId).toBe(project.id);
+      expect(setWorkspaceSelection).not.toHaveBeenCalled();
       const pane = container.querySelector('[data-center-pane="center"]');
       expect(pane).not.toBeNull();
       expect(
