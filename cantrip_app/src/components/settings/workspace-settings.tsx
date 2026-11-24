@@ -53,7 +53,10 @@ import {
 } from "@/lib/server-connections";
 import { workspaceFolderPickerWorkerIds } from "@/lib/workspace-folder-picker";
 import { PolicyAssignmentControls } from "./policy-assignment-controls";
-import { WorkspaceRepositoryDiscoveryReview } from "./workspace-repository-discovery-review";
+import {
+  WorkspaceRepositoryDiscoveryReview,
+  WorkspaceRepositoryImportProgress,
+} from "./workspace-repository-discovery-review";
 
 function message(error: unknown): string {
   return errorMessage(error, "Workspace update failed.");
@@ -408,6 +411,11 @@ export function WorkspaceSettings({
                       >
                         {attachedDisplayPaths.data[workspace.id]}
                       </p>
+                    ) : null}
+                    {workspace.storage.kind === "attached" ? (
+                      <WorkspaceRepositoryImportProgress
+                        workspaceId={workspace.id}
+                      />
                     ) : null}
                   </div>
                   <div className="ml-auto flex flex-wrap items-center justify-end gap-1">

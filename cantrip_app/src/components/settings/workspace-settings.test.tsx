@@ -1,10 +1,14 @@
+// @vitest-environment jsdom
 import {
   projectSummarySchema,
   projectWorkspaceSummarySchema,
+  type WorkspaceRepositoryCandidateSummary,
 } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   WorkspaceSettings,
@@ -34,6 +38,17 @@ const personalWorkspace = projectWorkspaceSummarySchema.parse({
   revision: 1,
   createdAt: now,
   updatedAt: now,
+});
+const attachedWorkspace = projectWorkspaceSummarySchema.parse({
+  ...personalWorkspace,
+  id: "workspace-attached",
+  name: "Attached",
+  storage: {
+    kind: "attached",
+    workerId: "worker-1",
+    rootPathHandle: `ctrr_${"a".repeat(43)}`,
+    displayHandle: `ctrr_${"b".repeat(43)}`,
+  },
 });
 const cantripProject = projectSummarySchema.parse({
   id: "project-cantrip",
@@ -103,19 +118,7 @@ describe("workspace settings", () => {
     queryClient.setQueryData(["projects"], []);
     queryClient.setQueryData(
       ["project-workspaces"],
-      [
-        mainWorkspace,
-        {
-          ...personalWorkspace,
-          name: "Attached",
-          storage: {
-            kind: "attached" as const,
-            workerId: "worker-1",
-            rootPathHandle: `ctrr_${"a".repeat(43)}`,
-            displayHandle: `ctrr_${"b".repeat(43)}`,
-          },
-        },
-      ],
+      [mainWorkspace, attachedWorkspace],
     );
 
     const markup = renderToStaticMarkup(
@@ -146,5 +149,68 @@ describe("workspace settings", () => {
     );
 
     expect(markup).not.toContain("Repositories");
+  });
+
+  it("updates the attached workspace's remaining imports with the review closed", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    queryClient.setQueryData(["projects"], []);
+    queryClient.setQueryData(["workers"], []);
+    queryClient.setQueryData(
+      ["project-workspaces"],
+      [personalWorkspace, attachedWorkspace],
+    );
+    const publishImports = (
+      ...states: WorkspaceRepositoryCandidateSummary["importState"][]
+    ) =>
+      queryClient.setQueryData(
+        ["workspace-repository-discovery", attachedWorkspace.id],
+        { candidates: states.map((importState) => ({ importState })) },
+      );
+    publishImports("pending", "imported");
+
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.useFakeTimers();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const status = () => host.querySelector('[role="status"]');
+    try {
+      await act(async () =>
+        root.render(
+          <QueryClientProvider client={queryClient}>
+            <WorkspaceSettings />
+          </QueryClientProvider>,
+        ),
+      );
+      expect(status()).toBeNull();
+
+      await act(async () => {
+        publishImports("queued", "importing", "pending", "imported");
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(status()?.textContent).toBe("Importing repositories… 2 remaining");
+      expect(status()?.parentElement?.textContent).toContain("Attached");
+      expect(host.querySelector('[role="dialog"]')).toBeNull();
+
+      await act(async () => {
+        publishImports("imported", "importing", "pending", "imported");
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(status()?.textContent).toBe("Importing repositories… 1 remaining");
+
+      await act(async () => {
+        publishImports("imported", "failed", "pending", "imported");
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(status()).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+      queryClient.clear();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 });

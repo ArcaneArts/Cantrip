@@ -30,8 +30,56 @@ import {
   startWorkspaceRepositoryDiscovery,
   startWorkspaceRepositoryImports,
 } from "@/lib/api";
+import { useAppLiveStatus } from "@/lib/app-live-react";
 import { errorMessage } from "@/lib/error-message";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { prepareWorkspaceRepositoryImport } from "@/lib/project-encryption";
+
+function workspaceRepositoryDiscoveryQuery(workspaceId: string) {
+  return {
+    queryKey: ["workspace-repository-discovery", workspaceId] as const,
+    queryFn: () => getWorkspaceRepositoryDiscovery(workspaceId),
+    retry: false as const,
+  };
+}
+
+function remainingRepositoryImports(
+  snapshot: WorkspaceRepositoryDiscoverySnapshot | undefined,
+): number {
+  return (
+    snapshot?.candidates.filter(
+      ({ importState }) =>
+        importState === "queued" || importState === "importing",
+    ).length ?? 0
+  );
+}
+
+export function WorkspaceRepositoryImportProgress({
+  workspaceId,
+}: {
+  workspaceId: string;
+}) {
+  const liveStatus = useAppLiveStatus();
+  const { data: remaining = 0 } = useQuery({
+    ...workspaceRepositoryDiscoveryQuery(workspaceId),
+    select: remainingRepositoryImports,
+    refetchInterval: ({ state }) =>
+      liveResourceRefreshInterval(
+        liveStatus === "live",
+        remainingRepositoryImports(state.data) > 0 ? 2_000 : false,
+      ),
+  });
+  if (!remaining) return null;
+  return (
+    <p className="mt-1 flex items-center gap-1.5 text-xs" role="status">
+      <Loader2
+        aria-hidden="true"
+        className="size-3 shrink-0 motion-safe:animate-spin"
+      />
+      <span>Importing repositories… {remaining} remaining</span>
+    </p>
+  );
+}
 
 export interface ResolvedWorkspaceRepositoryCandidate {
   candidate: WorkspaceRepositoryCandidateSummary;
@@ -361,11 +409,10 @@ export function WorkspaceRepositoryDiscoveryReview({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const selectionScope = useRef<string | null>(null);
   const refreshedWorkspace = useRef<string | null>(null);
+  const discoveryQuery = workspaceRepositoryDiscoveryQuery(workspaceId);
   const discovery = useQuery({
+    ...discoveryQuery,
     enabled: open && workspace?.storage.kind === "attached",
-    queryFn: () => getWorkspaceRepositoryDiscovery(workspaceId),
-    queryKey: ["workspace-repository-discovery", workspaceId],
-    retry: false,
   });
   const snapshot = discovery.data;
   const metadataKey = snapshot
@@ -396,10 +443,7 @@ export function WorkspaceRepositoryDiscoveryReview({
         expectedStateRevision: snapshot?.job.stateRevision,
       }),
     onSuccess: (next) => {
-      queryClient.setQueryData(
-        ["workspace-repository-discovery", workspaceId],
-        next,
-      );
+      queryClient.setQueryData(discoveryQuery.queryKey, next);
     },
   });
   const candidates = useMemo(
@@ -420,10 +464,7 @@ export function WorkspaceRepositoryDiscoveryReview({
   );
   const busy =
     snapshot?.job.state === "queued" || snapshot?.job.state === "running";
-  const activeImports =
-    snapshot?.candidates.some(({ importState }) =>
-      ["queued", "importing"].includes(importState),
-    ) ?? false;
+  const activeImports = remainingRepositoryImports(snapshot) > 0;
   const selectableIds = useMemo(
     () =>
       new Set(
@@ -499,10 +540,7 @@ export function WorkspaceRepositoryDiscoveryReview({
     },
     onSuccess: (next) => {
       setSelected(new Set());
-      queryClient.setQueryData(
-        ["workspace-repository-discovery", workspaceId],
-        next,
-      );
+      queryClient.setQueryData(discoveryQuery.queryKey, next);
       onOpenChange(false);
     },
   });
