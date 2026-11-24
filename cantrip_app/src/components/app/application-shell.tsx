@@ -281,14 +281,9 @@ export function App() {
     projectId: string;
     id: string;
   } | null>(null);
-  const { page: projectSidebarPage, setPage: setProjectSidebarPage } =
-    useProjectSidebarPage(
-      selectedProjectId,
-      workspaceConnection.controllerState?.projected.projectId ===
-        selectedProjectId
-        ? workspaceConnection.controllerState.projected.id
-        : null,
-    );
+  const { page: preferredSidebarPage, setPage: setProjectSidebarPage } =
+    useProjectSidebarPage();
+  const projectSidebarPage = selectedProjectId ? preferredSidebarPage : "files";
   const [workspaceConnectionError, setWorkspaceConnectionError] =
     useState<unknown>(null);
   const setWorkspaceSelection = useCallback<typeof setSeedWorkspaceSelection>(
