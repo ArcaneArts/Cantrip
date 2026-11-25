@@ -1040,6 +1040,7 @@ async function flow(
       process.argv.includes("--council-steering") ||
       process.argv.includes("--council-agent-tools") ||
       process.argv.includes("--council-app-mode") ||
+      process.argv.includes("--council-memory") ||
       councilSteerTrace
     ) {
       await actualCouncilSteering({
@@ -1047,6 +1048,9 @@ async function flow(
         workerId,
         result,
         testCreation: process.argv.includes("--council-agent-tools"),
+        memoryAppOrigin: process.argv.includes("--council-memory")
+          ? vite.resolvedUrls.local[0]
+          : undefined,
         raceMarker:
           councilSteerFault === "council-steer-completion"
             ? councilSteerTrace
@@ -2242,7 +2246,8 @@ try {
       liveSqlFixture: liveTaskDiagnostics,
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
-        ...(process.argv.includes("--council-app-mode")
+        ...(process.argv.includes("--council-app-mode") ||
+        process.argv.includes("--council-memory")
           ? { CANTRIP_COUNCIL_ENABLED: "true" }
           : {}),
         // Retained-session product flows use the normal server lifetime. The

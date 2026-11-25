@@ -806,6 +806,12 @@ impl Ensurer {
                             } else {
                                 attachment.codex_configuration(&std::env::current_exe()?)?
                             };
+                            if session["council"] == true {
+                                mcp["cantrip"]["tools"] = json!({
+                                    "council_memory_read":json!({"approval_mode":"approve"}),
+                                    "council_memory_write":json!({"approval_mode":"approve"}),
+                                });
+                            }
                             if computer_use {
                                 mcp["cantrip_cua"] = attachment
                                     .computer_use_configuration(&std::env::current_exe()?, guest)?;

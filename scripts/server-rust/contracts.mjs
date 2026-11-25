@@ -1063,6 +1063,8 @@ export const contractRoots = [
   "councilAgentUpdateSchema",
   "councilAgentWireListSchema",
   "councilAgentWireSummarySchema",
+  "councilMemoryWireSchema",
+  "councilMemoryUpdateSchema",
 ];
 
 export const projectExportContractRoots = [

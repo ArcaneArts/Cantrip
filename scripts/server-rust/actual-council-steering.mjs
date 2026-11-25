@@ -1,6 +1,7 @@
 // Browser SDK, native server, full worker, and bundled Codex App Server.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { actualCouncilMemory } from "./actual-council-memory.mjs";
 import { eventually } from "./full-worker.mjs";
 import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
 
@@ -19,6 +20,7 @@ export async function actualCouncilSteering({
   workerId,
   result,
   testCreation = false,
+  memoryAppOrigin,
   raceMarker,
   dropReplyMarker,
 }) {
@@ -31,7 +33,14 @@ export async function actualCouncilSteering({
   const timeout = 60_000;
   try {
     const { chatId, configuration } = await page.evaluate(
-      async ({ workerId, baseUrl, nativeModel, role, testCreation }) => {
+      async ({
+        workerId,
+        baseUrl,
+        nativeModel,
+        role,
+        testCreation,
+        readOnly,
+      }) => {
         const models = await import("/src/lib/api/models.ts");
         const provider = await models.createModelProvider({
           name: "Disposable Council provider",
@@ -50,6 +59,9 @@ export async function actualCouncilSteering({
         ).updateSettings({
           defaultCouncilModelId: profile.id,
           autoNameChats: false,
+          ...(readOnly
+            ? { defaultCouncilPermissionProfileId: ":read-only" }
+            : {}),
         });
         const workers = await (
           await import("/src/lib/api/worker-wire.ts")
@@ -87,6 +99,7 @@ export async function actualCouncilSteering({
         nativeModel: model.model,
         role,
         testCreation,
+        readOnly: Boolean(memoryAppOrigin) && !testCreation,
       },
     );
     await eventually(
@@ -320,6 +333,19 @@ export async function actualCouncilSteering({
     result.steps.push(
       "Council steers an active native turn through its durable queue",
     );
+    if (memoryAppOrigin) {
+      await actualCouncilMemory({
+        page,
+        appOrigin: memoryAppOrigin,
+        chatId,
+        model,
+        tools: modelFunctions(held.request.input.tools),
+        submit,
+        readChat,
+        readMessages,
+        result,
+      });
+    }
     if (testCreation) {
       const tools = modelFunctions(held.request.input.tools);
       const create = tools.find(

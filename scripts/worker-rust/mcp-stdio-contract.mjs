@@ -14,6 +14,10 @@ import {
   councilCreateToolOutputSchema,
   councilListToolInputSchema,
   councilListToolOutputSchema,
+  councilMemoryReadToolInputSchema,
+  councilMemoryReadToolOutputSchema,
+  councilMemoryWriteToolInputSchema,
+  councilMemoryWriteToolOutputSchema,
   workerCantripMcpServerCapabilitiesSchema,
 } from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
@@ -142,11 +146,25 @@ async function generate() {
       councilCreateToolInputSchema,
       councilCreateToolOutputSchema,
     ],
+    [
+      "council_memory_read",
+      "council.memory.read",
+      "Read your current Council fast memory and its revision.",
+      councilMemoryReadToolInputSchema,
+      councilMemoryReadToolOutputSchema,
+    ],
+    [
+      "council_memory_write",
+      "council.memory.write",
+      "Replace your fast memory using its current revision. Include all notes you want to keep. Supply empty text to clear it. Maximum 8 KiB.",
+      councilMemoryWriteToolInputSchema,
+      councilMemoryWriteToolOutputSchema,
+    ],
   ];
   profiles.council = {
     ...profiles["standalone-web"],
     instructions:
-      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
+      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Read and update your fast memory with council_memory_read and council_memory_write. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
     tools: [
       ...profiles["standalone-web"].tools,
       ...council.map(([name, operation, description, input, output]) => {

@@ -1,5 +1,11 @@
 import type { SettingsBundle, WorkerSummary } from "@cantrip/protocol";
-import { ArrowLeft, FolderOpen, Settings2, UsersRound } from "lucide-react";
+import {
+  ArrowLeft,
+  FolderOpen,
+  NotebookPen,
+  Settings2,
+  UsersRound,
+} from "lucide-react";
 import { useState } from "react";
 
 import { ChatTranscript } from "@/components/chat/chat-transcript";
@@ -11,6 +17,7 @@ import { resolveStandaloneChatFilePath } from "@/lib/api/files";
 import { errorMessage } from "@/lib/error-message";
 
 import { CouncilAgentEditor } from "./council-agent-editor";
+import { CouncilMemoryEditor } from "./council-memory-editor";
 import { CouncilRoster } from "./council-roster";
 import type { CouncilWorkspaceController } from "./use-council-workspace";
 
@@ -71,6 +78,7 @@ function CouncilConversation({
 }: Props) {
   const { agent, chat, select, showEditor } = controller;
   const [filesOpen, setFilesOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const [filePath, setFilePath] = useState<string | null>(null);
   if (!agent) return null;
   const worker = workers.find(({ workerId }) => workerId === agent.workerId);
@@ -105,6 +113,14 @@ function CouncilConversation({
           onClick={() => showEditor(agent)}
         >
           <Settings2 className="size-4" />
+        </Button>
+        <Button
+          aria-label="Edit fast memory"
+          size="icon"
+          variant="ghost"
+          onClick={() => setMemoryOpen(true)}
+        >
+          <NotebookPen className="size-4" />
         </Button>
         <Button
           aria-label="Open agent files"
@@ -170,6 +186,12 @@ function CouncilConversation({
           relocationJob={null}
           settings={settings}
           syncEnabled={false}
+        />
+      ) : null}
+      {memoryOpen ? (
+        <CouncilMemoryEditor
+          agentId={agent.id}
+          onClose={() => setMemoryOpen(false)}
         />
       ) : null}
     </div>

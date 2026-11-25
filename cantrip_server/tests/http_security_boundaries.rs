@@ -257,6 +257,24 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
         assert_eq!(chat["id"], agent);
         assert_eq!(chat["contextKind"], "standalone");
         assert!(chat.get("protectedRole").is_none());
+        let memory_path = format!("{council_path}/{agent}/memory");
+        let read_memory = |session| request(Method::GET, &memory_path, session, false);
+        let initial_memory: Value = serde_json::from_str(
+            &read_memory(first).send().await?.error_for_status()?.text().await?,
+        )?;
+        assert_eq!(initial_memory, json!({"agentId":agent,"revision":1,"protectedMemory":null}));
+        let change = json!({"expectedRevision":1,"protectedMemory":content["envelope"]});
+        let write_memory = |session, csrf| request(Method::PUT, &memory_path, session, csrf)
+            .header("content-type", "application/json").body(change.to_string());
+        assert_eq!(read_memory(second).send().await?.status(), StatusCode::NOT_FOUND);
+        assert_eq!(write_memory(second, true).send().await?.status(), StatusCode::NOT_FOUND);
+        assert_eq!(write_memory(first, false).send().await?.status(), StatusCode::FORBIDDEN);
+        let sealed_memory: Value = serde_json::from_str(
+            &write_memory(first, true).send().await?.error_for_status()?.text().await?,
+        )?;
+        assert_eq!(sealed_memory, json!({"agentId":agent,"revision":2,"protectedMemory":content["envelope"]}));
+        assert_eq!(write_memory(first, true).send().await?.status(), StatusCode::CONFLICT);
+        assert_eq!(serde_json::from_str::<Value>(&read_memory(first).send().await?.error_for_status()?.text().await?)?, sealed_memory);
         let turns = format!("/api/chats/{agent}/turns");
         let submit = |session| request(Method::POST, &turns, session, true)
             .header("content-type", "application/json").body(turn.to_string());

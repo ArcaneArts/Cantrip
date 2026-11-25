@@ -1,3 +1,5 @@
+mod memory;
+
 use super::{
     body,
     middleware::{self, Context},
@@ -35,19 +37,28 @@ pub(super) async fn execute_agent_operation(
         .into());
     }
     let repository = Repository::new(service.repository.database.clone());
-    if operation == "council.list" {
-        let agents = repository.council_agents(owner).await?;
-        return Ok(json!({"summary":"Loaded the Council roster.","data":json!({"agents":agents})}));
+    match operation {
+        "council.list" => {
+            let agents = repository.council_agents(owner).await?;
+            Ok(json!({"summary":"Loaded the Council roster.","data":json!({"agents":agents})}))
+        }
+        "council.create" => {
+            let input = super::agent_operations::parse("councilAgentCreateSchema", arguments)?;
+            let agent = repository
+                .create_council_agent(owner, input, |_| false)
+                .await?;
+            service.scratch_roots.queue();
+            let _ = service
+                .live
+                .publish_event(council::notification(owner, &agent));
+            Ok(
+                json!({"summary":"Created a Council agent.","mutated":true,"data":json!({"agent":agent})}),
+            )
+        }
+        _ => {
+            memory::execute_agent_operation(&repository, owner, context, operation, arguments).await
+        }
     }
-    let input = super::agent_operations::parse("councilAgentCreateSchema", arguments)?;
-    let agent = repository
-        .create_council_agent(owner, input, |_| false)
-        .await?;
-    service.scratch_roots.queue();
-    let _ = service
-        .live
-        .publish_event(council::notification(owner, &agent));
-    Ok(json!({"summary":"Created a Council agent.","mutated":true,"data":json!({"agent":agent})}))
 }
 
 async fn execute(
@@ -160,4 +171,8 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/council/agents", get(collection).post(collection))
         .route("/api/council/agents/{agentId}", patch(update))
         .route("/api/council/agents/{agentId}/chat", get(conversation))
+        .route(
+            "/api/council/agents/{agentId}/memory",
+            get(memory::handle).put(memory::handle),
+        )
 }

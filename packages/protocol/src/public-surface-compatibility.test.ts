@@ -784,6 +784,7 @@ const desktopIoExports = [
 // Reviewed canonical-resource authorization, physical outcome facts, timing and
 // captured OS tunnel source helpers. Preserve every unrelated export baseline.
 const councilExports = [
+  "COUNCIL_MEMORY_BYTE_LIMIT",
   "councilAgentCreateSchema",
   "councilAgentTurnContextSchema",
   "councilAgentUpdateSchema",
@@ -793,6 +794,12 @@ const councilExports = [
   "councilCreateToolOutputSchema",
   "councilListToolInputSchema",
   "councilListToolOutputSchema",
+  "councilMemoryReadToolInputSchema",
+  "councilMemoryReadToolOutputSchema",
+  "councilMemoryUpdateSchema",
+  "councilMemoryWireSchema",
+  "councilMemoryWriteToolInputSchema",
+  "councilMemoryWriteToolOutputSchema",
 ];
 const nativeResourceAndTimingExports = [
   "inferenceCommandTimingSchema",

@@ -9,6 +9,8 @@ import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import { cantripMcpReadResultBaseSchema } from "./cantrip-mcp-tools.js";
 
 const rolePlaintextLimit = 32 * 1_024;
+export const COUNCIL_MEMORY_BYTE_LIMIT = 8 * 1_024;
+const revisionSchema = z.number().int().positive().max(2_147_483_647);
 // The endpoint seals the role with chat-content and associated data for the
 // council_agents row, agent ID, and role field.
 const councilRoleEnvelopeSchema = encryptedPayloadEnvelopeSchema.extend({
@@ -17,10 +19,17 @@ const councilRoleEnvelopeSchema = encryptedPayloadEnvelopeSchema.extend({
   ),
 });
 
+const councilMemoryEnvelopeSchema = encryptedPayloadEnvelopeSchema.extend({
+  ciphertext: encryptedPayloadEnvelopeSchema.shape.ciphertext.max(
+    Math.ceil(((COUNCIL_MEMORY_BYTE_LIMIT + 16) * 4) / 3),
+  ),
+});
+
 export const councilAgentTurnContextSchema = z
   .object({
     protectedRole: councilRoleEnvelopeSchema,
     primary: z.boolean(),
+    protectedMemory: councilMemoryEnvelopeSchema.nullable().optional(),
   })
   .strict();
 
@@ -38,7 +47,7 @@ export const councilAgentCreateSchema = z
 
 export const councilAgentUpdateSchema = z
   .object({
-    expectedRevision: z.number().int().positive().max(2_147_483_647),
+    expectedRevision: revisionSchema,
     titleProtection: councilAgentTitleSchema.optional(),
     protectedRole: councilRoleEnvelopeSchema.optional(),
     primary: z.boolean().optional(),
@@ -61,6 +70,21 @@ export const councilAgentWireListSchema = z.array(
   councilAgentWireSummarySchema,
 );
 
+export const councilMemoryWireSchema = z
+  .object({
+    agentId: standaloneChatIdentitySchema,
+    revision: revisionSchema,
+    protectedMemory: councilMemoryEnvelopeSchema.nullable(),
+  })
+  .strict();
+
+export const councilMemoryUpdateSchema = z
+  .object({
+    expectedRevision: revisionSchema,
+    protectedMemory: councilMemoryEnvelopeSchema.nullable(),
+  })
+  .strict();
+
 const councilToolAgentSchema = z
   .object({
     id: standaloneChatIdentitySchema,
@@ -77,6 +101,23 @@ export const councilCreateToolInputSchema = z
     role: z.string().trim().min(1).max(rolePlaintextLimit),
   })
   .strict();
+export const councilMemoryReadToolInputSchema = z.object({}).strict();
+export const councilMemoryWriteToolInputSchema = z
+  .object({
+    expectedRevision: revisionSchema,
+    text: z.string().max(COUNCIL_MEMORY_BYTE_LIMIT),
+  })
+  .strict();
+const councilToolMemorySchema = z
+  .object({
+    revision: revisionSchema,
+    text: z.string().max(COUNCIL_MEMORY_BYTE_LIMIT),
+  })
+  .strict();
+export const councilMemoryReadToolOutputSchema =
+  cantripMcpReadResultBaseSchema.extend({ data: councilToolMemorySchema });
+export const councilMemoryWriteToolOutputSchema =
+  councilMemoryReadToolOutputSchema.extend({ mutated: z.literal(true) });
 export const councilListToolOutputSchema =
   cantripMcpReadResultBaseSchema.extend({
     data: z.object({ agents: z.array(councilToolAgentSchema) }).strict(),
