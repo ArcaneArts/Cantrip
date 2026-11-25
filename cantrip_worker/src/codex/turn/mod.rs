@@ -76,6 +76,7 @@ pub(crate) const STEER: &str = "chat.steer";
 pub(crate) use control::PAUSE_SET;
 pub(crate) const RESUME: &str = "chat.suspension.resume";
 pub(crate) const STOP_SUSPENSION: &str = "chat.suspension.stop";
+pub(crate) const COUNCIL_PROVIDER_RETIRE: &str = "chat.council-provider-retire";
 pub(crate) const COMPLETE: &str = "chat.native-logical.complete";
 pub(crate) const CANCEL: &str = "chat.native-logical.cancel";
 pub(crate) const COUNCIL_PROVIDER_QUOTA: &str = "council-provider-quota";
@@ -1023,6 +1024,10 @@ impl Turns {
                 output::subscribe_with_context(&runtime.history(), thread, context.clone(),
                     cua.as_ref().map(|lifetime| Arc::new(OnceLock::from(Arc::downgrade(&lifetime.0)))))?;
             let transport = subscription.signal();
+            let quota = command
+                .get("councilAgent")
+                .filter(|_| command["provider"]["accountId"].is_string())
+                .map(|_| runtime.account_quota());
             let result = async {
                 execution.bind_thread(thread.clone())?;
                 execution.seal_input_dispatch().await?;
@@ -1242,6 +1247,9 @@ impl Turns {
                 let observe = async {
                     let saved = Value::Null;
                     let collecting = output::collect_restored(&mut events, &transport, thread, &turn, &emit, &saved, task_summary);
+                    let collecting = output::with_quota_observation(
+                        collecting, quota, thread, &turn, runtime.generation(), &emit,
+                    );
                     let result = if let (Some((handle, authority)), Some(subscribed)) = (interactions, native_interactions.as_mut()) {
                         interactions::Turn {
                             runtime, authority, thread, turn: &turn,

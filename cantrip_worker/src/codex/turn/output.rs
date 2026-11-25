@@ -7,10 +7,11 @@ use crate::{
 use anyhow::{Context, Result};
 use cantrip_wire::{JsString, Value, value::json};
 use std::{
+    future::Future,
     sync::{Arc, OnceLock, Weak},
     time::{Duration, Instant},
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 pub(super) enum Event {
     Frame(Value),
@@ -189,6 +190,34 @@ pub(super) struct Settled {
     pub status: &'static str,
     pub result: Result<Value>,
     pub provider_failure: Option<JsString>,
+}
+
+pub(super) async fn with_quota_observation(
+    collecting: impl Future<Output = Result<Settled>>,
+    quota: Option<watch::Receiver<u64>>,
+    thread: &JsString,
+    turn: &JsString,
+    generation: &str,
+    emit: &Emit,
+) -> Result<Settled> {
+    let Some(mut quota) = quota else {
+        return collecting.await;
+    };
+    tokio::pin!(collecting);
+    tokio::select! {
+        biased;
+        outcome = &mut collecting => return outcome,
+        detected = quota.changed() => {
+            if detected.is_ok() {
+                // The run can continue if its quota observation cannot be sent.
+                let _ = emit(json!({
+                    "type":"agent.council-provider-quota","threadId":thread,
+                    "turnId":turn,"runtimeGeneration":generation,
+                }));
+            }
+        }
+    }
+    collecting.await
 }
 
 pub(super) async fn collect(

@@ -192,6 +192,21 @@ impl EventSink {
         })
     }
     pub async fn on_event(self: &Arc<Self>, event: &Value) -> Result<()> {
+        if event["type"] == "agent.council-provider-quota" {
+            let execution = &self.turn.execution;
+            if execution.get("councilAgent").is_some() {
+                crate::native_commands::Repository::new(self.dependencies.database.clone())
+                    .observe_council_quota(
+                        &self.turn.owner,
+                        &text(&execution["chatId"])?,
+                        &text(&execution["workerId"])?,
+                        &text(&execution["executionLaneId"])?,
+                        event,
+                    )
+                    .await?;
+            }
+            return Ok(());
+        }
         if event["type"] == "agent.task-resumed" {
             let operation = self.task_input_operation.lock().unwrap().clone();
             let saved = crate::chats::Repository::new(self.dependencies.database.clone())

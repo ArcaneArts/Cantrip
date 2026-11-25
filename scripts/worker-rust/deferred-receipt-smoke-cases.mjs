@@ -20,6 +20,7 @@ export async function fixtureCodex(
     marker = path.join(root, "deferred-codex-once"),
     input = prompt,
     socketFile,
+    chatgptBaseUrl,
   } = {},
 ) {
   const executable = path.join(root, `codex-${scenario}-fixture`);
@@ -42,6 +43,11 @@ export async function fixtureCodex(
       ...(socketFile
         ? [
             `if [ "$1" = --remote ]; then umask 077; printf '%s\\n' "$2" > ${quote(socketFile)}; exec ${quote(path.resolve(codex))} "$@"; fi`,
+          ]
+        : []),
+      ...(chatgptBaseUrl
+        ? [
+            `if [ "$1" = app-server ]; then set -- "$@" -c ${quote("chatgpt_base_url=" + JSON.stringify(chatgptBaseUrl))} -c ${quote("openai_base_url=" + JSON.stringify(new URL("codex", chatgptBaseUrl).href))}; fi`,
           ]
         : []),
       `exec ${args.map(quote).join(" ")} "$@"`,

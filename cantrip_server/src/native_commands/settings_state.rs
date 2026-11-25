@@ -16,6 +16,11 @@ fn advance(mut state: Value) -> Result<Value> {
     state["revision"] = json!((integer(&state["revision"])? + BigInt::from(1)).to_string());
     Ok(state)
 }
+pub(super) fn retire_binding(mut state: Value) -> Result<Value> {
+    state["binding"] = Value::Null;
+    state["effective"] = Value::Null;
+    advance(state)
+}
 pub fn empty(chat: &str) -> Result<Value> {
     parse(
         "nativeSettingsStateSchema",

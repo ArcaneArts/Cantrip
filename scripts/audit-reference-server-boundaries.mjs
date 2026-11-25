@@ -128,7 +128,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "08ae093282f7451cc3b9ff34413133d5a8fc51ad8a91b9b2f20463aba8747477",
   workerCommands:
-    "65741ffd0e8726910f8d20573fe087645abc34b0d5a8f105f18cc05699213011",
+    "c11b41698e004a3d3a2eef81ff9a3146ae57259a29795e034b0ce8c204d8ffa1",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3775,6 +3775,12 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "chat.council-provider-retire")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "The exact paused Council runtime and worker-owned checkpoint are reverified on the assigned Worker before retiring its process.",
+    };
   if (command === "council.project-request.prepare")
     return {
       classification: "endpoint-protected",

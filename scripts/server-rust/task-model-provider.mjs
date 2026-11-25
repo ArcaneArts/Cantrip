@@ -2,7 +2,9 @@
 // worker entrypoint, native RPC, encrypted operations and repositories stay real.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { once } from "node:events";
+import { zstdDecompressSync } from "node:zlib";
 
 export function modelFunctions(tools, namespace) {
   return (tools ?? []).flatMap((tool) =>
@@ -18,6 +20,8 @@ export async function taskModelProvider({
   allowMcpDiscoveryProbe = false,
   observeStreams = false,
   expectedApiKey,
+  chatgptAccounts,
+  tls,
   modelMetadata = {},
   additionalModels = [],
 } = {}) {
@@ -25,6 +29,7 @@ export async function taskModelProvider({
     requests = [],
     failures = [],
     discoveryProbes = [],
+    accountQuotaReads = new Set(),
     sockets = new Set();
   // Use the bundled runtime's normal model metadata against this local provider.
   const model = "gpt-5.5";
@@ -32,11 +37,35 @@ export async function taskModelProvider({
   let nextResponse = 0;
   const send = (response, event) =>
     response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-  const server = createServer(async (request, response) => {
+  const handleRequest = async (request, response) => {
+    const pathname = new URL(request.url, "http://fixture.invalid").pathname;
     try {
+      if (chatgptAccounts) {
+        if (
+          pathname.startsWith("/backend-api/plugins/") ||
+          pathname.startsWith("/backend-api/ps/plugins/") ||
+          [
+            "/backend-api/ps/mcp",
+            "/backend-api/wham/rate-limit-reset-credits",
+            "/backend-api/wham/settings/user",
+          ].includes(pathname)
+        ) {
+          response.writeHead(404).end();
+          return;
+        }
+        if (pathname === "/backend-api/codex/analytics-events/events") {
+          response.writeHead(204).end();
+          return;
+        }
+      }
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
-      const text = Buffer.concat(chunks).toString();
+      const body = Buffer.concat(chunks);
+      const text = (
+        request.headers["content-encoding"] === "zstd"
+          ? zstdDecompressSync(body)
+          : body
+      ).toString();
       const input = text ? JSON.parse(text) : null;
       const record = {
         method: request.method,
@@ -51,7 +80,56 @@ export async function taskModelProvider({
           record.closedBeforeCompletion = !record.completed;
         });
       }
-      const pathname = new URL(request.url, "http://fixture.invalid").pathname;
+      if (chatgptAccounts && pathname.startsWith("/backend-api/")) {
+        const account = request.headers["chatgpt-account-id"];
+        assert.ok(
+          chatgptAccounts.includes(account),
+          "Disposable ChatGPT account",
+        );
+        const bearer = request.headers.authorization?.split(".")[1] ?? "";
+        const claims = JSON.parse(Buffer.from(bearer, "base64url").toString());
+        assert.ok(claims.sub === account, "Bearer matches the account");
+        record.account = account;
+        if (
+          request.method === "GET" &&
+          pathname === "/backend-api/wham/accounts/check"
+        ) {
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({
+              accounts: [
+                {
+                  id: account,
+                  name: account,
+                  plan_type: "pro",
+                  workspace_backend_origin: "NO_CONSTRAINT",
+                  account_routing_override: "NO_CONSTRAINT",
+                },
+              ],
+            }),
+          );
+          return;
+        }
+        if (
+          request.method === "GET" &&
+          pathname === "/backend-api/wham/usage"
+        ) {
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(JSON.stringify({ plan_type: "pro", rate_limit: null }));
+          accountQuotaReads.add(account);
+          record.completed = true;
+          return;
+        }
+        if (
+          request.method === "GET" &&
+          pathname === "/backend-api/codex/models"
+        ) {
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(JSON.stringify({ models: [] }));
+          record.completed = true;
+          return;
+        }
+      }
       if (
         allowMcpDiscoveryProbe &&
         request.method === "POST" &&
@@ -101,7 +179,11 @@ export async function taskModelProvider({
       }
       assert.equal(request.method, "POST");
       assert.ok(
-        ["/v1/responses", "/responses"].includes(pathname),
+        [
+          "/v1/responses",
+          "/responses",
+          "/backend-api/codex/responses",
+        ].includes(pathname),
         "actual Responses endpoint",
       );
       assert.ok(
@@ -141,6 +223,7 @@ export async function taskModelProvider({
       response.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
+        ...plan.headers,
       });
       send(response, { type: "response.created", response: { id } });
       if (plan.failure) {
@@ -221,7 +304,11 @@ export async function taskModelProvider({
       response.end();
       record.completed = true;
     } catch (error) {
-      failures.push(error.message);
+      failures.push(
+        chatgptAccounts
+          ? `${request.method} ${pathname}: ${error.message}`
+          : error.message,
+      );
       if (!response.headersSent)
         response.writeHead(500, { "content-type": "application/json" });
       response.end(
@@ -233,11 +320,23 @@ export async function taskModelProvider({
         }),
       );
     }
-  });
+  };
+  const server = tls
+    ? createHttpsServer(tls, handleRequest)
+    : createServer(handleRequest);
   server.on("connection", (socket) => {
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
   });
+  if (chatgptAccounts) {
+    // Exercise the native HTTP quota path. Codex uses its normal HTTP fallback
+    // when the Responses WebSocket is unavailable at this endpoint.
+    server.on("upgrade", (_request, socket) => {
+      socket.end(
+        "HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+      );
+    });
+  }
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const admitted = [];
@@ -246,7 +345,8 @@ export async function taskModelProvider({
     requests,
     failures,
     discoveryProbes,
-    baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
+    accountQuotaReads,
+    baseUrl: `${tls ? "https" : "http"}://127.0.0.1:${server.address().port}/v1`,
     reply(value) {
       const plan = { ...value, entered: false, request: null };
       if (value.repeat) {

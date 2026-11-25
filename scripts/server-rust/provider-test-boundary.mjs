@@ -11,7 +11,7 @@ import { connect } from "node:net";
 import path from "node:path";
 
 const execute = promisify(execFile);
-export async function providerTestBoundary(directory) {
+export async function disposableProviderTls(directory, host, subjectAltName) {
   await mkdir(directory, { recursive: true });
   const file = (name) => path.join(directory, name);
   await execute("openssl", [
@@ -42,11 +42,11 @@ export async function providerTestBoundary(directory) {
     "-out",
     file("server.csr"),
     "-subj",
-    "/CN=api.z.ai",
+    `/CN=${host}`,
   ]);
   await writeFile(
     file("extensions.cnf"),
-    "subjectAltName=DNS:api.z.ai\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n",
+    `subjectAltName=${subjectAltName}\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n`,
   );
   await execute("openssl", [
     "x509",
@@ -65,6 +65,19 @@ export async function providerTestBoundary(directory) {
     "-extfile",
     file("extensions.cnf"),
   ]);
+  return {
+    caPath: file("ca.pem"),
+    key: await readFile(file("server.key")),
+    cert: await readFile(file("server.pem")),
+  };
+}
+
+export async function providerTestBoundary(directory) {
+  const { caPath, key, cert } = await disposableProviderTls(
+    directory,
+    "api.z.ai",
+    "DNS:api.z.ai",
+  );
   const apiKey = "cantrip-disposable-provider-test-key",
     requests = [],
     tunnels = [],
@@ -79,8 +92,8 @@ export async function providerTestBoundary(directory) {
   };
   const peer = httpsServer(
     {
-      key: await readFile(file("server.key")),
-      cert: await readFile(file("server.pem")),
+      key,
+      cert,
     },
     async (request, response) => {
       try {
@@ -294,7 +307,7 @@ export async function providerTestBoundary(directory) {
       https_proxy: proxyUrl,
       NO_PROXY: "127.0.0.1,localhost,::1",
       no_proxy: "127.0.0.1,localhost,::1",
-      CODEX_CA_CERTIFICATE: file("ca.pem"),
+      CODEX_CA_CERTIFICATE: caPath,
     },
     reply: (plan) => replies.push(plan),
     clearReply: () => replies.shift(),

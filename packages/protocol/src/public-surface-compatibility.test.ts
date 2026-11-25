@@ -1305,6 +1305,11 @@ describe("protocol public surface compatibility", () => {
     expect(advertisedCommandTypes.indexOf("chat.goal.recover")).toBe(
       advertisedCommandTypes.indexOf("chat.automation.resume") + 1,
     );
+    expect(
+      advertisedCommandTypes.filter(
+        (type) => type === "chat.council-provider-retire",
+      ),
+    ).toEqual(["chat.council-provider-retire"]);
     const inferenceStatusCommandTypes = advertisedCommandTypes.filter(
       (type) =>
         type !== "surface.desktop.os-prepare" &&
@@ -1312,6 +1317,7 @@ describe("protocol public surface compatibility", () => {
         type !== "inference.revoke" &&
         type !== "inference.task-revoke" &&
         type !== "chat.suspension.resume" &&
+        type !== "chat.council-provider-retire" &&
         !type.startsWith("cantrip-os.power.") &&
         !type.startsWith("cantrip-os.packages.") &&
         !type.startsWith("cantrip-os.system.") &&
@@ -1326,9 +1332,15 @@ describe("protocol public surface compatibility", () => {
     const currentCommandTypes = inferenceStatusCommandTypes.filter(
       (type) => type !== "inference.status",
     );
-    const allEventTypes = workerEventSchema.options
-      .map((option) => option.shape.type.value)
-      .filter((type) => type !== "agent.task-resumed");
+    const advertisedEventTypes = workerEventSchema.options.map(
+      (option) => option.shape.type.value,
+    );
+    expect(advertisedEventTypes[0]).toBe("agent.council-provider-quota");
+    const allEventTypes = advertisedEventTypes.filter(
+      (type) =>
+        type !== "agent.task-resumed" &&
+        type !== "agent.council-provider-quota",
+    );
     const advertisedNotificationTypes = workerNotificationSchema.options.map(
       (option) => option.shape.type.value,
     );

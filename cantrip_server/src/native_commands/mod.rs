@@ -22,6 +22,7 @@ mod preparation;
 mod queue;
 pub(crate) use queue::changed as queue_state_changed;
 pub(crate) mod council_provider_recovery;
+pub(crate) mod council_live_provider;
 mod council_steer_recovery;
 pub mod queued_prompt;
 pub mod receipt;

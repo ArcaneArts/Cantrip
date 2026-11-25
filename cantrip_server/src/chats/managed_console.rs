@@ -179,6 +179,15 @@ impl ManagedConsole {
                 )
             {
                 session["heldSuspension"] = suspension["checkpoint"].clone();
+                if session["council"] == true
+                    && let Some(source) = crate::native_commands::Repository::new(
+                        self.repository.database.clone(),
+                    )
+                    .council_live_checkpoint_source(owner, &text(context, "chatId")?)
+                    .await?
+                {
+                    session["councilProviderCheckpointSource"] = source;
+                }
             }
             fields["session"] = session;
         }

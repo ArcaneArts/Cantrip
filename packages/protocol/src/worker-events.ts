@@ -240,6 +240,12 @@ export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const workerEventSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("agent.council-provider-quota"),
+    threadId: z.string().min(1).max(500),
+    turnId: z.string().min(1).max(500),
+    runtimeGeneration: z.string().min(1).max(200),
+  }),
   z
     .object({
       type: z.literal("agent.task-resumed"),

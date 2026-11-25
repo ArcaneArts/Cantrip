@@ -880,7 +880,7 @@ async fn cycle(
                     });
                     continue;
                 }
-                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::STEER | crate::codex::turn::STOP_SUSPENSION | crate::codex::turn::PAUSE_SET) {
+                if matches!(kind, crate::codex::turn::RUN | crate::codex::turn::INTERRUPT | crate::codex::turn::CONTROL | crate::codex::turn::STEER | crate::codex::turn::STOP_SUSPENSION | crate::codex::turn::PAUSE_SET | crate::codex::turn::COUNCIL_PROVIDER_RETIRE) {
                     if kind == crate::codex::turn::INTERRUPT {
                         desktop_inventory.previews().cancel_chat(&command["chatId"]);
                     }
@@ -897,6 +897,7 @@ async fn cycle(
                             Some(crate::codex::turn::CONTROL) => (turns.control(command, signal).await, None),
                             Some(crate::codex::turn::STEER) => (turns.steer(command, signal).await, None),
                             Some(crate::codex::turn::STOP_SUSPENSION) => (turns.stop_suspension(command).await, None),
+                            Some(crate::codex::turn::COUNCIL_PROVIDER_RETIRE) => (turns.retire_council_provider(command).await, None),
                             Some(crate::codex::turn::PAUSE_SET) => (turns.set_pause(command).await, None),
                             _ => {
                                 let request_id = request["requestId"].clone();

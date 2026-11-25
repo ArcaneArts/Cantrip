@@ -38,7 +38,7 @@ use crate::{
     provider_access::Access,
     routing::Registry,
 };
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use std::sync::OnceLock;
 use std::{
@@ -561,6 +561,11 @@ impl Ensurer {
             }
         };
         let provider = open_runtime_provider(&self.0.encryption, &command["provider"])?;
+        if let Some(saved) = &held
+            && session.get("councilProviderCheckpointSource").is_some()
+        {
+            home::select_council_checkpoint(&self.0.data, &scope, &provider, saved).await?;
+        }
         if let Some(defaults) = command
             .get("subagentDefaults")
             .filter(|value| value.is_object())
@@ -654,11 +659,12 @@ impl Ensurer {
                             environment.as_deref(),
                         )
                         .await?;
-                        if let Some(epoch) = &history_epoch {
-                            // A managed App Server runner binds one native thread
-                            // for its lifetime. Keep rollout lookup in its existing home.
-                            profile.id =
-                                surround("", &profile.id, &format!(":council:{}", epoch.lossy()));
+                        if command["session"]["council"] == true {
+                            // Provider recovery can retire the process for this
+                            // agent without interrupting other chats and agents.
+                            let runner =
+                                payload_digest(&json!([json!(chat), json!(history_epoch)]));
+                            profile.id = surround("", &profile.id, &format!(":council:{runner}"));
                         }
                         this.assert_bound(&bound)?;
                         let codex_home = profile.codex_home.clone();
@@ -691,6 +697,15 @@ impl Ensurer {
                                     &command["model"],
                                     &command["subagentDefaults"]["model"],
                                 )?;
+                                if command["session"]["council"] == true {
+                                    // Council peers use the Cantrip roster. Keep native subagents
+                                    // disabled in both the initial and restored process.
+                                    launch.profile.provider_arguments.extend([
+                                        "features.multi_agent=false".into(),
+                                        "features.multi_agent_v2.enabled=false".into(),
+                                        "agents.enabled=false".into(),
+                                    ]);
+                                }
                                 if let Some(environment) = &environment {
                                     environment.configure_launch(&mut launch);
                                 }
@@ -1205,12 +1220,20 @@ impl Ensurer {
         placement: &str,
     ) -> Result<Opened> {
         let session = &command["session"];
-        let source = json!({
+        let mut source = json!({
             "chatId":session["chatId"],"threadId":command["threadId"],
             "contextKind":session["contextKind"],"projectId":session["projectId"],
             "placementId":session[placement],"modelRouteId":command["model"]["routeId"],
             "providerAccountId":command["provider"]["accountId"],
         });
+        if let Some(previous) = session.get("councilProviderCheckpointSource") {
+            ensure!(
+                session["council"] == true,
+                "Only Council can restore a provider checkpoint."
+            );
+            source["modelRouteId"] = previous["modelRouteId"].clone();
+            source["providerAccountId"] = previous["providerAccountId"].clone();
+        }
         let store = Store::new(&self.0.data, self.0.encryption.clone());
         let id = expected["storageId"]
             .as_str()

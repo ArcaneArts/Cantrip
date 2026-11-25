@@ -233,6 +233,13 @@ pub(super) async fn dispatch(
     } else {
         "resume"
     };
+    let quota_pause = intent["councilProviderPause"] == true;
+    if quota_pause {
+        super::council_live_provider::assert_pause(tx, owner, row, input, &chat).await?;
+        if action != "pause" || previous.as_ref().is_some_and(|s| !terminal(s) && s["phase"] != "running") {
+            return reject("suspension-control-stale");
+        }
+    }
     if previous
         .as_ref()
         .is_some_and(|s| s["action"] == "stop" && !terminal(s))
@@ -284,7 +291,7 @@ pub(super) async fn dispatch(
             "requestedAt":now,"updatedAt":now,"pausedAt":Value::Null,"pausedMilliseconds":0})
     };
     if !duplicate {
-        state["controlId"] = json!(uuid::Uuid::new_v4().to_string());
+        state["controlId"] = if quota_pause { row["operation_id"].clone() } else { json!(uuid::Uuid::new_v4().to_string()) };
         state["actorControlId"] = Value::Null;
         state["action"] = json!(action);
         state["phase"] = json!(match action {

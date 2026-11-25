@@ -6,12 +6,18 @@ impl Service {
         owner: &str,
         context: &Value,
     ) -> Result<Option<Value>> {
-        let Some(runtime) = self
-            .dependencies
-            .routing
-            .runtime_for_context(owner, context)
-            .await?
-        else {
+        let routing = &self.dependencies.routing;
+        let runtime = if context.get("councilAgent").is_some()
+            && crate::native_commands::Repository::new(self.dependencies.database.clone())
+                .council_live_checkpoint_source(owner, &text(&context["chatId"])?)
+                .await?
+                .is_some()
+        {
+            Some(routing.bound_managed_runtime(owner, context).await?)
+        } else {
+            routing.runtime_for_context(owner, context).await?
+        };
+        let Some(runtime) = runtime else {
             return Ok(None);
         };
         self.dependencies

@@ -297,6 +297,7 @@ impl Protected {
                 "agent.interaction.requested.protected"
                 | "agent.interaction.cleared"
                 | "agent.interaction.expired"
+                | "agent.council-provider-quota"
                 | "computer-use.approval.request"
                 | "computer-use.approval.terminal",
             ) => Ok(event.clone()),

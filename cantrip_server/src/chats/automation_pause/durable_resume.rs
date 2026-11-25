@@ -68,7 +68,13 @@ impl Service {
                 return Err(error);
             }
         };
-        if truthy(control.get("activationGeneration")) {
+        let replaced_council_runtime = context.get("councilAgent").is_some()
+            && self
+                .native
+                .council_live_checkpoint_source(owner, &chat)
+                .await?
+                .is_some();
+        if truthy(control.get("activationGeneration")) && !replaced_council_runtime {
             // A surviving owner is the fast path. Its requested flag is not ACK.
             let _ = async {
                 let reply = self

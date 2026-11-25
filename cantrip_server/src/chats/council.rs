@@ -63,14 +63,28 @@ impl Repository {
                 "SELECT to_jsonb(c)::text, recovery.state::text
                  FROM chats c LEFT JOIN LATERAL (
                    SELECT CASE WHEN r.phase='cancelled' THEN NULL ELSE jsonb_build_object(
-                       'phase',r.phase,'from',COALESCE(source_provider.name,'Previous provider'),
-                       'to',target_provider.name,
+                       'phase',r.phase,
+                       'from',CASE WHEN source_route.id<>target_route.id AND source_provider.id=target_provider.id
+                           AND source_account.id IS NOT DISTINCT FROM target_account.id THEN source_provider.name || ' (' || source_route.model_name || ')'
+                           ELSE COALESCE(source_provider.name,'Previous provider') END,
+                       'to',CASE WHEN source_route.id<>target_route.id AND source_provider.id=target_provider.id
+                           AND source_account.id IS NOT DISTINCT FROM target_account.id THEN target_provider.name || ' (' || target_route.model_name || ')'
+                           ELSE target_provider.name END,
                        'fromAccount',CASE WHEN source_account.id IS NOT NULL THEN
                          jsonb_build_object('id',source_account.id,'protectedLabel',source_account.protected_label) END,
                        'toAccount',CASE WHEN target_account.id IS NOT NULL THEN
                          jsonb_build_object('id',target_account.id,'protectedLabel',target_account.protected_label) END
                    ) END AS state
-                   FROM council_provider_recoveries r
+                   FROM (
+                     SELECT source_operation_id,phase,target_model_route_id,target_provider_account_id,updated_at
+                     FROM council_provider_recoveries WHERE chat_id=c.id
+                     UNION ALL
+                     SELECT source_operation_id,CASE phase WHEN 'completed' THEN 'continued'
+                       WHEN 'cancelled' THEN 'cancelled' ELSE 'switching' END,
+                       target_model_route_id,target_provider_account_id,updated_at
+                     FROM council_live_provider_switches
+                     WHERE chat_id=c.id AND phase<>'observed' AND pause_control_id IS NOT NULL
+                   ) r
                    JOIN native_commands source ON source.operation_id=r.source_operation_id AND source.owner_id=$2
                    LEFT JOIN model_routes source_route ON source_route.id=source.identity->>'modelRouteId'
                    LEFT JOIN model_providers source_provider ON source_provider.id=source_route.provider_id AND source_provider.owner_id=$2
@@ -80,7 +94,7 @@ impl Repository {
                    LEFT JOIN model_providers target_provider ON target_provider.id=target_route.provider_id AND target_provider.owner_id=$2
                    LEFT JOIN model_provider_accounts target_account ON target_account.id=r.target_provider_account_id
                        AND target_account.provider_id=target_provider.id
-                   WHERE r.chat_id=c.id ORDER BY r.updated_at DESC LIMIT 1
+                   ORDER BY r.updated_at DESC LIMIT 1
                  ) recovery ON true
                  WHERE c.id=$1 AND c.owner_id=$2 AND c.context_kind='council' AND c.archived_at IS NULL LIMIT 1",
                 &[&chat, &owner],

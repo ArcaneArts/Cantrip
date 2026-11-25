@@ -34,6 +34,12 @@ export const managedSessionContextSchema = z.discriminatedUnion("contextKind", [
       contextKind: z.literal("standalone"),
       council: z.literal(true).optional(),
       councilHistoryEpoch: z.uuid().optional(),
+      councilProviderCheckpointSource: z
+        .strictObject({
+          modelRouteId: z.string().min(1).max(200),
+          providerAccountId: z.string().min(1).max(200).nullable(),
+        })
+        .optional(),
       projectId: z.null(),
       worktreeId: z.null(),
       rootKind: z.null(),

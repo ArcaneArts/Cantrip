@@ -32,7 +32,10 @@ use std::{
     sync::{Arc, Mutex, OnceLock, Weak},
     time::{Duration, Instant},
 };
-use tokio::{sync::mpsc, task::JoinSet};
+use tokio::{
+    sync::{mpsc, watch},
+    task::JoinSet,
+};
 
 pub use launch::{GrokAccount, Host, Profile};
 pub use worker::{Binding, Worker};
@@ -80,6 +83,7 @@ struct Inner {
     project_skill_roots: tokio::sync::RwLock<Vec<JsString>>,
     mcp_oauth: Attempts,
     external_imports: Imports,
+    account_quota: watch::Receiver<u64>,
 }
 
 impl Drop for Inner {
@@ -265,6 +269,7 @@ impl Runtime {
         let interaction_requests = interaction_requests::Requests::default();
         let mcp_oauth = Attempts::default();
         let external_imports = Imports::default();
+        let (quota_updates, account_quota) = watch::channel(0);
         let retirement = Promise::spawn(pump(
             router.clone(),
             events,
@@ -279,6 +284,7 @@ impl Runtime {
                 interaction_requests: interaction_requests.clone(),
                 mcp_oauth: mcp_oauth.clone(),
                 external_imports: external_imports.clone(),
+                account_quota: quota_updates,
             },
         ));
         let runtime = Self(Arc::new_cyclic(|inner| Inner {
@@ -305,6 +311,7 @@ impl Runtime {
             project_skill_roots: Default::default(),
             mcp_oauth,
             external_imports,
+            account_quota,
         }));
         if let Err(error) = host
             .initialize(&runtime.0.session, &profile)
@@ -515,6 +522,12 @@ impl Runtime {
         self.0.retirement.work()
     }
 
+    pub(in crate::codex) fn account_quota(&self) -> watch::Receiver<u64> {
+        let mut quota = self.0.account_quota.clone();
+        quota.borrow_and_update();
+        quota
+    }
+
     pub fn close(&self) -> Work<()> {
         let mut closing = self.0.closing.lock().unwrap();
         if let Some(pending) = closing.as_ref() {
@@ -546,6 +559,21 @@ struct NativeCallbacks {
     interaction_requests: interaction_requests::Requests,
     mcp_oauth: Attempts,
     external_imports: Imports,
+    account_quota: watch::Sender<u64>,
+}
+
+fn nearing_quota(snapshot: &Value) -> bool {
+    if !snapshot.is_object() || !(snapshot["limitId"].is_null() || snapshot["limitId"] == "codex") {
+        return false;
+    }
+    let now = chrono::Utc::now().timestamp();
+    ["primary", "secondary"].iter().any(|window| {
+        let window = &snapshot[*window];
+        window["usedPercent"]
+            .as_f64()
+            .is_some_and(|used| (95.0..=100.0).contains(&used))
+            && window["resetsAt"].as_i64().is_none_or(|reset| reset > now)
+    })
 }
 
 async fn pump(
@@ -564,6 +592,7 @@ async fn pump(
         interaction_requests,
         mcp_oauth,
         external_imports,
+        account_quota,
     } = native;
     let mut callbacks = JoinSet::new();
     let started = Instant::now();
@@ -572,6 +601,13 @@ async fn pump(
             Some(_) = callbacks.join_next(), if !callbacks.is_empty() => {},
             next = events.recv() => {
                 let Some(event_data) = next else { return router.close().await; };
+                if let EventKind::Message(message) = &event_data.kind
+                    && message.get("id").is_none()
+                    && message["method"] == "account/rateLimits/updated"
+                    && nearing_quota(&message["params"]["rateLimits"])
+                {
+                    account_quota.send_modify(|seen| *seen = seen.wrapping_add(1));
+                }
                 if let EventKind::Message(message) = &event_data.kind
                     && message["method"] == "account/chatgptAuthTokens/refresh"
                     && let Some(request) = message.get("id") {
