@@ -195,6 +195,7 @@ import {
 import { useGitHistoryNavigation } from "@/lib/use-git-history-navigation";
 import { workspaceWorkerObservationDemands } from "@/lib/workspace-worker-observation";
 import { ChatTranscript } from "@/components/chat/chat-transcript";
+import { useCouncilNotifications } from "@/components/council/use-council-notifications";
 export { ChatTranscript };
 export function App() {
   useDesktopDirectTransportTelemetry();
@@ -2032,6 +2033,11 @@ export function App() {
     queryClient,
     selectProjectFromCommandBar,
     showAppToast,
+  });
+  useCouncilNotifications({
+    enabled: councilAvailable && !isPopout,
+    live: liveStatus === "live",
+    onToast: showAppToast,
   });
   const selectTopTab = (tabKey: string) => {
     const layout = tabLayout.data;

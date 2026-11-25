@@ -255,9 +255,9 @@
     "websocket": 7,
     "workerCredentialRoutes": 46,
     "durableTables": 135,
-    "agentOperations": 73,
+    "agentOperations": 74,
     "workerCommands": 326,
-    "liveResources": 47,
+    "liveResources": 48,
     "clientControlCommands": 4,
     "cliCommands": 36,
     "tunnelFrameKinds": 9,
@@ -271,11 +271,11 @@
     }
   },
   "contractSetDigests": {
-    "agentOperations": "1aa72e26fbc3160d329b9b859dcb08df81030fad1a1f18a6da96520a001a971b",
+    "agentOperations": "6be765e0a886708984315e1e6405829c252d906d4736337ab9037774edf50d91",
     "applicationRoutes": "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
     "cliCommands": "eda5c53bda92870bd738663b686243a6183683a8d04af6af5f1bd43e02893f57",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
-    "liveResources": "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
+    "liveResources": "08ae093282f7451cc3b9ff34413133d5a8fc51ad8a91b9b2f20463aba8747477",
     "workerCommands": "2f494af21cd4a6abb2731c1acb2040c4a6205f1b93bf499aad2ba1a040546364",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
@@ -8677,6 +8677,11 @@
       "rationale": "The active Council binding selects its own fast memory. Browser and worker endpoints open and seal row-bound content, while Core stores ciphertext and revision."
     },
     {
+      "operation": "council.message.post",
+      "classification": "endpoint-protected",
+      "rationale": "The Council worker encrypts the visible message. Core persists the notification intent and message ID with the encrypted content."
+    },
+    {
       "operation": "council.peer.send",
       "classification": "endpoint-protected",
       "rationale": "The active Council worker seals the handoff and protected history. Core authorizes both agents and records durable delivery identities."
@@ -10893,6 +10898,7 @@
     "chat-relocation-job",
     "code-tab",
     "codegraph-status",
+    "council-notification",
     "customization",
     "explorer",
     "explorer-filesystem",
@@ -11001,6 +11007,11 @@
       "resource": "codegraph-status",
       "classification": "minimized-operational-metadata",
       "rationale": "bounded lifecycle invalidation"
+    },
+    {
+      "resource": "council-notification",
+      "classification": "minimized-operational-metadata",
+      "rationale": "The invalidation carries a message ID. Clients fetch the encrypted content under account authorization."
     },
     {
       "resource": "customization",

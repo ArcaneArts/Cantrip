@@ -1,5 +1,6 @@
 use super::{Authorized, Inner};
 mod automations;
+mod messages;
 mod peer;
 use crate::{
     encryption::Service,
@@ -44,6 +45,15 @@ impl Inner {
         }
         let agent_id = &authorization.active.binding["chatId"];
         let arguments = match operation {
+            "council.message.post" => messages::protect(
+                self.encryption
+                    .as_ref()
+                    .context("Council encryption is unavailable")?
+                    .clone(),
+                authorization,
+                agent_id,
+                &input,
+            )?,
             "council.create" => protect(service, authorization, &request, &input)?,
             "council.automation.create" => {
                 automations::protect_create(service, authorization, agent_id, &input)?
@@ -126,7 +136,7 @@ impl Inner {
             "council.automation.read" => {
                 reply["data"] = automations::open(service, authorization, &reply["data"], true)?;
             }
-            "council.automation.create" | "council.automation.update" => {}
+            "council.automation.create" | "council.automation.update" | "council.message.post" => {}
             "council.project.chat.create"
             | "council.project.task.create"
             | "council.project.task.start"

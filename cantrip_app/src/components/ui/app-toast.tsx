@@ -10,6 +10,7 @@ export const APP_TOAST_VIEWPORT_CLASS_NAME =
 export type AppToastTone = "error" | "info" | "warning";
 
 export type AppToastInput = {
+  href?: string;
   message: string;
   title: string;
   tone: AppToastTone;
@@ -28,6 +29,7 @@ export function AppToast({
   autoDismissMs = APP_TOAST_AUTO_DISMISS_MS,
   className,
   dismissLabel = "Dismiss notification",
+  href,
   message,
   onDismiss,
   title,
@@ -79,6 +81,11 @@ export function AppToast({
         <span className="mt-0.5 block break-words text-neutral-300">
           {message}
         </span>
+        {href ? (
+          <a className="mt-1 inline-block underline" href={href}>
+            Open conversation
+          </a>
+        ) : null}
       </span>
       <button
         aria-label={dismissLabel}

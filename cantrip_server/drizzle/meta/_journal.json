@@ -2199,6 +2199,13 @@
       "when": 1795611780000,
       "tag": "0313_council_automation_mutations",
       "breakpoints": true
+    },
+    {
+      "idx": 314,
+      "version": "7",
+      "when": 1795612800000,
+      "tag": "0314_council_message_notifications",
+      "breakpoints": true
     }
   ]
 }

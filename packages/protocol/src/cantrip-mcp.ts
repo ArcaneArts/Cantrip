@@ -83,6 +83,7 @@ export const cantripAgentOperationNameSchema = z.enum([
   "council.automation.read",
   "council.automation.create",
   "council.automation.update",
+  "council.message.post",
 ]);
 
 export const CANTRIP_MCP_READ_OPERATIONS = [

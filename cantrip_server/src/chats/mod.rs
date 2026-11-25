@@ -10,6 +10,7 @@ pub(crate) mod computer_use_authority;
 mod context;
 pub mod conversations;
 pub(crate) mod council;
+pub(crate) mod council_notifications;
 pub(crate) mod council_project_results;
 pub mod eligibility;
 pub mod execution_lanes;

@@ -81,6 +81,8 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
     }
     case "server":
       return [["server-bootstrap"]];
+    case "council-notification":
+      return [["council-notifications"]];
     case "account-session":
       return [["account-sessions"]];
     case "account-resource-usage":
@@ -459,6 +461,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
   switch (scope.kind) {
     case "current-user":
       return [
+        ["council-notifications"],
         ["worker-inference"],
         ["project-alert-counts"],
         ["project-alerts"],

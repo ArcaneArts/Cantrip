@@ -352,6 +352,7 @@ export function ApplicationShellRender({
         {appToast ? (
           <AppToast
             key={appToast.id}
+            href={appToast.href}
             message={appToast.message}
             onDismiss={() => setAppToast(null)}
             title={appToast.title}
