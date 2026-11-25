@@ -19,6 +19,7 @@ use crate::{
         guest_environment::Environment,
         managed::{Runtime, WeakRuntime, Worker},
         observation::{home, provider},
+        provider_errors::surround,
         revocation::{Resource, Target as RevocationTarget},
         suspension_store::{self, Opened, Store},
         task_pause::{Latch, Root},
@@ -582,10 +583,13 @@ impl Ensurer {
         let this = self.clone();
         let retained_resource = resource.clone();
         let staged = stage.is_some();
+        let history_epoch = command["session"]["councilHistoryEpoch"]
+            .as_js_string()
+            .cloned();
         let input = Input {
             identity,
             target,
-            unbound_reuse_key: None,
+            unbound_reuse_key: history_epoch.clone(),
             replacement_settings: None,
             on_identified: None,
             on_prepared: None,
@@ -618,7 +622,7 @@ impl Ensurer {
                                 home::Source::Held,
                             )
                         };
-                        let profile = home::profile(
+                        let mut profile = home::profile(
                             &this.0.data,
                             &scope,
                             source,
@@ -629,6 +633,12 @@ impl Ensurer {
                             environment.as_deref(),
                         )
                         .await?;
+                        if let Some(epoch) = &history_epoch {
+                            // A managed App Server runner binds one native thread
+                            // for its lifetime. Keep rollout lookup in its existing home.
+                            profile.id =
+                                surround("", &profile.id, &format!(":council:{}", epoch.lossy()));
+                        }
                         this.assert_bound(&bound)?;
                         let codex_home = profile.codex_home.clone();
                         let attached = held.as_ref().and_then(|saved| {

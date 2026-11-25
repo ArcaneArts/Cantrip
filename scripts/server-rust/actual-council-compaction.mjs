@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { actualCouncilHistoryRedaction } from "./actual-council-history-redaction.mjs";
 import { eventually } from "./full-worker.mjs";
 import { literal } from "./project-target-state.mjs";
 import { modelFunctions } from "./task-model-provider.mjs";
@@ -8,6 +9,7 @@ export async function actualCouncilCompaction({
   appOrigin,
   fixture,
   restartWorker,
+  redact = false,
   chatId,
   model,
   submit,
@@ -66,7 +68,7 @@ export async function actualCouncilCompaction({
       await fixture.sql(
         [],
         [
-          `SELECT to_jsonb(r.codex_thread_id)::text FROM chat_runtime_sessions r
+          `SELECT COALESCE(to_jsonb(r.codex_thread_id),'null'::jsonb)::text FROM chat_runtime_sessions r
            JOIN chats c ON c.id=r.chat_id AND c.active_worker_id=r.worker_id
              AND c.active_scratch_root_id=r.scratch_root_id WHERE c.id=${literal(chatId)}`,
         ],
@@ -104,6 +106,22 @@ export async function actualCouncilCompaction({
   try {
     assert.ok(content(await observe(firstCompact)).includes(previousAnswer));
     assert.equal((await compact()).status, 409);
+    if (redact) {
+      const rejected = await page.evaluate(
+        async ({ chatId, messageId }) => {
+          try {
+            await (
+              await import("/src/lib/api/council-history.ts")
+            ).deleteCouncilHistoryMessage(chatId, messageId);
+            return null;
+          } catch (error) {
+            return error.status;
+          }
+        },
+        { chatId, messageId: source.id },
+      );
+      assert.equal(rejected, 409, "A live native compaction owns the thread");
+    }
   } finally {
     firstCompact.release();
   }
@@ -118,8 +136,7 @@ export async function actualCouncilCompaction({
   assert.ok(content(await observe(next)).includes(firstSummary));
   await idle();
 
-  const secondSummary =
-    "Second native summary: the durable queue check found no duplicates.";
+  const secondSummary = `Second native summary: the durable queue check found no duplicates. ${source.text}`;
   const secondCompact = model.reply({ text: secondSummary });
   assert.deepEqual(await compact(), accepted);
   assert.ok(content(await observe(secondCompact)).includes(nextAnswer));
@@ -181,4 +198,27 @@ export async function actualCouncilCompaction({
   result.steps.push(
     "Council retained the same native thread and source ID through repeated compaction and a cold worker restart",
   );
+  if (redact) {
+    const retainedMessage = retained.find(({ content }) =>
+      content.some(({ text }) => text === previousAnswer),
+    );
+    assert.ok(retainedMessage);
+    await actualCouncilHistoryRedaction({
+      page,
+      appOrigin,
+      chatId,
+      source,
+      retainedId: retainedMessage.id,
+      priorSummary: secondSummary,
+      priorThreadId: threadId,
+      model,
+      submit,
+      observe,
+      idle,
+      readMessages,
+      recall,
+      thread,
+      result,
+    });
+  }
 }

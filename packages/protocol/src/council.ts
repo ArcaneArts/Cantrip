@@ -30,6 +30,7 @@ export const councilAgentTurnContextSchema = z
     protectedRole: councilRoleEnvelopeSchema,
     primary: z.boolean(),
     protectedMemory: councilMemoryEnvelopeSchema.nullable().optional(),
+    historyEpoch: z.uuid().optional(),
   })
   .strict();
 

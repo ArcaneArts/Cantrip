@@ -64,18 +64,22 @@ impl Runtime {
     ) -> Result<()> {
         let e = &turn.execution;
         Repository::new(self.dependencies.events.database.clone())
-            .update_runtime(RuntimeUpdate {
-                chat: events::text(&e["chatId"])?,
-                worker: events::text(&e["workerId"])?,
-                worktree: e["worktreeId"].as_str().map(str::to_owned),
-                scratch_root: e["scratchRootId"].as_str().map(str::to_owned),
-                thread: thread.as_str().map(str::to_owned),
-                route: events::text(&runtime["routeId"])?,
-                status: status.into(),
-                provider_account: runtime["provider"]
-                    .get("accountId")
-                    .map(|v| v.as_str().map(str::to_owned)),
-            })
+            .update_runtime_at_council_epoch(
+                RuntimeUpdate {
+                    chat: events::text(&e["chatId"])?,
+                    worker: events::text(&e["workerId"])?,
+                    worktree: e["worktreeId"].as_str().map(str::to_owned),
+                    scratch_root: e["scratchRootId"].as_str().map(str::to_owned),
+                    thread: thread.as_str().map(str::to_owned),
+                    route: events::text(&runtime["routeId"])?,
+                    status: status.into(),
+                    provider_account: runtime["provider"]
+                        .get("accountId")
+                        .map(|v| v.as_str().map(str::to_owned)),
+                },
+                e.get("councilAgent")
+                    .map(|agent| agent["historyEpoch"].clone()),
+            )
             .await
     }
     fn quota_execution(
