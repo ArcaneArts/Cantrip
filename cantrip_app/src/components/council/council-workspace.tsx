@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   FolderOpen,
   NotebookPen,
+  Search,
   Settings2,
   UsersRound,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import { resolveStandaloneChatFilePath } from "@/lib/api/files";
 import { errorMessage } from "@/lib/error-message";
 
 import { CouncilAgentEditor } from "./council-agent-editor";
+import { CouncilHistoryDialog } from "./council-history-dialog";
 import { CouncilMemoryEditor } from "./council-memory-editor";
 import { CouncilRoster } from "./council-roster";
 import type { CouncilWorkspaceController } from "./use-council-workspace";
@@ -76,11 +78,34 @@ function CouncilConversation({
   settings,
   workers,
 }: Props) {
-  const { agent, chat, select, showEditor } = controller;
+  const {
+    agent,
+    chat,
+    closeHistory,
+    history,
+    openHistory,
+    select,
+    showEditor,
+  } = controller;
   const [filesOpen, setFilesOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [filePath, setFilePath] = useState<string | null>(null);
   if (!agent) return null;
+  const openFile = (reference: string) => {
+    void resolveStandaloneChatFilePath(agent.id, reference).then(
+      (path) => {
+        closeHistory();
+        setFilePath(path);
+        setFilesOpen(true);
+      },
+      (error: unknown) =>
+        onToast({
+          title: "Could not open agent file",
+          message: errorMessage(error),
+          tone: "error",
+        }),
+    );
+  };
   const worker = workers.find(({ workerId }) => workerId === agent.workerId);
   const status =
     worker && !worker.online
@@ -106,6 +131,14 @@ function CouncilConversation({
         <h1 className="min-w-0 flex-1 truncate text-sm font-medium">
           {agent.title}
         </h1>
+        <Button
+          aria-label="Search Council history"
+          size="icon"
+          variant="ghost"
+          onClick={() => openHistory(agent.id)}
+        >
+          <Search className="size-4" />
+        </Button>
         <Button
           aria-label="Edit Council agent"
           size="icon"
@@ -165,20 +198,7 @@ function CouncilConversation({
           onFilesOpenChange={setFilesOpen}
           onForked={() => undefined}
           onInspectOpenChange={() => undefined}
-          onOpenFile={(reference) => {
-            void resolveStandaloneChatFilePath(agent.id, reference).then(
-              (path) => {
-                setFilePath(path);
-                setFilesOpen(true);
-              },
-              (error: unknown) =>
-                onToast({
-                  title: "Could not open agent file",
-                  message: errorMessage(error),
-                  tone: "error",
-                }),
-            );
-          }}
+          onOpenFile={openFile}
           onOpenRelocation={() => undefined}
           onRename={() => showEditor(agent)}
           onToast={onToast}
@@ -192,6 +212,15 @@ function CouncilConversation({
         <CouncilMemoryEditor
           agentId={agent.id}
           onClose={() => setMemoryOpen(false)}
+        />
+      ) : null}
+      {history?.agentId === agent.id ? (
+        <CouncilHistoryDialog
+          key={history.messageId ?? "search"}
+          agentId={agent.id}
+          messageId={history.messageId}
+          onClose={closeHistory}
+          onOpenFile={openFile}
         />
       ) : null}
     </div>

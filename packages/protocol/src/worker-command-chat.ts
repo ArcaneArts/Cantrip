@@ -25,6 +25,7 @@ import {
 } from "./native-goal-recovery.js";
 import { z } from "zod";
 import { councilAgentTurnContextSchema } from "./council.js";
+import { councilHistorySearchCommandSchema } from "./council-history.js";
 import { initialLabelCommandSchema } from "./labeling.js";
 import {
   managedSessionContextSchema,
@@ -112,6 +113,7 @@ const nativeSuspensionControlSchema = z
   .strict();
 
 export const workerChatCommandSchemas = [
+  councilHistorySearchCommandSchema,
   z
     .object({
       type: z.literal("chat.runtime.handoff"),

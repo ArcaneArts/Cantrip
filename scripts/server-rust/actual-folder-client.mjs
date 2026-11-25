@@ -419,6 +419,9 @@ const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
 const councilHistory = process.argv.includes("--council-history");
+const councilBrowserHistory = process.argv.includes(
+  "--council-browser-history",
+);
 const fullServerLogs =
   cantripOsSurfaces ||
   cantripOsSourceBackup ||
@@ -1043,6 +1046,7 @@ async function flow(
       process.argv.includes("--council-app-mode") ||
       process.argv.includes("--council-memory") ||
       councilHistory ||
+      councilBrowserHistory ||
       councilSteerTrace
     ) {
       await actualCouncilSteering({
@@ -1051,6 +1055,13 @@ async function flow(
         result,
         testCreation: process.argv.includes("--council-agent-tools"),
         historyFixture: councilHistory ? fixture : undefined,
+        browserHistory: councilBrowserHistory
+          ? {
+              appOrigin: vite.resolvedUrls.local[0],
+              serverOrigin: fixture.server.origin,
+              stopWorker,
+            }
+          : undefined,
         memoryAppOrigin: process.argv.includes("--council-memory")
           ? vite.resolvedUrls.local[0]
           : undefined,
@@ -2250,7 +2261,8 @@ try {
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
         ...(process.argv.includes("--council-app-mode") ||
-        process.argv.includes("--council-memory")
+        process.argv.includes("--council-memory") ||
+        councilBrowserHistory
           ? { CANTRIP_COUNCIL_ENABLED: "true" }
           : {}),
         // Retained-session product flows use the normal server lifetime. The

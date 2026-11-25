@@ -12,9 +12,11 @@ import { chatAttachmentContentUrl } from "@/lib/api";
 export const MessageContent = memo(function MessageContent({
   message,
   onOpenFile,
+  trackGlobalKey = true,
 }: {
-  message: ChatMessage;
+  message: Pick<ChatMessage, "chatId" | "id" | "worktreeId" | "content">;
   onOpenFile(path: string, worktreeId?: string | null): void;
+  trackGlobalKey?: boolean;
 }) {
   const [viewingAttachment, setViewingAttachment] =
     useState<ChatAttachmentSummary | null>(null);
@@ -26,11 +28,11 @@ export const MessageContent = memo(function MessageContent({
     <>
       <div
         className="min-w-0 max-w-full space-y-3"
-        data-elite-global-key={[
-          "chat-message",
-          message.chatId,
-          message.id,
-        ].join(":")}
+        data-elite-global-key={
+          trackGlobalKey
+            ? ["chat-message", message.chatId, message.id].join(":")
+            : undefined
+        }
       >
         {message.content.map((item, index) =>
           item.type === "text" ? (

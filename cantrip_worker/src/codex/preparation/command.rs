@@ -1544,6 +1544,10 @@ impl Ensurer {
         self.0.routing.resolve(incoming).await
     }
 
+    pub(crate) async fn search_council_history(&self, command: &Value) -> Result<Value> {
+        self.broker().await?.search_council_history(command).await
+    }
+
     fn assert_bound(&self, identity: &(JsString, Value)) -> Result<()> {
         if &self.0.encryption.bound_identity()? != identity {
             bail!("The worker binding changed during managed thread preparation.");
