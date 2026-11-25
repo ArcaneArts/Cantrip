@@ -21,16 +21,22 @@ export async function verifyInspection({
   directory,
   projectId,
   ownerVisit,
+  codegraphInstalled,
+  scoped = true,
 }) {
   const tools = (await client.listTools()).tools.map(({ name }) => name);
-  assert.deepEqual(tools, [
+  const inspection = [
     "directory_list",
     "file_metadata",
     "file_read",
     "file_search",
     "codegraph_status",
     "codegraph_query",
-  ]);
+  ];
+  assert.deepEqual(
+    scoped ? tools : tools.filter((name) => inspection.includes(name)),
+    inspection,
+  );
   const call = async (name, args = {}, errorPattern) => {
     const result = await client.callTool({
       name,
@@ -134,16 +140,37 @@ export async function verifyInspection({
   ]) {
     await call("file_read", { path: invalid }, /tool.+|path/iu);
   }
+  if (codegraphInstalled) {
+    const { eventually } =
+      await import("./external-mcp-acceptance-fixture.mjs");
+    await verifyIndexedCheckout({
+      invoke: (name, args) =>
+        client.callTool({ name, arguments: { projectId, ...args } }),
+      checkout,
+      worktreeId,
+      eventually: (read, accept) =>
+        eventually(async () => accept(await read())),
+    });
+  } else {
+    assert.equal((await call("codegraph_status")).state, "unavailable");
+    await call(
+      "codegraph_query",
+      { kind: "symbols", query: "mcpFixtureSymbol" },
+      /not installed/iu,
+    );
+  }
   if (process.platform !== "win32") {
+    const outside = path.join(directory, "outside-checkout");
+    await mkdir(outside);
     await writeFile(
-      path.join(directory, "external-secret.txt"),
+      path.join(outside, "external-secret.txt"),
       "Outside the checkout.",
     );
     await symlink(
-      path.join(directory, "external-secret.txt"),
+      path.join(outside, "external-secret.txt"),
       path.join(checkout, "leaf-link"),
     );
-    await symlink(directory, path.join(checkout, "outside-dir"));
+    await symlink(outside, path.join(checkout, "outside-dir"));
     assert.equal(
       (await call("file_metadata", { path: "leaf-link" })).entry.kind,
       "symlink",
@@ -163,12 +190,6 @@ export async function verifyInspection({
       [],
     );
   }
-  assert.equal((await call("codegraph_status")).state, "unavailable");
-  await call(
-    "codegraph_query",
-    { kind: "symbols", query: "mcpFixtureSymbol" },
-    /not installed/iu,
-  );
 }
 
 async function verifyIndexedCheckout({
@@ -189,7 +210,7 @@ async function verifyIndexedCheckout({
     assert.equal(result.structuredContent?.worktreeId, worktreeId);
     return result.structuredContent;
   };
-  await mkdir(path.join(checkout, "src"));
+  await mkdir(path.join(checkout, "src"), { recursive: true });
   const file = path.join(checkout, "src", "fixture.ts");
   const source = [
     "export function mcpFixtureSymbol() { return 42; }",
@@ -197,7 +218,7 @@ async function verifyIndexedCheckout({
     "",
   ].join("\n");
   await writeFile(file, source);
-  await activate();
+  await activate?.();
   await eventually(
     () => call("codegraph_status"),
     (snapshot) => {

@@ -8,6 +8,24 @@ and native `cantrip` CLI. Managed Codex and terminal processes use that
 CLI through a protected connection to the local worker broker.
 The launcher and bundled first-party helpers run without Node.js.
 
+### External MCP bridge
+
+The packaged `bin/cantrip-worker` (`bin\cantrip-worker.exe` on Windows)
+also runs a separate headless MCP bridge. Configure a stdio MCP client to
+launch that binary with these arguments for a local server.
+
+```text
+external-mcp --server http://127.0.0.1:4314
+```
+
+Use your HTTPS server origin and append `--credential-file <path>` for an
+account integration. The normal enrolled worker process still runs the
+project's chats, tasks, and commands. The bridge can run on the MCP client's
+machine or in a separate trusted HTTPS deployment.
+[External MCP setup](https://github.com/ArcaneArts/Cantrip/blob/main/docs/MCP.md)
+
+### Worker service
+
 When replacing an existing installation, stop its worker and launch the new
 package with the same `CANTRIP_WORKER_DATA_DIR`. If the prior setting was
 relative to its package directory, use the original directory’s absolute path.

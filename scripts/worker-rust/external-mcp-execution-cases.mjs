@@ -16,7 +16,7 @@ export async function verifyExecution({
   eventually,
 }) {
   const tools = (await client.listTools()).tools.map(({ name }) => name);
-  assert.deepEqual(tools, [
+  const execution = [
     "command_start",
     "command_status",
     "command_output",
@@ -24,7 +24,11 @@ export async function verifyExecution({
     "command_cancel",
     "cantrip_cli",
     "cantrip_cli_run",
-  ]);
+  ];
+  assert.deepEqual(
+    unrelated ? tools : tools.filter((name) => execution.includes(name)),
+    execution,
+  );
   const call = async (name, arguments_, expectedError, conn = client) => {
     const reply = await conn.callTool({
       name,
@@ -51,13 +55,13 @@ export async function verifyExecution({
   assert.deepEqual(await ownerVisit("GET", policy, 200), {
     policy: "disabled",
   });
-  await unrelated.visit(
+  await unrelated?.visit(
     "workspace execution belongs to the owner",
     "GET",
     policy,
     { status: 404 },
   );
-  await unrelated.visit("only owner may enable execution", "PUT", policy, {
+  await unrelated?.visit("only owner may enable execution", "PUT", policy, {
     status: 404,
     json: { policy: "workspace-write" },
   });
@@ -156,12 +160,14 @@ export async function verifyExecution({
     /one mcp-visible line/u,
   );
   assert.equal((await start(replayable)).commandId, accepted.commandId);
-  await call(
-    "command_status",
-    { commandId: accepted.commandId, worktreeId },
-    /unavailable/iu,
-    otherClient,
-  );
+  if (otherClient) {
+    await call(
+      "command_status",
+      { commandId: accepted.commandId, worktreeId },
+      /unavailable/iu,
+      otherClient,
+    );
+  }
   await call(
     "command_start",
     { ...replayable, args: ["different", "probe.txt"] },

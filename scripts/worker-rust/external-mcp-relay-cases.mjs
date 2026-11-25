@@ -5,43 +5,27 @@ import { on, once } from "node:events";
 import { writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
-import {
-  deriveComponentKey,
-  generateAccountMasterKey,
-  generateHpkeKeyPair,
-  publicKeyForPair,
-  wrapAccountMasterKeyForClient,
-  wrapAccountMasterKeyWithPassword,
-  wrapComponentKeyForWorker,
-} from "../../packages/crypto/dist/index.js";
 import {
   decodeWorkerLinkFrame,
   encodeWorkerLinkFrame,
 } from "../../packages/protocol/dist/worker-link.js";
 
+import {
+  authorizeWorker,
+  eventually,
+  protection,
+  stageFixtureCodegraph,
+} from "./external-mcp-acceptance-fixture.mjs";
+
 const WebSocket = createRequire(
   new URL("../../tests/reference-node-server/package.json", import.meta.url),
 )("ws");
 const relay = "/api/external-mcp/hosted/relay";
-const protection = {
-  classification: { recordKind: "project" },
-  protectedLabel: {
-    formatVersion: 1,
-    keyRevision: 1,
-    envelope: {
-      version: 1,
-      algorithm: "AES-256-GCM",
-      keyRevision: 1,
-      nonce: Buffer.alloc(12).toString("base64url"),
-      ciphertext: Buffer.alloc(32).toString("base64url"),
-    },
-  },
-};
-
 export async function verifyHostedRelay({
   binary,
   codex,
+  bundledCodex,
+  codegraphDistribution,
   directory,
   env,
   server,
@@ -70,6 +54,11 @@ export async function verifyHostedRelay({
     201,
     { label: "Hosted MCP relay worker" },
   );
+  const codegraphHome = await stageFixtureCodegraph({
+    distribution: codegraphDistribution,
+    directory,
+    workerDirectory,
+  });
   const sockets = new Set();
   let worker;
   let exit;
@@ -86,7 +75,10 @@ export async function verifyHostedRelay({
         CANTRIP_WORKER_ID: workerId,
         CANTRIP_SERVER_URL: server.origin,
         CANTRIP_EXTERNAL_MCP_FIXTURE_SECRET: "owned test environment marker",
-        ...(codex ? { CANTRIP_CODEX_BIN: path.resolve(codex) } : {}),
+        ...(codex && !bundledCodex
+          ? { CANTRIP_CODEX_BIN: path.resolve(codex) }
+          : {}),
+        ...(codegraphHome ? { HOME: codegraphHome } : {}),
         ...(enrollmentCode
           ? { CANTRIP_WORKER_ENROLLMENT_CODE: enrollmentCode }
           : {}),
@@ -189,86 +181,13 @@ export async function verifyHostedRelay({
 
   try {
     await startWorker(enrollment.code);
-    const workerEncryption = `/api/workers/${workerId}/encryption/refresh`;
-    const refresh = (component = "repository-content") =>
-      ownerVisit("POST", workerEncryption, 200, {
-        component,
-        keyRevision: 1,
-      });
-    const master = generateAccountMasterKey();
-    const clientId = randomUUID();
-    const publicKey = await publicKeyForPair(await generateHpkeKeyPair());
-    const passwordWrappedMasterKey = await wrapAccountMasterKeyWithPassword({
-      password,
+    await authorizeWorker({
+      ownerVisit,
+      workerId,
       ownerId,
-      accountMasterKey: master,
-      masterKeyRevision: 1,
+      password,
+      workload: Boolean(codex),
     });
-    await ownerVisit("POST", "/api/encryption/profile/initialize", 201, {
-      profile: {
-        formatVersion: 1,
-        activeMasterKeyRevision: 1,
-        passwordKdf: passwordWrappedMasterKey.kdf,
-        passwordWrappedMasterKey,
-        payloadMigrationStatus: "pending",
-      },
-      initialClient: {
-        id: clientId,
-        label: "Hosted MCP account fixture",
-        publicKey,
-        wrappedMasterKey: await wrapAccountMasterKeyForClient({
-          ownerId,
-          clientId,
-          accountMasterKey: master,
-          masterKeyRevision: 1,
-          clientPublicKey: publicKey,
-        }),
-      },
-    });
-    await refresh();
-    const principals = await ownerVisit(
-      "GET",
-      "/api/encryption/principals",
-      200,
-    );
-    const principal = principals.find((row) => row.workerId === workerId);
-    assert.ok(principal);
-    const principalRoute = `/api/encryption/principals/${principal.id}`;
-    await ownerVisit("POST", principalRoute + "/approve", 200, {
-      expectedRevision: principal.revision,
-    });
-    const keyRevision = 1;
-    const components = ["repository-content"];
-    if (codex)
-      components.push(
-        "private-surface-metadata",
-        "chat-content",
-        "task-content",
-        "run-content",
-      );
-    for (const component of components) {
-      const key = deriveComponentKey({
-        accountMasterKey: master,
-        ownerId,
-        component,
-        keyRevision,
-      });
-      await ownerVisit("POST", principalRoute + "/grants", 201, {
-        component,
-        keyRevision,
-        wrappedKey: await wrapComponentKeyForWorker({
-          ownerId,
-          workerId,
-          component,
-          keyRevision,
-          componentKey: key,
-          workerPublicKey: principal.publicKey,
-        }),
-      });
-      key.fill(0);
-      assert.equal((await refresh(component)).status.state, "ready");
-    }
-    master.fill(0);
     await ownerVisit("POST", "/api/projects/from-folder", 202, {
       id: projectId,
       workerId,
@@ -397,6 +316,7 @@ export async function verifyHostedRelay({
       directory,
       projectId,
       ownerVisit,
+      codegraphInstalled: Boolean(codegraphHome),
     });
     let execution;
     let verifyInterrupted;
@@ -529,17 +449,5 @@ export async function verifyHostedRelay({
     for (const socket of sockets) socket.terminate();
     await client?.close();
     await stopWorker();
-  }
-}
-
-async function eventually(assertion) {
-  const deadline = Date.now() + 25_000;
-  for (;;) {
-    try {
-      return await assertion();
-    } catch (error) {
-      if (Date.now() >= deadline) throw error;
-      await delay(200);
-    }
   }
 }

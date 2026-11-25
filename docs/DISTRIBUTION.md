@@ -53,7 +53,7 @@ components.
 | `pnpm package:app`             | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                                           |
 | `pnpm bundle`                  | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host                                           |
 | `pnpm deploy:server`           | Builds and deploys the current production server                  | Clean synchronized `main`, Docker, Infisical, and SSH               |
-| `pnpm release`                 | Promotes `release` and starts the build and deploy workflow        | Synchronized `main` and push access                                 |
+| `pnpm release`                 | Promotes `release` and starts the build and deploy workflow       | Synchronized `main` and push access                                 |
 
 Worker packaging runs the bundled `cantrip-worker` executable and checks its
 `mcp` and `cua-mcp` subcommands. Both must return the expected
@@ -64,6 +64,23 @@ can repeat it with:
 ```console
 node scripts/verify-packaged-worker-mcp.mjs artifacts/cantrip-worker-<target>
 ```
+
+The same worker binary provides the headless `external-mcp` bridge in the
+standalone Worker package and the Desktop runtime tree under `worker/bin`.
+Run the external acceptance suite with extracted packages for the host.
+
+```sh
+node --import tsx scripts/worker-rust/external-mcp-packaged-smoke.mjs \
+  --server-package artifacts/cantrip-server-darwin-arm64 \
+  --worker-package artifacts/cantrip-worker-darwin-arm64 \
+  --codegraph-distribution /path/to/installed/codegraph-version
+```
+
+The suite starts disposable local and authenticated stacks with the package
+binaries and bundled Codex. It uses an independent MCP client and a trusted
+HTTPS fixture. Supply a CodeGraph distribution for the host to exercise
+indexed symbol, reference, and context reads. See the operator instructions.
+[External MCP setup](MCP.md)
 
 `pnpm bundle` performs the complete native build for the current host. It builds
 the protocol once, packages Server and Worker concurrently, then builds the
