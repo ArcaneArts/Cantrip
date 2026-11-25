@@ -334,6 +334,46 @@ export async function verifyHostedRelay({
         verifyApp,
       });
     }
+    const { verifyInspection } =
+      await import("./external-mcp-inspection-cases.mjs");
+    const inspection = await ownerVisit("POST", integrations, 201, {
+      label: "External inspection fixture",
+      permissions: {
+        projects: selected,
+        scopes: ["files-read", "codegraph-read"],
+      },
+      expiresInSeconds: 300,
+    });
+    await request(
+      relay,
+      first.credential,
+      { projectId, tool: "file_read" },
+      403,
+    );
+    await request(
+      relay,
+      inspection.credential,
+      { projectId: outsideScope, tool: "file_read" },
+      404,
+    );
+    await request(
+      relay,
+      inspection.credential,
+      { projectId: outsideAccount, tool: "file_read" },
+      404,
+    );
+    await client?.close();
+    await writeFile(credentialFile, inspection.credential + "\n", {
+      mode: 0o600,
+    });
+    client = await connectMcp(credentialFile);
+    await verifyInspection({
+      client,
+      workerDirectory,
+      directory,
+      projectId,
+      ownerVisit,
+    });
     const generation = await callWorker(first.credential);
     const bad = await open(first.credential, projectId);
     const badSession = relay + "/" + bad.session.sessionId;

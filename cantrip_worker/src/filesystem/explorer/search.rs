@@ -86,7 +86,12 @@ fn basename(path: &JsString) -> JsString {
 fn contains(haystack: &[u16], needle: &[u16]) -> bool {
     needle.is_empty() || haystack.windows(needle.len()).any(|s| s == needle)
 }
-fn score(path: &JsString, sliced: bool, query: &JsString, sorting: &Sorting) -> Option<u8> {
+pub(super) fn score(
+    path: &JsString,
+    sliced: bool,
+    query: &JsString,
+    sorting: &Sorting,
+) -> Option<u8> {
     let path = sorting.lower(path, sliced);
     let name = basename(&path);
     let (p, n, q) = (path.units(), name.units(), query.units());

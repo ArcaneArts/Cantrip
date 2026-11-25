@@ -217,6 +217,7 @@ impl Host {
             project_id: uuid::Uuid::parse_str(&input.project_id)?,
             tool: None,
             chat_id: None,
+            worktree_id: None,
         };
         self.worker_call(&selector, b"worker-context").await
     }

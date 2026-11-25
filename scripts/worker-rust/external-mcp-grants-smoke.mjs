@@ -348,6 +348,7 @@ try {
       sdkScopeDiscovery: Boolean(values.worker),
       encryptedHostedRelay: Boolean(values.worker),
       orchestration: Boolean(values.worker && values.codex),
+      checkoutInspection: Boolean(values.worker),
       appClient: Boolean(app),
     }),
   );

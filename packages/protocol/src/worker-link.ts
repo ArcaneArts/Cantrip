@@ -669,6 +669,12 @@ export const installedWorkerLinkGrantSchema = z
             "task_start",
             "task_status",
             "task_wait",
+            "directory_list",
+            "file_metadata",
+            "file_read",
+            "file_search",
+            "codegraph_status",
+            "codegraph_query",
           ])
           .optional(),
         chatId: z.string().uuid().optional(),

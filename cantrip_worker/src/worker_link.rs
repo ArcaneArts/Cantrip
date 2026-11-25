@@ -334,10 +334,16 @@ impl Coordinator {
     pub(crate) fn configure_external_mcp(
         &self,
         config: Arc<Mutex<crate::config::Config>>,
+        routing: Arc<crate::routing::Registry>,
+        codegraph: Arc<crate::codegraph::Supervisor>,
+        worktrees: Arc<crate::git::worktrees::Manager>,
+        scope: crate::filesystem::Scope,
     ) -> Result<()> {
         ensure!(
             self.external_mcp
-                .set(external_mcp::Client::new(config)?)
+                .set(external_mcp::Client::new(
+                    config, routing, codegraph, worktrees, scope
+                )?)
                 .is_ok(),
             "External MCP is already configured."
         );

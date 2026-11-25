@@ -1,5 +1,5 @@
 //! Inputs for the project orchestration tools carried over WorkerLink.
-use super::IntegrationScope;
+use super::{IntegrationScope, inspection};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -24,10 +24,16 @@ pub enum Tool {
     TaskStart,
     TaskStatus,
     TaskWait,
+    DirectoryList,
+    FileMetadata,
+    FileRead,
+    FileSearch,
+    CodegraphStatus,
+    CodegraphQuery,
 }
 
 impl Tool {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 15] = [
         Self::AgentCreate,
         Self::AgentRead,
         Self::ChatSend,
@@ -37,6 +43,12 @@ impl Tool {
         Self::TaskStart,
         Self::TaskStatus,
         Self::TaskWait,
+        Self::DirectoryList,
+        Self::FileMetadata,
+        Self::FileRead,
+        Self::FileSearch,
+        Self::CodegraphStatus,
+        Self::CodegraphQuery,
     ];
 
     pub fn scope(self) -> IntegrationScope {
@@ -45,6 +57,10 @@ impl Tool {
             Self::AgentRead | Self::ChatRead | Self::ChatWait => IntegrationScope::ChatsRead,
             Self::TaskCreate | Self::TaskStart => IntegrationScope::TasksWrite,
             Self::TaskStatus | Self::TaskWait => IntegrationScope::TasksRead,
+            Self::DirectoryList | Self::FileMetadata | Self::FileRead | Self::FileSearch => {
+                IntegrationScope::FilesRead
+            }
+            Self::CodegraphStatus | Self::CodegraphQuery => IntegrationScope::CodeGraphRead,
         }
     }
 
@@ -59,7 +75,17 @@ impl Tool {
         )
     }
 
+    pub fn uses_checkout(self) -> bool {
+        matches!(
+            self.scope(),
+            IntegrationScope::FilesRead | IntegrationScope::CodeGraphRead
+        )
+    }
+
     pub fn definition(self) -> Value {
+        if self.uses_checkout() {
+            return inspection::definition(self);
+        }
         let id = || json!({"type":"string","format":"uuid"});
         let bounded_text = |max| json!({"type":"string","minLength":1,"maxLength":max});
         let cursor = || json!({"type":"string","pattern":"^[a-f0-9]{64}$"});
@@ -142,6 +168,7 @@ impl Tool {
                     "Read Task status and get a cursor for task_wait."
                 }
             }
+            _ => unreachable!("Inspection tools have separate schemas"),
         };
         json!({
             "name":self,"description":description,
@@ -197,6 +224,7 @@ impl Tool {
                 ("missingTaskIds", json!({"type":"array","items":id()})),
                 ("cursor", string()),
             ],
+            _ => unreachable!("Inspection tools have separate result schemas"),
         };
         fields.extend(
             details
@@ -218,6 +246,8 @@ pub struct Selector {
     pub tool: Option<Tool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worktree_id: Option<String>,
 }
 
 impl Selector {
@@ -227,6 +257,9 @@ impl Selector {
 
     pub fn is_valid(&self) -> bool {
         self.tool.is_some_and(Tool::requires_chat) == self.chat_id.is_some()
+            && self.worktree_id.as_deref().is_none_or(|worktree| {
+                self.tool.is_some_and(Tool::uses_checkout) && inspection::worktree_id(worktree)
+            })
     }
 
     pub fn scope(&self) -> IntegrationScope {
@@ -259,6 +292,7 @@ impl CoreCall {
     deny_unknown_fields
 )]
 pub enum CoreOperation {
+    Checkout,
     Chat {
         limit: u16,
         before_sequence: Option<u64>,
@@ -382,6 +416,12 @@ pub enum Call {
         #[serde(default)]
         mode: WaitMode,
     },
+    DirectoryList(inspection::DirectoryList),
+    FileMetadata(inspection::FileMetadata),
+    FileRead(inspection::FileRead),
+    FileSearch(inspection::FileSearch),
+    CodegraphStatus(inspection::Checkout),
+    CodegraphQuery(inspection::CodeGraphQuery),
 }
 
 fn message_limit() -> u16 {
@@ -416,6 +456,12 @@ impl Call {
             Self::TaskStart { .. } => Tool::TaskStart,
             Self::TaskStatus { .. } => Tool::TaskStatus,
             Self::TaskWait { .. } => Tool::TaskWait,
+            Self::DirectoryList(_) => Tool::DirectoryList,
+            Self::FileMetadata(_) => Tool::FileMetadata,
+            Self::FileRead(_) => Tool::FileRead,
+            Self::FileSearch(_) => Tool::FileSearch,
+            Self::CodegraphStatus(_) => Tool::CodegraphStatus,
+            Self::CodegraphQuery(_) => Tool::CodegraphQuery,
         }
     }
 
@@ -430,6 +476,12 @@ impl Call {
             | Self::TaskStart { project_id, .. }
             | Self::TaskStatus { project_id, .. }
             | Self::TaskWait { project_id, .. } => *project_id,
+            Self::DirectoryList(input) => input.project_id,
+            Self::FileMetadata(input) => input.project_id,
+            Self::FileRead(input) => input.project_id,
+            Self::FileSearch(input) => input.project_id,
+            Self::CodegraphStatus(input) => input.project_id,
+            Self::CodegraphQuery(input) => input.project_id,
         }
     }
 
@@ -446,6 +498,15 @@ impl Call {
             project_id: self.project(),
             tool: Some(self.tool()),
             chat_id,
+            worktree_id: match self {
+                Self::DirectoryList(input) => input.worktree_id.clone(),
+                Self::FileMetadata(input) => input.worktree_id.clone(),
+                Self::FileRead(input) => input.worktree_id.clone(),
+                Self::FileSearch(input) => input.worktree_id.clone(),
+                Self::CodegraphStatus(input) => input.worktree_id.clone(),
+                Self::CodegraphQuery(input) => input.worktree_id.clone(),
+                _ => None,
+            },
         }
     }
 
@@ -503,9 +564,35 @@ impl Call {
                     && after_cursor.as_deref().is_none_or(valid_cursor)
                     && *timeout_ms <= MAX_WAIT_MS
             }
+            Self::DirectoryList(input) => {
+                inspection::relative_path(&input.path)
+                    && (1..=inspection::MAX_LIST_ENTRIES).contains(&input.limit)
+                    && input.cursor.as_deref().is_none_or(inspection::cursor)
+            }
+            Self::FileMetadata(input) => {
+                !input.path.is_empty() && inspection::relative_path(&input.path)
+            }
+            Self::FileRead(input) => {
+                !input.path.is_empty()
+                    && inspection::relative_path(&input.path)
+                    && input.offset <= inspection::MAX_BYTE_OFFSET
+                    && (4..=inspection::MAX_TEXT_BYTES).contains(&input.max_bytes)
+            }
+            Self::FileSearch(input) => {
+                inspection::relative_path(&input.path)
+                    && inspection::query(&input.query)
+                    && (1..=inspection::MAX_LIST_ENTRIES).contains(&input.limit)
+            }
+            Self::CodegraphStatus(_) => true,
+            Self::CodegraphQuery(input) => {
+                inspection::query(&input.query)
+                    && (1..=inspection::MAX_GRAPH_RESULTS).contains(&input.limit)
+            }
         };
-        if valid {
+        if valid && self.selector().is_valid() {
             Ok(())
+        } else if self.tool().uses_checkout() {
+            Err("Check the tool's checkout, relative path, cursor, or result limits.")
         } else {
             Err("Check the tool's text, cursor, timeout, or result limits.")
         }
@@ -538,7 +625,20 @@ mod tests {
             (Tool::TaskStart, json!({"operationId":id,"taskId":id})),
             (Tool::TaskStatus, json!({"taskIds":[id]})),
             (Tool::TaskWait, json!({"taskIds":[id]})),
+            (Tool::DirectoryList, json!({})),
+            (Tool::FileMetadata, json!({"path":"src/lib.rs"})),
+            (
+                Tool::FileRead,
+                json!({"path":"src/lib.rs","offset":0,"maxBytes":32}),
+            ),
+            (Tool::FileSearch, json!({"query":"lib.rs"})),
+            (Tool::CodegraphStatus, json!({"worktreeId":"secondary"})),
+            (
+                Tool::CodegraphQuery,
+                json!({"kind":"symbols","query":"example"}),
+            ),
         ];
+        assert_eq!(cases.len(), Tool::ALL.len());
         for (tool, mut arguments) in cases {
             arguments["projectId"] = json!(id);
             let mut input = json!({"tool":tool,"arguments":arguments});

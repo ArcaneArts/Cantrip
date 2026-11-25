@@ -68,6 +68,7 @@ const { values } = parseArgs({
     codex: { type: "string" },
     cli: { type: "string" },
     "observations-only": { type: "boolean", default: false },
+    "external-mcp-inspection-only": { type: "boolean", default: false },
     "codegraph-distribution": { type: "string" },
     "recovery-only": { type: "boolean", default: false },
     "github-catalog-only": { type: "boolean", default: false },
@@ -234,6 +235,9 @@ async function start(port = 0) {
       "pglite",
       "--port",
       String(port),
+      ...(values["external-mcp-inspection-only"]
+        ? ["--external-mcp-local-port", "0"]
+        : []),
       "--shutdown-on-stdin-close",
     ],
     { cwd: root, env: environment },
@@ -1035,6 +1039,7 @@ try {
     }
     if (
       !values["observations-only"] &&
+      !values["external-mcp-inspection-only"] &&
       !codegraph &&
       !values["recovery-only"] &&
       !values["github-issues-only"] &&
@@ -1157,6 +1162,25 @@ try {
         checkout,
         restartWorker,
         registerMetadata: repository.registerMetadata,
+      });
+    } else if (values["external-mcp-inspection-only"]) {
+      const origin = server.events.find(
+        ({ event }) => event === "server.external-mcp.listening",
+      )?.origin;
+      assert.ok(origin);
+      const { verifyLocalWorktreeInspection } =
+        await import("./external-mcp-inspection-cases.mjs");
+      await verifyLocalWorktreeInspection({
+        call,
+        origin,
+        binary: path.resolve(values.worker),
+        projectId,
+        workerDirectory,
+        checkout,
+        cwd: root,
+        registerMetadata: repository.registerMetadata,
+        codegraphInstalled: Boolean(codegraph),
+        eventually,
       });
     } else if (codegraph) {
       try {
@@ -1359,6 +1383,14 @@ try {
         realWorkerAndServer: true,
         nodeAbsentFromWorkerPath: true,
         ...recoveryCoverage,
+      }),
+    );
+  else if (values["external-mcp-inspection-only"])
+    console.log(
+      JSON.stringify({
+        suite: "actual-local-external-mcp-worktree-inspection",
+        passed: true,
+        codegraph: Boolean(codegraph),
       }),
     );
   else if (codegraph)
