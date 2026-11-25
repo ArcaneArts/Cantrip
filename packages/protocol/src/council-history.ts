@@ -6,6 +6,7 @@ import {
   chatMessageProtectedClassificationSchema,
   encryptedChatMessageProtectedContentSchema,
 } from "./communication-content.js";
+import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 
 const sequence = z.number().int().nonnegative().safe();
 const messageId = z.string().min(1).max(200);
@@ -133,3 +134,35 @@ export const councilHistoryReadToolOutputSchema =
   cantripMcpReadResultBaseSchema.extend({
     data: councilHistoryReadResultSchema,
   });
+
+export const councilHistorySearchExchangeSchema = z
+  .object({
+    requestId: z.string().uuid(),
+    protectedQuery: encryptedPayloadEnvelopeSchema.extend({
+      ciphertext: encryptedPayloadEnvelopeSchema.shape.ciphertext.max(5_500),
+    }),
+  })
+  .strict();
+
+export const councilHistorySearchReplySchema = z
+  .object({
+    requestId: z.string().uuid(),
+    protectedResult: encryptedPayloadEnvelopeSchema.extend({
+      ciphertext: encryptedPayloadEnvelopeSchema.shape.ciphertext.max(175_000),
+    }),
+  })
+  .strict();
+
+export const councilHistorySearchCommandSchema =
+  councilHistorySearchExchangeSchema.extend({
+    type: z.literal("council.history.search"),
+    agentId: standaloneChatIdentitySchema,
+  });
+
+export const councilHistoryWorkerSourceSchema = z
+  .object({
+    workerId: z.string().min(1).max(255),
+    agentId: standaloneChatIdentitySchema,
+    source: councilHistorySourceRequestSchema,
+  })
+  .strict();

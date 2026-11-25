@@ -24,6 +24,23 @@ fn decode_records(rows: Vec<Row>) -> Result<Vec<Value>> {
 }
 
 impl Repository {
+    pub(crate) async fn council_history_worker(
+        &self,
+        owner: &str,
+        agent: &str,
+    ) -> Result<Option<String>> {
+        let rows = self.database.query(
+            "SELECT c.active_worker_id FROM council_agents a JOIN chats c ON c.id=a.chat_id AND c.owner_id=a.owner_id
+             WHERE a.owner_id=$1 AND a.chat_id=$2 AND c.archived_at IS NULL",
+            &[&owner,&agent],
+        ).await?;
+        Ok(rows
+            .first()
+            .map(|row| row.get::<Option<String>>(0))
+            .transpose()?
+            .flatten())
+    }
+
     pub(crate) async fn council_history_head(&self, owner: &str, agent: &str) -> Result<Value> {
         let rows = self
             .database

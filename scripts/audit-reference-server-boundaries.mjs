@@ -128,7 +128,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
   workerCommands:
-    "f294dd3dcd68cf6417e52570b7efc90726d603a39131a22c1c57c72e164f0db3",
+    "035252e1748a7b898c438a8759bcabb3d6332cb30352960ca43ce0ee38a7ee83",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3775,6 +3775,12 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "council.history.search")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "A Council agent and request ID scope encrypted search queries and results between the authorized browser and the assigned worker.",
+    };
   if (["model.embedding", "model.decision"].includes(command))
     return {
       classification: "endpoint-protected",

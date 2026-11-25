@@ -1067,10 +1067,16 @@ export const contractRoots = [
   "councilMemoryUpdateSchema",
   "councilHistoryHeadSchema",
   "councilHistoryReadInputSchema",
+  "councilHistorySearchCommandSchema",
+  "councilHistorySearchExchangeSchema",
+  "councilHistorySearchInputSchema",
+  "councilHistorySearchReplySchema",
+  "councilHistorySearchResultSchema",
   "councilHistorySourceChangesSchema",
   "councilHistorySourcePageSchema",
   "councilHistorySourceRangeSchema",
   "councilHistorySourceRequestSchema",
+  "councilHistoryWorkerSourceSchema",
 ];
 
 export const projectExportContractRoots = [

@@ -33,6 +33,7 @@ import {
 } from "@/components/app/application-shell-model";
 import { ApplicationShellRender } from "@/components/app/application-shell-render";
 import { useCouncilWorkspace } from "@/components/council/use-council-workspace";
+import { useCouncilHistoryLink } from "@/components/council/use-council-history-link";
 import type { ShellAppMode } from "@/lib/app-mode";
 import {
   createDesktopPaneSelectionCommands,
@@ -675,6 +676,11 @@ export function App() {
   const councilAvailable = bootstrap.data?.capabilities.council === true;
   const councilWorkspace = useCouncilWorkspace(
     councilAvailable && appMode === "council",
+  );
+  useCouncilHistoryLink(
+    councilAvailable && !isPopout,
+    councilWorkspace.openHistory,
+    setAppMode,
   );
   useEffect(() => {
     if (appMode === "council" && bootstrap.isSuccess && !councilAvailable) {

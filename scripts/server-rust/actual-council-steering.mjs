@@ -1,6 +1,7 @@
 // Browser SDK, native server, full worker, and bundled Codex App Server.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { actualCouncilBrowserHistory } from "./actual-council-browser-history.mjs";
 import { actualCouncilMemory } from "./actual-council-memory.mjs";
 import { actualCouncilHistory } from "./actual-council-history.mjs";
 import { eventually } from "./full-worker.mjs";
@@ -23,6 +24,7 @@ export async function actualCouncilSteering({
   testCreation = false,
   memoryAppOrigin,
   historyFixture,
+  browserHistory,
   raceMarker,
   dropReplyMarker,
 }) {
@@ -357,6 +359,23 @@ export async function actualCouncilSteering({
         submit,
         readChat,
         readMessages,
+        result,
+      });
+    }
+    if (browserHistory) {
+      await eventually(
+        readChat,
+        (chat) => assert.equal(chat.status, "idle"),
+        timeout,
+      );
+      const [source] = withText(messages, original);
+      await actualCouncilBrowserHistory({
+        ...browserHistory,
+        page,
+        chatId,
+        workerId,
+        source: { id: source.id, text: original },
+        nearby: followUp,
         result,
       });
     }

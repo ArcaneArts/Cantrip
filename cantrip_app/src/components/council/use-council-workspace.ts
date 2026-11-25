@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import {
   createCouncilAgent,
@@ -15,7 +15,23 @@ const rosterKey = ["council", "agents"] as const;
 export function useCouncilWorkspace(active: boolean) {
   const cache = useQueryClient();
   const liveStatus = useAppLiveStatus();
-  const [selectedId, select] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [history, setHistory] = useState<{
+    agentId: string;
+    messageId: string | null;
+  } | null>(null);
+  const select = useCallback((id: string | null) => {
+    setSelectedId(id);
+    setHistory(null);
+  }, []);
+  const openHistory = useCallback(
+    (agentId: string, messageId: string | null = null) => {
+      setSelectedId(agentId);
+      setHistory({ agentId, messageId });
+    },
+    [],
+  );
+  const closeHistory = useCallback(() => setHistory(null), []);
   const [editor, setEditor] = useState<"new" | CouncilAgent | null>(null);
   const roster = useQuery({
     enabled: active,
@@ -63,7 +79,18 @@ export function useCouncilWorkspace(active: boolean) {
     setEditor(value);
   }
 
-  return { agent, chat, editor, roster, save, select, showEditor };
+  return {
+    agent,
+    chat,
+    editor,
+    roster,
+    save,
+    select,
+    showEditor,
+    history,
+    openHistory,
+    closeHistory,
+  };
 }
 
 export type CouncilWorkspaceController = ReturnType<typeof useCouncilWorkspace>;

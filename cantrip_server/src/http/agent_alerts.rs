@@ -25,7 +25,7 @@ pub(super) fn failure(status: u16, code: &str, message: &str) -> Response {
         json!({"code":code,"error":message}),
     )
 }
-async fn authenticate(
+pub(super) async fn authenticate(
     service: &AuthService,
     worker: &str,
     authorization: Option<&str>,

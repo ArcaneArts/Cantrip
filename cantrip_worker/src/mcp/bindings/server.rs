@@ -280,6 +280,25 @@ impl Server {
             .map_err(|_| anyhow!("Cantrip MCP operation request failed."))?;
         body(response, MAXIMUM_RESPONSE).await
     }
+
+    pub(super) async fn council_history_source(
+        &self,
+        worker: &JsString,
+        agent: &Value,
+        source: Value,
+    ) -> Result<Value> {
+        let response = self
+            .http
+            .post(self.endpoint.join("/api/internal/council-history/source")?)
+            .header(header::CONTENT_TYPE, "application/json")
+            .bearer_auth((self.token)()?)
+            .body(json!({"workerId":worker,"agentId":agent,"source":source}).stringify())
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await
+            .map_err(|_| anyhow!("Council history source request failed."))?;
+        body(response, MAXIMUM_RESPONSE).await
+    }
 }
 
 async fn body(mut response: Response, maximum: usize) -> Result<Value> {

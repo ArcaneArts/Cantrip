@@ -1,3 +1,5 @@
+mod exchange;
+
 use super::{Authorized, Inner};
 use crate::{
     encryption::Service,
@@ -6,7 +8,7 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use cantrip_history::canonical::open_message;
 use cantrip_protocol::{mcp_host, response::response_error};
-use cantrip_wire::{Value, value::json};
+use cantrip_wire::{JsString, Value, value::json};
 
 const SEARCH: &str = "council.history.search";
 const READ: &str = "council.history.read";
@@ -28,7 +30,8 @@ impl Inner {
             .map_err(response_error)?;
         let source = Source {
             inner: self,
-            authorization,
+            requester: Requester::Agent(authorization),
+            identity: &authorization.identity,
             encryption: self
                 .encryption
                 .as_deref()
@@ -68,21 +71,38 @@ impl Inner {
 
 struct Source<'a> {
     inner: &'a Inner,
-    authorization: &'a Authorized,
+    requester: Requester<'a>,
+    identity: &'a (JsString, JsString),
     encryption: &'a Service,
+}
+
+enum Requester<'a> {
+    Agent(&'a Authorized),
+    App(&'a Value),
 }
 
 impl Source<'_> {
     async fn fetch(&self, operation: &str, arguments: Value, schema: &str) -> Result<Value> {
-        let response = self
-            .inner
-            .relay_project(
-                self.authorization,
-                json!({"operation":operation,"arguments":arguments}),
-                &uuid::Uuid::new_v4().to_string(),
-            )
-            .await?;
-        crate::http::checked(schema, &response["data"])
+        let data = match self.requester {
+            Requester::Agent(authorization) => {
+                let mut response = self
+                    .inner
+                    .relay_project(
+                        authorization,
+                        json!({"operation":operation,"arguments":arguments}),
+                        &uuid::Uuid::new_v4().to_string(),
+                    )
+                    .await?;
+                std::mem::take(&mut response["data"])
+            }
+            Requester::App(agent) => {
+                self.inner
+                    .server
+                    .council_history_source(&self.inner.worker, agent, arguments)
+                    .await?
+            }
+        };
+        crate::http::checked(schema, &data)
     }
 
     fn project(&self, id: &str, message: &Value) -> Projection {
@@ -110,8 +130,8 @@ impl Source<'_> {
             .encryption
             .bound_component("chat-content", Some(revision))?;
         ensure!(
-            grant.owner_id == self.authorization.identity.0
-                && grant.server_id.as_js_string() == Some(&self.authorization.identity.1),
+            grant.owner_id == self.identity.0
+                && grant.server_id.as_js_string() == Some(&self.identity.1),
             "Council history worker identity changed."
         );
         let content = open_message(&grant.component.key, &json!(grant.owner_id), message)?;

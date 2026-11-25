@@ -173,6 +173,7 @@ async fn conversation(
 
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
+        .merge(history::routes())
         .route("/api/council/agents", get(collection).post(collection))
         .route("/api/council/agents/{agentId}", patch(update))
         .route("/api/council/agents/{agentId}/chat", get(conversation))
