@@ -1073,6 +1073,7 @@ export const contractRoots = [
   "councilProjectChatTargetWireSchema",
   "councilProjectChatCreateWireSchema",
   "councilProjectTaskCreateWireSchema",
+  "councilProjectInterruptInputSchema",
   "councilHistoryReadInputSchema",
   "councilHistorySearchCommandSchema",
   "councilProjectResultPrepareCommandSchema",

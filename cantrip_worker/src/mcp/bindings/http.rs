@@ -368,7 +368,8 @@ impl Inner {
             | "council.memory.write"
             | "council.inventory"
             | "council.project.chat.create"
-            | "council.project.task.create" => self.council(authorization, &call, operation).await,
+            | "council.project.task.create"
+            | "council.project.interrupt" => self.council(authorization, &call, operation).await,
             "council.history.search" | "council.history.read" => {
                 self.council_history(authorization, &call, operation).await
             }

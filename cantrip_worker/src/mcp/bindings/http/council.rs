@@ -97,7 +97,9 @@ impl Inner {
                 );
                 reply["data"] = council_inventory::open(service, &identity, &reply["data"])?;
             }
-            "council.project.chat.create" | "council.project.task.create" => {}
+            "council.project.chat.create"
+            | "council.project.task.create"
+            | "council.project.interrupt" => {}
             _ => {
                 reply["data"] = open_memory(service, authorization, agent_id, &reply["data"])?;
             }

@@ -422,9 +422,11 @@ const councilHistory = process.argv.includes("--council-history");
 const councilProjectApprovals = process.argv.includes(
   "--council-project-approvals",
 );
-const councilProjectCreation = process.argv.includes(
-  "--council-project-creation",
+const councilProjectControls = process.argv.includes(
+  "--council-project-controls",
 );
+const councilProjectCreation =
+  councilProjectControls || process.argv.includes("--council-project-creation");
 const councilProjectMessages =
   councilProjectApprovals ||
   councilProjectCreation ||
@@ -1082,6 +1084,7 @@ async function flow(
               projectMessages: councilProjectMessages,
               projectApprovals: councilProjectApprovals,
               projectCreation: councilProjectCreation,
+              projectControls: councilProjectControls,
             }
           : undefined,
         compaction: councilCompaction

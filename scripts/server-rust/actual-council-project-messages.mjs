@@ -8,6 +8,7 @@ import { eventually } from "./full-worker.mjs";
 import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
 import { actualCouncilProjectApprovals } from "./actual-council-project-approvals.mjs";
 import { actualCouncilProjectCreation } from "./actual-council-project-creation.mjs";
+import { actualCouncilProjectControls } from "./actual-council-project-controls.mjs";
 
 export async function actualCouncilProjectMessages({
   page,
@@ -23,8 +24,9 @@ export async function actualCouncilProjectMessages({
   workerId,
   projectApprovals,
   projectCreation,
+  projectControls,
 }) {
-  const target = await taskModelProvider();
+  const target = await taskModelProvider({ observeStreams: projectControls });
   const prepareText = "Open the existing project chat on its worker.";
   const delegatedText = "Verify the Council handoff is delivered once 🍄.";
   const answer = "The project worker received the Council handoff.";
@@ -410,6 +412,20 @@ export async function actualCouncilProjectMessages({
         projectId,
         workerId,
         targetWorkerId,
+        targetProfileId: ready.profileId,
+        result,
+      });
+    if (projectControls)
+      await actualCouncilProjectControls({
+        page,
+        model,
+        target,
+        tools,
+        submit,
+        idle,
+        councilId,
+        projectId,
+        targetChatId,
         targetProfileId: ready.profileId,
         result,
       });

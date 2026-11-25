@@ -58,6 +58,15 @@ pub(super) async fn submit_external(
         .submit(chat, Some(input))
         .await
 }
+pub(super) async fn interrupt_external(
+    service: Arc<AuthService>,
+    owner: &str,
+    chat: &str,
+) -> Result<Response> {
+    Execution::new(service, owner.to_owned())
+        .interrupt(chat)
+        .await
+}
 fn text(value: &Value) -> Result<String> {
     Ok(value
         .as_js_string()
