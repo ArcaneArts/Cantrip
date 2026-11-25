@@ -70,13 +70,20 @@ fn public(path: &str) -> bool {
         cantrip_protocol::external_mcp::HOSTED_DISCOVERY_PATH,
         cantrip_protocol::external_mcp::HOSTED_CAPABILITIES_PATH,
         cantrip_protocol::external_mcp::HOSTED_RELAY_PATH,
+        cantrip_protocol::external_mcp::OAUTH_METADATA_PATH,
+        cantrip_protocol::external_mcp::OAUTH_AUTHORIZE_PATH,
+        cantrip_protocol::external_mcp::OAUTH_REGISTER_PATH,
+        cantrip_protocol::external_mcp::OAUTH_TOKEN_PATH,
+        cantrip_protocol::external_mcp::OAUTH_EXCHANGE_PATH,
     ]
     .contains(&path)
         || path.starts_with("/api/internal/")
         || path
             .strip_prefix(cantrip_protocol::external_mcp::HOSTED_RELAY_PATH)
             .and_then(|suffix| suffix.strip_prefix('/'))
-            .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok())
+            .is_some_and(|id| {
+                uuid::Uuid::parse_str(id.strip_suffix("/carrier").unwrap_or(id)).is_ok()
+            })
 }
 fn trusted(ip: IpAddr, rules: &[String]) -> bool {
     let ip = match ip {
@@ -239,7 +246,13 @@ fn transport(
     }
     let origin = value(headers, "origin");
     let websocket = value(headers, "upgrade").is_some_and(|v| v.eq_ignore_ascii_case("websocket"));
+    let issuer_form = request.uri().path() == cantrip_protocol::external_mcp::OAUTH_AUTHORIZE_PATH
+        && cfg
+            .external_mcp_oauth
+            .as_ref()
+            .is_some_and(|oauth| origin.as_deref() == Some(oauth.issuer.as_str()));
     if !websocket
+        && !issuer_form
         && origin
             .as_ref()
             .is_some_and(|o| !o.is_empty() && !cfg.app_origins.contains(o))

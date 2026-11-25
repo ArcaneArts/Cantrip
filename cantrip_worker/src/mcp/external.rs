@@ -4,8 +4,8 @@ use anyhow::{Context, Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use cantrip_protocol::external_mcp::{
     DiscoveryRequest, DiscoveryTool, HOSTED_CAPABILITIES_PATH, HOSTED_DISCOVERY_PATH,
-    HOSTED_RELAY_PATH, LEGACY_VERSIONS, LOCAL_RELAY_PATH, MAX_RESPONSE_BYTES, MODERN_VERSION, PATH,
-    WORKER_CONTEXT_TOOL, WorkerContextInput, loopback_authority,
+    HOSTED_RELAY_PATH, LEGACY_VERSIONS, LOCAL_RELAY_PATH, MAX_RESPONSE_BYTES, MODERN_VERSION,
+    OAUTH_RESOURCE_PATH, PATH, WORKER_CONTEXT_TOOL, WorkerContextInput, loopback_authority,
     orchestration::{Call, Selector, Tool},
     proxy_header, valid_integration_credential, worker_context_tool,
 };
@@ -37,10 +37,17 @@ use tokio::{
 use url::Url;
 use zeroize::Zeroizing;
 
+mod local;
+mod peer;
+mod public;
 mod relay;
 
-const USAGE: &str = "Usage: cantrip-worker external-mcp --server <origin> [--http-port <port> | --credential-file <path>]";
+pub(crate) const USAGE: &str = concat!(
+    "Usage: cantrip-worker external-mcp --server <origin> [--credential-file <path> | --http-port <port>]\n",
+    "       cantrip-worker external-mcp --server <origin> --http-port <port> --public-url <https-url>/mcp --issuer <https-origin> --bridge-key-file <path>",
+);
 const MAX_REQUEST_BYTES: usize = 32 * 1024;
+const HTTP_PATH: &str = "/mcp";
 
 pub(super) fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
     let mut arguments = arguments.into_iter();
@@ -56,8 +63,8 @@ pub(super) fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
         .next()
         .and_then(|value| value.into_string().ok())
         .context(USAGE)?;
-    let (http_port, credential) = match arguments.next() {
-        None => (None, None),
+    let (http_port, credential, public) = match arguments.next() {
+        None => (None, None, None),
         Some(flag) if flag == "--http-port" => (
             Some(
                 arguments
@@ -66,15 +73,16 @@ pub(super) fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
                     .context(USAGE)?,
             ),
             None,
+            public::parse(&mut arguments)?,
         ),
         Some(flag) if flag == "--credential-file" => {
             let path = arguments.next().context(USAGE)?;
-            (None, Some(read_credential(Path::new(&path))?))
+            (None, Some(read_credential(Path::new(&path))?), None)
         }
         Some(_) => bail!("{USAGE}"),
     };
     ensure!(arguments.next().is_none(), "{USAGE}");
-    let origin = server_origin(&origin, credential.is_some())?;
+    let origin = server_origin(&origin, credential.is_some() || public.is_some())?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
@@ -91,7 +99,7 @@ pub(super) fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
         tokio::select! {
             result = async {
                 match http_port {
-                    Some(port) => host.serve_http(port).await,
+                    Some(port) => host.serve_http(port, public).await,
                     None => host.serve_stdio().await,
                 }
             } => result,
@@ -104,16 +112,21 @@ pub(super) fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
 }
 
 fn read_credential(path: &Path) -> Result<Zeroizing<String>> {
+    let credential = read_secret(path)?;
+    ensure!(
+        valid_integration_credential(&credential),
+        "Invalid Cantrip MCP integration credential file."
+    );
+    Ok(credential)
+}
+
+fn read_secret(path: &Path) -> Result<Zeroizing<String>> {
     let mut credential = Zeroizing::new(String::new());
     super::broker::private_document(path)?
         .take(256)
         .read_to_string(&mut credential)?;
     let length = credential.trim_end_matches(['\r', '\n']).len();
     credential.truncate(length);
-    ensure!(
-        valid_integration_credential(&credential),
-        "Invalid Cantrip MCP integration credential file."
-    );
     Ok(credential)
 }
 
@@ -137,6 +150,26 @@ struct Host {
     origin: Url,
     credential: Option<Zeroizing<String>>,
     client: reqwest::Client,
+}
+
+struct Lease(Option<reqwest::RequestBuilder>);
+
+impl Lease {
+    async fn release(&mut self) {
+        if let Some(request) = self.0.take() {
+            let _ = request.send().await;
+        }
+    }
+}
+
+impl Drop for Lease {
+    fn drop(&mut self) {
+        if let Some(request) = self.0.take() {
+            tokio::spawn(async move {
+                let _ = request.send().await;
+            });
+        }
+    }
 }
 
 fn profile() -> &'static Value {
@@ -230,6 +263,30 @@ impl Host {
         self.worker_call(&call.selector(), &call.encode()).await
     }
 
+    async fn open_worker(&self, base: &str, selector: &Selector) -> Result<Value> {
+        response_payload(
+            self.request(Method::POST, base)?
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(selector.encode())
+                .send()
+                .await?,
+        )
+        .await
+    }
+
+    async fn carrier(&self, path: &str, kind: &str, parameters: Value) -> Result<Value> {
+        let response = self
+            .request(Method::POST, &format!("{path}/carrier"))?
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(json!({"kind":kind,"parameters":parameters}).stringify())
+            .send()
+            .await?;
+        if response.status() == reqwest::StatusCode::NO_CONTENT {
+            return Ok(Value::Null);
+        }
+        response_payload(response).await
+    }
+
     async fn worker_call(&self, selector: &Selector, request: &[u8]) -> Result<Value> {
         let credential = self
             .credential
@@ -240,33 +297,89 @@ impl Host {
         } else {
             LOCAL_RELAY_PATH
         };
-        let opened = response_payload(
-            self.request(Method::POST, base)?
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(selector.encode())
-                .send()
-                .await?,
-        )
-        .await?;
-        let session = relay::session_id(&opened)?;
-        let path = format!("{base}/{session}");
-        let result = tokio::time::timeout(
-            Duration::from_secs(15),
-            relay::call(
-                self.origin.join(&path)?,
-                credential,
-                &opened,
-                &selector.project_id.to_string(),
-                request,
-            ),
-        )
-        .await;
-        let _ = self
-            .request(Method::DELETE, &path)?
-            .timeout(Duration::from_secs(3))
-            .send()
+        let first = self.open_worker(base, selector).await?;
+        let initial = &first["session"]["identity"];
+        let expected_checkout = &first["grant"]["binding"]["resource"]["attachmentId"];
+        let enabled = first["session"]["routePolicy"]["enabled"]
+            .as_array()
+            .context("WorkerLink route list")?;
+        let mut first = Some(first.clone());
+        let mut last_error = None;
+        for route in ["local", "lan", "wan", "relay"] {
+            if !enabled.iter().any(|enabled| enabled == route) {
+                continue;
+            }
+            let opened = match first.take() {
+                Some(opened) => opened,
+                None => self.open_worker(base, selector).await?,
+            };
+            let session = &opened["session"];
+            let path = format!("{base}/{}", relay::session_id(&opened)?);
+            let release = self
+                .request(Method::DELETE, &path)?
+                .timeout(Duration::from_secs(3));
+            let mut lease = Lease(Some(release));
+            ensure!(
+                ["workerId", "workerProcessGeneration", "ownerId", "serverId"]
+                    .iter()
+                    .all(|field| session["identity"][field] == initial[*field],)
+                    && opened["grant"]["binding"]["resource"]["attachmentId"] == *expected_checkout,
+                "Project placement changed while reconnecting. Retry with the same operation ID.",
+            );
+            let connected = tokio::time::timeout(
+                Duration::from_secs(match route {
+                    "local" => 2,
+                    "lan" => 4,
+                    "wan" => 6,
+                    _ => 8,
+                }),
+                async {
+                    let carrier: Box<dyn relay::Carrier> = match route {
+                        "local" => Box::new(local::connect(self, &path, session).await?),
+                        "lan" | "wan" => {
+                            let kind = if route == "lan" {
+                                crate::worker_link::peer::network::PeerRoute::Lan
+                            } else {
+                                crate::worker_link::peer::network::PeerRoute::Wan
+                            };
+                            Box::new(peer::connect(self, &path, session, kind).await?)
+                        }
+                        _ => Box::new(relay::connect(self.origin.join(&path)?, credential).await?),
+                    };
+                    Ok::<_, anyhow::Error>(carrier)
+                },
+            )
             .await;
-        result.context("The assigned worker did not respond in time.")?
+            let result = match connected {
+                Ok(Ok(mut carrier)) => tokio::time::timeout(
+                    Duration::from_secs(15),
+                    relay::call(
+                        &mut *carrier,
+                        route,
+                        &opened,
+                        &selector.project_id.to_string(),
+                        request,
+                    ),
+                )
+                .await
+                .context("The assigned worker did not respond in time.")
+                .and_then(|value| value),
+                Ok(Err(error)) => Err(error),
+                Err(_) => Err(anyhow::anyhow!(
+                    "The WorkerLink carrier did not connect in time."
+                )),
+            };
+            lease.release().await;
+            match result {
+                Ok(mut result) => {
+                    result["transport"] = json!(route);
+                    return Ok(result);
+                }
+                Err(error) => last_error = Some(error),
+            }
+        }
+        Err(last_error
+            .unwrap_or_else(|| anyhow::anyhow!("No authorized WorkerLink carrier is available.")))
     }
 
     async fn call_discovery(&self, params: &Value) -> Result<Value> {
@@ -426,16 +539,19 @@ impl Host {
         Ok(())
     }
 
-    async fn serve_http(self, port: u16) -> Result<()> {
+    async fn serve_http(self, port: u16, public: Option<public::Endpoint>) -> Result<()> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await?;
         let address = listener.local_addr()?;
         eprintln!("Cantrip external MCP listening on http://{address}/mcp");
         let host = Arc::new(self);
+        let public = Arc::new(public);
+        let timeout = Duration::from_secs(120);
         let connections = Arc::new(Semaphore::new(16));
         loop {
             let permit = connections.clone().acquire_owned().await?;
             let (socket, _) = listener.accept().await?;
             let host = host.clone();
+            let public = public.clone();
             tokio::spawn(async move {
                 let _permit = permit;
                 let connection = hyper::server::conn::http1::Builder::new()
@@ -443,32 +559,67 @@ impl Host {
                     .serve_connection(
                         TokioIo::new(socket),
                         service_fn(|request| async {
-                            Ok::<_, Infallible>(host.http_request(address.port(), request).await)
+                            Ok::<_, Infallible>(
+                                host.http_request(
+                                    address.port(),
+                                    public.as_ref().as_ref(),
+                                    request,
+                                )
+                                .await,
+                            )
                         }),
                     );
-                let _ = tokio::time::timeout(Duration::from_secs(20), connection).await;
+                let _ = tokio::time::timeout(timeout, connection).await;
             });
         }
     }
 
-    async fn http_request(&self, port: u16, request: Request<Incoming>) -> Response<Full<Bytes>> {
+    async fn http_request(
+        &self,
+        port: u16,
+        public: Option<&public::Endpoint>,
+        request: Request<Incoming>,
+    ) -> Response<Full<Bytes>> {
         let headers = request.headers();
         let origin = headers
             .get(header::ORIGIN)
             .map(|value| value.to_str().unwrap_or("invalid"));
         if headers.get_all(header::HOST).iter().count() != 1
             || headers.get_all(header::ORIGIN).iter().count() > 1
-            || headers.keys().any(|name| proxy_header(name.as_str()))
+            || (public.is_none() && headers.keys().any(|name| proxy_header(name.as_str())))
             || !headers
                 .get(header::HOST)
                 .and_then(|value| value.to_str().ok())
-                .is_some_and(|host| loopback_authority(host, origin, port))
+                .is_some_and(|host| match public {
+                    Some(public) => public.valid_authority(host, origin),
+                    None => loopback_authority(host, origin, port),
+                })
         {
             return reply(StatusCode::FORBIDDEN, None);
         }
-        if request.uri().path() != "/mcp" || request.uri().query().is_some() {
+        if request.uri().query().is_some() {
             return reply(StatusCode::NOT_FOUND, None);
         }
+        if let Some(public) = public
+            && request.uri().path() == OAUTH_RESOURCE_PATH
+            && request.method() == Method::GET
+        {
+            return public.metadata();
+        }
+        if request.uri().path() != HTTP_PATH {
+            return reply(StatusCode::NOT_FOUND, None);
+        }
+        let authorized;
+        let host = match public {
+            Some(public) => match public.authorize(self, headers).await {
+                Ok(host) => {
+                    authorized = host;
+                    &authorized
+                }
+                Err(response) => return response,
+            },
+            None => self,
+        };
         if request.method() != Method::POST {
             let mut response = reply(StatusCode::METHOD_NOT_ALLOWED, None);
             response
@@ -546,7 +697,7 @@ impl Host {
                 )),
             );
         }
-        match self.handle(&frame).await {
+        match host.handle(&frame).await {
             Some(response) => {
                 let status = match (modern, response["error"]["code"].as_i64()) {
                     (true, Some(-32601)) => StatusCode::NOT_FOUND,

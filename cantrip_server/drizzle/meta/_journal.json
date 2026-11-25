@@ -2066,6 +2066,13 @@
       "when": 1795586488481,
       "tag": "0294_external_mcp_execution",
       "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1795588126182,
+      "tag": "0295_external_mcp_oauth",
+      "breakpoints": true
     }
   ]
 }

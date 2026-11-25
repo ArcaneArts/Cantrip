@@ -1,5 +1,6 @@
 //! Environment compatibility with the existing server. This type deliberately
 //! has no Debug implementation: it contains credentials and encryption keys.
+pub(crate) mod external_mcp;
 mod peer;
 mod secret;
 mod value;
@@ -102,6 +103,8 @@ pub struct ServerConfig {
     pub port: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public_origin: Option<String>,
+    #[serde(skip)]
+    pub external_mcp_oauth: Option<external_mcp::OAuth>,
     pub public_registration: bool,
     pub license_whitelist_enabled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -329,6 +332,7 @@ impl ServerConfig {
         let public_origin = public_origin_input
             .map(|v| value::origin("CANTRIP_PUBLIC_ORIGIN", &v, hosted))
             .transpose()?;
+        let external_mcp_oauth = external_mcp::read(&e, public_origin.as_deref(), auth_mode)?;
         // Constructor evaluation order follows the Node implementation, including
         // which configuration error wins when multiple settings are invalid.
         let mut config = Self {
@@ -483,6 +487,7 @@ impl ServerConfig {
             )?,
             port,
             public_origin,
+            external_mcp_oauth,
             public_registration: e.boolean("CANTRIP_PUBLIC_REGISTRATION")?,
             license_whitelist_enabled,
             council_enabled: e.boolean("CANTRIP_COUNCIL_ENABLED")?,

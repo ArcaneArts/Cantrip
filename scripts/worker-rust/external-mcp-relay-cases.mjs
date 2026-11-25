@@ -54,6 +54,9 @@ export async function verifyHostedRelay({
   integrations,
   request,
   connectMcp,
+  transport,
+  verifyHttps,
+  setLocalEnabled,
   verifyApp,
 }) {
   const workerId = randomUUID();
@@ -73,10 +76,12 @@ export async function verifyHostedRelay({
   let client;
 
   async function startWorker(enrollmentCode) {
+    const workerEnv = { ...env };
+    delete workerEnv.CANTRIP_EXTERNAL_MCP_BRIDGE_KEY;
     worker = spawn(path.resolve(binary), ["--shutdown-on-stdin-close"], {
       cwd: directory,
       env: {
-        ...env,
+        ...workerEnv,
         CANTRIP_WORKER_DATA_DIR: workerDirectory,
         CANTRIP_WORKER_ID: workerId,
         CANTRIP_SERVER_URL: server.origin,
@@ -309,8 +314,23 @@ export async function verifyHostedRelay({
       assert.equal(result.isError, undefined, JSON.stringify(result.content));
       assert.equal(result.structuredContent.projectId, projectId);
       assert.equal(result.structuredContent.workerId, workerId);
+      assert.equal(result.structuredContent.transport, transport);
       return result.structuredContent.processGeneration;
     };
+    if (verifyHttps) {
+      const grant = await newIntegration(owner, selected);
+      await verifyHttps({
+        owner,
+        unrelated,
+        grant,
+        projectId,
+        workerId,
+        revoke: () =>
+          ownerVisit("DELETE", `${integrations}/${grant.integration.id}`, 200),
+        startChannel,
+        open,
+      });
+    }
     if (codex) {
       const { verifyOrchestration } =
         await import("./external-mcp-orchestration-cases.mjs");
@@ -332,7 +352,9 @@ export async function verifyHostedRelay({
         projectId,
         ownerVisit,
         eventually,
-        connect: (operation) => connectMcp(credentialFile, operation),
+        connect: (operation, onSuppressed) =>
+          connectMcp(credentialFile, operation, onSuppressed),
+        setLocalEnabled,
         verifyApp,
       });
     }

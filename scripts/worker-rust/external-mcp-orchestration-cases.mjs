@@ -11,6 +11,7 @@ export async function verifyOrchestration({
   ownerVisit,
   eventually,
   connect,
+  setLocalEnabled,
   verifyApp,
 }) {
   const provider = await taskModelProvider();
@@ -60,7 +61,10 @@ export async function verifyOrchestration({
       operationId: randomUUID(),
       title: "External orchestration agent",
     };
-    const lost = await connect(create.operationId);
+    let dropped;
+    const lost = await connect(create.operationId, (receipt) => {
+      dropped = receipt;
+    });
     try {
       const controller = new AbortController();
       const abandoned = lost.callTool(
@@ -74,7 +78,10 @@ export async function verifyOrchestration({
       );
       try {
         await Promise.race([
-          eventually(async () => assert.equal((await appChats()).length, 1)),
+          eventually(async () => {
+            assert.equal((await appChats()).length, 1);
+            if (setLocalEnabled) assert.equal(dropped?.transport, "local");
+          }),
           outcome.then(({ reply }) => {
             if (reply) throw new Error(JSON.stringify(reply.content));
           }),
@@ -87,9 +94,19 @@ export async function verifyOrchestration({
     } finally {
       await lost.close();
     }
-    const agent = await call("agent_create", create);
-    assert.equal(agent.state, "created");
-    assert.deepEqual(await call("agent_create", create), agent);
+    setLocalEnabled?.(false);
+    let agent;
+    try {
+      agent = await call("agent_create", create);
+      assert.equal(agent.state, "created");
+      assert.deepEqual(await call("agent_create", create), agent);
+      if (setLocalEnabled) {
+        assert.equal(agent.transport, "relay");
+        assert.deepEqual(agent, { ...dropped, transport: "relay" });
+      }
+    } finally {
+      setLocalEnabled?.(true);
+    }
     await conflict("agent_create", { ...create, title: "Changed title" });
     assert.deepEqual(
       (await appChats()).map(({ id }) => id),

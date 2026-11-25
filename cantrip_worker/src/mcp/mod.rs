@@ -29,6 +29,8 @@ pub fn run_external(arguments: impl IntoIterator<Item = OsString>) -> Result<()>
     external::run(arguments)
 }
 
+pub const EXTERNAL_USAGE: &str = external::USAGE;
+
 fn run_stdio(arguments: impl IntoIterator<Item = OsString>, cua: bool) -> Result<()> {
     let command = if cua { "cua-mcp" } else { "mcp" };
     let mut arguments = arguments.into_iter();

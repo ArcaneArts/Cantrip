@@ -80,11 +80,55 @@ placement and the worker must have an approved encryption identity.
 
 Cantrip Server verifies the integration credential and issues a separate,
 short-lived WorkerLink grant for the exact integration generation, worker
-process, project, and worktree. It relays the request and reply as ciphertext.
+process, project, and worktree. The headless bridge tries enabled WorkerLink
+routes in LOCAL, LAN, WAN, then RELAY order. LOCAL requires the worker's
+loopback broker to be accessible from the bridge machine. LAN and WAN use
+the server's existing ICE and interface policy. The bridge falls back to RELAY
+when a direct route cannot carry the call.
+
+Every carrier carries the request and reply as ciphertext.
 The bridge wraps a fresh per-call key to the approved worker's public key.
 The worker opens the request with its private key and encrypts the reply under
 the per-call key held by the bridge. The existing account encryption keys stay
 with their provisioned clients and workers.
+
+### Connect a URL-only MCP client
+
+Run a dedicated bridge on the same machine as a trusted HTTPS reverse proxy.
+For an account-mode Cantrip Server with `CANTRIP_PUBLIC_ORIGIN` set to its
+HTTPS API origin, configure these additional settings.
+
+| Setting                           | Value                                                                                          |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `CANTRIP_EXTERNAL_MCP_PUBLIC_URL` | The exact public resource URL, such as `https://mcp.example.com/mcp`.                          |
+| `CANTRIP_EXTERNAL_MCP_BRIDGE_KEY` | A private value with prefix `ctbk_` followed by 32 random bytes encoded as unpadded base64url. |
+
+Provide the same bridge key in a private single-line file readable by the
+bridge service account. Start the packaged worker executable in bridge mode.
+
+```sh
+cantrip-worker external-mcp --server https://cantrip.example.com \
+  --http-port 4315 --public-url https://mcp.example.com/mcp \
+  --issuer https://cantrip.example.com \
+  --bridge-key-file /path/to/cantrip-bridge.credential
+```
+
+On the MCP hostname, forward `/mcp` and
+`/.well-known/oauth-protected-resource/mcp` to `127.0.0.1:4315`. Preserve
+the public Host header and Authorization header on that hop. The API hostname
+serves `/.well-known/oauth-authorization-server` and
+`/api/external-mcp/oauth/*` through the normal Cantrip Server HTTPS proxy.
+Avoid logging request bodies, credentials, and OAuth query strings. The bridge
+listener is loopback-only.
+
+Give the client the public `/mcp` URL. Compatible clients discover the
+authorization server, register an OAuth public client, and open a browser
+for consent. Sign in to Cantrip and select an existing scoped integration.
+The client uses authorization code with PKCE and can refresh access while the
+same integration generation remains active. Cantrip validates the token's
+audience and issues the bridge a separate short-lived credential for calls to
+Cantrip Server. Rotation and revocation invalidate existing OAuth tokens and
+close active WorkerLink channels for that integration.
 
 ### Delegate and monitor work
 

@@ -19,11 +19,11 @@ use tokio::{
 };
 use webrtc::data_channel::{DataChannel, DataChannelEvent, RTCDataChannelState};
 
-pub(super) const CONTROL: &str = "cantrip-worker-link-v1:control";
+pub(crate) const CONTROL: &str = "cantrip-worker-link-v1:control";
 const PREFIX: &str = "cantrip-worker-link-v1:lane:";
-pub(super) const LANES: [&str; 5] = ["events", "interactive", "stream", "realtime", "bulk"];
+pub(crate) const LANES: [&str; 5] = ["events", "interactive", "stream", "realtime", "bulk"];
 const READY: u8 = (1 << LANES.len()) - 1;
-pub(super) const MAX_MESSAGE: usize = 8 + wire::MAX_HEADER_BYTES + wire::MAX_PAYLOAD_BYTES;
+pub(crate) const MAX_MESSAGE: usize = 8 + wire::MAX_HEADER_BYTES + wire::MAX_PAYLOAD_BYTES;
 pub(super) type Queue = mpsc::Receiver<Queued<BytesMut>>;
 
 pub(in crate::worker_link) struct PeerCarrier {

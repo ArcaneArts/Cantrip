@@ -395,17 +395,26 @@ when no healthy LOCAL carrier was retained.
 The logical fabric is shared even when platform capabilities require different
 carrier implementations.
 
-| Client    | LOCAL                         | LAN/WAN                                                                                     | RELAY                   |
-| --------- | ----------------------------- | ------------------------------------------------------------------------------------------- | ----------------------- |
-| Tauri     | Authenticated loopback broker | Renderer-owned WebRTC; native tunnels use the bounded native/WebView bridge into WorkerLink | Server binary WebSocket |
-| Browser   | Normally unavailable          | WebRTC DataChannels                                                                         | Server WebSocket        |
-| Capacitor | Normally unavailable          | WebRTC DataChannels                                                                         | Server WebSocket        |
+| Client              | LOCAL                         | LAN/WAN                                                                                     | RELAY                   |
+| ------------------- | ----------------------------- | ------------------------------------------------------------------------------------------- | ----------------------- |
+| Tauri               | Authenticated loopback broker | Renderer-owned WebRTC; native tunnels use the bounded native/WebView bridge into WorkerLink | Server binary WebSocket |
+| Browser             | Normally unavailable          | WebRTC DataChannels                                                                         | Server WebSocket        |
+| Capacitor           | Normally unavailable          | WebRTC DataChannels                                                                         | Server WebSocket        |
+| External MCP bridge | Authenticated loopback broker | Headless native WebRTC DataChannels                                                         | Server binary WebSocket |
 
 WebRTC is the common direct carrier for browser and Capacitor and also serves
 renderer-owned Tauri channels. The renderer's default `WorkerLinkManager`
 installs the feature-neutral `PeerCarrier`; Terminal and generic in-app tunnels
 inherit LAN or WAN whenever that carrier wins, preserving their feature-facing
 APIs.
+
+The headless external MCP bridge uses the same WorkerLink authority, worker
+peer runtime, and channel policies. It opens a fresh scoped session when an
+attempt fails, checks that worker and checkout placement are unchanged, and
+resubmits the same operation through the next permitted carrier. Mutations use
+their durable operation IDs to recover an uncertain outcome. See the
+[external MCP setup](MCP.md#connect-a-url-only-mcp-client) for the trusted HTTPS
+entry point.
 
 Apple platforms declare a local-network usage description for the Capacitor iOS
 app and the packaged macOS Tauri app. Cantrip does not browse or advertise a
