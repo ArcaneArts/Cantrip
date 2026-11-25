@@ -1013,9 +1013,15 @@ async function flow(
     assert.ok(credential);
     if (
       process.argv.includes("--council-steering") ||
+      process.argv.includes("--council-agent-tools") ||
       process.argv.includes("--council-app-mode")
     ) {
-      await actualCouncilSteering({ page, workerId, result });
+      await actualCouncilSteering({
+        page,
+        workerId,
+        result,
+        testCreation: process.argv.includes("--council-agent-tools"),
+      });
       if (process.argv.includes("--council-app-mode")) {
         await actualCouncilAppMode({
           page,

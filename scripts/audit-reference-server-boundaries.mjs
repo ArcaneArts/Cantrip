@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "c01cedeb5ad07aa7eeee81033073509e4be8826ed45621e68200d85a2c5c61b9",
+    "d601feb0bc8ecb9f17b5e7507fd01e4578280e73e8b76dcac83202a644864d6f",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -4064,6 +4064,13 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation === "council.list" || operation === "council.create") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "An active Council binding authorizes account-owned roster access. The worker seals names and roles before relaying them and opens protected labels for the model.",
+    };
+  }
   if (
     ["task.create", "task.list", "task.status", "task.wait"].includes(operation)
   )

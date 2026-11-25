@@ -66,6 +66,8 @@ export const cantripAgentOperationNameSchema = z.enum([
   "client.focus-project",
   "client.focus-surface",
   "client.show-interaction",
+  "council.list",
+  "council.create",
 ]);
 
 export const CANTRIP_MCP_READ_OPERATIONS = [

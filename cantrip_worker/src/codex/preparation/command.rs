@@ -716,6 +716,13 @@ impl Ensurer {
                             };
                             let mut operations =
                                 vec!["context.get", "tool.help", "web.read", "web.search"];
+                            if standalone && session["council"] == true {
+                                operations.extend(
+                                    crate::mcp::bindings::COUNCIL_TOOLS
+                                        .into_iter()
+                                        .map(|(operation, _)| operation),
+                                );
+                            }
                             if !standalone {
                                 operations.extend(["policy.list", "policy.read"]);
                                 operations.extend(

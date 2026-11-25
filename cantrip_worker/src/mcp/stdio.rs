@@ -24,7 +24,7 @@ pub(super) async fn serve(
     input: impl AsyncRead + Unpin + Send + 'static,
     mut output: impl AsyncWrite + Unpin,
 ) -> Result<()> {
-    let standalone = profile == "standalone-web";
+    let standalone = matches!(profile, "standalone-web" | "council");
     let is_cua = profile == "cua";
     let profile = &rpc::catalog()["profiles"][profile];
     let (sender, mut frames) = mpsc::channel(16);

@@ -3,6 +3,7 @@ mod browser;
 mod chats;
 mod client;
 mod computer_use;
+mod council;
 mod explorer;
 mod policy;
 mod run;
@@ -359,6 +360,9 @@ impl Inner {
             }
             "chat.list" | "chat.read" | "chat.wait" | "chat.send" => {
                 self.chat(authorization, &call, operation).await
+            }
+            "council.list" | "council.create" => {
+                self.council(authorization, &call, operation).await
             }
             _ => Err(anyhow!("Unsupported Cantrip MCP operation.")),
         }

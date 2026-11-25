@@ -6,7 +6,7 @@ use super::{
 use crate::{
     auth::service::AuthService,
     chats::{Repository, council},
-    wire::Value,
+    wire::{Value, value::json},
 };
 use anyhow::Result;
 use axum::{
@@ -17,6 +17,38 @@ use axum::{
     routing::{get, patch},
 };
 use std::sync::Arc;
+
+pub(super) async fn execute_agent_operation(
+    service: &Arc<AuthService>,
+    owner: &str,
+    context: &Value,
+    operation: &str,
+    arguments: &Value,
+) -> Result<Value> {
+    use super::agent_operations::OperationError;
+    if context.get("councilAgent").is_none() {
+        return Err(OperationError::new(
+            403,
+            "forbidden",
+            "This operation requires an active Council agent.",
+        )
+        .into());
+    }
+    let repository = Repository::new(service.repository.database.clone());
+    if operation == "council.list" {
+        let agents = repository.council_agents(owner).await?;
+        return Ok(json!({"summary":"Loaded the Council roster.","data":json!({"agents":agents})}));
+    }
+    let input = super::agent_operations::parse("councilAgentCreateSchema", arguments)?;
+    let agent = repository
+        .create_council_agent(owner, input, |_| false)
+        .await?;
+    service.scratch_roots.queue();
+    let _ = service
+        .live
+        .publish_event(council::notification(owner, &agent));
+    Ok(json!({"summary":"Created a Council agent.","mutated":true,"data":json!({"agent":agent})}))
+}
 
 async fn execute(
     service: Arc<AuthService>,

@@ -57,6 +57,8 @@ pub const OPERATIONS: &[&str] = &[
     "client.focus-project",
     "client.focus-surface",
     "client.show-interaction",
+    "council.list",
+    "council.create",
 ];
 pub fn is_mutation(operation: &str) -> bool {
     matches!(
@@ -90,6 +92,7 @@ pub fn is_mutation(operation: &str) -> bool {
             | "client.focus-project"
             | "client.focus-surface"
             | "client.show-interaction"
+            | "council.create"
     )
 }
 fn permitted(permission: &Value, operation: &str) -> bool {
@@ -108,6 +111,7 @@ fn permitted(permission: &Value, operation: &str) -> bool {
                 | "chat.list"
                 | "chat.read"
                 | "chat.wait"
+                | "council.list"
                 | "policy.list"
                 | "policy.read"
                 | "target.list"

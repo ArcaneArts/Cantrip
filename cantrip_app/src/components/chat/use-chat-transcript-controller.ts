@@ -85,6 +85,7 @@ import {
   latestEditableUserMessage,
 } from "@/components/chat/latest-message-edit";
 import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
+import { ensurePrivateLabelWorkerEncryption } from "@/lib/private-label-worker-encryption";
 import { shouldSyncChatWithExternalConsole } from "@/lib/chat-transcript-sync";
 import {
   imageInputCapabilityMessage,
@@ -1308,6 +1309,11 @@ export function useChatTranscriptController({
       );
       if (!capabilities.council || worker?.online) {
         await ensureChatWorkerEncryption({ worker });
+      }
+      if (capabilities.council && worker?.online) {
+        await ensurePrivateLabelWorkerEncryption({ worker }).catch(
+          () => undefined,
+        );
       }
       if (
         nativeModelSettings.observed.state.data?.binding &&

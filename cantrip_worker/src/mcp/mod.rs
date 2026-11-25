@@ -56,7 +56,7 @@ fn run_stdio(arguments: impl IntoIterator<Item = OsString>, cua: bool) -> Result
             } else {
                 match profile.as_deref().and_then(OsStr::to_str) {
                     None if profile.is_none() => "ide",
-                    Some(profile @ ("ide" | "standalone-web")) => profile,
+                    Some(profile @ ("ide" | "standalone-web" | "council")) => profile,
                     _ => bail!("Cantrip MCP profile is invalid."),
                 }
             };

@@ -10,6 +10,10 @@ import {
   CANTRIP_MCP_OPERATIONS,
   CANTRIP_MCP_TOOL_NAMES,
   cantripMcpBindingSchema,
+  councilCreateToolInputSchema,
+  councilCreateToolOutputSchema,
+  councilListToolInputSchema,
+  councilListToolOutputSchema,
   workerCantripMcpServerCapabilitiesSchema,
 } from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
@@ -123,6 +127,42 @@ async function generate() {
   const help = Object.fromEntries(
     CANTRIP_MCP_TOOL_NAMES.map((name) => [name, cantripMcpToolHelp(name)]),
   );
+  const council = [
+    [
+      "council_list",
+      "council.list",
+      "List the Council agents in your Cantrip account.",
+      councilListToolInputSchema,
+      councilListToolOutputSchema,
+    ],
+    [
+      "council_create",
+      "council.create",
+      "Create a fresh Council agent with the specified title and role.",
+      councilCreateToolInputSchema,
+      councilCreateToolOutputSchema,
+    ],
+  ];
+  profiles.council = {
+    ...profiles["standalone-web"],
+    instructions:
+      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
+    tools: [
+      ...profiles["standalone-web"].tools,
+      ...council.map(([name, operation, description, input, output]) => {
+        schemas[`mcpStdioInput/${name}`] = input;
+        schemas[`mcpStdioOutput/${name}`] = output;
+        operations[name] = operation;
+        help[name] = { summary: description };
+        return {
+          name,
+          description,
+          inputSchema: z.toJSONSchema(input),
+          outputSchema: z.toJSONSchema(output),
+        };
+      }),
+    ],
+  };
   const input = (name) => schemas[`mcpStdioInput/${name}`];
   const output = (name) => schemas[`mcpStdioOutput/${name}`];
   const mcpHostSessionClaims = z.discriminatedUnion(
