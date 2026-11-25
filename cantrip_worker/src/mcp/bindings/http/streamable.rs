@@ -201,7 +201,7 @@ impl Inner {
                             .await
                     },
                     |name| allowed.iter().any(|allowed| allowed.as_str() == Some(name)),
-                    profile_name == "standalone-web",
+                    matches!(profile_name, "standalone-web" | "council"),
                     name,
                     params.get("arguments"),
                 )

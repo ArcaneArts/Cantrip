@@ -61,6 +61,9 @@ pub(super) fn preparation(command: &Value) -> Value {
             "computerUseEnabled": computer_use_enabled(command),
         }),
     });
+    if command.get("councilAgent").is_some() {
+        target["session"]["council"] = json!(true);
+    }
     if let Some(placement) = command.get("osExecution") {
         target["session"]["osExecution"] = placement.clone();
     }

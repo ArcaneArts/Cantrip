@@ -789,6 +789,10 @@ const councilExports = [
   "councilAgentUpdateSchema",
   "councilAgentWireListSchema",
   "councilAgentWireSummarySchema",
+  "councilCreateToolInputSchema",
+  "councilCreateToolOutputSchema",
+  "councilListToolInputSchema",
+  "councilListToolOutputSchema",
 ];
 const nativeResourceAndTimingExports = [
   "inferenceCommandTimingSchema",

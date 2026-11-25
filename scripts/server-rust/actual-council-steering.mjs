@@ -2,9 +2,14 @@
 // Only the HTTP model response is held to guarantee an active native turn.
 import assert from "node:assert/strict";
 import { eventually } from "./full-worker.mjs";
-import { taskModelProvider } from "./task-model-provider.mjs";
+import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
 
-export async function actualCouncilSteering({ page, workerId, result }) {
+export async function actualCouncilSteering({
+  page,
+  workerId,
+  result,
+  testCreation = false,
+}) {
   const model = await taskModelProvider({ observeStreams: true });
   const role = "Preserve this Council role marker 🌲";
   const original = "Read the durable Council queue";
@@ -13,7 +18,7 @@ export async function actualCouncilSteering({ page, workerId, result }) {
   const timeout = 60_000;
   try {
     const { chatId, configuration } = await page.evaluate(
-      async ({ workerId, baseUrl, nativeModel, role }) => {
+      async ({ workerId, baseUrl, nativeModel, role, testCreation }) => {
         const models = await import("/src/lib/api/models.ts");
         const provider = await models.createModelProvider({
           name: "Disposable Council provider",
@@ -41,6 +46,13 @@ export async function actualCouncilSteering({ page, workerId, result }) {
         ).ensureChatWorkerEncryption({
           worker: workers.find((worker) => worker.workerId === workerId),
         });
+        if (testCreation) {
+          await (
+            await import("/src/lib/private-label-worker-encryption.ts")
+          ).ensurePrivateLabelWorkerEncryption({
+            worker: workers.find((worker) => worker.workerId === workerId),
+          });
+        }
         const agent = await (
           await import("/src/lib/api/council.ts")
         ).createCouncilAgent("Disposable Operations Agent", role);
@@ -56,7 +68,13 @@ export async function actualCouncilSteering({ page, workerId, result }) {
           },
         };
       },
-      { workerId, baseUrl: model.baseUrl, nativeModel: model.model, role },
+      {
+        workerId,
+        baseUrl: model.baseUrl,
+        nativeModel: model.model,
+        role,
+        testCreation,
+      },
     );
     await eventually(
       () =>
@@ -169,6 +187,111 @@ export async function actualCouncilSteering({ page, workerId, result }) {
     result.steps.push(
       "Council steers an active native turn through its durable queue",
     );
+    if (testCreation) {
+      const tools = modelFunctions(held.request.input.tools);
+      const create = tools.find(
+        ({ name }) =>
+          name === "council_create" || name.endsWith("__council_create"),
+      );
+      assert.ok(
+        create,
+        "The actual Council provider exposes its managed create tool",
+      );
+      const title = "Maintenance Agent";
+      const role = "Verify maintenance notes and summarize the checks.";
+      await eventually(
+        () =>
+          page.evaluate(
+            async (id) =>
+              (await import("/src/lib/api/council.ts")).getCouncilChat(id),
+            chatId,
+          ),
+        (chat) => assert.equal(chat.status, "idle"),
+        timeout,
+      );
+      model.reply({ calls: [{ ...create, arguments: { title, role } }] });
+      const completed = model.reply({
+        text: "The maintenance agent is ready.",
+      });
+      assert.equal(
+        (await submit("Create the maintenance agent now")).status,
+        "queued",
+      );
+      const toolState = await eventually(
+        async () => {
+          if (completed.entered) return { completed: true, pending: [] };
+          return page.evaluate(async (id) => {
+            const api = await import("/src/lib/api/chats.ts");
+            const chat = await (
+              await import("/src/lib/api/council.ts")
+            ).getCouncilChat(id);
+            return {
+              completed: false,
+              status: chat.status,
+              pending: await api.getAgentInteractionRequests({
+                chatId: id,
+                status: "pending",
+              }),
+            };
+          }, chatId);
+        },
+        (state) =>
+          assert.ok(
+            state.completed || state.pending.length > 0,
+            JSON.stringify({
+              status: state.status,
+              modelPostCount: model.requests.filter(
+                ({ method }) => method === "POST",
+              ).length,
+              modelFailures: model.failures,
+            }),
+          ),
+        timeout,
+      );
+      if (toolState.pending.length > 0) {
+        const [pending] = toolState.pending;
+        assert.equal(pending.payload.kind, "mcpElicitation");
+        assert.equal(pending.payload.serverName, "cantrip");
+        await page.evaluate(async (id) => {
+          await (
+            await import("/src/lib/api/chats.ts")
+          ).respondToAgentInteractionRequest(id, {
+            idempotencyKey: crypto.randomUUID(),
+            response: {
+              kind: "mcpElicitation",
+              action: "accept",
+              content: {},
+              metadata: null,
+            },
+          });
+        }, pending.id);
+        await eventually(
+          () => completed.entered,
+          (entered) => assert.equal(entered, true),
+          timeout,
+        );
+      }
+      const agents = await page.evaluate(async () => {
+        const api = await import("/src/lib/api/council.ts");
+        return Promise.all(
+          (await api.listCouncilAgents()).map(async (agent) => ({
+            id: agent.id,
+            title: agent.title,
+            primary: agent.primary,
+            role: await api.openCouncilRole(agent),
+          })),
+        );
+      });
+      const created = agents.filter((agent) => agent.title === title);
+      assert.equal(created.length, 1);
+      assert.equal(created[0].role, role);
+      assert.equal(created[0].primary, false);
+      assert.notEqual(created[0].id, chatId);
+      result.councilAgentCreatedByPrompt = created[0].id;
+      result.steps.push(
+        "Council creates a fresh encrypted agent through the native managed MCP tool",
+      );
+    }
   } finally {
     await model.close();
   }

@@ -102,6 +102,10 @@ pub(crate) const CHAT_TOOLS: [(&str, &str); 4] = [
     ("chat.wait", "chat_wait"),
     ("chat.send", "chat_send"),
 ];
+pub(crate) const COUNCIL_TOOLS: [(&str, &str); 2] = [
+    ("council.list", "council_list"),
+    ("council.create", "council_create"),
+];
 
 #[derive(Clone)]
 pub struct Attachment {
@@ -396,10 +400,20 @@ impl Broker {
             bail!("The worker binding changed during MCP preparation.");
         }
         let standalone = claims["contextKind"] == "standalone";
-        let profile = if standalone { "standalone-web" } else { "ide" };
         let requested = claims["allowedOperations"]
             .as_array()
             .ok_or_else(|| anyhow!("Cantrip MCP binding requires a list of allowed operations."))?;
+        let council = standalone
+            && requested
+                .iter()
+                .any(|operation| operation == "council.list");
+        let profile = if council {
+            "council"
+        } else if standalone {
+            "standalone-web"
+        } else {
+            "ide"
+        };
         let sessions = self.inner.web.has_sessions()
             && !standalone
             && claims["permissionProfileId"] != ":read-only";
@@ -525,6 +539,13 @@ impl Broker {
                 && capabilities.supports(operation)
                 && (operation != "chat.send"
                     || (chat_read && claims["permissionProfileId"] != ":read-only"));
+            (operation, tool, supported)
+        }))
+        .chain(COUNCIL_TOOLS.into_iter().map(|(operation, tool)| {
+            let supported = council
+                && self.inner.encryption.is_some()
+                && capabilities.supports(operation)
+                && (operation != "council.create" || claims["permissionProfileId"] != ":read-only");
             (operation, tool, supported)
         }))
         .chain(

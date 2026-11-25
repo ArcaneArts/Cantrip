@@ -113,6 +113,16 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
         crate::auth::now().timestamp_millis(),
     )
     .map_err(|error| OperationError::new(error.status, error.code, error.message))?;
+    if matches!(operation, "council.list" | "council.create") {
+        return super::council::execute_agent_operation(
+            service,
+            owner,
+            &context,
+            operation,
+            &call["request"]["arguments"],
+        )
+        .await;
+    }
     if operation == "context.get" {
         if context["contextKind"] != "project" {
             return Err(OperationError::new(

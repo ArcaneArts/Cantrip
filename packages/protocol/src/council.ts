@@ -6,6 +6,7 @@ import {
 } from "./chats.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
+import { cantripMcpReadResultBaseSchema } from "./cantrip-mcp-tools.js";
 
 const rolePlaintextLimit = 32 * 1_024;
 // The endpoint seals the role with chat-content and associated data for the
@@ -59,6 +60,32 @@ export const councilAgentWireSummarySchema = z
 export const councilAgentWireListSchema = z.array(
   councilAgentWireSummarySchema,
 );
+
+const councilToolAgentSchema = z
+  .object({
+    id: standaloneChatIdentitySchema,
+    title: z.string().min(1).max(120),
+    primary: z.boolean(),
+    scratchStatus: standaloneChatRootStatusSchema,
+  })
+  .strict();
+
+export const councilListToolInputSchema = z.object({}).strict();
+export const councilCreateToolInputSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120),
+    role: z.string().trim().min(1).max(rolePlaintextLimit),
+  })
+  .strict();
+export const councilListToolOutputSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    data: z.object({ agents: z.array(councilToolAgentSchema) }).strict(),
+  });
+export const councilCreateToolOutputSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    mutated: z.literal(true),
+    data: z.object({ agent: councilToolAgentSchema }).strict(),
+  });
 
 export type CouncilAgentCreate = z.infer<typeof councilAgentCreateSchema>;
 export type CouncilAgentUpdate = z.infer<typeof councilAgentUpdateSchema>;

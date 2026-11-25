@@ -51,9 +51,11 @@ pub fn turn_session_context(context: &Value) -> Option<Value> {
         return None;
     }
     if context["contextKind"] == "standalone" {
-        return Some(
-            json!({"chatId":context["chatId"],"computerUseEnabled":context["computerUseEnabled"]==true,"contextKind":"standalone","projectId":Value::Null,"worktreeId":Value::Null,"rootKind":Value::Null,"scratchRootId":context["scratchRootId"]}),
-        );
+        let mut session = json!({"chatId":context["chatId"],"computerUseEnabled":context["computerUseEnabled"]==true,"contextKind":"standalone","projectId":Value::Null,"worktreeId":Value::Null,"rootKind":Value::Null,"scratchRootId":context["scratchRootId"]});
+        if context.get("councilAgent").is_some() {
+            session["council"] = json!(true);
+        }
+        return Some(session);
     }
     let mut session = json!({"chatId":context["chatId"],"computerUseEnabled":context["computerUseEnabled"]==true,"contextKind":"project","projectId":context["projectId"],"worktreeId":context["worktreeId"],"rootKind":context["rootKind"],"scratchRootId":Value::Null});
     if let Some(os) = context.get("osExecution") {
