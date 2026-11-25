@@ -367,6 +367,7 @@ impl Inner {
             | "council.memory.read"
             | "council.memory.write"
             | "council.inventory"
+            | "council.peer.send"
             | "council.project.chat.create"
             | "council.project.task.create"
             | "council.project.interrupt" => self.council(authorization, &call, operation).await,

@@ -419,6 +419,7 @@ const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
 const councilHistory = process.argv.includes("--council-history");
+const councilPeerMessages = process.argv.includes("--council-peer-messages");
 const councilProjectApprovals = process.argv.includes(
   "--council-project-approvals",
 );
@@ -1072,6 +1073,7 @@ async function flow(
       process.argv.includes("--council-app-mode") ||
       process.argv.includes("--council-memory") ||
       councilHistory ||
+      councilPeerMessages ||
       councilInventory ||
       councilCompaction ||
       councilBrowserHistory ||
@@ -1082,6 +1084,9 @@ async function flow(
         workerId,
         result,
         testCreation: process.argv.includes("--council-agent-tools"),
+        peerAppOrigin: councilPeerMessages
+          ? vite.resolvedUrls.local[0]
+          : undefined,
         historyFixture: councilHistory ? fixture : undefined,
         inventory: councilInventory
           ? {
@@ -2319,6 +2324,7 @@ try {
         process.argv.includes("--council-memory") ||
         councilBrowserHistory ||
         councilCompaction ||
+        councilPeerMessages ||
         councilProjectMessages
           ? { CANTRIP_COUNCIL_ENABLED: "true" }
           : {}),

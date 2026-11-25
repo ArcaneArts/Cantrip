@@ -26,6 +26,7 @@ import {
   editableMessageText,
 } from "@/components/chat/latest-message-edit";
 import { MessageContent } from "@/components/chat/message-content";
+import { CouncilHandoffLink } from "@/components/council/council-handoff-link";
 import { ChatMessageFileSummary } from "./chat-message-file-summary";
 import {
   editedFilesByAssistantMessage,
@@ -253,10 +254,25 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
     const source = message.content.find(
       (item) =>
         item.type === "text" &&
-        (item.councilProjectResult || item.councilProjectRequest),
+        (item.councilPeerMessage ||
+          item.councilProjectResult ||
+          item.councilProjectRequest),
     );
     if (source?.type === "text") {
-      const { councilProjectRequest, councilProjectResult } = source;
+      const {
+        councilPeerMessage,
+        councilProjectRequest,
+        councilProjectResult,
+      } = source;
+      if (councilPeerMessage) {
+        return (
+          <CouncilHandoffLink
+            key={message.id}
+            agentId={message.chatId}
+            source={councilPeerMessage}
+          />
+        );
+      }
       const resultTitle =
         councilProjectResult?.targetKind === "task"
           ? "Task result"

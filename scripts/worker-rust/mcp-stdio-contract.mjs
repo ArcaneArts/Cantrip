@@ -24,6 +24,8 @@ import {
   councilMemoryReadToolOutputSchema,
   councilMemoryWriteToolInputSchema,
   councilMemoryWriteToolOutputSchema,
+  councilPeerSendInputSchema,
+  councilPeerSendOutputSchema,
   councilProjectSendInputSchema,
   councilProjectSendToolOutputSchema,
   councilProjectChatCreateInputSchema,
@@ -194,6 +196,13 @@ async function generate() {
       "List projects across your Cantrip account. Use the project ID to list that project's chats or Tasks. Repeat with nextCursor when present.",
       councilInventoryInputSchema,
       councilInventoryToolOutputSchema,
+    ],
+    [
+      "council_peer_send",
+      "council.peer.send",
+      "Address a message to another Council agent using its ID from council_list. The recipient runs or steers when the message is delivered. Send results or work requests deliberately. Reuse the operation ID when retrying a delivery.",
+      councilPeerSendInputSchema,
+      councilPeerSendOutputSchema,
     ],
     [
       "council_project_send",

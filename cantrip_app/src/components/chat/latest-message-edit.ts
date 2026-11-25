@@ -24,6 +24,7 @@ export function latestEditableUserMessage(
       (item) =>
         item.type === "text" &&
         (item.chatCommunication ||
+          item.councilPeerMessage ||
           item.councilProjectResult ||
           item.councilProjectRequest),
     )

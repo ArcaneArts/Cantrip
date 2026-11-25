@@ -682,6 +682,8 @@ export function App() {
   useCouncilHistoryLink(
     councilAvailable && !isPopout,
     councilWorkspace.openHistory,
+    councilWorkspace.openPeer,
+    councilWorkspace.closePeer,
     setAppMode,
   );
   useCouncilProjectSourceLink({

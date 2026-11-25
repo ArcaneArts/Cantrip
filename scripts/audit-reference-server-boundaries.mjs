@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "0ee7671bda2be3e397570d20204360c4dcd35cbbc8b98ba3203a460dd22d2f87",
+    "8851f7517cb703499503333edb8f392cbe67895131d0c23db536bf2485508fdb",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -4089,6 +4089,12 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation === "council.peer.send")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "The active Council worker seals the handoff and protected history. Core authorizes both agents and records durable delivery identities.",
+    };
   if (operation === "council.project.interrupt")
     return {
       classification: "intentionally-public-control-plane",

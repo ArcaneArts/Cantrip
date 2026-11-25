@@ -102,7 +102,7 @@ pub(crate) const CHAT_TOOLS: [(&str, &str); 4] = [
     ("chat.wait", "chat_wait"),
     ("chat.send", "chat_send"),
 ];
-pub(crate) const COUNCIL_TOOLS: [(&str, &str); 11] = [
+pub(crate) const COUNCIL_TOOLS: [(&str, &str); 12] = [
     ("council.list", "council_list"),
     ("council.create", "council_create"),
     ("council.memory.read", "council_memory_read"),
@@ -110,6 +110,7 @@ pub(crate) const COUNCIL_TOOLS: [(&str, &str); 11] = [
     ("council.history.search", "council_history_search"),
     ("council.history.read", "council_history_read"),
     ("council.inventory", "council_inventory"),
+    ("council.peer.send", "council_peer_send"),
     ("council.project.send", "council_project_send"),
     ("council.project.chat.create", "council_project_chat_create"),
     ("council.project.task.create", "council_project_task_create"),
@@ -559,6 +560,7 @@ impl Broker {
                 && (!matches!(
                     operation,
                     "council.create"
+                        | "council.peer.send"
                         | "council.project.send"
                         | "council.project.chat.create"
                         | "council.project.task.create"

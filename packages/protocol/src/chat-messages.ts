@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { chatCommunicationSchema } from "./chat-communication.js";
 import {
+  councilPeerMessageSourceSchema,
   councilProjectRequestSourceSchema,
   councilProjectResultSourceSchema,
 } from "./council-input.js";
@@ -22,6 +23,7 @@ export const chatMessageContentSchema = z.array(
       type: z.literal("text"),
       text: z.string().min(1),
       chatCommunication: chatCommunicationSchema.optional(),
+      councilPeerMessage: councilPeerMessageSourceSchema.optional(),
       councilProjectResult: councilProjectResultSourceSchema.optional(),
       councilProjectRequest: councilProjectRequestSourceSchema.optional(),
       phase: agentMessagePhaseSchema.nullable().optional(),
