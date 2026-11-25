@@ -2,16 +2,26 @@ import { z } from "zod";
 
 const sourceId = z.string().min(1).max(255);
 
-export const councilProjectResultSourceSchema = z
+const councilProjectSource = z
   .object({
     projectId: sourceId,
     chatId: sourceId,
-    inputMessageId: sourceId,
     threadId: sourceId.nullable(),
     turnId: sourceId.nullable(),
     status: z.enum(["completed", "failed", "interrupted", "unavailable"]),
   })
   .strict();
+
+export const councilProjectResultSourceSchema = z.union([
+  councilProjectSource.extend({
+    targetKind: z.literal("chat").optional(),
+    inputMessageId: sourceId,
+  }),
+  councilProjectSource.extend({
+    targetKind: z.literal("task"),
+    inputMessageId: sourceId.nullable(),
+  }),
+]);
 
 export type CouncilProjectResultSource = z.infer<
   typeof councilProjectResultSourceSchema
@@ -30,11 +40,13 @@ export type CouncilProjectRequestSource = z.infer<
 >;
 
 export function councilProjectResultLink(source: CouncilProjectResultSource) {
-  return `?${new URLSearchParams({
+  const query = new URLSearchParams({
     councilProject: source.projectId,
     projectChat: source.chatId,
-    message: source.inputMessageId,
-  })}`;
+  });
+  if (source.inputMessageId) query.set("message", source.inputMessageId);
+  if (source.targetKind === "task") query.set("task", "true");
+  return `?${query}`;
 }
 
 export function councilProjectRequestLink(source: CouncilProjectRequestSource) {

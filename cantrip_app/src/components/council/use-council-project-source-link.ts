@@ -6,14 +6,24 @@ export function readCouncilProjectSourceLink() {
   const chatId = params.get("projectChat");
   const messageId = params.get("message");
   const requestId = params.get("request");
-  if (!projectId || !chatId || (!messageId && !requestId)) return null;
-  return { projectId, chatId, messageId, requestId };
+  const task = params.get("task") === "true";
+  if (!projectId || !chatId || (!messageId && !requestId && !task)) return null;
+  return { projectId, chatId, messageId, requestId, task };
 }
 
-export function useCouncilProjectSourceLink(
-  enabled: boolean,
-  openCreatedTab: (projectId: string, kind: "chat", chatId: string) => void,
-) {
+export function useCouncilProjectSourceLink({
+  enabled,
+  workspaceProjectId,
+  selectProject,
+  openCreatedTab,
+  openProjectTask,
+}: {
+  enabled: boolean;
+  workspaceProjectId: string | null;
+  selectProject: (projectId: string) => void;
+  openCreatedTab: (projectId: string, kind: "chat", chatId: string) => void;
+  openProjectTask: (projectId: string, chatId: string) => void;
+}) {
   const lastOpened = useRef<string | null>(null);
   useEffect(() => {
     if (!enabled) return;
@@ -25,11 +35,22 @@ export function useCouncilProjectSourceLink(
       }
       const key = window.location.search;
       if (lastOpened.current === key) return;
+      if (workspaceProjectId !== source.projectId) {
+        selectProject(source.projectId);
+        return;
+      }
       lastOpened.current = key;
-      openCreatedTab(source.projectId, "chat", source.chatId);
+      if (source.task) openProjectTask(source.projectId, source.chatId);
+      else openCreatedTab(source.projectId, "chat", source.chatId);
     };
     open();
     window.addEventListener("popstate", open);
     return () => window.removeEventListener("popstate", open);
-  }, [enabled, openCreatedTab]);
+  }, [
+    enabled,
+    openCreatedTab,
+    openProjectTask,
+    selectProject,
+    workspaceProjectId,
+  ]);
 }

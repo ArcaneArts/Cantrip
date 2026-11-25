@@ -684,7 +684,14 @@ export function App() {
     councilWorkspace.openHistory,
     setAppMode,
   );
-  useCouncilProjectSourceLink(councilAvailable && !isPopout, openCreatedTab);
+  useCouncilProjectSourceLink({
+    enabled: councilAvailable && !isPopout,
+    workspaceProjectId:
+      ownedWorkspace?.controller.getSnapshot().authoritative.projectId ?? null,
+    selectProject: setSelectedProjectId,
+    openCreatedTab,
+    openProjectTask,
+  });
   useEffect(() => {
     if (appMode === "council" && bootstrap.isSuccess && !councilAvailable) {
       setAppMode("chat");

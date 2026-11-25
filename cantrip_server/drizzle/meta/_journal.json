@@ -2122,6 +2122,13 @@
       "when": 1795600260000,
       "tag": "0302_council_project_creations",
       "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1795601400000,
+      "tag": "0303_council_project_task_results",
+      "breakpoints": true
     }
   ]
 }

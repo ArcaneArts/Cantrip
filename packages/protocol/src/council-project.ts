@@ -17,7 +17,10 @@ import {
 } from "./communication-content.js";
 import { modelConfigurationSchema } from "./model-configuration.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
-import { taskOpaqueContentSchema } from "./tasks.js";
+import {
+  taskMessageOpaqueContentSchema,
+  taskOpaqueContentSchema,
+} from "./tasks.js";
 
 const projectId = z.string().min(1).max(255);
 export const councilProjectChatCreateInputSchema = z
@@ -88,12 +91,19 @@ export const councilProjectResultPrepareCommandSchema = z
     type: z.literal("council.project-result.prepare"),
     ...councilProjectInput,
     source: councilProjectResultSourceSchema,
-    result: chatMessageOpaqueContentSchema
-      .pick({
-        id: true,
-        classification: true,
-        protectedContent: true,
-      })
+    result: z
+      .union([
+        chatMessageOpaqueContentSchema.pick({
+          id: true,
+          classification: true,
+          protectedContent: true,
+        }),
+        taskMessageOpaqueContentSchema.pick({
+          id: true,
+          classification: true,
+          protectedContent: true,
+        }),
+      ])
       .nullable(),
   })
   .strict();

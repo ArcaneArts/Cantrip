@@ -2,6 +2,7 @@
 //! it to the originating Council agent.
 pub(crate) mod delivery;
 mod request;
+mod task;
 
 use crate::{database::Transaction, wire::Value};
 use anyhow::Result;
