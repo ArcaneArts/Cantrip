@@ -49,6 +49,7 @@ pub(super) struct Binding {
     pub(super) session: Value,
     permission: Value,
     input_target: Value,
+    council: bool,
     published: watch::Sender<Option<bool>>,
     checkpoint: OnceLock<output::Continuation>,
     pause_control: Mutex<()>,
@@ -69,6 +70,7 @@ impl Binding {
             interactions: OnceLock::new(),
             auto_approve: watch::channel(false).0,
             permission,
+            council: target.get("councilAgent").is_some(),
             input_target: json!({
                 "model":target["model"],"provider":json!({"kind":target["provider"]["kind"]}),
                 "osExecution":target["osExecution"],

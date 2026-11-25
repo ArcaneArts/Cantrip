@@ -123,10 +123,17 @@ pub(super) async fn settle(
         && truthy(row.get("protected_result"))
         && truthy(row.get("result_digest"));
     let deferred = row["status"] == "rejected"
-        && row["rejection_code"] == "native-settings-pending"
-        && row["terminal_evidence"]
-            .get("kind")
-            .is_some_and(|k| *k == "deferred");
+        && ((row["rejection_code"] == "native-settings-pending"
+            && row["terminal_evidence"].get("kind").is_some_and(|k| *k == "deferred"))
+            || (row["method"] == "turn/steer"
+                && row["rejection_code"] == "native-steer-target-ended"
+                && truthy(row.get("activation_generation"))
+                && truthy(row.get("protected_result"))
+                && truthy(row.get("result_digest"))
+                && !tx.query(
+                    "SELECT id FROM chats WHERE id=$1 AND owner_id=$2 AND context_kind='council'",
+                    &[&text(&row["chat_id"])?, &text(&row["owner_id"])?],
+                ).await?.is_empty()));
     let rejected = row["status"] == "rejected" && !deferred;
     let mut applied_goal = parent_goal && row["status"] == "applied";
     if truthy(claim.get("awaiting_goal")) && !parent_goal && truthy(claim.get("operation_id")) {

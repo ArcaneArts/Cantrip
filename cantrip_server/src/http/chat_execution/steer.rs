@@ -1,20 +1,5 @@
 use super::*;
-use crate::chats::live_mutations::MessageOptions;
-
-fn native_user(prompt: &Value) -> Value {
-    prompt
-        .get("nativeClientUserMessageId")
-        .filter(|v| !v.is_null())
-        .cloned()
-        .unwrap_or_else(|| {
-            json!(format!(
-                "cantrip:{}",
-                prompt["pendingMessage"]["id"]
-                    .as_str()
-                    .expect("Queued message identity")
-            ))
-        })
-}
+use crate::chats::{live_mutations::MessageOptions, steering};
 fn claim_key(operation: &Value) -> Result<Value> {
     let suffix = crate::wire::coercion::string(operation)
         .map_err(|_| anyhow::anyhow!("Cannot convert object to primitive value"))?;
@@ -132,26 +117,17 @@ impl Execution {
                 } else {false};
                 if !applied {
                     let mut command=if native {
-                        json!({"type":"chat.native-control","chatId":context["chatId"],"threadId":context["threadId"],"nativeActivationGeneration":control["activationGeneration"],"nativeRuntimeGeneration":control["runtimeGeneration"],"modelRouteId":context["modelRouteId"],"providerAccountId":context["providerAccountId"],"control":json!({"kind":"steer","protectedPrompt":queued["pendingMessage"],"attachments":attachments})})
+                        steering::native_command(&control,&queued,attachments)
                     } else {
                         let runtime=runtime.as_ref().context("Steering runtime")?;
                         json!({"type":"chat.steer","executionProfile":if context["contextKind"]=="standalone"{"standalone-chat"}else{"ide"},"chatId":context["chatId"],"threadId":context["threadId"],"protectedPrompt":queued["pendingMessage"],"attachments":attachments,"model":runtime["model"],"provider":runtime["provider"]})
                     };
                     if let Some(claim)=&claim {
-                        command["operationId"]=body["operationId"].clone();
-                        command["queueClaim"]=json!({"id":claim["id"],"promptRevision":claim["promptRevision"]});
-                        command["nativeClientUserMessageId"]=native_user(&queued);
-                        if native {
-                            copy(&mut command,&queued,&["protectedNativeInput"]);
-                            command["queuedPromptId"]=queued["id"].clone();
-                        }
+                        steering::bind_claim(&mut command,&queued,claim,&body["operationId"])?;
                     }
                     self.service.workers.commands.request(&worker,command,None,None).await?;
                 }
-                let attribution=truthy(context.get("executionLaneId")).then(|| {
-                    let standalone=context["contextKind"]=="standalone";
-                    json!({"contextKind":if standalone {"standalone"}else{"project"},"executionLaneId":context["executionLaneId"],"worktreeId":if standalone {Value::Null}else{context["worktreeId"].clone()},"scratchRootId":if standalone {context["scratchRootId"].clone()}else{Value::Null}})
-                });
+                let attribution=steering::attribution(&context);
                 self.append(&chat,&queued["pendingMessage"],attribution.as_ref()).await?.context("Chat not found.")?
             } else if claim.is_some() {
                 self.service.execution.recovery.dispatch(&self.owner,&chat).await?;

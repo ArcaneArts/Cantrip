@@ -40,6 +40,7 @@ mod runtime;
 pub mod runtime_quota;
 pub mod runtime_telemetry;
 mod state;
+pub(crate) mod steering;
 mod summary;
 pub mod task_creation;
 mod task_pause;
