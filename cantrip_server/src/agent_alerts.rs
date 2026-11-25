@@ -61,6 +61,8 @@ pub const OPERATIONS: &[&str] = &[
     "council.create",
     "council.memory.read",
     "council.memory.write",
+    "council.history.search",
+    "council.history.read",
 ];
 pub fn is_mutation(operation: &str) -> bool {
     matches!(
@@ -119,6 +121,8 @@ fn permitted(permission: &Value, operation: &str) -> bool {
                 // Memory is the agent's own standing context, independent of
                 // permission to change its workspace or account resources.
                 | "council.memory.write"
+                | "council.history.search"
+                | "council.history.read"
                 | "policy.list"
                 | "policy.read"
                 | "target.list"

@@ -4,6 +4,7 @@ mod chats;
 mod client;
 mod computer_use;
 mod council;
+mod council_history;
 mod explorer;
 mod policy;
 mod run;
@@ -363,6 +364,9 @@ impl Inner {
             }
             "council.list" | "council.create" | "council.memory.read" | "council.memory.write" => {
                 self.council(authorization, &call, operation).await
+            }
+            "council.history.search" | "council.history.read" => {
+                self.council_history(authorization, &call, operation).await
             }
             _ => Err(anyhow!("Unsupported Cantrip MCP operation.")),
         }

@@ -255,7 +255,7 @@
     "websocket": 7,
     "workerCredentialRoutes": 46,
     "durableTables": 135,
-    "agentOperations": 60,
+    "agentOperations": 62,
     "workerCommands": 323,
     "liveResources": 47,
     "clientControlCommands": 4,
@@ -271,7 +271,7 @@
     }
   },
   "contractSetDigests": {
-    "agentOperations": "544b2dbddd452997f47856c9018d7fc710cfcbb81df825fac70a5f04109fe639",
+    "agentOperations": "2deb2160be20771af88ebb2551ebca6e8d2bbcbb64a6124f56ed31be9fe5b970",
     "applicationRoutes": "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
@@ -8625,6 +8625,16 @@
       "operation": "council.create",
       "classification": "endpoint-protected",
       "rationale": "An active Council binding authorizes account-owned roster access. The worker seals names and roles before relaying them and opens protected labels for the model."
+    },
+    {
+      "operation": "council.history.read",
+      "classification": "endpoint-protected",
+      "rationale": "The active Council binding selects its own retained records. Core sends protected records and cursors. Search queries and decrypted evidence stay in the worker and model endpoint."
+    },
+    {
+      "operation": "council.history.search",
+      "classification": "endpoint-protected",
+      "rationale": "The active Council binding selects its own retained records. Core sends protected records and cursors. Search queries and decrypted evidence stay in the worker and model endpoint."
     },
     {
       "operation": "council.list",

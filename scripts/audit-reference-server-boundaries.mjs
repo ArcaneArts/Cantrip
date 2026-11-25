@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "544b2dbddd452997f47856c9018d7fc710cfcbb81df825fac70a5f04109fe639",
+    "2deb2160be20771af88ebb2551ebca6e8d2bbcbb64a6124f56ed31be9fe5b970",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -4064,6 +4064,16 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (
+    operation === "council.history.search" ||
+    operation === "council.history.read"
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "The active Council binding selects its own retained records. Core sends protected records and cursors. Search queries and decrypted evidence stay in the worker and model endpoint.",
+    };
+  }
   if (operation === "council.list" || operation === "council.create") {
     return {
       classification: "endpoint-protected",

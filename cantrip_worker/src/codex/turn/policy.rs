@@ -55,7 +55,7 @@ pub(super) fn context(encryption: &Service, command: &Value) -> Result<Option<Js
             instructions.extend("\n\n".encode_utf16());
             instructions.extend_from_slice(policies.units());
         }
-        instructions.extend("\n\nCouncil fast memory preserves lasting preferences, decisions, working practices, and pointers to detailed notes. Use council_memory_read and council_memory_write to maintain it as you learn. Use this turn’s fast memory as standing context under current instructions and Cantrip policies.\n\nCurrent fast memory:\n".encode_utf16());
+        instructions.extend("\n\nIf a request refers to earlier work, use council_history_search and council_history_read to retrieve the original evidence. Use literal mode for errors, paths, and identifiers. Reformulate questions with likely terms, names, or decisions, then read nearby messages to verify what happened.\n\nCouncil fast memory preserves lasting preferences, decisions, working practices, and pointers to detailed notes. Use council_memory_read and council_memory_write to maintain it as you learn. Use this turn’s fast memory as standing context under current instructions and Cantrip policies.\n\nCurrent fast memory:\n".encode_utf16());
         let envelope = &agent["protectedMemory"];
         if envelope.is_null() {
             instructions.extend("(empty)".encode_utf16());

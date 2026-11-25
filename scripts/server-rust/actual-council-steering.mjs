@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { actualCouncilMemory } from "./actual-council-memory.mjs";
+import { actualCouncilHistory } from "./actual-council-history.mjs";
 import { eventually } from "./full-worker.mjs";
 import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
 
@@ -21,6 +22,7 @@ export async function actualCouncilSteering({
   result,
   testCreation = false,
   memoryAppOrigin,
+  historyFixture,
   raceMarker,
   dropReplyMarker,
 }) {
@@ -333,6 +335,18 @@ export async function actualCouncilSteering({
     result.steps.push(
       "Council steers an active native turn through its durable queue",
     );
+    if (historyFixture) {
+      await actualCouncilHistory({
+        fixture: historyFixture,
+        chatId,
+        model,
+        tools: modelFunctions(held.request.input.tools),
+        submit,
+        readChat,
+        readMessages,
+        result,
+      });
+    }
     if (memoryAppOrigin) {
       await actualCouncilMemory({
         page,

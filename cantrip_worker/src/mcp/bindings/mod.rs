@@ -102,11 +102,13 @@ pub(crate) const CHAT_TOOLS: [(&str, &str); 4] = [
     ("chat.wait", "chat_wait"),
     ("chat.send", "chat_send"),
 ];
-pub(crate) const COUNCIL_TOOLS: [(&str, &str); 4] = [
+pub(crate) const COUNCIL_TOOLS: [(&str, &str); 6] = [
     ("council.list", "council_list"),
     ("council.create", "council_create"),
     ("council.memory.read", "council_memory_read"),
     ("council.memory.write", "council_memory_write"),
+    ("council.history.search", "council_history_search"),
+    ("council.history.read", "council_history_read"),
 ];
 
 #[derive(Clone)]
@@ -244,6 +246,7 @@ struct Inner {
     web: Arc<crate::web::Service>,
     entries: Mutex<Entries>,
     negotiated: AsyncMutex<Option<Negotiated>>,
+    council_history: crate::history::council::Cache,
 }
 
 pub struct Broker {
@@ -365,6 +368,7 @@ impl Broker {
             ),
             entries: Mutex::new(Entries::default()),
             negotiated: AsyncMutex::new(None),
+            council_history: Default::default(),
         });
         let (stop, stopped) = watch::channel(false);
         let task = tokio::spawn(http::serve(listener, inner.clone(), stopped));

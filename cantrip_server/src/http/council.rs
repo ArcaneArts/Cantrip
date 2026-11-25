@@ -1,3 +1,4 @@
+mod history;
 mod memory;
 
 use super::{
@@ -54,6 +55,10 @@ pub(super) async fn execute_agent_operation(
             Ok(
                 json!({"summary":"Created a Council agent.","mutated":true,"data":json!({"agent":agent})}),
             )
+        }
+        "council.history.search" | "council.history.read" => {
+            history::execute_agent_operation(&repository, owner, context, operation, arguments)
+                .await
         }
         _ => {
             memory::execute_agent_operation(&repository, owner, context, operation, arguments).await

@@ -2080,6 +2080,13 @@
       "when": 1795588793000,
       "tag": "0296_council_fast_memory",
       "breakpoints": true
+    },
+    {
+      "idx": 297,
+      "version": "7",
+      "when": 1795589600000,
+      "tag": "0297_council_history_revision",
+      "breakpoints": true
     }
   ]
 }

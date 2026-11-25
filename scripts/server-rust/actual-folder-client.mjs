@@ -418,6 +418,7 @@ const githubConversion =
 const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
+const councilHistory = process.argv.includes("--council-history");
 const fullServerLogs =
   cantripOsSurfaces ||
   cantripOsSourceBackup ||
@@ -1041,6 +1042,7 @@ async function flow(
       process.argv.includes("--council-agent-tools") ||
       process.argv.includes("--council-app-mode") ||
       process.argv.includes("--council-memory") ||
+      councilHistory ||
       councilSteerTrace
     ) {
       await actualCouncilSteering({
@@ -1048,6 +1050,7 @@ async function flow(
         workerId,
         result,
         testCreation: process.argv.includes("--council-agent-tools"),
+        historyFixture: councilHistory ? fixture : undefined,
         memoryAppOrigin: process.argv.includes("--council-memory")
           ? vite.resolvedUrls.local[0]
           : undefined,
@@ -2127,7 +2130,7 @@ try {
   const usesNative = runtimeCases.some((kinds) => kinds.includes("rust"));
   const executable = !usesNative
     ? undefined
-    : liveTaskDiagnostics
+    : liveTaskDiagnostics || councilHistory
       ? await buildRustExample("http-sql-fixture")
       : (process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer()));
   if (
@@ -2243,7 +2246,7 @@ try {
       databaseMode,
       startupTimeoutMs: serverStartupTimeoutMs,
       providerAuthDrain: true,
-      liveSqlFixture: liveTaskDiagnostics,
+      liveSqlFixture: liveTaskDiagnostics || councilHistory,
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
         ...(process.argv.includes("--council-app-mode") ||
