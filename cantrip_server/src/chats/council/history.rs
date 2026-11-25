@@ -29,7 +29,7 @@ impl Repository {
         owner: &str,
         agent: &str,
         message: &str,
-    ) -> Result<bool> {
+    ) -> Result<Option<Vec<String>>> {
         let (owner, agent, message) = (owner.to_owned(), agent.to_owned(), message.to_owned());
         self.database.transaction(|tx| Box::pin(async move {
             use crate::chats::guard::{self, Access, NativeCommandError};
@@ -44,14 +44,16 @@ impl Repository {
                  WHERE c.id=$1 AND c.owner_id=$2 AND c.archived_at IS NULL",
                 &[&agent,&owner],
             ).await?;
-            let Some(scope) = scope.first() else { return Ok(false); };
+            let Some(scope) = scope.first() else { return Ok(None); };
             if scope.get::<bool>(0)? {
                 bail!(NativeCommandError::new("council-history-in-use", Some("Finish or stop the active turn before deleting a Council message."), 409));
             }
             guard::assert_runtime_writable(tx, &agent, None, None, Access::Write).await?;
             if tx.query("DELETE FROM chat_messages WHERE chat_id=$1 AND id=$2 AND protected_content IS NOT NULL RETURNING id", &[&agent,&message]).await?.is_empty() {
-                return Ok(false);
+                return Ok(None);
             }
+            let mut deleted = crate::native_commands::council_provider_recovery::redact(tx, &agent, &message).await?;
+            deleted.push(message);
             // Native summaries can include any earlier message. Move the live
             // binding to a new history epoch while keeping all retained rows
             // except the selected message and its revisioned index entry.
@@ -60,7 +62,7 @@ impl Repository {
             tx.query("UPDATE chat_runtime_sessions SET codex_thread_id=NULL WHERE chat_id=$1 AND scratch_root_id IS NOT NULL", &[&agent]).await?;
             tx.query("DELETE FROM native_settings_states WHERE chat_id=$1", &[&agent]).await?;
             tx.query("UPDATE chats SET native_suspension_state=NULL,updated_at=$2 WHERE id=$1", &[&agent,&crate::auth::now()]).await?;
-            Ok(true)
+            Ok(Some(deleted))
         })).await
     }
 

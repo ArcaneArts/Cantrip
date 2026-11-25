@@ -141,6 +141,10 @@ pub(super) async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> 
     state.transition(goal)?;
     if truthy(input.get("reconciliation")) {
         turns::remember(tx, &state.current, &input["reconciliation"]).await?;
+        if input["reconciliation"]["terminalCause"] == "provider-quota" {
+            super::council_provider_recovery::record_terminal_quota(tx, &state.current, input)
+                .await?;
+        }
     }
     super::suspension::settle(tx, owner, &state.current, input).await?;
     super::suspension::finish(tx, owner, &state.current, input).await?;

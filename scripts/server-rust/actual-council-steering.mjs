@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { actualCouncilAutomations } from "./actual-council-automations.mjs";
 import { actualCouncilNotifications } from "./actual-council-notifications.mjs";
+import { actualCouncilProviderRecovery } from "./actual-council-provider-recovery.mjs";
 import { actualCouncilRoutineAuthoring } from "./actual-council-routine-authoring.mjs";
 import { actualCouncilBrowserHistory } from "./actual-council-browser-history.mjs";
 import { actualCouncilCompaction } from "./actual-council-compaction.mjs";
@@ -36,12 +37,16 @@ export async function actualCouncilSteering({
   automations,
   routineAuthoring,
   notificationsAppOrigin,
+  providerRecovery,
   compaction,
   raceMarker,
   dropReplyMarker,
   coldRecovery,
 }) {
   const model = await taskModelProvider({ observeStreams: true });
+  const alternate = providerRecovery
+    ? await taskModelProvider({ observeStreams: true })
+    : undefined;
   const role = "Preserve this Council role marker 🌲";
   const original = "Read the durable Council queue";
   const followUp = councilSteeringFollowUp;
@@ -49,10 +54,17 @@ export async function actualCouncilSteering({
   const answer = "The Council steer reached the active turn";
   const timeout = 60_000;
   try {
-    const { chatId, configuration } = await page.evaluate(
+    const {
+      chatId,
+      configuration,
+      profile: configuredProfile,
+      alternateProvider,
+    } = await page.evaluate(
       async ({
         workerId,
         baseUrl,
+        alternateUrl,
+        initiallyBlocked,
         nativeModel,
         role,
         testCreation,
@@ -66,10 +78,27 @@ export async function actualCouncilSteering({
           baseUrl,
           apiKey: null,
         });
+        const second = alternateUrl
+          ? await models.createModelProvider({
+              name: "Disposable Council backup provider",
+              kind: "openai-compatible",
+              baseUrl: alternateUrl,
+              apiKey: null,
+            })
+          : null;
         const profile = await models.createModelProfile({
           name: "Disposable Council model",
           routes: [
             { providerId: provider.id, modelName: nativeModel, enabled: true },
+            ...(second
+              ? [
+                  {
+                    providerId: second.id,
+                    modelName: nativeModel,
+                    enabled: !initiallyBlocked,
+                  },
+                ]
+              : []),
           ],
         });
         await (
@@ -103,6 +132,8 @@ export async function actualCouncilSteering({
         window.folderLive.retainScope({ kind: "chat", chatId: agent.id });
         return {
           chatId: agent.id,
+          profile: alternateUrl ? profile : null,
+          alternateProvider: second?.id,
           configuration: {
             modelId: profile.id,
             reasoningEffort: null,
@@ -115,12 +146,18 @@ export async function actualCouncilSteering({
       {
         workerId,
         baseUrl: model.baseUrl,
+        alternateUrl: alternate?.baseUrl,
+        initiallyBlocked: providerRecovery?.initiallyBlocked,
         nativeModel: model.model,
         role,
         testCreation,
         readOnly:
-          Boolean(memoryAppOrigin || automations || notificationsAppOrigin) &&
-          !testCreation,
+          Boolean(
+            memoryAppOrigin ||
+            automations ||
+            notificationsAppOrigin ||
+            providerRecovery,
+          ) && !testCreation,
         nativeCli: Boolean(inventory || peerAppOrigin),
       },
     );
@@ -172,6 +209,37 @@ export async function actualCouncilSteering({
           (item) => item.type === "text" && item.text === text,
         ),
       );
+    if (alternate) {
+      await actualCouncilProviderRecovery({
+        page,
+        chatId,
+        model,
+        alternate,
+        ...providerRecovery,
+        enableAlternate: () =>
+          page.evaluate(
+            ({ profile, alternateProvider }) =>
+              import("/src/lib/api/models.ts").then(({ updateModelProfile }) =>
+                updateModelProfile(profile.id, {
+                  name: profile.name,
+                  routes: profile.routes.map((route) => ({
+                    id: route.id,
+                    providerId: route.providerId,
+                    modelName: route.modelName,
+                    enabled:
+                      route.enabled || route.providerId === alternateProvider,
+                  })),
+                }),
+              ),
+            { profile: configuredProfile, alternateProvider },
+          ),
+        submit,
+        readMessages,
+        readChat,
+        result,
+      });
+      return;
+    }
     const held = model.reply({ hold: true, text: firstAnswer });
     const next = model.reply({ text: answer, hold: Boolean(coldRecovery) });
     const first = await submit(original);
@@ -663,6 +731,6 @@ export async function actualCouncilSteering({
       );
     }
   } finally {
-    await model.close();
+    await Promise.all([model.close(), alternate?.close()]);
   }
 }

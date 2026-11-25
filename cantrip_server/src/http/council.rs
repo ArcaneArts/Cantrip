@@ -193,7 +193,7 @@ async fn conversation(
     let owner = &context.principal.user.as_ref().expect("Council owner").id;
     let repository = Repository::new(service.repository.database.clone());
     let result = match repository.council_conversation(owner, &id).await {
-        Ok(Some(chat)) => output(200, "standaloneChatWireSummarySchema", &chat),
+        Ok(Some(chat)) => output(200, "councilConversationWireSchema", &chat),
         Ok(None) => Ok(error(404, "Council agent not found.")),
         Err(cause) => Err(cause),
     };

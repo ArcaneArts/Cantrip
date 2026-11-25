@@ -422,6 +422,21 @@ const councilHistory = process.argv.includes("--council-history");
 const councilPeerMessages = process.argv.includes("--council-peer-messages");
 const councilAutomations = process.argv.includes("--council-automations");
 const councilNotifications = process.argv.includes("--council-notifications");
+const councilProviderRecovery = process.argv.includes(
+  "--council-provider-recovery",
+);
+const councilProviderBlocked = process.argv.includes(
+  "--council-provider-blocked",
+);
+const councilProviderStop = process.argv.includes("--council-provider-stop");
+const councilProviderExhausted = process.argv.includes(
+  "--council-provider-exhausted",
+);
+const councilProviderTest =
+  councilProviderRecovery ||
+  councilProviderBlocked ||
+  councilProviderStop ||
+  councilProviderExhausted;
 const councilRoutineAuthoring = process.argv.includes(
   "--council-routine-authoring",
 );
@@ -1094,6 +1109,7 @@ async function flow(
       councilBrowserHistory ||
       councilAutomations ||
       councilNotifications ||
+      councilProviderTest ||
       councilRoutineAuthoring ||
       councilSteerTrace
     ) {
@@ -1108,6 +1124,14 @@ async function flow(
         historyFixture: councilHistory ? fixture : undefined,
         notificationsAppOrigin: councilNotifications
           ? vite.resolvedUrls.local[0]
+          : undefined,
+        providerRecovery: councilProviderTest
+          ? {
+              appOrigin: vite.resolvedUrls.local[0],
+              initiallyBlocked: councilProviderBlocked || councilProviderStop,
+              stopBlockedRecovery: councilProviderStop,
+              exhaustAlternate: councilProviderExhausted,
+            }
           : undefined,
         routineAuthoring: councilRoutineAuthoring
           ? vite.resolvedUrls.local[0]
@@ -2373,6 +2397,7 @@ try {
         councilCompaction ||
         councilAutomations ||
         councilNotifications ||
+        councilProviderTest ||
         councilRoutineAuthoring ||
         councilPeerMessages ||
         councilProjectMessages

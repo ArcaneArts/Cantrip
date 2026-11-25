@@ -73,6 +73,7 @@ pub(super) async fn stop_autonomy(tx: &Transaction<'_>, chat: &str) -> Result<()
     tx.query("UPDATE native_command_activations SET logical_cancelled=true WHERE chat_id=$1 AND active=true",&[&chat]).await?;
     changed(tx, chat).await?;
     cancel_goal_handoffs(tx, chat).await?;
+    super::council_provider_recovery::stop(tx, chat).await?;
     let now = crate::auth::now();
     tx.query("UPDATE native_commands SET status='rejected',rejection_code='autonomy-stopped',updated_at=$1 WHERE chat_id=$2 AND status='accepted' AND intent->>'resumeAutonomy'='true'",&[&now,&chat]).await?;
     Ok(())
@@ -180,6 +181,14 @@ pub(super) async fn settle(
             &[&state, &now, &prompt, &chat, &claim["prompt_revision"].stringify()],
         )
         .await?;
+        if consumed {
+            tx.query(
+                "UPDATE council_provider_recoveries SET phase='continued',updated_at=$3
+                   WHERE chat_id=$1 AND continuation_prompt_id=$2 AND phase='continuation-queued'",
+                &[&chat, &prompt, &now],
+            )
+            .await?;
+        }
         changed(tx, &chat).await?;
     }
     Ok(())

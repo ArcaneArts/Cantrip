@@ -135,6 +135,7 @@ export const contractRoots = [
   "chatWireSummarySchema",
   "projectChatWireSummarySchema",
   "standaloneChatWireSummarySchema",
+  "councilConversationWireSchema",
   "contextualChatWireSummarySchema",
   "modelConfigurationSchema",
   "agentInteractionProvenanceSchema",
@@ -1713,6 +1714,7 @@ registerChecks(protocol.projectWireSummarySchema, ["project-wire-summary"]);
 registerChecks(protocol.chatWireSummarySchema, ["chat-title-kind"]);
 registerChecks(protocol.projectChatWireSummarySchema, ["chat-title-kind"]);
 registerChecks(protocol.standaloneChatWireSummarySchema, ["chat-title-kind"]);
+registerChecks(protocol.councilConversationWireSchema, ["chat-title-kind"]);
 registerChecks(protocol.encryptedStandaloneChatCreateSchema, [
   "worker-command-chat-title",
 ]);

@@ -86,6 +86,11 @@ impl Service {
             }
             return Ok(());
         }
+        if context.get("councilAgent").is_some()
+            && self.recover_council_provider(owner, &context).await?
+        {
+            return Ok(());
+        }
         let managed = session_context(&context).is_some();
         if managed
             && self

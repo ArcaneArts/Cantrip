@@ -5,6 +5,7 @@ import {
   councilPeerMessageSourceSchema,
   councilProjectRequestSourceSchema,
   councilProjectResultSourceSchema,
+  councilProviderRecoverySourceSchema,
 } from "./council-input.js";
 import { chatAttachmentSummarySchema } from "./attachment-content.js";
 import { reasoningEffortSchema } from "./providers.js";
@@ -28,6 +29,7 @@ export const chatMessageContentSchema = z.array(
       councilPeerMessage: councilPeerMessageSourceSchema.optional(),
       councilProjectResult: councilProjectResultSourceSchema.optional(),
       councilProjectRequest: councilProjectRequestSourceSchema.optional(),
+      councilProviderRecovery: councilProviderRecoverySourceSchema.optional(),
       phase: agentMessagePhaseSchema.nullable().optional(),
       streaming: z.boolean().optional(),
       correlation: codexEventCorrelationSchema.nullable().optional(),

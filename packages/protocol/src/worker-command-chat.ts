@@ -26,6 +26,8 @@ import {
 import { z } from "zod";
 import { councilAgentTurnContextSchema } from "./council.js";
 import { councilHistorySearchCommandSchema } from "./council-history.js";
+import { councilProviderRecoverySourceSchema } from "./council-input.js";
+import { modelConfigurationSchema } from "./model-configuration.js";
 import {
   councilProjectRequestPrepareCommandSchema,
   councilProjectResultPrepareCommandSchema,
@@ -116,10 +118,31 @@ const nativeSuspensionControlSchema = z
   })
   .strict();
 
+const councilRecoverySnapshotMessage = chatMessageOpaqueContentSchema
+  .pick({
+    classification: true,
+    protectedContent: true,
+  })
+  .extend({ id: z.string().min(1).max(200) });
+
 export const workerChatCommandSchemas = [
   councilHistorySearchCommandSchema,
   councilProjectResultPrepareCommandSchema,
   councilProjectRequestPrepareCommandSchema,
+  z
+    .object({
+      type: z.literal("council.provider-continuation.prepare"),
+      chatId: z.uuid(),
+      messageId: z.uuid(),
+      promptId: z.uuid(),
+      idempotencyKey: z.string().min(1).max(200),
+      configuration: modelConfigurationSchema,
+      source: councilProviderRecoverySourceSchema,
+      original: councilRecoverySnapshotMessage.nullable(),
+      progress: z.array(councilRecoverySnapshotMessage).max(16),
+      pendingDecisions: z.array(z.string().min(1).max(255)).max(16),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("chat.runtime.handoff"),

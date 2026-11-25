@@ -11,9 +11,11 @@ import { useState } from "react";
 
 import { ChatTranscript } from "@/components/chat/chat-transcript";
 import { COUNCIL_CHAT_SURFACE_CAPABILITIES } from "@/components/chat/chat-surface-capabilities";
+import { useChatExecutionControls } from "@/components/chat/use-chat-execution-controls";
 import type { AppToastInput } from "@/components/ui/app-toast";
 import { Button } from "@/components/ui/button";
 import { InlineAlert } from "@/components/ui/inline-alert";
+import type { CouncilAgent } from "@/lib/api/council";
 import { resolveStandaloneChatFilePath } from "@/lib/api/files";
 import { errorMessage } from "@/lib/error-message";
 
@@ -44,7 +46,7 @@ export function CouncilWorkspace(props: Props) {
   return (
     <>
       {agent ? (
-        <CouncilConversation key={agent.id} {...props} />
+        <CouncilConversation key={agent.id} {...props} agent={agent} />
       ) : compact ? (
         <CouncilRoster controller={controller} />
       ) : (
@@ -73,6 +75,7 @@ export function CouncilWorkspace(props: Props) {
 }
 
 function CouncilConversation({
+  agent,
   compact,
   controller,
   desktopRuntime,
@@ -81,9 +84,8 @@ function CouncilConversation({
   onToast,
   settings,
   workers,
-}: Props) {
+}: Props & { agent: CouncilAgent }) {
   const {
-    agent,
     chat,
     closeHistory,
     closePeer,
@@ -97,7 +99,11 @@ function CouncilConversation({
   const [filesOpen, setFilesOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [filePath, setFilePath] = useState<string | null>(null);
-  if (!agent) return null;
+  const { interrupt } = useChatExecutionControls({
+    chatId: agent.id,
+    projectId: null,
+    projectChatQueryKey: ["council", "chat", agent.id],
+  });
   const openFile = (reference: string) => {
     void resolveStandaloneChatFilePath(agent.id, reference).then(
       (path) => {
@@ -122,6 +128,22 @@ function CouncilConversation({
         : agent.scratchStatus === "failed"
           ? "The worker could not prepare this agent’s workspace."
           : null;
+  const recovery = chat.data?.providerRecovery;
+  const recoveryActive =
+    recovery?.phase === "pending" ||
+    recovery?.phase === "blocked" ||
+    recovery?.phase === "switching" ||
+    recovery?.phase === "continuation-queued";
+  const providerStatus =
+    recovery?.phase === "blocked"
+      ? `${recovery.from} reached its quota. Council is waiting for an available route.`
+      : recovery?.phase === "switching" && recovery.to
+        ? `Switching from ${recovery.from} to ${recovery.to}.`
+        : recovery?.phase === "pending"
+          ? `${recovery.from} reached its quota. Looking for an alternate route.`
+          : recovery?.to
+            ? `Switched from ${recovery.from} to ${recovery.to}.`
+            : null;
   return (
     <div
       data-slot="council-conversation"
@@ -186,6 +208,32 @@ function CouncilConversation({
         >
           {status}
         </p>
+      ) : null}
+      {providerStatus ? (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
+          <p role="status" className="text-xs text-muted-foreground">
+            {providerStatus}
+          </p>
+          {recoveryActive ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={interrupt.isPending}
+              onClick={() =>
+                interrupt.mutate(undefined, {
+                  onError: (error) =>
+                    onToast({
+                      title: "Could not stop Council",
+                      message: errorMessage(error),
+                      tone: "error",
+                    }),
+                })
+              }
+            >
+              Stop recovery
+            </Button>
+          ) : null}
+        </div>
       ) : null}
       {chat.isError ? (
         <InlineAlert>{errorMessage(chat.error)}</InlineAlert>

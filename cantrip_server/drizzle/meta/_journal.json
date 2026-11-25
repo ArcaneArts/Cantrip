@@ -2206,6 +2206,13 @@
       "when": 1795612800000,
       "tag": "0314_council_message_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 315,
+      "version": "7",
+      "when": 1795615290000,
+      "tag": "0315_council_provider_recoveries",
+      "breakpoints": true
     }
   ]
 }

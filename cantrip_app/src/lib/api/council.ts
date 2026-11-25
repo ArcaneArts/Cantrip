@@ -13,7 +13,7 @@ import {
   councilLinkedWorkWireListSchema,
   councilMemoryUpdateSchema,
   councilMemoryWireSchema,
-  standaloneChatWireSummarySchema,
+  councilConversationWireSchema,
   type CouncilAgentWireSummary,
 } from "@cantrip/protocol";
 
@@ -24,10 +24,12 @@ import {
   clientEncryption,
 } from "@/lib/client-encryption";
 import {
+  clientSessionIdentityMatches,
   getClientSessionIdentitySnapshot,
   type ClientSessionIdentitySnapshot,
 } from "@/lib/client-session";
 import { decodePrivateDisplayLabelForClient } from "@/lib/private-label-encryption";
+import { openModelProviderAccountLabel } from "@/lib/protected-secrets";
 
 export type CouncilAgent = Omit<CouncilAgentWireSummary, "titleProtection"> & {
   title: string;
@@ -280,9 +282,29 @@ export async function getCouncilChat(id: string) {
     undefined,
     { expectedIdentity },
   );
-  return chatTitleEncryption.openStandalone(
-    standaloneChatWireSummarySchema.parse(chat),
-  );
+  const { providerRecovery, ...summary } =
+    councilConversationWireSchema.parse(chat);
+  const opened = await chatTitleEncryption.openStandalone(summary);
+  if (!providerRecovery) return { ...opened, providerRecovery };
+  const { fromAccount, toAccount, phase, from, to } = providerRecovery;
+  const [sourceLabel, targetLabel] = await Promise.all([
+    fromAccount && openModelProviderAccountLabel(fromAccount).catch(() => null),
+    toAccount && openModelProviderAccountLabel(toAccount).catch(() => null),
+  ]);
+  if (!clientSessionIdentityMatches(expectedIdentity)) {
+    throw new ClientEncryptionError(
+      "locked",
+      "The account changed while opening Council.",
+    );
+  }
+  return {
+    ...opened,
+    providerRecovery: {
+      from: sourceLabel ?? from,
+      phase,
+      to: targetLabel ?? to,
+    },
+  };
 }
 
 export async function createCouncilAgent(title: string, role: string) {

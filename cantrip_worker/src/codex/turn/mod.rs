@@ -78,6 +78,19 @@ pub(crate) const RESUME: &str = "chat.suspension.resume";
 pub(crate) const STOP_SUSPENSION: &str = "chat.suspension.stop";
 pub(crate) const COMPLETE: &str = "chat.native-logical.complete";
 pub(crate) const CANCEL: &str = "chat.native-logical.cancel";
+pub(crate) const COUNCIL_PROVIDER_QUOTA: &str = "council-provider-quota";
+
+#[derive(Debug)]
+pub(crate) struct CouncilProviderQuota;
+
+impl std::fmt::Display for CouncilProviderQuota {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("The Council provider reached its quota.")
+    }
+}
+
+impl std::error::Error for CouncilProviderQuota {}
+
 const RPC_TIMEOUT: Duration = Duration::from_secs(120);
 
 type Key = (JsString, JsString, JsString);
@@ -1270,11 +1283,19 @@ impl Turns {
                     if settled.status == "interrupted" {
                         self.preparation.renew_runner_on_next_prepare(&key.2, &prepared.bound, runtime, thread);
                     }
+                    let quota = command.get("councilAgent").is_some()
+                        && settled.result.as_ref().err().and_then(|error|
+                            error.downcast_ref::<output::NativeFailure>()
+                        ).is_some_and(|failure| failure.provider_quota);
                     if let Some(receipt) = &receipt {
-                        receipt.observed(&turn, Some(settled.status)).await?;
+                        if quota {
+                            receipt.observed_council_quota(&turn).await?;
+                        } else {
+                            receipt.observed(&turn, Some(settled.status)).await?;
+                        }
                     }
                     applied?;
-                    settled.result
+                    if quota { Err(CouncilProviderQuota.into()) } else { settled.result }
                 }
                 .await;
                 let published = match publish {

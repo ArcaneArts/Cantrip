@@ -43,6 +43,7 @@ import {
   type ModelProviderAccountCreate,
   type ModelProviderAccountSummary,
   type ModelProviderAccountUpdate,
+  type ModelProviderAccountWireSummary,
   type ModelProviderSummary,
   type ModelProviderUpdate,
   type ResourceAudience,
@@ -188,30 +189,38 @@ export async function openModelProviderAccountWireSummary(
   options: TrustedOptions = {},
 ): Promise<ModelProviderAccountSummary> {
   const wire = modelProviderAccountWireSummarySchema.parse(raw);
+  const label = await openModelProviderAccountLabel(wire, options);
+  return modelProviderAccountSummarySchema.parse({
+    ...wire,
+    protectedLabel: undefined,
+    label,
+  });
+}
+
+export async function openModelProviderAccountLabel(
+  account: Pick<ModelProviderAccountWireSummary, "id" | "protectedLabel">,
+  options: TrustedOptions = {},
+): Promise<string> {
   const encryption = context(options);
   const componentKey = encryption.service.componentKey({
     component: "provider-credential",
     identity: encryption.service.getSnapshot().identity!,
-    keyRevision: wire.protectedLabel.keyRevision,
+    keyRevision: account.protectedLabel.keyRevision,
   });
   try {
     const content = await decryptProtectedSecret({
       ownerId: encryption.ownerId,
       component: "provider-credential",
       table: "model_provider_accounts",
-      rowId: wire.id,
+      rowId: account.id,
       field: "protected_label",
-      keyRevision: wire.protectedLabel.keyRevision,
+      keyRevision: account.protectedLabel.keyRevision,
       componentKey,
-      encrypted: wire.protectedLabel,
+      encrypted: account.protectedLabel,
       contentSchema: providerAccountLabelProtectedContentSchema,
       maximumBytes: 1_024,
     });
-    return modelProviderAccountSummarySchema.parse({
-      ...wire,
-      protectedLabel: undefined,
-      label: content.label,
-    });
+    return content.label;
   } catch {
     throw new ClientEncryptionError(
       "decryption-failed",

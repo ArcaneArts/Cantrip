@@ -599,7 +599,7 @@ async fn cycle(
                     finish(&request,&worker,logs,&outgoing,began,&result);
                     continue;
                 }
-                if matches!(kind, crate::chat_content::MESSAGE | crate::chat_content::MESSAGES | crate::chat_content::REPROTECT | crate::chat_content::TURN | crate::chat_content::QUEUE_PREPARE | crate::chat_content::COUNCIL_PROJECT_RESULT | crate::chat_content::COUNCIL_PROJECT_REQUEST) {
+                if matches!(kind, crate::chat_content::MESSAGE | crate::chat_content::MESSAGES | crate::chat_content::REPROTECT | crate::chat_content::TURN | crate::chat_content::QUEUE_PREPARE | crate::chat_content::COUNCIL_PROJECT_RESULT | crate::chat_content::COUNCIL_PROJECT_REQUEST | crate::chat_content::COUNCIL_PROVIDER_CONTINUATION) {
                     let encryption = encryption.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();
@@ -1699,8 +1699,9 @@ fn finish(
             json!({"kind":"response","requestId":request["requestId"],"ok":true,"result":result})
         }
         Err(error) => {
-            let error = if let Some(error) = error.downcast_ref::<crate::routing::ProtectedError>()
-            {
+            let error = if error.is::<crate::codex::turn::CouncilProviderQuota>() {
+                json!({"message":error.to_string(),"code":crate::codex::turn::COUNCIL_PROVIDER_QUOTA})
+            } else if let Some(error) = error.downcast_ref::<crate::routing::ProtectedError>() {
                 match error.code {
                     Some(code) => json!({"message":error.to_string(),"code":code}),
                     None => json!({"message":error.to_string()}),

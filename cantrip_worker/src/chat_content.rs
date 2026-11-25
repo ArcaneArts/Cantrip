@@ -1,5 +1,6 @@
 //! Worker-owned chat and queued input envelopes. Plaintext is used only by
 //! authenticated worker operations and the selected native runtime.
+mod council_provider;
 mod council_request;
 mod council_result;
 pub(crate) mod queue;
@@ -27,6 +28,7 @@ pub(crate) const TURN: &str = "chat.turn.protect";
 pub(crate) const QUEUE_PREPARE: &str = "chat.queue.prepare";
 pub(crate) const COUNCIL_PROJECT_RESULT: &str = "council.project-result.prepare";
 pub(crate) const COUNCIL_PROJECT_REQUEST: &str = "council.project-request.prepare";
+pub(crate) const COUNCIL_PROVIDER_CONTINUATION: &str = "council.provider-continuation.prepare";
 
 /// Re-read live grants when publishing and fence every acquired key to the
 /// account and logical server that accepted the operation.
@@ -91,6 +93,7 @@ pub(crate) fn execute(service: Arc<Service>, command: &Value) -> Result<Value> {
         Some(QUEUE_PREPARE) => queue::prepare(&scope, command),
         Some(COUNCIL_PROJECT_RESULT) => council_result::prepare(&scope, &service, command),
         Some(COUNCIL_PROJECT_REQUEST) => council_request::prepare(&scope, &service, command),
+        Some(COUNCIL_PROVIDER_CONTINUATION) => council_provider::prepare(&scope, command),
         Some(MESSAGE | MESSAGES) => {
             let keys = ServiceKeys(service);
             let mut opened = HashMap::new();
@@ -220,6 +223,7 @@ fn protect_turn(
         "councilPeerMessage",
         "councilProjectResult",
         "councilProjectRequest",
+        "councilProviderRecovery",
     ] {
         if let Some(source) = command.get(field) {
             text[field] = source.clone();

@@ -146,6 +146,7 @@ struct Pending {
 #[derive(Debug)]
 pub(super) struct NativeFailure {
     pub kind: &'static str,
+    pub provider_quota: bool,
 }
 
 impl NativeFailure {
@@ -158,7 +159,21 @@ impl NativeFailure {
         let kind = cantrip_protocol::task_retry::classify(
             &json!({"reasonCode":reason, "message":error["message"]}),
         );
-        Self { kind }
+        let provider_quota = matches!(
+            evidence.as_str(),
+            Some("usageLimitExceeded" | "rateLimitExceeded")
+        ) || [
+            "httpConnectionFailed",
+            "responseStreamConnectionFailed",
+            "responseStreamDisconnected",
+            "responseTooManyFailedAttempts",
+        ]
+        .iter()
+        .any(|field| evidence[*field]["httpStatusCode"].as_u64() == Some(429));
+        Self {
+            kind,
+            provider_quota,
+        }
     }
 }
 
