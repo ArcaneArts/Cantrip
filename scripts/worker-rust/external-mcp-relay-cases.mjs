@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { once } from "node:events";
+import { on, once } from "node:events";
 import { writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -41,6 +41,7 @@ const protection = {
 
 export async function verifyHostedRelay({
   binary,
+  codex,
   directory,
   env,
   server,
@@ -53,6 +54,7 @@ export async function verifyHostedRelay({
   integrations,
   request,
   connectMcp,
+  verifyApp,
 }) {
   const workerId = randomUUID();
   const projectId = randomUUID();
@@ -78,6 +80,7 @@ export async function verifyHostedRelay({
         CANTRIP_WORKER_DATA_DIR: workerDirectory,
         CANTRIP_WORKER_ID: workerId,
         CANTRIP_SERVER_URL: server.origin,
+        ...(codex ? { CANTRIP_CODEX_BIN: path.resolve(codex) } : {}),
         ...(enrollmentCode
           ? { CANTRIP_WORKER_ENROLLMENT_CODE: enrollmentCode }
           : {}),
@@ -124,7 +127,12 @@ export async function verifyHostedRelay({
     socket.on("error", () => {});
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
-    await once(socket, "open", { signal: AbortSignal.timeout(10_000) });
+    const ready = once(socket, "message", {
+      signal: AbortSignal.timeout(10_000),
+    });
+    const [announcement, binary] = await ready;
+    assert.equal(binary, false);
+    assert.equal(announcement.toString(), "cantrip-external-mcp-relay-ready");
     return socket;
   }
 
@@ -139,10 +147,18 @@ export async function verifyHostedRelay({
       channel: { channelId: randomUUID(), connectionId: randomUUID() },
       lane: "stream",
     };
+    const incoming = on(socket, "message", {
+      close: ["close"],
+      signal: AbortSignal.timeout(10_000),
+    });
     const next = async () => {
-      const [frame] = await once(socket, "message", {
-        signal: AbortSignal.timeout(10_000),
-      });
+      const { value, done } = await incoming.next();
+      assert.equal(
+        done,
+        false,
+        "The WorkerLink socket closed before the next frame",
+      );
+      const [frame] = value;
       return decodeWorkerLinkFrame(frame).header;
     };
     const accepted = next();
@@ -168,9 +184,9 @@ export async function verifyHostedRelay({
   try {
     await startWorker(enrollment.code);
     const workerEncryption = `/api/workers/${workerId}/encryption/refresh`;
-    const refresh = () =>
+    const refresh = (component = "repository-content") =>
       ownerVisit("POST", workerEncryption, 200, {
-        component: "repository-content",
+        component,
         keyRevision: 1,
       });
     const master = generateAccountMasterKey();
@@ -215,29 +231,37 @@ export async function verifyHostedRelay({
     await ownerVisit("POST", principalRoute + "/approve", 200, {
       expectedRevision: principal.revision,
     });
-    const component = "repository-content";
     const keyRevision = 1;
-    const key = deriveComponentKey({
-      accountMasterKey: master,
-      ownerId,
-      component,
-      keyRevision,
-    });
-    await ownerVisit("POST", principalRoute + "/grants", 201, {
-      component,
-      keyRevision,
-      wrappedKey: await wrapComponentKeyForWorker({
+    const components = ["repository-content"];
+    if (codex)
+      components.push(
+        "private-surface-metadata",
+        "chat-content",
+        "task-content",
+      );
+    for (const component of components) {
+      const key = deriveComponentKey({
+        accountMasterKey: master,
         ownerId,
-        workerId,
         component,
         keyRevision,
-        componentKey: key,
-        workerPublicKey: principal.publicKey,
-      }),
-    });
+      });
+      await ownerVisit("POST", principalRoute + "/grants", 201, {
+        component,
+        keyRevision,
+        wrappedKey: await wrapComponentKeyForWorker({
+          ownerId,
+          workerId,
+          component,
+          keyRevision,
+          componentKey: key,
+          workerPublicKey: principal.publicKey,
+        }),
+      });
+      key.fill(0);
+      assert.equal((await refresh(component)).status.state, "ready");
+    }
     master.fill(0);
-    key.fill(0);
-    assert.equal((await refresh()).status.state, "ready");
     await ownerVisit("POST", "/api/projects/from-folder", 202, {
       id: projectId,
       workerId,
@@ -259,6 +283,12 @@ export async function verifyHostedRelay({
     await open(first.credential, outsideScope, 404);
     await open(first.credential, outsideAccount, 404);
     await open(foreign.credential, projectId, 404);
+    await request(
+      relay,
+      first.credential,
+      { projectId, tool: "agent_create" },
+      403,
+    );
 
     const credentialFile = path.join(directory, "relay.credential");
     const callWorker = async (credential) => {
@@ -279,6 +309,31 @@ export async function verifyHostedRelay({
       assert.equal(result.structuredContent.workerId, workerId);
       return result.structuredContent.processGeneration;
     };
+    if (codex) {
+      const { verifyOrchestration } =
+        await import("./external-mcp-orchestration-cases.mjs");
+      const integration = await ownerVisit("POST", integrations, 201, {
+        label: "External orchestration fixture",
+        permissions: {
+          projects: selected,
+          scopes: ["chats-read", "chats-write", "tasks-read", "tasks-write"],
+        },
+        expiresInSeconds: 300,
+      });
+      await client?.close();
+      await writeFile(credentialFile, integration.credential + "\n", {
+        mode: 0o600,
+      });
+      client = await connectMcp(credentialFile);
+      await verifyOrchestration({
+        client,
+        projectId,
+        ownerVisit,
+        eventually,
+        connect: (operation) => connectMcp(credentialFile, operation),
+        verifyApp,
+      });
+    }
     const generation = await callWorker(first.credential);
     const bad = await open(first.credential, projectId);
     const badSession = relay + "/" + bad.session.sessionId;
@@ -298,7 +353,8 @@ export async function verifyHostedRelay({
         Buffer.from("worker-context"),
       ),
     );
-    const close = await rejected;
+    let close = await rejected;
+    if (close.kind === "credit") close = await plaintext.next();
     assert.equal(close.kind, "close");
     assert.equal(close.code, "protocol-error");
     plaintext.socket.close();

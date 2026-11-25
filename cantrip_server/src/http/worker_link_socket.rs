@@ -154,6 +154,7 @@ async fn connect(
         account: ctx.principal.session_id.clone(),
         request_id: ctx.id.clone(),
         expires_at: None,
+        ready_message: None,
     };
     let auth_service = service.clone();
     upgrade_relay(request, service, client, async move {
@@ -166,6 +167,7 @@ pub(super) struct RelayClient {
     pub account: Option<String>,
     pub request_id: String,
     pub expires_at: Option<tokio::time::Instant>,
+    pub ready_message: Option<&'static str>,
 }
 
 pub(super) fn upgrade_relay(
@@ -240,6 +242,12 @@ async fn run(
         None
     };
     *connection_slot.lock().unwrap() = connection.clone();
+    if connection.is_some()
+        && let Some(message) = client.ready_message
+        && socket.send(Message::Text(message.into())).await.is_err()
+    {
+        return;
+    }
     let (mut output, mut input) = socket.split();
     let reader = async {
         while let Some(message) = input.next().await {

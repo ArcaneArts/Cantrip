@@ -503,7 +503,13 @@ impl Channels {
         Ok(())
     }
 
-    pub fn receive(&mut self, carrier: &Carrier, frame: &Frame, allow_write: bool) -> bool {
+    pub fn receive(
+        &mut self,
+        carrier: &Carrier,
+        frame: &Frame,
+        allow_write: bool,
+        coordinator: &Arc<Coordinator>,
+    ) -> bool {
         let header = frame.header();
         let key = id(&header["channel"], "channelId");
         let Some(channel) = self.active.get_mut(key) else {
@@ -549,11 +555,9 @@ impl Channels {
                         .map(|()| Inbound::Retained)
                         .map_err(|_| "congested"),
                     Resource::Tunnel(tunnel) => tunnel.receive(bytes),
-                    Resource::ExternalMcp(mcp) => mcp.reply(bytes).map(|reply| {
-                        channel.push(reply);
-                        channel.close_after_drain = true;
-                        Inbound::Consumed
-                    }),
+                    Resource::ExternalMcp(mcp) => mcp
+                        .submit(coordinator, key.clone(), bytes)
+                        .map(|()| Inbound::Consumed),
                     Resource::Surface { lane, .. } => {
                         lane.receive(bytes).map(|()| Inbound::Consumed)
                     }
@@ -580,6 +584,26 @@ impl Channels {
             }
         }
         true
+    }
+
+    pub(super) fn external_mcp_reply(
+        &mut self,
+        id: &JsString,
+        token: Uuid,
+        reply: Result<Vec<u8>, &'static str>,
+    ) {
+        let Some(channel) = self.active.get_mut(id).filter(|channel| {
+            matches!(&channel.resource, Resource::ExternalMcp(mcp) if mcp.token() == token)
+        }) else {
+            return;
+        };
+        match reply {
+            Ok(reply) => {
+                channel.push(reply);
+                channel.close_after_drain = true;
+            }
+            Err(code) => self.close(id, code),
+        }
     }
 
     pub fn publish(&mut self, candidate: Observation) {

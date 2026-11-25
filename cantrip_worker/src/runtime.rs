@@ -274,6 +274,7 @@ async fn cycle(
         direct.clone(),
     ));
     worker_link.configure_surfaces(browser_surfaces.clone());
+    worker_link.configure_external_mcp(configuration.clone())?;
     outgoing.observe_with(&worker_link);
     let direct_task = tokio::spawn(direct.clone().run(
         direct_listener,

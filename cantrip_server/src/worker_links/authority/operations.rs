@@ -135,6 +135,11 @@ impl Authority {
                     .renew_grant(session, operation["grantId"].as_str().unwrap_or(""), None)
                     .await?
             }
+            Some("external-mcp-grant") => {
+                return Ok(self
+                    .local
+                    .external_mcp_grant(session, operation["grantId"].as_str().unwrap_or("")));
+            }
             Some("revoke-grant") => json!(
                 self.local
                     .revoke_grant_value(

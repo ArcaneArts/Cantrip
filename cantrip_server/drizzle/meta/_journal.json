@@ -2052,6 +2052,13 @@
       "when": 1795583300253,
       "tag": "0292_council_agent_roster",
       "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1795584067532,
+      "tag": "0293_external_mcp_operation_receipts",
+      "breakpoints": true
     }
   ]
 }

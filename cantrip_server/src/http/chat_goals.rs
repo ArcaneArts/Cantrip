@@ -83,7 +83,7 @@ async fn managed(
     Ok(true)
 }
 
-async fn read(
+pub(super) async fn read(
     service: &AuthService,
     owner: &str,
     context: &Value,

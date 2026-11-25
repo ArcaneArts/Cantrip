@@ -188,22 +188,7 @@ fn create_task(service: &Service, authorization: &Authorized, input: &Value) -> 
         &digest[17..20],
         &digest[20..32]
     );
-    let content = checked(
-        "taskProtectedContentSchema",
-        &json!({
-            "version":1,
-            "classification":json!({
-                "state":"draft","stableStateBeforeFailure":Value::Null,
-                "activeOperationKind":Value::Null,"planAuthorship":"agent","planningRound":0,
-                "hasPlan":false,"hasQuestions":false,"hasFinalPlan":false,"hasGoalPrompt":false,
-                "lastError":Value::Null,
-            }),
-            "briefMarkdown":input["description"],"planMarkdown":Value::Null,
-            "currentQuestions":Vec::<Value>::new(),"currentAnswers":Vec::<Value>::new(),
-            "additionalDirection":"","finalPlanMarkdown":Value::Null,"goalPrompt":Value::Null,
-            "lastError":Value::Null,
-        }),
-    )?;
+    let content = task_content::initial(&input["description"])?;
     let label = input["title"].as_js_string().cloned().unwrap_or_else(|| {
         let description = input["description"].as_js_string().unwrap().units();
         let first = description.split(|unit| *unit == 10).next().unwrap();

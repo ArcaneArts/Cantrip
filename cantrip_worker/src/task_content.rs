@@ -16,6 +16,25 @@ const MESSAGE: &str = "task.message.protect";
 const PREPARE: &str = "task.operation.prepare";
 const COMPONENT: &str = "task-content";
 
+pub(crate) fn initial(description: &Value) -> Result<Value> {
+    checked(
+        "taskProtectedContentSchema",
+        &json!({
+            "version":1,
+            "classification":json!({
+                "state":"draft","stableStateBeforeFailure":Value::Null,
+                "activeOperationKind":Value::Null,"planAuthorship":"agent","planningRound":0,
+                "hasPlan":false,"hasQuestions":false,"hasFinalPlan":false,"hasGoalPrompt":false,
+                "lastError":Value::Null,
+            }),
+            "briefMarkdown":description,"planMarkdown":Value::Null,
+            "currentQuestions":Vec::<Value>::new(),"currentAnswers":Vec::<Value>::new(),
+            "additionalDirection":"","finalPlanMarkdown":Value::Null,"goalPrompt":Value::Null,
+            "lastError":Value::Null,
+        }),
+    )
+}
+
 pub(crate) fn supports(kind: &str) -> bool {
     matches!(kind, MESSAGE | PREPARE)
 }

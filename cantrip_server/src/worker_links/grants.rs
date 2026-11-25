@@ -49,6 +49,23 @@ fn input_resource_key(owner: &Value, input: &Value) -> Result<Vec<u16>> {
     Ok(key)
 }
 impl Coordinator {
+    pub(super) fn external_mcp_grant(&self, session_id: &str, grant_id: &str) -> Option<Value> {
+        let now = self.now() as f64;
+        let root = self.state.lock().unwrap();
+        let session = root.sessions.get(session_id)?.lock().unwrap();
+        if !session.ready
+            || date(&session.session["lease"]["expiresAt"]) <= now
+            || !identity_authorized(&root, &session.session["identity"])
+        {
+            return None;
+        }
+        let grant = session.grants.get(grant_id)?.lock().unwrap();
+        let binding = &grant["binding"];
+        (binding["resource"]["kind"] == "external-mcp"
+            && date(&binding["lease"]["expiresAt"]) > now)
+            .then(|| json!({"binding":binding,"externalMcp":grant["externalMcp"]}))
+    }
+
     pub async fn issue_grant(self: &Arc<Self>, input: Value) -> Result<Value> {
         self.assert_open()?;
         self.sweep_expired().await;

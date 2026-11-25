@@ -2,6 +2,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_crypto::{checked, content::external_mcp::Exchange};
 use cantrip_framing::worker_link as wire;
+use cantrip_protocol::external_mcp::RELAY_READY;
 use cantrip_wire::{Value, parse_json_text, value::json};
 use futures::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
@@ -24,11 +25,12 @@ pub(super) fn session_id(opened: &Value) -> Result<&str> {
     Ok(id)
 }
 
-pub(super) async fn worker_context(
+pub(super) async fn call(
     mut url: Url,
-    credential: &str,
+    credential: Option<&str>,
     opened: &Value,
     project: &str,
+    payload: &[u8],
 ) -> Result<Value> {
     let session = checked("workerLinkSessionSchema", &opened["session"])?;
     let grant = checked("workerLinkResourceGrantSchema", &opened["grant"])?;
@@ -45,12 +47,15 @@ pub(super) async fn worker_context(
     url.set_scheme(websocket_scheme)
         .map_err(|()| anyhow::anyhow!("Invalid WorkerLink relay origin."))?;
     let mut request = url.as_str().into_client_request()?;
-    let mut auth = HeaderValue::from_str(&format!("Bearer {credential}"))?;
-    auth.set_sensitive(true);
-    request.headers_mut().insert("authorization", auth);
+    if let Some(credential) = credential {
+        let mut auth = HeaderValue::from_str(&format!("Bearer {credential}"))?;
+        auth.set_sensitive(true);
+        request.headers_mut().insert("authorization", auth);
+    }
     let (mut socket, _) = connect_async(request)
         .await
         .context("Could not connect to the WorkerLink relay.")?;
+    wait_for_relay(&mut socket).await?;
     let channel =
         json!({"channelId":Uuid::new_v4().to_string(),"connectionId":Uuid::new_v4().to_string()});
     let exchange = Exchange::new(binding, &channel);
@@ -74,7 +79,7 @@ pub(super) async fn worker_context(
             .as_str()
             .unwrap_or("no acknowledgement")
     );
-    let (key, request) = exchange.seal_request(&worker_key, b"worker-context")?;
+    let (key, request) = exchange.seal_request(&worker_key, payload)?;
     ensure!(
         accept.header()["initialCreditBytes"]
             .as_u64()
@@ -112,6 +117,18 @@ pub(super) async fn worker_context(
         }
     }
     bail!("The WorkerLink MCP channel did not return an encrypted result.")
+}
+
+async fn wait_for_relay(socket: &mut Socket) -> Result<()> {
+    while let Some(message) = socket.next().await {
+        match message? {
+            Message::Text(text) if text.as_str() == RELAY_READY => return Ok(()),
+            Message::Ping(_) => socket.flush().await?,
+            Message::Pong(_) => {}
+            _ => break,
+        }
+    }
+    bail!("The WorkerLink relay could not attach the authorized session.")
 }
 
 async fn send(socket: &mut Socket, header: Value, payload: &[u8]) -> Result<()> {

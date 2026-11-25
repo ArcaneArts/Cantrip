@@ -47,6 +47,17 @@ struct Execution {
     gui: GuiQueue,
     native: native_commands::Repository,
 }
+
+pub(super) async fn submit_external(
+    service: Arc<AuthService>,
+    owner: &str,
+    chat: &str,
+    input: &Value,
+) -> Result<Response> {
+    Execution::new(service, owner.to_owned())
+        .submit(chat, Some(input))
+        .await
+}
 fn text(value: &Value) -> Result<String> {
     Ok(value
         .as_js_string()

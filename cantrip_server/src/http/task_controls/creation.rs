@@ -13,22 +13,7 @@ pub(super) async fn create(
         .await
     {
         Ok(Some(created)) => {
-            let chat = created["chat"]["id"]
-                .as_str()
-                .context("Created Task Chat ID")?;
-            service.chat_mutations.publish_summary(
-                &owner,
-                &json!(chat),
-                &created["chat"]["projectId"],
-            );
-            service.execution.name_task(&owner, chat, &created["task"]);
-            service.chat_mutations.publish_entity_invalidation(
-                &owner,
-                chat,
-                "task",
-                &json!(chat),
-                Some(&created["chat"]),
-            );
+            announce_created(&service, &owner, &created)?;
             output(201, "taskWireCreateResultSchema", &created)
         }
         Ok(None) => Ok(error(404, "Project source not found")),
@@ -64,4 +49,22 @@ pub(super) async fn create(
             Err(cause)
         }
     }
+}
+
+pub(crate) fn announce_created(service: &AuthService, owner: &str, created: &Value) -> Result<()> {
+    let chat = created["chat"]["id"]
+        .as_str()
+        .context("Created Task Chat ID")?;
+    service
+        .chat_mutations
+        .publish_summary(owner, &json!(chat), &created["chat"]["projectId"]);
+    service.execution.name_task(owner, chat, &created["task"]);
+    service.chat_mutations.publish_entity_invalidation(
+        owner,
+        chat,
+        "task",
+        &json!(chat),
+        Some(&created["chat"]),
+    );
+    Ok(())
 }
