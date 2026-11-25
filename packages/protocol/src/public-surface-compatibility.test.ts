@@ -801,6 +801,7 @@ const councilExports = [
   "councilAutomationReadOutputSchema",
   "councilAutomationUpdateInputSchema",
   "councilAutomationUpdateWireSchema",
+  "councilConversationWireSchema",
   "councilCreateToolInputSchema",
   "councilCreateToolOutputSchema",
   "councilHistoryHeadSchema",
@@ -866,6 +867,7 @@ const councilExports = [
   "councilProjectTaskCreateWireSchema",
   "councilProjectTaskStartInputSchema",
   "councilProjectTaskStartOutputSchema",
+  "councilProviderRecoverySourceSchema",
 ];
 const nativeResourceAndTimingExports = [
   "inferenceCommandTimingSchema",
@@ -1227,6 +1229,7 @@ describe("protocol public surface compatibility", () => {
       "council.history.search",
       "council.project-result.prepare",
       "council.project-request.prepare",
+      "council.provider-continuation.prepare",
     ];
     expect(
       currentAdvertisedCommandTypes.filter((type) =>

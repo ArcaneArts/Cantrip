@@ -3,14 +3,41 @@ import { z } from "zod";
 import {
   standaloneChatIdentitySchema,
   standaloneChatRootStatusSchema,
+  standaloneChatWireSummarySchema,
 } from "./chats.js";
 import { encryptedPayloadEnvelopeSchema } from "./encryption.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import { cantripMcpReadResultBaseSchema } from "./cantrip-mcp-tools.js";
+import { modelProviderAccountWireSummarySchema } from "./providers.js";
 
 const rolePlaintextLimit = 32 * 1_024;
 export const COUNCIL_MEMORY_BYTE_LIMIT = 8 * 1_024;
 const revisionSchema = z.number().int().positive().max(2_147_483_647);
+const recoveryAccountSchema = modelProviderAccountWireSummarySchema
+  .pick({ id: true, protectedLabel: true })
+  .nullable()
+  .default(null);
+
+export const councilConversationWireSchema =
+  standaloneChatWireSummarySchema.safeExtend({
+    providerRecovery: z
+      .object({
+        phase: z.enum([
+          "pending",
+          "blocked",
+          "switching",
+          "continuation-queued",
+          "continued",
+        ]),
+        from: z.string().min(1),
+        to: z.string().min(1).nullable(),
+        fromAccount: recoveryAccountSchema,
+        toAccount: recoveryAccountSchema,
+      })
+      .strict()
+      .nullable()
+      .default(null),
+  });
 // The endpoint seals the role with chat-content and associated data for the
 // council_agents row, agent ID, and role field.
 const councilRoleEnvelopeSchema = encryptedPayloadEnvelopeSchema.extend({

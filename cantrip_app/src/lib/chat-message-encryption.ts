@@ -250,9 +250,11 @@ export async function openChatMessageOpaqueSummary(
             ? { ...item, text: "Project request" }
             : item.councilProjectResult
               ? { ...item, text: "Project result" }
-              : item.automation?.targetKind === "council"
-                ? { ...item, text: "Scheduled prompt" }
-                : item,
+              : item.councilProviderRecovery
+                ? { ...item, text: "Provider continuation" }
+                : item.automation?.targetKind === "council"
+                  ? { ...item, text: "Scheduled prompt" }
+                  : item,
       );
     return chatMessageSchema.parse({ ...message, content });
   } finally {

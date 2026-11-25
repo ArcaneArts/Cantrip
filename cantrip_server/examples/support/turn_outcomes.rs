@@ -147,6 +147,14 @@ pub async fn run(
                 console: console.clone(),
                 tasks,
                 outcomes: timers.clone(),
+                account_failover: cantrip_server::chats::account_failover::Service::new(
+                    database.clone(),
+                    cantrip_server::native_handoffs::service::Service::new(
+                        database.clone(),
+                        commands.clone(),
+                        Arc::new(|_, _| {}),
+                    ),
+                ),
                 logger: logger.clone(),
                 begin: Arc::new({
                     let runtime = weak_runtime.clone();

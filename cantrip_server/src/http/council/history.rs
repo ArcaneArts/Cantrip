@@ -203,13 +203,16 @@ async fn delete_handle(
         .delete_council_history_message(owner, &agent, &message)
         .await
     {
-        Ok(true) => {
-            let _ = service.live.publish_event(json!({"ownerId":owner,
-                "scope":json!({"kind":"chat","chatId":agent}),"resource":"chat-message","action":"deleted",
-                "entityId":message,"revision":Value::Null,"payload":Value::Null}));
+        Ok(Some(deleted)) => {
+            for id in deleted {
+                let _ = service.live.publish_event(json!({"ownerId":owner,
+                    "scope":json!({"kind":"chat","chatId":agent}),"resource":"chat-message","action":"deleted",
+                    "entityId":id,"revision":Value::Null,"payload":Value::Null}));
+            }
+            service.chat_mutations.publish_summary(owner, &json!(agent), &Value::Null);
             axum::response::IntoResponse::into_response(StatusCode::NO_CONTENT)
         }
-        Ok(false) => error(404, "Council message not found."),
+        Ok(None) => error(404, "Council message not found."),
         Err(cause) => match cause.downcast_ref::<crate::chats::guard::NativeCommandError>() {
             Some(expected) => error(expected.status, expected.message.as_str()),
             None => middleware::failure(&service, &context.id, &cause),

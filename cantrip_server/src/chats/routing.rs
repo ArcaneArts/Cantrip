@@ -29,6 +29,17 @@ impl std::fmt::Display for ModelSelectionRequired {
 }
 impl std::error::Error for ModelSelectionRequired {}
 
+#[derive(Debug)]
+pub(crate) struct NoProviderRoutes(String);
+
+impl std::fmt::Display for NoProviderRoutes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for NoProviderRoutes {}
+
 pub struct ModelRouting {
     database: Arc<Database>,
     connected: Connected,
@@ -246,7 +257,10 @@ impl ModelRouting {
             );
         }
         if runtimes.is_empty() {
-            bail!("The selected model has no enabled provider routes.");
+            return Err(NoProviderRoutes(
+                "The selected model has no enabled provider routes.".into(),
+            )
+            .into());
         }
         let now = (self.clock)();
         let configured = runtimes.len();
@@ -337,14 +351,15 @@ impl ModelRouting {
                 json!({"event":"provider.routing.unavailable","subsystem":"provider-routing","operation":"resolve-routes","reasonCode":"no-eligible-routes","status":"unavailable","workerId":context["workerId"],"counts":json!({"configuredRoutes":configured,"unavailableRoutes":unavailable.len()})}),
                 Some(json!({"summaryEvery":10,"windowMs":60_000})),
             ));
-            bail!(
+            return Err(NoProviderRoutes(format!(
                 "No provider route is currently available{}",
                 if unavailable.is_empty() {
                     ".".to_owned()
                 } else {
                     format!(": {}", unavailable.join("; "))
                 }
-            );
+            ))
+            .into());
         }
         (self.logger)(LogCall::sampled(
             logging::key("provider-routing-resolved:", &[&context["workerId"]]),

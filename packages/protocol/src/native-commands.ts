@@ -285,6 +285,7 @@ export const nativeCommandSettlementSchema = z
         terminalStatus: z
           .enum(["completed", "failed", "interrupted"])
           .optional(),
+        terminalCause: z.literal("provider-quota").optional(),
       })
       .strict()
       .optional(),

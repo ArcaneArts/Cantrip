@@ -65,6 +65,11 @@ impl Execution {
             };
         }
         if !executing(context) {
+            if autonomy_stopped && context.get("councilAgent").is_some() {
+                self.service
+                    .chat_mutations
+                    .publish_summary(&self.owner, &json!(chat), &context["projectId"]);
+            }
             return output(
                 200,
                 "chatInterruptAcceptedSchema",

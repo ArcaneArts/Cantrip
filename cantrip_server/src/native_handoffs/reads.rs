@@ -122,8 +122,15 @@ impl Repository {
             let target=guards::target(tx,&owner,&input["targetModelRouteId"],&input["targetProviderAccountId"]).await?;
             let route=source.get("modelRouteId").filter(|v|!v.is_null()).cloned().unwrap_or_else(||json!(""));
             let source_route=one(Executor::Transaction(tx),"SELECT to_jsonb(r)::text FROM model_routes r WHERE id=$1",&[&text(&route)?]).await?;
-            if source_route.as_ref().and_then(|r|r.get("provider_id"))==target.get("providerId") && source.get("providerAccountId")==input.get("targetProviderAccountId") &&
-                (task.is_none() || source.get("modelRouteId")==input.get("targetModelRouteId")){return reject("handoff-same-provider-account")}
+            if source_route.as_ref().and_then(|r|r.get("provider_id"))==target.get("providerId") && source.get("providerAccountId")==input.get("targetProviderAccountId") {
+                let different_route = source.get("modelRouteId") != input.get("targetModelRouteId");
+                let council_switch = different_route && !tx.query(
+                    "SELECT 1 FROM council_provider_recoveries r WHERE r.chat_id=$1 AND r.handoff_id=$2::text::uuid AND r.phase='switching'
+                     AND r.target_model_route_id=$3",
+                    &[&chat,&operation,&text(&input["targetModelRouteId"])?],
+                ).await?.is_empty();
+                if !different_route || (task.is_none() && !council_switch) {return reject("handoff-same-provider-account")}
+            }
             let row=one(Executor::Transaction(tx),"INSERT INTO native_runtime_handoffs(operation_id,owner_id,chat_id,worker_id,source,binding,phase,target_model_route_id,target_provider_account_id,queued_source) VALUES($1,$2,$3,$4,$5::text::jsonb,$5::text::jsonb,'preparing',$6,$7,$8::text::jsonb) RETURNING to_jsonb(native_runtime_handoffs)::text",&[&operation,&owner,&chat,&text(&source["workerId"])?,&source.stringify(),&text(&input["targetModelRouteId"])?,&optional(&input["targetProviderAccountId"])?,&queued_source.stringify()]).await?.context("Runtime handoff reservation returned no row")?;
             wire(&row)
         })).await

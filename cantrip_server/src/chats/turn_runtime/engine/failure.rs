@@ -1,5 +1,5 @@
 use super::*;
-use crate::chats::{live_mutations::MessageOptions, message_queries::MessageKind};
+use crate::chats::{Repository, live_mutations::MessageOptions, message_queries::MessageKind};
 impl Runtime {
     pub(super) async fn retain_suspension(
         &self,
@@ -185,7 +185,23 @@ impl Runtime {
         }
         let active = state.lock().unwrap().any_activity;
         if !active && truthy(e.get("modelRouteId")) {
-            self.update_runtime(&turn,&json!({"routeId":e["modelRouteId"],"provider":json!({"accountId":e["providerAccountId"]})}),&e["threadId"],"ready").await?;
+            let thread = if e.get("councilAgent").is_some() {
+                Repository::new(self.dependencies.events.database.clone())
+                    .execution_context(&turn.owner, &events::text(&e["chatId"])?)
+                    .await?
+                    .map_or_else(
+                        || e["threadId"].clone(),
+                        |context| context["threadId"].clone(),
+                    )
+            } else {
+                e["threadId"].clone()
+            };
+            self.update_runtime(
+                &turn,
+                &json!({"routeId":e["modelRouteId"],"provider":json!({"accountId":e["providerAccountId"]})}),
+                &thread,
+                "ready",
+            ).await?;
         }
         let interrupted = worker_interrupted
             || message(error)

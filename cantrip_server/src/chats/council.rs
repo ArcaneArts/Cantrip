@@ -60,13 +60,42 @@ impl Repository {
         let rows = self
             .database
             .query(
-                "SELECT to_jsonb(c)::text FROM chats c WHERE c.id=$1 AND c.owner_id=$2
-             AND c.context_kind='council' AND c.archived_at IS NULL LIMIT 1",
+                "SELECT to_jsonb(c)::text, recovery.state::text
+                 FROM chats c LEFT JOIN LATERAL (
+                   SELECT CASE WHEN r.phase='cancelled' THEN NULL ELSE jsonb_build_object(
+                       'phase',r.phase,'from',COALESCE(source_provider.name,'Previous provider'),
+                       'to',target_provider.name,
+                       'fromAccount',CASE WHEN source_account.id IS NOT NULL THEN
+                         jsonb_build_object('id',source_account.id,'protectedLabel',source_account.protected_label) END,
+                       'toAccount',CASE WHEN target_account.id IS NOT NULL THEN
+                         jsonb_build_object('id',target_account.id,'protectedLabel',target_account.protected_label) END
+                   ) END AS state
+                   FROM council_provider_recoveries r
+                   JOIN native_commands source ON source.operation_id=r.source_operation_id AND source.owner_id=$2
+                   LEFT JOIN model_routes source_route ON source_route.id=source.identity->>'modelRouteId'
+                   LEFT JOIN model_providers source_provider ON source_provider.id=source_route.provider_id AND source_provider.owner_id=$2
+                   LEFT JOIN model_provider_accounts source_account ON source_account.id=source.identity->>'providerAccountId'
+                       AND source_account.provider_id=source_provider.id
+                   LEFT JOIN model_routes target_route ON target_route.id=r.target_model_route_id
+                   LEFT JOIN model_providers target_provider ON target_provider.id=target_route.provider_id AND target_provider.owner_id=$2
+                   LEFT JOIN model_provider_accounts target_account ON target_account.id=r.target_provider_account_id
+                       AND target_account.provider_id=target_provider.id
+                   WHERE r.chat_id=c.id ORDER BY r.updated_at DESC LIMIT 1
+                 ) recovery ON true
+                 WHERE c.id=$1 AND c.owner_id=$2 AND c.context_kind='council' AND c.archived_at IS NULL LIMIT 1",
                 &[&chat, &owner],
             )
             .await?;
         rows.first()
-            .map(|row| super::summary::wire_summary(&super::catalog::raw(row)?))
+            .map(|row| {
+                let mut chat = super::summary::wire_summary(&super::catalog::raw(row)?)?;
+                chat["providerRecovery"] = row
+                    .get::<Option<&str>>(1)?
+                    .map(serde_json::from_str)
+                    .transpose()?
+                    .unwrap_or(Value::Null);
+                Ok(chat)
+            })
             .transpose()
     }
 

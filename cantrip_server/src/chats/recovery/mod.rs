@@ -1,5 +1,6 @@
 //! Durable queued inputs and pending worktree transitions. Task continuation
 //! and native account preparation are required collaborators, never defaults.
+mod council_providers;
 mod council_steers;
 pub mod outcomes;
 mod queue;
@@ -51,6 +52,7 @@ pub struct Dependencies {
     pub console: Arc<ManagedConsole>,
     pub begin: Begin,
     pub prepare_account: PrepareAccount,
+    pub account_failover: Arc<super::account_failover::Service>,
     pub tasks: Arc<dyn TaskTransitions>,
     pub outcomes: Arc<scheduler::Scheduler>,
     pub logger: Logger,

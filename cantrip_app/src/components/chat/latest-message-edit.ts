@@ -27,7 +27,8 @@ export function latestEditableUserMessage(
           item.chatCommunication ||
           item.councilPeerMessage ||
           item.councilProjectResult ||
-          item.councilProjectRequest),
+          item.councilProjectRequest ||
+          item.councilProviderRecovery),
     )
   )
     return null;

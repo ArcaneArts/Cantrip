@@ -258,12 +258,31 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
         (item.automation?.targetKind === "council" ||
           item.councilPeerMessage ||
           item.councilProjectResult ||
-          item.councilProjectRequest),
+          item.councilProjectRequest ||
+          item.councilProviderRecovery),
     );
     if (source?.type === "text") {
       if (source.automation?.targetKind === "council") {
         return (
           <AutomationRunLink key={message.id} source={source.automation} />
+        );
+      }
+      if (source.councilProviderRecovery) {
+        const messageId = source.councilProviderRecovery.messageId;
+        const query = new URLSearchParams({ councilAgent: message.chatId });
+        if (messageId) query.set("message", messageId);
+        return (
+          <a
+            key={message.id}
+            href={`?${query}`}
+            className="inline-flex w-fit items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Continued after provider switch
+            <ArrowUpRight
+              aria-label="Open original request"
+              className="size-3"
+            />
+          </a>
         );
       }
       const {

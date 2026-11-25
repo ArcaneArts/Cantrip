@@ -61,6 +61,14 @@ export type CouncilPeerMessageSource = z.infer<
   typeof councilPeerMessageSourceSchema
 >;
 
+export const councilProviderRecoverySourceSchema = z
+  .object({
+    runId: sourceId,
+    turnId: sourceId,
+    messageId: sourceId.nullable(),
+  })
+  .strict();
+
 const councilProjectSource = z
   .object({
     projectId: sourceId,

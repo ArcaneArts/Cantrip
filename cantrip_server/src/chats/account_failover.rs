@@ -47,6 +47,43 @@ impl Service {
             logger: logging::server_logger(),
         })
     }
+
+    pub(super) async fn transfer_council_provider(
+        &self,
+        owner: &str,
+        context: &Value,
+        recovery: &Value,
+    ) -> Result<()> {
+        let chat = text(&context["chatId"])?;
+        let account = recovery["targetProviderAccountId"].clone();
+        let route = recovery["targetModelRouteId"].clone();
+        if context["modelRouteId"] == route && context["providerAccountId"] == account {
+            return Ok(());
+        }
+        let state =
+            settings_persistence::get(Executor::Database(&self.database), owner, &chat).await?;
+        let binding = state
+            .as_ref()
+            .and_then(|state| state.get("binding"))
+            .filter(|binding| {
+                ["threadId", "workerId", "modelRouteId", "providerAccountId"]
+                    .iter()
+                    .all(|key| binding.get(key) == context.get(key))
+            })
+            .context("The Council provider switch is waiting for its native settings binding.")?;
+        self.handoffs
+            .begin_and_wait(
+                owner,
+                &chat,
+                &json!({
+                    "operationId":recovery["handoffId"],"bindingId":binding["bindingId"],
+                    "targetModelRouteId":route,"targetProviderAccountId":account,
+                }),
+            )
+            .await
+            .map_err(shared_failure::owned)?;
+        Ok(())
+    }
     /// Queue admission passes its captured input revision to the same transfer.
     pub fn queued_preparation(self: &Arc<Self>) -> super::recovery::PrepareAccount {
         let service = self.clone();

@@ -70,6 +70,14 @@ pub async fn run(
     let service = recovery::Service::new(recovery::Dependencies {
         database: database.clone(),
         live,
+        account_failover: cantrip_server::chats::account_failover::Service::new(
+            database.clone(),
+            cantrip_server::native_handoffs::service::Service::new(
+                database.clone(),
+                commands.clone(),
+                Arc::new(|_, _| {}),
+            ),
+        ),
         commands,
         routing,
         console,

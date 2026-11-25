@@ -863,6 +863,14 @@ impl<'a> Receipt<'a> {
         .await
     }
 
+    pub async fn observed_council_quota(&self, turn: &JsString) -> Result<()> {
+        let evidence = json!({
+            "nativeTurnId":turn, "runtimeGeneration":self.session["runtimeGeneration"],
+            "terminalStatus":"failed", "terminalCause":"provider-quota",
+        });
+        self.report("applied", None, Some(evidence), None).await
+    }
+
     async fn report(
         &self,
         status: &str,

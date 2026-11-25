@@ -135,6 +135,7 @@ pub(super) fn build(
                 outcomes: timers,
                 logger: d.logger.clone(),
                 prepare_account: d.account_failover.queued_preparation(),
+                account_failover: d.account_failover.clone(),
                 begin: Arc::new({
                     let runtime = runtime.clone();
                     move |owner, context, input, options| {

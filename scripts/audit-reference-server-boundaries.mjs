@@ -128,7 +128,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "08ae093282f7451cc3b9ff34413133d5a8fc51ad8a91b9b2f20463aba8747477",
   workerCommands:
-    "2f494af21cd4a6abb2731c1acb2040c4a6205f1b93bf499aad2ba1a040546364",
+    "65741ffd0e8726910f8d20573fe087645abc34b0d5a8f105f18cc05699213011",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3786,6 +3786,12 @@ function workerCommandContentClassification(command) {
       classification: "endpoint-protected",
       rationale:
         "Core relays the exact target turn identity and protected native result to the assigned Council worker. The worker verifies the receipt context and seals the input before it returns to Core.",
+    };
+  if (command === "council.provider-continuation.prepare")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "Core relays the original run identity and protected history records to the assigned Council worker. The worker opens the records and seals the bounded continuation before returning it.",
     };
   if (command === "council.history.search")
     return {
