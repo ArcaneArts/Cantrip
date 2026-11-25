@@ -70,7 +70,9 @@ impl ReplicaRepository {
             let source=if let Some(source)=source {source}else{
                 let source_id=uuid::Uuid::new_v4().to_string();let rows=tx.query("INSERT INTO project_sources(id,project_id,worker_id,absolute_path,display_path,placement_mode,ownership_kind,requested_path,link_path,repository_fingerprint,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11) RETURNING to_jsonb(project_sources)::text",&[&source_id,&project,&worker,&path,&display,&mode,&ownership,&requested,&link,&fingerprint,&at]).await?;raw(rows.first().context("Inserting replica source")?)?
             };
-            let source_id=text(&source["id"])?;let revision=text(&result["resolvedRevision"])?;
+            let source_id=text(&source["id"])?;
+            // A checkout of an empty repository has no commit at HEAD.
+            let revision=optional(&result["resolvedRevision"])?;
             if tx.query("SELECT id FROM project_worktrees WHERE project_source_id=$1 AND is_primary=true LIMIT 1",&[&source_id]).await?.is_empty(){
                 let tree=uuid::Uuid::new_v4().to_string();let branch=optional(&result["branch"])?;let detached=result["branch"].is_null();
                 tx.query("INSERT INTO project_worktrees(id,project_source_id,worker_id,name,absolute_path,display_path,is_primary,is_default,origin,lifecycle_state,branch,head,detached,last_scanned_at,created_at,updated_at) VALUES($1,$2,$3,'Primary',$4,$5,true,true,'cantrip','ready',$6,$7,$8,$9,$9,$9)",&[&tree,&source_id,&worker,&path,&display,&branch,&revision,&detached,&at]).await?;
@@ -79,7 +81,7 @@ impl ReplicaRepository {
             tx.query("UPDATE projects SET setup_status='ready',setup_error=NULL,worktree_policy=coalesce($2,worktree_policy),updated_at=$3 WHERE id=$1",&[&project,&policy,&at]).await?;
             let materialization=text(&placement["materialization"])?;
             tx.query("UPDATE project_replica_jobs SET project_replica_id=$2,resolved_materialization=$3,resolved_ownership=$4 WHERE id=$1 AND command_id=$5",&[&id,&source_id,&materialization,&ownership,&command]).await?;
-            succeeded(tx,&job,&command,at,Some(&revision),"The replica job attempt is no longer current.").await
+            succeeded(tx,&job,&command,at,revision.as_deref(),"The replica job attempt is no longer current.").await
         })).await?;
         summary(&row)
     }

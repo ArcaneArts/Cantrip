@@ -234,20 +234,45 @@ try {
     },
   });
   const second = await observe("claim second source", { op: "replica-claim" });
-  await observe("second source completion", (i) => ({
-    op: "replica-complete-provision",
-    job: second[i].job.id,
-    command: second[i].commandId,
-    result: {
-      ...ready(i),
-      jobId: second[i].job.id,
-      path: "opaque-beta",
-      displayPath: "opaque-beta",
-      branch: null,
-      reused: true,
-      worktreePolicy: "direct",
+  const empty = await observe(
+    "provision a checkout before its first commit",
+    (i) => ({
+      op: "replica-complete-provision",
+      job: second[i].job.id,
+      command: second[i].commandId,
+      result: {
+        ...ready(i),
+        jobId: second[i].job.id,
+        path: "opaque-beta",
+        displayPath: "opaque-beta",
+        branch: "main",
+        resolvedRevision: null,
+        reused: true,
+        worktreePolicy: "direct",
+      },
+    }),
+  );
+  for (const item of empty) {
+    assert.equal(item.state, "succeeded");
+    assert.equal(item.resolvedRevision, null);
+  }
+  for (const data of await snapshot("unborn Primary checkout is ready")) {
+    const primary = data.worktrees.find((tree) => tree.worker_id === "beta");
+    assert.equal(primary.is_primary, true);
+    assert.equal(primary.lifecycle_state, "ready");
+    assert.equal(primary.head, null);
+    assert.equal(primary.detached, false);
+  }
+  const sources = await observe(
+    "unborn Primary is available to Run configurations",
+    {
+      op: "observation-source",
+      owner,
+      project: "project",
+      connected: ["beta"],
     },
-  }));
+  );
+  for (const source of sources) assert.equal(source.workerId, "beta");
   const replicas = completed.map((x) => x.projectReplicaId);
   await observe("synchronize source", (i) => ({
     op: "replica-synchronize",

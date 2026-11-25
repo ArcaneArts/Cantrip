@@ -180,9 +180,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
           : [];
     case "worktree":
       return projectId
-        ? [["worktrees", projectId]]
+        ? [
+            ["worktrees", projectId],
+            ["run-configurations", projectId],
+          ]
         : event.scope.kind === "current-user"
-          ? [["worktrees"]]
+          ? [["worktrees"], ["run-configurations"]]
           : [];
     case "worktree-status":
       return projectId

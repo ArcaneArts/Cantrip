@@ -527,7 +527,9 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                         fileTreeLoading={
                           explorers.isLoading ||
                           (!sidebarExplorer &&
-                            createSidebarExplorerMutation.isPending)
+                            (createSidebarExplorerMutation.isPending ||
+                              selectedProject?.setupStatus === "cloning" ||
+                              selectedProject?.setupStatus === "preparing"))
                         }
                         fileTreePinningPath={
                           pinSidebarFileMutation.isPending

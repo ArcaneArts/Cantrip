@@ -159,12 +159,23 @@ describe("desktop app mode menu", () => {
     render();
     expect(mocks.projectChatListProps[0]?.fileTreeLoading).toBe(true);
 
+    bindings.createSidebarExplorerMutation.isPending = false;
+    bindings.selectedProject = { setupStatus: "cloning" };
+    mocks.projectChatListProps.length = 0;
+    render();
+    expect(mocks.projectChatListProps[0]?.fileTreeLoading).toBe(true);
+
+    bindings.selectedProject = { setupStatus: "ready" };
+    mocks.projectChatListProps.length = 0;
+    render();
+    expect(mocks.projectChatListProps[0]?.fileTreeLoading).toBe(false);
+
+    bindings.selectedProject = null;
     bindings.sidebarExplorer = {
       id: "explorer-a",
       projectId: "project-a",
       worktreeId: "worktree-a",
     };
-    bindings.createSidebarExplorerMutation.isPending = false;
     bindings.explorers.isLoading = true;
     mocks.projectChatListProps.length = 0;
     render();

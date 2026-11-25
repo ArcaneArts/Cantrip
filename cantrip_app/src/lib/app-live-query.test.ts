@@ -720,6 +720,17 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          resource: "worktree",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([
+      ["worktrees", "project-one"],
+      ["run-configurations", "project-one"],
+    ]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           resource: "project-github-conversion-job",
           scope: { kind: "project", projectId: "project-one" },
         }),
