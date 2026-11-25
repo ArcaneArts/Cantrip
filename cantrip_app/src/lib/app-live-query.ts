@@ -256,6 +256,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : event.scope.kind === "chat"
           ? [
               ["standalone-chats"],
+              ["council", "chat", event.scope.chatId],
               ["messages", event.scope.chatId],
               ["chat-runtime-selection", event.scope.chatId],
               ["native-settings", event.scope.chatId],
@@ -263,7 +264,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
               ["task-dashboard", event.scope.chatId],
             ]
           : event.scope.kind === "current-user"
-            ? [["chats"], ["standalone-chats"], ["archived-standalone-chats"]]
+            ? [
+                ["chats"],
+                ["standalone-chats"],
+                ["archived-standalone-chats"],
+                ["council"],
+              ]
             : [];
     case "task":
       return projectId
@@ -515,6 +521,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
     case "chat":
       return [
         ["standalone-chats"],
+        ["council", "chat", scope.chatId],
         ["chat-sync", scope.chatId],
         ["chat-runtime-selection", scope.chatId],
         ["native-settings", scope.chatId],

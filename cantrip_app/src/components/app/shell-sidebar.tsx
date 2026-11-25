@@ -1,6 +1,7 @@
 import { ProjectAlertTile } from "@/components/alerts/project-alert-discovery";
 import { ProjectSidebarPages } from "@/components/sidebar/project-sidebar-pages";
 import { ProjectConversationList } from "@/components/sidebar/project-conversation-list";
+import { CouncilRoster } from "@/components/council/council-roster";
 import { focusWorkspaceNativeWindow } from "@/lib/desktop-popout";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -10,6 +11,7 @@ import {
   MessageSquare,
   PanelLeftClose,
   Settings,
+  UsersRound,
   WandSparkles,
 } from "lucide-react";
 import type { ProjectWorktreeSummary } from "@cantrip/protocol";
@@ -29,20 +31,24 @@ import {
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "@/lib/sidebar-resize";
 import { cn } from "@/lib/utils";
+import type { ShellAppMode } from "@/lib/app-mode";
 type ShellSidebarBindings = Readonly<Record<string, any>>;
 
 export function DesktopAppModeMenu({
   appMode,
   onSwitchChat,
+  onSwitchCouncil,
   onSwitchIde,
   overlayTitlebar,
 }: {
-  appMode: "chat" | "ide";
+  appMode: ShellAppMode;
   onSwitchChat(): void;
+  onSwitchCouncil?(): void;
   onSwitchIde(): void;
   overlayTitlebar: boolean;
 }) {
-  const label = appMode === "ide" ? "IDE" : "Chat";
+  const label =
+    appMode === "ide" ? "IDE" : appMode === "council" ? "Council" : "Chat";
 
   return (
     <DropdownMenu.Root>
@@ -83,6 +89,19 @@ export function DesktopAppModeMenu({
             </span>
             {appMode === "chat" ? <Check className="size-3.5" /> : null}
           </StyledDropdownMenuItem>
+          {onSwitchCouncil ? (
+            <StyledDropdownMenuItem
+              aria-current={appMode === "council" ? "page" : undefined}
+              className="justify-between"
+              onSelect={onSwitchCouncil}
+            >
+              <span className="flex items-center gap-2">
+                <UsersRound className="size-4" />
+                Cantrip Council
+              </span>
+              {appMode === "council" ? <Check className="size-3.5" /> : null}
+            </StyledDropdownMenuItem>
+          ) : null}
         </StyledDropdownMenuContent>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -101,6 +120,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     archivedStandaloneChats,
     beginSidebarResize,
     bootstrap,
+    councilWorkspace,
     createSidebarExplorerMutation,
     createSidebarFolder,
     createSidebarFile,
@@ -173,6 +193,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
     standaloneChatCreationUnavailableReason,
     standaloneChats,
     switchToChat,
+    switchToCouncil,
     switchToIde,
     workers,
     worktrees,
@@ -264,7 +285,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                 className="min-w-0 flex-1"
                 data-tauri-drag-region={overlayTitlebar ? "" : undefined}
               >
-                {desktopSidebarDrawer ? (
+                {desktopSidebarDrawer && !switchToCouncil ? (
                   <p
                     className={cn(
                       "font-semibold tracking-tight",
@@ -278,6 +299,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                   <DesktopAppModeMenu
                     appMode={appMode}
                     onSwitchChat={switchToChat}
+                    onSwitchCouncil={switchToCouncil}
                     onSwitchIde={switchToIde}
                     overlayTitlebar={overlayTitlebar}
                   />
@@ -308,7 +330,9 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
               </Button>
             </div>
 
-            {appMode === "chat" ? (
+            {appMode === "council" && switchToCouncil ? (
+              <CouncilRoster controller={councilWorkspace} />
+            ) : appMode === "chat" ? (
               <StandaloneChatSidebar
                 archivedCount={archivedStandaloneChats.data?.length ?? 0}
                 archivedSelected={showArchivedStandaloneChats}

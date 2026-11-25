@@ -691,6 +691,7 @@ describe("application live query bridge", () => {
       ),
     ).toEqual([
       ["standalone-chats"],
+      ["council", "chat", "chat-one"],
       ["messages", "chat-one"],
       ["chat-runtime-selection", "chat-one"],
       ["native-settings", "chat-one"],
@@ -704,7 +705,12 @@ describe("application live query bridge", () => {
           scope: { kind: "current-user" },
         }),
       ),
-    ).toEqual([["chats"], ["standalone-chats"], ["archived-standalone-chats"]]);
+    ).toEqual([
+      ["chats"],
+      ["standalone-chats"],
+      ["archived-standalone-chats"],
+      ["council"],
+    ]);
     expect(
       appLiveEventQueryKeys(
         event({

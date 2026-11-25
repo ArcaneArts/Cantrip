@@ -21,6 +21,7 @@ import { EmptyWorkspace } from "./empty-workspace";
 import { CantripLoading } from "@/components/ui/cantrip-loading";
 import { RunTerminalView } from "@/components/app/application-shell-surfaces";
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
+import { CouncilWorkspace } from "@/components/council/council-workspace";
 import {
   GitHistoryView,
   type GitHistoryHeaderState,
@@ -252,6 +253,7 @@ export function GlobalContentHost({
     <>
       {mobileProjectSelectorOpen ? (
         <MobileProjectSelector
+          onChooseMode={bindings.chooseAppMode}
           activeWorkspace={activeProjectWorkspace}
           alertCounts={bindings.projectAlertCounts}
           currentUserName={
@@ -304,6 +306,17 @@ export function GlobalContentHost({
         />
       ) : showServerAdmin ? (
         <ServerAdminPage />
+      ) : appMode === "council" && bindings.switchToCouncil ? (
+        <CouncilWorkspace
+          compact={bindings.compactShell}
+          controller={bindings.councilWorkspace}
+          desktopRuntime={desktopRuntime}
+          narrowViewport={narrowViewport}
+          onConfigureModels={() => bindings.openRootSettings("models")}
+          onToast={showAppToast}
+          settings={settings.data}
+          workers={bindings.workers.data ?? []}
+        />
       ) : appMode === "chat" ? (
         <StandaloneChatHost>
           {selectedStandaloneChat ? (

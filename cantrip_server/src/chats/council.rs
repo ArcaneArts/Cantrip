@@ -50,6 +50,20 @@ impl Repository {
         roster(Executor::Database(&self.database), owner, None).await
     }
 
+    pub async fn council_conversation(&self, owner: &str, chat: &str) -> Result<Option<Value>> {
+        let rows = self
+            .database
+            .query(
+                "SELECT to_jsonb(c)::text FROM chats c WHERE c.id=$1 AND c.owner_id=$2
+             AND c.context_kind='council' AND c.archived_at IS NULL LIMIT 1",
+                &[&chat, &owner],
+            )
+            .await?;
+        rows.first()
+            .map(|row| super::summary::wire_summary(&super::catalog::raw(row)?))
+            .transpose()
+    }
+
     pub async fn create_council_agent(
         &self,
         owner: &str,

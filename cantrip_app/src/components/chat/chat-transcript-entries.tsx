@@ -125,7 +125,7 @@ export interface ChatTranscriptEntriesProps {
   onChangeEditingMessage(messageId: string, text: string): void;
   onCopyResponse(messageId: string, text: string): Promise<void>;
   onEditMessage(message: ChatMessage): void;
-  onForkMessage(messageId: string): void;
+  onForkMessage?(messageId: string): void;
   onOpenFile(path: string, worktreeId?: string | null): void;
   onSubmitEditedMessage(message: ChatMessage, event?: FormEvent): void;
   onViewSubagent?: (agentKey: string) => void;
@@ -412,17 +412,19 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
                 )}
                 <span className="sr-only">Copy response</span>
               </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-7"
-                title="Fork agent from this response"
-                disabled={forkPending}
-                onClick={() => onForkMessage(message.id)}
-              >
-                <GitFork className="size-3.5" />
-                <span className="sr-only">Fork agent from this response</span>
-              </Button>
+              {onForkMessage ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title="Fork agent from this response"
+                  disabled={forkPending}
+                  onClick={() => onForkMessage(message.id)}
+                >
+                  <GitFork className="size-3.5" />
+                  <span className="sr-only">Fork agent from this response</span>
+                </Button>
+              ) : null}
               {turnMetadata ? (
                 <span className="ml-1 text-[10px] tabular-nums text-muted-foreground/70">
                   {turnMetadata}

@@ -1,10 +1,10 @@
 import type {
-  AppMode,
   ProjectFolderSetupJobSummary,
   ProjectReplicaJobSummary,
 } from "@cantrip/protocol";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import type { ShellAppMode } from "@/lib/app-mode";
 import {
   cleanupArchivedChats,
   getArchivedStandaloneChats,
@@ -100,7 +100,7 @@ export function useProjectInventory({
   selectedProjectId,
   selectedStandaloneChatId,
 }: {
-  appMode: AppMode | null;
+  appMode: ShellAppMode | null;
   foundation: ApplicationInventory;
   isPopout: boolean;
   projectResourcesLive: boolean;

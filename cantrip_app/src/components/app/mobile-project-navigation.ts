@@ -1,4 +1,5 @@
 import type { ProjectSurface } from "@/lib/project-surface";
+import type { ShellAppMode } from "@/lib/app-mode";
 
 export function mobileProjectSurfaces(
   surfaces: readonly ProjectSurface[],
@@ -24,7 +25,7 @@ export function mobileProjectShellModel({
   showServerAdmin,
   showSettings,
 }: {
-  appMode: "chat" | "ide" | null;
+  appMode: ShellAppMode | null;
   compactShell: boolean;
   projectOverviewSelected: boolean;
   selectedProject: boolean;

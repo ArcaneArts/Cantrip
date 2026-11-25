@@ -395,7 +395,7 @@ export function ChatTranscriptView({
             onChangeEditingMessage={changeEditingSentMessage}
             onCopyResponse={copyResponse}
             onEditMessage={editSentMessage}
-            onForkMessage={forkFromMessage}
+            onForkMessage={capabilities.council ? undefined : forkFromMessage}
             onOpenFile={onOpenFile}
             onSubmitEditedMessage={submitEditedMessage}
             onViewSubagent={capabilities.subagents ? viewSubagent : undefined}
@@ -1142,27 +1142,29 @@ export function ChatTranscriptView({
                     }
                   />
                 )}
-                <PermissionProfileControl
-                  open={settingsPicker === "permissions"}
-                  onOpenChange={(open) =>
-                    setSettingsPicker((current) =>
-                      open
-                        ? "permissions"
-                        : current === "permissions"
-                          ? null
-                          : current,
-                    )
-                  }
-                  pending={
-                    selectPermissionProfile.isPending ||
-                    (nativePermissions !== undefined
-                      ? nativeModelSettings.session.isPending
-                      : permissionProfiles.isLoading)
-                  }
-                  state={permissionProfiles.data}
-                  native={nativePermissions}
-                  onChange={(id) => selectPermissionProfile.mutate(id)}
-                />
+                {!capabilities.council ? (
+                  <PermissionProfileControl
+                    open={settingsPicker === "permissions"}
+                    onOpenChange={(open) =>
+                      setSettingsPicker((current) =>
+                        open
+                          ? "permissions"
+                          : current === "permissions"
+                            ? null
+                            : current,
+                      )
+                    }
+                    pending={
+                      selectPermissionProfile.isPending ||
+                      (nativePermissions !== undefined
+                        ? nativeModelSettings.session.isPending
+                        : permissionProfiles.isLoading)
+                    }
+                    state={permissionProfiles.data}
+                    native={nativePermissions}
+                    onChange={(id) => selectPermissionProfile.mutate(id)}
+                  />
+                ) : null}
                 {capabilities.modes === "agent-modes" ? (
                   <ChatModeControl
                     mode={composerMode}

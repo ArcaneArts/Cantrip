@@ -1,5 +1,6 @@
 export interface ChatSurfaceCapabilities {
   context: "project" | "standalone";
+  council?: true;
   modes: "agent-modes" | "default-only";
   inspect: boolean;
   linkedConsole: boolean;
@@ -35,4 +36,9 @@ export const STANDALONE_CHAT_SURFACE_CAPABILITIES = {
   customizationInventory: false,
   scratchFiles: true,
   skillPicker: false,
+} as const satisfies ChatSurfaceCapabilities;
+
+export const COUNCIL_CHAT_SURFACE_CAPABILITIES = {
+  ...STANDALONE_CHAT_SURFACE_CAPABILITIES,
+  council: true,
 } as const satisfies ChatSurfaceCapabilities;

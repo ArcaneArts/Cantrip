@@ -108,8 +108,24 @@ async fn update(
     }
 }
 
+async fn conversation(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<Context>>,
+    Path(id): Path<String>,
+) -> Response {
+    let owner = &context.principal.user.as_ref().expect("Council owner").id;
+    let repository = Repository::new(service.repository.database.clone());
+    let result = match repository.council_conversation(owner, &id).await {
+        Ok(Some(chat)) => output(200, "standaloneChatWireSummarySchema", &chat),
+        Ok(None) => Ok(error(404, "Council agent not found.")),
+        Err(cause) => Err(cause),
+    };
+    result.unwrap_or_else(|cause| middleware::failure(&service, &context.id, &cause))
+}
+
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/council/agents", get(collection).post(collection))
         .route("/api/council/agents/{agentId}", patch(update))
+        .route("/api/council/agents/{agentId}/chat", get(conversation))
 }

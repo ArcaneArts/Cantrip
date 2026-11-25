@@ -33,6 +33,7 @@ import { actualAgentInteractionCancel } from "./actual-agent-interaction-cancel.
 import { actualProviderAuthClient } from "./actual-provider-auth-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
 import { actualCouncilSteering } from "./actual-council-steering.mjs";
+import { actualCouncilAppMode } from "./actual-council-app-mode.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
 import { observePostgresErrors } from "./postgres-error-observation.mjs";
 import { observeFolderLive } from "./folder-live-observation.mjs";
@@ -1010,8 +1011,18 @@ async function flow(
       (fixture.workerFixture ?? fixture).server.origin,
     );
     assert.ok(credential);
-    if (process.argv.includes("--council-steering")) {
+    if (
+      process.argv.includes("--council-steering") ||
+      process.argv.includes("--council-app-mode")
+    ) {
       await actualCouncilSteering({ page, workerId, result });
+      if (process.argv.includes("--council-app-mode")) {
+        await actualCouncilAppMode({
+          page,
+          result,
+          appOrigin: vite.resolvedUrls.local[0],
+        });
+      }
       assert.deepEqual(errors, []);
       return;
     }
@@ -2191,6 +2202,9 @@ try {
       liveSqlFixture: liveTaskDiagnostics,
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
+        ...(process.argv.includes("--council-app-mode")
+          ? { CANTRIP_COUNCIL_ENABLED: "true" }
+          : {}),
         // Retained-session product flows use the normal server lifetime. The
         // short HTTP fixture lifetime can expire during an emulated restart.
         CANTRIP_SESSION_TTL_SECONDS: String(30 * 24 * 60 * 60),
