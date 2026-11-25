@@ -168,6 +168,23 @@ function props(
   };
 }
 
+describe("Council default model", () => {
+  it("shows the model control when account settings support Council", () => {
+    const older = renderToStaticMarkup(<ModelsSettings {...props()} />);
+    const current = renderToStaticMarkup(
+      <ModelsSettings
+        {...props({
+          preferences: { ...preferences, defaultCouncilModelId: null },
+        })}
+      />,
+    );
+
+    expect(older).not.toContain("Council default model");
+    expect(current).toContain('aria-label="Council default model"');
+    expect(current).toContain("Use IDE default model");
+  });
+});
+
 describe("Models provider navigation", () => {
   it.each(["general", "provider:local"] as const)(
     "leaves the tab strip transparent with %s selected",

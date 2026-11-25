@@ -81,6 +81,8 @@ const PREFERENCES: &[&str] = &[
     "defaultChatModelId",
     "defaultChatReasoningEffort",
     "defaultChatPermissionProfileId",
+    "defaultCouncilModelId",
+    "defaultCouncilPermissionProfileId",
     "defaultWorkerId",
     "lastAppMode",
     "lastIdeProjectId",
@@ -622,7 +624,15 @@ impl SettingsRepository {
             }
         }
         sets.push("updated_at=$3".into());
-        self.database.query(&format!("UPDATE user_settings s SET {} FROM jsonb_populate_record(NULL::user_settings,$2::jsonb) v WHERE s.user_id=$1",sets.join(",")), &[&owner,&Value::Object(values),&now()]).await?;
+        // A stored default must name an owned language model. Route and worker
+        // availability are resolved when execution uses that model.
+        let updated = self.database.query(&format!(
+            "UPDATE user_settings s SET {} FROM jsonb_populate_record(NULL::user_settings,$2::jsonb) v WHERE s.user_id=$1 AND (v.default_council_model_id IS NULL OR EXISTS (SELECT 1 FROM model_profiles m WHERE m.id=v.default_council_model_id AND m.owner_id=s.user_id AND m.operation='language' FOR SHARE)) RETURNING s.user_id",
+            sets.join(",")
+        ), &[&owner,&Value::Object(values),&now()]).await?;
+        if updated.is_empty() {
+            return Ok(None);
+        }
         // Keep the complete settings projection out of the mutation future's
         // inline state. Windows' main-stack limit exposed this nested frame.
         Ok(Some(self.get_settings(owner).boxed().await?))

@@ -64,6 +64,7 @@ fn storage_preferences(mut value: Value) -> Result<serde_json::Value> {
         "labelingModelId",
         "defaultModelId",
         "defaultChatModelId",
+        "defaultCouncilModelId",
         "defaultSubagentModelId",
         "defaultWorkerId",
         "lastIdeProjectId",

@@ -56,6 +56,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ListPageControls } from "@/components/ui/list-page-controls";
+import { ModelCombobox } from "@/components/chat/model-combobox";
 import { useConfiguredModelSearch } from "@/components/chat/model-search";
 import {
   StyledContextMenuContent,
@@ -631,6 +632,26 @@ export function ModelsSettings({
                 />
               </div>
             </div>
+            {preferences.defaultCouncilModelId !== undefined ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                <p className="text-sm font-medium">Council default model</p>
+                <div className="grid w-full gap-1 sm:w-72">
+                  <ModelCombobox
+                    ariaLabel="Council default model"
+                    models={languageModels}
+                    value={preferences.defaultCouncilModelId}
+                    disabled={preferencesPending}
+                    noneLabel="Use IDE default model"
+                    placeholder="Use IDE default model"
+                    onValueChange={(id) =>
+                      void onPreferencesChange({
+                        defaultCouncilModelId: id || null,
+                      }).catch(() => undefined)
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
             {(["embedding", "decision"] as const).map((operation) => {
               const preference =
                 operation === "embedding"
