@@ -12,7 +12,10 @@ import {
   modelProfileUpdateSchema,
 } from "@cantrip/protocol";
 import { request, post } from "@/lib/api-client";
-import { getClientSession } from "@/lib/client-session";
+import {
+  getClientSession,
+  type ClientSessionIdentitySnapshot,
+} from "@/lib/client-session";
 import { clientEncryption } from "@/lib/client-encryption";
 import { authorizeWorkerEncryption } from "@/lib/worker-encryption-grants";
 import type {
@@ -144,12 +147,14 @@ export async function getProviderModelCatalog(
 export async function refreshProviderModelCatalog(
   providerId: string,
   workerId?: string | null,
+  expectedIdentity?: ClientSessionIdentitySnapshot,
 ) {
   const query = workerId ? `?workerId=${encodeURIComponent(workerId)}` : "";
   return providerModelCatalogResultSchema.parse(
     await request(
       `/api/settings/providers/${encodeURIComponent(providerId)}/catalog/refresh${query}`,
       { method: "POST" },
+      { expectedIdentity },
     ),
   );
 }

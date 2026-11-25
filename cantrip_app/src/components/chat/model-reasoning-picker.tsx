@@ -24,6 +24,10 @@ import {
 } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
+import {
+  OllamaModelPickerRefresh,
+  type OllamaModelPickerScope,
+} from "./ollama-model-picker-refresh";
 
 export { filterConfiguredModels } from "@/components/chat/model-combobox";
 
@@ -71,6 +75,7 @@ export interface ModelReasoningPickerProps {
   configuration: ModelConfiguration;
   disabled?: boolean;
   models: ModelProfileSummary[];
+  ollamaCatalog?: OllamaModelPickerScope;
   mode?: "chat" | "settings";
   pending?: boolean;
   readOnly?: boolean;
@@ -371,6 +376,7 @@ export function ModelReasoningPicker({
   disabled = false,
   loadReasoningState,
   models: configuredModels,
+  ollamaCatalog,
   mode = "chat",
   onSave,
   pending = false,
@@ -575,6 +581,9 @@ export function ModelReasoningPicker({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
+      {open && ollamaCatalog ? (
+        <OllamaModelPickerRefresh {...ollamaCatalog} />
+      ) : null}
       <Button
         type="button"
         variant={mode === "settings" ? "outline" : "ghost"}

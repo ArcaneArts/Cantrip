@@ -41,6 +41,7 @@ import { ChatRunStatus } from "@/components/chat/chat-run-status";
 import { NativeSettingsStatus } from "@/components/chat/native-settings-status";
 import { NativeModelSettingsPicker } from "./native-model-settings-picker";
 import { ChatModelReasoningPicker } from "./chat-model-reasoning-picker";
+import { OllamaModelPickerRefresh } from "./ollama-model-picker-refresh";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { ChatRelocationStatus } from "@/components/chat/chat-relocation-dialog";
 import { PlanPanel } from "@/components/chat/plan-panel";
@@ -1082,6 +1083,16 @@ export function ChatTranscriptView({
                   <Plus className="size-4" />
                   <span className="sr-only">Attach files</span>
                 </Button>
+                {settingsPicker === "model" ? (
+                  <OllamaModelPickerRefresh
+                    providers={settings?.providers}
+                    workerId={
+                      nativeModelSettings.binding?.workerId ??
+                      chat.activeWorkerId
+                    }
+                    chatId={chat.id}
+                  />
+                ) : null}
                 {nativeModelSettings.pickerMode === "native" ? (
                   <NativeModelSettingsPicker
                     controller={nativeModelSettings}

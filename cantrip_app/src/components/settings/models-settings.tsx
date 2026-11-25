@@ -569,6 +569,7 @@ export function ModelsSettings({
                 loadReasoningState={getModelReasoningOptions}
                 mode="settings"
                 models={languageModels}
+                ollamaCatalog={{ providers, workerId }}
                 pending={preferencesPending}
                 onSave={(configuration) =>
                   onPreferencesChange(
@@ -618,6 +619,7 @@ export function ModelsSettings({
                   loadReasoningState={getModelReasoningOptions}
                   mode="settings"
                   models={languageModels}
+                  ollamaCatalog={{ providers, workerId }}
                   pending={preferencesPending}
                   onSave={(configuration) =>
                     onPreferencesChange(
