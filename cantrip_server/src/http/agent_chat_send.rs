@@ -15,7 +15,7 @@ pub(super) async fn execute(
     arguments: &Value,
 ) -> Result<Value> {
     let input = parse("agentChatSendWireSchema", arguments)?;
-    deliver(service, owner, source, &source["projectId"], &input).await
+    deliver(service, owner, source, &source["projectId"], &input, false).await
 }
 
 pub(super) async fn execute_council(
@@ -32,6 +32,7 @@ pub(super) async fn execute_council(
             source,
             &input["projectId"],
             &input["delivery"],
+            input["steer"] == true,
         )
         .await;
     }
@@ -72,6 +73,7 @@ async fn deliver(
     source: &Value,
     project: &Value,
     input: &Value,
+    steer: bool,
 ) -> Result<Value> {
     if input["chatId"] == source["chatId"] {
         return Err(OperationError::new(
@@ -140,7 +142,7 @@ async fn deliver(
     let repository = chats::Repository::new(service.repository.database.clone());
     chats::agent_delivery::receiver(repository.execution_context(owner, target).await?, project)?;
     let delivered = repository
-        .deliver_agent_message(owner, source, target, project, input)
+        .deliver_agent_message(owner, source, target, project, input, steer)
         .await?;
     for message in &delivered.messages {
         service

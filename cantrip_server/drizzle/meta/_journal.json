@@ -2136,6 +2136,13 @@
       "when": 1795602720000,
       "tag": "0304_council_project_controls",
       "breakpoints": true
+    },
+    {
+      "idx": 305,
+      "version": "7",
+      "when": 1795603380000,
+      "tag": "0305_council_project_steering",
+      "breakpoints": true
     }
   ]
 }

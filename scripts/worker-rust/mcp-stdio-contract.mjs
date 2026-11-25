@@ -198,7 +198,7 @@ async function generate() {
     [
       "council_project_send",
       "council.project.send",
-      "Send a message to an existing project Agent chat. Use IDs from council_inventory. Reuse the operation ID when retrying the same delivery.",
+      "Send a message to an existing project Agent chat. Set steer to true to join its active turn. If the turn ends first, the message starts a later turn. Use IDs from council_inventory and reuse the operation ID when retrying the same delivery.",
       councilProjectSendInputSchema,
       councilProjectSendToolOutputSchema,
     ],

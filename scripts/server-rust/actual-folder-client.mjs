@@ -425,11 +425,18 @@ const councilProjectApprovals = process.argv.includes(
 const councilProjectControls = process.argv.includes(
   "--council-project-controls",
 );
+const councilProjectSteeringRace = process.argv.includes(
+  "--council-project-steering-race",
+);
+const councilProjectSteering =
+  councilProjectSteeringRace ||
+  process.argv.includes("--council-project-steering");
 const councilProjectCreation =
   councilProjectControls || process.argv.includes("--council-project-creation");
 const councilProjectMessages =
   councilProjectApprovals ||
   councilProjectCreation ||
+  councilProjectSteering ||
   process.argv.includes("--council-project-messages");
 const councilInventory =
   councilProjectMessages || process.argv.includes("--council-inventory");
@@ -1085,6 +1092,8 @@ async function flow(
               projectApprovals: councilProjectApprovals,
               projectCreation: councilProjectCreation,
               projectControls: councilProjectControls,
+              projectSteering: councilProjectSteering,
+              projectSteeringRace: councilProjectSteeringRace,
             }
           : undefined,
         compaction: councilCompaction

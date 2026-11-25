@@ -28,7 +28,9 @@ impl std::fmt::Display for DeliveryError {
             Self::ReceiverUnavailable => "The receiving chat is unavailable.",
             Self::ModelRequired => "Choose a model in the receiving chat first.",
             Self::SenderUnavailable => "The sending Council turn is no longer active.",
-            Self::OperationConflict => "This Council delivery ID already belongs to another chat.",
+            Self::OperationConflict => {
+                "This Council delivery ID already belongs to another target or delivery mode."
+            }
         })
     }
 }
@@ -57,6 +59,7 @@ impl Repository {
         target: &str,
         project: &Value,
         input: &Value,
+        steer: bool,
     ) -> Result<Delivered> {
         let (owner, source, target, project, input) = (
             owner.to_owned(),
@@ -86,9 +89,9 @@ impl Repository {
                     && matches!(current["status"].as_str(), Some("running" | "waiting-for-approval"))) {
                     return Err(DeliveryError::SenderUnavailable.into());
                 }
-                let earlier = tx.query("SELECT target_chat_id,input_message_id,received_message_id FROM council_project_deliveries WHERE source_chat_id=$1 AND operation_id=$2::text::uuid", &[&sender,&operation]).await?;
+                let earlier = tx.query("SELECT target_chat_id,input_message_id,received_message_id,steer_requested FROM council_project_deliveries WHERE source_chat_id=$1 AND operation_id=$2::text::uuid", &[&sender,&operation]).await?;
                 if let Some(earlier) = earlier.first() {
-                    if earlier.get::<&str>(0)? != target { return Err(DeliveryError::OperationConflict.into()); }
+                    if earlier.get::<&str>(0)? != target || earlier.get::<bool>(3)? != steer { return Err(DeliveryError::OperationConflict.into()); }
                     return Ok(Delivered {input_id:json!(earlier.get::<&str>(1)?),received_id:json!(earlier.get::<&str>(2)?),messages:Vec::new()});
                 }
             }
@@ -126,7 +129,7 @@ impl Repository {
                 (Some(received),Some(sent)) => {
                     let received_id = received["id"].clone();
                     if council {
-                        tx.query("INSERT INTO council_project_deliveries(source_chat_id,target_chat_id,operation_id,input_message_id,received_message_id) VALUES($1,$2,$3::text::uuid,$4,$5)", &[&sender,&target,&operation,&text(&input_id)?,&text(&received_id)?]).await?;
+                        tx.query("INSERT INTO council_project_deliveries(source_chat_id,target_chat_id,operation_id,input_message_id,received_message_id,queued_prompt_id,steer_requested) VALUES($1,$2,$3::text::uuid,$4,$5,$6,$7)", &[&sender,&target,&operation,&text(&input_id)?,&text(&received_id)?,&text(&prompt["id"])?,&steer]).await?;
                     }
                     Ok(Delivered { input_id,received_id,messages:vec![received,sent] })
                 }

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import path from "node:path";
+import { fixtureCodex } from "../worker-rust/deferred-receipt-smoke-cases.mjs";
 import { actualCouncilProjectMessages } from "./actual-council-project-messages.mjs";
+import { projectSteeringText } from "./actual-council-project-steering.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 
 export async function actualCouncilInventory({
@@ -12,6 +14,8 @@ export async function actualCouncilInventory({
   projectApprovals,
   projectCreation,
   projectControls,
+  projectSteering,
+  projectSteeringRace,
   chatId,
   workerId,
   model,
@@ -24,6 +28,16 @@ export async function actualCouncilInventory({
   const projectTitle = "Private remote Council project 🌲";
   const chatTitle = "Private remote Agent chat 🍄";
   const taskTitle = "Private remote Task 🌙";
+  const steerRaceMarker = projectSteeringRace
+    ? path.join(root, "project-steer-race")
+    : undefined;
+  const codexProxy = steerRaceMarker
+    ? await fixtureCodex(root, process.env.CANTRIP_CODEX_BIN, {
+        scenario: "council-steer-completion",
+        marker: steerRaceMarker,
+        input: `Message from Cantrip agent ${JSON.stringify((await readChat()).title)} (chat ${chatId}). This is another agent, not the human user.\n\n${projectSteeringText}`,
+      })
+    : undefined;
   const lease = await page.evaluate(
     async (workerId) =>
       (await import("/src/lib/api/workers.ts")).createWorkerEnrollmentCode({
@@ -38,6 +52,7 @@ export async function actualCouncilInventory({
       workerId: remote,
       cliBinary,
       enrollmentCode: lease.code,
+      environment: codexProxy ? { CANTRIP_CODEX_BIN: codexProxy } : undefined,
     },
   );
   try {
@@ -229,6 +244,8 @@ export async function actualCouncilInventory({
         projectApprovals,
         projectCreation,
         projectControls,
+        projectSteering,
+        steerRaceMarker,
       });
     }
   } finally {

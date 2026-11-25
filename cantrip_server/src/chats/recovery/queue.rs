@@ -79,8 +79,10 @@ impl Service {
             return Ok(());
         }
         if executing(&context) {
-            if context.get("councilAgent").is_some() {
-                self.steer_council(owner, chat).await?;
+            if context.get("councilAgent").is_some()
+                || (context["contextKind"] == "project" && context["experience"] == "agent")
+            {
+                self.steer_active(owner, chat).await?;
             }
             return Ok(());
         }
