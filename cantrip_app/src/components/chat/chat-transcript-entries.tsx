@@ -1,6 +1,16 @@
 import { AgentChatMessage, messageCommunication } from "./agent-chat-message";
+import { councilProjectResultLink } from "@cantrip/protocol";
 import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
-import { Bot, Check, Copy, GitFork, Loader2, Pencil, User } from "lucide-react";
+import {
+  ArrowUpRight,
+  Bot,
+  Check,
+  Copy,
+  GitFork,
+  Loader2,
+  Pencil,
+  User,
+} from "lucide-react";
 import { memo, useMemo, type FormEvent, type RefObject } from "react";
 
 import {
@@ -237,6 +247,23 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
       );
     }
     const message = entry.message;
+    const source = message.content.find(
+      (item) => item.type === "text" && item.councilProjectResult,
+    );
+    if (source?.type === "text" && source.councilProjectResult) {
+      const result = source.councilProjectResult;
+      return (
+        <a
+          key={message.id}
+          data-slot="council-project-result"
+          className="inline-flex w-fit items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+          href={councilProjectResultLink(result)}
+        >
+          Project result <span className="capitalize">· {result.status}</span>
+          <ArrowUpRight aria-label="Open project source" className="size-3" />
+        </a>
+      );
+    }
     const communication = messageCommunication(message);
     if (communication)
       return (
@@ -277,6 +304,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
     return (
       <div
         key={message.id}
+        data-chat-message-id={message.id}
         data-chat-history-anchor={user ? message.id : undefined}
         className={cn("flex gap-3", user && "justify-end")}
       >

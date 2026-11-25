@@ -1,5 +1,6 @@
 //! Worker-owned chat and queued input envelopes. Plaintext is used only by
 //! authenticated worker operations and the selected native runtime.
+mod council_result;
 pub(crate) mod queue;
 
 use crate::{
@@ -23,6 +24,7 @@ pub(crate) const MESSAGES: &str = "chat.messages.protect";
 pub(crate) const REPROTECT: &str = "chat.messages.reprotect";
 pub(crate) const TURN: &str = "chat.turn.protect";
 pub(crate) const QUEUE_PREPARE: &str = "chat.queue.prepare";
+pub(crate) const COUNCIL_PROJECT_RESULT: &str = "council.project-result.prepare";
 
 /// Re-read live grants when publishing and fence every acquired key to the
 /// account and logical server that accepted the operation.
@@ -85,6 +87,7 @@ pub(crate) fn execute(service: Arc<Service>, command: &Value) -> Result<Value> {
     let result = match command["type"].as_str() {
         Some(TURN) => turn(&scope, command),
         Some(QUEUE_PREPARE) => queue::prepare(&scope, command),
+        Some(COUNCIL_PROJECT_RESULT) => council_result::prepare(&scope, command),
         Some(MESSAGE | MESSAGES) => {
             let keys = ServiceKeys(service);
             let mut opened = HashMap::new();
@@ -190,6 +193,9 @@ fn protect_turn(
     if let Some(communication) = communication {
         text["chatCommunication"] = communication.clone();
     }
+    if let Some(source) = command.get("councilProjectResult") {
+        text["councilProjectResult"] = source.clone();
+    }
     let prompt_text = if communication.is_some() {
         json!(runtime_text(&text)?)
     } else {
@@ -208,6 +214,11 @@ fn protect_turn(
     }))?;
     let grant = scope.material(None)?;
     let classification = json!({"mode": command["mode"], "attachmentIds": message["classification"]["attachmentIds"]});
+    let mut protected_prompt =
+        json!({"version": 1, "classification": classification, "text": prompt_text});
+    if command.get("councilProjectResult").is_some() {
+        protected_prompt["internal"] = json!(true);
+    }
     let prompt = checked(
         "queuedPromptOpaqueContentSchema",
         &json!({
@@ -216,7 +227,7 @@ fn protect_turn(
                 Communication::QueuedPrompt,
                 &grant.key,
                 &json!({"ownerId": grant.owner_id, "promptId": command["promptId"], "keyRevision": grant.key_revision}),
-                &json!({"version": 1, "classification": classification, "text": prompt_text}),
+                &protected_prompt,
             )?,
             "modelId": command["modelId"], "reasoningEffort": command["reasoningEffort"],
             "customSubagentModel": command["customSubagentModel"].as_bool().unwrap_or(false),

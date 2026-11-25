@@ -21,7 +21,9 @@ export function latestEditableUserMessage(
     .find((message) => message.role === "user");
   if (
     latest?.content.some(
-      (item) => item.type === "text" && item.chatCommunication,
+      (item) =>
+        item.type === "text" &&
+        (item.chatCommunication || item.councilProjectResult),
     )
   )
     return null;

@@ -128,7 +128,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
   workerCommands:
-    "035252e1748a7b898c438a8759bcabb3d6332cb30352960ca43ce0ee38a7ee83",
+    "19913fff1d7c6cb9533d9ebe86616908a6caf6d3c6fb4663f1aa52de96546646",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3775,6 +3775,12 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "council.project-result.prepare")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "Core relays the exact target turn identity and protected native result to the assigned Council worker. The worker verifies the receipt context and seals the input before it returns to Core.",
+    };
   if (command === "council.history.search")
     return {
       classification: "endpoint-protected",

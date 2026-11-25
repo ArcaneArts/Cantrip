@@ -6,8 +6,30 @@ import {
   cantripMcpChatSendInputSchema,
 } from "./agent-chat-tools.js";
 import { cantripMcpReadResultBaseSchema } from "./cantrip-mcp-tools.js";
+import { councilProjectResultSourceSchema } from "./council-input.js";
+import { chatMessageOpaqueContentSchema } from "./communication-content.js";
+import { modelConfigurationSchema } from "./model-configuration.js";
 
 const projectId = z.string().min(1).max(255);
+
+export const councilProjectResultPrepareCommandSchema = z
+  .object({
+    type: z.literal("council.project-result.prepare"),
+    chatId: z.string().uuid(),
+    messageId: z.uuid(),
+    promptId: z.uuid(),
+    idempotencyKey: z.string().max(200).min(1),
+    configuration: modelConfigurationSchema,
+    source: councilProjectResultSourceSchema,
+    result: chatMessageOpaqueContentSchema
+      .pick({
+        id: true,
+        classification: true,
+        protectedContent: true,
+      })
+      .nullable(),
+  })
+  .strict();
 
 export const councilProjectSendInputSchema =
   cantripMcpChatSendInputSchema.extend({ projectId });

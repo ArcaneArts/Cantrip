@@ -34,6 +34,7 @@ import {
 import { ApplicationShellRender } from "@/components/app/application-shell-render";
 import { useCouncilWorkspace } from "@/components/council/use-council-workspace";
 import { useCouncilHistoryLink } from "@/components/council/use-council-history-link";
+import { useCouncilProjectSourceLink } from "@/components/council/use-council-project-source-link";
 import type { ShellAppMode } from "@/lib/app-mode";
 import {
   createDesktopPaneSelectionCommands,
@@ -682,6 +683,7 @@ export function App() {
     councilWorkspace.openHistory,
     setAppMode,
   );
+  useCouncilProjectSourceLink(councilAvailable && !isPopout, openCreatedTab);
   useEffect(() => {
     if (appMode === "council" && bootstrap.isSuccess && !councilAvailable) {
       setAppMode("chat");

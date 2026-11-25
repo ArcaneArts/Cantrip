@@ -69,6 +69,7 @@ import {
   type ChatSidePanelView,
 } from "@/components/chat/chat-side-panel-state";
 import { useStickyChatScroll } from "@/components/chat/use-sticky-chat-scroll";
+import { readCouncilProjectSourceLink } from "@/components/council/use-council-project-source-link";
 import { scheduleChatComposerFocus } from "@/components/chat/chat-composer-focus";
 import { type EditingSentMessage } from "@/components/chat/chat-transcript-entries";
 import {
@@ -750,6 +751,38 @@ export function useChatTranscriptController({
     messages.isFetchingOlder,
     preserveScrollDuringPrepend,
   ]);
+  const openedProjectSource = useRef<string | null>(null);
+  useEffect(() => {
+    const source = readCouncilProjectSourceLink();
+    if (
+      !source ||
+      source.chatId !== chat.id ||
+      openedProjectSource.current === source.messageId ||
+      !messages.data
+    )
+      return;
+    const anchor = transcriptContentRef.current?.querySelector<HTMLElement>(
+      `[data-chat-message-id="${CSS.escape(source.messageId)}"]`,
+    );
+    if (anchor) {
+      const frame = window.requestAnimationFrame(() => {
+        openedProjectSource.current = source.messageId;
+        anchor.scrollIntoView({ block: "center" });
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+    if (messages.hasOlder && !messages.isFetchingOlder && !messages.isError) {
+      void loadOlderMessages();
+    }
+  }, [
+    chat.id,
+    loadOlderMessages,
+    messages.data,
+    messages.hasOlder,
+    messages.isError,
+    messages.isFetchingOlder,
+    transcriptContentRef,
+  ]);
   useEffect(() => {
     if (
       incomingChatView?.staging ||
@@ -828,7 +861,7 @@ export function useChatTranscriptController({
   });
   const queuedPrompts = {
     ...queuedPromptState,
-    data: queuedPromptState.data?.items,
+    data: queuedPromptState.data?.items.filter((prompt) => !prompt.internal),
   };
   const goalState = useChatGoalQuery(
     chat.id,

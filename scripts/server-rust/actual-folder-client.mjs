@@ -2297,7 +2297,8 @@ try {
         ...(process.argv.includes("--council-app-mode") ||
         process.argv.includes("--council-memory") ||
         councilBrowserHistory ||
-        councilCompaction
+        councilCompaction ||
+        councilProjectMessages
           ? { CANTRIP_COUNCIL_ENABLED: "true" }
           : {}),
         // Retained-session product flows use the normal server lifetime. The

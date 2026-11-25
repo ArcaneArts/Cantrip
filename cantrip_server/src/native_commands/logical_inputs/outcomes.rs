@@ -174,6 +174,7 @@ pub(super) async fn finish(
         &[&chat],
     )
     .await?;
+    let logical_status = status;
     let (status, code) = match head["status"].as_str() {
         Some("accepted") => (json!("rejected"), json!("not-dispatched")),
         Some("dispatched") => (json!("uncertain"), json!("missing-native-receipt")),
@@ -207,5 +208,13 @@ pub(super) async fn finish(
     .await?
     .unwrap_or(Value::Null);
     queue::settle(tx, &completed, None, None).await?;
+    crate::chats::council_project_results::capture_result(
+        tx,
+        &original,
+        &completed,
+        logical_status,
+        transport_ended,
+    )
+    .await?;
     Ok(finished)
 }
