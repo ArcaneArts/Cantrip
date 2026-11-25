@@ -103,6 +103,17 @@ impl RepositoryOperations {
                     agent_execution = execution;
                     Ok(result)
                 }
+                "github.tools.status" | "github.tools.setup" => {
+                    let (_, worker) = self.profile.as_ref().ok_or_else(|| anyhow::anyhow!("Repository worker profile is not configured."))?;
+                    if command["projectId"] != "github-catalog" || command["worktreeId"].as_js_string() != Some(worker) {
+                        bail!("Git tools setup requires a worker catalog request.");
+                    }
+                    if kind == "github.tools.setup" {
+                        self.github()?.setup_tools(scope).await
+                    } else {
+                        crate::github::setup::status(scope).await
+                    }
+                }
                 kind if crate::github::Client::supports(kind) => {
                     let (directory, worker) = self.profile.as_ref().ok_or_else(|| anyhow::anyhow!("Repository worker profile is not configured."))?;
                     // Source reads the scoped journal for every GitHub request.

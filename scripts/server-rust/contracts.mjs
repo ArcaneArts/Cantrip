@@ -1058,6 +1058,7 @@ export const contractRoots = [
   "projectAutomationProtectedPromptSchema",
   "projectAutomationProtectedConditionSchema",
   "standaloneChatFileOperationRequestContentSchema",
+  "githubToolsStatusSchema",
 ];
 
 export const projectExportContractRoots = [

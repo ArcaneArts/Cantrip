@@ -884,6 +884,7 @@ const nativeWorkerExports = [
   "codexExternalImportStatusRequestSchema",
   "computerUseNativePreviewActionSchema",
   "computerUseNativePreviewResultSchema",
+  "githubToolsStatusSchema",
   "managedQueueNativeActionSchema",
   "managedQueueNativeInputSchema",
   "nativeQueueUserInputSchema",

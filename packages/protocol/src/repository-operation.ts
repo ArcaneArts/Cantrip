@@ -188,6 +188,8 @@ export const repositoryOperationTypeSchema = z.enum([
   "github.releases.list",
   "github.release.get",
   "github.release.create",
+  "github.tools.status",
+  "github.tools.setup",
 ]);
 
 export type RepositoryOperationType = z.infer<
@@ -264,6 +266,8 @@ const repositoryOperationAccessByType = {
   "repository.metadata.resolve": "read",
   "workspace.root.attach": "write",
   "github.auth.status": "read",
+  "github.tools.status": "read",
+  "github.tools.setup": "write",
   "github.repositories.cached": "read",
   "github.repositories.list": "read",
   "github.repository-owners.list": "read",

@@ -12,6 +12,7 @@ mod pulls;
 mod reads;
 mod releases;
 mod search;
+pub(crate) mod setup;
 use crate::filesystem::Scope;
 use anyhow::{Result, bail};
 pub use api::repository_for_checkout;
@@ -34,12 +35,14 @@ pub(crate) fn repository_parts(
 pub struct Client {
     directory: PathBuf,
     reads: std::sync::Mutex<reads::Reads>,
+    installing: tokio::sync::Mutex<()>,
 }
 impl Client {
     pub fn new(directory: &Path) -> Self {
         Self {
             directory: directory.to_owned(),
             reads: std::sync::Mutex::default(),
+            installing: tokio::sync::Mutex::default(),
         }
     }
     pub fn supports(kind: &str) -> bool {

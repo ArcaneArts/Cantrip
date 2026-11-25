@@ -1,5 +1,6 @@
 import {
   githubAuthStatusSchema,
+  githubToolsStatusSchema,
   githubRepositoryListSchema,
   githubRepositoryOwnerListSchema,
   githubRepositoryCreateSchema,
@@ -54,6 +55,26 @@ export async function getGithubStatus(workerId: string) {
     type: "github.auth.status",
     arguments: {},
     resultSchema: githubAuthStatusSchema,
+  });
+}
+
+export function getGithubToolsStatus(workerId: string) {
+  return runProtectedWorkerRepositoryOperation({
+    workerId,
+    scopeId: "github-catalog",
+    type: "github.tools.status",
+    arguments: {},
+    resultSchema: githubToolsStatusSchema,
+  });
+}
+
+export function setupGithubTools(workerId: string) {
+  return runProtectedWorkerRepositoryOperation({
+    workerId,
+    scopeId: "github-catalog",
+    type: "github.tools.setup",
+    arguments: {},
+    resultSchema: githubToolsStatusSchema,
   });
 }
 

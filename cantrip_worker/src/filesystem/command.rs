@@ -125,7 +125,7 @@ impl Scope {
         input: CaptureInput<'_>,
         timeout: Option<Duration>,
     ) -> Result<Captured> {
-        let mut command = Command::new(program);
+        let mut command = super::programs::command(program);
         command
             .args(args)
             .envs(environment.iter().map(|(key, value)| (key, value)));
@@ -286,7 +286,7 @@ impl Scope {
         mut consume: impl FnMut(&[u8]) -> bool,
     ) -> Result<()> {
         self.check()?;
-        let mut command = Command::new(program);
+        let mut command = super::programs::command(program);
         command
             .args(args)
             .stdin(std::process::Stdio::null())
@@ -412,7 +412,7 @@ impl Scope {
         timeout_ms: Option<u64>,
     ) -> Result<String> {
         self.check()?;
-        let mut command = Command::new(program);
+        let mut command = super::programs::command(program);
         command
             .args(args)
             .stdin(std::process::Stdio::null())

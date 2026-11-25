@@ -24,6 +24,7 @@ export async function githubCatalogFixture(root, bin) {
 fixture=${quote(directory)}
 printf '%s\\0' "$@" > "$fixture/calls/$$"
 case "$1:$2:$6" in
+  --version::) operation=version ;;
   api:user:*) operation=auth ;;
   api:--method:user/repos) operation=repositories ;;
   api:--method:user/orgs) operation=owners ;;
@@ -51,6 +52,7 @@ exit "$(/bin/cat "$fixture/$operation.status")"
       writeFile(path.join(directory, `${operation}.status`), String(status)),
     ]);
   }
+  await response("version", "gh version 2.105.0\n", { raw: true });
   await response("auth", "fixture-user\n", { raw: true });
   await response("repositories", [[catalogRepository]]);
   await response("owners", [[{ login: "ArcaneArts" }]]);

@@ -6,6 +6,14 @@ export const githubAuthStatusSchema = z.object({
   source: z.enum(["gh-cli", "token", "none"]),
 });
 
+export const githubToolsStatusSchema = z.object({
+  platform: z.enum(["macos", "windows", "other"]),
+  gitInstalled: z.boolean(),
+  githubCliInstalled: z.boolean(),
+  signInCommand: z.string().min(1),
+});
+export type GithubToolsStatus = z.infer<typeof githubToolsStatusSchema>;
+
 export const githubRepositorySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),

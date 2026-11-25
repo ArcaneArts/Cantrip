@@ -3,11 +3,11 @@
 use super::Progress;
 use crate::{
     error::WireError,
-    filesystem::{Scope, paths},
+    filesystem::{Scope, paths, programs},
 };
 use anyhow::{Result, anyhow};
 use cantrip_wire::{JsString, value::json};
-use std::{path::Path, sync::OnceLock, time::Duration};
+use std::{ffi::OsStr, path::Path, sync::OnceLock, time::Duration};
 use tokio::{
     io::AsyncReadExt,
     process::{Child, Command},
@@ -150,7 +150,7 @@ pub(super) async fn repository(
     scope: &Scope,
     progress: &Progress<'_>,
 ) -> Result<()> {
-    let mut command = Command::new("gh");
+    let mut command = programs::command(OsStr::new("gh"));
     command
         .args(["repo", "clone"])
         .arg(paths::native(name))

@@ -5,7 +5,7 @@ import type {
   ProjectWorkspaceSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   CircleAlert,
@@ -21,6 +21,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 
 import { StatusDot } from "@/components/app/status-dot";
+import { GithubSetupCard, githubToolsMissing } from "./github-setup-card";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
 import {
   RepositoryImportOptionsDialog,
@@ -41,6 +42,7 @@ import {
   getGithubRepositories,
   getGithubStatus,
 } from "@/lib/api";
+import { getGithubToolsStatus, setupGithubTools } from "@/lib/api/github";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { projectSetupErrorMessage } from "@/lib/job-status-message";
 import { createGithubProject } from "@/lib/project-encryption";
@@ -112,6 +114,35 @@ export function RepositoryImporter({
     queryFn: () => getGithubStatus(workerId!),
     queryKey: ["github-status", workerId],
   });
+  const [installerWorker, setInstallerWorker] = useState<string | null>(null);
+  const tools = useQuery({
+    enabled: Boolean(workerId),
+    queryKey: ["github-tools", workerId],
+    queryFn: () => getGithubToolsStatus(workerId!),
+    retry: false,
+    refetchInterval: (query) =>
+      workerId &&
+      installerWorker === workerId &&
+      githubToolsMissing(query.state.data)
+        ? 3_000
+        : false,
+  });
+  const setup = useMutation({
+    mutationFn: setupGithubTools,
+    onSuccess: (status, selectedWorkerId) => {
+      queryClient.setQueryData(["github-tools", selectedWorkerId], status);
+      setInstallerWorker(githubToolsMissing(status) ? selectedWorkerId : null);
+      void queryClient.invalidateQueries({
+        queryKey: ["github-status", selectedWorkerId],
+      });
+    },
+    onError: (_, selectedWorkerId) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["github-tools", selectedWorkerId],
+      });
+    },
+  });
+  const missingTools = githubToolsMissing(tools.data);
   const repositories = useQuery({
     enabled: Boolean(workerId && github.data?.authenticated),
     queryFn: () => getGithubRepositories(workerId!),
@@ -254,7 +285,7 @@ export function RepositoryImporter({
     repositories.data || cachedRepositories.data?.length,
   );
   const repositoryPickerReady = Boolean(
-    workerId && github.data?.authenticated && !github.isError,
+    workerId && github.data?.authenticated && !github.isError && !missingTools,
   );
   const selectedWorker =
     workers.find((worker) => worker.workerId === workerId) ?? null;
@@ -277,11 +308,12 @@ export function RepositoryImporter({
               </CardDescription>
             </CardHeader>
           </Card>
-        ) : github.isLoading && !github.data ? (
+        ) : ((github.isLoading && !github.data) || tools.isLoading) &&
+          !missingTools ? (
           <div className="grid flex-1 place-items-center text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />
           </div>
-        ) : github.isError ? (
+        ) : github.isError && !missingTools ? (
           <Card>
             <CardHeader>
               <CardTitle>Unable to reach GitHub through the worker</CardTitle>
@@ -296,30 +328,20 @@ export function RepositoryImporter({
               </Button>
             </CardContent>
           </Card>
-        ) : !github.data?.authenticated ? (
-          <Card>
-            <CardHeader>
-              <div className="mb-2 grid size-10 place-items-center rounded-lg border">
-                <GitBranch className="size-5" />
-              </div>
-              <CardTitle>Connect GitHub on the worker</CardTitle>
-              <CardDescription className="max-w-xl leading-6">
-                For the local MVP, Cantrip reuses GitHub CLI authentication. Run{" "}
-                <code className="rounded bg-muted px-1.5 py-0.5">
-                  gh auth login
-                </code>{" "}
-                or start the worker with a fine-grained token in{" "}
-                <code className="rounded bg-muted px-1.5 py-0.5">GH_TOKEN</code>
-                . The credential never enters the browser or server database.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button onClick={() => void github.refetch()}>
-                <RefreshCw className="size-4" />
-                Check again
-              </Button>
-            </CardContent>
-          </Card>
+        ) : missingTools || !github.data?.authenticated ? (
+          <GithubSetupCard
+            tools={tools.data}
+            workerName={selectedWorker?.name}
+            installing={setup.isPending && setup.variables === workerId}
+            awaitingInstaller={installerWorker === workerId && missingTools}
+            checking={tools.isFetching || github.isFetching}
+            error={setup.variables === workerId ? setup.error : null}
+            onSetup={() => setup.mutate(workerId)}
+            onCheck={() => {
+              void tools.refetch();
+              void github.refetch();
+            }}
+          />
         ) : (
           <>
             <div className="flex shrink-0 flex-col gap-4 px-5 pt-5 sm:px-8 sm:pt-8">

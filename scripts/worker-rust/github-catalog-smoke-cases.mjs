@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { repositoryOperationAccess } from "../../packages/protocol/dist/repository-operation.js";
 export async function verifyGithubCatalog({
   operation,
   fixture,
@@ -18,7 +19,7 @@ export async function verifyGithubCatalog({
       `/api/workers/${workerId}/repository-operation`,
       {
         scopeId: "github-catalog",
-        access: type === "github.repositories.create" ? "write" : "read",
+        access: repositoryOperationAccess(type),
         agent: false,
       },
     );
@@ -119,6 +120,14 @@ export async function verifyGithubCatalog({
     login: null,
     source: "none",
   });
+  const tools = (await query("github.tools.status")).result;
+  assert.equal(tools.githubCliInstalled, true);
+  assert.match(tools.signInCommand, /gh auth login/u);
+  if (tools.platform === "macos" || tools.platform === "windows") {
+    assert.equal(tools.gitInstalled, true);
+    assert.deepEqual((await query("github.tools.setup")).result, tools);
+  }
+  assert.equal((await query("github.auth.status")).result.authenticated, false);
   assert.match(
     (await query("github.repository-owners.list", {}, false)).error,
     /GitHub is not authenticated/,

@@ -1032,7 +1032,8 @@
     "projectAutomationProtectedNameSchema": 14709,
     "projectAutomationProtectedPromptSchema": 14713,
     "projectAutomationProtectedConditionSchema": 14717,
-    "standaloneChatFileOperationRequestContentSchema": 14729
+    "standaloneChatFileOperationRequestContentSchema": 14729,
+    "githubToolsStatusSchema": 14768
   },
   "nodes": [
     {
@@ -76453,7 +76454,9 @@
         "github.actions.run.checkout.prepare",
         "github.releases.list",
         "github.release.get",
-        "github.release.create"
+        "github.release.create",
+        "github.tools.status",
+        "github.tools.setup"
       ],
       "checks": []
     },
@@ -88268,6 +88271,24 @@
         }
       ]
     },
-    { "type": "never", "checks": [] }
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "githubToolsStatusSchema",
+      "shape": {
+        "platform": 14769,
+        "gitInstalled": 14770,
+        "githubCliInstalled": 14771,
+        "signInCommand": 14772
+      },
+      "checks": []
+    },
+    { "type": "enum", "values": ["macos", "windows", "other"], "checks": [] },
+    { "type": "boolean", "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    }
   ]
 }
