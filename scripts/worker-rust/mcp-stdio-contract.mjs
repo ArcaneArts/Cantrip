@@ -10,6 +10,13 @@ import {
   CANTRIP_MCP_OPERATIONS,
   CANTRIP_MCP_TOOL_NAMES,
   cantripMcpBindingSchema,
+  councilAutomationCreateInputSchema,
+  councilAutomationListInputSchema,
+  councilAutomationListOutputSchema,
+  councilAutomationMutationOutputSchema,
+  councilAutomationReadInputSchema,
+  councilAutomationReadOutputSchema,
+  councilAutomationUpdateInputSchema,
   councilCreateToolInputSchema,
   councilCreateToolOutputSchema,
   councilHistoryReadInputSchema,
@@ -150,6 +157,34 @@ async function generate() {
     CANTRIP_MCP_TOOL_NAMES.map((name) => [name, cantripMcpToolHelp(name)]),
   );
   const council = [
+    [
+      "council_automation_list",
+      "council.automation.list",
+      "List a Council agent’s scheduled routines and their current revisions. Omit agentId to use your own routines. Repeat with nextOffset when present.",
+      councilAutomationListInputSchema,
+      councilAutomationListOutputSchema,
+    ],
+    [
+      "council_automation_read",
+      "council.automation.read",
+      "Open a Council routine and read its full trigger prompt before editing it.",
+      councilAutomationReadInputSchema,
+      councilAutomationReadOutputSchema,
+    ],
+    [
+      "council_automation_create",
+      "council.automation.create",
+      "Create a scheduled prompt for a Council agent. Omit agentId to schedule yourself. Set an explicit timezone for weekly or cron schedules. Reuse operationId only to retry the same action.",
+      councilAutomationCreateInputSchema,
+      councilAutomationMutationOutputSchema,
+    ],
+    [
+      "council_automation_update",
+      "council.automation.update",
+      "Edit a Council routine’s name, trigger prompt, schedule, or enabled state. Use the current revision. Reuse operationId only to retry the same action.",
+      councilAutomationUpdateInputSchema,
+      councilAutomationMutationOutputSchema,
+    ],
     [
       "council_list",
       "council.list",

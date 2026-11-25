@@ -24,6 +24,7 @@ import { CouncilPeerDialog } from "./council-peer-dialog";
 import { CouncilProjectApprovals } from "./council-project-approvals";
 import { CouncilLinkedWork } from "./council-linked-work";
 import { CouncilRoster } from "./council-roster";
+import { CouncilRoutines } from "./council-routines";
 import type { CouncilWorkspaceController } from "./use-council-workspace";
 
 type Props = {
@@ -142,6 +143,7 @@ function CouncilConversation({
         </h1>
         <CouncilProjectApprovals agentId={agent.id} />
         <CouncilLinkedWork agentId={agent.id} />
+        <CouncilRoutines agentId={agent.id} />
         <Button
           aria-label="Search Council history"
           size="icon"

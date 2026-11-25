@@ -1,6 +1,7 @@
 import {
   councilAutomationWireListSchema,
   councilAutomationWireSchema,
+  councilAutomationRunWireListSchema,
   projectAutomationCreateSchema,
   projectAutomationUpdateSchema,
   projectAutomationWireListSchema,
@@ -12,6 +13,7 @@ import {
 import { post, request } from "@/lib/api-client";
 import {
   openAutomationRunWire,
+  openCouncilAutomationWire,
   openProjectAutomationWire,
   protectProjectAutomationCreate,
   protectProjectAutomationUpdate,
@@ -80,6 +82,26 @@ export async function getCouncilAutomations(agentId: string) {
   return councilAutomationWireListSchema.parse(
     await request(councilAutomationsPath(agentId)),
   );
+}
+
+export async function getCouncilRoutineSummaries(agentId: string) {
+  return Promise.all(
+    (await getCouncilAutomations(agentId)).map((row) =>
+      openCouncilAutomationWire(row),
+    ),
+  );
+}
+
+export async function getCouncilAutomationRuns(
+  agentId: string,
+  automationId: string,
+) {
+  const rows = councilAutomationRunWireListSchema.parse(
+    await request(
+      `${councilAutomationsPath(agentId)}/${encodeURIComponent(automationId)}/runs`,
+    ),
+  );
+  return rows;
 }
 
 export async function createCouncilAutomation(

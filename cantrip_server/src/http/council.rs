@@ -1,3 +1,4 @@
+mod automations;
 mod controls;
 mod creation;
 mod history;
@@ -44,6 +45,12 @@ pub(super) async fn execute_agent_operation(
     }
     let repository = Repository::new(service.repository.database.clone());
     match operation {
+        "council.automation.list"
+        | "council.automation.read"
+        | "council.automation.create"
+        | "council.automation.update" => {
+            automations::run(service, owner, context, operation, arguments).await
+        }
         "council.list" => {
             let agents = repository.council_agents(owner).await?;
             Ok(json!({"summary":"Loaded the Council roster.","data":json!({"agents":agents})}))

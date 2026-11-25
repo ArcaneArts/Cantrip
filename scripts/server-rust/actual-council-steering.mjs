@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { actualCouncilAutomations } from "./actual-council-automations.mjs";
+import { actualCouncilRoutineAuthoring } from "./actual-council-routine-authoring.mjs";
 import { actualCouncilBrowserHistory } from "./actual-council-browser-history.mjs";
 import { actualCouncilCompaction } from "./actual-council-compaction.mjs";
 import { actualCouncilMemory } from "./actual-council-memory.mjs";
@@ -32,6 +33,7 @@ export async function actualCouncilSteering({
   peerAppOrigin,
   browserHistory,
   automations,
+  routineAuthoring,
   compaction,
   raceMarker,
   dropReplyMarker,
@@ -358,6 +360,18 @@ export async function actualCouncilSteering({
         submit,
         readChat,
         readMessages,
+        result,
+      });
+    }
+    if (routineAuthoring) {
+      await actualCouncilRoutineAuthoring({
+        page,
+        appOrigin: routineAuthoring,
+        chatId,
+        model,
+        tools: modelFunctions(held.request.input.tools),
+        submit,
+        readChat,
         result,
       });
     }

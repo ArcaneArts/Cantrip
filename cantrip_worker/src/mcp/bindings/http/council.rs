@@ -1,4 +1,5 @@
 use super::{Authorized, Inner};
+mod automations;
 mod peer;
 use crate::{
     encryption::Service,
@@ -44,6 +45,12 @@ impl Inner {
         let agent_id = &authorization.active.binding["chatId"];
         let arguments = match operation {
             "council.create" => protect(service, authorization, &request, &input)?,
+            "council.automation.create" => {
+                automations::protect_create(service, authorization, agent_id, &input)?
+            }
+            "council.automation.update" => {
+                automations::protect_update(service, authorization, &input)?
+            }
             "council.project.chat.create" | "council.project.task.create" => {
                 let task = operation == "council.project.task.create";
                 let operation_id = input["operationId"]
@@ -105,6 +112,21 @@ impl Inner {
                 );
                 reply["data"] = council_inventory::open(service, &identity, &reply["data"])?;
             }
+            "council.automation.list" => {
+                let routines = reply["data"]["routines"]
+                    .as_array()
+                    .context("Council routines")?;
+                reply["data"]["routines"] = json!(
+                    routines
+                        .iter()
+                        .map(|routine| automations::open(service, authorization, routine, false))
+                        .collect::<Result<Vec<_>>>()?
+                );
+            }
+            "council.automation.read" => {
+                reply["data"] = automations::open(service, authorization, &reply["data"], true)?;
+            }
+            "council.automation.create" | "council.automation.update" => {}
             "council.project.chat.create"
             | "council.project.task.create"
             | "council.project.task.start"
