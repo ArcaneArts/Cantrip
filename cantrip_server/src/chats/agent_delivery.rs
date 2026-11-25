@@ -21,6 +21,7 @@ pub(crate) enum DeliveryError {
     ModelRequired,
     SenderUnavailable,
     OperationConflict,
+    PeerChainLimit,
 }
 impl std::fmt::Display for DeliveryError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,6 +31,9 @@ impl std::fmt::Display for DeliveryError {
             Self::SenderUnavailable => "The sending Council turn is no longer active.",
             Self::OperationConflict => {
                 "This Council delivery ID already belongs to another target or delivery mode."
+            }
+            Self::PeerChainLimit => {
+                "This Council handoff reached its run limit. A new user or routine turn can start more work."
             }
         })
     }

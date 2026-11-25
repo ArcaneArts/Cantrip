@@ -12,6 +12,10 @@ import { InlineAlert } from "@/components/ui/inline-alert";
 import { readCouncilPeerPage } from "@/lib/api/council-history";
 import { errorMessage } from "@/lib/error-message";
 
+function historyLink(agentId: string, messageId: string) {
+  return `?${new URLSearchParams({ councilAgent: agentId, message: messageId })}`;
+}
+
 export function CouncilPeerDialog({
   agentId,
   peerId,
@@ -91,6 +95,28 @@ export function CouncilPeerDialog({
                 <p className="break-words whitespace-pre-wrap text-sm">
                   {message.text}
                 </p>
+                <div className="flex flex-wrap gap-x-3 pt-1 text-xs text-muted-foreground">
+                  <a
+                    className="hover:underline"
+                    href={historyLink(
+                      message.senderAgentId,
+                      message.senderHistoryId,
+                    )}
+                  >
+                    Sender’s history
+                  </a>
+                  {message.recipientHistoryId ? (
+                    <a
+                      className="hover:underline"
+                      href={historyLink(
+                        message.recipientAgentId,
+                        message.recipientHistoryId,
+                      )}
+                    >
+                      Recipient’s history
+                    </a>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ol>

@@ -1,3 +1,5 @@
+mod lineage;
+
 use crate::{
     chats::{Repository, agent_delivery::DeliveryError, managed_console, message_writes},
     native_commands::transaction::TransactionRepository,
@@ -65,6 +67,8 @@ impl Repository {
                         return Ok(None);
                     }
 
+                    let lineage = lineage::admit(tx, &owner, sender, &source, operation).await?;
+
                     let current = peer_target(repository.execution_context(&owner, &target).await?)?;
                     let configuration = &current["modelConfiguration"];
                     if configuration["modelId"].is_null() {
@@ -97,11 +101,13 @@ impl Repository {
                     let input_id = input["turn"]["message"]["id"]
                         .as_str()
                         .context("Council handoff input ID")?;
+                    let queued_id = prompt["id"].as_str().context("Council handoff queue ID")?;
                     tx.query(
                         "INSERT INTO council_peer_deliveries
-                         (sender_chat_id,recipient_chat_id,operation_id,sent_message_id,input_message_id)
-                         VALUES($1,$2,$3::text::uuid,$4,$5)",
-                        &[&sender, &target, &operation, &message, &input_id],
+                         (sender_chat_id,recipient_chat_id,operation_id,sent_message_id,input_message_id,
+                          chain_id,depth,sender_input_message_id,queued_prompt_id)
+                         VALUES($1,$2,$3::text::uuid,$4,$5,$6,$7,$8,$9)",
+                        &[&sender, &target, &operation, &message, &input_id, &lineage.chain, &lineage.depth, &lineage.sender_input, &queued_id],
                     )
                     .await?;
                     Ok(Some(sent))
@@ -170,10 +176,15 @@ impl Repository {
                  SELECT d.created_at,d.sent_message_id,jsonb_build_object(
                    'id',m.id,'senderAgentId',d.sender_chat_id,'recipientAgentId',d.recipient_chat_id,
                    'operationId',d.operation_id,'createdAt',d.created_at,'protectedContent',m.protected_content,
-                   'role',m.role,'mode',m.mode,'attachmentIds',m.attachment_ids
+                   'role',m.role,'mode',m.mode,'attachmentIds',m.attachment_ids,
+                   'senderHistoryId',coalesce(sender_input.id,m.id),'recipientHistoryId',recipient_input.id
                  ) AS record
                  FROM council_peer_deliveries d
                  JOIN chat_messages m ON m.id=d.sent_message_id AND m.chat_id=d.sender_chat_id
+                 LEFT JOIN chat_messages sender_input ON sender_input.id=d.sender_input_message_id
+                   AND sender_input.chat_id=d.sender_chat_id
+                 LEFT JOIN chat_messages recipient_input ON recipient_input.id=d.input_message_id
+                   AND recipient_input.chat_id=d.recipient_chat_id
                  LEFT JOIN cursor_row c ON true
                  WHERE LEAST(d.sender_chat_id,d.recipient_chat_id)=pair.first_id
                    AND GREATEST(d.sender_chat_id,d.recipient_chat_id)=pair.second_id

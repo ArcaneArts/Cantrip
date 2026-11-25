@@ -111,6 +111,7 @@ impl OperationError {
                     (409, "stale-binding")
                 }
                 crate::chats::agent_delivery::DeliveryError::OperationConflict => (409, "conflict"),
+                crate::chats::agent_delivery::DeliveryError::PeerChainLimit => (409, "conflict"),
             };
             return Self::new(status, code, error.to_string());
         }

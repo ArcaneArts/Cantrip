@@ -122,10 +122,8 @@ export async function actualCouncilPeers({
       calls: [firstCall],
     });
     const sent = model.reply({ text: "I sent the review handoff." });
-    assert.equal(
-      (await submit("Send the handoff and retry it once.")).status,
-      "queued",
-    );
+    const sendRequest = "Send the handoff and retry it once.";
+    assert.equal((await submit(sendRequest)).status, "queued");
     await complete(sent);
     const receipt = projectToolOutput(duplicate, "council-peer-first-call-0");
     assert.equal(receipt.recipientAgentId, receiver.id);
@@ -255,6 +253,16 @@ export async function actualCouncilPeers({
     );
     assert.ok(!JSON.stringify(before.wire).includes(forward));
     assert.ok(!JSON.stringify(before.wire).includes(reverse));
+    const senderInput = (await readMessages()).find(
+      ({ role, content }) =>
+        role === "user" && content.some(({ text }) => text === sendRequest),
+    );
+    assert.ok(senderInput?.id);
+    const firstEvidence = before.one.messages.find(
+      ({ id }) => id === receipt.messageId,
+    );
+    assert.equal(firstEvidence.senderHistoryId, senderInput.id);
+    assert.equal(firstEvidence.recipientHistoryId, receipt.inputMessageId);
 
     await page.setViewportSize({ width: 1344, height: 900 });
     await page.goto(appOrigin);
@@ -278,6 +286,22 @@ export async function actualCouncilPeers({
     });
     await desktop.getByText(forward, { exact: true }).waitFor();
     await desktop.getByText(reverse, { exact: true }).waitFor();
+    const record = desktop.locator(
+      `[data-council-peer-message="${receipt.messageId}"]`,
+    );
+    const sourceLink = async (name) =>
+      new URL(
+        await record
+          .getByRole("link", { name, exact: true })
+          .getAttribute("href"),
+        page.url(),
+      ).searchParams;
+    const senderLink = await sourceLink("Sender’s history");
+    assert.equal(senderLink.get("councilAgent"), chatId);
+    assert.equal(senderLink.get("message"), senderInput.id);
+    const recipientLink = await sourceLink("Recipient’s history");
+    assert.equal(recipientLink.get("councilAgent"), receiver.id);
+    assert.equal(recipientLink.get("message"), receipt.inputMessageId);
     await desktop.getByRole("button", { name: "Close" }).click();
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("button", { name: "Back to Council agents" }).click();
@@ -297,7 +321,150 @@ export async function actualCouncilPeers({
     result.steps.push(
       "Council peers address idle and active Codex sessions, retry once, and open the same encrypted pair history at desktop and mobile widths",
     );
+    await actualCouncilPeerLineage({
+      page,
+      model,
+      peer,
+      tool: send,
+      chatId,
+      peerId: receiver.id,
+      submit,
+      readChat,
+      readPeerChat,
+      result,
+    });
   } finally {
     await peer.close();
   }
+}
+
+async function actualCouncilPeerLineage({
+  page,
+  model,
+  peer,
+  tool,
+  chatId,
+  peerId,
+  submit,
+  readChat,
+  readPeerChat,
+  result,
+}) {
+  await eventually(
+    readChat,
+    (chat) => assert.equal(chat.status, "idle"),
+    timeout,
+  );
+  await eventually(
+    readPeerChat,
+    (chat) => assert.equal(chat.status, "idle"),
+    timeout,
+  );
+  const completed = [];
+  for (let hop = 1; hop <= 13; hop += 1) {
+    const source = hop % 2 ? model : peer;
+    const recipientAgentId = hop % 2 ? peerId : chatId;
+    const responseId = `council-peer-chain-${hop}`;
+    source.reply({
+      responseId,
+      calls: [
+        {
+          ...tool,
+          arguments: {
+            recipientAgentId,
+            operationId: randomUUID(),
+            message: `Continue the Council handoff chain at hop ${hop}.`,
+          },
+        },
+      ],
+    });
+    completed.push(
+      source.reply({ text: `Council processed chain hop ${hop}.` }),
+    );
+  }
+  assert.equal(
+    (await submit("Start a new Council handoff chain.")).status,
+    "queued",
+  );
+  const stop = completed.at(-1);
+  await complete(stop);
+  const refusal = stop.request.input.input.find(
+    ({ type, call_id }) =>
+      type === "function_call_output" &&
+      call_id === "council-peer-chain-13-call-0",
+  );
+  assert.match(
+    JSON.stringify(refusal),
+    /Council handoff reached its run limit/iu,
+  );
+  for (const [index, response] of completed.slice(0, 12).entries()) {
+    assert.equal(
+      projectToolOutput(response, `council-peer-chain-${index + 1}-call-0`)
+        .delivery,
+      "queued",
+    );
+  }
+  await eventually(
+    readChat,
+    (chat) => assert.equal(chat.status, "idle"),
+    timeout,
+  );
+  await eventually(
+    readPeerChat,
+    (chat) => assert.equal(chat.status, "idle"),
+    timeout,
+  );
+
+  const fresh = "A different request can start a new peer chain.";
+  model.reply({
+    responseId: "council-peer-chain-reset",
+    calls: [
+      {
+        ...tool,
+        arguments: {
+          recipientAgentId: peerId,
+          operationId: randomUUID(),
+          message: fresh,
+        },
+      },
+    ],
+  });
+  const restarted = model.reply({ text: "I started a new peer chain." });
+  const received = peer.reply({ text: "The new peer chain arrived." });
+  assert.equal(
+    (await submit("Start fresh after the earlier chain limit.")).status,
+    "queued",
+  );
+  await complete(restarted);
+  await complete(received);
+  assert.equal(
+    projectToolOutput(restarted, "council-peer-chain-reset-call-0").delivery,
+    "queued",
+  );
+  assert.ok(JSON.stringify(received.request.input.input).includes(fresh));
+
+  const pageData = await page.evaluate(
+    async ({ chatId, peerId }) =>
+      (await import("/src/lib/api/council-history.ts")).readCouncilPeerPage(
+        chatId,
+        peerId,
+        null,
+      ),
+    { chatId, peerId },
+  );
+  assert.equal(
+    pageData.messages.filter(({ text }) =>
+      text.startsWith("Continue the Council handoff chain"),
+    ).length,
+    12,
+  );
+  assert.equal(
+    pageData.messages.filter(({ text }) => text === fresh).length,
+    1,
+  );
+  assert.deepEqual(model.failures, []);
+  assert.deepEqual(peer.failures, []);
+  result.steps.push(
+    "The pair thread linked exact sender and recipient evidence. A real native 12-hop chain rejected hop 13, and a new user turn started a fresh chain.",
+  );
 }

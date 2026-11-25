@@ -233,6 +233,8 @@ export async function readCouncilPeerPage(
         senderAgentId,
         recipientAgentId,
         operationId,
+        senderHistoryId,
+        recipientHistoryId,
       }) => {
         const content = await openMessage(
           encryption,
@@ -249,7 +251,15 @@ export async function readCouncilPeerPage(
         );
         if (item?.type !== "text")
           throw new Error("Council handoff source does not match its history.");
-        return { id, createdAt, senderAgentId, text: item.text };
+        return {
+          id,
+          createdAt,
+          senderAgentId,
+          recipientAgentId,
+          senderHistoryId,
+          recipientHistoryId,
+          text: item.text,
+        };
       },
     ),
   );
