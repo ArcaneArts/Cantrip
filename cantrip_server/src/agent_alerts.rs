@@ -63,6 +63,7 @@ pub const OPERATIONS: &[&str] = &[
     "council.memory.write",
     "council.history.search",
     "council.history.read",
+    "council.inventory",
 ];
 pub fn is_mutation(operation: &str) -> bool {
     matches!(
@@ -123,6 +124,7 @@ fn permitted(permission: &Value, operation: &str) -> bool {
                 | "council.memory.write"
                 | "council.history.search"
                 | "council.history.read"
+                | "council.inventory"
                 | "policy.list"
                 | "policy.read"
                 | "target.list"

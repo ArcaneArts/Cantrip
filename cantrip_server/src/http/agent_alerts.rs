@@ -121,6 +121,7 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
             | "council.memory.write"
             | "council.history.search"
             | "council.history.read"
+            | "council.inventory"
     ) {
         return super::council::execute_agent_operation(
             service,

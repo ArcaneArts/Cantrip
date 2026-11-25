@@ -1,4 +1,5 @@
 mod history;
+pub(super) mod inventory;
 mod memory;
 
 use super::{
@@ -60,6 +61,7 @@ pub(super) async fn execute_agent_operation(
             history::execute_agent_operation(&repository, owner, context, operation, arguments)
                 .await
         }
+        "council.inventory" => inventory::read(service, owner, arguments).await,
         _ => {
             memory::execute_agent_operation(&repository, owner, context, operation, arguments).await
         }

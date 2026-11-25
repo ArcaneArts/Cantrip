@@ -362,9 +362,11 @@ impl Inner {
             "chat.list" | "chat.read" | "chat.wait" | "chat.send" => {
                 self.chat(authorization, &call, operation).await
             }
-            "council.list" | "council.create" | "council.memory.read" | "council.memory.write" => {
-                self.council(authorization, &call, operation).await
-            }
+            "council.list"
+            | "council.create"
+            | "council.memory.read"
+            | "council.memory.write"
+            | "council.inventory" => self.council(authorization, &call, operation).await,
             "council.history.search" | "council.history.read" => {
                 self.council_history(authorization, &call, operation).await
             }

@@ -13,6 +13,7 @@
       "name": "cantripCliCommandNameSchema",
       "values": [
         "status",
+        "council.inventory",
         "policy.list",
         "policy.read",
         "worktree.list",

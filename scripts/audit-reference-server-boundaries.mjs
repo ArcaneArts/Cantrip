@@ -118,13 +118,13 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "2deb2160be20771af88ebb2551ebca6e8d2bbcbb64a6124f56ed31be9fe5b970",
+    "bcecd905fdfe55468dccca48834ffbb0070b937c80245f10dc98ad3e588f591f",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
-    "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
+    "eda5c53bda92870bd738663b686243a6183683a8d04af6af5f1bd43e02893f57",
   liveResources:
     "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
   workerCommands:
@@ -4045,6 +4045,13 @@ function liveResourceContentClassification(resource) {
 }
 
 function cliCommandContentClassification(command) {
+  if (command === "council.inventory") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "The worker opens account-owned inventory labels only for the bound Council lane.",
+    };
+  }
   if (/^run\./u.test(command)) {
     return {
       classification: "endpoint-protected",
@@ -4070,6 +4077,12 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation === "council.inventory")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "An active Council binding can list account-owned project, chat, and Task identities. Core returns encrypted labels that the assigned worker opens.",
+    };
   if (
     operation === "council.history.search" ||
     operation === "council.history.read"
