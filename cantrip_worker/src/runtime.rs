@@ -1702,6 +1702,8 @@ fn finish(
         Err(error) => {
             let error = if error.is::<crate::codex::turn::CouncilProviderQuota>() {
                 json!({"message":error.to_string(),"code":crate::codex::turn::COUNCIL_PROVIDER_QUOTA})
+            } else if error.is::<crate::codex::turn::CouncilCheckpointIncompatible>() {
+                json!({"message":error.to_string(),"code":crate::codex::turn::COUNCIL_CHECKPOINT_INCOMPATIBLE})
             } else if let Some(error) = error.downcast_ref::<crate::routing::ProtectedError>() {
                 match error.code {
                     Some(code) => json!({"message":error.to_string(),"code":code}),

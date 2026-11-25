@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -113,10 +113,13 @@ export async function actualCouncilActiveProvider({
   sourceRoute,
   sourceAccount,
   targetAccount,
+  checkpointFallbackTrace,
 }) {
   const original = "Find the original release result and finish the briefing.";
   const progress = "The release result was confirmed as Q-295.";
-  const finished = "The Council briefing is complete after native resume.";
+  const finished = checkpointFallbackTrace
+    ? "The Council briefing is complete after continuation."
+    : "The Council briefing is complete after native resume.";
   const calls = [];
   const boundaryCalls = [];
   const discover = model.reply({
@@ -160,7 +163,10 @@ export async function actualCouncilActiveProvider({
             'resumeRoute',r.identity->>'modelRouteId','resumeTurn',r.intent->'restoredSuspension'->'checkpoint'->>'turnId',
             'sourceAccount',n.identity->>'providerAccountId','resumeAccount',r.identity->>'providerAccountId',
             'sameRun',r.logical_operation_id=n.logical_operation_id,
-            'current',c.native_suspension_state->>'phase'
+            'current',c.native_suspension_state->>'phase',
+            'terminal',x.terminal_evidence->>'terminalStatus',
+            'terminalTurn',x.terminal_evidence->>'nativeTurnId',
+            'fallbackPhase',f.phase,'fallbackSameRun',f.run_id=n.logical_operation_id
          ) AS state FROM council_live_provider_switches s
          JOIN native_commands n ON n.operation_id=s.source_operation_id
          JOIN chats c ON c.id=s.chat_id
@@ -169,6 +175,8 @@ export async function actualCouncilActiveProvider({
            WHERE previous_operation_id=n.operation_id AND method='thread/resume'
            ORDER BY created_at DESC LIMIT 1
          ) r ON true
+         LEFT JOIN native_commands x ON x.operation_id=c.native_suspension_state->'executionOwner'->>'operationId'
+         LEFT JOIN council_provider_recoveries f ON f.source_operation_id=s.source_operation_id
          WHERE s.chat_id=${chatId}`;
     const stored = row?.state;
     observation.ledger = stored ?? null;
@@ -227,10 +235,13 @@ export async function actualCouncilActiveProvider({
       60_000,
     );
     near.release();
-    await eventually(
+    const switched = await eventually(
       state,
       (value) => {
-        assert.equal(value.phase, "completed");
+        assert.equal(
+          value.phase,
+          checkpointFallbackTrace ? "continued" : "completed",
+        );
         assert.equal(value.resumeTurn, value.turn);
         assert.equal(value.sameRun, true);
         assert.notEqual(value.oldRuntime, value.newRuntime);
@@ -241,15 +252,34 @@ export async function actualCouncilActiveProvider({
       75_000,
     );
     assert.equal(near.request.completed, true);
-    assert.ok(
-      destination.entered,
-      "The replacement native process sent model work",
+    await eventually(
+      () => destination.entered,
+      (entered) =>
+        assert.ok(entered, "The replacement native process sent model work"),
+      60_000,
     );
     observation.replacementModel = destination.request.input.model;
     assert.equal(first.request.account, councilQuotaAccounts[0]);
     assert.equal(near.request.account, councilQuotaAccounts[0]);
     assert.equal(destination.request.account, councilQuotaAccounts[1]);
     assert.equal(destination.request.input.model, first.request.input.model);
+    if (checkpointFallbackTrace) {
+      assert.equal(switched.terminal, "interrupted");
+      assert.equal(switched.turn, switched.terminalTurn);
+      assert.equal(switched.fallbackSameRun, true);
+      const input = JSON.stringify(destination.request.input.input);
+      assert.ok(input.includes(original));
+      assert.ok(input.includes(progress));
+      assert.match(
+        input,
+        /never repeat a completed or uncertain external effect/i,
+      );
+      const refused = (await readFile(checkpointFallbackTrace, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      assert.deepEqual(refused, [{ phase: "refused", turnId: switched.turn }]);
+    }
     const messages = await eventually(
       readMessages,
       (values) => {
@@ -269,12 +299,15 @@ export async function actualCouncilActiveProvider({
     assert.equal(withText(progress).length, 1);
     assert.equal(withText(progress)[0].id, posted.messageId);
     assert.equal(withText(finished).length, 1);
-    assert.ok(
-      !messages.some(({ content }) =>
+    assert.equal(
+      messages.filter(({ content }) =>
         content.some((item) => item.councilProviderRecovery),
-      ),
+      ).length,
+      checkpointFallbackTrace ? 1 : 0,
     );
-    assert.equal((await readChat()).providerRecovery.phase, "continued");
+    await eventually(readChat, ({ providerRecovery }) =>
+      assert.equal(providerRecovery.phase, "continued"),
+    );
     assert.deepEqual(model.failures, []);
     const url = new URL(appOrigin);
     url.searchParams.set("councilAgent", chatId);
@@ -310,7 +343,9 @@ export async function actualCouncilActiveProvider({
     });
     assert.deepEqual(model.failures, []);
     result.steps.push(
-      "The replacement Codex process resumed the same native Council turn exactly once and retained conversation history after a cold Worker restart.",
+      checkpointFallbackTrace
+        ? "After a definitive checkpoint refusal, Council terminated the original native turn and completed one continuation with the same logical run."
+        : "The replacement Codex process resumed the same native Council turn exactly once and retained conversation history after a cold Worker restart.",
     );
   } finally {
     observation.modelBoundaryFailures = model.failures;

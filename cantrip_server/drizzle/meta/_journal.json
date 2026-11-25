@@ -2220,6 +2220,13 @@
       "when": 1795617990000,
       "tag": "0316_council_live_provider_switches",
       "breakpoints": true
+    },
+    {
+      "idx": 317,
+      "version": "7",
+      "when": 1795621260000,
+      "tag": "0317_council_checkpoint_fallback",
+      "breakpoints": true
     }
   ]
 }

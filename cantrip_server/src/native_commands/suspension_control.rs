@@ -27,7 +27,9 @@ impl Repository {
                     if state["active"].is_null() {
                         return reject("suspension-not-held");
                     }
-                    state["controlId"] = json!(uuid::Uuid::new_v4().to_string());
+                    if !super::council_live_provider::owns_fallback_stop(tx, &chat, &state).await? {
+                        state["controlId"] = json!(uuid::Uuid::new_v4().to_string());
+                    }
                     state["actorControlId"] = Value::Null;
                     state["action"] = json!("stop");
                     state["phase"] = json!("stopping");

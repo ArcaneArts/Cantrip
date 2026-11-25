@@ -442,6 +442,9 @@ const councilProviderExhausted = process.argv.includes(
 const councilActiveProvider = process.argv.includes(
   "--council-active-provider",
 );
+const councilCheckpointFallback = process.argv.includes(
+  "--council-checkpoint-fallback",
+);
 const councilProviderTest =
   councilProviderRecovery ||
   councilProviderBlocked ||
@@ -1095,9 +1098,15 @@ async function flow(
           input: councilSteeringFollowUp,
         })
       : undefined;
+    const checkpointFallbackTrace = councilCheckpointFallback
+      ? path.join(root, "council-checkpoint-fallback.jsonl")
+      : undefined;
     const quotaCodex = activeQuotaModel
       ? await fixtureCodex(root, process.env.CANTRIP_CODEX_BIN, {
-          scenario: "passthrough",
+          scenario: checkpointFallbackTrace
+            ? "council-checkpoint-fallback"
+            : "passthrough",
+          marker: checkpointFallbackTrace,
           chatgptBaseUrl: new URL("/backend-api/", activeQuotaModel.baseUrl)
             .href,
         })
@@ -1181,6 +1190,7 @@ async function flow(
               databaseUrl: fixture.environment.DATABASE_URL,
               model: activeQuotaModel,
               workerDirectory: dataDirectory,
+              checkpointFallbackTrace,
               restartWorker: async () => {
                 const previous = worker.child.pid;
                 await stopWorker();
