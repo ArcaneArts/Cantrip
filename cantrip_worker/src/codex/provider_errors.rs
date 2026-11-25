@@ -135,6 +135,16 @@ pub fn token_expired(message: &JsString) -> bool {
             ),
         )
 }
+pub(crate) fn context_window_exceeded(message: &JsString) -> bool {
+    test(
+        message,
+        expression!(
+            r"context.{0,40}(length|limit|exceed|size)|maximum.{0,20}context",
+            "iu"
+        ),
+    )
+}
+
 pub fn safe_endpoint(message: &JsString) -> JsString {
     let status = capture(
         message,
@@ -162,13 +172,7 @@ pub fn safe_endpoint(message: &JsString) -> JsString {
         ),
     ) {
         "Model not found on the configured server."
-    } else if test(
-        &text,
-        expression!(
-            r"context.{0,40}(length|limit|exceed|size)|maximum.{0,20}context",
-            ""
-        ),
-    ) {
+    } else if context_window_exceeded(message) {
         "The model rejected the request's context length."
     } else if status == Some("404") {
         "The Responses endpoint or requested model was not found."

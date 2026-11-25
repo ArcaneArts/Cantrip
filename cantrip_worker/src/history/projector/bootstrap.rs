@@ -422,6 +422,7 @@ pub fn restore(recovery: &Value) -> Result<Value> {
             bail!("Canonical components disagree on their recovered native source.");
         }
         if previous.is_none()
+            && !render::turn_failure::is_item(&item)
             && let Value::Array(values) = &mut turn["items"]
         {
             values.push(item.clone());
