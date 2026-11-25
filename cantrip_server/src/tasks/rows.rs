@@ -130,6 +130,9 @@ pub(crate) fn summary(row: &Value, dispatch: Option<&Value>) -> Result<Value> {
         .map(crate::task_dispatch::summary)
         .transpose()?
         .unwrap_or(Value::Null);
+    if let Some(origin) = dispatch.and_then(|dispatch| dispatch.get("councilOrigin")) {
+        out["councilOrigin"] = origin.clone();
+    }
     for (name, column) in [
         ("implementationStartedAt", "implementation_started_at"),
         ("completedAt", "completed_at"),

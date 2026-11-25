@@ -7,7 +7,7 @@ export function readCouncilProjectSourceLink() {
   const messageId = params.get("message");
   const requestId = params.get("request");
   const task = params.get("task") === "true";
-  if (!projectId || !chatId || (!messageId && !requestId && !task)) return null;
+  if (!projectId || !chatId) return null;
   return { projectId, chatId, messageId, requestId, task };
 }
 

@@ -1073,6 +1073,7 @@ export const contractRoots = [
   "councilPeerSendExchangeSchema",
   "councilPeerPageQuerySchema",
   "councilPeerPageSchema",
+  "councilLinkedWorkWireListSchema",
   "councilPeerTargetWireSchema",
   "councilProjectChatTargetWireSchema",
   "councilProjectChatCreateWireSchema",

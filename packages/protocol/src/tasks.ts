@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  councilOriginSchema,
+  councilOriginWireSchema,
+} from "./council-input.js";
+import {
   EMPTY_MODEL_CONFIGURATION,
   modelConfigurationSchema,
 } from "./model-configuration.js";
@@ -195,6 +199,7 @@ export const taskDetailSchema = z.object({
   continuityFamily: taskWorkerContinuityFamilySchema.nullable().default(null),
   lastTaskWorkerId: z.string().uuid().nullable().default(null),
   dispatch: taskDispatchCycleSummarySchema.nullable().default(null),
+  councilOrigin: councilOriginSchema.optional(),
   state: taskStateSchema,
   stableStateBeforeFailure: taskStableStateSchema.nullable(),
   activeOperationId: z.string().min(1).max(200).nullable(),
@@ -1052,6 +1057,7 @@ export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
     continuityFamily: taskWorkerContinuityFamilySchema.nullable().default(null),
     lastTaskWorkerId: z.string().uuid().nullable().default(null),
     dispatch: taskDispatchCycleSummarySchema.nullable().default(null),
+    councilOrigin: councilOriginWireSchema.optional(),
     activeOperationId: z.string().min(1).max(200).nullable(),
     draftAttachmentIds: z
       .array(z.string().min(1).max(200))

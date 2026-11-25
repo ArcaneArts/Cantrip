@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { councilProjectResultLink } from "../../packages/protocol/dist/index.js";
+import {
+  councilAgentLink,
+  councilLinkedWorkLink,
+  councilProjectResultLink,
+} from "../../packages/protocol/dist/index.js";
 
 import { eventually } from "./full-worker.mjs";
 import { actualCouncilTaskStarts } from "./actual-council-task-starts.mjs";
@@ -180,6 +184,10 @@ export async function actualCouncilProjectCreation({
     60_000,
   );
   assert.equal(completed.briefMarkdown, taskBrief);
+  assert.deepEqual(completed.councilOrigin, {
+    agentId: councilId,
+    title: sender,
+  });
   assert.equal(completed.modelConfiguration.modelId, targetProfileId);
   assert.equal(taskRun.request.completed, true);
   assert.ok(JSON.stringify(await read(task.taskId)).includes(taskAnswer));
@@ -286,11 +294,12 @@ export async function actualCouncilProjectCreation({
       (await import("/src/lib/api/tasks.ts")).startTaskDirectly(id, input),
     { id: draft.taskId, input },
   );
-  await eventually(
+  const independent = await eventually(
     () => readTask(draft.taskId),
     (value) => assert.equal(value.state, "complete"),
     60_000,
   );
+  assert.equal(independent.councilOrigin, undefined);
   assert.equal(independentlyStarted.request.completed, true);
   await new Promise((resolve) => setTimeout(resolve, 1_500));
   assert.deepEqual(await taskResults(), [taskResult]);
@@ -325,7 +334,45 @@ export async function actualCouncilProjectCreation({
     };
     throw error;
   }
-  await openCouncil();
+  const attributedBy = page.getByRole("link", {
+    name: `Sent via ${sender}`,
+    exact: true,
+  });
+  await attributedBy.waitFor({ state: "visible" });
+  assert.equal(
+    await attributedBy.getAttribute("href"),
+    councilAgentLink(councilId),
+  );
+  await attributedBy.click();
+  await page.getByRole("heading", { name: sender, exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "Delegated work", exact: true })
+    .click();
+  const linked = page.getByRole("dialog", { name: "Delegated work" });
+  const linkedTask = linked.getByRole("link", {
+    name: new RegExp(taskTitle, "u"),
+  });
+  assert.equal(
+    await linkedTask.getAttribute("href"),
+    councilLinkedWorkLink({
+      projectId,
+      chatId: task.taskId,
+      messageId: null,
+      targetKind: "task",
+    }),
+  );
+  const linkedChat = linked.getByRole("link", {
+    name: new RegExp(chatTitle, "u"),
+  });
+  assert.equal(
+    new URL(await linkedChat.getAttribute("href"), page.url()).searchParams.get(
+      "projectChat",
+    ),
+    chat.chatId,
+  );
+  assert.equal(await linkedTask.count(), 1);
+  assert.equal(await linkedChat.count(), 1);
+  await linked.getByRole("button", { name: "Close" }).click();
   assert.deepEqual(model.failures, []);
   assert.deepEqual(target.failures, []);
   await idle();
@@ -340,6 +387,9 @@ export async function actualCouncilProjectCreation({
   );
   result.steps.push(
     "Council used the normal app grant path, retried two protected creations, received a result from the new project Agent chat, and ran one Task on the assigned project worker.",
+  );
+  result.steps.push(
+    "The Task linked back to the originating Council agent and the compact delegated work view linked to the Task and project Agent chat.",
   );
   await actualCouncilTaskStarts({
     page,
