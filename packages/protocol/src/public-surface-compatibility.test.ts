@@ -820,6 +820,9 @@ const councilExports = [
   "councilMemoryWriteToolInputSchema",
   "councilMemoryWriteToolOutputSchema",
   "councilProjectChatTargetWireSchema",
+  "councilProjectRequestLink",
+  "councilProjectRequestPrepareCommandSchema",
+  "councilProjectRequestSourceSchema",
   "councilProjectResultLink",
   "councilProjectResultPrepareCommandSchema",
   "councilProjectResultSourceSchema",
@@ -1186,6 +1189,7 @@ describe("protocol public surface compatibility", () => {
     const councilCommands = [
       "council.history.search",
       "council.project-result.prepare",
+      "council.project-request.prepare",
     ];
     expect(
       currentAdvertisedCommandTypes.filter((type) =>

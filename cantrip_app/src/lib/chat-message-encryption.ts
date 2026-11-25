@@ -244,9 +244,13 @@ export async function openChatMessageOpaqueSummary(
     const content = chatMessageContentSchema
       .parse(opened.content)
       .map((item) =>
-        item.type === "text" && item.councilProjectResult
-          ? { ...item, text: "Project result" }
-          : item,
+        item.type !== "text"
+          ? item
+          : item.councilProjectRequest
+            ? { ...item, text: "Project request" }
+            : item.councilProjectResult
+              ? { ...item, text: "Project result" }
+              : item,
       );
     return chatMessageSchema.parse({ ...message, content });
   } finally {

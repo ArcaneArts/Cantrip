@@ -23,7 +23,9 @@ export function latestEditableUserMessage(
     latest?.content.some(
       (item) =>
         item.type === "text" &&
-        (item.chatCommunication || item.councilProjectResult),
+        (item.chatCommunication ||
+          item.councilProjectResult ||
+          item.councilProjectRequest),
     )
   )
     return null;

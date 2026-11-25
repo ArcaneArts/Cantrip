@@ -1,5 +1,6 @@
 //! Worker-owned chat and queued input envelopes. Plaintext is used only by
 //! authenticated worker operations and the selected native runtime.
+mod council_request;
 mod council_result;
 pub(crate) mod queue;
 
@@ -25,6 +26,7 @@ pub(crate) const REPROTECT: &str = "chat.messages.reprotect";
 pub(crate) const TURN: &str = "chat.turn.protect";
 pub(crate) const QUEUE_PREPARE: &str = "chat.queue.prepare";
 pub(crate) const COUNCIL_PROJECT_RESULT: &str = "council.project-result.prepare";
+pub(crate) const COUNCIL_PROJECT_REQUEST: &str = "council.project-request.prepare";
 
 /// Re-read live grants when publishing and fence every acquired key to the
 /// account and logical server that accepted the operation.
@@ -88,6 +90,7 @@ pub(crate) fn execute(service: Arc<Service>, command: &Value) -> Result<Value> {
         Some(TURN) => turn(&scope, command),
         Some(QUEUE_PREPARE) => queue::prepare(&scope, command),
         Some(COUNCIL_PROJECT_RESULT) => council_result::prepare(&scope, command),
+        Some(COUNCIL_PROJECT_REQUEST) => council_request::prepare(&scope, &service, command),
         Some(MESSAGE | MESSAGES) => {
             let keys = ServiceKeys(service);
             let mut opened = HashMap::new();
@@ -183,6 +186,22 @@ pub(crate) fn turn_with_communication(
     protect_turn(scope, command, &[], Some(communication))
 }
 
+fn prepare_council_input(
+    scope: &Scope,
+    command: &Value,
+    source_field: &str,
+    text: String,
+) -> Result<Value> {
+    let mut draft = command["configuration"].clone();
+    for key in ["messageId", "promptId", "idempotencyKey"] {
+        draft[key] = command[key].clone();
+    }
+    draft["mode"] = json!("default");
+    draft[source_field] = command["source"].clone();
+    draft["text"] = json!(text);
+    protect_turn(scope, &draft, &[], None)
+}
+
 fn protect_turn(
     scope: &Scope,
     command: &Value,
@@ -193,8 +212,12 @@ fn protect_turn(
     if let Some(communication) = communication {
         text["chatCommunication"] = communication.clone();
     }
-    if let Some(source) = command.get("councilProjectResult") {
-        text["councilProjectResult"] = source.clone();
+    let mut internal = false;
+    for field in ["councilProjectResult", "councilProjectRequest"] {
+        if let Some(source) = command.get(field) {
+            text[field] = source.clone();
+            internal = true;
+        }
     }
     let prompt_text = if communication.is_some() {
         json!(runtime_text(&text)?)
@@ -216,7 +239,7 @@ fn protect_turn(
     let classification = json!({"mode": command["mode"], "attachmentIds": message["classification"]["attachmentIds"]});
     let mut protected_prompt =
         json!({"version": 1, "classification": classification, "text": prompt_text});
-    if command.get("councilProjectResult").is_some() {
+    if internal {
         protected_prompt["internal"] = json!(true);
     }
     let prompt = checked(

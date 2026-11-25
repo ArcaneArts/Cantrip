@@ -68,6 +68,9 @@ export async function actualCouncilProjectApprovals({
     ],
   });
   model.reply({ text: "I delegated the approval probe." });
+  const forwarded = model.reply({
+    text: "The project is waiting for your approval.",
+  });
   await submit("Delegate a new approval probe to the project chat.");
   await idle();
   const [original] = await eventually(
@@ -84,6 +87,31 @@ export async function actualCouncilProjectApprovals({
     20_000,
   );
   assert.deepEqual(delegated, [original]);
+  await eventually(
+    () => forwarded.request?.completed,
+    (complete) => assert.equal(complete, true, JSON.stringify(model.failures)),
+    60_000,
+  );
+  const prompt = JSON.stringify(forwarded.request.input.input);
+  assert.ok(prompt.includes("Run a harmless project approval probe."));
+  assert.match(prompt, /waiting for a human to answer its command approval/u);
+  const messages = await eventually(
+    () => api("getMessages", councilId),
+    (items) =>
+      assert.equal(
+        items.filter(({ content }) =>
+          content.some((item) => item.councilProjectRequest),
+        ).length,
+        1,
+      ),
+    20_000,
+  );
+  const [forwardedInput] = messages.flatMap(({ content }) =>
+    content.filter((item) => item.councilProjectRequest),
+  );
+  assert.equal(forwardedInput.councilProjectRequest.requestId, original.id);
+  assert.equal(forwardedInput.text, "Project request");
+  assert.equal((await pending({ chatId: targetChatId }))[0].id, original.id);
   const readResult = model.reply({
     text: "I received the result after approval.",
   });
@@ -98,6 +126,27 @@ export async function actualCouncilProjectApprovals({
     .getByRole("navigation", { name: "Council agents" })
     .getByRole("button", { name: new RegExp(sender, "u") })
     .click();
+  const councilConversation = page.locator(
+    '[data-slot="council-conversation"]',
+  );
+  const forwardedLink = councilConversation.locator(
+    '[data-slot="council-project-request"]',
+  );
+  await forwardedLink.waitFor({ state: "visible", timeout: 30_000 });
+  assert.equal(
+    new URL(
+      await forwardedLink.getAttribute("href"),
+      page.url(),
+    ).searchParams.get("request"),
+    original.id,
+  );
+  assert.equal(
+    await councilConversation
+      .getByText("Run a harmless project approval probe.", { exact: true })
+      .filter({ visible: true })
+      .count(),
+    0,
+  );
   await page.getByRole("button", { name: "Project requests (1)" }).click();
   const panel = page.getByRole("dialog", { name: "Project requests" });
   const card = panel.locator(`[data-interaction-request-id="${original.id}"]`);
@@ -138,6 +187,9 @@ export async function actualCouncilProjectApprovals({
   await page.keyboard.press("Escape");
   await idle();
 
+  const sourceTurns = () =>
+    model.requests.filter(({ method }) => method === "POST").length;
+  const sourceRequests = sourceTurns();
   requestCommand("Council-unrelated-project-output");
   const next = await api(
     "startTurn",
@@ -159,6 +211,8 @@ export async function actualCouncilProjectApprovals({
   );
   assert.notEqual(unrelated.id, original.id);
   assert.deepEqual(await pending({ councilAgentId: councilId }), []);
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  assert.equal(sourceTurns(), sourceRequests);
   await panel.waitFor({ state: "hidden" });
   assert.equal(
     await page.getByRole("button", { name: /Project requests/u }).count(),
@@ -171,6 +225,6 @@ export async function actualCouncilProjectApprovals({
     unrelatedRequestId: unrelated.id,
   };
   result.steps.push(
-    "A human resolved the original project approval from Council, and an independent turn's approval stayed in the project chat.",
+    "The original project approval prompted Council once and waited for a human response. An independent turn's approval stayed in the project chat.",
   );
 }

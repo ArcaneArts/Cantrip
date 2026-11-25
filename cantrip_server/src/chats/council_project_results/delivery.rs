@@ -1,5 +1,6 @@
-//! Core routes opaque results and owns queue admission. The assigned Council
-//! worker opens its account's result and prepares the attributed input.
+//! Core routes opaque project events and owns queue admission. The assigned
+//! Council worker opens its account's content and prepares the attributed input.
+use super::request;
 use crate::{
     chats::{Repository, recovery},
     database::Database,
@@ -38,8 +39,8 @@ pub(crate) fn new(
         Arc::new(move |_, entry| {
             logger(LogCall::event(
                 "warn",
-                "Council project result remains pending for delivery",
-                json!({"event":"council.project-result.pending","chatId":entry.as_ref().map(|entry|entry["chatId"].clone()),"operationId":entry.map(|entry|entry["operationId"].clone())}),
+                "Council project event remains pending for delivery",
+                json!({"event":"council.project-event.pending","chatId":entry.as_ref().map(|entry|entry["chatId"].clone()),"operationId":entry.map(|entry|entry["operationId"].clone())}),
             ));
         }),
         Arc::new(|| crate::auth::now().timestamp_millis()),
@@ -48,7 +49,7 @@ pub(crate) fn new(
 }
 
 fn identity(value: &Value) -> Result<&str> {
-    value.as_str().context("Council project result identity")
+    value.as_str().context("Council project event identity")
 }
 
 impl Delivery {
@@ -56,7 +57,8 @@ impl Delivery {
         let owner = identity(&entry["ownerId"])?;
         let chat = identity(&entry["chatId"])?;
         let operation = identity(&entry["operationId"])?;
-        let result_status = identity(&entry["source"]["status"])?.to_owned();
+        let is_request = entry.get("request").is_some();
+        let result_status = entry["source"]["status"].as_str().map(str::to_owned);
         let Some(context) = self.chats.execution_context(owner, chat).await? else {
             return Ok(());
         };
@@ -65,14 +67,20 @@ impl Delivery {
             "Council agent changed."
         );
         let worker = identity(&context["workerId"])?;
-        let key = format!("council-project-result:{chat}:{operation}");
+        let event = if is_request { "request" } else { "result" };
+        let key = format!("council-project-{event}:{chat}:{operation}");
         let id = uuid::Uuid::new_v4().to_string();
         let prompt_id = uuid::Uuid::new_v4().to_string();
-        let draft = json!({
-            "type":"council.project-result.prepare","chatId":chat,"messageId":id,"promptId":prompt_id,
+        let mut draft = json!({
+            "type":format!("council.project-{event}.prepare"),"chatId":chat,"messageId":id,"promptId":prompt_id,
             "idempotencyKey":key,"configuration":context["modelConfiguration"],"source":entry["source"],
-            "result":entry["result"],
         });
+        if is_request {
+            draft["request"] = entry["request"].clone();
+            draft["requestKey"] = entry["requestKey"].clone();
+        } else {
+            draft["result"] = entry["result"].clone();
+        }
         let input = self
             .commands
             .request(worker, draft, Some(Duration::from_secs(10)), None)
@@ -84,7 +92,7 @@ impl Delivery {
                 && input["queuedPrompt"]["id"] == prompt_id
                 && input["message"]["idempotencyKey"] == key
                 && input["queuedPrompt"]["idempotencyKey"] == key,
-            "Council worker returned another result input."
+            "Council worker returned another project input."
         );
         let prompt = input["queuedPrompt"].clone();
         let (scope_owner, scope_chat, scope_worker, scope_operation) = (
@@ -98,16 +106,26 @@ impl Delivery {
             if tx.query("SELECT id FROM chats WHERE owner_id=$1 AND id=$2 FOR UPDATE", &[owner, chat]).await?.is_empty() {
                 return Ok(false);
             }
-            if tx.query("SELECT operation_id FROM council_project_deliveries WHERE source_chat_id=$1 AND operation_id=$2::text::uuid AND result_status IS NOT NULL AND callback_delivered_at IS NULL FOR UPDATE", &[chat, operation]).await?.is_empty() {
+            let pending = if is_request {
+                request::lock_pending(tx, owner, chat, operation).await?
+            } else {
+                !tx.query("SELECT operation_id FROM council_project_deliveries WHERE source_chat_id=$1 AND operation_id=$2::text::uuid AND result_status IS NOT NULL AND callback_delivered_at IS NULL FOR UPDATE", &[chat, operation]).await?.is_empty()
+            };
+            if !pending {
                 return Ok(false);
             }
             let repository = TransactionRepository::new(tx);
             let current = repository.execution_context(owner, chat).await?.context("Council agent is unavailable.")?;
-            ensure!(current.get("councilAgent").is_some() && current["workerId"] == worker.as_str(), "Council placement changed before result delivery.");
-            ensure!(current["modelConfiguration"]["modelId"] == prompt["modelId"], "Council model changed before result delivery.");
+            ensure!(current.get("councilAgent").is_some() && current["workerId"] == worker.as_str(), "Council placement changed before project event delivery.");
+            ensure!(current["modelConfiguration"]["modelId"] == prompt["modelId"], "Council model changed before project event delivery.");
             let queued = repository.add_gui_prompt(owner, &current, &prompt, &json!({"operationId":key,"resumeAutonomy":false})).await?;
-            ensure!(!queued["acceptedItem"].is_null(), "Council could not queue the project result.");
-            tx.query("UPDATE council_project_deliveries SET result_status=$3,callback_delivered_at=now() WHERE source_chat_id=$1 AND operation_id=$2::text::uuid", &[chat, operation, &result_status]).await?;
+            ensure!(!queued["acceptedItem"].is_null(), "Council could not queue the project event.");
+            if is_request {
+                request::acknowledge(tx, operation).await?;
+            } else {
+                let status = result_status.context("Council project result status")?;
+                tx.query("UPDATE council_project_deliveries SET result_status=$3,callback_delivered_at=now() WHERE source_chat_id=$1 AND operation_id=$2::text::uuid", &[chat, operation, &status]).await?;
+            }
             Ok(true)
         }.boxed()).await?;
         if inserted {
@@ -158,9 +176,12 @@ impl Backend for Delivery {
                   ORDER BY d.callback_due_at,d.operation_id LIMIT 64"#,
                 &[],
             ).await?;
-            rows.iter()
+            let results = rows.iter()
                 .map(|row| Ok(serde_json::from_str(row.get::<&str>(0)?)?))
-                .collect()
+                .collect::<Result<Vec<Value>>>()?;
+            let mut pending = request::pending(&self.database).await?;
+            pending.extend(results);
+            Ok(pending)
         }.boxed()
     }
 
@@ -175,7 +196,10 @@ impl Backend for Delivery {
 
     fn defer(&self, entry: Value, at: i64) -> BoxFuture<'_, Result<()>> {
         async move {
-            let at = chrono::DateTime::from_timestamp_millis(at).context("Council result retry date")?;
+            let at = chrono::DateTime::from_timestamp_millis(at).context("Council project event retry date")?;
+            if entry.get("request").is_some() {
+                return request::defer(&self.database, identity(&entry["operationId"])?, &at).await;
+            }
             self.database.query("UPDATE council_project_deliveries SET callback_attempts=callback_attempts+1,callback_due_at=$3 WHERE source_chat_id=$1 AND operation_id=$2::text::uuid AND callback_delivered_at IS NULL", &[&identity(&entry["chatId"])?, &identity(&entry["operationId"])?, &at]).await?;
             Ok(())
         }.boxed()

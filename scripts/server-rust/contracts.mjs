@@ -1074,6 +1074,7 @@ export const contractRoots = [
   "councilHistoryReadInputSchema",
   "councilHistorySearchCommandSchema",
   "councilProjectResultPrepareCommandSchema",
+  "councilProjectRequestPrepareCommandSchema",
   "councilHistorySearchExchangeSchema",
   "councilHistorySearchInputSchema",
   "councilHistorySearchReplySchema",

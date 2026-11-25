@@ -117,7 +117,10 @@ function CouncilConversation({
           ? "The worker could not prepare this agent’s workspace."
           : null;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      data-slot="council-conversation"
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
         {compact ? (
           <Button

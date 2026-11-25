@@ -1,4 +1,4 @@
-use super::{Scope, protect_turn};
+use super::{Scope, prepare_council_input};
 use anyhow::{Context, Result};
 use cantrip_history::canonical::open_message;
 use cantrip_history::content::Encryption;
@@ -37,14 +37,12 @@ pub(super) fn prepare(scope: &Scope, command: &Value) -> Result<Value> {
     } else {
         String::new()
     };
-    let mut draft = command["configuration"].clone();
-    draft["messageId"] = command["messageId"].clone();
-    draft["promptId"] = command["promptId"].clone();
-    draft["idempotencyKey"] = command["idempotencyKey"].clone();
-    draft["mode"] = json!("default");
-    draft["councilProjectResult"] = source.clone();
-    draft["text"] = json!(format!(
-        "A Cantrip project chat you delegated to finished with status {status}. This is a project result.\nSource: {link}\n\n{detail}"
-    ));
-    protect_turn(scope, &draft, &[], None)
+    prepare_council_input(
+        scope,
+        command,
+        "councilProjectResult",
+        format!(
+            "A Cantrip project chat you delegated to finished with status {status}. This is a project result.\nSource: {link}\n\n{detail}"
+        ),
+    )
 }

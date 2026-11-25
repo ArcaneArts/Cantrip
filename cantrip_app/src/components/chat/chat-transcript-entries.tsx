@@ -1,5 +1,8 @@
 import { AgentChatMessage, messageCommunication } from "./agent-chat-message";
-import { councilProjectResultLink } from "@cantrip/protocol";
+import {
+  councilProjectRequestLink,
+  councilProjectResultLink,
+} from "@cantrip/protocol";
 import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
 import {
   ArrowUpRight,
@@ -248,18 +251,32 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
     }
     const message = entry.message;
     const source = message.content.find(
-      (item) => item.type === "text" && item.councilProjectResult,
+      (item) =>
+        item.type === "text" &&
+        (item.councilProjectResult || item.councilProjectRequest),
     );
-    if (source?.type === "text" && source.councilProjectResult) {
-      const result = source.councilProjectResult;
+    if (source?.type === "text") {
+      const { councilProjectRequest, councilProjectResult } = source;
       return (
         <a
           key={message.id}
-          data-slot="council-project-result"
+          data-slot={
+            councilProjectRequest
+              ? "council-project-request"
+              : "council-project-result"
+          }
           className="inline-flex w-fit items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
-          href={councilProjectResultLink(result)}
+          href={
+            councilProjectRequest
+              ? councilProjectRequestLink(councilProjectRequest)
+              : councilProjectResult &&
+                councilProjectResultLink(councilProjectResult)
+          }
         >
-          Project result <span className="capitalize">· {result.status}</span>
+          {councilProjectRequest ? "Project request" : "Project result"}
+          {councilProjectResult ? (
+            <span className="capitalize">· {councilProjectResult.status}</span>
+          ) : null}
           <ArrowUpRight aria-label="Open project source" className="size-3" />
         </a>
       );
