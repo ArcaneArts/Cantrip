@@ -162,6 +162,18 @@ export function resolveChatTurnIdentity(input: {
   return { turnId: null, turnKey: `legacy:${anchorId}` };
 }
 
+function nativeTurnFailure(message: ChatMessage | undefined): boolean {
+  return (
+    message?.content.some(
+      (item) =>
+        item.type === "activity" &&
+        item.activity.type === "notice" &&
+        item.activity.status === "failed" &&
+        item.activity.correlation?.sourceMethod === "native-turn-failure",
+    ) ?? false
+  );
+}
+
 function terminalMessage(message: ChatMessage | undefined): boolean {
   if (!message) return false;
   if (
@@ -172,6 +184,7 @@ function terminalMessage(message: ChatMessage | undefined): boolean {
     return false;
   if (message.role === "system") return true;
   if (message.role !== "assistant") return false;
+  if (nativeTurnFailure(message)) return true;
   return message.content.some(
     (item) =>
       item.type === "text" &&
@@ -280,7 +293,11 @@ function terminalActivityStatus(
   if (turnSummary?.type === "turnSummary") {
     return turnSummary.status === "completed" ? "completed" : "failed";
   }
-  if (followingMessage?.role === "system") return "failed";
+  if (
+    followingMessage?.role === "system" ||
+    nativeTurnFailure(followingMessage)
+  )
+    return "failed";
   return terminalMessage(followingMessage) ? "completed" : null;
 }
 

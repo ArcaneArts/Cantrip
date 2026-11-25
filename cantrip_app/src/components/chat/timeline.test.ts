@@ -441,6 +441,45 @@ describe("chat activity timeline", () => {
     expect(findLatestLiveActivityGroupKey(timeline)).toBe("activities:new:0");
   });
 
+  it("shows a native turn failure outside the completed work group", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect the checkout" },
+      ]),
+      commandMessage("command", "2026-08-07T12:00:01.000Z", "turn", "running"),
+      message("failure", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "notice",
+            id: "turn:turn:failure",
+            status: "failed",
+            level: "error",
+            message: "Model context limit exceeded",
+            details:
+              "The request needed 45899 tokens, but the model allows 32768.",
+            willRetry: false,
+            correlation: {
+              ...turnCorrelation("turn"),
+              sourceMethod: "native-turn-failure",
+            },
+          },
+        },
+      ]),
+    ]);
+
+    expect(timeline).toHaveLength(3);
+    expect(timeline[1]).toMatchObject({
+      kind: "turn",
+      messages: [{ content: [{ activity: { status: "failed" } }] }],
+    });
+    expect(timeline[2]).toMatchObject({
+      type: "message",
+      message: { id: "failure" },
+    });
+    expect(findLatestLiveActivityGroupKey(timeline)).toBeNull();
+  });
+
   it("keeps an active turn expanded by leaving its end open", () => {
     const timeline = buildChatTimeline([
       message("user", "user", "2026-08-07T12:00:00.000Z", [

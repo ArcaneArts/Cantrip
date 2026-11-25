@@ -1,6 +1,7 @@
 //! Presentation of reduced native evidence. Authorized materialization is
 //! supplied by the caller; this code never reads a path or reserves an identity.
 mod display;
+pub(super) mod turn_failure;
 use crate::native_items::{self, array, checked, concat, join, obj, s, text};
 use anyhow::{Result, bail};
 use cantrip_wire::{JsString, Value};
@@ -103,7 +104,7 @@ pub fn item(item: &Value, context: &Value) -> Result<Vec<Value>> {
     {
         bail!("Native history render scope belongs to another thread.");
     }
-    let r = Renderer {
+    let mut r = Renderer {
         item,
         context,
         correlation: obj([
@@ -115,6 +116,16 @@ pub fn item(item: &Value, context: &Value) -> Result<Vec<Value>> {
         ]),
     };
     let body = &item["body"];
+    if turn_failure::is_item(item) {
+        r.correlation["sourceMethod"] = s("native-turn-failure");
+        r.correlation["itemId"] = Value::Null;
+        return r.finish(
+            "activity",
+            "assistant",
+            vec![r.activity(body["notice"].clone())?],
+            Vec::new(),
+        );
+    }
     if body["type"] == "userMessage" {
         let mut content = Vec::new();
         let mut unresolved = Vec::new();

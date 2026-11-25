@@ -159,7 +159,9 @@ impl Projector {
         };
         for turn in array(&source["turns"])? {
             let reduced = without(turn, "items");
-            for item in array(&turn["items"])? {
+            let items = array(&turn["items"])?;
+            let failure = render::turn_failure::item(turn, items.len());
+            for item in items.iter().chain(failure.iter()) {
                 self.active()?;
                 let prior = restored.get(&group(&turn["id"], &item["id"], &item["identityKind"]));
                 if let Some(prior) = prior.filter(|p| !p.is_empty()) {

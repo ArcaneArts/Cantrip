@@ -307,6 +307,133 @@ async function restored(recovery, label = "restore") {
 const root = await mkdtemp(path.join(tmpdir(), "cantrip-canonical-projector-"));
 try {
   await compare([], null, { prepare: true }, "empty");
+  {
+    const prompt = event({
+      id: "prompt",
+      type: "userMessage",
+      content: [{ type: "text", text: "Inspect the project" }],
+    });
+    const failed = event({}, 2, "turn/completed");
+    failed.frame.params = {
+      turn: {
+        id: "turn",
+        status: "failed",
+        items: [],
+        startedAt: 1,
+        completedAt: 2,
+        durationMs: 1_000,
+        error: {
+          message: JSON.stringify({
+            error: {
+              message:
+                "request (45899 tokens) exceeds the available context size (32768 tokens), try increasing it",
+              type: "invalid_request_error",
+              param: null,
+              code: null,
+            },
+          }),
+          codexErrorInfo: "badRequest",
+          additionalDetails: "Private provider diagnostic",
+        },
+      },
+    };
+    const records = [prompt, failed];
+    const config = configuration(records);
+    config.mappings.push({
+      key: "e".repeat(64),
+      identity: {
+        threadId: binding.threadId,
+        turnId: "turn",
+        itemId: "cantrip:turn-failure",
+        component: "activity",
+        identityKind: "legacy",
+      },
+      messageId: "525d6376-d7c4-41f4-8a3a-0796817ba19e",
+      idempotencyKey: "fixture-failure",
+      preservedInput: null,
+    });
+    const actual = await result({
+      op: "projector.run",
+      config,
+      records,
+      previous: null,
+    });
+    assert.equal(actual.error, undefined);
+    assert.doesNotMatch(
+      JSON.stringify(actual.batches),
+      /45899 tokens|Private provider/,
+    );
+    const decoded = await plaintext(actual.batches);
+    const items = decoded.flatMap((batch) => batch.items);
+    const rendered = items.find(
+      ({ message }) => message.id === config.mappings.at(-1).messageId,
+    );
+    assert.ok(
+      rendered,
+      "Failed native turn should publish a transcript notice",
+    );
+    const [part] = rendered.message.protectedContent;
+    assert.equal(part.activity.message, "Model context limit exceeded");
+    assert.equal(part.activity.correlation.sourceMethod, "native-turn-failure");
+    assert.match(part.activity.details, /45899 tokens.*32768/);
+    assert.doesNotMatch(
+      part.activity.details,
+      /Private provider|invalid_request_error/,
+    );
+    const replay = await result({
+      op: "projector.run",
+      config,
+      records: [],
+      previous: actual.state,
+    });
+    assert.equal(replay.error, undefined);
+    assert.deepEqual(replay.batches, []);
+
+    const recovered = await result({
+      op: "projector.restore",
+      recovery: {
+        binding,
+        snapshotId: "f".repeat(64),
+        items: items.map(
+          ({ identity, message, revision, state, order, evidence }) => ({
+            key: config.mappings.find(
+              ({ messageId }) => messageId === message.id,
+            ).key,
+            identity,
+            revision,
+            state,
+            order,
+            sourceRevision: evidence.revision,
+            sourceCurrent: true,
+            source: evidence.content,
+          }),
+        ),
+        turns: decoded.flatMap((batch) =>
+          batch.turns.map(({ metadata, ...turn }) => ({
+            bindingId: binding.id,
+            turn,
+            source: metadata,
+          })),
+        ),
+        batches: [],
+      },
+    });
+    assert.deepEqual(
+      recovered.source.turns[0].items.map(({ id }) => id),
+      ["prompt"],
+    );
+    const restoredReplay = await result({
+      op: "projector.run",
+      config,
+      records: [],
+      previous: recovered,
+    });
+    assert.equal(restoredReplay.error, undefined);
+    assert.deepEqual(
+      restoredReplay.batches.flatMap((batch) => batch.items),
+      [],
+    );
+  }
   const first = event({});
   const initial = await compare(
     [first],
