@@ -24,6 +24,7 @@ import {
   nativeGoalClaimRecoverySchema,
 } from "./native-goal-recovery.js";
 import { z } from "zod";
+import { councilAgentTurnContextSchema } from "./council.js";
 import { initialLabelCommandSchema } from "./labeling.js";
 import {
   managedSessionContextSchema,
@@ -197,6 +198,7 @@ export const workerChatCommandSchemas = [
   z
     .object({
       type: z.literal("chat.turn"),
+      councilAgent: councilAgentTurnContextSchema.optional(),
       initialLabel: initialLabelCommandSchema.optional(),
       osExecution: cantripOsExecutionSchema.optional(),
       nativeCommandReceipt: nativeCommandReceiptSchema.optional(),

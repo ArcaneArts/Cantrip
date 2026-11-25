@@ -2,7 +2,7 @@ use crate::wire::{self, Value, coercion::truthy, value::json};
 use anyhow::{Result, bail};
 
 pub(super) fn wire_summary(raw: &Value) -> Result<Value> {
-    let standalone = raw["context_kind"] == "standalone";
+    let standalone = matches!(raw["context_kind"].as_str(), Some("standalone" | "council"));
     let fields = [
         ("id", "id"),
         ("contextKind", "context_kind"),

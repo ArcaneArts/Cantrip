@@ -16,12 +16,8 @@ async fn standalone(ex: Executor<'_, '_>, owner: &str, chat: &str) -> Result<boo
         &[json!(chat), json!(owner)],
     )
     .await?;
-    Ok(rows
-        .first()
-        .map(|row| row.get::<String>(0))
-        .transpose()?
-        .as_deref()
-        == Some("standalone"))
+    let kind = rows.first().map(|row| row.get::<String>(0)).transpose()?;
+    Ok(matches!(kind.as_deref(), Some("standalone" | "council")))
 }
 fn map_project_error<T>(result: Result<T>) -> Result<T> {
     result.map_err(|error| {
@@ -73,6 +69,13 @@ fn context(
     } else {
         context["executionLaneActivatedAt"] = json!(at);
     }
+    if chat["context_kind"] == "council" {
+        crate::chats::council::apply_execution_context(
+            &mut context,
+            &row["councilAgent"],
+            settings,
+        )?;
+    }
     Ok(context)
 }
 async fn start(
@@ -85,13 +88,13 @@ async fn start(
 ) -> Result<Option<Value>> {
     let ex = Executor::Transaction(tx);
     if standalone {
-        if query(ex,"SELECT id FROM chats WHERE id=$1 AND owner_id=$2 AND context_kind='standalone' AND archived_at IS NULL LIMIT 1 FOR UPDATE",&[&chat,&owner],&[json!(chat),json!(owner)]).await?.is_empty(){return Ok(None);}
+        if query(ex,"SELECT id FROM chats WHERE id=$1 AND owner_id=$2 AND context_kind IN ('standalone','council') AND archived_at IS NULL LIMIT 1 FOR UPDATE",&[&chat,&owner],&[json!(chat),json!(owner)]).await?.is_empty(){return Ok(None);}
     } else {
         query(ex,"WITH locked_project AS MATERIALIZED (SELECT projects.id FROM projects INNER JOIN chats ON chats.project_id=projects.id WHERE projects.owner_id=$1 AND chats.id=$2 FOR UPDATE OF projects) SELECT chats.id FROM locked_project INNER JOIN chats ON chats.project_id=locked_project.id WHERE chats.id=$2 FOR UPDATE OF chats",&[&owner,&chat],&[json!(owner),json!(chat)]).await?;
         guard::assert_runtime_writable(tx, chat, None, None, Access::Write).await?;
     }
     let sql = if standalone {
-        "SELECT jsonb_build_object('chat',to_jsonb(c),'root',to_jsonb(root),'runtime',to_jsonb(r),'settings',to_jsonb(s))::text FROM chats c INNER JOIN standalone_chat_roots root ON root.id=c.active_scratch_root_id AND root.chat_id=c.id AND root.owner_id=c.owner_id AND root.worker_id=c.active_worker_id LEFT JOIN chat_runtime_sessions r ON r.chat_id=c.id AND r.worker_id=root.worker_id AND r.scratch_root_id=root.id LEFT JOIN user_settings s ON s.user_id=c.owner_id WHERE c.id=$1 LIMIT 1"
+        "SELECT jsonb_build_object('chat',to_jsonb(c),'root',to_jsonb(root),'runtime',to_jsonb(r),'settings',to_jsonb(s),'councilAgent',to_jsonb(a))::text FROM chats c INNER JOIN standalone_chat_roots root ON root.id=c.active_scratch_root_id AND root.chat_id=c.id AND root.owner_id=c.owner_id AND root.worker_id=c.active_worker_id LEFT JOIN chat_runtime_sessions r ON r.chat_id=c.id AND r.worker_id=root.worker_id AND r.scratch_root_id=root.id LEFT JOIN user_settings s ON s.user_id=c.owner_id LEFT JOIN council_agents a ON a.chat_id=c.id AND a.owner_id=c.owner_id WHERE c.id=$1 LIMIT 1"
     } else {
         "SELECT jsonb_build_object('chat',to_jsonb(c),'project',to_jsonb(p),'settings',to_jsonb(s),'root',to_jsonb(w),'runtime',to_jsonb(r))::text FROM chats c INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$2 LEFT JOIN user_settings s ON s.user_id=p.owner_id INNER JOIN project_worktrees w ON w.id=c.active_worktree_id LEFT JOIN chat_runtime_sessions r ON r.chat_id=c.id AND r.worker_id=w.worker_id AND r.worktree_id=w.id WHERE c.id=$1 LIMIT 1"
     };

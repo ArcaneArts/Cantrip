@@ -109,14 +109,16 @@ impl Repository {
         } else {
             identity?
         };
-        let standalone = identity
+        let kind = identity
             .first()
-            .map(|r| r.get::<String>(0))
-            .transpose()?
-            .as_deref()
-            == Some("standalone");
+            .map(|row| row.get::<String>(0))
+            .transpose()?;
+        // The existing worker protocol represents both account-scoped scratch
+        // roots with the standalone placement shape. Council's roster supplies
+        // its distinct agent configuration separately.
+        let standalone = matches!(kind.as_deref(), Some("standalone" | "council"));
         let sql = if standalone {
-            "SELECT jsonb_build_object('chat',to_jsonb(c),'lane',to_jsonb(l),'settings',to_jsonb(s),'nativeSettings',to_jsonb(n),'root',to_jsonb(root),'runtime',to_jsonb(r))::text FROM chats c LEFT JOIN native_settings_states n ON n.chat_id=c.id INNER JOIN standalone_chat_roots root ON root.id=c.active_scratch_root_id AND root.chat_id=c.id AND root.owner_id=c.owner_id AND root.worker_id=c.active_worker_id LEFT JOIN chat_runtime_sessions r ON r.chat_id=c.id AND r.worker_id=root.worker_id AND r.scratch_root_id=root.id LEFT JOIN chat_execution_lanes l ON l.chat_id=c.id AND l.state='active' LEFT JOIN user_settings s ON s.user_id=c.owner_id WHERE c.id=$1 AND c.owner_id=$2 AND c.context_kind='standalone' AND c.archived_at IS NULL LIMIT 1"
+            "SELECT jsonb_build_object('chat',to_jsonb(c),'lane',to_jsonb(l),'settings',to_jsonb(s),'nativeSettings',to_jsonb(n),'root',to_jsonb(root),'runtime',to_jsonb(r),'councilAgent',to_jsonb(a))::text FROM chats c LEFT JOIN native_settings_states n ON n.chat_id=c.id INNER JOIN standalone_chat_roots root ON root.id=c.active_scratch_root_id AND root.chat_id=c.id AND root.owner_id=c.owner_id AND root.worker_id=c.active_worker_id LEFT JOIN chat_runtime_sessions r ON r.chat_id=c.id AND r.worker_id=root.worker_id AND r.scratch_root_id=root.id LEFT JOIN chat_execution_lanes l ON l.chat_id=c.id AND l.state='active' LEFT JOIN user_settings s ON s.user_id=c.owner_id LEFT JOIN council_agents a ON a.chat_id=c.id AND a.owner_id=c.owner_id WHERE c.id=$1 AND c.owner_id=$2 AND c.context_kind IN ('standalone','council') AND c.archived_at IS NULL LIMIT 1"
         } else {
             "SELECT jsonb_build_object('chat',to_jsonb(c),'lane',to_jsonb(l),'project',to_jsonb(p),'settings',to_jsonb(s),'nativeSettings',to_jsonb(n),'root',to_jsonb(w),'runtime',to_jsonb(r))::text FROM chats c LEFT JOIN native_settings_states n ON n.chat_id=c.id INNER JOIN projects p ON p.id=c.project_id AND p.owner_id=$2 LEFT JOIN user_settings s ON s.user_id=p.owner_id INNER JOIN project_worktrees w ON w.id=c.active_worktree_id LEFT JOIN chat_runtime_sessions r ON r.chat_id=c.id AND r.worker_id=w.worker_id AND r.worktree_id=w.id LEFT JOIN chat_execution_lanes l ON l.chat_id=c.id AND l.state='active' WHERE c.id=$1 AND c.archived_at IS NULL LIMIT 1"
         };
@@ -200,6 +202,9 @@ impl Repository {
         }
         if standalone {
             context["scratchRootStatus"] = root["status"].clone();
+        }
+        if kind.as_deref() == Some("council") {
+            super::council::apply_execution_context(&mut context, &row["councilAgent"], settings)?;
         }
         Ok(Some(context))
     }

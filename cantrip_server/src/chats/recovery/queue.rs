@@ -67,6 +67,17 @@ impl Service {
         else {
             return Ok(());
         };
+        if context.get("councilAgent").is_some()
+            && (context["scratchRootStatus"] != "ready"
+                || !self
+                    .dependencies
+                    .commands
+                    .is_connected(&text(&context["workerId"])?))
+        {
+            // No input has been claimed. Recovery can dispatch once the
+            // worker or its scratch root becomes available.
+            return Ok(());
+        }
         let managed = session_context(&context).is_some();
         if managed
             && self

@@ -88,7 +88,7 @@ impl LaneRepository {
         if let Some(project) = self.lane_context(owner, chat, lane).await? {
             return Ok(Some(project));
         }
-        let rows=self.database.query("SELECT jsonb_build_object('chat',to_jsonb(c),'lane',to_jsonb(l),'root',to_jsonb(r))::text FROM chat_execution_lanes l INNER JOIN chats c ON c.id=l.chat_id INNER JOIN standalone_chat_roots r ON r.id=l.scratch_root_id WHERE l.id=$1 AND l.chat_id=$2 AND c.owner_id=$3 AND c.context_kind='standalone' LIMIT 1",&[&lane,&chat,&owner]).await?;
+        let rows=self.database.query("SELECT jsonb_build_object('chat',to_jsonb(c),'lane',to_jsonb(l),'root',to_jsonb(r))::text FROM chat_execution_lanes l INNER JOIN chats c ON c.id=l.chat_id INNER JOIN standalone_chat_roots r ON r.id=l.scratch_root_id WHERE l.id=$1 AND l.chat_id=$2 AND c.owner_id=$3 AND c.context_kind IN ('standalone','council') LIMIT 1",&[&lane,&chat,&owner]).await?;
         let Some(row) = rows.first().map(raw).transpose()? else {
             return Ok(None);
         };

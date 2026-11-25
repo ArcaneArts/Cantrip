@@ -37,12 +37,14 @@ async fn raw_one(ex: Executor<'_, '_>, sql: &str, params: Parameters<'_>) -> Res
 }
 
 fn assert_standalone(context: &Value, prompt: &Value) -> Result<()> {
-    if context["context_kind"] == "standalone"
-        && (prompt["classification"]["mode"] != "default"
-            || !prompt["worktreeId"].is_null()
-            || truthy(prompt.get("customSubagentModel"))
-            || !prompt["subagentModelId"].is_null()
-            || !prompt["subagentReasoningEffort"].is_null())
+    if matches!(
+        context["context_kind"].as_str(),
+        Some("standalone" | "council")
+    ) && (prompt["classification"]["mode"] != "default"
+        || !prompt["worktreeId"].is_null()
+        || truthy(prompt.get("customSubagentModel"))
+        || !prompt["subagentModelId"].is_null()
+        || !prompt["subagentReasoningEffort"].is_null())
     {
         return Err(LaneError::Conflict("Standalone Chat queued prompts must use default mode without worktree or subagent settings.".into()).into());
     }

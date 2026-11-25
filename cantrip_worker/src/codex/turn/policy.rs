@@ -4,13 +4,14 @@ use crate::{
     protected_content::{EffectivePolicies, open_policy_body, open_policy_summary},
 };
 use anyhow::{Context, Result, ensure};
-use cantrip_wire::{JsString, Value};
+use cantrip_crypto::{decrypt_payload, derive_field_key};
+use cantrip_wire::{JsString, Value, value::json};
 
 const CONTEXT_LIMIT: usize = 32 * 1024;
 
 pub(super) fn context(encryption: &Service, command: &Value) -> Result<Option<JsString>> {
     let binding = encryption.bound_identity()?;
-    let context = if command["policyProjectId"].is_string() {
+    let mut context = if command["policyProjectId"].is_string() {
         project(
             encryption,
             &command["policies"],
@@ -21,6 +22,41 @@ pub(super) fn context(encryption: &Service, command: &Value) -> Result<Option<Js
     } else {
         None
     };
+    if let Some(agent) = command.get("councilAgent") {
+        ensure!(
+            command["contextKind"] == "standalone" && command["scratchRootId"].is_string(),
+            "Council agents require an account scratch root."
+        );
+        let envelope = &agent["protectedRole"];
+        let revision = envelope["keyRevision"]
+            .as_u64()
+            .context("Council role revision")?;
+        let grant = encryption.bound_component("chat-content", Some(revision))?;
+        let aad = json!({
+            "ownerId": grant.owner_id, "component": "chat-content",
+            "table": "council_agents", "rowId": command["chatId"], "field": "role",
+            "formatVersion": 1, "keyRevision": grant.component.key_revision,
+        });
+        let key = derive_field_key(&grant.component.key, &aad)?;
+        let plaintext = decrypt_payload(&key, envelope, &aad)?;
+        let role = std::str::from_utf8(&plaintext)
+            .context("Council role encoding")?
+            .trim();
+        ensure!(
+            !role.is_empty() && role.len() <= CONTEXT_LIMIT,
+            "Council role exceeds the context limit or is empty."
+        );
+        let mut instructions = "Your Council role:\n".encode_utf16().collect::<Vec<_>>();
+        instructions.extend(role.encode_utf16());
+        if agent["primary"] == true {
+            instructions.extend("\n\nYou are designated a primary Council agent. Coordinate with other agents and follow up when useful.".encode_utf16());
+        }
+        if let Some(policies) = context {
+            instructions.extend("\n\n".encode_utf16());
+            instructions.extend_from_slice(policies.units());
+        }
+        context = Some(JsString::new(instructions));
+    }
     ensure!(
         encryption.bound_identity()? == binding,
         "The worker binding changed while opening turn policies."
