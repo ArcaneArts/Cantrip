@@ -1,17 +1,23 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { productionClient } from "../server-rust/production-server-process.mjs";
+import {
+  connectStdio,
+  packagedServerArguments,
+} from "./external-mcp-acceptance-fixture.mjs";
 
 const { values } = parseArgs({
   options: {
     server: { type: "string" },
+    "server-package": { type: "string" },
+    "bundled-codex": { type: "boolean" },
+    "codegraph-distribution": { type: "string" },
     worker: { type: "string" },
     codex: { type: "string" },
     browser: { type: "boolean" },
@@ -20,15 +26,6 @@ const { values } = parseArgs({
   },
 });
 assert.ok(values.server, "Pass the --server binary.");
-const requireSdk = createRequire(
-  new URL("../../tests/reference-node-worker/package.json", import.meta.url),
-);
-const { Client } = await import(
-  requireSdk.resolve("@modelcontextprotocol/sdk/client/index.js")
-);
-const { StdioClientTransport } = await import(
-  requireSdk.resolve("@modelcontextprotocol/sdk/client/stdio.js")
-);
 const integrations = "/api/account/external-mcp-integrations";
 const capabilities = "/api/external-mcp/hosted/capabilities";
 const discovery = "/api/external-mcp/hosted/discovery";
@@ -84,7 +81,12 @@ try {
   }
   server = await startServer(
     path.resolve(values.server),
-    ["--port", "0", "--shutdown-on-stdin-close"],
+    [
+      "--port",
+      "0",
+      "--shutdown-on-stdin-close",
+      ...(await packagedServerArguments(values["server-package"])),
+    ],
     {
       cwd: directory,
       env,
@@ -259,38 +261,15 @@ try {
   );
   const credentialFile = path.join(directory, "integration.credential");
   await writeFile(credentialFile, created.credential + "\n", { mode: 0o600 });
-  const connectMcp = async (file, suppressOperation, onSuppressed) => {
-    const client = new Client({
-      name: "hosted-external-mcp-smoke",
-      version: "1",
+  const connectMcp = (credential, suppressOperation, onSuppressed) =>
+    connectStdio({
+      binary: values.worker,
+      origin: server.origin,
+      directory,
+      credential,
+      suppressOperation,
+      onSuppressed,
     });
-    try {
-      const transport = new StdioClientTransport({
-        command: path.resolve(values.worker),
-        args: [
-          "external-mcp",
-          "--server",
-          server.origin,
-          "--credential-file",
-          file,
-        ],
-        cwd: directory,
-      });
-      await client.connect(transport);
-      if (suppressOperation) {
-        const forward = transport.onmessage;
-        transport.onmessage = (message) => {
-          const result = message.result?.structuredContent;
-          if (result?.operationId === suppressOperation) onSuppressed?.(result);
-          else forward(message);
-        };
-      }
-      return client;
-    } catch (error) {
-      await client.close();
-      throw error;
-    }
-  };
   const mcp = values.worker ? await connectMcp(credentialFile) : undefined;
   try {
     if (mcp) {
@@ -342,6 +321,8 @@ try {
     await verifyHostedRelay({
       binary: values.worker,
       codex: values.codex,
+      bundledCodex: values["bundled-codex"],
+      codegraphDistribution: values["codegraph-distribution"],
       directory,
       env,
       server,
@@ -373,6 +354,7 @@ try {
       https: Boolean(https),
       orchestration: Boolean(values.worker && values.codex),
       checkoutInspection: Boolean(values.worker),
+      codegraph: Boolean(values["codegraph-distribution"]),
       execution: Boolean(values.worker && values.codex),
       appClient: Boolean(app),
     }),

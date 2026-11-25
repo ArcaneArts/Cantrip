@@ -9,6 +9,21 @@ so a `noexec` temporary filesystem is supported. The executable also retains its
 embedded runtime for unbundled use. Server startup does not invoke Node or a package
 manager. The [native worker](worker.README.md) runs as a separate service.
 
+### External MCP
+
+For a local server with `CANTRIP_AUTH_MODE=none`, start the server with
+`./start.sh --external-mcp-local-port 4314` or
+`start.cmd --external-mcp-local-port 4314`. Point the packaged worker's
+`external-mcp` bridge at `http://127.0.0.1:4314`. Keep the local control
+port on the same machine. Start the normal worker separately for project work.
+
+In account mode, create a scoped integration and use the hosted API origin
+with the bridge. The optional public HTTPS mode uses a separate bridge behind
+a trusted proxy and OAuth consent through the server.
+[External MCP setup](https://github.com/ArcaneArts/Cantrip/blob/main/docs/MCP.md)
+
+### Server configuration
+
 Copy `.env.example` to `.env` and set `CANTRIP_DATA_DIR` to persistent storage.
 Dotenv values use the existing Node 24 syntax without shell evaluation or
 variable expansion. Existing process environment variables take precedence.

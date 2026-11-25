@@ -13,6 +13,7 @@ export async function verifyOrchestration({
   connect,
   setLocalEnabled,
   verifyApp,
+  actorLabel = "External orchestration fixture",
 }) {
   const provider = await taskModelProvider();
   try {
@@ -123,7 +124,7 @@ export async function verifyOrchestration({
     };
     const receipt = await call("chat_send", input);
     assert.match(receipt.delivery, /^(queued|running)$/u);
-    assert.equal(receipt.actor.label, "External orchestration fixture");
+    assert.equal(receipt.actor.label, actorLabel);
     assert.deepEqual(await call("chat_send", input), receipt);
     await conflict("chat_send", { ...input, message: "A different message." });
     let cursor = baseline.cursor;

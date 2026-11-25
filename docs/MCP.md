@@ -1,9 +1,17 @@
 # Managed Cantrip MCP
 
-## External MCP discovery
+## External MCP
 
-External MCP lets a local MCP client look up Cantrip workspaces, projects,
-chats, agents, tasks, workers, and placements. Enable the discovery service on
+External MCP lets another agent discover Cantrip projects and delegate work
+to their assigned workers. The standalone Worker distribution includes the
+bridge in `bin/cantrip-worker` or `bin/cantrip-worker.exe`. The Desktop
+distribution includes the same executable in its Worker runtime. Start an
+enrolled worker for the project and approve the worker's existing encryption
+grants for the content it will use.
+
+### Enable local access
+
+Enable the external control listener on
 a local server with `CANTRIP_AUTH_MODE=none` by passing
 `--external-mcp-local-port 4314` to `cantrip-server`. The server prints the
 selected control origin as `server.external-mcp.listening`. Use port `0` to
@@ -13,6 +21,14 @@ Configure a stdio MCP client to launch the worker with these arguments.
 
 ```sh
 cantrip-worker external-mcp --server http://127.0.0.1:4314
+```
+
+A Codex stdio configuration can use the absolute path to the packaged binary.
+
+```toml
+[mcp_servers.cantrip]
+command = "/absolute/path/to/worker/bin/cantrip-worker"
+args = ["external-mcp", "--server", "http://127.0.0.1:4314"]
 ```
 
 For a Streamable HTTP client, start the bridge and use the loopback URL it prints.
@@ -152,6 +168,24 @@ grants for the actions that use that content. Reuse an operation UUID only for
 an identical request, including a retry after a lost response. Wait calls can
 run for up to ten seconds. After a timeout, use the latest cursor for another
 wait. Work already admitted continues under Cantrip's normal controls.
+
+An orchestration client can use this sequence. Replace values in angle
+brackets with IDs from the preceding results, and generate one UUID for each
+new mutation.
+
+| Tool           | Arguments                                                                                                                          |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `project_list` | `{}`                                                                                                                               |
+| `agent_create` | `{"projectId":"<project>","operationId":"<create UUID>","title":"Project review"}`                                                 |
+| `chat_send`    | `{"projectId":"<project>","chatId":"<chat>","operationId":"<send UUID>","message":"Summarize how the test suite is organized."}`   |
+| `chat_read`    | `{"projectId":"<project>","chatId":"<chat>"}`                                                                                      |
+| `chat_wait`    | `{"projectId":"<project>","chatId":"<chat>","afterCursor":"<cursor>","timeoutMs":5000}`                                            |
+| `task_create`  | `{"projectId":"<project>","operationId":"<task UUID>","description":"Run the project tests and summarize failures.","start":true}` |
+| `task_wait`    | `{"projectId":"<project>","taskIds":["<task>"],"timeoutMs":5000}`                                                                  |
+
+Start with `agent_list` when the project already has a chat you can reuse.
+Carry the returned read cursor into the next `chat_wait`. The app shows the
+same Agent chat and Task records.
 
 ### Inspect project files and CodeGraph
 
