@@ -1,19 +1,31 @@
 // Browser SDK, native server, full worker, and bundled Codex App Server.
-// Only the HTTP model response is held to guarantee an active native turn.
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { eventually } from "./full-worker.mjs";
 import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
+
+export const councilSteeringFollowUp = "Steer the same Council turn 🍄";
+
+async function readSteerRace(marker) {
+  const trace = await readFile(marker, "utf8").catch((error) => {
+    if (error.code === "ENOENT") return "";
+    throw error;
+  });
+  return trace.trim().split("\n").filter(Boolean).map(JSON.parse);
+}
 
 export async function actualCouncilSteering({
   page,
   workerId,
   result,
   testCreation = false,
+  raceMarker,
 }) {
   const model = await taskModelProvider({ observeStreams: true });
   const role = "Preserve this Council role marker 🌲";
   const original = "Read the durable Council queue";
-  const followUp = "Steer the same Council turn 🍄";
+  const followUp = councilSteeringFollowUp;
+  const firstAnswer = "The first Council inference is active";
   const answer = "The Council steer reached the active turn";
   const timeout = 60_000;
   try {
@@ -112,16 +124,19 @@ export async function actualCouncilSteering({
         async (id) => (await import("/src/lib/api/chats.ts")).getMessages(id),
         chatId,
       );
+    const readChat = () =>
+      page.evaluate(
+        async (id) =>
+          (await import("/src/lib/api/council.ts")).getCouncilChat(id),
+        chatId,
+      );
     const withText = (messages, text) =>
       messages.filter((message) =>
         message.content.some(
           (item) => item.type === "text" && item.text === text,
         ),
       );
-    const held = model.reply({
-      hold: true,
-      text: "The first Council inference is active",
-    });
+    const held = model.reply({ hold: true, text: firstAnswer });
     model.reply({ text: answer });
     const first = await submit(original);
     assert.equal(first.status, "queued");
@@ -141,6 +156,73 @@ export async function actualCouncilSteering({
 
     const second = await submit(followUp);
     assert.equal(second.status, "queued");
+    if (raceMarker) {
+      const [intercept] = await eventually(
+        () => readSteerRace(raceMarker),
+        ([intercept]) => {
+          assert.equal(intercept?.phase, "held");
+          assert.ok(intercept.turnId);
+          assert.match(intercept.clientId, /^cantrip:/u);
+          assert.equal(held.request.completed, false);
+        },
+        timeout,
+      );
+      held.release();
+      const rejection = await eventually(
+        () => readSteerRace(raceMarker),
+        (trace) => assert.equal(trace[2]?.phase, "answered"),
+        timeout,
+      );
+      assert.deepEqual(rejection.slice(0, 3), [
+        intercept,
+        { phase: "completed", turnId: intercept.turnId },
+        {
+          phase: "answered",
+          error: { code: -32600, message: "no active turn to steer" },
+        },
+      ]);
+      const messages = await eventually(
+        readMessages,
+        (messages) => assert.equal(withText(messages, answer).length, 1),
+        timeout,
+      );
+      const [root] = withText(messages, original);
+      const [retried] = withText(messages, followUp);
+      assert.equal(withText(messages, original).length, 1);
+      assert.equal(withText(messages, firstAnswer).length, 1);
+      assert.equal(withText(messages, followUp).length, 1);
+      assert.ok(root.executionLaneId && retried.executionLaneId);
+      await eventually(readChat, (chat) => assert.equal(chat.status, "idle"));
+      const queue = await readQueue();
+      assert.deepEqual(queue.items, []);
+      assert.deepEqual(queue.claims, []);
+      const inferences = model.requests.filter(
+        ({ method }) => method === "POST",
+      );
+      assert.equal(inferences.length, 2);
+      assert.ok(!JSON.stringify(inferences[0].input).includes(followUp));
+      assert.ok(JSON.stringify(inferences[1].input).includes(followUp));
+      assert.deepEqual(model.failures, []);
+      const trace = await readSteerRace(raceMarker);
+      const recoveredTurnId = trace[4]?.turnId;
+      assert.ok(recoveredTurnId);
+      assert.notEqual(recoveredTurnId, intercept.turnId);
+      assert.deepEqual(trace.slice(3), [
+        { phase: "retried", clientId: intercept.clientId },
+        { phase: "started", turnId: recoveredTurnId },
+      ]);
+      result.councilSteeringRace = {
+        chatId,
+        steeredPromptId: second.prompt.id,
+        originalNativeTurnId: intercept.turnId,
+        recoveredNativeTurnId: recoveredTurnId,
+        trace,
+      };
+      result.steps.push(
+        "The actual Codex App Server rejected a steer after completion, and Council started the prompt once in a new turn",
+      );
+      return;
+    }
     const active = await eventually(
       readMessages,
       (messages) => {
@@ -200,12 +282,7 @@ export async function actualCouncilSteering({
       const title = "Maintenance Agent";
       const role = "Verify maintenance notes and summarize the checks.";
       await eventually(
-        () =>
-          page.evaluate(
-            async (id) =>
-              (await import("/src/lib/api/council.ts")).getCouncilChat(id),
-            chatId,
-          ),
+        readChat,
         (chat) => assert.equal(chat.status, "idle"),
         timeout,
       );

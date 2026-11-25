@@ -32,8 +32,12 @@ import { actualInlineChatLabels } from "./actual-inline-chat-labels.mjs";
 import { actualAgentInteractionCancel } from "./actual-agent-interaction-cancel.mjs";
 import { actualProviderAuthClient } from "./actual-provider-auth-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
-import { actualCouncilSteering } from "./actual-council-steering.mjs";
+import {
+  actualCouncilSteering,
+  councilSteeringFollowUp,
+} from "./actual-council-steering.mjs";
 import { actualCouncilAppMode } from "./actual-council-app-mode.mjs";
+import { fixtureCodex } from "../worker-rust/deferred-receipt-smoke-cases.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
 import { observePostgresErrors } from "./postgres-error-observation.mjs";
 import { observeFolderLive } from "./folder-live-observation.mjs";
@@ -553,6 +557,11 @@ async function flow(
   const resumeAckFile = sharedQueueInterruption?.startsWith("resume-ack")
     ? path.join(dataDirectory, "test-queue-resume-ack")
     : undefined;
+  const councilSteerRaceMarker = process.argv.includes(
+    "--council-steering-race",
+  )
+    ? path.join(root, `council-steer-completion-${fixture.kind}.jsonl`)
+    : undefined;
   if (dataDirectory !== canonicalDataDirectory) {
     await mkdir(canonicalDataDirectory, { recursive: true });
     // SkillManager returns lexical account paths; native discovery returns
@@ -989,7 +998,22 @@ async function flow(
     );
     if (process.argv.includes("--postgres-errors"))
       await observePostgresErrors(fixture, page);
-    await startWorker(enrollment.code);
+    const councilSteerRace = councilSteerRaceMarker
+      ? await fixtureCodex(
+          path.dirname(councilSteerRaceMarker),
+          process.env.CANTRIP_CODEX_BIN,
+          {
+            scenario: "council-steer-completion",
+            marker: councilSteerRaceMarker,
+            input: councilSteeringFollowUp,
+          },
+        )
+      : undefined;
+    await startWorker(enrollment.code, {
+      environment: councilSteerRace
+        ? { CANTRIP_CODEX_BIN: councilSteerRace }
+        : {},
+    });
     await eventually(workers, (workers) => {
       assert.equal(workers.length, 1);
       assert.equal(workers[0].workerId, workerId);
@@ -1014,13 +1038,15 @@ async function flow(
     if (
       process.argv.includes("--council-steering") ||
       process.argv.includes("--council-agent-tools") ||
-      process.argv.includes("--council-app-mode")
+      process.argv.includes("--council-app-mode") ||
+      councilSteerRaceMarker
     ) {
       await actualCouncilSteering({
         page,
         workerId,
         result,
         testCreation: process.argv.includes("--council-agent-tools"),
+        raceMarker: councilSteerRaceMarker,
       });
       if (process.argv.includes("--council-app-mode")) {
         await actualCouncilAppMode({
