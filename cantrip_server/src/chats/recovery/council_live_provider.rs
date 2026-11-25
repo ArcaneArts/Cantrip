@@ -27,7 +27,7 @@ impl Service {
                 .unwrap_or(Value::Null);
             let owns_pause =
                 state["controlId"] == entry["pause_control_id"] && !state["controlId"].is_null();
-            if phase != "resuming"
+            if !matches!(phase.as_str(), "resuming" | "reconciling")
                 && (entry["source_ended"] == true
                     || (!owns_pause
                         && !state.is_null()
@@ -119,19 +119,60 @@ impl Service {
                         .await?
                 }
                 "resuming" => {
-                    if !restored(&state, &entry) {
-                        pause.set(owner, &chat, false, false).await?;
+                    let current = if restored(&state, &entry)
+                        || state["error"]["code"] == "checkpoint-incompatible"
+                    {
+                        state
+                    } else {
+                        let attempt = pause.set(owner, &chat, false, false).await;
+                        let current = self
+                            .chats
+                            .native_suspension(owner, &chat)
+                            .await?
+                            .unwrap_or(Value::Null);
+                        if current["error"]["code"] != "checkpoint-incompatible" {
+                            attempt?;
+                        }
+                        current
+                    };
+                    if current["error"]["code"] == "checkpoint-incompatible" {
+                        if commands
+                            .begin_council_checkpoint_fallback(owner, &chat, &source, &current)
+                            .await?
+                        {
+                            self.publish_council_switch(owner, context);
+                            continue;
+                        }
+                        return Ok(true);
                     }
-                    let current = self
-                        .chats
-                        .native_suspension(owner, &chat)
-                        .await?
-                        .unwrap_or(Value::Null);
                     if !restored(&current, &entry) {
                         return Ok(true);
                     }
                     commands
                         .set_council_live_switch_phase(owner, &chat, &source, &phase, "completed")
+                        .await?
+                }
+                "reconciling" => {
+                    if state["controlId"] != entry["fallback_stop_id"] {
+                        return Ok(true);
+                    }
+                    if !matches!(
+                        state["phase"].as_str(),
+                        Some("stopping" | "error" | "stopped")
+                    ) {
+                        return Ok(true);
+                    }
+                    if state["phase"] != "stopped" {
+                        // The old provider is already retired. Use the existing
+                        // cold Stop path to collect the actual native outcome.
+                        let Some(current) = self.chats.execution_context(owner, &chat).await?
+                        else {
+                            return Ok(true);
+                        };
+                        pause.stop_suspended(owner, &current, &Value::Null).await?;
+                    }
+                    commands
+                        .finish_council_checkpoint_fallback(owner, &chat, &source)
                         .await?
                 }
                 _ => return Ok(false),

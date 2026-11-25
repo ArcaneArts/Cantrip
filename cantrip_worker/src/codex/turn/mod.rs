@@ -80,6 +80,18 @@ pub(crate) const COUNCIL_PROVIDER_RETIRE: &str = "chat.council-provider-retire";
 pub(crate) const COMPLETE: &str = "chat.native-logical.complete";
 pub(crate) const CANCEL: &str = "chat.native-logical.cancel";
 pub(crate) const COUNCIL_PROVIDER_QUOTA: &str = "council-provider-quota";
+pub(crate) const COUNCIL_CHECKPOINT_INCOMPATIBLE: &str = "checkpoint-incompatible";
+
+#[derive(Debug)]
+pub(crate) struct CouncilCheckpointIncompatible;
+
+impl std::fmt::Display for CouncilCheckpointIncompatible {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Codex rejected resuming this exact held Council turn.")
+    }
+}
+
+impl std::error::Error for CouncilCheckpointIncompatible {}
 
 #[derive(Debug)]
 pub(crate) struct CouncilProviderQuota;

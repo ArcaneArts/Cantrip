@@ -249,10 +249,20 @@ impl Turns {
                         }
                     };
                     if let Err(error) = &resume
-                        && error.downcast_ref::<Failure>().is_some_and(|failure| failure.native_error.is_some())
+                        && let Some(native) = error.downcast_ref::<Failure>().and_then(|failure| failure.native_error.as_ref())
                     {
                         execution.rejected()?;
                         let _ = control.settle_durable("uncertain", None, None).await;
+                        if command["session"].get("councilProviderCheckpointSource").is_some()
+                            && native["code"].as_i64() == Some(-32600)
+                            && matches!(native["message"].as_str(), Some(
+                                "restored runtime provider, permissions or working directory differ from the suspended turn" |
+                                "restored turn permissions or native collaboration mode differ from the suspension"
+                            ))
+                            && selected.confirm_held(checkpoint).await.is_ok()
+                        {
+                            return Err(CouncilCheckpointIncompatible.into());
+                        }
                         bail!("Codex could not resume the saved turn. Its checkpoint has been retained.");
                     }
                     let result = match resume {

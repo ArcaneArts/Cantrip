@@ -11,6 +11,7 @@ const [binary, marker, prompt, scenario, ...args] = process.argv.slice(2);
 const liveYolo = scenario === "live-yolo";
 const steerCompletion = scenario === "council-steer-completion";
 const coldSteerReply = scenario === "council-steer-cold-recovery";
+const refuseCouncilResume = scenario === "council-checkpoint-fallback";
 const dropSteerReply =
   coldSteerReply || scenario === "council-steer-dropped-reply";
 function record(event) {
@@ -68,6 +69,27 @@ if (
       native.once("open", () => worker.resume());
       worker.on("message", (raw) => {
         const frame = JSON.parse(String(raw));
+        if (
+          refuseCouncilResume &&
+          frame.method === "turn/suspension" &&
+          frame.params.operation.type === "resume"
+        ) {
+          record({
+            phase: "refused",
+            turnId: frame.params.operation.suspension.turnId,
+          });
+          worker.send(
+            JSON.stringify({
+              id: frame.id,
+              error: {
+                code: -32600,
+                message:
+                  "restored turn permissions or native collaboration mode differ from the suspension",
+              },
+            }),
+          );
+          return;
+        }
         if (dropSteerReply) {
           if (frame.params?.input?.some((item) => item.text === prompt)) {
             record({

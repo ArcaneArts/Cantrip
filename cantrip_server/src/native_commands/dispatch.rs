@@ -178,7 +178,20 @@ async fn dispatch(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Va
     }
     let durable_control = super::suspension::dispatch(tx, owner, &row, input).await?;
     if row["method"] == "turn/interrupt" {
-        queue::stop_autonomy(tx, &chat).await?;
+        let checkpoint_fallback = if durable_control && current.get("councilAgent").is_some() {
+            let state = super::suspension::chat(tx, owner, &chat).await?;
+            super::council_live_provider::owns_fallback_stop(
+                tx,
+                &chat,
+                &state["native_suspension_state"],
+            )
+            .await?
+        } else {
+            false
+        };
+        if !checkpoint_fallback {
+            queue::stop_autonomy(tx, &chat).await?;
+        }
     } else if truthy(intent.get("resumeAutonomy")) {
         tx.query(
             "UPDATE chats SET managed_autonomy_stopped=false WHERE id=$1",

@@ -7,7 +7,7 @@ impl QueueRepository {
               WHERE r.phase IN ('pending','blocked','switching') AND c.archived_at IS NULL
                 AND c.automation_paused=false AND c.managed_autonomy_stopped=false
             UNION SELECT c.owner_id,c.id FROM council_live_provider_switches s JOIN chats c ON c.id=s.chat_id
-              WHERE s.phase IN ('observed','pausing','restarting','resuming')
+              WHERE s.phase IN ('observed','pausing','restarting','resuming','reconciling')
                 AND c.archived_at IS NULL AND NOT c.managed_autonomy_stopped"),&[]).await?.iter().map(|r|Ok(json!({"ownerId":r.get::<String>(0)?,"chatId":r.get::<String>(1)?}))).collect()
     }
     pub async fn pending_notifications(&self, limit: Option<f64>) -> Result<Vec<Value>> {

@@ -83,7 +83,7 @@ impl Repository {
                        WHEN 'cancelled' THEN 'cancelled' ELSE 'switching' END,
                        target_model_route_id,target_provider_account_id,updated_at
                      FROM council_live_provider_switches
-                     WHERE chat_id=c.id AND phase<>'observed' AND pause_control_id IS NOT NULL
+                     WHERE chat_id=c.id AND phase NOT IN ('observed','continued') AND pause_control_id IS NOT NULL
                    ) r
                    JOIN native_commands source ON source.operation_id=r.source_operation_id AND source.owner_id=$2
                    LEFT JOIN model_routes source_route ON source_route.id=source.identity->>'modelRouteId'

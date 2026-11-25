@@ -149,7 +149,11 @@ impl Service {
                 )
                 .await;
         }
-        if observed.state["phase"] == "resuming" {
+        if observed.state["phase"] == "resuming"
+            || (replaced_council_runtime
+                && observed.state["phase"] == "error"
+                && source_failure.as_deref() == Some("checkpoint-incompatible"))
+        {
             let code = if !self.commands.is_connected(&worker) {
                 "worker-offline"
             } else {

@@ -1,4 +1,7 @@
 //! Exact native quota observations only apply to their originating Council run.
+#[path = "council_checkpoint_fallback.rs"]
+mod fallback;
+
 use super::{
     Repository,
     admit::{raw_one, reject, text},
@@ -41,11 +44,35 @@ pub(super) async fn assert_pause(
 pub(super) async fn cancel(tx: &Transaction<'_>, chat: &str) -> Result<()> {
     tx.query(
         "UPDATE council_live_provider_switches SET phase='cancelled',updated_at=now()
-         WHERE chat_id=$1 AND phase IN ('observed','pausing','restarting','resuming')",
+         WHERE chat_id=$1 AND phase IN ('observed','pausing','restarting','resuming','reconciling')",
         &[&chat],
     )
     .await?;
     Ok(())
+}
+
+pub(super) async fn owns_fallback_stop(
+    tx: &Transaction<'_>,
+    chat: &str,
+    state: &Value,
+) -> Result<bool> {
+    let Some(control) = state["controlId"].as_str() else {
+        return Ok(false);
+    };
+    let rows = tx
+        .query(
+            "SELECT source_operation_id FROM council_live_provider_switches
+         WHERE chat_id=$1 AND phase='reconciling' AND fallback_stop_id::text=$2
+           AND source_thread_id=$3 AND source_turn_id=$4",
+            &[
+                &chat,
+                &control,
+                &state["active"]["threadId"].as_str(),
+                &state["active"]["turnId"].as_str(),
+            ],
+        )
+        .await?;
+    Ok(!rows.is_empty())
 }
 
 impl Repository {
@@ -95,7 +122,7 @@ impl Repository {
              JOIN chats c ON c.id=s.chat_id AND c.owner_id=$1 AND NOT c.managed_autonomy_stopped AND c.archived_at IS NULL
              JOIN model_routes r ON r.id=n.identity->>'modelRouteId'
              LEFT JOIN native_command_activations a ON a.chat_id=s.chat_id
-             WHERE s.chat_id=$2 AND s.phase IN ('observed','pausing','restarting','resuming')
+             WHERE s.chat_id=$2 AND s.phase IN ('observed','pausing','restarting','resuming','reconciling')
              ORDER BY s.updated_at DESC LIMIT 1",
             &[&owner,&chat],
         ).await?;
@@ -246,7 +273,7 @@ impl Repository {
                  'providerAccountId',n.identity->>'providerAccountId')::text
              FROM council_live_provider_switches s JOIN native_commands n ON n.operation_id=s.source_operation_id
              JOIN chats c ON c.id=s.chat_id AND c.owner_id=n.owner_id AND c.owner_id=$1
-             WHERE s.chat_id=$2 AND s.phase IN ('resuming','cancelled') AND c.archived_at IS NULL
+             WHERE s.chat_id=$2 AND s.phase IN ('resuming','reconciling','cancelled') AND c.archived_at IS NULL
                AND c.native_suspension_state->'active'->>'threadId'=s.source_thread_id
                AND c.native_suspension_state->'active'->>'turnId'=s.source_turn_id
                AND c.native_suspension_state->'target'->>'modelRouteId'=s.target_model_route_id

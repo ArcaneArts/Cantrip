@@ -170,7 +170,8 @@ pub(super) async fn save(
     let now = crate::auth::now();
     state["updatedAt"] = json!(crate::auth::iso(now));
     let parsed = parse_response("nativeSuspensionRecordSchema", Some(&state))?;
-    let stopping = state["action"] == "stop";
+    let stopping = state["action"] == "stop"
+        && !super::council_live_provider::owns_fallback_stop(tx, id, &state).await?;
     tx.query("UPDATE chats SET native_suspension_state=$1::text::jsonb,automation_paused=$2,managed_autonomy_stopped=CASE WHEN $3::boolean THEN true ELSE managed_autonomy_stopped END,updated_at=$4 WHERE owner_id=$5 AND id=$6", &[&parsed.stringify(), &paused, &stopping, &now, &owner, &id]).await?;
     queue::changed(tx, id).await
 }
@@ -236,7 +237,11 @@ pub(super) async fn dispatch(
     let quota_pause = intent["councilProviderPause"] == true;
     if quota_pause {
         super::council_live_provider::assert_pause(tx, owner, row, input, &chat).await?;
-        if action != "pause" || previous.as_ref().is_some_and(|s| !terminal(s) && s["phase"] != "running") {
+        if action != "pause"
+            || previous
+                .as_ref()
+                .is_some_and(|s| !terminal(s) && s["phase"] != "running")
+        {
             return reject("suspension-control-stale");
         }
     }
@@ -291,7 +296,11 @@ pub(super) async fn dispatch(
             "requestedAt":now,"updatedAt":now,"pausedAt":Value::Null,"pausedMilliseconds":0})
     };
     if !duplicate {
-        state["controlId"] = if quota_pause { row["operation_id"].clone() } else { json!(uuid::Uuid::new_v4().to_string()) };
+        state["controlId"] = if quota_pause {
+            row["operation_id"].clone()
+        } else {
+            json!(uuid::Uuid::new_v4().to_string())
+        };
         state["actorControlId"] = Value::Null;
         state["action"] = json!(action);
         state["phase"] = json!(match action {
