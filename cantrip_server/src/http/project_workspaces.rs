@@ -224,10 +224,51 @@ async fn handle(
         Err(e) => middleware::failure(&service, &ctx.id, &e),
     }
 }
+async fn external_execution(
+    State(service): State<Arc<AuthService>>,
+    Extension(ctx): Extension<Arc<Context>>,
+    Path(workspace): Path<String>,
+    request: Request,
+) -> Response {
+    use cantrip_protocol::external_mcp::execution::ExecutionPolicy;
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Update {
+        policy: ExecutionPolicy,
+    }
+    let owner = &ctx.principal.user.as_ref().unwrap().id;
+    let repository = WorkspaceRepository::new(service.repository.database.clone());
+    let result = if request.method() == Method::PUT {
+        let request = match body::parse_js(request, service.config.api_body_limit_bytes).await {
+            Ok(value) => value,
+            Err(response) => return response,
+        };
+        let Some(Update { policy }) =
+            request.and_then(|value| serde_json::from_str(&value.stringify()).ok())
+        else {
+            return error(400, "Choose a supported workspace execution policy.");
+        };
+        repository
+            .set_external_execution(owner, &workspace, policy)
+            .await
+    } else {
+        repository.external_execution(owner, &workspace).await
+    };
+    match result {
+        Ok(Some(policy)) => json_response(StatusCode::OK, json!({"policy":policy})),
+        Ok(None) => error(404, "Workspace not found."),
+        Err(cause) => middleware::failure(&service, &ctx.id, &cause),
+    }
+}
+
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route("/api/workspaces", get(handle).post(handle))
         .route("/api/workspaces/attached", post(handle))
+        .route(
+            "/api/workspaces/{workspaceId}/external-mcp-execution",
+            get(external_execution).put(external_execution),
+        )
         .route(
             "/api/workspaces/{workspaceId}/repository-discovery",
             get(handle).post(handle),

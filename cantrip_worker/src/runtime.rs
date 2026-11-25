@@ -389,11 +389,16 @@ async fn cycle(
         logs.clone(),
         publish_observation.clone(),
     );
+    let external_commands = Arc::new(crate::run_runtime::external::Manager::new(
+        &data_directory,
+        crate::filesystem::Scope::with_stop(stop_rx.clone()),
+    ));
     worker_link.configure_external_mcp(
         configuration.clone(),
         routing.clone(),
         codegraph.clone(),
         worktrees.clone(),
+        external_commands.clone(),
         crate::filesystem::Scope::with_stop(stop_rx.clone()),
     )?;
     let worker_link_task = {
@@ -1597,6 +1602,7 @@ async fn cycle(
     chat_relocation.close().await;
     shares.shutdown().await;
     run_definitions.close().await;
+    external_commands.shutdown().await;
     let runs_closed = runs.close().await;
     let cli_closed = cli.close().await;
     if let Err(error) = project_goals.flush().await {

@@ -60,8 +60,9 @@ Cantrip.
 ```
 
 Use `{"kind":"all"}` for access to all your account's projects. Available
-scopes are `projects-read`, `chats-read`, `chats-write`, `tasks-read`,
-`tasks-write`, `placements-read`, `files-read`, and `codegraph-read`.
+scopes include `projects-read`, `chats-read`, `chats-write`, `tasks-read`,
+`tasks-write`, `placements-read`, `files-read`, `codegraph-read`,
+`commands-execute`, `cli-read`, and `cli-runs-write`.
 
 Write the returned `credential` to a private file as a single line. On Unix,
 make the file owner-readable and owner-writable only (mode `0600`). Configure
@@ -127,6 +128,46 @@ index, then `codegraph_query` with `kind` set to `symbols`, `references`, or
 `context`. Queries use the index maintained by the assigned worker. Check that
 CodeGraph is enabled for the checkout in Cantrip, and wait for any pending index
 updates before querying.
+
+### Execute a command or invoke the Cantrip CLI
+
+Worker commands require `commands-execute` and an enabled workspace execution
+policy. Find the project's workspace ID in `GET /api/workspaces`. An account
+owner can read or set its policy at
+`/api/workspaces/{workspaceId}/external-mcp-execution` using `GET` or `PUT`.
+Send `{"policy":"read-only"}` to allow sandboxed reads, or
+`{"policy":"workspace-write"}` to also allow checkout writes. Workspaces
+start with `{"policy":"disabled"}`. These policies also apply to local MCP.
+
+Call `command_start` with a project ID, operation UUID, executable, and
+argument array. For example, use `executable: "grep"` and
+`args: ["TODO", "src/main.rs"]`. Supply a checkout-relative `cwd` to run
+from a subdirectory and a `worktreeId` to select a checkout explicitly.
+The worker runs the command in the installed Codex sandbox with network
+access disabled. Commands use the worker platform's available sandbox and
+process-tree supervision. Each command has a timeout of at most two minutes.
+
+Use the returned `commandId` with `command_status`, `command_wait`, and
+`command_cancel`. Pass `afterRevision` to wait for a change, or omit it to
+wait for completion. Use `command_output` to read the retained text and pass
+`nextOffset` back to continue. When old output has been discarded,
+`outputTruncated` is set and `outputStart` identifies the earliest remaining
+byte. The worker retains command receipts for up to seven days. A restart
+preserves the receipt and any recorded exit status, while text remains
+available during that worker process generation.
+
+With `cli-read`, call `cantrip_cli` with a typed command such as
+`{"name":"context"}`, `{"name":"target_list"}`, or
+`{"name":"run_status","configurationId":"…"}`. Read commands for a Git
+checkout also include `worktree_list` and `worktree_status`. Run commands
+support listing, inspecting, and reading bounded logs for existing
+configurations.
+
+With `cli-runs-write`, call `cantrip_cli_run` with an existing Run
+configuration ID, an operation UUID, and the action `start`, `restart`,
+or `stop`. Start and restart require `workspace-write` and use the existing
+Run configuration lifecycle, including its configured environment and
+authorization. Scope the integration to the projects it needs.
 
 ## In-chat MCP
 

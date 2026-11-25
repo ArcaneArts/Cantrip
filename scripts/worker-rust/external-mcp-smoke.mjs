@@ -66,6 +66,13 @@ const names = [
   "file_search",
   "codegraph_status",
   "codegraph_query",
+  "command_start",
+  "command_status",
+  "command_output",
+  "command_wait",
+  "command_cancel",
+  "cantrip_cli",
+  "cantrip_cli_run",
 ];
 const headers = {
   "content-type": "application/json",
@@ -117,7 +124,15 @@ const inspect = async (transport, projects, workerId) => {
       tools
         .filter((tool) => !tool.annotations.readOnlyHint)
         .map(({ name }) => name),
-      ["agent_create", "chat_send", "task_create", "task_start"],
+      [
+        "agent_create",
+        "chat_send",
+        "task_create",
+        "task_start",
+        "command_start",
+        "command_cancel",
+        "cantrip_cli_run",
+      ],
     );
     const call = async (name, args = {}) => {
       const result = await client.callTool({ name, arguments: args });

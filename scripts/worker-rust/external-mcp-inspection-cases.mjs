@@ -388,6 +388,22 @@ export async function verifyLocalWorktreeInspection({
     assert.equal(second.isError, undefined, JSON.stringify(second));
     assert.equal(second.structuredContent.text, "secondary fixture\n");
     assert.equal(second.structuredContent.worktreeId, secondary.body.id);
+    const cli = await invoke("cantrip_cli", {
+      worktreeId: secondary.body.id,
+      command: { name: "worktree_status" },
+    });
+    assert.equal(cli.isError, undefined, JSON.stringify(cli));
+    assert.equal(cli.structuredContent.worktreeId, secondary.body.id);
+    const worktrees = await invoke("cantrip_cli", {
+      command: { name: "worktree_list" },
+    });
+    assert.equal(worktrees.isError, undefined, JSON.stringify(worktrees));
+    assert.ok(
+      JSON.stringify(worktrees.structuredContent.data).includes(
+        secondary.body.id,
+      ),
+    );
+
     if (codegraphInstalled) {
       await verifyIndexedCheckout({
         invoke,

@@ -21,6 +21,7 @@ use std::{
 use tokio::time::{Instant, sleep_until};
 use uuid::Uuid;
 
+mod execution;
 mod transcript;
 
 #[derive(Clone)]
@@ -30,6 +31,7 @@ pub(in crate::worker_link) struct Client {
     routing: Arc<Registry>,
     codegraph: Arc<Supervisor>,
     worktrees: Arc<crate::git::worktrees::Manager>,
+    commands: Arc<crate::run_runtime::external::Manager>,
     scope: Scope,
 }
 
@@ -39,6 +41,7 @@ impl Client {
         routing: Arc<Registry>,
         codegraph: Arc<Supervisor>,
         worktrees: Arc<crate::git::worktrees::Manager>,
+        commands: Arc<crate::run_runtime::external::Manager>,
         scope: Scope,
     ) -> Result<Self> {
         Ok(Self {
@@ -51,6 +54,7 @@ impl Client {
             routing,
             codegraph,
             worktrees,
+            commands,
             scope,
         })
     }
@@ -61,7 +65,10 @@ impl Client {
         encryption: Arc<Service>,
         call: Call,
     ) -> Result<Value> {
-        if call.tool().uses_checkout() {
+        if call.tool().is_execution() {
+            return self.execute(binding, &encryption, call).await;
+        }
+        if call.tool().inspects_checkout() {
             return self.inspect(binding, call).await;
         }
         let started = Instant::now();
@@ -172,24 +179,36 @@ impl Client {
             | Call::FileRead(_)
             | Call::FileSearch(_)
             | Call::CodegraphStatus(_)
-            | Call::CodegraphQuery(_) => unreachable!("checkout calls handled above"),
+            | Call::CodegraphQuery(_)
+            | Call::CommandStart(_)
+            | Call::CommandStatus(_)
+            | Call::CommandOutput(_)
+            | Call::CommandWait(_)
+            | Call::CommandCancel(_)
+            | Call::CantripCli(_)
+            | Call::CantripCliRun(_) => unreachable!("checkout calls handled above"),
         };
         output["projectId"] = json!(call.project());
         Ok(output)
     }
 
-    async fn inspect(&self, binding: &Value, mut call: Call) -> Result<Value> {
+    async fn checkout(&self, binding: &Value) -> Result<Value> {
         let checkout = self.request(binding, CoreOperation::Checkout).await?;
-        let worktree = checkout["worktreeId"]
-            .as_str()
-            .context("Checkout identity")?;
-        let project = &binding["resource"]["resourceId"];
         ensure!(
-            &checkout["projectId"] == project
+            checkout["projectId"] == binding["resource"]["resourceId"]
                 && checkout["worktreeId"] == binding["resource"]["attachmentId"]
                 && checkout["workerId"] == binding["identity"]["workerId"],
             "The authorized checkout changed."
         );
+        Ok(checkout)
+    }
+
+    async fn inspect(&self, binding: &Value, mut call: Call) -> Result<Value> {
+        let checkout = self.checkout(binding).await?;
+        let worktree = checkout["worktreeId"]
+            .as_str()
+            .context("Checkout identity")?;
+        let project = &binding["resource"]["resourceId"];
         let checkout = self.routing.resolve(&checkout).await?;
         let root = restricted::resolve_checkout(&self.worktrees, &checkout, &self.scope)
             .await

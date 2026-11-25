@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub mod execution;
 pub mod inspection;
 pub mod orchestration;
 
@@ -73,6 +74,9 @@ pub enum IntegrationScope {
     TasksWrite,
     PlacementsRead,
     FilesRead,
+    CommandsExecute,
+    CliRead,
+    CliRunsWrite,
     #[serde(rename = "codegraph-read")]
     CodeGraphRead,
 }

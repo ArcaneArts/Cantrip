@@ -126,6 +126,16 @@ pub(super) async fn execute(
         owner: owner.to_owned(),
     });
     let context = cli::context::resolve(reader, call, command == "status").await?;
+    execute_resolved(service, owner, context, call).await
+}
+
+pub(super) async fn execute_resolved(
+    service: &Arc<AuthService>,
+    owner: &str,
+    context: Option<Value>,
+    call: &Value,
+) -> Result<Value> {
+    let command = call["command"].as_str().context("CLI command")?;
     if command == "status" {
         let worker_id = context
             .as_ref()

@@ -96,6 +96,12 @@ pub(crate) fn open_checkout(root: &Path) -> Result<Dir> {
     Ok(directory)
 }
 
+pub(crate) fn working_directory(root: &Path, relative: &str) -> Result<PathBuf> {
+    let checkout = open_checkout(root)?;
+    directory_at(&checkout, relative).context("The checkout working directory is unavailable.")?;
+    Ok(root.join(relative))
+}
+
 pub(crate) fn contains_regular(root: &Dir, relative: &str) -> bool {
     parent(root, relative)
         .is_ok_and(|(directory, name)| open_rooted_regular(&directory, Path::new(&name)).is_ok())
