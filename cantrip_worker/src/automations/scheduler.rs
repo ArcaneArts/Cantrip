@@ -107,7 +107,7 @@ impl Scheduler {
                 .get(url)
                 .bearer_auth(token)
                 .timeout(Duration::from_secs(5)),
-            "projectAutomationWireListSchema",
+            "workerAutomationWireListSchema",
             "schedule refresh",
         )
         .await?;

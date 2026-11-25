@@ -83,6 +83,8 @@ export const workerGithubProjectCommandSchemas = [
   z.object({
     type: z.literal("automation.dispatch.protect"),
     automationId: z.string().uuid(),
+    runId: z.uuid().optional(),
+    targetKind: z.enum(["project", "council"]).optional(),
     content: projectAutomationOpaqueContentSchema,
     cwd: z.string().min(1).max(8_192),
     repository: workerRepositoryNameSchema.nullable(),

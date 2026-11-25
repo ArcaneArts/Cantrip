@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { chatCommunicationSchema } from "./chat-communication.js";
+import { chatAutomationSourceSchema } from "./automations.js";
 import {
   councilPeerMessageSourceSchema,
   councilProjectRequestSourceSchema,
@@ -23,6 +24,7 @@ export const chatMessageContentSchema = z.array(
       type: z.literal("text"),
       text: z.string().min(1),
       chatCommunication: chatCommunicationSchema.optional(),
+      automation: chatAutomationSourceSchema.optional(),
       councilPeerMessage: councilPeerMessageSourceSchema.optional(),
       councilProjectResult: councilProjectResultSourceSchema.optional(),
       councilProjectRequest: councilProjectRequestSourceSchema.optional(),

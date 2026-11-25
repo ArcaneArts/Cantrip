@@ -42,8 +42,13 @@ fn text(v: &Value) -> Result<String> {
         .lossy()
         .into_owned())
 }
-pub fn publish(service: &AuthService, owner: &str, project: &Value, id: &Value) {
-    if let Err(error)=service.live.publish_event(json!({"ownerId":owner,"scope":json!({"kind":"project","projectId":project}),"resource":"project-automation","action":"invalidated","entityId":id,"revision":Value::Null,"payload":Value::Null})) {
+pub fn publish(service: &AuthService, owner: &str, automation: &Value) {
+    let scope = if automation["projectId"].is_null() {
+        json!({"kind":"chat","chatId":automation["chatId"]})
+    } else {
+        json!({"kind":"project","projectId":automation["projectId"]})
+    };
+    if let Err(error)=service.live.publish_event(json!({"ownerId":owner,"scope":scope,"resource":"project-automation","action":"invalidated","entityId":automation["id"],"revision":Value::Null,"payload":Value::Null})) {
         logging::server_logger()(LogCall::event("error","Could not publish application live invalidation",json!({"err":logging::error_details(&error),"resource":"project-automation"})));
     }
 }
@@ -60,12 +65,7 @@ async fn finish(
         .finish_dispatch(lease, status, error.as_ref())
         .await?;
     if finalized {
-        publish(
-            service,
-            owner,
-            &lease.automation["projectId"],
-            &lease.automation["id"],
-        );
+        publish(service, owner, &lease.automation);
     }
     Ok(finalized)
 }
@@ -78,6 +78,7 @@ async fn perform(
     lease: &DispatchLease,
 ) -> Result<Reply> {
     let automation = &lease.automation;
+    let council = automation["projectId"].is_null();
     let chat = text(&automation["chatId"])?;
     let context = chats::Repository::new(service.repository.database.clone())
         .execution_context(owner, &chat)
@@ -85,8 +86,8 @@ async fn perform(
         .filter(|c| c["workerId"] == worker)
         .context("The automation target moved to another worker.")?;
     anyhow::ensure!(
-        context["experience"] != "task",
-        "Project automation prompts are unavailable for encrypted Tasks."
+        council == context.get("councilAgent").is_some() && context["experience"] == "agent",
+        "The automation target is no longer an Agent of the expected kind."
     );
     let key = format!(
         "automation:{}:{}",
@@ -111,10 +112,16 @@ async fn perform(
         .model_routing
         .resolve_model_id(owner, &context, None)
         .await?;
-    let github = TargetRepository::new(service.repository.database.clone())
-        .github_context(owner, &text(&automation["projectId"])?, Some(worker))
-        .await?;
-    let command = json!({"type":"automation.dispatch.protect","automationId":automation["id"],"content":automation["content"],"cwd":context["cwd"],"repository":github.as_ref().map(|v|v["nameWithOwner"].clone()).unwrap_or(Value::Null),"promptId":uuid::Uuid::new_v4().to_string(),"messageId":uuid::Uuid::new_v4().to_string(),"mode":"default","modelId":model,"reasoningEffort":lease.reasoning_effort,"customSubagentModel":context["modelConfiguration"]["customSubagentModel"],"subagentModelId":context["modelConfiguration"]["subagentModelId"],"subagentReasoningEffort":context["modelConfiguration"]["subagentReasoningEffort"],"idempotencyKey":key});
+    let github = if let Some(project) = automation["projectId"].as_str() {
+        TargetRepository::new(service.repository.database.clone())
+            .github_context(owner, project, Some(worker))
+            .await?
+    } else {
+        None
+    };
+    let prompt_id = uuid::Uuid::new_v4().to_string();
+    let message_id = uuid::Uuid::new_v4().to_string();
+    let command = json!({"type":"automation.dispatch.protect","automationId":automation["id"],"runId":lease.run_id,"targetKind":if council{"council"}else{"project"},"content":automation["content"],"cwd":context["cwd"],"repository":github.as_ref().map(|v|v["nameWithOwner"].clone()).unwrap_or(Value::Null),"promptId":prompt_id,"messageId":message_id,"mode":"default","modelId":model,"reasoningEffort":lease.reasoning_effort,"customSubagentModel":context["modelConfiguration"]["customSubagentModel"],"subagentModelId":context["modelConfiguration"]["subagentModelId"],"subagentReasoningEffort":context["modelConfiguration"]["subagentReasoningEffort"],"idempotencyKey":key});
     let protected = service
         .workers
         .commands
@@ -136,6 +143,28 @@ async fn perform(
         "encryptedChatTurnCreateSchema",
         Some(&protected["protectedTurn"]),
     )?;
+    if council {
+        let prompt = &turn["queuedPrompt"];
+        anyhow::ensure!(
+            turn["message"]["id"] == message_id
+                && prompt["id"] == prompt_id
+                && prompt["idempotencyKey"] == key
+                && turn["message"]["idempotencyKey"] == key
+                && prompt["modelId"] == model,
+            "The worker returned a different automation occurrence."
+        );
+        if !repository
+            .admit_council_dispatch(owner, worker, lease, prompt)
+            .await?
+        {
+            return Ok(failure("The Council routine changed before admission."));
+        }
+        publish(service, owner, automation);
+        drop(service.execution.recovery.dispatch(owner, &chat));
+        let mut result = reply(202, true, "queued", lease.next_run_at)?;
+        result.completed = true;
+        return Ok(result);
+    }
     let paused = context["automationPaused"] == true;
     let executing = matches!(
         context["status"].as_str(),
@@ -219,12 +248,7 @@ pub async fn run(
             .and_then(crate::wire::date_milliseconds);
         return reply(200, false, "skipped", next);
     };
-    publish(
-        &service,
-        &owner,
-        &lease.automation["projectId"],
-        &lease.automation["id"],
-    );
+    publish(&service, &owner, &lease.automation);
     let context = json!({"event":"automation.dispatch.claimed","subsystem":"automation","operation":"dispatch","status":"claimed","requestId":request_id,"workerId":worker,"projectId":lease.automation["projectId"],"chatId":lease.automation["chatId"],"automationId":lease.automation["id"],"attempt":lease.fencing_token});
     logging::server_logger()(LogCall::event(
         "info",

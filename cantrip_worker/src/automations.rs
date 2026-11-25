@@ -127,7 +127,7 @@ pub(crate) async fn protect(
     let identity = chat.identity()?;
     let content = &command["content"];
     let id = &command["automationId"];
-    open(
+    let name = open(
         &service,
         &identity,
         id,
@@ -150,20 +150,35 @@ pub(crate) async fn protect(
     )?;
     chat.identity()?;
     scope.check()?;
-    let allowed = allowed(
-        &condition["condition"],
-        command,
-        routing,
-        github,
-        scope,
-        &chat,
-    )
-    .await?;
+    let council = command["targetKind"] == "council";
+    let allowed = if council {
+        ensure!(
+            condition["condition"].is_null(),
+            "Council routines schedule prompts without shell or project conditions."
+        );
+        true
+    } else {
+        allowed(
+            &condition["condition"],
+            command,
+            routing,
+            github,
+            scope,
+            &chat,
+        )
+        .await?
+    };
     scope.check()?;
     chat.identity()?;
     let turn = if allowed {
         let mut draft = command.clone();
         draft["text"] = prompt["prompt"].clone();
+        if command["runId"].is_string() {
+            draft["automation"] = json!({
+                "automationId":id, "runId":command["runId"], "name":name["name"],
+                "targetKind":if council { "council" } else { "project" },
+            });
+        }
         chat_content::turn_with_attachments(&chat, &draft, &[])?
     } else {
         Value::Null

@@ -420,6 +420,7 @@ const liveTaskDiagnostics =
   process.argv.includes("--postgres-errors");
 const councilHistory = process.argv.includes("--council-history");
 const councilPeerMessages = process.argv.includes("--council-peer-messages");
+const councilAutomations = process.argv.includes("--council-automations");
 const councilSteeredApprovals = process.argv.includes(
   "--council-steered-approvals",
 );
@@ -1084,6 +1085,7 @@ async function flow(
       councilInventory ||
       councilCompaction ||
       councilBrowserHistory ||
+      councilAutomations ||
       councilSteerTrace
     ) {
       await actualCouncilSteering({
@@ -1095,6 +1097,14 @@ async function flow(
           ? vite.resolvedUrls.local[0]
           : undefined,
         historyFixture: councilHistory ? fixture : undefined,
+        automations: councilAutomations
+          ? {
+              appOrigin: vite.resolvedUrls.local[0],
+              stopWorker,
+              startWorker,
+              workers,
+            }
+          : undefined,
         inventory: councilInventory
           ? {
               fixture,
@@ -2336,6 +2346,7 @@ try {
         process.argv.includes("--council-memory") ||
         councilBrowserHistory ||
         councilCompaction ||
+        councilAutomations ||
         councilPeerMessages ||
         councilProjectMessages
           ? { CANTRIP_COUNCIL_ENABLED: "true" }

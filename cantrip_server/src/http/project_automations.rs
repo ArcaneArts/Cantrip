@@ -35,6 +35,31 @@ async fn public_operation(
 ) -> Result<Response> {
     let repository = Repository::new(service.repository.database.clone());
     if method == Method::GET || method == Method::HEAD {
+        if let Some(run) = params.get("runId") {
+            let result = repository
+                .get_run(&owner, &params["automationId"], run)
+                .await?;
+            return match result {
+                Some(run) => output(200, "automationRunWireSchema", &run),
+                None => Ok(error(404, "Automation run not found.")),
+            };
+        }
+        if let Some(agent) = params.get("agentId") {
+            return match params.get("automationId") {
+                Some(automation) => output(
+                    200,
+                    "councilAutomationRunWireListSchema",
+                    &repository
+                        .list_council_runs(&owner, agent, automation)
+                        .await?,
+                ),
+                None => output(
+                    200,
+                    "councilAutomationWireListSchema",
+                    &repository.list_council(&owner, agent).await?,
+                ),
+            };
+        }
         return output(
             200,
             "projectAutomationWireListSchema",
@@ -49,12 +74,7 @@ async fn public_operation(
         if !repository.delete(&owner, id).await? {
             return Ok(error(404, "Automation not found."));
         }
-        dispatch::publish(
-            &service,
-            &owner,
-            &automation["projectId"],
-            &automation["id"],
-        );
+        dispatch::publish(&service, &owner, &automation);
         return Ok(Response::builder()
             .status(StatusCode::NO_CONTENT)
             .body(Body::empty())?);
@@ -70,9 +90,14 @@ async fn public_operation(
         Err(response) => return Ok(response),
     };
     let result = if create {
-        repository
-            .create(&owner, &params["projectId"], &input)
-            .await
+        match params.get("agentId") {
+            Some(agent) => repository.create_council(&owner, agent, &input).await,
+            None => {
+                repository
+                    .create(&owner, &params["projectId"], &input)
+                    .await
+            }
+        }
     } else {
         repository
             .update(&owner, &params["automationId"], &input)
@@ -80,22 +105,25 @@ async fn public_operation(
     };
     match result {
         Ok(Some(automation)) => {
-            dispatch::publish(
-                &service,
-                &owner,
-                &automation["projectId"],
-                &automation["id"],
-            );
+            dispatch::publish(&service, &owner, &automation);
             output(
                 if create { 201 } else { 200 },
-                "projectAutomationWireSchema",
+                if automation["projectId"].is_null() {
+                    "councilAutomationWireSchema"
+                } else {
+                    "projectAutomationWireSchema"
+                },
                 &automation,
             )
         }
         Ok(None) => Ok(error(
             404,
             if create {
-                "Project or target chat not found."
+                if params.contains_key("agentId") {
+                    "Council agent not found."
+                } else {
+                    "Project or target chat not found."
+                }
             } else {
                 "Automation not found."
             },
@@ -192,7 +220,7 @@ async fn worker_operation(
     } else {
         output(
             200,
-            "projectAutomationWireListSchema",
+            "workerAutomationWireListSchema",
             &Repository::new(service.repository.database.clone())
                 .list_for_worker(&owner, &worker)
                 .await?,
@@ -244,9 +272,18 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
             get(public).post(public),
         )
         .route(
+            "/api/council/agents/{agentId}/automations",
+            get(public).post(public),
+        )
+        .route(
+            "/api/council/agents/{agentId}/automations/{automationId}/runs",
+            get(public),
+        )
+        .route(
             "/api/automations/{automationId}",
             patch(public).delete(public),
         )
+        .route("/api/automations/{automationId}/runs/{runId}", get(public))
         .route("/api/internal/workers/automations", get(worker))
         .route(
             "/api/internal/workers/automations/{automationId}/dispatch",

@@ -212,7 +212,10 @@ fn protect_turn(
     if let Some(communication) = communication {
         text["chatCommunication"] = communication.clone();
     }
-    let mut internal = false;
+    let mut internal = command["automation"]["targetKind"] == "council";
+    if let Some(source) = command.get("automation") {
+        text["automation"] = source.clone();
+    }
     for field in [
         "councilPeerMessage",
         "councilProjectResult",

@@ -1,4 +1,5 @@
 import { AgentChatMessage, messageCommunication } from "./agent-chat-message";
+import { AutomationRunLink } from "./automation-run-link";
 import {
   councilProjectRequestLink,
   councilProjectResultLink,
@@ -254,11 +255,17 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
     const source = message.content.find(
       (item) =>
         item.type === "text" &&
-        (item.councilPeerMessage ||
+        (item.automation?.targetKind === "council" ||
+          item.councilPeerMessage ||
           item.councilProjectResult ||
           item.councilProjectRequest),
     );
     if (source?.type === "text") {
+      if (source.automation?.targetKind === "council") {
+        return (
+          <AutomationRunLink key={message.id} source={source.automation} />
+        );
+      }
       const {
         councilPeerMessage,
         councilProjectRequest,

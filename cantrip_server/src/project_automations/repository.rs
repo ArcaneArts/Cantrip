@@ -4,11 +4,11 @@ use super::{
 };
 use crate::{
     database::{Database, Executor},
-    native_commands::receipt,
+    native_commands::{receipt, transaction::TransactionRepository},
     settings::parse_response,
     wire::{self, JsString, Value, value::json},
 };
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -56,7 +56,22 @@ fn string(value: &Value) -> Result<String> {
 fn wire(row: &Value, worker: &Value) -> Result<Value> {
     let content = json!({"protectedName":row["protected_name"],"protectedPrompt":row["protected_prompt"],"protectedCondition":row["protected_condition"]});
     let value = json!({"id":row["id"],"projectId":row["project_id"],"chatId":row["chat_id"],"workerId":worker,"content":content,"schedule":row["schedule"],"enabled":row["enabled"],"revision":row["revision"],"nextRunAt":if row["next_run_at"].is_null(){Value::Null}else{receipt::iso(&row["next_run_at"])?},"lastRunAt":if row["last_run_at"].is_null(){Value::Null}else{receipt::iso(&row["last_run_at"])?},"lastStatus":row["last_status"],"lastError":row["last_error"],"createdAt":receipt::iso(&row["created_at"])?,"updatedAt":receipt::iso(&row["updated_at"])?});
-    parse_response("projectAutomationWireSchema", Some(&value))
+    let schema = if row["project_id"].is_null() {
+        "councilAutomationWireSchema"
+    } else {
+        "projectAutomationWireSchema"
+    };
+    parse_response(schema, Some(&value))
+}
+fn run_wire(row: Value) -> Result<Value> {
+    parse_response(
+        "automationRunWireSchema",
+        Some(&json!({
+            "id":row["id"],"automationId":row["automation_id"],"chatId":row["chat_id"],
+            "scheduledFor":receipt::iso(&row["scheduled_for"])?,"status":row["status"],
+            "error":row["error_message"],"protectedName":row["protected_name"],"protectedPrompt":row["protected_prompt"],
+        })),
+    )
 }
 fn next(enabled: bool, schedule: &Value, now: i64) -> Result<Option<i64>> {
     if !enabled {
@@ -82,19 +97,63 @@ pub struct DispatchLease {
     pub reasoning_effort: Value,
     pub scheduled_for: i64,
 }
+impl DispatchLease {
+    fn finish_values(&self, status: &str, error: Option<&JsString>, at: i64) -> Result<Value> {
+        // Match the persisted error limit in UTF-16 code units.
+        let error = error.map(|s| JsString::new(s.units()[..s.units().len().min(5000)].to_vec()));
+        Ok(
+            json!({"id":self.automation["id"],"revision":self.automation["revision"],"runId":self.run_id,"instance":self.dispatch_instance_id,"leaseToken":self.lease_token,"fence":self.fencing_token,"status":status,"error":error,"now":date(Some(at))?,"expected":date(Some(self.scheduled_for))?,"nextRunAt":date(self.next_run_at)?}),
+        )
+    }
+}
+async fn finish_dispatch(ex: Executor<'_, '_>, values: &Value) -> Result<bool> {
+    if one(ex, "finish-run", values).await?.is_none() {
+        return Ok(false);
+    }
+    run(ex, "finish-automation", values).await?;
+    Ok(true)
+}
 impl Repository {
     pub fn new(database: Arc<Database>) -> Self {
         Self { database }
     }
-    async fn target(&self, owner: &str, project: &str, chat: &Value) -> Result<Option<Value>> {
+    async fn target(
+        &self,
+        owner: &str,
+        project: Option<&str>,
+        chat: &Value,
+    ) -> Result<Option<Value>> {
         one(
             Executor::Database(&self.database),
-            "target",
+            if project.is_some() {
+                "target"
+            } else {
+                "target-council"
+            },
             &json!({"owner":owner,"project":project,"chat":chat}),
         )
         .await
     }
     pub async fn create(&self, owner: &str, project: &str, input: &Value) -> Result<Option<Value>> {
+        self.create_target(owner, Some(project), input).await
+    }
+    pub async fn create_council(
+        &self,
+        owner: &str,
+        chat: &str,
+        input: &Value,
+    ) -> Result<Option<Value>> {
+        if input["chatId"] != chat {
+            return conflict("The routine target does not match this Council agent.");
+        }
+        self.create_target(owner, None, input).await
+    }
+    async fn create_target(
+        &self,
+        owner: &str,
+        project: Option<&str>,
+        input: &Value,
+    ) -> Result<Option<Value>> {
         let input = parse_response("encryptedProjectAutomationCreateSchema", Some(input))?;
         let Some(target) = self.target(owner, project, &input["chatId"]).await? else {
             return Ok(None);
@@ -121,6 +180,58 @@ impl Repository {
         );
         parse_response("projectAutomationWireListSchema", Some(&list))
     }
+    pub async fn list_council(&self, owner: &str, chat: &str) -> Result<Value> {
+        let rows = run(
+            Executor::Database(&self.database),
+            "list-council",
+            &json!({"owner":owner,"chat":chat}),
+        )
+        .await?;
+        let list = Value::Array(
+            rows.iter()
+                .map(|row| wire(row, &row["worker_id"]))
+                .collect::<Result<Vec<_>>>()?,
+        );
+        parse_response("councilAutomationWireListSchema", Some(&list))
+    }
+    pub async fn list_council_runs(
+        &self,
+        owner: &str,
+        chat: &str,
+        automation: &str,
+    ) -> Result<Value> {
+        let rows = self
+            .database
+            .query(
+                r#"SELECT to_jsonb(r)::text
+               FROM project_automation_runs r
+               JOIN council_agents a ON a.chat_id=r.chat_id AND a.owner_id=r.owner_id
+               WHERE r.owner_id=$1 AND r.chat_id=$2 AND r.automation_id=$3 AND r.project_id IS NULL
+               ORDER BY r.scheduled_for DESC LIMIT 30"#,
+                &[&owner, &chat, &automation],
+            )
+            .await?;
+        let list = Value::Array(
+            rows.iter()
+                .map(|row| run_wire(serde_json::from_str(row.get::<&str>(0)?)?))
+                .collect::<Result<Vec<_>>>()?,
+        );
+        parse_response("councilAutomationRunWireListSchema", Some(&list))
+    }
+    pub async fn get_run(&self, owner: &str, automation: &str, id: &str) -> Result<Option<Value>> {
+        let row = self
+            .database
+            .query(
+                "SELECT to_jsonb(r)::text FROM project_automation_runs r
+               WHERE r.owner_id=$1 AND r.automation_id=$2 AND r.id=$3
+                 AND r.protected_prompt IS NOT NULL AND r.protected_name IS NOT NULL",
+                &[&owner, &automation, &id],
+            )
+            .await?;
+        row.first()
+            .map(|row| run_wire(serde_json::from_str(row.get::<&str>(0)?)?))
+            .transpose()
+    }
     pub async fn list_for_worker(&self, owner: &str, worker: &str) -> Result<Value> {
         let rows = run(
             Executor::Database(&self.database),
@@ -133,7 +244,7 @@ impl Repository {
                 .map(|row| wire(row, &json!(worker)))
                 .collect::<Result<Vec<_>>>()?,
         );
-        parse_response("projectAutomationWireListSchema", Some(&list))
+        parse_response("workerAutomationWireListSchema", Some(&list))
     }
     pub async fn get(&self, owner: &str, id: &str) -> Result<Option<Value>> {
         one(
@@ -152,7 +263,7 @@ impl Repository {
         };
         let chat = input.get("chatId").unwrap_or(&current["chatId"]);
         let Some(target) = self
-            .target(owner, string(&current["projectId"])?.as_str(), chat)
+            .target(owner, current["projectId"].as_str(), chat)
             .await?
         else {
             return conflict("The target chat does not belong to this project.");
@@ -274,6 +385,8 @@ impl Repository {
                         values["chat"] = row["chat_id"].clone();
                         values["worker"] = json!(worker);
                         values["reasoningEffort"] = row["reasoning_effort"].clone();
+                        values["protectedName"] = row["protected_name"].clone();
+                        values["protectedPrompt"] = row["protected_prompt"].clone();
                         one(ex, "claim-insert", &values).await?
                     };
                     let Some(run) = run else {
@@ -284,8 +397,13 @@ impl Repository {
                             "The automation changed while its occurrence was claimed.",
                         );
                     };
+                    let mut automation = wire(&updated, &row["worker_id"])?;
+                    if automation["projectId"].is_null() {
+                        automation["content"]["protectedName"] = run["protected_name"].clone();
+                        automation["content"]["protectedPrompt"] = run["protected_prompt"].clone();
+                    }
                     Ok(Some(DispatchLease {
-                        automation: wire(&updated, &row["worker_id"])?,
+                        automation,
                         dispatch_instance_id: instance,
                         fencing_token: number(&run["fencing_token"])?,
                         lease_token,
@@ -313,8 +431,11 @@ impl Repository {
                     WHEN EXISTS (SELECT 1 FROM chat_messages m
                         WHERE m.chat_id=c.id AND m.idempotency_key=$3) THEN 'started'
                  END
-                 FROM chats c JOIN projects p ON p.id=c.project_id
-                 WHERE p.owner_id=$1 AND c.id=$2 AND c.experience='agent'",
+                 FROM chats c
+                 WHERE c.id=$2 AND c.experience='agent' AND (
+                    EXISTS (SELECT 1 FROM projects p WHERE p.id=c.project_id AND p.owner_id=$1)
+                    OR EXISTS (SELECT 1 FROM council_agents a WHERE a.chat_id=c.id AND a.owner_id=$1)
+                 )",
                 &[&owner, &chat, &key],
             )
             .await?;
@@ -338,18 +459,68 @@ impl Repository {
         error: Option<&JsString>,
         at: i64,
     ) -> Result<bool> {
-        // Source slices UTF-16 before its text driver replaces a trailing lone
-        // surrogate. Preserve that order; JSONB must not receive a lone unit.
-        let error = error.map(|s| JsString::new(s.units()[..s.units().len().min(5000)].to_vec()));
-        let values = json!({"id":lease.automation["id"],"revision":lease.automation["revision"],"runId":lease.run_id,"instance":lease.dispatch_instance_id,"leaseToken":lease.lease_token,"fence":lease.fencing_token,"status":status,"error":error,"now":date(Some(at))?,"expected":date(Some(lease.scheduled_for))?,"nextRunAt":date(lease.next_run_at)?});
+        let values = lease.finish_values(status, error, at)?;
         self.database
             .transaction(|tx| {
+                Box::pin(async move { finish_dispatch(Executor::Transaction(tx), &values).await })
+            })
+            .await
+    }
+    pub async fn admit_council_dispatch(
+        &self,
+        owner: &str,
+        worker: &str,
+        lease: &DispatchLease,
+        prompt: &Value,
+    ) -> Result<bool> {
+        let values = lease.finish_values("queued", None, now())?;
+        let (owner, worker, chat, automation, revision, prompt) = (
+            owner.to_owned(),
+            worker.to_owned(),
+            string(&lease.automation["chatId"])?,
+            string(&lease.automation["id"])?,
+            number(&lease.automation["revision"])?,
+            prompt.clone(),
+        );
+        self.database
+            .transaction(move |tx| {
                 Box::pin(async move {
-                    let ex = Executor::Transaction(tx);
-                    if one(ex, "finish-run", &values).await?.is_none() {
+                    // Commit the scheduler receipt and the durable queue insertion together.
+                    let current = tx.query(
+                "SELECT id FROM project_automations WHERE id=$1 AND owner_id=$2 AND chat_id=$3
+                  AND project_id IS NULL AND revision=$4::bigint AND enabled FOR UPDATE",
+                &[&automation, &owner, &chat, &revision],
+            ).await?;
+                    if current.is_empty()
+                        || !finish_dispatch(Executor::Transaction(tx), &values).await?
+                    {
                         return Ok(false);
                     }
-                    run(ex, "finish-automation", &values).await?;
+                    tx.query(
+                        "SELECT id FROM chats WHERE owner_id=$1 AND id=$2 FOR UPDATE",
+                        &[&owner, &chat],
+                    )
+                    .await?;
+                    let repository = TransactionRepository::new(tx);
+                    let current = repository
+                        .execution_context(&owner, &chat)
+                        .await?
+                        .filter(|context| {
+                            context.get("councilAgent").is_some() && context["workerId"] == worker
+                        })
+                        .context("The Council routine target moved before admission.")?;
+                    let queued = repository
+                        .add_gui_prompt(
+                            &owner,
+                            &current,
+                            &prompt,
+                            &json!({"operationId":prompt["idempotencyKey"],"resumeAutonomy":false}),
+                        )
+                        .await?;
+                    ensure!(
+                        !queued["acceptedItem"].is_null(),
+                        "Council could not add the routine input."
+                    );
                     Ok(true)
                 })
             })

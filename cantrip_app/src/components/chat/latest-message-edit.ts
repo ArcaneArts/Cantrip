@@ -23,7 +23,8 @@ export function latestEditableUserMessage(
     latest?.content.some(
       (item) =>
         item.type === "text" &&
-        (item.chatCommunication ||
+        (item.automation ||
+          item.chatCommunication ||
           item.councilPeerMessage ||
           item.councilProjectResult ||
           item.councilProjectRequest),
