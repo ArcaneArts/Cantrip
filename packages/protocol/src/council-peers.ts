@@ -64,6 +64,8 @@ export const councilPeerPageSchema = z
           recipientAgentId: z.uuid(),
           operationId: z.uuid(),
           createdAt: z.iso.datetime(),
+          senderHistoryId: z.string().min(1).max(200),
+          recipientHistoryId: z.string().min(1).max(200).nullable(),
           protectedContent: encryptedChatMessageProtectedContentSchema,
         }),
       )
