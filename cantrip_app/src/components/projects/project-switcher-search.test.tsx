@@ -10,7 +10,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProjectSwitcher } from "./project-switcher";
 
 vi.mock("@/lib/project-recency", () => ({
-  useRecentProjectIds: () => [],
+  useRecentProjectIds: () => ["repo"],
   recordProjectAccess: vi.fn(),
 }));
 const timestamp = "2026-10-08T00:00:00Z";
@@ -179,5 +179,14 @@ describe("project switcher source context", () => {
     expect(options()).toHaveLength(1);
     expect(options()[0]!.textContent).toContain("Other workspace");
     expect(options()[0]!.textContent).toContain("qa/repository");
+  });
+  it("ranks project names above a recent project that matches by GitHub owner", async () => {
+    await open();
+    await search("qa");
+    expect(options().map((row) => row.textContent)).toEqual([
+      expect.stringContaining("WQA duplicate ✓"),
+      expect.stringContaining("WQA duplicate ✓"),
+      expect.stringContaining("qa/repository"),
+    ]);
   });
 });

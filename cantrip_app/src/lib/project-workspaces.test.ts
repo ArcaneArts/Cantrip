@@ -146,7 +146,66 @@ describe("project workspace filtering", () => {
     ]);
   });
 
-  it("orders global search matches by access history and keeps unvisited projects in their existing order", () => {
+  it("ranks exact, prefix, and partial project names above directory and workspace matches", () => {
+    const baseProject = projects[0]!;
+    const checkout = "/workspace/AuramMods/Thaumaturge";
+    const matches: ProjectSummary[] = [
+      {
+        ...baseProject,
+        id: "path",
+        name: "Thaumaturge",
+        source: {
+          id: "checkout",
+          sourceKind: "folder",
+          workerId: "worker",
+          path: checkout,
+          displayPath: checkout,
+          placementMode: "managed",
+          ownershipKind: "cantrip",
+          requestedPath: null,
+          linkPath: null,
+        },
+      },
+      { ...baseProject, id: "workspace", name: "Imperium" },
+      {
+        ...baseProject,
+        id: "repository",
+        name: "Client",
+        github: {
+          repositoryId: "client",
+          nameWithOwner: "AuramMods/Client",
+          url: "https://github.com/AuramMods/Client",
+        },
+      },
+      { ...baseProject, id: "partial", name: "Legacy Auram" },
+      { ...baseProject, id: "prefix", name: "Auram Tools" },
+      { ...baseProject, id: "exact", name: "Auram" },
+    ];
+    const auramMods = {
+      ...workspaces[0]!,
+      name: "AuramMods",
+      projectIds: ["workspace"],
+    };
+
+    expect(
+      searchProjects(
+        matches,
+        [auramMods, workspaces[1]!],
+        auramMods,
+        " aURAM ",
+        matches.map(({ id }) => id),
+      ).map(({ project }) => project.id),
+    ).toEqual([
+      "exact",
+      "prefix",
+      "partial",
+      "path",
+      "workspace",
+      "repository",
+    ]);
+  });
+
+  it("breaks matching-rank ties by access history and keeps unvisited projects in their existing order", () => {
     expect(
       searchProjects(projects, workspaces, workspaces[0]!, "ca", [
         "deleted",
