@@ -26,7 +26,10 @@ import {
 import { z } from "zod";
 import { councilAgentTurnContextSchema } from "./council.js";
 import { councilHistorySearchCommandSchema } from "./council-history.js";
-import { councilProjectResultPrepareCommandSchema } from "./council-project.js";
+import {
+  councilProjectRequestPrepareCommandSchema,
+  councilProjectResultPrepareCommandSchema,
+} from "./council-project.js";
 import { initialLabelCommandSchema } from "./labeling.js";
 import {
   managedSessionContextSchema,
@@ -116,6 +119,7 @@ const nativeSuspensionControlSchema = z
 export const workerChatCommandSchemas = [
   councilHistorySearchCommandSchema,
   councilProjectResultPrepareCommandSchema,
+  councilProjectRequestPrepareCommandSchema,
   z
     .object({
       type: z.literal("chat.runtime.handoff"),

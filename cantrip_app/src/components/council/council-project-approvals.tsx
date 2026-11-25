@@ -1,4 +1,5 @@
 import type { AgentInteractionResponse } from "@cantrip/protocol";
+import { councilProjectRequestLink } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, CircleAlert } from "lucide-react";
 import { useRef, useState } from "react";
@@ -94,7 +95,11 @@ export function CouncilProjectApprovals({ agentId }: { agentId: string }) {
                 request.projectId && request.provenance.chatId ? (
                   <a
                     className="mb-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                    href={`?${new URLSearchParams({ councilProject: request.projectId, projectChat: request.provenance.chatId, request: request.id })}#agent-request-${encodeURIComponent(request.id)}`}
+                    href={councilProjectRequestLink({
+                      projectId: request.projectId,
+                      chatId: request.provenance.chatId,
+                      requestId: request.id,
+                    })}
                   >
                     Open in project chat <ArrowUpRight className="size-3" />
                   </a>

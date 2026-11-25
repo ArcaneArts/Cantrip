@@ -12,23 +12,20 @@ impl Repository<'_, '_> {
         // same already-parsed limit, without introducing a second validation.
         let limit = query["limit"].as_f64().context("Interaction query limit")? as i64;
         if let Some(council) = query["councilAgentId"].as_str() {
-            return self.rows(
-                r#"SELECT to_jsonb(r)::text FROM agent_interaction_requests r
+            return self
+                .rows(
+                    r#"SELECT to_jsonb(r)::text FROM agent_interaction_requests r
                    WHERE r.owner_id=$1 AND ($2::text IS NULL OR r.chat_id=$2)
                      AND ($3::text IS NULL OR r.status=$3) AND EXISTS (
-                       SELECT 1 FROM native_command_turns observed
-                       JOIN native_commands n ON n.operation_id=observed.operation_id
-                       JOIN native_commands root ON root.operation_id=n.logical_operation_id
-                       JOIN council_project_deliveries d
-                         ON d.target_chat_id=r.chat_id AND d.input_message_id=root.logical_client_message_id
-                       JOIN council_agents a ON a.chat_id=d.source_chat_id AND a.owner_id=r.owner_id
-                       WHERE a.chat_id=$5 AND observed.chat_id=r.chat_id
-                         AND observed.thread_id=r.thread_id AND observed.turn_id=r.turn_id
-                         AND n.owner_id=r.owner_id AND n.worker_id=r.worker_id
-                         AND n.execution_lane_id=r.execution_lane_id
+                       SELECT 1 FROM council_project_interactions linked
+                       WHERE linked.council_chat_id=$5 AND linked.request_id=r.id
                      ) ORDER BY r.created_at DESC LIMIT $4"#,
-                &[&owner, &chat, &status, &limit, &council],
-            ).await?.iter().map(map).collect();
+                    &[&owner, &chat, &status, &limit, &council],
+                )
+                .await?
+                .iter()
+                .map(map)
+                .collect();
         }
         self.rows("SELECT to_jsonb(r)::text FROM agent_interaction_requests r WHERE owner_id=$1 AND ($2::text IS NULL OR chat_id=$2) AND ($3::text IS NULL OR status=$3) ORDER BY created_at DESC LIMIT $4", &[&owner,&chat,&status,&limit]).await?.iter().map(map).collect()
     }

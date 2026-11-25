@@ -599,7 +599,7 @@ async fn cycle(
                     finish(&request,&worker,logs,&outgoing,began,&result);
                     continue;
                 }
-                if matches!(kind, crate::chat_content::MESSAGE | crate::chat_content::MESSAGES | crate::chat_content::REPROTECT | crate::chat_content::TURN | crate::chat_content::QUEUE_PREPARE | crate::chat_content::COUNCIL_PROJECT_RESULT) {
+                if matches!(kind, crate::chat_content::MESSAGE | crate::chat_content::MESSAGES | crate::chat_content::REPROTECT | crate::chat_content::TURN | crate::chat_content::QUEUE_PREPARE | crate::chat_content::COUNCIL_PROJECT_RESULT | crate::chat_content::COUNCIL_PROJECT_REQUEST) {
                     let encryption = encryption.clone();
                     let logs = logs.clone();
                     let outgoing = outgoing.clone();

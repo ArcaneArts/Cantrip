@@ -128,7 +128,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
   workerCommands:
-    "19913fff1d7c6cb9533d9ebe86616908a6caf6d3c6fb4663f1aa52de96546646",
+    "2f494af21cd4a6abb2731c1acb2040c4a6205f1b93bf499aad2ba1a040546364",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3775,6 +3775,12 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "council.project-request.prepare")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "Core relays the original request identity and sealed interaction to the assigned Council worker. The worker opens its authorized account content and returns a sealed Council input.",
+    };
   if (command === "council.project-result.prepare")
     return {
       classification: "endpoint-protected",

@@ -1,6 +1,7 @@
 //! Preserve the exact delegated input's logical completion before delivering
 //! it to the originating Council agent.
 pub(crate) mod delivery;
+mod request;
 
 use crate::{database::Transaction, wire::Value};
 use anyhow::Result;

@@ -256,7 +256,7 @@
     "workerCredentialRoutes": 46,
     "durableTables": 135,
     "agentOperations": 64,
-    "workerCommands": 325,
+    "workerCommands": 326,
     "liveResources": 47,
     "clientControlCommands": 4,
     "cliCommands": 36,
@@ -276,7 +276,7 @@
     "cliCommands": "eda5c53bda92870bd738663b686243a6183683a8d04af6af5f1bd43e02893f57",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
     "liveResources": "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
-    "workerCommands": "19913fff1d7c6cb9533d9ebe86616908a6caf6d3c6fb4663f1aa52de96546646",
+    "workerCommands": "2f494af21cd4a6abb2731c1acb2040c4a6205f1b93bf499aad2ba1a040546364",
     "tunnelFrameKinds": "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8"
   },
   "durableTables": [
@@ -8972,6 +8972,7 @@
     "computer-use.preview.revoke",
     "computer-use.preview.stop",
     "council.history.search",
+    "council.project-request.prepare",
     "council.project-result.prepare",
     "customization.external.apply",
     "customization.external.preview",
@@ -9694,6 +9695,11 @@
       "command": "council.history.search",
       "classification": "endpoint-protected",
       "rationale": "A Council agent and request ID scope encrypted search queries and results between the authorized browser and the assigned worker."
+    },
+    {
+      "command": "council.project-request.prepare",
+      "classification": "endpoint-protected",
+      "rationale": "Core relays the original request identity and sealed interaction to the assigned Council worker. The worker opens its authorized account content and returns a sealed Council input."
     },
     {
       "command": "council.project-result.prepare",
