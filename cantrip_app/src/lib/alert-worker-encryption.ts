@@ -1,4 +1,7 @@
-import type { WorkerSummary } from "@cantrip/protocol";
+import type {
+  WorkerEncryptionComponentScope,
+  WorkerSummary,
+} from "@cantrip/protocol";
 import { useQueries } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { clientEncryption } from "./client-encryption";
@@ -13,6 +16,13 @@ import { refreshWorkerEncryption } from "./api/worker-wire";
  * upgrade, including workers whose Chats are not mounted. Never approve a new
  * principal here or make Chat execution depend on this background operation. */
 export function useAlertWorkerEncryption(workers: WorkerSummary[] = []) {
+  useReadyChatWorkerContentGrant(workers, "alert-content");
+}
+
+export function useReadyChatWorkerContentGrant(
+  workers: WorkerSummary[] = [],
+  component: WorkerEncryptionComponentScope,
+) {
   const snapshot = useSyncExternalStore(
     clientEncryption.subscribe,
     clientEncryption.getSnapshot,
@@ -36,15 +46,16 @@ export function useAlertWorkerEncryption(workers: WorkerSummary[] = []) {
                 g.component === "chat-content" && g.keyRevision === revision,
             ) &&
             !worker.encryption.grants.some(
-              (g) =>
-                g.component === "alert-content" && g.keyRevision === revision,
+              (g) => g.component === component && g.keyRevision === revision,
             ),
         )
       : [];
   useQueries({
     queries: eligible.map((worker) => ({
       queryKey: [
-        "alert-worker-grant",
+        component === "alert-content"
+          ? "alert-worker-grant"
+          : `chat-worker-grant:${component}`,
         identity!.serverId,
         identity!.userId,
         worker.workerId,
@@ -54,20 +65,22 @@ export function useAlertWorkerEncryption(workers: WorkerSummary[] = []) {
       queryFn: async () => {
         const assertCurrent = () => {
           if (!clientSessionIdentityMatches(identity!))
-            throw new Error("The account changed while authorizing Alerts.");
+            throw new Error(
+              "The account changed while authorizing worker content.",
+            );
         };
         assertCurrent();
         await authorizeWorkerEncryption({
           approvePending: false,
           assertCurrent,
-          components: ["alert-content"],
+          components: [component],
           identity: { serverId: identity!.serverId, ownerId: identity!.userId },
           keyRevision: revision!,
           workerId: worker.workerId,
         });
         assertCurrent();
         await refreshWorkerEncryption(worker.workerId, {
-          component: "alert-content",
+          component,
           keyRevision: revision!,
         });
         return true;

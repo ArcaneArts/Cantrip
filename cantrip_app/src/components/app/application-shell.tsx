@@ -677,6 +677,7 @@ export function App() {
   const councilAvailable = bootstrap.data?.capabilities.council === true;
   const councilWorkspace = useCouncilWorkspace(
     councilAvailable && appMode === "council",
+    workers.data,
   );
   useCouncilHistoryLink(
     councilAvailable && !isPopout,

@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "dba793cdcdbc4f20a282cad2aa7c8e07e71589e14ce0b1c92d53699550a5344a",
+    "69d702ba5da1589b8ec4882ba9efa91ac5950a21260a7b565d064cae6f100087",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -4089,6 +4089,15 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (
+    operation === "council.project.chat.create" ||
+    operation === "council.project.task.create"
+  )
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "The active Council worker seals the project chat title and any Task definition. Core resolves the owned placement and reserves the original encrypted creation request.",
+    };
   if (operation === "council.project.send")
     return {
       classification: "endpoint-protected",

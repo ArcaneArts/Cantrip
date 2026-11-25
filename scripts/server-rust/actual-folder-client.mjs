@@ -422,8 +422,12 @@ const councilHistory = process.argv.includes("--council-history");
 const councilProjectApprovals = process.argv.includes(
   "--council-project-approvals",
 );
+const councilProjectCreation = process.argv.includes(
+  "--council-project-creation",
+);
 const councilProjectMessages =
   councilProjectApprovals ||
+  councilProjectCreation ||
   process.argv.includes("--council-project-messages");
 const councilInventory =
   councilProjectMessages || process.argv.includes("--council-inventory");
@@ -1077,6 +1081,7 @@ async function flow(
               cliBinary,
               projectMessages: councilProjectMessages,
               projectApprovals: councilProjectApprovals,
+              projectCreation: councilProjectCreation,
             }
           : undefined,
         compaction: councilCompaction

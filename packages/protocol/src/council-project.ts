@@ -6,6 +6,7 @@ import {
   cantripMcpChatSendInputSchema,
 } from "./agent-chat-tools.js";
 import { cantripMcpReadResultBaseSchema } from "./cantrip-mcp-tools.js";
+import { cantripMcpTaskCreateInputSchema } from "./agent-task-tools.js";
 import {
   councilProjectRequestSourceSchema,
   councilProjectResultSourceSchema,
@@ -15,8 +16,65 @@ import {
   interactionRequestOpaqueContentSchema,
 } from "./communication-content.js";
 import { modelConfigurationSchema } from "./model-configuration.js";
+import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
+import { taskOpaqueContentSchema } from "./tasks.js";
 
 const projectId = z.string().min(1).max(255);
+export const councilProjectChatCreateInputSchema = z
+  .object({
+    operationId: z.uuid(),
+    projectId,
+    title: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
+export const councilProjectChatCreateWireSchema =
+  councilProjectChatCreateInputSchema.omit({ title: true }).extend({
+    chatId: z.uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  });
+
+export const councilProjectChatCreateOutputSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    mutated: z.literal(true),
+    data: z
+      .object({
+        projectId,
+        operationId: z.uuid(),
+        chatId: z.uuid(),
+        workerId: z.string().min(1),
+      })
+      .strict(),
+  });
+
+export const councilProjectTaskCreateInputSchema =
+  cantripMcpTaskCreateInputSchema.extend({
+    projectId,
+    start: z.boolean().default(true),
+  });
+
+export const councilProjectTaskCreateWireSchema =
+  councilProjectTaskCreateInputSchema
+    .omit({ title: true, description: true })
+    .extend({
+      taskId: z.uuid(),
+      titleProtection: privateDisplayLabelOpaqueSchema,
+      task: taskOpaqueContentSchema,
+    });
+
+export const councilProjectTaskCreateOutputSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    mutated: z.literal(true),
+    data: z
+      .object({
+        projectId,
+        operationId: z.uuid(),
+        taskId: z.uuid(),
+        workerId: z.string().min(1),
+        started: z.boolean(),
+      })
+      .strict(),
+  });
 const councilProjectInput = {
   chatId: z.string().uuid(),
   messageId: z.uuid(),

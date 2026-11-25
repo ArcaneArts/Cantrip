@@ -1,3 +1,4 @@
+mod creation;
 mod history;
 pub(super) mod inventory;
 mod memory;
@@ -65,6 +66,8 @@ pub(super) async fn execute_agent_operation(
         "council.project.send" => {
             super::agent_chat_send::execute_council(service, owner, context, arguments).await
         }
+        "council.project.chat.create" => creation::chat(service, owner, context, arguments).await,
+        "council.project.task.create" => creation::task(service, owner, context, arguments).await,
         _ => {
             memory::execute_agent_operation(&repository, owner, context, operation, arguments).await
         }

@@ -188,6 +188,22 @@ fn create_task(service: &Service, authorization: &Authorized, input: &Value) -> 
         &digest[17..20],
         &digest[20..32]
     );
+    let (title, task) = protect_task_creation(service, authorization, input, &id)?;
+    checked(
+        "agentTaskCreateWireSchema",
+        &json!({
+            "operationId":operation_id,
+            "task":json!({"chatId":id,"planGoalEnabled":false,"autoTitle":false,"titleProtection":title,"task":task}),
+        }),
+    )
+}
+
+pub(super) fn protect_task_creation(
+    service: &Service,
+    authorization: &Authorized,
+    input: &Value,
+    id: &str,
+) -> Result<(Value, Value)> {
     let content = task_content::initial(&input["description"])?;
     let label = input["title"].as_js_string().cloned().unwrap_or_else(|| {
         let description = input["description"].as_js_string().unwrap().units();
@@ -210,13 +226,7 @@ fn create_task(service: &Service, authorization: &Authorized, input: &Value) -> 
         &json!({"ownerId":task_grant.owner_id,"keyRevision":task_grant.component.key_revision,"chatId":id}),
         &content,
     )?;
-    checked(
-        "agentTaskCreateWireSchema",
-        &json!({
-            "operationId":operation_id,
-            "task":json!({"chatId":id,"planGoalEnabled":false,"autoTitle":false,"titleProtection":title,"task":task}),
-        }),
-    )
+    Ok((title, task))
 }
 
 fn open_titles(service: &Service, authorization: &Authorized, data: &mut Value) -> Result<()> {
