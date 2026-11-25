@@ -1,5 +1,6 @@
 //! Host and Linux guest Run lifecycles. Core owns admission and durable identity. Each worker
 //! generation owns its setup and PTY handles, and returns only protected output.
+pub(crate) mod external;
 mod guest;
 #[cfg(all(feature = "guest-run-definitions", target_os = "linux"))]
 pub(crate) mod guest_plan;

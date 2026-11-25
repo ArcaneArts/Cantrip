@@ -1,5 +1,5 @@
 //! Inputs for the project orchestration tools carried over WorkerLink.
-use super::{IntegrationScope, inspection};
+use super::{IntegrationScope, execution, inspection};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -30,10 +30,17 @@ pub enum Tool {
     FileSearch,
     CodegraphStatus,
     CodegraphQuery,
+    CommandStart,
+    CommandStatus,
+    CommandOutput,
+    CommandWait,
+    CommandCancel,
+    CantripCli,
+    CantripCliRun,
 }
 
 impl Tool {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 22] = [
         Self::AgentCreate,
         Self::AgentRead,
         Self::ChatSend,
@@ -49,6 +56,13 @@ impl Tool {
         Self::FileSearch,
         Self::CodegraphStatus,
         Self::CodegraphQuery,
+        Self::CommandStart,
+        Self::CommandStatus,
+        Self::CommandOutput,
+        Self::CommandWait,
+        Self::CommandCancel,
+        Self::CantripCli,
+        Self::CantripCliRun,
     ];
 
     pub fn scope(self) -> IntegrationScope {
@@ -61,6 +75,13 @@ impl Tool {
                 IntegrationScope::FilesRead
             }
             Self::CodegraphStatus | Self::CodegraphQuery => IntegrationScope::CodeGraphRead,
+            Self::CommandStart
+            | Self::CommandStatus
+            | Self::CommandOutput
+            | Self::CommandWait
+            | Self::CommandCancel => IntegrationScope::CommandsExecute,
+            Self::CantripCli => IntegrationScope::CliRead,
+            Self::CantripCliRun => IntegrationScope::CliRunsWrite,
         }
     }
 
@@ -76,6 +97,19 @@ impl Tool {
     }
 
     pub fn uses_checkout(self) -> bool {
+        self.inspects_checkout() || self.is_execution()
+    }
+
+    pub fn is_execution(self) -> bool {
+        matches!(
+            self.scope(),
+            IntegrationScope::CommandsExecute
+                | IntegrationScope::CliRead
+                | IntegrationScope::CliRunsWrite
+        )
+    }
+
+    pub fn inspects_checkout(self) -> bool {
         matches!(
             self.scope(),
             IntegrationScope::FilesRead | IntegrationScope::CodeGraphRead
@@ -83,8 +117,11 @@ impl Tool {
     }
 
     pub fn definition(self) -> Value {
-        if self.uses_checkout() {
+        if self.inspects_checkout() {
             return inspection::definition(self);
+        }
+        if self.is_execution() {
+            return execution::definition(self);
         }
         let id = || json!({"type":"string","format":"uuid"});
         let bounded_text = |max| json!({"type":"string","minLength":1,"maxLength":max});
@@ -293,6 +330,10 @@ impl CoreCall {
 )]
 pub enum CoreOperation {
     Checkout,
+    Cli {
+        operation_id: Option<Uuid>,
+        invocation: execution::CliInvocation,
+    },
     Chat {
         limit: u16,
         before_sequence: Option<u64>,
@@ -422,6 +463,13 @@ pub enum Call {
     FileSearch(inspection::FileSearch),
     CodegraphStatus(inspection::Checkout),
     CodegraphQuery(inspection::CodeGraphQuery),
+    CommandStart(execution::CommandStart),
+    CommandStatus(execution::CommandId),
+    CommandOutput(execution::CommandOutput),
+    CommandWait(execution::CommandWait),
+    CommandCancel(execution::CommandId),
+    CantripCli(execution::CliRead),
+    CantripCliRun(execution::CliRun),
 }
 
 fn message_limit() -> u16 {
@@ -462,6 +510,13 @@ impl Call {
             Self::FileSearch(_) => Tool::FileSearch,
             Self::CodegraphStatus(_) => Tool::CodegraphStatus,
             Self::CodegraphQuery(_) => Tool::CodegraphQuery,
+            Self::CommandStart(_) => Tool::CommandStart,
+            Self::CommandStatus(_) => Tool::CommandStatus,
+            Self::CommandOutput(_) => Tool::CommandOutput,
+            Self::CommandWait(_) => Tool::CommandWait,
+            Self::CommandCancel(_) => Tool::CommandCancel,
+            Self::CantripCli(_) => Tool::CantripCli,
+            Self::CantripCliRun(_) => Tool::CantripCliRun,
         }
     }
 
@@ -482,6 +537,13 @@ impl Call {
             Self::FileSearch(input) => input.project_id,
             Self::CodegraphStatus(input) => input.project_id,
             Self::CodegraphQuery(input) => input.project_id,
+            Self::CommandStart(input) => input.project_id,
+            Self::CommandStatus(input) => input.project_id,
+            Self::CommandOutput(input) => input.project_id,
+            Self::CommandWait(input) => input.project_id,
+            Self::CommandCancel(input) => input.project_id,
+            Self::CantripCli(input) => input.project_id,
+            Self::CantripCliRun(input) => input.project_id,
         }
     }
 
@@ -505,6 +567,13 @@ impl Call {
                 Self::FileSearch(input) => input.worktree_id.clone(),
                 Self::CodegraphStatus(input) => input.worktree_id.clone(),
                 Self::CodegraphQuery(input) => input.worktree_id.clone(),
+                Self::CommandStart(input) => input.worktree_id.clone(),
+                Self::CommandStatus(input) => input.worktree_id.clone(),
+                Self::CommandOutput(input) => input.worktree_id.clone(),
+                Self::CommandWait(input) => input.worktree_id.clone(),
+                Self::CommandCancel(input) => input.worktree_id.clone(),
+                Self::CantripCli(input) => input.worktree_id.clone(),
+                Self::CantripCliRun(input) => input.worktree_id.clone(),
                 _ => None,
             },
         }
@@ -584,6 +653,17 @@ impl Call {
                     && (1..=inspection::MAX_LIST_ENTRIES).contains(&input.limit)
             }
             Self::CodegraphStatus(_) => true,
+            Self::CommandStart(input) => input.valid(),
+            Self::CommandStatus(_) | Self::CommandCancel(_) => true,
+            Self::CommandOutput(input) => input.valid(),
+            Self::CommandWait(input) => input.valid(),
+            Self::CantripCli(input) => match input.command {
+                execution::CliCommand::RunLogs { tail, .. } => {
+                    tail.is_none_or(|tail| (1..=100).contains(&tail))
+                }
+                _ => true,
+            },
+            Self::CantripCliRun(_) => true,
             Self::CodegraphQuery(input) => {
                 inspection::query(&input.query)
                     && (1..=inspection::MAX_GRAPH_RESULTS).contains(&input.limit)
@@ -636,6 +716,19 @@ mod tests {
             (
                 Tool::CodegraphQuery,
                 json!({"kind":"symbols","query":"example"}),
+            ),
+            (
+                Tool::CommandStart,
+                json!({"operationId":id,"executable":"grep","args":["needle","file.txt"]}),
+            ),
+            (Tool::CommandStatus, json!({"commandId":id})),
+            (Tool::CommandOutput, json!({"commandId":id})),
+            (Tool::CommandWait, json!({"commandId":id})),
+            (Tool::CommandCancel, json!({"commandId":id})),
+            (Tool::CantripCli, json!({"command":{"name":"context"}})),
+            (
+                Tool::CantripCliRun,
+                json!({"operationId":id,"configurationId":id,"action":"start"}),
             ),
         ];
         assert_eq!(cases.len(), Tool::ALL.len());

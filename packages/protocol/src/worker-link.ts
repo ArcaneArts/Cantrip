@@ -675,6 +675,13 @@ export const installedWorkerLinkGrantSchema = z
             "file_search",
             "codegraph_status",
             "codegraph_query",
+            "command_start",
+            "command_status",
+            "command_output",
+            "command_wait",
+            "command_cancel",
+            "cantrip_cli",
+            "cantrip_cli_run",
           ])
           .optional(),
         chatId: z.string().uuid().optional(),

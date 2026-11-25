@@ -25,6 +25,7 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
 
+mod execution;
 mod writes;
 
 struct Authority {
@@ -231,6 +232,13 @@ async fn execute(
             checkout(service, authority).await
         }
         (
+            Tool::CantripCli | Tool::CantripCliRun,
+            CoreOperation::Cli {
+                operation_id,
+                invocation,
+            },
+        ) => execution::cli(service, authority, operation_id, invocation).await,
+        (
             Tool::AgentRead | Tool::ChatRead | Tool::ChatWait,
             CoreOperation::Chat {
                 limit,
@@ -266,11 +274,20 @@ async fn checkout(service: &AuthService, authority: &Authority) -> Result<Value>
                     "The selected checkout is unavailable.",
                 )
             })?;
-    Ok(json!({
+    let mut checkout = json!({
         "projectId":authority.project,"worktreeId":authority.worktree,"workerId":authority.worker,
         "rootKind":selected["worktree"]["rootKind"],"worktreePath":selected["worktree"]["path"],
         "sourcePath":selected["sourcePath"],
-    }))
+    });
+    if authority.tool.is_execution() {
+        let policy = execution::policy(service, authority).await?;
+        if authority.tool == Tool::CommandStart && policy.sandbox_access().is_none() {
+            return Err(execution::denied());
+        }
+        checkout["externalExecutionPolicy"] = json!(policy);
+        checkout["principalId"] = json!(authority.principal);
+    }
+    Ok(checkout)
 }
 
 fn copy_fields(value: &Value, keys: &[&str]) -> Value {

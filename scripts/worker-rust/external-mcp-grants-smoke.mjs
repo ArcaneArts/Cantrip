@@ -349,6 +349,7 @@ try {
       encryptedHostedRelay: Boolean(values.worker),
       orchestration: Boolean(values.worker && values.codex),
       checkoutInspection: Boolean(values.worker),
+      execution: Boolean(values.worker && values.codex),
       appClient: Boolean(app),
     }),
   );

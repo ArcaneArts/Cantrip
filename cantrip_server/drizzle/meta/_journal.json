@@ -2059,6 +2059,13 @@
       "when": 1795584067532,
       "tag": "0293_external_mcp_operation_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1795586488481,
+      "tag": "0294_external_mcp_execution",
+      "breakpoints": true
     }
   ]
 }

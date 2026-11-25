@@ -80,6 +80,7 @@ export async function verifyHostedRelay({
         CANTRIP_WORKER_DATA_DIR: workerDirectory,
         CANTRIP_WORKER_ID: workerId,
         CANTRIP_SERVER_URL: server.origin,
+        CANTRIP_EXTERNAL_MCP_FIXTURE_SECRET: "owned test environment marker",
         ...(codex ? { CANTRIP_CODEX_BIN: path.resolve(codex) } : {}),
         ...(enrollmentCode
           ? { CANTRIP_WORKER_ENROLLMENT_CODE: enrollmentCode }
@@ -238,6 +239,7 @@ export async function verifyHostedRelay({
         "private-surface-metadata",
         "chat-content",
         "task-content",
+        "run-content",
       );
     for (const component of components) {
       const key = deriveComponentKey({
@@ -374,6 +376,59 @@ export async function verifyHostedRelay({
       projectId,
       ownerVisit,
     });
+    let execution;
+    let verifyInterrupted;
+    if (codex) {
+      const { verifyExecution } =
+        await import("./external-mcp-execution-cases.mjs");
+      execution = await ownerVisit("POST", integrations, 201, {
+        label: "External command fixture",
+        permissions: {
+          projects: selected,
+          scopes: ["commands-execute", "cli-read", "cli-runs-write"],
+        },
+        expiresInSeconds: 300,
+      });
+      await request(
+        relay,
+        inspection.credential,
+        { projectId, tool: "command_start" },
+        403,
+      );
+      await request(
+        relay,
+        execution.credential,
+        { projectId: outsideAccount, tool: "command_start" },
+        404,
+      );
+      await client?.close();
+      await writeFile(credentialFile, execution.credential + "\n", {
+        mode: 0o600,
+      });
+      client = await connectMcp(credentialFile);
+      const other = await ownerVisit("POST", integrations, 201, {
+        label: "Separate command integration",
+        permissions: { projects: selected, scopes: ["commands-execute"] },
+        expiresInSeconds: 300,
+      });
+      const otherFile = path.join(directory, "other-command.credential");
+      await writeFile(otherFile, other.credential + "\n", { mode: 0o600 });
+      const otherClient = await connectMcp(otherFile);
+      try {
+        verifyInterrupted = await verifyExecution({
+          client,
+          directory,
+          workerDirectory,
+          projectId,
+          ownerVisit,
+          unrelated,
+          otherClient,
+          eventually,
+        });
+      } finally {
+        await otherClient.close();
+      }
+    }
     const generation = await callWorker(first.credential);
     const bad = await open(first.credential, projectId);
     const badSession = relay + "/" + bad.session.sessionId;
@@ -404,6 +459,14 @@ export async function verifyHostedRelay({
     await eventually(() => open(first.credential, projectId, 409));
     await startWorker();
     assert.notEqual(await callWorker(first.credential), generation);
+    if (verifyInterrupted) {
+      await client?.close();
+      await writeFile(credentialFile, execution.credential + "\n", {
+        mode: 0o600,
+      });
+      client = await connectMcp(credentialFile);
+      await verifyInterrupted(client);
+    }
     await request(
       relay + "/" + stale.session.sessionId,
       first.credential,

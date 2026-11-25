@@ -1,4 +1,5 @@
 //! Encrypted workspace catalog and immutable workspace membership lifecycle.
+mod external_execution;
 mod listing;
 mod mutations;
 pub mod project_cleanup;
