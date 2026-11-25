@@ -600,13 +600,16 @@ async function flow(
   const resumeAckFile = sharedQueueInterruption?.startsWith("resume-ack")
     ? path.join(dataDirectory, "test-queue-resume-ack")
     : undefined;
-  const councilSteerFault = process.argv.includes(
-    "--council-steering-dropped-reply",
-  )
-    ? "council-steer-dropped-reply"
-    : process.argv.includes("--council-steering-race")
-      ? "council-steer-completion"
-      : undefined;
+  const coldCouncilSteer = process.argv.includes(
+    "--council-steering-cold-recovery",
+  );
+  const councilSteerFault = coldCouncilSteer
+    ? "council-steer-cold-recovery"
+    : process.argv.includes("--council-steering-dropped-reply")
+      ? "council-steer-dropped-reply"
+      : process.argv.includes("--council-steering-race")
+        ? "council-steer-completion"
+        : undefined;
   const councilSteerTrace = councilSteerFault
     ? path.join(root, `${councilSteerFault}-${fixture.kind}.jsonl`)
     : undefined;
@@ -1160,9 +1163,19 @@ async function flow(
             ? councilSteerTrace
             : undefined,
         dropReplyMarker:
+          coldCouncilSteer ||
           councilSteerFault === "council-steer-dropped-reply"
             ? councilSteerTrace
             : undefined,
+        coldRecovery: coldCouncilSteer
+          ? {
+              crashWorker,
+              restartWorker: () =>
+                startWorker(undefined, {
+                  environment: { CANTRIP_CODEX_BIN: councilSteerProxy },
+                }),
+            }
+          : undefined,
       });
       if (process.argv.includes("--council-app-mode")) {
         await actualCouncilAppMode({

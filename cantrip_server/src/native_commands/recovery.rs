@@ -6,6 +6,24 @@ use super::{
 use crate::wire::{Value, coercion::truthy, value::json};
 use anyhow::Result;
 use futures::FutureExt;
+
+pub(super) fn terminal_reconciliation(
+    worker: &str,
+    expected: &Value,
+    observed: &Value,
+) -> Option<Value> {
+    (expected.get("threadId") == observed.get("threadId")
+        && expected.get("turnId") == observed.get("turnId")
+        && expected.get("runtimeGeneration") != observed.get("runtimeGeneration")
+        && matches!(observed["status"].as_str(), Some("completed" | "failed" | "interrupted")))
+        .then(|| json!({
+            "workerId":worker,"operationId":expected["receipt"]["operationId"],"operationGeneration":expected["receipt"]["operationGeneration"],
+            "status":"applied","resultDigest":Value::Null,"protectedResult":Value::Null,"rejectionCode":Value::Null,"executionComplete":true,
+            "executionStatus":if observed["status"]=="failed"{"failed"}else{"idle"},
+            "reconciliation":json!({"nativeTurnId":observed["turnId"],"runtimeGeneration":expected["runtimeGeneration"]}),
+        }))
+}
+
 impl Repository {
     /// Capture the old writer before its worker performs an actual native read.
     pub async fn recovery_context(&self, owner: &str, chat: &str) -> Result<Option<Value>> {
@@ -28,15 +46,9 @@ impl Repository {
         expected: &Value,
         observed: &Value,
     ) -> Result<bool> {
-        if expected.get("threadId") != observed.get("threadId")
-            || expected.get("turnId") != observed.get("turnId")
-            || expected.get("runtimeGeneration") == observed.get("runtimeGeneration")
-            || !truthy(observed.get("status"))
-            || observed["status"] == "inProgress"
-        {
+        let Some(input) = terminal_reconciliation(worker, expected, observed) else {
             return Ok(false);
-        }
-        let input = json!({"workerId":worker,"operationId":expected["receipt"]["operationId"],"operationGeneration":expected["receipt"]["operationGeneration"],"status":"applied","resultDigest":Value::Null,"protectedResult":Value::Null,"rejectionCode":Value::Null,"executionComplete":true,"executionStatus":if observed["status"]=="failed"{"failed"}else{"idle"},"reconciliation":json!({"nativeTurnId":observed["turnId"],"runtimeGeneration":expected["runtimeGeneration"]})});
+        };
         match self.settle(owner, &input).boxed().await {
             Ok(_) => Ok(true),
             Err(error) => {

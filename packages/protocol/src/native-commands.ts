@@ -414,6 +414,17 @@ export const nativeTurnRecoveryObservationSchema = z
     status: z
       .enum(["inProgress", "completed", "failed", "interrupted"])
       .nullable(),
+    observedInputs: z
+      .array(
+        z
+          .object({
+            clientUserMessageId: id,
+            itemId: id,
+          })
+          .strict(),
+      )
+      .max(64)
+      .optional(),
   })
   .strict();
 export type NativeTurnRecoveryObservation = z.infer<

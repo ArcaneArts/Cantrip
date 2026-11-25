@@ -10,7 +10,9 @@ const { WebSocket, WebSocketServer } = createRequire(
 const [binary, marker, prompt, scenario, ...args] = process.argv.slice(2);
 const liveYolo = scenario === "live-yolo";
 const steerCompletion = scenario === "council-steer-completion";
-const dropSteerReply = scenario === "council-steer-dropped-reply";
+const coldSteerReply = scenario === "council-steer-cold-recovery";
+const dropSteerReply =
+  coldSteerReply || scenario === "council-steer-dropped-reply";
 function record(event) {
   writeFileSync(marker, `${JSON.stringify(event)}\n`, {
     flag: "a",
@@ -77,7 +79,7 @@ if (
           }
           if (
             frame.method === "thread/items/list" &&
-            acceptedSteerId !== undefined
+            (coldSteerReply || acceptedSteerId !== undefined)
           ) {
             historyReadId = frame.id;
             record({ phase: frame.method, turnId: frame.params.turnId });
@@ -295,7 +297,11 @@ if (
           }),
         );
       });
-      worker.once("close", () => native.close());
+      worker.once("close", () => {
+        native.close();
+        if (coldSteerReply && acceptedSteerId !== undefined)
+          child.kill("SIGKILL");
+      });
       native.once("close", () => worker.close());
       native.on("error", () => worker.terminate());
       worker.on("error", () => native.terminate());

@@ -120,8 +120,9 @@ pub(super) async fn settle(
     }
     let consumed = (!parent_goal || truthy(claim.get("goal_cancelled")))
         && row["status"] == "applied"
-        && truthy(row.get("protected_result"))
-        && truthy(row.get("result_digest"));
+        && ((truthy(row.get("protected_result")) && truthy(row.get("result_digest")))
+            || (row["method"] == "turn/steer"
+                && row["terminal_evidence"]["kind"] == "council-steer-observed"));
     let deferred = row["status"] == "rejected"
         && ((row["rejection_code"] == "native-settings-pending"
             && row["terminal_evidence"].get("kind").is_some_and(|k| *k == "deferred"))

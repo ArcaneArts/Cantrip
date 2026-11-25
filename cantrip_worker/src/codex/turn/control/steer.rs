@@ -366,42 +366,69 @@ async fn dispatch(
 }
 
 async fn observed_input(selected: &Selection, client: &JsString) -> Option<JsString> {
+    observed_inputs(
+        &selected.runtime,
+        &selected.thread,
+        &selected.turn,
+        &[client.clone()],
+    )
+    .await
+    .first()?
+    .get("itemId")?
+    .as_js_string()
+    .cloned()
+}
+
+pub(in crate::codex) async fn observed_inputs(
+    runtime: &super::Runtime,
+    thread: &JsString,
+    turn: &JsString,
+    clients: &[JsString],
+) -> Vec<Value> {
     // An exact native item is positive evidence. Missing pages, an unavailable
     // runtime, or an absent item cannot authorize another submission.
     let mut cursor = Value::Null;
+    let mut found = Vec::new();
     for _ in 0..4 {
-        let page = selected
-            .runtime
+        let Ok(Some(page)) = runtime
             .request(
                 "thread/items/list".into(),
-                Some(json!({"threadId":selected.thread,"turnId":selected.turn,
+                Some(json!({"threadId":thread,"turnId":turn,
                     "cursor":cursor,"limit":128,"sortDirection":"desc"})),
                 Some(Duration::from_secs(3)),
                 None,
             )
             .await
-            .ok()??;
-        if let Some(item) = page["data"]
-            .as_array()?
-            .iter()
-            .find(|entry| {
+        else {
+            break;
+        };
+        if let Some(entries) = page["data"].as_array() {
+            found.extend(entries.iter().filter_map(|entry| {
                 let item = &entry["item"];
-                entry["turnId"].as_js_string() == Some(&selected.turn)
+                let client = item["clientId"].as_js_string()?;
+                let item_id = item["id"].as_js_string().filter(|id| !id.is_empty())?;
+                (entry["turnId"].as_js_string() == Some(turn)
                     && item["type"] == "userMessage"
-                    && item["clientId"].as_js_string() == Some(client)
-            })
-            .and_then(|entry| entry["item"]["id"].as_js_string())
-            .filter(|id| !id.is_empty())
-        {
-            return Some(item.clone());
+                    && clients.contains(client))
+                .then(|| json!({"itemId":item_id,"clientUserMessageId":client}))
+            }));
         }
-        let next = page["nextCursor"].as_js_string()?;
+        if clients.iter().all(|client| {
+            found
+                .iter()
+                .any(|entry| entry["clientUserMessageId"].as_js_string() == Some(client))
+        }) {
+            break;
+        }
+        let Some(next) = page["nextCursor"].as_js_string() else {
+            break;
+        };
         if cursor.as_js_string() == Some(next) {
-            return None;
+            break;
         }
         cursor = json!(next);
     }
-    None
+    found
 }
 
 fn native_target_ended(error: &Value, expected: &cantrip_wire::JsString) -> bool {

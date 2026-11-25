@@ -62,7 +62,7 @@ async fn response(
     }
     Ok(value)
 }
-async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value> {
+pub(super) async fn settle(tx: &Transaction<'_>, owner: &str, input: &Value) -> Result<Value> {
     let worker = text(&input["workerId"])?;
     let operation = text(&input["operationId"])?;
     let generation = text(&input["operationGeneration"])?;
