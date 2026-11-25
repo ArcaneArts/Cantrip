@@ -25,6 +25,8 @@ import {
   councilHistorySearchToolOutputSchema,
   councilInventoryInputSchema,
   councilInventoryToolOutputSchema,
+  councilMcpSetupInputSchema,
+  councilMcpSetupToolOutputSchema,
   councilListToolInputSchema,
   councilListToolOutputSchema,
   councilMemoryReadToolInputSchema,
@@ -159,6 +161,13 @@ async function generate() {
     CANTRIP_MCP_TOOL_NAMES.map((name) => [name, cantripMcpToolHelp(name)]),
   );
   const council = [
+    [
+      "council_mcp_setup",
+      "council.mcp.setup",
+      "Add a supported stdio or HTTP MCP server to Chat settings on this Council Worker. It becomes available through the usual MCP configuration on a subsequent turn. Prefer existing credential environment variables when supported. Reuse operationId only to retry the same configuration.",
+      councilMcpSetupInputSchema,
+      councilMcpSetupToolOutputSchema,
+    ],
     [
       "council_message_post",
       "council.message.post",

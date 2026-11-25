@@ -65,28 +65,31 @@ pub fn open_mcp_servers(service: &Service, servers: &[Value]) -> Result<Vec<Valu
     let grant = service.bound_component("mcp-secret", None)?;
     enabled
         .into_iter()
-        .map(|server| {
-            let encrypted = &server["protectedConfiguration"];
-            let aad = context(
-                &grant,
-                "mcp-secret",
-                "mcp_servers",
-                &server["id"],
-                "protected_configuration",
-                &encrypted["keyRevision"],
-            );
-            let mut configuration = decrypt_secret(
-                &grant.component.key,
-                &aad,
-                encrypted,
-                "mcpServerConfigurationSchema",
-                Some(1024 * 1024),
-            )?;
-            set(&mut configuration, "enabled", server["enabled"].clone())?;
-            checked("mcpServerConfigurationSchema", &configuration)
-        })
+        .map(|server| open_mcp_server(&grant, server))
         .collect()
 }
+
+pub(crate) fn open_mcp_server(grant: &BoundComponentKey, server: &Value) -> Result<Value> {
+    let encrypted = &server["protectedConfiguration"];
+    let aad = context(
+        grant,
+        "mcp-secret",
+        "mcp_servers",
+        &server["id"],
+        "protected_configuration",
+        &encrypted["keyRevision"],
+    );
+    let mut configuration = decrypt_secret(
+        &grant.component.key,
+        &aad,
+        encrypted,
+        "mcpServerConfigurationSchema",
+        Some(1024 * 1024),
+    )?;
+    set(&mut configuration, "enabled", server["enabled"].clone())?;
+    checked("mcpServerConfigurationSchema", &configuration)
+}
+
 pub(crate) fn is_managed_mcp_name(name: &JsString) -> bool {
     matches!(
         name.trim().lowercase().as_str(),
@@ -101,7 +104,13 @@ pub fn protect_discovered_mcp(
 ) -> Result<Value> {
     let configuration = importable_mcp_configuration(configuration)?;
     let grant = service.bound_component("mcp-secret", None)?;
-    seal_discovered_mcp(&grant, worker, &configuration)
+    seal_mcp_server(
+        &grant,
+        &json!(uuid::Uuid::new_v4().to_string()),
+        worker,
+        "ide",
+        &configuration,
+    )
 }
 
 pub(crate) fn protect_discovered_mcp_for_grant(
@@ -110,7 +119,13 @@ pub(crate) fn protect_discovered_mcp_for_grant(
     configuration: &Value,
 ) -> Result<Value> {
     let configuration = importable_mcp_configuration(configuration)?;
-    seal_discovered_mcp(grant, worker, &configuration)
+    seal_mcp_server(
+        grant,
+        &json!(uuid::Uuid::new_v4().to_string()),
+        worker,
+        "ide",
+        &configuration,
+    )
 }
 
 fn importable_mcp_configuration(configuration: &Value) -> Result<Value> {
@@ -123,17 +138,24 @@ fn importable_mcp_configuration(configuration: &Value) -> Result<Value> {
     Ok(configuration)
 }
 
-fn seal_discovered_mcp(
+pub(crate) fn seal_mcp_server(
     grant: &BoundComponentKey,
+    id: &Value,
     worker: &Value,
+    audience: &str,
     configuration: &Value,
 ) -> Result<Value> {
-    let id = json!(uuid::Uuid::new_v4().to_string());
+    let name = configuration["name"]
+        .as_js_string()
+        .ok_or_else(|| anyhow!("The MCP server name is missing."))?;
+    if is_managed_mcp_name(name) {
+        bail!("The MCP server name is reserved by Cantrip.");
+    }
     let lookup_context = context(
         grant,
         "mcp-secret",
         "mcp_servers",
-        &id,
+        id,
         "name",
         &json!(grant.component.key_revision),
     );
@@ -142,7 +164,7 @@ fn seal_discovered_mcp(
         grant,
         "mcp-secret",
         "mcp_servers",
-        &id,
+        id,
         "protected_configuration",
         &json!(grant.component.key_revision),
     );
@@ -155,7 +177,11 @@ fn seal_discovered_mcp(
     )?;
     checked(
         "encryptedMcpServerCreateSchema",
-        &json!({"id":id,"enabled":true,"workerId":worker,"nameBlindIndex":blind_lookup_tag(&lookup,&configuration["name"].as_js_string().unwrap().lowercase())?,"protectedConfiguration":encrypted}),
+        &json!({
+            "id": id, "enabled": configuration["enabled"], "workerId": worker,
+            "audience": audience, "nameBlindIndex": blind_lookup_tag(&lookup, &name.lowercase())?,
+            "protectedConfiguration": encrypted,
+        }),
     )
 }
 fn subject(credential: &Value) -> Result<JsString> {

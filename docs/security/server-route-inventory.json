@@ -255,7 +255,7 @@
     "websocket": 7,
     "workerCredentialRoutes": 46,
     "durableTables": 135,
-    "agentOperations": 74,
+    "agentOperations": 75,
     "workerCommands": 328,
     "liveResources": 48,
     "clientControlCommands": 4,
@@ -271,7 +271,7 @@
     }
   },
   "contractSetDigests": {
-    "agentOperations": "6be765e0a886708984315e1e6405829c252d906d4736337ab9037774edf50d91",
+    "agentOperations": "dbb17409639e7a1a84a7fd0c24c1c15dcf9aa51df6f2e0b677a7c983300d7b8d",
     "applicationRoutes": "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
     "cliCommands": "eda5c53bda92870bd738663b686243a6183683a8d04af6af5f1bd43e02893f57",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
@@ -8665,6 +8665,11 @@
       "operation": "council.list",
       "classification": "endpoint-protected",
       "rationale": "An active Council binding authorizes account-owned roster access. The worker seals names and roles before relaying them and opens protected labels for the model."
+    },
+    {
+      "operation": "council.mcp.setup",
+      "classification": "endpoint-protected",
+      "rationale": "The active Council worker seals the MCP configuration with the existing settings key. Core stores the protected configuration for the bound Worker, and the tool returns only setup metadata."
     },
     {
       "operation": "council.memory.read",

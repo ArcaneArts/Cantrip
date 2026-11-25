@@ -998,8 +998,17 @@ impl Ensurer {
                                 message.clone(),
                             );
                         }
-                        if first_message.is_some() || command["taskGoalPermissions"] == true {
-                            profile::apply_goal_permissions(
+                        // Council's shared default applies between turns while the
+                        // existing native thread retains its history.
+                        let council_turn = session["council"] == true
+                            && command["type"] == "chat.turn"
+                            && held.is_none()
+                            && !stopping;
+                        if council_turn
+                            || first_message.is_some()
+                            || command["taskGoalPermissions"] == true
+                        {
+                            profile::apply_execution_permissions(
                                 &runtime,
                                 &loaded,
                                 &command,
