@@ -997,6 +997,8 @@ async function flow(kind, executable, cliBinary) {
         "DURABLE_TOOL_RESULT\n",
       );
       if (process.argv.includes("--cold-stop")) {
+        const sendAfterStop =
+          kind === "rust" && process.argv.includes("--send-after-stop");
         result.stopped = await coldSuspensionStop({
           page,
           chatId: chat.id,
@@ -1005,7 +1007,44 @@ async function flow(kind, executable, cliBinary) {
           active,
           inferences,
           mounted: process.argv.includes("--mounted-ui"),
+          verifyLateResume: !sendAfterStop,
         });
+        if (sendAfterStop) {
+          const freshPrompt = "DURABLE_NEW_PROMPT_AFTER_STOP";
+          const freshResponse = "DURABLE_NEW_RESPONSE_AFTER_STOP";
+          const before = inferences();
+          model.reply({ text: freshResponse });
+          if (process.argv.includes("--mounted-ui")) {
+            await page
+              .getByPlaceholder("Ask Cantrip to work on this repository…")
+              .fill(freshPrompt);
+            await page.getByRole("button", { name: "Send prompt" }).click();
+          } else {
+            await page.evaluate(
+              async ({ chatId, text, configuration }) => {
+                const { startTurn } = await import("/src/lib/api/chats.ts");
+                await startTurn(chatId, text, configuration);
+              },
+              { chatId: chat.id, text: freshPrompt, configuration },
+            );
+          }
+          const completed = await eventually(messages, (value) => {
+            assert.ok(JSON.stringify(value).includes(freshResponse));
+          });
+          const items = completed.flatMap((message) => message.content);
+          assert.equal(
+            items.filter((item) => item.text === freshPrompt).length,
+            1,
+          );
+          assert.equal(inferences(), before + 1);
+          const next = await eventually(identity, (value) => {
+            assert.equal(value.status, "idle");
+            assert.equal(value.automationPaused, false);
+          });
+          assert.equal(next.nativeSuspension.phase, "stopped");
+          assert.deepEqual(next.nativeSuspension.active, active);
+          result.sentAfterStop = true;
+        }
         return;
       }
       if (restoreDamage)

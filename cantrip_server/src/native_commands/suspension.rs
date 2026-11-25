@@ -414,7 +414,10 @@ pub(super) async fn settle(
             }
         }
     }
-    let paused = state["phase"] != "running";
+    // A committed Agent Stop keeps autonomous work stopped. A new prompt
+    // can release that hold through normal queue admission.
+    let paused = state["phase"] != "running"
+        && !(state["phase"] == "stopped" && current["experience"] == "agent");
     save(tx, owner, &id, state, paused).await
 }
 

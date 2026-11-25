@@ -48,6 +48,7 @@ export async function coldSuspensionStop({
   active,
   inferences,
   mounted,
+  verifyLateResume = true,
 }) {
   const before = inferences();
   const stop = () =>
@@ -84,24 +85,26 @@ export async function coldSuspensionStop({
     assert.equal(value.status, "idle");
   });
   assert.deepEqual(chat.nativeSuspension.active, active);
-  const resume = await page.evaluate(async (id) => {
-    try {
-      return {
-        result: await (
-          await import("/src/lib/api/chats.ts")
-        ).setChatPaused(id, false),
-      };
-    } catch (error) {
-      return { status: error.status };
-    }
-  }, chatId);
-  if (resume.status) assert.equal(resume.status, 409);
-  await delay(300);
-  assert.equal(
-    (await identity()).nativeSuspension.phase,
-    "stopped",
-    "A late Resume cannot resurrect the stopped turn",
-  );
+  if (verifyLateResume) {
+    const resume = await page.evaluate(async (id) => {
+      try {
+        return {
+          result: await (
+            await import("/src/lib/api/chats.ts")
+          ).setChatPaused(id, false),
+        };
+      } catch (error) {
+        return { status: error.status };
+      }
+    }, chatId);
+    if (resume.status) assert.equal(resume.status, 409);
+    await delay(300);
+    assert.equal(
+      (await identity()).nativeSuspension.phase,
+      "stopped",
+      "A late Resume cannot resurrect the stopped turn",
+    );
+  }
   const rollouts = [];
   for await (const relative of glob("**/rollout-*.jsonl", {
     cwd: workerData,
@@ -160,6 +163,6 @@ export async function coldSuspensionStop({
     nativeTurnStarts: 1,
     nativeTurnAborts: 1,
     mountedStop: !!mounted,
-    lateResumeRejected: true,
+    ...(verifyLateResume ? { lateResumeRejected: true } : {}),
   };
 }
