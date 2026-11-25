@@ -844,6 +844,8 @@ const councilExports = [
   "councilProjectTaskCreateInputSchema",
   "councilProjectTaskCreateOutputSchema",
   "councilProjectTaskCreateWireSchema",
+  "councilProjectTaskStartInputSchema",
+  "councilProjectTaskStartOutputSchema",
 ];
 const nativeResourceAndTimingExports = [
   "inferenceCommandTimingSchema",

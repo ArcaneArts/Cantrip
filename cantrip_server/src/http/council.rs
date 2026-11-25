@@ -4,6 +4,7 @@ mod history;
 pub(super) mod inventory;
 mod memory;
 mod peers;
+mod task_starts;
 
 use super::{
     body,
@@ -71,6 +72,9 @@ pub(super) async fn execute_agent_operation(
         }
         "council.project.chat.create" => creation::chat(service, owner, context, arguments).await,
         "council.project.task.create" => creation::task(service, owner, context, arguments).await,
+        "council.project.task.start" => {
+            task_starts::start(service, owner, context, arguments).await
+        }
         "council.project.interrupt" => {
             controls::interrupt(service, owner, context, arguments).await
         }

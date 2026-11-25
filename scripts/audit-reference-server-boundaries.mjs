@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "8851f7517cb703499503333edb8f392cbe67895131d0c23db536bf2485508fdb",
+    "9d268881e28dff4db1be94beb9c1d4dbc97d70ed1fa31f10673ea9b9a21672a1",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -4089,6 +4089,12 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation === "council.project.task.start")
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "Core queues an owned Task through its existing scheduler and returns only the attributed dispatch identity and operation kind.",
+    };
   if (operation === "council.peer.send")
     return {
       classification: "endpoint-protected",

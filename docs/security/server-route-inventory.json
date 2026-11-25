@@ -255,7 +255,7 @@
     "websocket": 7,
     "workerCredentialRoutes": 46,
     "durableTables": 135,
-    "agentOperations": 68,
+    "agentOperations": 69,
     "workerCommands": 326,
     "liveResources": 47,
     "clientControlCommands": 4,
@@ -271,7 +271,7 @@
     }
   },
   "contractSetDigests": {
-    "agentOperations": "8851f7517cb703499503333edb8f392cbe67895131d0c23db536bf2485508fdb",
+    "agentOperations": "9d268881e28dff4db1be94beb9c1d4dbc97d70ed1fa31f10673ea9b9a21672a1",
     "applicationRoutes": "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
     "cliCommands": "eda5c53bda92870bd738663b686243a6183683a8d04af6af5f1bd43e02893f57",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
@@ -8680,6 +8680,11 @@
       "operation": "council.project.task.create",
       "classification": "endpoint-protected",
       "rationale": "The active Council worker seals the project chat title and any Task definition. Core resolves the owned placement and reserves the original encrypted creation request."
+    },
+    {
+      "operation": "council.project.task.start",
+      "classification": "intentionally-public-control-plane",
+      "rationale": "Core queues an owned Task through its existing scheduler and returns only the attributed dispatch identity and operation kind."
     },
     {
       "operation": "explorer.list",

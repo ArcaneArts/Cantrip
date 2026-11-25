@@ -107,6 +107,7 @@ impl Inner {
             }
             "council.project.chat.create"
             | "council.project.task.create"
+            | "council.project.task.start"
             | "council.project.interrupt" => {}
             _ => {
                 reply["data"] = open_memory(service, authorization, agent_id, &reply["data"])?;
