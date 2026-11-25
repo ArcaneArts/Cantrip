@@ -30,6 +30,8 @@ import {
   councilProjectChatCreateOutputSchema,
   councilProjectTaskCreateInputSchema,
   councilProjectTaskCreateOutputSchema,
+  councilProjectInterruptInputSchema,
+  councilProjectInterruptOutputSchema,
   workerCantripMcpServerCapabilitiesSchema,
 } from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
@@ -214,11 +216,18 @@ async function generate() {
       councilProjectTaskCreateInputSchema,
       councilProjectTaskCreateOutputSchema,
     ],
+    [
+      "council_project_interrupt",
+      "council.project.interrupt",
+      "Interrupt the active project Agent turn or stop the selected Task via its normal controls. Use target IDs from council_inventory. Reuse the operation ID when checking an earlier interruption.",
+      councilProjectInterruptInputSchema,
+      councilProjectInterruptOutputSchema,
+    ],
   ];
   profiles.council = {
     ...profiles["standalone-web"],
     instructions:
-      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Use council_inventory to find projects, chats, and Tasks. Create project Agent chats or Tasks with the Council project tools. Read and update your fast memory with council_memory_read and council_memory_write. Search retained work with council_history_search and open evidence with council_history_read. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
+      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Use council_inventory to find projects, chats, and Tasks. Create project Agent chats or Tasks with the Council project tools. When asked to stop delegated project work, interrupt the specified Agent chat or Task with council_project_interrupt. Read and update your fast memory with council_memory_read and council_memory_write. Search retained work with council_history_search and open evidence with council_history_read. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
     tools: [
       ...profiles["standalone-web"].tools,
       ...council.map(([name, operation, description, input, output]) => {

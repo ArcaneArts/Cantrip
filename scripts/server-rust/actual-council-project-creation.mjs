@@ -4,7 +4,7 @@ import { councilProjectResultLink } from "../../packages/protocol/dist/index.js"
 
 import { eventually } from "./full-worker.mjs";
 
-function output(plan, callId) {
+export function projectToolOutput(plan, callId) {
   const item = plan.request.input.input.find(
     ({ type, call_id }) =>
       type === "function_call_output" && call_id === callId,
@@ -121,10 +121,22 @@ export async function actualCouncilProjectCreation({
     60_000,
   );
 
-  const chat = output(retry, "council-project-creation-first-call-0");
-  const task = output(retry, "council-project-creation-first-call-1");
-  assert.deepEqual(output(done, "council-project-creation-retry-call-0"), chat);
-  assert.deepEqual(output(done, "council-project-creation-retry-call-1"), task);
+  const chat = projectToolOutput(
+    retry,
+    "council-project-creation-first-call-0",
+  );
+  const task = projectToolOutput(
+    retry,
+    "council-project-creation-first-call-1",
+  );
+  assert.deepEqual(
+    projectToolOutput(done, "council-project-creation-retry-call-0"),
+    chat,
+  );
+  assert.deepEqual(
+    projectToolOutput(done, "council-project-creation-retry-call-1"),
+    task,
+  );
   assert.equal(chat.workerId, targetWorkerId);
   assert.equal(task.workerId, targetWorkerId);
   assert.equal(task.started, true);
@@ -256,7 +268,7 @@ export async function actualCouncilProjectCreation({
     (complete) => assert.equal(complete, true),
     60_000,
   );
-  const draft = output(draftTurn, "council-project-draft-call-0");
+  const draft = projectToolOutput(draftTurn, "council-project-draft-call-0");
   assert.equal(draft.started, false);
   const draftTask = await readTask(draft.taskId);
   assert.equal(draftTask.state, "draft");

@@ -23,6 +23,23 @@ import {
 } from "./tasks.js";
 
 const projectId = z.string().min(1).max(255);
+export const councilProjectInterruptInputSchema = z
+  .object({
+    operationId: z.uuid(),
+    projectId,
+    chatId: z.uuid(),
+    targetKind: z.enum(["agent", "task"]),
+  })
+  .strict();
+
+export const councilProjectInterruptOutputSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    mutated: z.boolean(),
+    data: councilProjectInterruptInputSchema.extend({
+      status: z.enum(["interrupted", "not-active", "pending"]),
+    }),
+  });
+
 export const councilProjectChatCreateInputSchema = z
   .object({
     operationId: z.uuid(),

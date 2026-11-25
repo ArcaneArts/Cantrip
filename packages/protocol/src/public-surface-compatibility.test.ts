@@ -823,6 +823,8 @@ const councilExports = [
   "councilProjectChatCreateOutputSchema",
   "councilProjectChatCreateWireSchema",
   "councilProjectChatTargetWireSchema",
+  "councilProjectInterruptInputSchema",
+  "councilProjectInterruptOutputSchema",
   "councilProjectRequestLink",
   "councilProjectRequestPrepareCommandSchema",
   "councilProjectRequestSourceSchema",

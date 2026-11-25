@@ -797,7 +797,7 @@
       "element": 110,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
-        { "check": "max_length", "maximum": 66, "when": "length" },
+        { "check": "max_length", "maximum": 67, "when": "length" },
         {
           "check": "refinement",
           "tag": "worker-command-unique",
@@ -875,7 +875,8 @@
         "council.inventory",
         "council.project.send",
         "council.project.chat.create",
-        "council.project.task.create"
+        "council.project.task.create",
+        "council.project.interrupt"
       ],
       "checks": []
     },

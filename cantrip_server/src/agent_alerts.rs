@@ -67,6 +67,7 @@ pub const OPERATIONS: &[&str] = &[
     "council.project.send",
     "council.project.chat.create",
     "council.project.task.create",
+    "council.project.interrupt",
 ];
 pub fn is_mutation(operation: &str) -> bool {
     matches!(
@@ -104,6 +105,7 @@ pub fn is_mutation(operation: &str) -> bool {
             | "council.project.send"
             | "council.project.chat.create"
             | "council.project.task.create"
+            | "council.project.interrupt"
             | "council.memory.write"
     )
 }

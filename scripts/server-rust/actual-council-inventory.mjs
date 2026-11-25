@@ -11,6 +11,7 @@ export async function actualCouncilInventory({
   projectMessages,
   projectApprovals,
   projectCreation,
+  projectControls,
   chatId,
   workerId,
   model,
@@ -227,6 +228,7 @@ export async function actualCouncilInventory({
         workerId,
         projectApprovals,
         projectCreation,
+        projectControls,
       });
     }
   } finally {

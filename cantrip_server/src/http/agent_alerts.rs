@@ -125,6 +125,7 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
             | "council.project.send"
             | "council.project.chat.create"
             | "council.project.task.create"
+            | "council.project.interrupt"
     ) {
         return super::council::execute_agent_operation(
             service,

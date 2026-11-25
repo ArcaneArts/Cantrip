@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "69d702ba5da1589b8ec4882ba9efa91ac5950a21260a7b565d064cae6f100087",
+    "0ee7671bda2be3e397570d20204360c4dcd35cbbc8b98ba3203a460dd22d2f87",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -4089,6 +4089,12 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation === "council.project.interrupt")
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "The bound Council agent submits owned project and target identities to the existing interruption control. The replay receipt carries only the interruption status.",
+    };
   if (
     operation === "council.project.chat.create" ||
     operation === "council.project.task.create"
