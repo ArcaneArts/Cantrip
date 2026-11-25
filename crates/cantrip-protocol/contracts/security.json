@@ -1057,31 +1057,31 @@
     "councilHistoryHeadSchema": 15009,
     "councilInventoryInputSchema": 15012,
     "councilInventoryWireSchema": 15027,
-    "councilInventoryResultSchema": 15040,
-    "councilProjectSendExchangeSchema": 15045,
-    "councilPeerSendExchangeSchema": 15055,
-    "councilPeerPageQuerySchema": 15063,
-    "councilPeerPageSchema": 15067,
-    "councilLinkedWorkWireListSchema": 15081,
-    "councilPeerTargetWireSchema": 15088,
-    "councilProjectChatTargetWireSchema": 15092,
-    "councilProjectChatCreateWireSchema": 15094,
-    "councilProjectTaskCreateWireSchema": 15098,
-    "councilProjectTaskStartInputSchema": 15102,
-    "councilProjectInterruptInputSchema": 15106,
-    "councilHistoryReadInputSchema": 15111,
+    "councilInventoryResultSchema": 15063,
+    "councilProjectSendExchangeSchema": 15075,
+    "councilPeerSendExchangeSchema": 15085,
+    "councilPeerPageQuerySchema": 15093,
+    "councilPeerPageSchema": 15097,
+    "councilLinkedWorkWireListSchema": 15111,
+    "councilPeerTargetWireSchema": 15118,
+    "councilProjectChatTargetWireSchema": 15122,
+    "councilProjectChatCreateWireSchema": 15124,
+    "councilProjectTaskCreateWireSchema": 15128,
+    "councilProjectTaskStartInputSchema": 15132,
+    "councilProjectInterruptInputSchema": 15136,
+    "councilHistoryReadInputSchema": 15141,
     "councilHistorySearchCommandSchema": 5519,
     "councilProjectResultPrepareCommandSchema": 5525,
     "councilProjectRequestPrepareCommandSchema": 5548,
-    "councilHistorySearchExchangeSchema": 15114,
-    "councilHistorySearchInputSchema": 15115,
-    "councilHistorySearchReplySchema": 15122,
-    "councilHistorySearchResultSchema": 15127,
-    "councilHistorySourceChangesSchema": 15138,
-    "councilHistorySourcePageSchema": 15148,
-    "councilHistorySourceRangeSchema": 15151,
-    "councilHistorySourceRequestSchema": 15155,
-    "councilHistoryWorkerSourceSchema": 15165
+    "councilHistorySearchExchangeSchema": 15144,
+    "councilHistorySearchInputSchema": 15145,
+    "councilHistorySearchReplySchema": 15152,
+    "councilHistorySearchResultSchema": 15157,
+    "councilHistorySourceChangesSchema": 15168,
+    "councilHistorySourcePageSchema": 15178,
+    "councilHistorySourceRangeSchema": 15181,
+    "councilHistorySourceRequestSchema": 15185,
+    "councilHistoryWorkerSourceSchema": 15195
   },
   "nodes": [
     {
@@ -90047,7 +90047,18 @@
         { "check": "less_than", "value": 100, "inclusive": true }
       ]
     },
-    { "type": "literal", "values": ["projects"], "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "projects",
+        "agents",
+        "settings",
+        "models",
+        "policies",
+        "tools"
+      ],
+      "checks": []
+    },
     { "type": "never", "checks": [] },
     {
       "type": "object",
@@ -90086,10 +90097,23 @@
       "type": "object",
       "name": "councilInventoryWireSchema",
       "shape": { "section": 15028, "nextCursor": 15029, "entries": 15031 },
-      "catchall": 15039,
+      "catchall": 15062,
       "checks": []
     },
-    { "type": "enum", "values": ["projects", "chats", "tasks"], "checks": [] },
+    {
+      "type": "enum",
+      "values": [
+        "projects",
+        "agents",
+        "settings",
+        "models",
+        "policies",
+        "tools",
+        "chats",
+        "tasks"
+      ],
+      "checks": []
+    },
     { "type": "nullable", "innerType": 15030, "checks": [] },
     {
       "type": "number",
@@ -90105,22 +90129,28 @@
       "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
     },
     {
+      "type": "union",
+      "options": [15033, 15040, 15045, 15051, 15055, 15058],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
       "type": "object",
       "shape": {
         "id": 15022,
-        "kind": 15033,
+        "kind": 15034,
         "projectId": 15022,
-        "workerId": 15034,
-        "status": 15035,
-        "permissionProfileId": 15037,
+        "workerId": 15035,
+        "status": 15036,
+        "permissionProfileId": 15038,
         "titleProtection": 1422
       },
-      "catchall": 15038,
+      "catchall": 15039,
       "checks": []
     },
     { "type": "enum", "values": ["project", "chat", "task"], "checks": [] },
     { "type": "nullable", "innerType": 15022, "checks": [] },
-    { "type": "nullable", "innerType": 15036, "checks": [] },
+    { "type": "nullable", "innerType": 15037, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -90130,34 +90160,37 @@
     },
     { "type": "nullable", "innerType": 15022, "checks": [] },
     { "type": "never", "checks": [] },
-    { "type": "never", "checks": [] },
-    {
-      "type": "object",
-      "name": "councilInventoryResultSchema",
-      "shape": { "section": 15028, "nextCursor": 15029, "entries": 15041 },
-      "catchall": 15039,
-      "checks": []
-    },
-    {
-      "type": "array",
-      "element": 15042,
-      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
-    },
     {
       "type": "object",
       "shape": {
         "id": 15022,
-        "kind": 15033,
-        "projectId": 15022,
-        "workerId": 15034,
-        "status": 15035,
-        "permissionProfileId": 15037,
-        "title": 15043
+        "kind": 15041,
+        "workerId": 15022,
+        "primary": 15042,
+        "status": 15043,
+        "titleProtection": 1422
       },
-      "catchall": 15038,
+      "catchall": 15044,
       "checks": []
     },
-    { "type": "nullable", "innerType": 15044, "checks": [] },
+    { "type": "literal", "values": ["agent"], "checks": [] },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 64, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "id": 15022, "kind": 15046, "title": 15047, "value": 15049 },
+      "catchall": 15050,
+      "checks": []
+    },
+    { "type": "literal", "values": ["setting"], "checks": [] },
+    { "type": "nullable", "innerType": 15048, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -90165,17 +90198,144 @@
         { "check": "max_length", "maximum": 1000, "when": "length" }
       ]
     },
+    { "type": "nullable", "innerType": 15022, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 15022,
+        "kind": 15052,
+        "title": 15047,
+        "enabledRoutes": 15053
+      },
+      "catchall": 15054,
+      "checks": []
+    },
+    { "type": "literal", "values": ["model"], "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": { "id": 15022, "kind": 15056, "protectedSummary": 5961 },
+      "catchall": 15057,
+      "checks": []
+    },
+    { "type": "literal", "values": ["policy"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 15022,
+        "kind": 15059,
+        "enabled": 15060,
+        "protectedConfiguration": 155
+      },
+      "catchall": 15061,
+      "checks": []
+    },
+    { "type": "literal", "values": ["mcp-server"], "checks": [] },
+    { "type": "literal", "values": [true], "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "councilInventoryResultSchema",
+      "shape": {
+        "section": 15028,
+        "nextCursor": 15029,
+        "entries": 15064,
+        "managedTools": 15073
+      },
+      "catchall": 15062,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 15065,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
     {
       "type": "union",
-      "name": "councilProjectSendExchangeSchema",
-      "options": [15046, 15050],
+      "options": [15066, 15067, 15045, 15051, 15068, 15070],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 15047, "projectId": 15048, "chatId": 11032 },
-      "catchall": 15049,
+      "shape": {
+        "id": 15022,
+        "kind": 15034,
+        "projectId": 15022,
+        "workerId": 15035,
+        "status": 15036,
+        "permissionProfileId": 15038,
+        "title": 15047
+      },
+      "catchall": 15039,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 15022,
+        "kind": 15041,
+        "workerId": 15022,
+        "primary": 15042,
+        "status": 15043,
+        "title": 15047
+      },
+      "catchall": 15044,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "id": 15022, "kind": 15056, "title": 15047, "key": 15069 },
+      "catchall": 15057,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 15022, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "id": 15022,
+        "kind": 15059,
+        "title": 15047,
+        "transport": 15071
+      },
+      "catchall": 15061,
+      "checks": []
+    },
+    { "type": "nullable", "innerType": 15072, "checks": [] },
+    { "type": "enum", "values": ["stdio", "http"], "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 15074,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 15022,
+      "checks": [{ "check": "max_length", "maximum": 100, "when": "length" }]
+    },
+    {
+      "type": "union",
+      "name": "councilProjectSendExchangeSchema",
+      "options": [15076, 15080],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 15077, "projectId": 15078, "chatId": 11032 },
+      "catchall": 15079,
       "checks": []
     },
     { "type": "literal", "values": ["resolve"], "checks": [] },
@@ -90190,19 +90350,19 @@
     {
       "type": "object",
       "shape": {
-        "kind": 15051,
-        "projectId": 15048,
-        "steer": 15052,
+        "kind": 15081,
+        "projectId": 15078,
+        "steer": 15082,
         "delivery": 11048
       },
-      "catchall": 15054,
+      "catchall": 15084,
       "checks": []
     },
     { "type": "literal", "values": ["send"], "checks": [] },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 15053,
+      "innerType": 15083,
       "defaultValue": false,
       "checks": []
     },
@@ -90211,14 +90371,14 @@
     {
       "type": "union",
       "name": "councilPeerSendExchangeSchema",
-      "options": [15056, 15060],
+      "options": [15086, 15090],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 15057, "recipientAgentId": 15058 },
-      "catchall": 15059,
+      "shape": { "kind": 15087, "recipientAgentId": 15088 },
+      "catchall": 15089,
       "checks": []
     },
     { "type": "literal", "values": ["resolve"], "checks": [] },
@@ -90239,12 +90399,12 @@
     {
       "type": "object",
       "shape": {
-        "kind": 15061,
+        "kind": 15091,
         "source": 5642,
         "turn": 10756,
         "sentMessage": 2343
       },
-      "catchall": 15062,
+      "catchall": 15092,
       "checks": []
     },
     { "type": "literal", "values": ["send"], "checks": [] },
@@ -90252,15 +90412,15 @@
     {
       "type": "object",
       "name": "councilPeerPageQuerySchema",
-      "shape": { "before": 15064 },
-      "catchall": 15066,
+      "shape": { "before": 15094 },
+      "catchall": 15096,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 15065,
+      "innerType": 15095,
       "checks": []
     },
     {
@@ -90280,13 +90440,13 @@
     {
       "type": "object",
       "name": "councilPeerPageSchema",
-      "shape": { "messages": 15068, "nextBefore": 15078 },
-      "catchall": 15080,
+      "shape": { "messages": 15098, "nextBefore": 15108 },
+      "catchall": 15110,
       "checks": []
     },
     {
       "type": "array",
-      "element": 15069,
+      "element": 15099,
       "checks": [{ "check": "max_length", "maximum": 30, "when": "length" }]
     },
     {
@@ -90295,13 +90455,13 @@
         "role": 2346,
         "mode": 2347,
         "attachmentIds": 2348,
-        "id": 15070,
-        "senderAgentId": 15071,
-        "recipientAgentId": 15072,
-        "operationId": 15073,
-        "createdAt": 15074,
-        "senderHistoryId": 15075,
-        "recipientHistoryId": 15076,
+        "id": 15100,
+        "senderAgentId": 15101,
+        "recipientAgentId": 15102,
+        "operationId": 15103,
+        "createdAt": 15104,
+        "senderHistoryId": 15105,
+        "recipientHistoryId": 15106,
         "protectedContent": 2351
       },
       "catchall": 2350,
@@ -90378,7 +90538,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 15077, "checks": [] },
+    { "type": "nullable", "innerType": 15107, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -90386,7 +90546,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 15079, "checks": [] },
+    { "type": "nullable", "innerType": 15109, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -90404,7 +90564,7 @@
     {
       "type": "array",
       "name": "councilLinkedWorkWireListSchema",
-      "element": 15082,
+      "element": 15112,
       "checks": [{ "check": "max_length", "maximum": 40, "when": "length" }]
     },
     {
@@ -90412,12 +90572,12 @@
       "shape": {
         "projectId": 5533,
         "chatId": 5533,
-        "targetKind": 15083,
-        "messageId": 15084,
-        "status": 15085,
-        "titleProtection": 15086
+        "targetKind": 15113,
+        "messageId": 15114,
+        "status": 15115,
+        "titleProtection": 15116
       },
-      "catchall": 15087,
+      "catchall": 15117,
       "checks": []
     },
     { "type": "enum", "values": ["chat", "task"], "checks": [] },
@@ -90444,13 +90604,13 @@
       "type": "object",
       "name": "councilPeerTargetWireSchema",
       "shape": {
-        "senderAgentId": 15089,
-        "recipientAgentId": 15090,
+        "senderAgentId": 15119,
+        "recipientAgentId": 15120,
         "senderTitle": 1422,
         "recipientTitle": 1422,
         "configuration": 1587
       },
-      "catchall": 15091,
+      "catchall": 15121,
       "checks": []
     },
     {
@@ -90484,7 +90644,7 @@
       "type": "object",
       "name": "councilProjectChatTargetWireSchema",
       "shape": { "chat": 11042, "sender": 11042 },
-      "catchall": 15093,
+      "catchall": 15123,
       "checks": []
     },
     { "type": "never", "checks": [] },
@@ -90492,12 +90652,12 @@
       "type": "object",
       "name": "councilProjectChatCreateWireSchema",
       "shape": {
-        "operationId": 15095,
-        "projectId": 15048,
-        "chatId": 15096,
+        "operationId": 15125,
+        "projectId": 15078,
+        "chatId": 15126,
         "titleProtection": 1422
       },
-      "catchall": 15097,
+      "catchall": 15127,
       "checks": []
     },
     {
@@ -90532,9 +90692,9 @@
       "name": "councilProjectTaskCreateWireSchema",
       "shape": {
         "operationId": 11495,
-        "projectId": 15048,
-        "start": 15099,
-        "taskId": 15101,
+        "projectId": 15078,
+        "start": 15129,
+        "taskId": 15131,
         "titleProtection": 1422,
         "task": 6038
       },
@@ -90544,7 +90704,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 15100,
+      "innerType": 15130,
       "defaultValue": true,
       "checks": []
     },
@@ -90565,8 +90725,8 @@
     {
       "type": "object",
       "name": "councilProjectTaskStartInputSchema",
-      "shape": { "operationId": 15103, "projectId": 15048, "taskId": 15104 },
-      "catchall": 15105,
+      "shape": { "operationId": 15133, "projectId": 15078, "taskId": 15134 },
+      "catchall": 15135,
       "checks": []
     },
     {
@@ -90600,12 +90760,12 @@
       "type": "object",
       "name": "councilProjectInterruptInputSchema",
       "shape": {
-        "operationId": 15107,
-        "projectId": 15048,
-        "chatId": 15108,
-        "targetKind": 15109
+        "operationId": 15137,
+        "projectId": 15078,
+        "chatId": 15138,
+        "targetKind": 15139
       },
-      "catchall": 15110,
+      "catchall": 15140,
       "checks": []
     },
     {
@@ -90639,8 +90799,8 @@
     {
       "type": "object",
       "name": "councilHistoryReadInputSchema",
-      "shape": { "messageId": 15112 },
-      "catchall": 15113,
+      "shape": { "messageId": 15142 },
+      "catchall": 15143,
       "checks": []
     },
     {
@@ -90661,8 +90821,8 @@
     {
       "type": "object",
       "name": "councilHistorySearchInputSchema",
-      "shape": { "query": 15116, "mode": 15117, "limit": 15119 },
-      "catchall": 15121,
+      "shape": { "query": 15146, "mode": 15147, "limit": 15149 },
+      "catchall": 15151,
       "checks": []
     },
     {
@@ -90676,7 +90836,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 15118,
+      "innerType": 15148,
       "defaultValue": "terms",
       "checks": []
     },
@@ -90684,7 +90844,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 15120,
+      "innerType": 15150,
       "defaultValue": 10,
       "checks": []
     },
@@ -90700,8 +90860,8 @@
     {
       "type": "object",
       "name": "councilHistorySearchReplySchema",
-      "shape": { "requestId": 15123, "protectedResult": 15124 },
-      "catchall": 15126,
+      "shape": { "requestId": 15153, "protectedResult": 15154 },
+      "catchall": 15156,
       "checks": []
     },
     {
@@ -90724,7 +90884,7 @@
         "algorithm": 16,
         "keyRevision": 13,
         "nonce": 17,
-        "ciphertext": 15125
+        "ciphertext": 15155
       },
       "catchall": 19,
       "checks": []
@@ -90755,33 +90915,33 @@
       "type": "object",
       "name": "councilHistorySearchResultSchema",
       "shape": {
-        "coverage": 15128,
+        "coverage": 15158,
         "indexedMessages": 15010,
         "unavailableMessages": 15010,
-        "matches": 15129
+        "matches": 15159
       },
-      "catchall": 15137,
+      "catchall": 15167,
       "checks": []
     },
     { "type": "enum", "values": ["complete", "partial"], "checks": [] },
     {
       "type": "array",
-      "element": 15130,
+      "element": 15160,
       "checks": [{ "check": "max_length", "maximum": 20, "when": "length" }]
     },
     {
       "type": "object",
       "shape": {
         "agentId": 3230,
-        "messageId": 15112,
-        "sequence": 15131,
+        "messageId": 15142,
+        "sequence": 15161,
         "role": 5618,
-        "source": 15132,
-        "createdAt": 15133,
-        "link": 15134,
-        "snippet": 15135
+        "source": 15162,
+        "createdAt": 15163,
+        "link": 15164,
+        "snippet": 15165
       },
-      "catchall": 15136,
+      "catchall": 15166,
       "checks": []
     },
     {
@@ -90826,24 +90986,24 @@
     {
       "type": "object",
       "name": "councilHistorySourceChangesSchema",
-      "shape": { "changes": 15139 },
-      "catchall": 15147,
+      "shape": { "changes": 15169 },
+      "catchall": 15177,
       "checks": []
     },
     {
       "type": "array",
-      "element": 15140,
+      "element": 15170,
       "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
     },
     {
       "type": "object",
       "shape": {
-        "messageId": 15112,
+        "messageId": 15142,
         "revision": 15010,
-        "sequence": 15141,
-        "record": 15142
+        "sequence": 15171,
+        "record": 15172
       },
-      "catchall": 15146,
+      "catchall": 15176,
       "checks": []
     },
     {
@@ -90855,16 +91015,16 @@
         { "check": "greater_than", "value": 0, "inclusive": false }
       ]
     },
-    { "type": "nullable", "innerType": 15143, "checks": [] },
+    { "type": "nullable", "innerType": 15173, "checks": [] },
     {
       "type": "object",
       "shape": {
         "role": 2346,
         "mode": 2347,
         "attachmentIds": 2348,
-        "id": 15112,
-        "sequence": 15144,
-        "createdAt": 15145,
+        "id": 15142,
+        "sequence": 15174,
+        "createdAt": 15175,
         "protectedContent": 2351
       },
       "catchall": 2350,
@@ -90896,41 +91056,41 @@
     {
       "type": "object",
       "name": "councilHistorySourcePageSchema",
-      "shape": { "records": 15149 },
-      "catchall": 15150,
+      "shape": { "records": 15179 },
+      "catchall": 15180,
       "checks": []
     },
     {
       "type": "array",
-      "element": 15143,
+      "element": 15173,
       "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
     },
     { "type": "never", "checks": [] },
     {
       "type": "object",
       "name": "councilHistorySourceRangeSchema",
-      "shape": { "availability": 15152, "records": 15153 },
-      "catchall": 15154,
+      "shape": { "availability": 15182, "records": 15183 },
+      "catchall": 15184,
       "checks": []
     },
     { "type": "enum", "values": ["available", "unavailable"], "checks": [] },
     {
       "type": "array",
-      "element": 15143,
+      "element": 15173,
       "checks": [{ "check": "max_length", "maximum": 9, "when": "length" }]
     },
     { "type": "never", "checks": [] },
     {
       "type": "union",
       "name": "councilHistorySourceRequestSchema",
-      "options": [15156, 15159, 15162],
+      "options": [15186, 15189, 15192],
       "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
-      "shape": { "kind": 15157 },
-      "catchall": 15158,
+      "shape": { "kind": 15187 },
+      "catchall": 15188,
       "checks": []
     },
     { "type": "literal", "values": ["head"], "checks": [] },
@@ -90938,11 +91098,11 @@
     {
       "type": "object",
       "shape": {
-        "kind": 15160,
+        "kind": 15190,
         "afterSequence": 15010,
         "throughSequence": 15010
       },
-      "catchall": 15161,
+      "catchall": 15191,
       "checks": []
     },
     { "type": "literal", "values": ["page"], "checks": [] },
@@ -90950,12 +91110,12 @@
     {
       "type": "object",
       "shape": {
-        "kind": 15163,
+        "kind": 15193,
         "afterRevision": 15010,
         "afterSequence": 15010,
         "throughRevision": 15010
       },
-      "catchall": 15164,
+      "catchall": 15194,
       "checks": []
     },
     { "type": "literal", "values": ["changes"], "checks": [] },
@@ -90963,8 +91123,8 @@
     {
       "type": "object",
       "name": "councilHistoryWorkerSourceSchema",
-      "shape": { "workerId": 15166, "agentId": 3230, "source": 15155 },
-      "catchall": 15167,
+      "shape": { "workerId": 15196, "agentId": 3230, "source": 15185 },
+      "catchall": 15197,
       "checks": []
     },
     {

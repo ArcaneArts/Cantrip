@@ -665,6 +665,9 @@ impl Ensurer {
                             let runner =
                                 payload_digest(&json!([json!(chat), json!(history_epoch)]));
                             profile.id = surround("", &profile.id, &format!(":council:{runner}"));
+                            // Keep the existing Council rollout location while
+                            // adding the account's configured global skills.
+                            profile.extra_skill_roots.extend(this.0.skills.clone());
                         }
                         this.assert_bound(&bound)?;
                         let codex_home = profile.codex_home.clone();
