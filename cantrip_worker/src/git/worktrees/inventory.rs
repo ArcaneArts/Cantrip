@@ -1,4 +1,5 @@
 use super::*;
+use anyhow::ensure;
 #[derive(Default)]
 struct Record {
     path: String,
@@ -135,6 +136,25 @@ impl Manager {
         }
         Ok((inventory, worktree))
     }
+    pub(crate) async fn authorize_checkout(
+        &self,
+        source: &Path,
+        target: &Path,
+        scope: &Scope,
+    ) -> Result<PathBuf> {
+        let (_, worktree) = self.resolve(source, target, scope).await?;
+        ensure!(worktree["missing"] != true, "The Git worktree is missing.");
+        let root = canonical(Path::new(
+            &text(target, &["rev-parse", "--show-toplevel"], scope).await?,
+        ))
+        .await?;
+        ensure!(
+            paths::equal(target, &root),
+            "The Git checkout path changed."
+        );
+        Ok(root)
+    }
+
     pub async fn authorize_targets(
         &self,
         source: &Path,

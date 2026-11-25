@@ -143,7 +143,16 @@ async fn authorize(
     if let Some(chat) = installed["externalMcp"].get("chatId") {
         selector["chatId"] = chat.clone();
     }
-    let selector: Selector = serde_json::from_str(&selector.stringify()).map_err(|_| denied())?;
+    let mut selector: Selector =
+        serde_json::from_str(&selector.stringify()).map_err(|_| denied())?;
+    if selector.tool.is_some_and(Tool::uses_checkout) {
+        selector.worktree_id = Some(
+            binding["resource"]["attachmentId"]
+                .as_str()
+                .ok_or_else(denied)?
+                .to_owned(),
+        );
+    }
     let tool = selector
         .tool
         .filter(|_| selector.is_valid())
@@ -218,6 +227,9 @@ async fn execute(
     operation: CoreOperation,
 ) -> Result<Value> {
     match (authority.tool, operation) {
+        (tool, CoreOperation::Checkout) if tool.uses_checkout() => {
+            checkout(service, authority).await
+        }
         (
             Tool::AgentRead | Tool::ChatRead | Tool::ChatWait,
             CoreOperation::Chat {
@@ -238,6 +250,27 @@ async fn execute(
         ) => writes::execute(service, authority, request).await,
         _ => Err(OperationError::validation().into()),
     }
+}
+
+async fn checkout(service: &AuthService, authority: &Authority) -> Result<Value> {
+    let worktree = authority.worktree.as_str().context("Checkout identity")?;
+    let selected =
+        crate::projects::targets::TargetRepository::new(service.repository.database.clone())
+            .worktree_context(&authority.owner, &authority.project, worktree)
+            .await?
+            .filter(|selected| selected["workerId"] == authority.worker)
+            .ok_or_else(|| {
+                OperationError::new(
+                    409,
+                    "placement-changed",
+                    "The selected checkout is unavailable.",
+                )
+            })?;
+    Ok(json!({
+        "projectId":authority.project,"worktreeId":authority.worktree,"workerId":authority.worker,
+        "rootKind":selected["worktree"]["rootKind"],"worktreePath":selected["worktree"]["path"],
+        "sourcePath":selected["sourcePath"],
+    }))
 }
 
 fn copy_fields(value: &Value, keys: &[&str]) -> Value {

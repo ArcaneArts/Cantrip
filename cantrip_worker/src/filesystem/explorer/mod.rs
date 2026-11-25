@@ -7,6 +7,7 @@ mod git;
 pub(crate) mod imports;
 mod pages;
 mod paths;
+pub(crate) mod restricted;
 mod search;
 mod stamp;
 

@@ -480,12 +480,36 @@ async fn inspect(
     root: &Path,
     accept_ancestor: bool,
 ) -> Result<Value> {
-    let args: [OsString; 3] = [
+    let args = inspect_arguments(root);
+    let result = installation.run(scope, root, &args, STATUS_LIMIT).await?;
+    inspect_output(root, accept_ancestor, result).await
+}
+
+pub(super) async fn inspect_existing(
+    installation: &Installation,
+    scope: &Scope,
+    root: &Path,
+) -> Result<Value> {
+    safe_index(root)?;
+    let result = installation
+        .run_read_only(scope, root, &inspect_arguments(root))
+        .await?;
+    inspect_output(root, true, result).await
+}
+
+fn inspect_arguments(root: &Path) -> [OsString; 3] {
+    [
         "status".into(),
         "--json".into(),
         root.as_os_str().to_owned(),
-    ];
-    let result = installation.run(scope, root, &args, STATUS_LIMIT).await?;
+    ]
+}
+
+async fn inspect_output(
+    root: &Path,
+    accept_ancestor: bool,
+    result: crate::filesystem::command::Captured,
+) -> Result<Value> {
     if result.code != Some(0) {
         let mut output = String::from_utf8_lossy(if result.stderr.is_empty() {
             &result.stdout

@@ -274,18 +274,12 @@ async fn cycle(
         direct.clone(),
     ));
     worker_link.configure_surfaces(browser_surfaces.clone());
-    worker_link.configure_external_mcp(configuration.clone())?;
     outgoing.observe_with(&worker_link);
     let direct_task = tokio::spawn(direct.clone().run(
         direct_listener,
         Arc::downgrade(&worker_link),
         stop_rx.clone(),
     ));
-    let worker_link_task = {
-        let gateway = worker_link.clone();
-        let stop = stop_rx.clone();
-        tokio::spawn(async move { gateway.run(stop).await })
-    };
     let (command_shutdown, command_signal) = crate::metadata::Abort::new();
     let task_inputs = crate::codex::task_inputs::Client::new(
         configuration.clone(),
@@ -395,6 +389,18 @@ async fn cycle(
         logs.clone(),
         publish_observation.clone(),
     );
+    worker_link.configure_external_mcp(
+        configuration.clone(),
+        routing.clone(),
+        codegraph.clone(),
+        worktrees.clone(),
+        crate::filesystem::Scope::with_stop(stop_rx.clone()),
+    )?;
+    let worker_link_task = {
+        let gateway = worker_link.clone();
+        let stop = stop_rx.clone();
+        tokio::spawn(async move { gateway.run(stop).await })
+    };
     let thread_preparation = crate::codex::preparation::command::Ensurer::new(
         codex.clone(),
         provider_access.clone(),

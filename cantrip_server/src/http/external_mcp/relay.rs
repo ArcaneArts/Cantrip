@@ -115,7 +115,7 @@ async fn open_for(service: &AuthService, principal: Principal, input: Selector) 
     if !input.is_valid() {
         return failure(
             StatusCode::BAD_REQUEST,
-            "The requested MCP tool requires a matching chat selector.",
+            "Choose a valid project, chat, or worktree for this MCP tool.",
         );
     }
     if let Principal::Integration(integration) = &principal {
@@ -184,8 +184,13 @@ pub(super) async fn resolve_placement(
         TargetRepository::new(database.clone())
             .resolve(owner, &project, &target, Some(&connected), false)
             .await?
+    } else if let Some(worktree) = &input.worktree_id {
+        let target = json!({"kind":"worktree","projectId":project,"worktreeId":worktree});
+        TargetRepository::new(database.clone())
+            .resolve(owner, &project, &target, Some(&connected), false)
+            .await?
     } else {
-        let surface = if input.tool.is_some() {
+        let surface = if input.tool.is_some_and(|tool| !tool.uses_checkout()) {
             "chat"
         } else {
             "explorer"

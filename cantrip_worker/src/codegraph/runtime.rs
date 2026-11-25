@@ -198,6 +198,45 @@ impl Installation {
     ) -> Result<Captured> {
         let mut command = self.command(directory);
         command.args(args);
+        Self::capture(scope, command, timeout).await
+    }
+
+    pub(super) async fn run_read_only(
+        &self,
+        scope: &Scope,
+        directory: &Path,
+        args: &[OsString],
+    ) -> Result<Captured> {
+        let mut command = self.command(directory);
+        let settings: Vec<_> = command
+            .get_envs()
+            .filter_map(|(name, value)| value.map(|value| (name.to_owned(), value.to_owned())))
+            .collect();
+        command.env_clear().envs(settings);
+        for name in [
+            "PATH",
+            "SYSTEMROOT",
+            "WINDIR",
+            "HOME",
+            "USERPROFILE",
+            "TEMP",
+            "TMP",
+            "TMPDIR",
+            "LANG",
+        ] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+        command.env("CODEGRAPH_NO_DAEMON", "1").args(args);
+        Self::capture(scope, command, Duration::from_secs(5)).await
+    }
+
+    async fn capture(
+        scope: &Scope,
+        command: ProcessCommand,
+        timeout: Duration,
+    ) -> Result<Captured> {
         let capture = scope
             .capture_configured(Command::from(command), OUTPUT_LIMIT, timeout, None)
             .await?;

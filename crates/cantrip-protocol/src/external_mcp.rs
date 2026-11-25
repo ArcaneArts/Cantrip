@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub mod inspection;
 pub mod orchestration;
 
 pub const PATH: &str = "/api/external-mcp/discovery";
@@ -71,6 +72,9 @@ pub enum IntegrationScope {
     TasksRead,
     TasksWrite,
     PlacementsRead,
+    FilesRead,
+    #[serde(rename = "codegraph-read")]
+    CodeGraphRead,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

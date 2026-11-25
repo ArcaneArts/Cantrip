@@ -1,5 +1,6 @@
 //! Own the CodeGraph indexes selected through the worker's existing routing.
 mod agent;
+mod inspection;
 mod project;
 mod release;
 mod runtime;

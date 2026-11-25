@@ -1,6 +1,13 @@
 //! Calls from an authorized external MCP channel use the canonical server
 //! services. Application encryption and transcript projection stay here.
-use crate::{chat_content, config::Config, encryption::Service};
+use crate::{
+    chat_content,
+    codegraph::Supervisor,
+    config::Config,
+    encryption::Service,
+    filesystem::{Scope, explorer::restricted},
+    routing::Registry,
+};
 use anyhow::{Context, Result, anyhow, ensure};
 use cantrip_crypto::{blind_lookup_tag, content::encrypt_private_label, derive_lookup_key};
 use cantrip_protocol::external_mcp::orchestration::{
@@ -20,10 +27,20 @@ mod transcript;
 pub(in crate::worker_link) struct Client {
     http: reqwest::Client,
     config: Arc<Mutex<Config>>,
+    routing: Arc<Registry>,
+    codegraph: Arc<Supervisor>,
+    worktrees: Arc<crate::git::worktrees::Manager>,
+    scope: Scope,
 }
 
 impl Client {
-    pub fn new(config: Arc<Mutex<Config>>) -> Result<Self> {
+    pub fn new(
+        config: Arc<Mutex<Config>>,
+        routing: Arc<Registry>,
+        codegraph: Arc<Supervisor>,
+        worktrees: Arc<crate::git::worktrees::Manager>,
+        scope: Scope,
+    ) -> Result<Self> {
         Ok(Self {
             http: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
@@ -31,6 +48,10 @@ impl Client {
                 .timeout(Duration::from_secs(12))
                 .build()?,
             config,
+            routing,
+            codegraph,
+            worktrees,
+            scope,
         })
     }
 
@@ -40,6 +61,9 @@ impl Client {
         encryption: Arc<Service>,
         call: Call,
     ) -> Result<Value> {
+        if call.tool().uses_checkout() {
+            return self.inspect(binding, call).await;
+        }
         let started = Instant::now();
         let mut output = match &call {
             Call::AgentRead { .. } => {
@@ -143,8 +167,51 @@ impl Client {
                 self.write(binding, &encryption, &call, *operation_id)
                     .await?
             }
+            Call::DirectoryList(_)
+            | Call::FileMetadata(_)
+            | Call::FileRead(_)
+            | Call::FileSearch(_)
+            | Call::CodegraphStatus(_)
+            | Call::CodegraphQuery(_) => unreachable!("checkout calls handled above"),
         };
         output["projectId"] = json!(call.project());
+        Ok(output)
+    }
+
+    async fn inspect(&self, binding: &Value, mut call: Call) -> Result<Value> {
+        let checkout = self.request(binding, CoreOperation::Checkout).await?;
+        let worktree = checkout["worktreeId"]
+            .as_str()
+            .context("Checkout identity")?;
+        let project = &binding["resource"]["resourceId"];
+        ensure!(
+            &checkout["projectId"] == project
+                && checkout["worktreeId"] == binding["resource"]["attachmentId"]
+                && checkout["workerId"] == binding["identity"]["workerId"],
+            "The authorized checkout changed."
+        );
+        let checkout = self.routing.resolve(&checkout).await?;
+        let root = restricted::resolve_checkout(&self.worktrees, &checkout, &self.scope)
+            .await
+            .context("The checkout is no longer available on its assigned worker.")?;
+        if let Call::DirectoryList(input) = &mut call {
+            input.worktree_id = Some(worktree.to_owned());
+        }
+        let mut output = match call {
+            Call::CodegraphStatus(_) => {
+                self.codegraph
+                    .inspect_external(&root, &checkout, None)
+                    .await?
+            }
+            Call::CodegraphQuery(query) => {
+                self.codegraph
+                    .inspect_external(&root, &checkout, Some(query))
+                    .await?
+            }
+            call => restricted::execute(root, call, self.scope.clone()).await?,
+        };
+        output["projectId"] = project.clone();
+        output["worktreeId"] = json!(worktree);
         Ok(output)
     }
 

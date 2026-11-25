@@ -123,6 +123,10 @@ impl Request {
         ensure!(
             self.descriptor["tool"] == Value::from_serialize(&call.tool())
                 && self.descriptor["chatId"] == Value::from_serialize(&selector.chat_id)
+                && selector
+                    .worktree_id
+                    .as_ref()
+                    .is_none_or(|id| self.binding["resource"]["attachmentId"] == id.as_str())
                 && self.binding["resource"]["resourceId"] == call.project().to_string(),
             "The external MCP call does not match its WorkerLink grant."
         );

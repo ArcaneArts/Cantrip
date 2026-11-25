@@ -61,7 +61,7 @@ Cantrip.
 
 Use `{"kind":"all"}` for access to all your account's projects. Available
 scopes are `projects-read`, `chats-read`, `chats-write`, `tasks-read`,
-`tasks-write`, and `placements-read`.
+`tasks-write`, `placements-read`, `files-read`, and `codegraph-read`.
 
 Write the returned `credential` to a private file as a single line. On Unix,
 make the file owner-readable and owner-writable only (mode `0600`). Configure
@@ -107,6 +107,26 @@ grants for the actions that use that content. Reuse an operation UUID only for
 an identical request, including a retry after a lost response. Wait calls can
 run for up to ten seconds. After a timeout, use the latest cursor for another
 wait. Work already admitted continues under Cantrip's normal controls.
+
+### Inspect project files and CodeGraph
+
+Use `directory_list` for checkout entries, `file_metadata` for a single entry,
+`file_read` for UTF-8 text, and `file_search` to find filenames. Paths are
+relative to the selected checkout. The default is the project's Explorer
+checkout. Call `placement_list` to find another checkout and pass its
+`worktreeId` to any inspection tool.
+
+Pass `nextCursor` back to `directory_list` with the same checkout and path to
+read the next page. If the directory changes, start again without the cursor.
+Use `nextOffset` from `file_read` as the next byte offset until it returns
+`null`. Files larger than a single page are read in chunks. Links are listed
+as links. Directory traversal and file reads stay inside the selected checkout.
+
+With `codegraph-read`, use `codegraph_status` to check the selected checkout's
+index, then `codegraph_query` with `kind` set to `symbols`, `references`, or
+`context`. Queries use the index maintained by the assigned worker. Check that
+CodeGraph is enabled for the checkout in Cantrip, and wait for any pending index
+updates before querying.
 
 ## In-chat MCP
 
