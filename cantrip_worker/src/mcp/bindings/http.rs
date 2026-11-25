@@ -371,7 +371,11 @@ impl Inner {
             | "council.project.chat.create"
             | "council.project.task.create"
             | "council.project.task.start"
-            | "council.project.interrupt" => self.council(authorization, &call, operation).await,
+            | "council.project.interrupt"
+            | "council.automation.list"
+            | "council.automation.read"
+            | "council.automation.create"
+            | "council.automation.update" => self.council(authorization, &call, operation).await,
             "council.history.search" | "council.history.read" => {
                 self.council_history(authorization, &call, operation).await
             }

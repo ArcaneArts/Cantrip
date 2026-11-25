@@ -5,6 +5,7 @@ import {
 } from "@cantrip/crypto";
 import {
   automationRunWireSchema,
+  councilAutomationWireSchema,
   encryptedProjectAutomationCreateSchema,
   encryptedProjectAutomationUpdateSchema,
   projectAutomationProtectedConditionSchema,
@@ -17,6 +18,7 @@ import {
   type ProjectAutomation,
   type ProjectAutomationCreate,
   type ProjectAutomationUpdate,
+  type ProjectAutomationWire,
 } from "@cantrip/protocol/automations";
 import type { ProjectAutomationContentOpaque } from "@cantrip/protocol/project-automation-content";
 
@@ -208,39 +210,61 @@ export async function openProjectAutomationWire(
   raw: unknown,
   options: TrustedOptions = {},
 ): Promise<ProjectAutomation> {
-  const automation = projectAutomationWireSchema.parse(raw);
+  return projectAutomationSchema.parse(
+    await openAutomationDefinition(
+      projectAutomationWireSchema.parse(raw),
+      options,
+    ),
+  );
+}
+
+export async function openCouncilAutomationWire(
+  raw: unknown,
+  options: TrustedOptions = {},
+) {
+  return openAutomationDefinition(
+    councilAutomationWireSchema.parse(raw),
+    options,
+  );
+}
+
+async function openAutomationDefinition<
+  T extends Omit<ProjectAutomationWire, "projectId"> & {
+    projectId: string | null;
+  },
+>(automation: T, options: TrustedOptions) {
+  const { content, ...metadata } = automation;
   const context = encryptionContext(options);
   try {
     const [name, prompt, condition] = await Promise.all([
       openField({
         automationId: automation.id,
         field: "name",
-        encrypted: automation.content.protectedName,
+        encrypted: content.protectedName,
         schema: projectAutomationProtectedNameSchema,
         context,
       }),
       openField({
         automationId: automation.id,
         field: "prompt",
-        encrypted: automation.content.protectedPrompt,
+        encrypted: content.protectedPrompt,
         schema: projectAutomationProtectedPromptSchema,
         context,
       }),
       openField({
         automationId: automation.id,
         field: "condition",
-        encrypted: automation.content.protectedCondition,
+        encrypted: content.protectedCondition,
         schema: projectAutomationProtectedConditionSchema,
         context,
       }),
     ]);
-    return projectAutomationSchema.parse({
-      ...automation,
-      content: undefined,
+    return {
+      ...metadata,
       name: name.name,
       prompt: prompt.prompt,
       condition: condition.condition,
-    });
+    };
   } catch {
     throw new ClientEncryptionError(
       "decryption-failed",

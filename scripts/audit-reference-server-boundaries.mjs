@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "9d268881e28dff4db1be94beb9c1d4dbc97d70ed1fa31f10673ea9b9a21672a1",
+    "1aa72e26fbc3160d329b9b859dcb08df81030fad1a1f18a6da96520a001a971b",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -4089,6 +4089,13 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation.startsWith("council.automation.")) {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "The active Council worker opens and seals routine content. Core authorizes the owned recipient, stores ciphertext, and returns bounded metadata and mutation receipts.",
+    };
+  }
   if (operation === "council.project.task.start")
     return {
       classification: "intentionally-public-control-plane",

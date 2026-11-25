@@ -130,6 +130,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
           ]
         : [["projects"], ["project-workspaces"]];
     case "project-automation":
+      if (event.scope.kind === "chat") {
+        return [
+          ["council-automations", event.scope.chatId],
+          ["council-automation-runs", event.scope.chatId],
+        ];
+      }
       return projectId
         ? [["project-automations", projectId]]
         : [["project-automations"]];

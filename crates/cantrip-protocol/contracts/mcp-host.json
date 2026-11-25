@@ -115,41 +115,49 @@
     "mcpStdioInput/chat_wait": 1516,
     "mcpStdioOutput/chat_wait": 16,
     "mcpStdioStandaloneToolHelpInput": 1521,
-    "mcpStdioInput/council_list": 1526,
-    "mcpStdioOutput/council_list": 1528,
-    "mcpStdioInput/council_create": 1540,
-    "mcpStdioOutput/council_create": 1544,
-    "mcpStdioInput/council_memory_read": 1548,
-    "mcpStdioOutput/council_memory_read": 1550,
-    "mcpStdioInput/council_memory_write": 1555,
-    "mcpStdioOutput/council_memory_write": 1558,
-    "mcpStdioInput/council_history_search": 1560,
-    "mcpStdioOutput/council_history_search": 1567,
-    "mcpStdioInput/council_history_read": 1582,
-    "mcpStdioOutput/council_history_read": 1584,
-    "mcpStdioInput/council_inventory": 1595,
-    "mcpStdioOutput/council_inventory": 1610,
-    "mcpStdioInput/council_peer_send": 1626,
-    "mcpStdioOutput/council_peer_send": 1631,
-    "mcpStdioInput/council_project_send": 1641,
-    "mcpStdioOutput/council_project_send": 1645,
-    "mcpStdioInput/council_project_chat_create": 1653,
-    "mcpStdioOutput/council_project_chat_create": 1657,
-    "mcpStdioInput/council_project_task_create": 1664,
-    "mcpStdioOutput/council_project_task_create": 1667,
-    "mcpStdioInput/council_project_task_start": 1675,
-    "mcpStdioOutput/council_project_task_start": 1679,
-    "mcpStdioInput/council_project_interrupt": 1684,
-    "mcpStdioOutput/council_project_interrupt": 1689,
-    "cantripMcpBindingSchema": 1693,
-    "workerCantripMcpServerCapabilitiesSchema": 1715,
-    "cantripMcpToolHelpInputSchema": 1721,
+    "mcpStdioInput/council_automation_list": 1526,
+    "mcpStdioOutput/council_automation_list": 1534,
+    "mcpStdioInput/council_automation_read": 1570,
+    "mcpStdioOutput/council_automation_read": 1573,
+    "mcpStdioInput/council_automation_create": 1576,
+    "mcpStdioOutput/council_automation_create": 1583,
+    "mcpStdioInput/council_automation_update": 1587,
+    "mcpStdioOutput/council_automation_update": 1583,
+    "mcpStdioInput/council_list": 1601,
+    "mcpStdioOutput/council_list": 1603,
+    "mcpStdioInput/council_create": 1613,
+    "mcpStdioOutput/council_create": 1617,
+    "mcpStdioInput/council_memory_read": 1621,
+    "mcpStdioOutput/council_memory_read": 1623,
+    "mcpStdioInput/council_memory_write": 1628,
+    "mcpStdioOutput/council_memory_write": 1631,
+    "mcpStdioInput/council_history_search": 1633,
+    "mcpStdioOutput/council_history_search": 1640,
+    "mcpStdioInput/council_history_read": 1655,
+    "mcpStdioOutput/council_history_read": 1657,
+    "mcpStdioInput/council_inventory": 1668,
+    "mcpStdioOutput/council_inventory": 1683,
+    "mcpStdioInput/council_peer_send": 1699,
+    "mcpStdioOutput/council_peer_send": 1704,
+    "mcpStdioInput/council_project_send": 1714,
+    "mcpStdioOutput/council_project_send": 1718,
+    "mcpStdioInput/council_project_chat_create": 1726,
+    "mcpStdioOutput/council_project_chat_create": 1730,
+    "mcpStdioInput/council_project_task_create": 1737,
+    "mcpStdioOutput/council_project_task_create": 1740,
+    "mcpStdioInput/council_project_task_start": 1748,
+    "mcpStdioOutput/council_project_task_start": 1752,
+    "mcpStdioInput/council_project_interrupt": 1757,
+    "mcpStdioOutput/council_project_interrupt": 1762,
+    "cantripMcpBindingSchema": 1766,
+    "workerCantripMcpServerCapabilitiesSchema": 1788,
+    "cantripMcpToolHelpInputSchema": 1794,
     "cantripMcpContextGetInputSchema": 47,
-    "mcpHostSessionClaims": 1723,
-    "cuaMcpBrokerRequestSchema": 1726,
-    "cuaMcpResetArgumentsSchema": 1743,
-    "cuaMcpScriptArgumentsSchema": 1745,
-    "cuaMcpResultSchema": 1747
+    "mcpHostSessionClaims": 1796,
+    "cuaMcpBrokerRequestSchema": 1799,
+    "cuaMcpResetArgumentsSchema": 1816,
+    "cuaMcpScriptArgumentsSchema": 1818,
+    "cuaMcpResultSchema": 1820
   },
   "nodes": [
     {
@@ -331,7 +339,11 @@
         "council.project.chat.create",
         "council.project.task.create",
         "council.project.task.start",
-        "council.project.interrupt"
+        "council.project.interrupt",
+        "council.automation.list",
+        "council.automation.read",
+        "council.automation.create",
+        "council.automation.update"
       ],
       "checks": []
     },
@@ -14897,10 +14909,88 @@
     },
     {
       "type": "object",
-      "name": "councilListToolInputSchema",
-      "shape": {},
-      "catchall": 1527,
+      "name": "councilAutomationListInputSchema",
+      "shape": {
+        "agentId": 1527,
+        "offset": 1529,
+        "limit": 1531
+      },
+      "catchall": 1533,
       "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1528,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1530,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 2147483647,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1532,
+      "defaultValue": 20,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 1,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 40,
+          "inclusive": true
+        }
+      ]
     },
     {
       "type": "never",
@@ -14908,14 +14998,14 @@
     },
     {
       "type": "object",
-      "name": "councilListToolOutputSchema",
+      "name": "councilAutomationListOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1531
+        "data": 1537
       },
       "catchall": 111,
       "checks": []
@@ -14923,7 +15013,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1530,
+      "innerType": 1536,
       "defaultValue": null,
       "checks": []
     },
@@ -14935,25 +15025,778 @@
     {
       "type": "object",
       "shape": {
-        "agents": 1532
+        "routines": 1538,
+        "nextOffset": 1567
       },
-      "catchall": 1539,
+      "catchall": 1569,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1533,
+      "element": 1539,
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 40,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 1540,
+        "chatId": 1540,
+        "workerId": 1540,
+        "schedule": 1541,
+        "enabled": 1558,
+        "revision": 1559,
+        "nextRunAt": 1560,
+        "lastRunAt": 1561,
+        "lastStatus": 1562,
+        "lastError": 1563,
+        "createdAt": 1546,
+        "updatedAt": 1546,
+        "name": 1565
+      },
+      "catchall": 1566,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "options": [
+        1542,
+        1547,
+        1554
+      ],
+      "discriminator": "kind",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "id": 1534,
-        "title": 1535,
-        "primary": 1536,
-        "scratchStatus": 1537
+        "kind": 1543,
+        "every": 1544,
+        "unit": 1545,
+        "startsAt": 1546
       },
-      "catchall": 1538,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "interval"
+      ],
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 1,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 1000000,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "minute",
+        "hour",
+        "day",
+        "week",
+        "month",
+        "year"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 1548,
+        "weekdays": 1549,
+        "hour": 1551,
+        "minute": 1552,
+        "timeZone": 1553
+      },
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "weekly"
+      ],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 1550,
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 7,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 6,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 23,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 59,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        },
+        {
+          "check": "refinement",
+          "tag": "automation-timezone",
+          "messageAfterPath": true,
+          "message": "Choose a valid IANA time zone."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 1555,
+        "expression": 1556,
+        "timeZone": 1557
+      },
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "automation-cron",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": [
+        "cron"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": false
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 1546,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 1546,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "idle",
+        "dispatching",
+        "started",
+        "queued",
+        "skipped",
+        "failed"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 1564,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 5000,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 1568,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilAutomationReadInputSchema",
+      "shape": {
+        "automationId": 1571
+      },
+      "catchall": 1572,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilAutomationReadOutputSchema",
+      "shape": {
+        "summary": 50,
+        "target": 1535,
+        "worktreeId": 53,
+        "continuationScheduled": 56,
+        "mutated": 58,
+        "data": 1574
+      },
+      "catchall": 111,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 1540,
+        "chatId": 1540,
+        "workerId": 1540,
+        "schedule": 1541,
+        "enabled": 1558,
+        "revision": 1559,
+        "nextRunAt": 1560,
+        "lastRunAt": 1561,
+        "lastStatus": 1562,
+        "lastError": 1563,
+        "createdAt": 1546,
+        "updatedAt": 1546,
+        "name": 1565,
+        "prompt": 1575
+      },
+      "catchall": 1566,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100000,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "councilAutomationCreateInputSchema",
+      "shape": {
+        "name": 1565,
+        "prompt": 1575,
+        "schedule": 1541,
+        "enabled": 1577,
+        "operationId": 1579,
+        "agentId": 1580
+      },
+      "catchall": 1582,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1578,
+      "defaultValue": true,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1581,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilAutomationMutationOutputSchema",
+      "shape": {
+        "summary": 50,
+        "target": 1535,
+        "worktreeId": 53,
+        "continuationScheduled": 56,
+        "mutated": 1584,
+        "data": 1585
+      },
+      "catchall": 111,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilAutomationMutationReceiptSchema",
+      "shape": {
+        "id": 1540,
+        "chatId": 1540,
+        "enabled": 1558,
+        "revision": 1559,
+        "nextRunAt": 1560,
+        "operationId": 1586
+      },
+      "catchall": 1566,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "councilAutomationUpdateInputSchema",
+      "shape": {
+        "operationId": 1588,
+        "automationId": 1589,
+        "expectedRevision": 1590,
+        "changes": 1591
+      },
+      "catchall": 1600,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "name": 1592,
+        "prompt": 1594,
+        "schedule": 1596,
+        "enabled": 1597
+      },
+      "catchall": 1599,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1593,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 200,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1595,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100000,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1541,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1598,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilListToolInputSchema",
+      "shape": {},
+      "catchall": 1602,
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilListToolOutputSchema",
+      "shape": {
+        "summary": 50,
+        "target": 1535,
+        "worktreeId": 53,
+        "continuationScheduled": 56,
+        "mutated": 58,
+        "data": 1604
+      },
+      "catchall": 111,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "agents": 1605
+      },
+      "catchall": 1612,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 1606,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 1607,
+        "title": 1608,
+        "primary": 1609,
+        "scratchStatus": 1610
+      },
+      "catchall": 1611,
       "checks": []
     },
     {
@@ -15013,10 +15856,10 @@
       "type": "object",
       "name": "councilCreateToolInputSchema",
       "shape": {
-        "title": 1541,
-        "role": 1542
+        "title": 1614,
+        "role": 1615
       },
-      "catchall": 1543,
+      "catchall": 1616,
       "checks": []
     },
     {
@@ -15064,11 +15907,11 @@
       "name": "councilCreateToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1545,
-        "data": 1546
+        "mutated": 1618,
+        "data": 1619
       },
       "catchall": 111,
       "checks": []
@@ -15083,9 +15926,9 @@
     {
       "type": "object",
       "shape": {
-        "agent": 1533
+        "agent": 1606
       },
-      "catchall": 1547,
+      "catchall": 1620,
       "checks": []
     },
     {
@@ -15096,7 +15939,7 @@
       "type": "object",
       "name": "councilMemoryReadToolInputSchema",
       "shape": {},
-      "catchall": 1549,
+      "catchall": 1622,
       "checks": []
     },
     {
@@ -15108,11 +15951,11 @@
       "name": "councilMemoryReadToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1551
+        "data": 1624
       },
       "catchall": 111,
       "checks": []
@@ -15120,10 +15963,10 @@
     {
       "type": "object",
       "shape": {
-        "revision": 1552,
-        "text": 1553
+        "revision": 1625,
+        "text": 1626
       },
-      "catchall": 1554,
+      "catchall": 1627,
       "checks": []
     },
     {
@@ -15164,10 +16007,10 @@
       "type": "object",
       "name": "councilMemoryWriteToolInputSchema",
       "shape": {
-        "expectedRevision": 1552,
-        "text": 1556
+        "expectedRevision": 1625,
+        "text": 1629
       },
-      "catchall": 1557,
+      "catchall": 1630,
       "checks": []
     },
     {
@@ -15189,11 +16032,11 @@
       "name": "councilMemoryWriteToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1559,
-        "data": 1551
+        "mutated": 1632,
+        "data": 1624
       },
       "catchall": 111,
       "checks": []
@@ -15209,11 +16052,11 @@
       "type": "object",
       "name": "councilHistorySearchInputSchema",
       "shape": {
-        "query": 1561,
-        "mode": 1562,
-        "limit": 1564
+        "query": 1634,
+        "mode": 1635,
+        "limit": 1637
       },
-      "catchall": 1566,
+      "catchall": 1639,
       "checks": []
     },
     {
@@ -15237,7 +16080,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1563,
+      "innerType": 1636,
       "defaultValue": "terms",
       "checks": []
     },
@@ -15252,7 +16095,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1565,
+      "innerType": 1638,
       "defaultValue": 10,
       "checks": []
     },
@@ -15285,11 +16128,11 @@
       "name": "councilHistorySearchToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1568
+        "data": 1641
       },
       "catchall": 111,
       "checks": []
@@ -15298,12 +16141,12 @@
       "type": "object",
       "name": "councilHistorySearchResultSchema",
       "shape": {
-        "coverage": 1569,
-        "indexedMessages": 1570,
-        "unavailableMessages": 1570,
-        "matches": 1571
+        "coverage": 1642,
+        "indexedMessages": 1643,
+        "unavailableMessages": 1643,
+        "matches": 1644
       },
-      "catchall": 1581,
+      "catchall": 1654,
       "checks": []
     },
     {
@@ -15336,7 +16179,7 @@
     },
     {
       "type": "array",
-      "element": 1572,
+      "element": 1645,
       "checks": [
         {
           "check": "max_length",
@@ -15348,16 +16191,16 @@
     {
       "type": "object",
       "shape": {
-        "agentId": 1534,
-        "messageId": 1573,
-        "sequence": 1574,
-        "role": 1575,
-        "source": 1576,
-        "createdAt": 1577,
-        "link": 1578,
-        "snippet": 1579
+        "agentId": 1607,
+        "messageId": 1646,
+        "sequence": 1647,
+        "role": 1648,
+        "source": 1649,
+        "createdAt": 1650,
+        "link": 1651,
+        "snippet": 1652
       },
-      "catchall": 1580,
+      "catchall": 1653,
       "checks": []
     },
     {
@@ -15468,9 +16311,9 @@
       "type": "object",
       "name": "councilHistoryReadInputSchema",
       "shape": {
-        "messageId": 1573
+        "messageId": 1646
       },
-      "catchall": 1583,
+      "catchall": 1656,
       "checks": []
     },
     {
@@ -15482,11 +16325,11 @@
       "name": "councilHistoryReadToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1585
+        "data": 1658
       },
       "catchall": 111,
       "checks": []
@@ -15495,10 +16338,10 @@
       "type": "object",
       "name": "councilHistoryReadResultSchema",
       "shape": {
-        "availability": 1586,
-        "messages": 1587
+        "availability": 1659,
+        "messages": 1660
       },
-      "catchall": 1594,
+      "catchall": 1667,
       "checks": []
     },
     {
@@ -15511,7 +16354,7 @@
     },
     {
       "type": "array",
-      "element": 1588,
+      "element": 1661,
       "checks": [
         {
           "check": "max_length",
@@ -15523,17 +16366,17 @@
     {
       "type": "object",
       "shape": {
-        "agentId": 1534,
-        "messageId": 1573,
-        "sequence": 1574,
-        "role": 1575,
-        "source": 1576,
-        "createdAt": 1577,
-        "link": 1578,
-        "text": 1589,
-        "attachments": 1590
+        "agentId": 1607,
+        "messageId": 1646,
+        "sequence": 1647,
+        "role": 1648,
+        "source": 1649,
+        "createdAt": 1650,
+        "link": 1651,
+        "text": 1662,
+        "attachments": 1663
       },
-      "catchall": 1580,
+      "catchall": 1653,
       "checks": []
     },
     {
@@ -15548,7 +16391,7 @@
     },
     {
       "type": "array",
-      "element": 1591,
+      "element": 1664,
       "checks": [
         {
           "check": "max_length",
@@ -15560,10 +16403,10 @@
     {
       "type": "object",
       "shape": {
-        "id": 1573,
-        "name": 1592
+        "id": 1646,
+        "name": 1665
       },
-      "catchall": 1593,
+      "catchall": 1666,
       "checks": []
     },
     {
@@ -15593,9 +16436,9 @@
       "type": "union",
       "name": "councilInventoryInputSchema",
       "options": [
-        1596,
-        1603,
-        1607
+        1669,
+        1676,
+        1680
       ],
       "discriminator": "section",
       "checks": []
@@ -15603,17 +16446,17 @@
     {
       "type": "object",
       "shape": {
-        "cursor": 1597,
-        "limit": 1599,
-        "section": 1601
+        "cursor": 1670,
+        "limit": 1672,
+        "section": 1674
       },
-      "catchall": 1602,
+      "catchall": 1675,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1598,
+      "innerType": 1671,
       "defaultValue": 0,
       "checks": []
     },
@@ -15640,7 +16483,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1600,
+      "innerType": 1673,
       "defaultValue": 25,
       "checks": []
     },
@@ -15678,12 +16521,12 @@
     {
       "type": "object",
       "shape": {
-        "cursor": 1597,
-        "limit": 1599,
-        "section": 1604,
-        "projectId": 1605
+        "cursor": 1670,
+        "limit": 1672,
+        "section": 1677,
+        "projectId": 1678
       },
-      "catchall": 1606,
+      "catchall": 1679,
       "checks": []
     },
     {
@@ -15715,12 +16558,12 @@
     {
       "type": "object",
       "shape": {
-        "cursor": 1597,
-        "limit": 1599,
-        "section": 1608,
-        "projectId": 1605
+        "cursor": 1670,
+        "limit": 1672,
+        "section": 1681,
+        "projectId": 1678
       },
-      "catchall": 1609,
+      "catchall": 1682,
       "checks": []
     },
     {
@@ -15739,11 +16582,11 @@
       "name": "councilInventoryToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1611
+        "data": 1684
       },
       "catchall": 111,
       "checks": []
@@ -15752,11 +16595,11 @@
       "type": "object",
       "name": "councilInventoryResultSchema",
       "shape": {
-        "section": 1612,
-        "nextCursor": 1613,
-        "entries": 1615
+        "section": 1685,
+        "nextCursor": 1686,
+        "entries": 1688
       },
-      "catchall": 1625,
+      "catchall": 1698,
       "checks": []
     },
     {
@@ -15770,7 +16613,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1614,
+      "innerType": 1687,
       "checks": []
     },
     {
@@ -15795,7 +16638,7 @@
     },
     {
       "type": "array",
-      "element": 1616,
+      "element": 1689,
       "checks": [
         {
           "check": "max_length",
@@ -15807,15 +16650,15 @@
     {
       "type": "object",
       "shape": {
-        "id": 1605,
-        "kind": 1617,
-        "projectId": 1605,
-        "workerId": 1618,
-        "status": 1619,
-        "permissionProfileId": 1621,
-        "title": 1622
+        "id": 1678,
+        "kind": 1690,
+        "projectId": 1678,
+        "workerId": 1691,
+        "status": 1692,
+        "permissionProfileId": 1694,
+        "title": 1695
       },
-      "catchall": 1624,
+      "catchall": 1697,
       "checks": []
     },
     {
@@ -15829,12 +16672,12 @@
     },
     {
       "type": "nullable",
-      "innerType": 1605,
+      "innerType": 1678,
       "checks": []
     },
     {
       "type": "nullable",
-      "innerType": 1620,
+      "innerType": 1693,
       "checks": []
     },
     {
@@ -15854,12 +16697,12 @@
     },
     {
       "type": "nullable",
-      "innerType": 1605,
+      "innerType": 1678,
       "checks": []
     },
     {
       "type": "nullable",
-      "innerType": 1623,
+      "innerType": 1696,
       "checks": []
     },
     {
@@ -15889,11 +16732,11 @@
       "type": "object",
       "name": "councilPeerSendInputSchema",
       "shape": {
-        "recipientAgentId": 1627,
-        "operationId": 1628,
-        "message": 1629
+        "recipientAgentId": 1700,
+        "operationId": 1701,
+        "message": 1702
       },
-      "catchall": 1630,
+      "catchall": 1703,
       "checks": []
     },
     {
@@ -15949,11 +16792,11 @@
       "name": "councilPeerSendOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1632,
-        "data": 1633
+        "mutated": 1705,
+        "data": 1706
       },
       "catchall": 111,
       "checks": []
@@ -15968,14 +16811,14 @@
     {
       "type": "object",
       "shape": {
-        "senderAgentId": 1634,
-        "recipientAgentId": 1635,
-        "operationId": 1636,
-        "inputMessageId": 1637,
-        "messageId": 1638,
-        "delivery": 1639
+        "senderAgentId": 1707,
+        "recipientAgentId": 1708,
+        "operationId": 1709,
+        "inputMessageId": 1710,
+        "messageId": 1711,
+        "delivery": 1712
       },
-      "catchall": 1640,
+      "catchall": 1713,
       "checks": []
     },
     {
@@ -16061,8 +16904,8 @@
         "chatId": 1504,
         "operationId": 1513,
         "message": 1514,
-        "projectId": 1642,
-        "steer": 1643
+        "projectId": 1715,
+        "steer": 1716
       },
       "catchall": 1515,
       "checks": []
@@ -16085,7 +16928,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1644,
+      "innerType": 1717,
       "defaultValue": false,
       "checks": []
     },
@@ -16098,11 +16941,11 @@
       "name": "councilProjectSendToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1646,
-        "data": 1647
+        "mutated": 1719,
+        "data": 1720
       },
       "catchall": 111,
       "checks": []
@@ -16119,12 +16962,12 @@
       "shape": {
         "chatId": 1504,
         "sourceChatId": 1504,
-        "operationId": 1648,
-        "messageId": 1649,
-        "inputMessageId": 1650,
-        "delivery": 1651
+        "operationId": 1721,
+        "messageId": 1722,
+        "inputMessageId": 1723,
+        "delivery": 1724
       },
-      "catchall": 1652,
+      "catchall": 1725,
       "checks": []
     },
     {
@@ -16175,11 +17018,11 @@
       "type": "object",
       "name": "councilProjectChatCreateInputSchema",
       "shape": {
-        "operationId": 1654,
-        "projectId": 1642,
-        "title": 1655
+        "operationId": 1727,
+        "projectId": 1715,
+        "title": 1728
       },
-      "catchall": 1656,
+      "catchall": 1729,
       "checks": []
     },
     {
@@ -16222,11 +17065,11 @@
       "name": "councilProjectChatCreateOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1658,
-        "data": 1659
+        "mutated": 1731,
+        "data": 1732
       },
       "catchall": 111,
       "checks": []
@@ -16241,12 +17084,12 @@
     {
       "type": "object",
       "shape": {
-        "projectId": 1642,
-        "operationId": 1660,
-        "chatId": 1661,
-        "workerId": 1662
+        "projectId": 1715,
+        "operationId": 1733,
+        "chatId": 1734,
+        "workerId": 1735
       },
-      "catchall": 1663,
+      "catchall": 1736,
       "checks": []
     },
     {
@@ -16296,8 +17139,8 @@
         "description": 1465,
         "title": 1466,
         "operationId": 1468,
-        "projectId": 1642,
-        "start": 1665
+        "projectId": 1715,
+        "start": 1738
       },
       "catchall": 1469,
       "checks": []
@@ -16305,7 +17148,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1666,
+      "innerType": 1739,
       "defaultValue": true,
       "checks": []
     },
@@ -16318,11 +17161,11 @@
       "name": "councilProjectTaskCreateOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1668,
-        "data": 1669
+        "mutated": 1741,
+        "data": 1742
       },
       "catchall": 111,
       "checks": []
@@ -16337,13 +17180,13 @@
     {
       "type": "object",
       "shape": {
-        "projectId": 1642,
-        "operationId": 1670,
-        "taskId": 1671,
-        "workerId": 1672,
-        "started": 1673
+        "projectId": 1715,
+        "operationId": 1743,
+        "taskId": 1744,
+        "workerId": 1745,
+        "started": 1746
       },
-      "catchall": 1674,
+      "catchall": 1747,
       "checks": []
     },
     {
@@ -16394,11 +17237,11 @@
       "type": "object",
       "name": "councilProjectTaskStartInputSchema",
       "shape": {
-        "operationId": 1676,
-        "projectId": 1642,
-        "taskId": 1677
+        "operationId": 1749,
+        "projectId": 1715,
+        "taskId": 1750
       },
-      "catchall": 1678,
+      "catchall": 1751,
       "checks": []
     },
     {
@@ -16436,11 +17279,11 @@
       "name": "councilProjectTaskStartOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1680,
-        "data": 1681
+        "mutated": 1753,
+        "data": 1754
       },
       "catchall": 111,
       "checks": []
@@ -16455,13 +17298,13 @@
     {
       "type": "object",
       "shape": {
-        "operationId": 1676,
-        "projectId": 1642,
-        "taskId": 1677,
-        "dispatchId": 1682,
-        "kind": 1683
+        "operationId": 1749,
+        "projectId": 1715,
+        "taskId": 1750,
+        "dispatchId": 1755,
+        "kind": 1756
       },
-      "catchall": 1678,
+      "catchall": 1751,
       "checks": []
     },
     {
@@ -16489,12 +17332,12 @@
       "type": "object",
       "name": "councilProjectInterruptInputSchema",
       "shape": {
-        "operationId": 1685,
-        "projectId": 1642,
-        "chatId": 1686,
-        "targetKind": 1687
+        "operationId": 1758,
+        "projectId": 1715,
+        "chatId": 1759,
+        "targetKind": 1760
       },
-      "catchall": 1688,
+      "catchall": 1761,
       "checks": []
     },
     {
@@ -16540,11 +17383,11 @@
       "name": "councilProjectInterruptOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1529,
+        "target": 1535,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1690,
-        "data": 1691
+        "mutated": 1763,
+        "data": 1764
       },
       "catchall": 111,
       "checks": []
@@ -16556,13 +17399,13 @@
     {
       "type": "object",
       "shape": {
-        "operationId": 1685,
-        "projectId": 1642,
-        "chatId": 1686,
-        "targetKind": 1687,
-        "status": 1692
+        "operationId": 1758,
+        "projectId": 1715,
+        "chatId": 1759,
+        "targetKind": 1760,
+        "status": 1765
       },
-      "catchall": 1688,
+      "catchall": 1761,
       "checks": []
     },
     {
@@ -16578,8 +17421,8 @@
       "type": "union",
       "name": "cantripMcpBindingSchema",
       "options": [
-        1694,
-        1708
+        1767,
+        1781
       ],
       "discriminator": "contextKind",
       "checks": [
@@ -16593,22 +17436,22 @@
     {
       "type": "object",
       "shape": {
-        "bindingId": 1695,
-        "ownerId": 1696,
-        "chatId": 1697,
-        "executionLaneId": 1698,
-        "workerId": 1699,
+        "bindingId": 1768,
+        "ownerId": 1769,
+        "chatId": 1770,
+        "executionLaneId": 1771,
+        "workerId": 1772,
         "permissionProfileId": 72,
-        "allowedOperations": 1700,
-        "issuedAt": 1701,
-        "expiresAt": 1702,
-        "contextKind": 1703,
-        "projectId": 1704,
-        "worktreeId": 1705,
+        "allowedOperations": 1773,
+        "issuedAt": 1774,
+        "expiresAt": 1775,
+        "contextKind": 1776,
+        "projectId": 1777,
+        "worktreeId": 1778,
         "rootKind": 74,
-        "scratchRootId": 1706
+        "scratchRootId": 1779
       },
-      "catchall": 1707,
+      "catchall": 1780,
       "checks": []
     },
     {
@@ -16695,7 +17538,7 @@
         },
         {
           "check": "max_length",
-          "maximum": 69,
+          "maximum": 73,
           "when": "length"
         },
         {
@@ -16778,22 +17621,22 @@
     {
       "type": "object",
       "shape": {
-        "bindingId": 1695,
-        "ownerId": 1696,
-        "chatId": 1697,
-        "executionLaneId": 1698,
-        "workerId": 1699,
+        "bindingId": 1768,
+        "ownerId": 1769,
+        "chatId": 1770,
+        "executionLaneId": 1771,
+        "workerId": 1772,
         "permissionProfileId": 72,
-        "allowedOperations": 1700,
-        "issuedAt": 1701,
-        "expiresAt": 1702,
-        "contextKind": 1709,
-        "projectId": 1710,
-        "worktreeId": 1711,
-        "rootKind": 1712,
-        "scratchRootId": 1713
+        "allowedOperations": 1773,
+        "issuedAt": 1774,
+        "expiresAt": 1775,
+        "contextKind": 1782,
+        "projectId": 1783,
+        "worktreeId": 1784,
+        "rootKind": 1785,
+        "scratchRootId": 1786
       },
-      "catchall": 1714,
+      "catchall": 1787,
       "checks": []
     },
     {
@@ -16838,15 +17681,15 @@
       "type": "object",
       "name": "workerCantripMcpServerCapabilitiesSchema",
       "shape": {
-        "bindingProtocolVersions": 1716,
-        "operations": 1718
+        "bindingProtocolVersions": 1789,
+        "operations": 1791
       },
-      "catchall": 1720,
+      "catchall": 1793,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1717,
+      "element": 1790,
       "checks": [
         {
           "check": "min_length",
@@ -16888,7 +17731,7 @@
     },
     {
       "type": "array",
-      "element": 1719,
+      "element": 1792,
       "checks": [
         {
           "check": "min_length",
@@ -16933,7 +17776,7 @@
       "shape": {
         "tool": 135
       },
-      "catchall": 1722,
+      "catchall": 1795,
       "checks": []
     },
     {
@@ -16943,8 +17786,8 @@
     {
       "type": "union",
       "options": [
-        1724,
-        1725
+        1797,
+        1798
       ],
       "discriminator": "contextKind",
       "checks": []
@@ -16952,44 +17795,44 @@
     {
       "type": "object",
       "shape": {
-        "ownerId": 1696,
-        "chatId": 1697,
-        "workerId": 1699,
+        "ownerId": 1769,
+        "chatId": 1770,
+        "workerId": 1772,
         "permissionProfileId": 72,
-        "allowedOperations": 1700,
-        "contextKind": 1703,
-        "projectId": 1704,
-        "worktreeId": 1705,
+        "allowedOperations": 1773,
+        "contextKind": 1776,
+        "projectId": 1777,
+        "worktreeId": 1778,
         "rootKind": 74,
-        "scratchRootId": 1706
+        "scratchRootId": 1779
       },
-      "catchall": 1707,
+      "catchall": 1780,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "ownerId": 1696,
-        "chatId": 1697,
-        "workerId": 1699,
+        "ownerId": 1769,
+        "chatId": 1770,
+        "workerId": 1772,
         "permissionProfileId": 72,
-        "allowedOperations": 1700,
-        "contextKind": 1709,
-        "projectId": 1710,
-        "worktreeId": 1711,
-        "rootKind": 1712,
-        "scratchRootId": 1713
+        "allowedOperations": 1773,
+        "contextKind": 1782,
+        "projectId": 1783,
+        "worktreeId": 1784,
+        "rootKind": 1785,
+        "scratchRootId": 1786
       },
-      "catchall": 1714,
+      "catchall": 1787,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "bindingId": 1727,
-        "request": 1728
+        "bindingId": 1800,
+        "request": 1801
       },
-      "catchall": 1742,
+      "catchall": 1815,
       "checks": []
     },
     {
@@ -17008,8 +17851,8 @@
     {
       "type": "union",
       "options": [
-        1729,
-        1739
+        1802,
+        1812
       ],
       "discriminator": "operation",
       "checks": []
@@ -17017,14 +17860,14 @@
     {
       "type": "object",
       "shape": {
-        "threadId": 1730,
-        "turnId": 1731,
-        "itemId": 1732,
-        "callId": 1734,
-        "operation": 1736,
-        "script": 1737
+        "threadId": 1803,
+        "turnId": 1804,
+        "itemId": 1805,
+        "callId": 1807,
+        "operation": 1809,
+        "script": 1810
       },
-      "catchall": 1738,
+      "catchall": 1811,
       "checks": []
     },
     {
@@ -17065,7 +17908,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1733,
+      "innerType": 1806,
       "checks": []
     },
     {
@@ -17088,7 +17931,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1735,
+      "innerType": 1808,
       "checks": []
     },
     {
@@ -17144,13 +17987,13 @@
     {
       "type": "object",
       "shape": {
-        "threadId": 1730,
-        "turnId": 1731,
-        "itemId": 1732,
-        "callId": 1734,
-        "operation": 1740
+        "threadId": 1803,
+        "turnId": 1804,
+        "itemId": 1805,
+        "callId": 1807,
+        "operation": 1813
       },
-      "catchall": 1741,
+      "catchall": 1814,
       "checks": []
     },
     {
@@ -17171,7 +18014,7 @@
     {
       "type": "object",
       "shape": {},
-      "catchall": 1744,
+      "catchall": 1817,
       "checks": []
     },
     {
@@ -17181,9 +18024,9 @@
     {
       "type": "object",
       "shape": {
-        "script": 1737
+        "script": 1810
       },
-      "catchall": 1746,
+      "catchall": 1819,
       "checks": []
     },
     {
@@ -17193,42 +18036,42 @@
     {
       "type": "object",
       "shape": {
-        "_meta": 1748,
-        "content": 1758,
-        "structuredContent": 1786,
-        "isError": 1790
+        "_meta": 1821,
+        "content": 1831,
+        "structuredContent": 1859,
+        "isError": 1863
       },
-      "catchall": 1792,
+      "catchall": 1865,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1749,
+      "innerType": 1822,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "progressToken": 1750,
-        "io.modelcontextprotocol/related-task": 1754
+        "progressToken": 1823,
+        "io.modelcontextprotocol/related-task": 1827
       },
-      "catchall": 1757,
+      "catchall": 1830,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1751,
+      "innerType": 1824,
       "checks": []
     },
     {
       "type": "union",
       "options": [
-        1752,
-        1753
+        1825,
+        1826
       ],
       "checks": []
     },
@@ -17250,13 +18093,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1755,
+      "innerType": 1828,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "taskId": 1756
+        "taskId": 1829
       },
       "checks": []
     },
@@ -17271,30 +18114,30 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1759,
+      "innerType": 1832,
       "defaultValue": [],
       "checks": []
     },
     {
       "type": "array",
-      "element": 1760,
+      "element": 1833,
       "checks": []
     },
     {
       "type": "union",
       "options": [
-        1761,
-        1777
+        1834,
+        1850
       ],
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "type": 1762,
-        "text": 1763,
-        "annotations": 1764,
-        "_meta": 1773
+        "type": 1835,
+        "text": 1836,
+        "annotations": 1837,
+        "_meta": 1846
       },
       "checks": []
     },
@@ -17313,15 +18156,15 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1765,
+      "innerType": 1838,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "audience": 1766,
-        "priority": 1769,
-        "lastModified": 1771
+        "audience": 1839,
+        "priority": 1842,
+        "lastModified": 1844
       },
       "checks": []
     },
@@ -17329,12 +18172,12 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1767,
+      "innerType": 1840,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1768,
+      "element": 1841,
       "checks": []
     },
     {
@@ -17349,7 +18192,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1770,
+      "innerType": 1843,
       "checks": []
     },
     {
@@ -17371,7 +18214,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1772,
+      "innerType": 1845,
       "checks": []
     },
     {
@@ -17390,13 +18233,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1774,
+      "innerType": 1847,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1775,
-      "valueType": 1776,
+      "keyType": 1848,
+      "valueType": 1849,
       "checks": []
     },
     {
@@ -17410,11 +18253,11 @@
     {
       "type": "object",
       "shape": {
-        "type": 1778,
-        "data": 1779,
-        "mimeType": 1780,
-        "annotations": 1781,
-        "_meta": 1782
+        "type": 1851,
+        "data": 1852,
+        "mimeType": 1853,
+        "annotations": 1854,
+        "_meta": 1855
       },
       "checks": []
     },
@@ -17437,20 +18280,20 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1765,
+      "innerType": 1838,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1783,
+      "innerType": 1856,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1784,
-      "valueType": 1785,
+      "keyType": 1857,
+      "valueType": 1858,
       "checks": []
     },
     {
@@ -17465,13 +18308,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1787,
+      "innerType": 1860,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1788,
-      "valueType": 1789,
+      "keyType": 1861,
+      "valueType": 1862,
       "checks": []
     },
     {
@@ -17486,7 +18329,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1791,
+      "innerType": 1864,
       "checks": []
     },
     {

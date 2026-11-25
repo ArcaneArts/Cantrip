@@ -15,8 +15,10 @@ import { getAutomationRun } from "@/lib/project-automation-api";
 
 export function AutomationRunLink({
   source,
+  label = `Sent via ${source.name}`,
 }: {
   source: ChatAutomationSource;
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const run = useQuery({
@@ -31,13 +33,13 @@ export function AutomationRunLink({
           type="button"
           className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          <span className="truncate">Sent via {source.name}</span>
+          <span className="truncate">{label}</span>
           <ArrowUpRight aria-hidden="true" className="size-3 shrink-0" />
         </button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{source.name}</DialogTitle>
+          <DialogTitle>{run.data?.name ?? source.name}</DialogTitle>
           <DialogDescription>Automation run</DialogDescription>
         </DialogHeader>
         {run.isPending ? <p role="status">Loading run…</p> : null}

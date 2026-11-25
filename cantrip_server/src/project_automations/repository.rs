@@ -1,3 +1,6 @@
+mod council;
+pub use council::CouncilAutomationMutation;
+
 use super::{
     queries::{one, run},
     schedule,
@@ -118,13 +121,13 @@ impl Repository {
         Self { database }
     }
     async fn target(
-        &self,
+        executor: Executor<'_, '_>,
         owner: &str,
         project: Option<&str>,
         chat: &Value,
     ) -> Result<Option<Value>> {
         one(
-            Executor::Database(&self.database),
+            executor,
             if project.is_some() {
                 "target"
             } else {
@@ -135,7 +138,13 @@ impl Repository {
         .await
     }
     pub async fn create(&self, owner: &str, project: &str, input: &Value) -> Result<Option<Value>> {
-        self.create_target(owner, Some(project), input).await
+        Self::create_target(
+            Executor::Database(&self.database),
+            owner,
+            Some(project),
+            input,
+        )
+        .await
     }
     pub async fn create_council(
         &self,
@@ -146,22 +155,22 @@ impl Repository {
         if input["chatId"] != chat {
             return conflict("The routine target does not match this Council agent.");
         }
-        self.create_target(owner, None, input).await
+        Self::create_target(Executor::Database(&self.database), owner, None, input).await
     }
     async fn create_target(
-        &self,
+        executor: Executor<'_, '_>,
         owner: &str,
         project: Option<&str>,
         input: &Value,
     ) -> Result<Option<Value>> {
         let input = parse_response("encryptedProjectAutomationCreateSchema", Some(input))?;
-        let Some(target) = self.target(owner, project, &input["chatId"]).await? else {
+        let Some(target) = Self::target(executor, owner, project, &input["chatId"]).await? else {
             return Ok(None);
         };
         let at = now();
         let next_run = next(input["enabled"] == true, &input["schedule"], at)?;
         let values = json!({"id":input["id"],"owner":owner,"project":project,"chat":input["chatId"],"protectedName":input["content"]["protectedName"],"protectedPrompt":input["content"]["protectedPrompt"],"protectedCondition":input["content"]["protectedCondition"],"schedule":input["schedule"],"enabled":input["enabled"],"nextRunAt":date(next_run)?,"now":date(Some(at))?});
-        let row = one(Executor::Database(&self.database), "create", &values)
+        let row = one(executor, "create", &values)
             .await?
             .context("Automation insert returned no row")?;
         wire(&row, &target["worker_id"]).map(Some)
@@ -181,10 +190,19 @@ impl Repository {
         parse_response("projectAutomationWireListSchema", Some(&list))
     }
     pub async fn list_council(&self, owner: &str, chat: &str) -> Result<Value> {
+        self.list_council_page(owner, chat, 0, None).await
+    }
+    pub async fn list_council_page(
+        &self,
+        owner: &str,
+        chat: &str,
+        offset: u32,
+        limit: Option<u32>,
+    ) -> Result<Value> {
         let rows = run(
             Executor::Database(&self.database),
             "list-council",
-            &json!({"owner":owner,"chat":chat}),
+            &json!({"owner":owner,"chat":chat,"limit":limit,"offset":offset}),
         )
         .await?;
         let list = Value::Array(
@@ -247,24 +265,41 @@ impl Repository {
         parse_response("workerAutomationWireListSchema", Some(&list))
     }
     pub async fn get(&self, owner: &str, id: &str) -> Result<Option<Value>> {
-        one(
-            Executor::Database(&self.database),
-            "get",
-            &json!({"owner":owner,"id":id}),
-        )
-        .await?
-        .map(|row| wire(&row, &row["worker_id"]))
-        .transpose()
+        Self::get_with(Executor::Database(&self.database), owner, id).await
+    }
+    async fn get_with(executor: Executor<'_, '_>, owner: &str, id: &str) -> Result<Option<Value>> {
+        one(executor, "get", &json!({"owner":owner,"id":id}))
+            .await?
+            .map(|row| wire(&row, &row["worker_id"]))
+            .transpose()
     }
     pub async fn update(&self, owner: &str, id: &str, input: &Value) -> Result<Option<Value>> {
+        Self::update_with(Executor::Database(&self.database), owner, id, input, None).await
+    }
+    async fn update_with(
+        executor: Executor<'_, '_>,
+        owner: &str,
+        id: &str,
+        input: &Value,
+        council_revision: Option<&Value>,
+    ) -> Result<Option<Value>> {
         let input = parse_response("encryptedProjectAutomationUpdateSchema", Some(input))?;
-        let Some(current) = self.get(owner, id).await? else {
+        let Some(current) = Self::get_with(executor, owner, id).await? else {
             return Ok(None);
         };
+        if let Some(expected) = council_revision {
+            if !current["projectId"].is_null() {
+                return Ok(None);
+            }
+            if &current["revision"] != expected {
+                return conflict(
+                    "The routine changed. Read its current revision and retry the edit.",
+                );
+            }
+        }
         let chat = input.get("chatId").unwrap_or(&current["chatId"]);
-        let Some(target) = self
-            .target(owner, current["projectId"].as_str(), chat)
-            .await?
+        let Some(target) =
+            Self::target(executor, owner, current["projectId"].as_str(), chat).await?
         else {
             return conflict("The target chat does not belong to this project.");
         };
@@ -291,14 +326,10 @@ impl Repository {
                 values[*key] = value.clone();
             }
         }
-        one(
-            Executor::Database(&self.database),
-            &format!("update-{mask}"),
-            &values,
-        )
-        .await?
-        .map(|row| wire(&row, &target["worker_id"]))
-        .transpose()
+        one(executor, &format!("update-{mask}"), &values)
+            .await?
+            .map(|row| wire(&row, &target["worker_id"]))
+            .transpose()
     }
     pub async fn delete(&self, owner: &str, id: &str) -> Result<bool> {
         Ok(one(

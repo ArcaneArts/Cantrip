@@ -70,6 +70,10 @@ pub const OPERATIONS: &[&str] = &[
     "council.project.task.create",
     "council.project.task.start",
     "council.project.interrupt",
+    "council.automation.list",
+    "council.automation.read",
+    "council.automation.create",
+    "council.automation.update",
 ];
 pub fn is_mutation(operation: &str) -> bool {
     matches!(
@@ -110,6 +114,8 @@ pub fn is_mutation(operation: &str) -> bool {
             | "council.project.task.create"
             | "council.project.task.start"
             | "council.project.interrupt"
+            | "council.automation.create"
+            | "council.automation.update"
             | "council.memory.write"
     )
 }
@@ -137,6 +143,8 @@ fn permitted(permission: &Value, operation: &str) -> bool {
                 | "council.history.search"
                 | "council.history.read"
                 | "council.inventory"
+                | "council.automation.list"
+                | "council.automation.read"
                 | "policy.list"
                 | "policy.read"
                 | "target.list"

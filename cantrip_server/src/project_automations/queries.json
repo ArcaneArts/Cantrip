@@ -851,7 +851,7 @@
       ]
     },
     "list-council": {
-      "sql": "select a.*,p.worker_id from project_automations a inner join automation_agent_placements p on p.chat_id=a.chat_id and p.owner_id=a.owner_id and p.project_id is null where a.owner_id=$1 and a.chat_id=$2 and a.project_id is null order by a.created_at desc,a.id",
+      "sql": "select a.*,p.worker_id from project_automations a inner join automation_agent_placements p on p.chat_id=a.chat_id and p.owner_id=a.owner_id and p.project_id is null where a.owner_id=$1 and a.chat_id=$2 and a.project_id is null order by a.created_at desc,a.id limit $3 offset $4",
       "bindings": [
         {
           "key": "owner",
@@ -860,6 +860,14 @@
         {
           "key": "chat",
           "kind": "text"
+        },
+        {
+          "key": "limit",
+          "kind": "integer"
+        },
+        {
+          "key": "offset",
+          "kind": "integer"
         }
       ]
     }

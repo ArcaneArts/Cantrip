@@ -19,7 +19,7 @@ mod tunnel;
 use crate::{checked, decrypt_payload, decryption_error, derive_field_key, encrypt_payload};
 use anyhow::{Result, bail};
 pub use attachments::*;
-pub use automation::{ProjectAutomationField, open_project_automation};
+pub use automation::{ProjectAutomationField, open_project_automation, seal_project_automation};
 pub use backup::{BackupCipher, BackupFrame};
 use cantrip_wire::{Value, parse_json_text, value::json};
 pub use communication::*;
