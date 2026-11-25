@@ -2227,6 +2227,13 @@
       "when": 1795621260000,
       "tag": "0317_council_checkpoint_fallback",
       "breakpoints": true
+    },
+    {
+      "idx": 318,
+      "version": "7",
+      "when": 1795624660000,
+      "tag": "0318_council_agent_lifecycle",
+      "breakpoints": true
     }
   ]
 }
