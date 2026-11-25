@@ -9,6 +9,7 @@ pub mod catalog;
 pub(crate) mod computer_use_authority;
 mod context;
 pub mod conversations;
+pub(crate) mod council;
 pub mod eligibility;
 pub mod execution_lanes;
 pub mod execution_services;

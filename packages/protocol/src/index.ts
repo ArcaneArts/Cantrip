@@ -92,3 +92,4 @@ export * from "./task-pause.js";
 export * from "./cantrip-os-workspace-operations.js";
 export * from "./cantrip-os-system-operations.js";
 export * from "./cantrip-os-system-management.js";
+export * from "./council.js";

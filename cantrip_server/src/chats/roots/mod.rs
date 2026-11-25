@@ -111,3 +111,33 @@ fn matches_root(job: &str) -> String {
         "EXISTS (SELECT 1 FROM standalone_chat_roots r WHERE r.id={job}.root_id AND r.chat_id={job}.chat_id AND r.owner_id={job}.owner_id AND r.worker_id={job}.worker_id AND r.status!='deleting')"
     )
 }
+
+pub(super) async fn provision_new_chat(
+    tx: &crate::database::Transaction<'_>,
+    owner: &str,
+    chat: &str,
+    worker: &str,
+    root: &str,
+    purpose: &str,
+) -> Result<Value> {
+    let runtime = uuid::Uuid::new_v4().to_string();
+    let lane = uuid::Uuid::new_v4().to_string();
+    let job = uuid::Uuid::new_v4().to_string();
+    tx.query(
+        "INSERT INTO standalone_chat_roots(id,chat_id,owner_id,worker_id,protected_path_handle,status) VALUES($1,$2,$3,$4,NULL,'provisioning')",
+        &[&root,&chat,&owner,&worker]
+    ).await?;
+    tx.query(
+        "INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,scratch_root_id) VALUES($1,$2,$3,NULL,$4)",
+        &[&runtime,&chat,&worker,&root]
+    ).await?;
+    tx.query(
+        "INSERT INTO chat_execution_lanes(id,chat_id,worktree_id,scratch_root_id,worker_id,acquiring_actor,exclusive,purpose,state,runtime_session_id) VALUES($1,$2,NULL,$3,$4,'user',false,$5,'suspended',$6)",
+        &[&lane,&chat,&root,&worker,&purpose,&runtime]
+    ).await?;
+    let rows = tx.query(
+        "INSERT INTO standalone_chat_root_jobs(id,owner_id,root_id,chat_id,worker_id,kind,state) VALUES($1,$2,$3,$4,$5,'provision','queued') RETURNING to_jsonb(standalone_chat_root_jobs)::text",
+        &[&job,&owner,&root,&chat,&worker]
+    ).await?;
+    summary(&raw(rows.first().context("Queue scratch provision")?)?)
+}

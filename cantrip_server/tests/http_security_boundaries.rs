@@ -91,6 +91,25 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
                 request
             }
         };
+        let council_path = "/api/council/agents";
+        assert_eq!(
+            client.get(origin.clone() + council_path).send().await?.status(),
+            StatusCode::UNAUTHORIZED,
+        );
+        let roster: Value = serde_json::from_str(
+            &request(Method::GET, council_path, first, false)
+                .send().await?.error_for_status()?.text().await?,
+        )?;
+        assert_eq!(roster, json!([]));
+        let missing = format!("{council_path}/9c50384b-e803-4e6b-8444-9e1811572461");
+        assert_eq!(
+            request(Method::PATCH, &missing, second, true)
+                .header("content-type", "application/json")
+                .body(json!({"expectedRevision":1,"primary":true}).to_string())
+                .send().await?.status(),
+            StatusCode::NOT_FOUND,
+        );
+
         let settings_path = "/api/settings";
         let initial_settings: Value = serde_json::from_str(
             &request(Method::GET, settings_path, first, false)

@@ -66,6 +66,55 @@ pub(super) fn iso(value: &Value) -> Result<Value> {
     let iso = crate::wire::date_iso_milliseconds(millis).context("Invalid time value")?;
     Ok(Value::String(iso.into()))
 }
+pub(super) async fn compatible_scratch_worker(
+    database: std::sync::Arc<crate::database::Database>,
+    owner: &str,
+    default: Option<&str>,
+    is_connected: impl Fn(&str) -> bool,
+) -> Result<Option<String>> {
+    let mut workers = WorkerRepository::new(database).list_workers(owner).await?;
+    workers.retain(|w| {
+        is_connected(w["workerId"].as_str().unwrap_or(""))
+            && [
+                "provision",
+                "resolve",
+                "archive",
+                "restore",
+                "remove",
+                "reconcile",
+                "routingHandles",
+            ]
+            .iter()
+            .all(|key| w["standaloneChat"]["scratch"][key] == true)
+    });
+    let collator = crate::projects::placement::collator()?;
+    workers.sort_by(|a, b| {
+        collator.compare_utf16(
+            &a["workerId"]
+                .as_str()
+                .unwrap_or("")
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+            &b["workerId"]
+                .as_str()
+                .unwrap_or("")
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+        )
+    });
+    let worker = workers
+        .iter()
+        .find(|w| w["workerId"].as_str() == default)
+        .or_else(|| workers.first())
+        .map(|worker| {
+            worker["workerId"]
+                .as_str()
+                .map(str::to_owned)
+                .context("Scratch worker ID")
+        })
+        .transpose()?;
+    Ok(worker)
+}
 impl Repository {
     pub async fn list_project(&self, owner: &str, project: &str) -> Result<Vec<Value>> {
         self.list_project_with_query_context(owner, project, None)
@@ -115,48 +164,15 @@ impl Repository {
         let settings = raw(rows
             .first()
             .context("Database returned no row while loading standalone Chat defaults")?)?;
-        let mut workers = WorkerRepository::new(self.database.clone())
-            .list_workers(owner)
-            .await?;
-        workers.retain(|w| {
-            is_connected(w["workerId"].as_str().unwrap_or(""))
-                && [
-                    "provision",
-                    "resolve",
-                    "archive",
-                    "restore",
-                    "remove",
-                    "reconcile",
-                    "routingHandles",
-                ]
-                .iter()
-                .all(|key| w["standaloneChat"]["scratch"][key] == true)
-        });
-        let collator = crate::projects::placement::collator()?;
-        workers.sort_by(|a, b| {
-            collator.compare_utf16(
-                &a["workerId"]
-                    .as_str()
-                    .unwrap_or("")
-                    .encode_utf16()
-                    .collect::<Vec<_>>(),
-                &b["workerId"]
-                    .as_str()
-                    .unwrap_or("")
-                    .encode_utf16()
-                    .collect::<Vec<_>>(),
-            )
-        });
         let default = optional(&settings["default_worker_id"])?;
-        let worker = workers
-            .iter()
-            .find(|w| w["workerId"].as_str() == default.as_deref())
-            .or_else(|| workers.first())
-            .ok_or(StandaloneUnavailable)?;
-        let worker = worker["workerId"]
-            .as_str()
-            .context("Standalone worker ID")?
-            .to_owned();
+        let worker = compatible_scratch_worker(
+            self.database.clone(),
+            owner,
+            default.as_deref(),
+            is_connected,
+        )
+        .await?
+        .ok_or(StandaloneUnavailable)?;
         let model = optional(if settings["default_chat_model_id"].is_null() {
             &settings["default_model_id"]
         } else {
@@ -183,17 +199,11 @@ impl Repository {
         );
         let auto_title = input.get("autoTitle") == Some(&Value::Bool(true));
         let root = uuid::Uuid::new_v4().to_string();
-        let runtime = uuid::Uuid::new_v4().to_string();
-        let provision = uuid::Uuid::new_v4().to_string();
         self.database.transaction(|tx|Box::pin(async move {
             let rows=tx.query("INSERT INTO chats(id,owner_id,context_kind,project_id,protected_label,auto_title_pending,experience,position,active_worker_id,active_worktree_id,active_scratch_root_id,worktree_mode,model_id,reasoning_effort,custom_subagent_model,subagent_model_id,subagent_reasoning_effort,permission_profile_id,automation_paused,plan_mode,protected_plan,has_pending_plan_question) VALUES($1,$2,'standalone',NULL,$3::text::jsonb,$4,'agent',$5::text::integer,$6,NULL,$7,NULL,$8,$9,false,NULL,NULL,$10,false,'default',NULL,false) RETURNING to_jsonb(chats)::text",&[&id,&owner,&label,&auto_title,&position,&worker,&root,&model,&reasoning,&permission]).await.map_err(|error|statement_failure(error,&[&id,&owner,&label,&position,&worker,&root,model.as_deref().unwrap_or(""),reasoning.as_deref().unwrap_or(""),permission.as_deref().unwrap_or("")]))?;
             let chat=raw(rows.first().context("Database returned no row while creating a standalone Chat")?)?;
-            tx.query("INSERT INTO standalone_chat_roots(id,chat_id,owner_id,worker_id,protected_path_handle,status) VALUES($1,$2,$3,$4,NULL,'provisioning')",&[&root,&id,&owner,&worker]).await.map_err(|error|statement_failure(error,&[&worker]))?;
-            tx.query("INSERT INTO chat_runtime_sessions(id,chat_id,worker_id,worktree_id,scratch_root_id) VALUES($1,$2,$3,NULL,$4)",&[&runtime,&id,&worker,&root]).await.map_err(|error|statement_failure(error,&[&worker]))?;
-            let lane=uuid::Uuid::new_v4().to_string();
-            tx.query("INSERT INTO chat_execution_lanes(id,chat_id,worktree_id,scratch_root_id,worker_id,acquiring_actor,exclusive,purpose,state,runtime_session_id) VALUES($1,$2,NULL,$3,$4,'user',false,'Initial standalone Chat scratch root','suspended',$5)",&[&lane,&id,&root,&worker,&runtime]).await.map_err(|error|statement_failure(error,&[&worker]))?;
-            let rows=tx.query("INSERT INTO standalone_chat_root_jobs(id,owner_id,root_id,chat_id,worker_id,kind,state) VALUES($1,$2,$3,$4,$5,'provision','queued') RETURNING to_jsonb(standalone_chat_root_jobs)::text",&[&provision,&owner,&root,&id,&worker]).await.map_err(|error|statement_failure(error,&[&worker]))?;
-            Ok(json!({"chat":wire_summary(&chat)?,"provisionJob":roots::summary(&raw(rows.first().context("Database returned no row while queueing standalone Chat scratch provisioning")?)?)?}))
+            let provision=roots::provision_new_chat(tx,&owner,&id,&worker,&root,"Initial standalone Chat scratch root").await.map_err(|error|statement_failure(error,&[&worker]))?;
+            Ok(json!({"chat":wire_summary(&chat)?,"provisionJob":provision}))
         })).await
     }
 }

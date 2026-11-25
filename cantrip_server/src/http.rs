@@ -57,6 +57,7 @@ mod cli_runs;
 mod computer_use;
 mod computer_use_agent;
 mod conversations;
+mod council;
 mod direct_attachments;
 mod encryption;
 mod external_chat_history;
@@ -289,6 +290,7 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(chat_control::routes())
         .merge(chat_customizations::routes())
         .merge(conversations::routes())
+        .merge(council::routes())
         .merge(chat_execution::routes())
         .merge(task_controls::routes())
         .merge(chat_console::routes())
