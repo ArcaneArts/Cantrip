@@ -11,6 +11,7 @@ import {
 import { actualCouncilRoutineAuthoring } from "./actual-council-routine-authoring.mjs";
 import { actualCouncilBrowserHistory } from "./actual-council-browser-history.mjs";
 import { actualCouncilCompaction } from "./actual-council-compaction.mjs";
+import { actualCouncilLaunch } from "./actual-council-launch.mjs";
 import { actualCouncilLifecycle } from "./actual-council-lifecycle.mjs";
 import { actualCouncilMcpSetup } from "./actual-council-mcp-setup.mjs";
 import { actualCouncilMemory } from "./actual-council-memory.mjs";
@@ -40,6 +41,7 @@ export async function actualCouncilSteering({
   inventory,
   mcpSetupRoot,
   lifecycle,
+  launch,
   peerAppOrigin,
   browserHistory,
   automations,
@@ -189,7 +191,7 @@ export async function actualCouncilSteering({
             activeQuota ||
             providerRecovery,
           ) && !testCreation,
-        nativeCli: Boolean(inventory || peerAppOrigin),
+        nativeCli: Boolean(inventory || peerAppOrigin || launch),
         mcpSetup: Boolean(mcpSetupRoot),
       },
     );
@@ -611,6 +613,17 @@ export async function actualCouncilSteering({
         submit,
         readChat,
         readMessages,
+        result,
+      });
+    }
+    if (launch) {
+      await actualCouncilLaunch({
+        ...launch,
+        page,
+        chatId,
+        workerId,
+        model,
+        tools: modelFunctions(held.request.input.tools),
         result,
       });
     }

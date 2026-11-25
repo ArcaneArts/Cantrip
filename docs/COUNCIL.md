@@ -439,8 +439,9 @@ publishing workflow can follow separately. [Managed MCP](MCP.md) ·
 ## Implementation milestones
 
 Each milestone extends the existing production paths and can be tested
-independently. Gate Council navigation on the server capability until the launch
-workflow is ready.
+independently. Council navigation follows the server capability, which is
+enabled by default. Set `CANTRIP_COUNCIL_ENABLED=false` on the server to disable
+Council. Chat and IDE remain available.
 
 | Milestone                                               | Implementation                                                                                                                                                                                             | Exit evidence                                                                                                                                                                                                                                              |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -486,6 +487,12 @@ workflow is ready.
    Council default, run a short-lived client script, verify its result, and
    confirm that the script exits. Confirm that the issuer's existing credentials
    and permissions still control access.
+7. **Integrated launch.** From the app, create a Council agent by prompt and
+   schedule a briefing. Recover a decision after compaction and a cold Worker
+   restart, approve a remote project chat command, collect its result and a
+   local Task result, run the authenticated MCP script, send a peer handoff,
+   and receive the briefing notification. Exercise the browser flow at desktop
+   and touch widths and verify Council opens and runs a turn in the macOS app.
 
 Use focused protocol, server, worker, and app tests as each milestone lands.
 Include real Codex App Server tests for steering, compaction, and provider

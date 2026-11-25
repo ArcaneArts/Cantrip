@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { eventually } from "./full-worker.mjs";
 import { modelFunctions } from "./task-model-provider.mjs";
 import { projectToolOutput } from "./actual-council-project-creation.mjs";
 
-const disposableCredential = "council-fixture-mcp-secret";
-const discoveredValue = "release canary is healthy";
-const setupName = "council_setup_fixture";
+import {
+  prepareCouncilMcpFixture,
+  disposableCredential,
+  discoveredValue,
+  setupName,
+} from "./council-mcp-fixture.mjs";
 const timeout = 60_000;
 
-function modelOutput(plan, callId) {
+export function modelOutput(plan, callId) {
   const item = plan.request.input.input.find(
     ({ type, call_id }) =>
       type === "function_call_output" && call_id === callId,
@@ -38,42 +37,8 @@ export async function actualCouncilMcpSetup({
   const command = tools.find(({ name }) => name === "exec_command");
   const setup = tools.find(({ name }) => name.endsWith("council_mcp_setup"));
   assert.ok(command && setup, "Set up MCP through the normal Council tool");
-  const fixture = path.join(root, "council-setup-mcp.mjs");
-  await writeFile(
-    fixture,
-    `import { createInterface } from "node:readline";
-const tools = [{
-  name: "release_status",
-  description: "Return the current release status",
-  inputSchema: { type: "object" },
-}];
-for await (const line of createInterface({ input: process.stdin })) {
-  const request = JSON.parse(line);
-  if (request.id === undefined) continue;
-  let result;
-  if (request.method === "initialize") {
-    if (process.env.COUNCIL_SETUP_CREDENTIAL !== ${JSON.stringify(disposableCredential)}) {
-      process.exit(1);
-    }
-    result = {
-      protocolVersion: request.params.protocolVersion,
-      capabilities: { tools: {} },
-      serverInfo: { name: "council-setup-fixture", version: "1" },
-    };
-  } else if (request.method === "tools/list") {
-    result = { tools };
-  } else if (request.method === "tools/call" && request.params.name === "release_status") {
-    result = { content: [{ type: "text", text: ${JSON.stringify(discoveredValue)} }] };
-  }
-  const failure = { code: -32601, message: "Unknown fixture method" };
-  console.log(JSON.stringify({
-    jsonrpc: "2.0",
-    id: request.id,
-    ...(result ? { result } : { error: failure }),
-  }));
-}
-`,
-  );
+  const { configuration, scriptArguments } =
+    await prepareCouncilMcpFixture(root);
   const settingsWire = () =>
     page.evaluate(() => window.folderRequest("/api/settings/mcp-servers"));
   const interaction = (method, ...args) =>
@@ -120,19 +85,15 @@ for await (const line of createInterface({ input: process.stdin })) {
 
   await idle();
   const original = await settingsWire();
-  const configuration = {
-    name: setupName,
-    transport: "stdio",
-    command: process.execPath,
-    args: [fixture],
-    environment: { COUNCIL_SETUP_CREDENTIAL: disposableCredential },
-  };
   const setupArgs = { operationId: randomUUID(), configuration };
   call("council-mcp-first", setup, setupArgs);
   const retry = call("council-mcp-retry", setup, setupArgs);
   const changed = call("council-mcp-conflict", setup, {
     ...setupArgs,
-    configuration: { ...configuration, args: [fixture, "changed"] },
+    configuration: {
+      ...configuration,
+      args: [...configuration.args, "changed"],
+    },
   });
   const configured = model.reply({ text: "The release MCP is configured." });
   assert.equal(
@@ -178,44 +139,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 
   // The model writes and runs this short-lived client with its normal shell.
   // The managed tool is also visible through Codex on the next turn.
-  const sdk = createRequire(
-    new URL("../../tests/reference-node-worker/package.json", import.meta.url),
-  );
-  const sdkModule = (name) =>
-    JSON.stringify(
-      pathToFileURL(sdk.resolve(`@modelcontextprotocol/sdk/client/${name}`))
-        .href,
-    );
-  const client = [
-    `import { Client } from ${sdkModule("index.js")};`,
-    `import { StdioClientTransport } from ${sdkModule("stdio.js")};`,
-    'const client = new Client({ name: "council-script", version: "1" });',
-    "try {",
-    `  await client.connect(new StdioClientTransport(${JSON.stringify({
-      command: process.execPath,
-      args: [fixture],
-      env: { COUNCIL_SETUP_CREDENTIAL: disposableCredential },
-    })}));`,
-    '  const result = await client.callTool({ name: "release_status" });',
-    '  if (result.isError) throw new Error("MCP release status failed");',
-    "  console.log(result.content[0].text);",
-    "} finally {",
-    "  await client.close();",
-    "}",
-  ].join("\n");
-  const script = call("council-mcp-script", command, {
-    cmd: [
-      "set -e",
-      'fixture_script=$(mktemp "$PWD/council-mcp-client.XXXXXX")',
-      "trap 'rm -f -- \"$fixture_script\"' EXIT",
-      "cat >\"$fixture_script\" <<'COUNCIL_MCP_SCRIPT'",
-      client,
-      "COUNCIL_MCP_SCRIPT",
-      `'${process.execPath.replaceAll("'", "'\\''")}' --input-type=module < "$fixture_script"`,
-    ].join("\n"),
-    login: false,
-    max_output_tokens: 1000,
-  });
+  const script = call("council-mcp-script", command, scriptArguments);
   const finished = model.reply({
     text: "I retrieved the live release status.",
   });
@@ -236,7 +160,7 @@ for await (const line of createInterface({ input: process.stdin })) {
   );
   assert.match(
     modelOutput(finished, "council-mcp-script-call-0"),
-    /release canary is healthy/u,
+    new RegExp(discoveredValue, "u"),
   );
   await idle();
 
