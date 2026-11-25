@@ -10,6 +10,7 @@ const { WebSocket, WebSocketServer } = createRequire(
 const [binary, marker, prompt, scenario, ...args] = process.argv.slice(2);
 const liveYolo = scenario === "live-yolo";
 const steerCompletion = scenario === "council-steer-completion";
+const dropSteerReply = scenario === "council-steer-dropped-reply";
 function record(event) {
   writeFileSync(marker, `${JSON.stringify(event)}\n`, {
     flag: "a",
@@ -44,6 +45,8 @@ if (
         downgrade,
         liveTurnCount = 0,
         heldSteer,
+        acceptedSteerId,
+        historyReadId,
         retriedStartId;
       function requestApproval(suffix, method, fields) {
         worker.send(
@@ -63,6 +66,23 @@ if (
       native.once("open", () => worker.resume());
       worker.on("message", (raw) => {
         const frame = JSON.parse(String(raw));
+        if (dropSteerReply) {
+          if (frame.params?.input?.some((item) => item.text === prompt)) {
+            record({
+              phase: frame.method,
+              turnId: frame.params.expectedTurnId,
+              clientId: frame.params.clientUserMessageId,
+            });
+            if (frame.method === "turn/steer") acceptedSteerId = frame.id;
+          }
+          if (
+            frame.method === "thread/items/list" &&
+            acceptedSteerId !== undefined
+          ) {
+            historyReadId = frame.id;
+            record({ phase: frame.method, turnId: frame.params.turnId });
+          }
+        }
         if (
           steerCompletion &&
           frame.params?.input?.some((item) => item.text === prompt)
@@ -174,6 +194,34 @@ if (
         native.send(raw, { binary: false });
       });
       native.on("message", (raw) => {
+        if (dropSteerReply) {
+          const frame = JSON.parse(String(raw));
+          if (
+            !frame.method &&
+            frame.id === acceptedSteerId &&
+            acceptedSteerId !== undefined
+          ) {
+            record({
+              phase: "dropped",
+              turnId: frame.result?.turnId,
+              error: frame.error,
+            });
+            return;
+          }
+          if (
+            !frame.method &&
+            frame.id === historyReadId &&
+            historyReadId !== undefined
+          ) {
+            record({
+              phase: "history",
+              inputs: frame.result?.data
+                ?.filter(({ item }) => item.type === "userMessage")
+                .map(({ item }) => ({ id: item.id, clientId: item.clientId })),
+              error: frame.error,
+            });
+          }
+        }
         worker.send(raw, { binary: false });
         if (steerCompletion) {
           const frame = JSON.parse(String(raw));

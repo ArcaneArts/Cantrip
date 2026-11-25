@@ -557,10 +557,15 @@ async function flow(
   const resumeAckFile = sharedQueueInterruption?.startsWith("resume-ack")
     ? path.join(dataDirectory, "test-queue-resume-ack")
     : undefined;
-  const councilSteerRaceMarker = process.argv.includes(
-    "--council-steering-race",
+  const councilSteerFault = process.argv.includes(
+    "--council-steering-dropped-reply",
   )
-    ? path.join(root, `council-steer-completion-${fixture.kind}.jsonl`)
+    ? "council-steer-dropped-reply"
+    : process.argv.includes("--council-steering-race")
+      ? "council-steer-completion"
+      : undefined;
+  const councilSteerTrace = councilSteerFault
+    ? path.join(root, `${councilSteerFault}-${fixture.kind}.jsonl`)
     : undefined;
   if (dataDirectory !== canonicalDataDirectory) {
     await mkdir(canonicalDataDirectory, { recursive: true });
@@ -998,20 +1003,16 @@ async function flow(
     );
     if (process.argv.includes("--postgres-errors"))
       await observePostgresErrors(fixture, page);
-    const councilSteerRace = councilSteerRaceMarker
-      ? await fixtureCodex(
-          path.dirname(councilSteerRaceMarker),
-          process.env.CANTRIP_CODEX_BIN,
-          {
-            scenario: "council-steer-completion",
-            marker: councilSteerRaceMarker,
-            input: councilSteeringFollowUp,
-          },
-        )
+    const councilSteerProxy = councilSteerTrace
+      ? await fixtureCodex(root, process.env.CANTRIP_CODEX_BIN, {
+          scenario: councilSteerFault,
+          marker: councilSteerTrace,
+          input: councilSteeringFollowUp,
+        })
       : undefined;
     await startWorker(enrollment.code, {
-      environment: councilSteerRace
-        ? { CANTRIP_CODEX_BIN: councilSteerRace }
+      environment: councilSteerProxy
+        ? { CANTRIP_CODEX_BIN: councilSteerProxy }
         : {},
     });
     await eventually(workers, (workers) => {
@@ -1039,14 +1040,21 @@ async function flow(
       process.argv.includes("--council-steering") ||
       process.argv.includes("--council-agent-tools") ||
       process.argv.includes("--council-app-mode") ||
-      councilSteerRaceMarker
+      councilSteerTrace
     ) {
       await actualCouncilSteering({
         page,
         workerId,
         result,
         testCreation: process.argv.includes("--council-agent-tools"),
-        raceMarker: councilSteerRaceMarker,
+        raceMarker:
+          councilSteerFault === "council-steer-completion"
+            ? councilSteerTrace
+            : undefined,
+        dropReplyMarker:
+          councilSteerFault === "council-steer-dropped-reply"
+            ? councilSteerTrace
+            : undefined,
       });
       if (process.argv.includes("--council-app-mode")) {
         await actualCouncilAppMode({

@@ -20,6 +20,7 @@ export async function actualCouncilSteering({
   result,
   testCreation = false,
   raceMarker,
+  dropReplyMarker,
 }) {
   const model = await taskModelProvider({ observeStreams: true });
   const role = "Preserve this Council role marker 🌲";
@@ -156,6 +157,56 @@ export async function actualCouncilSteering({
 
     const second = await submit(followUp);
     assert.equal(second.status, "queued");
+    if (dropReplyMarker) {
+      const [steer, dropped] = await eventually(
+        () => readSteerRace(dropReplyMarker),
+        (trace) => assert.equal(trace[1]?.phase, "dropped"),
+        timeout,
+      );
+      assert.equal(steer.phase, "turn/steer");
+      assert.match(steer.clientId, /^cantrip:/u);
+      assert.ok(steer.turnId);
+      assert.deepEqual(dropped, { phase: "dropped", turnId: steer.turnId });
+      held.release();
+      const messages = await eventually(
+        readMessages,
+        (messages) => {
+          assert.equal(withText(messages, followUp).length, 1);
+          assert.equal(withText(messages, answer).length, 1);
+        },
+        150_000, // The worker's normal App Server RPC deadline is 120 seconds.
+      );
+      const [root] = withText(messages, original);
+      const [recovered] = withText(messages, followUp);
+      assert.ok(root.executionLaneId);
+      assert.equal(recovered.executionLaneId, root.executionLaneId);
+      await eventually(readChat, (chat) => assert.equal(chat.status, "idle"));
+      const queue = await readQueue();
+      assert.deepEqual(queue.items, []);
+      assert.deepEqual(queue.claims, []);
+      const trace = await readSteerRace(dropReplyMarker);
+      assert.equal(trace.length, 4);
+      assert.deepEqual(trace[2], {
+        phase: "thread/items/list",
+        turnId: steer.turnId,
+      });
+      assert.equal(trace[3].phase, "history");
+      const inputs = trace[3].inputs.filter(
+        (item) => item.clientId === steer.clientId,
+      );
+      assert.equal(inputs.length, 1);
+      assert.ok(inputs[0].id);
+      assert.equal(
+        model.requests.filter(({ method }) => method === "POST").length,
+        2,
+      );
+      assert.deepEqual(model.failures, []);
+      result.councilSteeringDroppedReply = { chatId, trace };
+      result.steps.push(
+        "Council reconciled a lost steer acknowledgement from the exact native user item without replaying it",
+      );
+      return;
+    }
     if (raceMarker) {
       const [intercept] = await eventually(
         () => readSteerRace(raceMarker),
