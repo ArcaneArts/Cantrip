@@ -295,14 +295,20 @@ export function useNativeSettingsController(input: {
     updateError,
     pending: binding
       ? (observed.state.data?.pending.filter(
-          (entry) => entry.bindingId === binding.bindingId,
+          (entry) =>
+            entry.bindingId === binding.bindingId &&
+            !entry.intent.permissionTransition,
         ).length ?? 0)
       : 0,
     localStatus:
-      local.at(-1)?.bindingId === binding?.bindingId &&
-      local.at(-1)?.identity === identity
-        ? (local.at(-1)?.status ?? null)
-        : null,
+      [...local]
+        .reverse()
+        .find(
+          (entry) =>
+            entry.bindingId === binding?.bindingId &&
+            entry.identity === identity &&
+            !entry.permissionSelection,
+        )?.status ?? null,
     error: observed.state.error ?? observed.decryptionError ?? updateError,
   };
 }

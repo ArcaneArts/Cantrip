@@ -23,6 +23,7 @@ export function nativePermissionControlState(
     .find((intent) => isNativePermissionPatch(intent.patch));
   let requestedLabel: string | null = null;
   let status: NativePermissionControlState["status"] = null;
+  let yoloRequested = false;
   const sourceState = session.observed.state?.data;
   const matchingIntent = nativeIntent
     ? (sourceState?.pending.find(
@@ -56,7 +57,16 @@ export function nativePermissionControlState(
       (local.status === "rejected" || local.status === "uncertain") &&
       canonicalPending
     )
-      ? { selectedId: local.permissionSelection.id, status: local.status }
+      ? {
+          selectedId: local.permissionSelection.id,
+          effectiveId:
+            transition && local.request?.operationId === transition.operationId
+              ? transition.effectiveId
+              : preference?.forcedByWorktreePolicy
+                ? preference.effectiveId
+                : (local.permissionSelection.id ?? preference?.defaultId),
+          status: local.status,
+        }
       : canonicalChoice;
   if (choice) {
     requestedLabel =
@@ -67,6 +77,7 @@ export function nativePermissionControlState(
       choice.status === "accepted" || choice.status === "dispatched"
         ? "queued"
         : choice.status;
+    yoloRequested = status === "queued" && choice.effectiveId === ":yolo";
   } else if (nativeIntent) {
     const pending = snapshot
       ? requestedNativePermissions(snapshot, session.pendingPatches)
@@ -82,11 +93,21 @@ export function nativePermissionControlState(
           ? "queued"
           : nativeIntent.status;
   }
+  const liveYolo =
+    yoloRequested ||
+    (session.binding &&
+      sourceState?.pending.some(
+        (entry) =>
+          entry.bindingId === session.binding?.bindingId &&
+          entry.status === "dispatched" &&
+          entry.intent.permissionTransition?.effectiveId === ":yolo",
+      )) === true;
   return {
     confirmed,
     confirmedPresetId: confirmed ? nativePermissionPreset(confirmed) : null,
     requestedLabel,
-    status,
+    status: yoloRequested ? null : status,
+    liveYolo,
     disabled:
       !session.binding || session.observed.encryption.status !== "ready",
     error: error?.message ?? session.error?.message ?? null,

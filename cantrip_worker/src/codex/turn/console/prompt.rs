@@ -460,6 +460,7 @@ async fn execute(
                 let outcome = interactions::Turn {
                     runtime, authority: interactions::Authority::Receipt(receipt), thread, turn: &turn, thread_version: binding.thread_version,
                     encryption: &turns.encryption, emit: &emit, protected: true,
+                    auto_approve: Some(binding.auto_approve.subscribe()),
                 }.observe(&binding.interactions, &mut native_interactions.events, collecting).await;
                 drop(native_interactions);
                 active.set(Phase::Terminal);

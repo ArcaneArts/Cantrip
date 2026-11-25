@@ -10,7 +10,7 @@ pub(crate) use permission::COMMAND as PERMISSION_UPDATE;
 pub(crate) use update::COMMAND;
 
 use super::{
-    RPC_TIMEOUT, Runtime, Scope, Turns, id,
+    Phase, RPC_TIMEOUT, Runtime, Scope, Turns, id,
     receipt::{Client, Receipt},
 };
 use crate::{
@@ -70,6 +70,26 @@ impl Turns {
         permission: Option<permission::Change>,
         assert_current: impl Fn() -> Result<()>,
     ) -> Result<(Value, &'static str)> {
+        // Capture the owning turn before the RPC. A late acknowledgement must
+        // never carry live approval authority into a subsequent turn.
+        let live_approvals = permission
+            .as_ref()
+            .filter(|change| change.transition["effectiveId"] == ":yolo")
+            .and_then(|_| {
+                let session = receipt.session();
+                let chat = session["chatId"].as_js_string()?;
+                let scope = receipt.scope();
+                let key = (scope.owner.clone(), scope.server.clone(), chat.clone());
+                let active = self.active.lock().unwrap().active.get(&key)?.clone();
+                let binding = active.control.get()?;
+                let root = active.root.as_ref()?;
+                let matches = root.activation == receipt.operation().activation
+                    && matches!(&*active.phase.lock().unwrap(), Phase::Running { runtime: running, thread, .. }
+                        if running.generation() == runtime.generation()
+                            && Some(thread) == session["threadId"].as_js_string()
+                            && running.thread_version(thread) == binding.thread_version);
+                matches.then(|| binding.auto_approve.clone())
+            });
         let observation = async {
             assert_current()?;
             receipt.dispatch().await?;
@@ -104,7 +124,13 @@ impl Turns {
         let reply = runtime
             .request(UPDATE.into(), Some(params), Some(RPC_TIMEOUT), None)
             .await;
-        observation.settle_with_status(receipt, reply).await
+        let (result, status) = observation.settle_with_status(receipt, reply).await?;
+        if let Some(approvals) = live_approvals
+            && matches!(status, "queued" | "applied")
+        {
+            approvals.send_replace(true);
+        }
+        Ok((result, status))
     }
 }
 

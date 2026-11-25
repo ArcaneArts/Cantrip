@@ -1235,6 +1235,7 @@ impl Turns {
                             encryption: &self.encryption,
                             emit: if task_interactions.is_some() { &interaction_events } else { &emit },
                             protected: task_interactions.is_some() || protection.is_some(),
+                            auto_approve: active.control.get().map(|binding| binding.auto_approve.subscribe()),
                         }.observe(handle, &mut subscribed.events, collecting).await
                     } else { collecting.await };
                     drop(native_interactions.take());

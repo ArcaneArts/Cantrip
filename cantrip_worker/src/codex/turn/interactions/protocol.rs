@@ -128,6 +128,33 @@ pub(super) fn request(frame: &Value, generation: &str) -> Result<(Value, Duratio
     Ok((request, Duration::from_millis(timeout)))
 }
 
+pub(super) fn auto_approval(payload: &Value) -> Option<Value> {
+    match payload["kind"].as_str()? {
+        "commandExecution"
+            if payload["availableDecisions"]
+                .as_array()
+                .is_none_or(|decisions| decisions.iter().any(|decision| decision == "accept")) =>
+        {
+            Some(json!({"decision":"accept"}))
+        }
+        "fileChange" => Some(json!({"decision":"accept"})),
+        "permissions"
+            if payload["requestedPermissions"]
+                .as_object()
+                .is_some_and(|fields| {
+                    fields
+                        .keys()
+                        .all(|key| matches!(key.as_str(), Some("fileSystem" | "network")))
+                }) =>
+        {
+            Some(json!({
+                "permissions":payload["requestedPermissions"],"scope":"turn","strictAutoReview":false,
+            }))
+        }
+        _ => None,
+    }
+}
+
 pub(super) fn plan_question(request: &Value) -> Option<Value> {
     if request["payload"]["kind"] != "userInput"
         || !request["turnId"].is_string()

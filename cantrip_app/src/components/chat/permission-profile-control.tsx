@@ -42,6 +42,7 @@ export interface NativePermissionControlState {
     import("./native-permission-settings").NativePermissionSelection | null;
   confirmedPresetId: string | null;
   requestedLabel?: string | null;
+  liveYolo?: boolean;
   status?:
     "requesting" | "queued" | "applied" | "rejected" | "uncertain" | null;
   error?: string | null;
@@ -71,7 +72,7 @@ export function PermissionProfileControl({
       allowed: true,
     }));
   const defaultId = state?.defaultId ?? ":workspace";
-  const selectedLabel = native
+  const confirmedLabel = native
     ? native.confirmed
       ? native.confirmedPresetId
         ? permissionProfileLabel(native.confirmedPresetId)
@@ -82,7 +83,14 @@ export function PermissionProfileControl({
       : state
         ? permissionProfileLabel(state.selectedId)
         : "Permissions";
-  const actualId = native ? native.confirmedPresetId : state?.effectiveId;
+  const actualId = native?.liveYolo
+    ? ":yolo"
+    : native
+      ? native.confirmedPresetId
+      : state?.effectiveId;
+  const selectedLabel = native?.liveYolo
+    ? permissionProfileLabel(":yolo")
+    : confirmedLabel;
   const queued = native?.status === "queued";
   const queuedLabel = queued
     ? `${native.requestedLabel ?? "Permission change"} pending`
@@ -184,7 +192,7 @@ export function PermissionProfileControl({
                 </span>
                 {(
                   native
-                    ? native.confirmedPresetId === profile.id
+                    ? actualId === profile.id
                     : !state?.usesDefault && state?.selectedId === profile.id
                 ) ? (
                   <Check className="mt-0.5 size-3.5 shrink-0" />
@@ -197,7 +205,10 @@ export function PermissionProfileControl({
               className="space-y-1 border-t px-2 py-2 text-xs"
               data-slot="native-permission-state"
             >
-              <p>Last confirmed: {selectedLabel}</p>
+              <p>Last confirmed: {confirmedLabel}</p>
+              {native.liveYolo ? (
+                <p>YOLO approvals are on for this turn.</p>
+              ) : null}
               {native.confirmed ? (
                 <>
                   <p>

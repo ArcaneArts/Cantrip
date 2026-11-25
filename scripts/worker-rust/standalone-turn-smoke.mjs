@@ -107,6 +107,7 @@ const { values } = parseArgs({
     settings: { type: "boolean" },
     deferred: { type: "boolean" },
     interactions: { type: "boolean" },
+    "live-yolo": { type: "boolean" },
     "console-interactions": { type: "boolean" },
     "restored-interactions": { type: "boolean" },
     "subagent-interactions": { type: "boolean" },
@@ -206,6 +207,7 @@ const workflowKey = values["project-automations"]
   : null;
 const operationsKey = key("model-operation-content");
 const consoleInteractions = values["console-interactions"];
+const liveYolo = values["live-yolo"];
 const restoredInteractions = values["restored-interactions"];
 const subagentInteractions =
   values["subagent-interactions"] || values["subagent-model"] || childCua;
@@ -222,6 +224,7 @@ const runtimeHandoff =
 const recoverGoalHandoff = values["goal-handoff-recovery"];
 const goalHandoff = recoverGoalHandoff || values["goal-handoff"];
 const interactionKey =
+  liveYolo ||
   values.interactions ||
   consoleInteractions ||
   restoredInteractions ||
@@ -1365,6 +1368,10 @@ async function verifyInteraction() {
     publicClassification: request.classification,
   });
   assert.equal(opened.payload.command, "echo private fixture approval");
+  if (liveYolo) {
+    await verifyLiveYolo({ chatUrl, chatId, request, model, answer });
+    return;
+  }
   const classification = { kind: "commandExecution" };
   const response = { kind: "commandExecution", decision: "decline" };
   async function encryptReply(requestKey) {
@@ -1447,6 +1454,92 @@ async function verifyInteraction() {
     heldTurn
       ? "A restored turn accepted one protected approval reply on its replacement runtime."
       : "Protected approval authenticated against its native request and reached Codex once.",
+  );
+}
+
+async function verifyLiveYolo({ chatUrl, chatId, request, model, answer }) {
+  const settingsUrl = `${chatUrl}/native-settings`;
+  const settings = await eventually(
+    () => call("GET", settingsUrl, 200),
+    (state) => assert.ok(state.binding && state.effective),
+  );
+  const select = (id) =>
+    call("PATCH", `${chatUrl}/permission-profile`, 200, {
+      id,
+      bindingId: settings.binding.bindingId,
+      operationId: randomUUID(),
+      expectedRevision: settings.permissionPolicy?.revision ?? "0",
+    });
+  assert.equal((await select(":yolo")).status, "queued");
+  const replies = async () =>
+    (await readFile(approvalMarker, "utf8")).trim().split("\n").map(JSON.parse);
+  await eventually(replies, (frames) =>
+    assert.deepEqual(frames, [
+      { id: "cantrip-fixture-approval", result: { decision: "accept" } },
+      { id: "cantrip-fixture-approval-file", result: { decision: "accept" } },
+    ]),
+  );
+  const resolved = await eventually(
+    () => call("GET", `/api/agent-requests/${request.id}`, 200),
+    (record) => assert.equal(record.status, "resolved"),
+  );
+  assert.ok(resolved.protectedResponse);
+  const downgrade = await select(":read-only");
+  assert.equal(downgrade.status, "queued");
+  await eventually(replies, (frames) => {
+    assert.equal(frames.length, 3);
+    assert.deepEqual(frames[2], {
+      id: "cantrip-fixture-approval-permissions",
+      result: {
+        permissions: { network: { enabled: true } },
+        scope: "turn",
+        strictAutoReview: false,
+      },
+    });
+  });
+  const visible = await call(
+    "GET",
+    `/api/agent-requests?chatId=${chatId}`,
+    200,
+  );
+  assert.deepEqual(
+    visible.map((record) => record.id),
+    [request.id],
+  );
+  answer.release();
+  await eventually(
+    () => call("GET", settingsUrl, 200),
+    (state) => {
+      assert.equal(state.permissionPolicy?.operationId, downgrade.operationId);
+      assert.equal(state.permissionPolicy?.effectiveId, ":read-only");
+      assert.equal(state.desiredStatus, "applied");
+    },
+  );
+  const next = model.model.reply({ text: "Downgraded next turn.", hold: true });
+  await call(
+    "POST",
+    `${chatUrl}/turns`,
+    202,
+    await encryptedTurn(approvalPrompt, model.profile.id),
+  );
+  await eventually(
+    () =>
+      call("GET", `/api/agent-requests?chatId=${chatId}&status=pending`, 200),
+    (requests) => {
+      assert.equal(requests.length, 1);
+      assert.notEqual(requests[0].provenance.turnId, request.provenance.turnId);
+      assert.equal(requests[0].classification?.kind, "commandExecution");
+    },
+  );
+  assert.equal((await replies()).length, 3);
+  next.release();
+  await eventually(
+    () => next,
+    (reply) => assert.equal(reply.request?.completed, true),
+  );
+  assert.deepEqual(model.model.failures, []);
+  console.log(
+    "Live YOLO accepted an open approval and two subsequent approvals. The next turn asked for approval after the downgrade.",
   );
 }
 
@@ -3189,19 +3282,22 @@ try {
     workerEnvironment.CANTRIP_CODEX_BIN = values.deferred
       ? await fixtureCodex(root, values.codex)
       : values.interactions ||
+          liveYolo ||
           consoleInteractions ||
           restoredInteractions ||
           guestSuspension ||
           guestRuntimeHandoff ||
           recoveredCua
         ? await fixtureCodex(root, values.codex, {
-            scenario: recoveredCua
-              ? "resume-cua"
-              : restoredInteractions
-                ? "resume-approval"
-                : guestSuspension || guestRuntimeHandoff
-                  ? "resume-guest"
-                  : "approval",
+            scenario: liveYolo
+              ? "live-yolo"
+              : recoveredCua
+                ? "resume-cua"
+                : restoredInteractions
+                  ? "resume-approval"
+                  : guestSuspension || guestRuntimeHandoff
+                    ? "resume-guest"
+                    : "approval",
             marker: approvalMarker,
             input: approvalPrompt,
             ...(consoleInteractions ? { socketFile: consoleSocket } : {}),
@@ -3759,7 +3855,7 @@ try {
       marker: approvalMarker,
       socketFile: consoleSocket,
     });
-  } else if (values.interactions || restoredInteractions) {
+  } else if (values.interactions || restoredInteractions || liveYolo) {
     await verifyInteraction();
   } else if (subagentInteractions) {
     await verifySubagentInteraction({
