@@ -16,7 +16,22 @@ export async function actualCouncilLifecycle({
   readMessages,
   result,
 }) {
-  const root = path.join(workerDirectory, "chat-scratch", chatId);
+  const scratch = (id) => path.join(workerDirectory, "chat-scratch", id);
+  const root = scratch(chatId);
+  const exists = (directory) =>
+    stat(directory).then(
+      () => true,
+      (error) => {
+        assert.equal(error.code, "ENOENT");
+        return false;
+      },
+    );
+  const chatApi = (method, ...args) =>
+    page.evaluate(
+      async ({ method, args }) =>
+        (await import("/src/lib/api/chats.ts"))[method](...args),
+      { method, args },
+    );
   const listed = () =>
     page.evaluate(async () =>
       (await import("/src/lib/api/council.ts")).listCouncilAgents(),
@@ -143,16 +158,34 @@ export async function actualCouncilLifecycle({
     await confirmation.waitFor({ state: "hidden" });
     await eventually(findAgent, (row) => assert.equal(row, undefined), timeout);
     await eventually(
-      () =>
-        stat(root).then(
-          () => true,
-          (error) => {
-            assert.equal(error.code, "ENOENT");
-            return false;
-          },
-        ),
-      (exists) => assert.equal(exists, false),
+      () => exists(root),
+      (available) => assert.equal(available, false),
       timeout,
+    );
+    const legacy = await chatApi(
+      "createStandaloneChat",
+      "Standalone Chat cleanup fixture",
+    );
+    const legacyRoot = scratch(legacy.id);
+    await eventually(
+      () => exists(legacyRoot),
+      (available) => assert.equal(available, true),
+      timeout,
+    );
+    await chatApi("deleteChat", legacy.id);
+    const legacyArchive = await chatApi("getArchivedStandaloneChats");
+    assert.deepEqual(
+      legacyArchive.map(({ id }) => id),
+      [legacy.id],
+    );
+    await chatApi("permanentlyDeleteArchivedChat", legacy.id);
+    await eventually(
+      () => exists(legacyRoot),
+      (available) => assert.equal(available, false),
+      timeout,
+    );
+    result.steps.push(
+      "Standalone Chat kept its separate archive and scratch cleanup through the same Core and Worker.",
     );
     assert.deepEqual(model.failures, []);
     result.councilLifecycle = {
