@@ -16,6 +16,7 @@ export async function actualCouncilProjectApprovals({
   targetProfileId,
   send,
   targetTools,
+  steer = false,
   result,
 }) {
   const api = (operation, ...args) =>
@@ -26,6 +27,13 @@ export async function actualCouncilProjectApprovals({
     );
   const pending = (filter) =>
     api("getAgentInteractionRequests", { ...filter, status: "pending" });
+  const configuration = {
+    modelId: targetProfileId,
+    reasoningEffort: null,
+    customSubagentModel: false,
+    subagentModelId: null,
+    subagentReasoningEffort: null,
+  };
   const command = targetTools.find(({ name }) => name === "exec_command");
   assert.ok(command, "The native project runtime exposes its command tool");
   await page.evaluate(async (chatId) => {
@@ -74,6 +82,27 @@ export async function actualCouncilProjectApprovals({
         },
       ],
     });
+  const originalPrompt =
+    "Start an independent turn before the Council approval probe.";
+  const delivery = "Run the harmless approval probe in the project chat.";
+  const active = steer
+    ? target.reply({
+        hold: true,
+        text: "The original project turn is working.",
+      })
+    : null;
+  if (active) {
+    assert.equal(
+      (await api("startTurn", targetChatId, originalPrompt, configuration))
+        .status,
+      "queued",
+    );
+    await eventually(
+      () => active.entered,
+      (entered) => assert.equal(entered, true),
+      60_000,
+    );
+  }
   const first = requestCommand("Council-approved-project-output");
   const finished = target.reply({
     text: "The project approval probe finished.",
@@ -86,7 +115,8 @@ export async function actualCouncilProjectApprovals({
           projectId,
           chatId: targetChatId,
           operationId: randomUUID(),
-          message: "Run the harmless approval probe in the project chat.",
+          message: delivery,
+          ...(steer && { steer: true }),
         },
       },
     ],
@@ -95,8 +125,30 @@ export async function actualCouncilProjectApprovals({
   const forwarded = model.reply({
     text: "The project is waiting for your approval.",
   });
-  await submit("Delegate a new approval probe to the project chat.");
-  await idle();
+  try {
+    await submit("Delegate a new approval probe to the project chat.");
+    await idle();
+    if (active) {
+      await eventually(
+        () => api("getMessages", targetChatId),
+        (messages) => {
+          const inputs = messages.filter(({ role }) => role === "user");
+          const original = inputs.find(({ content }) =>
+            content.some(({ text }) => text === originalPrompt),
+          );
+          const steering = inputs.find(({ content }) =>
+            content.some(({ text }) => text === delivery),
+          );
+          assert.ok(original?.executionLaneId);
+          assert.equal(steering?.executionLaneId, original.executionLaneId);
+          assert.equal(active.request.completed, false);
+        },
+        60_000,
+      );
+    }
+  } finally {
+    active?.release();
+  }
   const [original] = await eventually(
     () => pending({ chatId: targetChatId }),
     (requests) =>
@@ -223,13 +275,7 @@ export async function actualCouncilProjectApprovals({
     "startTurn",
     targetChatId,
     "Make an independent harmless approval request.",
-    {
-      modelId: targetProfileId,
-      reasoningEffort: null,
-      customSubagentModel: false,
-      subagentModelId: null,
-      subagentReasoningEffort: null,
-    },
+    configuration,
   );
   assert.equal(next.status, "queued");
   const [unrelated] = await eventually(
@@ -251,8 +297,11 @@ export async function actualCouncilProjectApprovals({
     turnId: original.provenance.turnId,
     targetChatId,
     unrelatedRequestId: unrelated.id,
+    steered: steer,
   };
   result.steps.push(
-    "The original project approval prompted Council once and waited for a human response. An independent turn's approval stayed in the project chat.",
+    steer
+      ? "An approval raised after a Council steer on an independently started native turn reached Council once. A later unrelated turn's approval stayed in the project chat."
+      : "The original project approval prompted Council once and waited for a human response. An independent turn's approval stayed in the project chat.",
   );
 }

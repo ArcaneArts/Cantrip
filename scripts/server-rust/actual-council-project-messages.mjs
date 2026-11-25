@@ -26,6 +26,7 @@ export async function actualCouncilProjectMessages({
   targetWorkerId,
   workerId,
   projectApprovals,
+  steeredApprovals,
   projectCreation,
   projectControls,
   projectSteering,
@@ -486,6 +487,7 @@ export async function actualCouncilProjectMessages({
         targetProfileId: ready.profileId,
         send,
         targetTools,
+        steer: steeredApprovals || (projectSteering && !steerRaceMarker),
         result,
       });
     }

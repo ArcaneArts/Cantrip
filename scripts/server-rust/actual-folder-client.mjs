@@ -420,9 +420,12 @@ const liveTaskDiagnostics =
   process.argv.includes("--postgres-errors");
 const councilHistory = process.argv.includes("--council-history");
 const councilPeerMessages = process.argv.includes("--council-peer-messages");
-const councilProjectApprovals = process.argv.includes(
-  "--council-project-approvals",
+const councilSteeredApprovals = process.argv.includes(
+  "--council-steered-approvals",
 );
+const councilProjectApprovals =
+  councilSteeredApprovals ||
+  process.argv.includes("--council-project-approvals");
 const councilProjectControls = process.argv.includes(
   "--council-project-controls",
 );
@@ -1095,6 +1098,7 @@ async function flow(
               cliBinary,
               projectMessages: councilProjectMessages,
               projectApprovals: councilProjectApprovals,
+              steeredApprovals: councilSteeredApprovals,
               projectCreation: councilProjectCreation,
               projectControls: councilProjectControls,
               projectSteering: councilProjectSteering,
