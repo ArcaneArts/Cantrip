@@ -9,7 +9,8 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use cantrip_history::{canonical::open_message, content::Encryption};
-use cantrip_wire::{Value, value::json};
+use cantrip_wire::{JsString, Value, value::json};
+use std::time::Duration;
 
 pub(in crate::codex::turn) const METHOD: &str = "turn/steer";
 
@@ -285,6 +286,10 @@ async fn dispatch(
     council_queue: bool,
     assert_current: impl FnOnce() -> Result<()>,
 ) -> Result<Value> {
+    let client = params["clientUserMessageId"]
+        .as_js_string()
+        .filter(|client| council_queue && !client.is_empty())
+        .cloned();
     if let Some(receipt) = receipt
         && let Err(error) = receipt.dispatch().await
     {
@@ -339,11 +344,62 @@ async fn dispatch(
                 return Err(error);
             }
             if let Some(receipt) = receipt {
+                if let Some(client) = client.as_ref()
+                    && let Some(item) = observed_input(selected, client).await
+                {
+                    let reply = json!({"turnId":selected.turn});
+                    receipt
+                        .applied(
+                            &json!({"result":reply,"observedInput":json!({"itemId":item,"clientUserMessageId":client})}),
+                            None,
+                        )
+                        .await?;
+                    return Ok(reply);
+                }
                 receipt.uncertain().await?;
             }
             bail!("Codex could not confirm steering for the selected turn.");
         }
     }
+}
+
+async fn observed_input(selected: &Selection, client: &JsString) -> Option<JsString> {
+    // An exact native item is positive evidence. Missing pages, an unavailable
+    // runtime, or an absent item cannot authorize another submission.
+    let mut cursor = Value::Null;
+    for _ in 0..4 {
+        let page = selected
+            .runtime
+            .request(
+                "thread/items/list".into(),
+                Some(json!({"threadId":selected.thread,"turnId":selected.turn,
+                    "cursor":cursor,"limit":128,"sortDirection":"desc"})),
+                Some(Duration::from_secs(3)),
+                None,
+            )
+            .await
+            .ok()??;
+        if let Some(item) = page["data"]
+            .as_array()?
+            .iter()
+            .find(|entry| {
+                let item = &entry["item"];
+                entry["turnId"].as_js_string() == Some(&selected.turn)
+                    && item["type"] == "userMessage"
+                    && item["clientId"].as_js_string() == Some(client)
+            })
+            .and_then(|entry| entry["item"]["id"].as_js_string())
+            .filter(|id| !id.is_empty())
+        {
+            return Some(item.clone());
+        }
+        let next = page["nextCursor"].as_js_string()?;
+        if cursor.as_js_string() == Some(next) {
+            return None;
+        }
+        cursor = json!(next);
+    }
+    None
 }
 
 fn native_target_ended(error: &Value, expected: &cantrip_wire::JsString) -> bool {
