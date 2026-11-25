@@ -16,6 +16,13 @@ const councilRoleEnvelopeSchema = encryptedPayloadEnvelopeSchema.extend({
   ),
 });
 
+export const councilAgentTurnContextSchema = z
+  .object({
+    protectedRole: councilRoleEnvelopeSchema,
+    primary: z.boolean(),
+  })
+  .strict();
+
 const councilAgentTitleSchema = privateDisplayLabelOpaqueSchema.extend({
   classification: z.object({ recordKind: z.literal("chat") }).strict(),
 });

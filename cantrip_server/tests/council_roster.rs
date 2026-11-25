@@ -1,7 +1,7 @@
 use anyhow::Result;
 use cantrip_server::{
     auth::{crypto, repository::AuthRepository},
-    chats::Repository,
+    chats::{Repository, execution_lanes::LaneRepository, managed_console::permission_profile},
     database::Database,
     migrations::migrate,
     wire::{self, Value, value::json},
@@ -144,6 +144,37 @@ async fn council_roster_owns_a_single_worker_and_separate_conversations() -> Res
             .is_err()
     );
     assert_eq!(repository.council_agents(&owner).await?.len(), 3);
+    let before = repository.execution_context(&owner, a).await?.unwrap();
+    assert_eq!(before["status"], "offline");
+    assert_eq!(before["councilAgent"]["protectedRole"], envelope());
+    assert!(repository.execution_context(&other, a).await?.is_none());
+
+    let path_handle = "ctrr_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    database.query(
+        "UPDATE standalone_chat_roots SET status='ready', protected_path_handle=$2 WHERE chat_id=$1",
+        &[&a, &path_handle],
+    ).await?;
+    database.query(
+        "UPDATE user_settings SET default_council_permission_profile_id=':workspace' WHERE user_id=$1",
+        &[&owner],
+    ).await?;
+    let lanes = LaneRepository::new(database.clone());
+    let started = lanes
+        .start(&owner, a, "user", "Test native Council lane")
+        .await?
+        .unwrap();
+    assert_eq!(started["status"], "running");
+    assert_eq!(started["workerId"], "beta");
+    assert_eq!(started["cwd"], path_handle);
+    assert_eq!(permission_profile(&started)["effectiveId"], ":workspace");
+    assert_eq!(started["councilAgent"]["primary"], true);
+    assert_eq!(started["councilAgent"]["protectedRole"], envelope());
+    assert!(
+        lanes
+            .start(&owner, a, "user", "Second active Council lane")
+            .await
+            .is_err()
+    );
     database.close().await?;
     Ok(())
 }

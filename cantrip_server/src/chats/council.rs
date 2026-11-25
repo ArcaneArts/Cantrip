@@ -167,3 +167,26 @@ pub(crate) fn notification(owner: &str, agent: &Value) -> Value {
         "revision":Value::Null, "payload":Value::Null,
     })
 }
+
+pub(super) fn apply_execution_context(
+    context: &mut Value,
+    agent: &Value,
+    settings: &Value,
+) -> Result<()> {
+    ensure!(
+        agent["protected_role"].is_object(),
+        "Council role is unavailable."
+    );
+    context["councilAgent"] = json!({
+        "protectedRole": agent["protected_role"],
+        "primary": agent["is_primary"],
+    });
+    context["defaultPermissionProfileId"] =
+        settings["default_council_permission_profile_id"].clone();
+    context["permissionProfileId"] = Value::Null;
+    // Council always uses its account setting. A retained thread permission
+    // snapshot is not an agent-specific override.
+    context["nativePermissionPolicy"] = Value::Null;
+    context["nativePermissionPolicyConfirmed"] = Value::Bool(false);
+    Ok(())
+}

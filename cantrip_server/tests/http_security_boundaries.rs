@@ -78,7 +78,10 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
             StatusCode::FORBIDDEN
         );
 
-        let fixtures = support::security_fixtures(&["accountEncryptionProfileInitializeSchema"])?;
+        let fixtures = support::security_fixtures(&[
+            "accountEncryptionProfileInitializeSchema",
+            "encryptedChatTurnCreateSchema",
+        ])?;
         let initial = &fixtures["accountEncryptionProfileInitializeSchema"][0];
         let request = |method, route: &str, session: &(String, String, String), csrf: bool| {
             let request = client
@@ -209,6 +212,56 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
             accepted["grant"]["wrappedKey"],
             initial["initialClient"]["wrappedMasterKey"]
         );
+
+        let caps = json!({"scratch":{
+            "provision":true,"resolve":true,"archive":true,"restore":true,
+            "remove":true,"reconcile":true,"routingHandles":true
+        }});
+        database.query(
+            "INSERT INTO workers(id,owner_id,name,platform,architecture,started_at,last_seen_at,standalone_chat_capabilities)
+             VALUES('offline-council-worker',$1,'Council fixture','linux','x64',now(),now(),$2)",
+            &[&first.0, &caps],
+        ).await?;
+        database.query(
+            "INSERT INTO model_profiles(id,owner_id,name,operation) VALUES('offline-council-model',$1,'Council fixture','language')",
+            &[&first.0],
+        ).await?;
+        let agent = "9c50384b-e803-4e6b-8444-9e1811572461";
+        let mut turn = fixtures["encryptedChatTurnCreateSchema"][0].clone();
+        turn["modelId"] = json!("offline-council-model");
+        turn["queuedPrompt"]["modelId"] = turn["modelId"].clone();
+        let content = &turn["message"]["protectedContent"];
+        let create = cantrip_server::wire::parse(
+            "councilAgentCreateSchema",
+            Some(&serde_json::from_value(json!({
+                "id": agent,
+                "titleProtection":{"classification":{"recordKind":"chat"},"protectedLabel":content},
+                "protectedRole": content["envelope"],
+            }))?),
+        ).map_err(|e| anyhow::anyhow!("Council agent fixture: {e:?}"))?;
+        // Seed the initial placement. No worker is connected to this HTTP router.
+        cantrip_server::chats::Repository::new(database.clone())
+            .create_council_agent(&first.0, create, |_| true).await?;
+        let turns = format!("/api/chats/{agent}/turns");
+        let submit = |session| request(Method::POST, &turns, session, true)
+            .header("content-type", "application/json").body(turn.to_string());
+        assert_eq!(submit(second).send().await?.status(), StatusCode::NOT_FOUND);
+        for _ in 0..2 {
+            let response = submit(first).send().await?;
+            let status = response.status();
+            let body = response.text().await?;
+            assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+            let retained: Value = serde_json::from_str(&body)?;
+            assert_eq!(retained["status"], "queued");
+            assert_eq!(retained["prompt"]["id"], turn["queuedPrompt"]["id"]);
+        }
+        let queue: Value = serde_json::from_str(&request(
+            Method::GET, &format!("/api/chats/{agent}/queue"), first, false,
+        ).send().await?.error_for_status()?.text().await?)?;
+        assert_eq!(queue["items"].as_array().unwrap().len(), 1);
+        assert_eq!(queue["items"][0]["state"], "pending");
+        assert_eq!(queue["claims"], json!([]));
+
         let own_response = request(Method::GET, "/api/encryption/profile", first, false)
             .send()
             .await?

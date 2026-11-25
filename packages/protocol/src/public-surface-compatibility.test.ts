@@ -785,6 +785,7 @@ const desktopIoExports = [
 // captured OS tunnel source helpers. Preserve every unrelated export baseline.
 const councilExports = [
   "councilAgentCreateSchema",
+  "councilAgentTurnContextSchema",
   "councilAgentUpdateSchema",
   "councilAgentWireListSchema",
   "councilAgentWireSummarySchema",

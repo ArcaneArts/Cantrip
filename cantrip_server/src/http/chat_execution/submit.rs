@@ -26,7 +26,8 @@ impl Execution {
         {
             return started(200, &existing, task);
         }
-        if context["contextKind"] == "standalone" {
+        let council = context.get("councilAgent").is_some();
+        if context["contextKind"] == "standalone" && !council {
             if !self
                 .service
                 .workers
@@ -54,10 +55,14 @@ impl Execution {
         }
         if managed(&context) || truthy(context.get("automationPaused")) || executing(&context) {
             let result: Result<Option<Value>> = async {
-                self.service
-                    .model_routing
-                    .resolve_model_id(&self.owner, &context, input.get("modelId"))
-                    .await?;
+                // A Council prompt is durable even while its assigned worker
+                // cannot resolve a route. The dispatcher owns actual routing.
+                if !council {
+                    self.service
+                        .model_routing
+                        .resolve_model_id(&self.owner, &context, input.get("modelId"))
+                        .await?;
+                }
                 let attachments = self
                     .attachments(
                         &context,

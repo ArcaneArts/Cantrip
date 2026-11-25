@@ -124,7 +124,9 @@ pub(super) async fn native_input(
     let primary_read_only = command["rootKind"] == "git-worktree"
         && command["isPrimary"] == true
         && command["worktreePolicy"] == "required-for-writes";
-    let (context_key, instructions) = if standalone {
+    let (context_key, instructions) = if command.get("councilAgent").is_some() {
+        ("cantrip.council-agent", "You are an account-owned Cantrip Council agent. Your working files are in the assigned worker's private scratch workspace. Use Cantrip's authorized tools to coordinate work in projects.".into())
+    } else if standalone {
         ("cantrip.standalone-chat", "This is an isolated standalone Chat scratch workspace, not a Cantrip project. Work only with this conversation, the current scratch folder, and the managed Cantrip web tools (`tool_help`, `web_search`, and `web_read`). Project, worktree, Task, Code, CodeGraph, interactive browser, and subagent workflows are unavailable.".into())
     } else if structured {
         ("cantrip.worktree-policy", planning_policy(command).into())
@@ -176,7 +178,12 @@ pub(super) async fn native_input(
     let mut context = json!({});
     context[context_key] = json!({"kind": "application", "value": instructions});
     if let Some(policy) = policy {
-        context["cantrip.policies"] = json!({"kind": "application", "value": policy});
+        let key = if command.get("councilAgent").is_some() {
+            "cantrip.council-instructions"
+        } else {
+            "cantrip.policies"
+        };
+        context[key] = json!({"kind": "application", "value": policy});
     }
     if let Some(environment) = environment {
         context["cantrip.os-placement"] = json!({
