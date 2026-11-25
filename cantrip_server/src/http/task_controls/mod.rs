@@ -1,6 +1,7 @@
 //! Public Task metadata and encrypted draft/plan edits. The repository owns
 //! revision and state checks; publication follows the committed mutation.
 mod creation;
+pub(crate) use creation::announce_created;
 mod dashboard;
 mod deletion;
 mod models;

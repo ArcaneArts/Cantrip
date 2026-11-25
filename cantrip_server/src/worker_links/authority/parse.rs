@@ -22,7 +22,7 @@ pub(super) fn operation(value: &Value) -> Result<Option<Value>> {
         Some("read-peer-mailbox") if id && text(&value["peerSessionId"],200) => wire::parse("workerLinkPeerMailboxReadRequestSchema",value.get("input")).ok().map(|input|json!({"kind":"read-peer-mailbox","sessionId":value["sessionId"],"peerSessionId":value["peerSessionId"],"input":input})),
         Some("revoke-peer") if id && text(&value["peerSessionId"],200) => Some(json!({"kind":"revoke-peer","sessionId":value["sessionId"],"peerSessionId":value["peerSessionId"]})),
         Some("issue-grant") if value["input"].is_object() && text(&value["input"]["sessionId"],200) => Some(value.clone()),
-        Some("renew-grant") if id && text(&value["grantId"],200) => Some(value.clone()),
+        Some("renew-grant" | "external-mcp-grant") if id && text(&value["grantId"],200) => Some(value.clone()),
         Some("revoke-grant") if id && text(&value["grantId"],200) && member(&value["reason"],&["released","resource-stopped","resource-deleted","lease-expired"])? => Some(value.clone()),
         Some("revoke-session") if id && member(&value["reason"],&["released","account-session-ended","worker-disconnected","worker-generation-changed","lease-expired","server-shutdown"])? => Some(value.clone()),
         _=>None,

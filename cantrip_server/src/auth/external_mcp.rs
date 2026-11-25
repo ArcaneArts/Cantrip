@@ -192,4 +192,27 @@ impl AuthRepository {
         ).await?;
         Ok(!rows.is_empty())
     }
+
+    /// The WorkerLink coordinator attests to this lease identity. This lookup
+    /// reapplies the current account grant before worker-originated operations.
+    pub async fn mcp_integration_for_lease(
+        &self,
+        owner: &str,
+        account: &str,
+    ) -> Result<Option<Integration>> {
+        let Some((id, generation)) = account
+            .strip_prefix("external-mcp:")
+            .and_then(|lease| lease.split_once(':'))
+        else {
+            return Ok(None);
+        };
+        let Ok(generation) = generation.parse::<i32>() else {
+            return Ok(None);
+        };
+        let rows = self.database.query(
+            &format!("SELECT {COLUMNS} FROM external_mcp_integrations WHERE owner_id=$1 AND id=$2 AND generation=$3 AND revoked_at IS NULL AND expires_at>now() AND EXISTS(SELECT 1 FROM users WHERE id=$1 AND status='active')"),
+            &[&owner, &id, &generation],
+        ).await?;
+        rows.first().map(integration).transpose()
+    }
 }

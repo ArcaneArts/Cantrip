@@ -16,4 +16,4 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision", "raw_value"] }
 url = "2.5"
 sha2 = "0.10"
-uuid = "1"
+uuid = { version = "1", features = ["serde"] }

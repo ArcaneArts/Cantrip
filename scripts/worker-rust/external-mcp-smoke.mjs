@@ -50,6 +50,16 @@ const names = [
   "task_list",
   "placement_list",
   "worker_list",
+  "worker_context",
+  "agent_create",
+  "agent_read",
+  "chat_send",
+  "chat_read",
+  "chat_wait",
+  "task_create",
+  "task_start",
+  "task_status",
+  "task_wait",
 ];
 const headers = {
   "content-type": "application/json",
@@ -97,7 +107,12 @@ const inspect = async (transport, projects, workerId) => {
       tools.map((tool) => tool.name),
       names,
     );
-    assert.ok(tools.every((tool) => tool.annotations.readOnlyHint));
+    assert.deepEqual(
+      tools
+        .filter((tool) => !tool.annotations.readOnlyHint)
+        .map(({ name }) => name),
+      ["agent_create", "chat_send", "task_create", "task_start"],
+    );
     const call = async (name, args = {}) => {
       const result = await client.callTool({ name, arguments: args });
       assert.equal(result.isError, undefined, JSON.stringify(result.content));

@@ -10,7 +10,12 @@ import { fixtureEnvironment, startServer } from "../server-rust/process.mjs";
 import { productionClient } from "../server-rust/production-server-process.mjs";
 
 const { values } = parseArgs({
-  options: { server: { type: "string" }, worker: { type: "string" } },
+  options: {
+    server: { type: "string" },
+    worker: { type: "string" },
+    codex: { type: "string" },
+    browser: { type: "boolean" },
+  },
 });
 assert.ok(values.server, "Pass the --server binary.");
 const requireSdk = createRequire(
@@ -25,6 +30,15 @@ const { StdioClientTransport } = await import(
 const integrations = "/api/account/external-mcp-integrations";
 const capabilities = "/api/external-mcp/hosted/capabilities";
 const discovery = "/api/external-mcp/hosted/discovery";
+const readTools = [
+  "workspace_list",
+  "project_list",
+  "chat_list",
+  "agent_list",
+  "agent_read",
+  "chat_read",
+  "chat_wait",
+];
 const password = "Isolated MCP fixture password 42";
 const directory = await mkdtemp(
   path.join(tmpdir(), "cantrip-external-mcp-grants-"),
@@ -38,8 +52,18 @@ const env = {
 };
 delete env.CANTRIP_WORKER_TOKEN;
 
-let server;
+let server, app;
 try {
+  if (values.browser) {
+    assert.ok(
+      values.worker && values.codex,
+      "--browser requires --worker and --codex.",
+    );
+    const { startAppClient } =
+      await import("./external-mcp-orchestration-cases.mjs");
+    app = await startAppClient(directory);
+    env.CANTRIP_APP_ORIGINS += "," + app.origin;
+  }
   server = await startServer(
     path.resolve(values.server),
     ["--port", "0", "--shutdown-on-stdin-close"],
@@ -193,7 +217,7 @@ try {
   await request(discovery, null, projects, 401);
   assert.deepEqual(
     (await request(capabilities, created.credential, null, 200)).tools,
-    ["workspace_list", "project_list", "chat_list", "agent_list"],
+    readTools,
   );
   await request(
     discovery,
@@ -215,25 +239,33 @@ try {
   );
   const credentialFile = path.join(directory, "integration.credential");
   await writeFile(credentialFile, created.credential + "\n", { mode: 0o600 });
-  const connectMcp = async (file) => {
+  const connectMcp = async (file, suppressOperation) => {
     const client = new Client({
       name: "hosted-external-mcp-smoke",
       version: "1",
     });
     try {
-      await client.connect(
-        new StdioClientTransport({
-          command: path.resolve(values.worker),
-          args: [
-            "external-mcp",
-            "--server",
-            server.origin,
-            "--credential-file",
-            file,
-          ],
-          cwd: directory,
-        }),
-      );
+      const transport = new StdioClientTransport({
+        command: path.resolve(values.worker),
+        args: [
+          "external-mcp",
+          "--server",
+          server.origin,
+          "--credential-file",
+          file,
+        ],
+        cwd: directory,
+      });
+      await client.connect(transport);
+      if (suppressOperation) {
+        const forward = transport.onmessage;
+        transport.onmessage = (message) => {
+          if (
+            message.result?.structuredContent?.operationId !== suppressOperation
+          )
+            forward(message);
+        };
+      }
       return client;
     } catch (error) {
       await client.close();
@@ -245,7 +277,7 @@ try {
     if (mcp) {
       assert.deepEqual(
         (await mcp.listTools()).tools.map(({ name }) => name),
-        ["workspace_list", "project_list", "chat_list", "agent_list"],
+        readTools,
       );
       const result = await mcp.callTool({
         name: "project_list",
@@ -290,6 +322,7 @@ try {
       await import("./external-mcp-relay-cases.mjs");
     await verifyHostedRelay({
       binary: values.worker,
+      codex: values.codex,
       directory,
       env,
       server,
@@ -302,6 +335,10 @@ try {
       integrations,
       request,
       connectMcp,
+      verifyApp:
+        app &&
+        ((input) =>
+          app.verify({ ...input, serverUrl: server.origin, password })),
     });
   }
   console.log(
@@ -310,9 +347,12 @@ try {
       hostedCredentialLifecycle: true,
       sdkScopeDiscovery: Boolean(values.worker),
       encryptedHostedRelay: Boolean(values.worker),
+      orchestration: Boolean(values.worker && values.codex),
+      appClient: Boolean(app),
     }),
   );
 } finally {
+  await app?.close();
   await server?.close();
   await rm(directory, { recursive: true, force: true });
 }

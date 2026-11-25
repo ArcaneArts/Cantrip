@@ -2,10 +2,15 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub mod orchestration;
+
 pub const PATH: &str = "/api/external-mcp/discovery";
 pub const HOSTED_DISCOVERY_PATH: &str = "/api/external-mcp/hosted/discovery";
 pub const HOSTED_CAPABILITIES_PATH: &str = "/api/external-mcp/hosted/capabilities";
 pub const HOSTED_RELAY_PATH: &str = "/api/external-mcp/hosted/relay";
+pub const LOCAL_RELAY_PATH: &str = "/api/external-mcp/relay";
+pub const LOCAL_LEASE_ACCOUNT: &str = "external-mcp:local";
+pub const RELAY_READY: &str = "cantrip-external-mcp-relay-ready";
 pub const WORKER_CONTEXT_TOOL: &str = "worker_context";
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -62,7 +67,9 @@ pub fn valid_integration_credential(credential: &str) -> bool {
 pub enum IntegrationScope {
     ProjectsRead,
     ChatsRead,
+    ChatsWrite,
     TasksRead,
+    TasksWrite,
     PlacementsRead,
 }
 
@@ -116,7 +123,11 @@ impl IntegrationPermissions {
     }
 
     pub fn permits_tool(&self, tool: DiscoveryTool) -> bool {
-        self.scopes.contains(&tool.integration_scope())
+        self.permits_scope(tool.integration_scope())
+    }
+
+    pub fn permits_scope(&self, scope: IntegrationScope) -> bool {
+        self.scopes.contains(&scope)
     }
 }
 

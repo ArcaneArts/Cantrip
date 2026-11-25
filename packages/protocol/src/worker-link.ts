@@ -656,7 +656,23 @@ export const installedWorkerLinkGrantSchema = z
     binding: workerLinkGrantBindingSchema,
     observation: workerLinkObservationInstallationSchema.optional(),
     externalMcp: z
-      .object({ workerPrincipalId: z.string().uuid() })
+      .object({
+        workerPrincipalId: z.string().uuid(),
+        tool: z
+          .enum([
+            "agent_create",
+            "agent_read",
+            "chat_send",
+            "chat_read",
+            "chat_wait",
+            "task_create",
+            "task_start",
+            "task_status",
+            "task_wait",
+          ])
+          .optional(),
+        chatId: z.string().uuid().optional(),
+      })
       .strict()
       .optional(),
     tokenHash: workerLinkGrantTokenHashSchema,

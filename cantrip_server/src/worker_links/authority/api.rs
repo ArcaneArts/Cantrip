@@ -207,6 +207,21 @@ impl Authority {
             )
         })
     }
+    pub fn external_mcp_grant(
+        self: &Arc<Self>,
+        session: &str,
+        grant: &str,
+    ) -> BoxFuture<'static, Result<Option<Value>>> {
+        let (service, session, grant) = (self.clone(), session.to_owned(), grant.to_owned());
+        self.own(async move {
+            service
+                .run_session(
+                    session.clone().into(),
+                    json!({"kind":"external-mcp-grant","sessionId":session,"grantId":grant}),
+                )
+                .await
+        })
+    }
     pub fn renew_grant(
         self: &Arc<Self>,
         session: &str,

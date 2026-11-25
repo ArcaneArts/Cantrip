@@ -25,10 +25,12 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cantrip_protocol::external_mcp::{
     DiscoveryRequest, DiscoveryTool, HOSTED_CAPABILITIES_PATH, HOSTED_DISCOVERY_PATH,
     IntegrationCreate, IntegrationPermissions, IntegrationRotate, MAX_REQUEST_BYTES, PATH,
-    ProjectAccess, WORKER_CONTEXT_TOOL, loopback_authority, proxy_header,
+    ProjectAccess, WORKER_CONTEXT_TOOL, loopback_authority, orchestration::Tool, proxy_header,
 };
 use std::{collections::HashSet, sync::Arc};
 
+mod orchestration;
+mod receipts;
 mod relay;
 
 pub(super) fn hosted_routes() -> Router<Arc<AuthService>> {
@@ -37,6 +39,7 @@ pub(super) fn hosted_routes() -> Router<Arc<AuthService>> {
         .route(HOSTED_CAPABILITIES_PATH, get(hosted_capabilities))
         .merge(relay::routes())
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
+        .merge(orchestration::routes())
 }
 
 async fn authenticate(
@@ -84,15 +87,26 @@ async fn hosted_capabilities(
             let mut tools: Vec<_> = DiscoveryTool::ALL
                 .into_iter()
                 .filter(|tool| principal.integration.permissions.permits_tool(*tool))
-                .map(DiscoveryTool::name)
+                .map(|tool| serde_json::json!(tool))
                 .collect();
             if principal
                 .integration
                 .permissions
                 .permits_tool(DiscoveryTool::PlacementList)
             {
-                tools.push(WORKER_CONTEXT_TOOL);
+                tools.push(serde_json::json!(WORKER_CONTEXT_TOOL));
             }
+            tools.extend(
+                Tool::ALL
+                    .into_iter()
+                    .filter(|tool| {
+                        principal
+                            .integration
+                            .permissions
+                            .permits_scope(tool.scope())
+                    })
+                    .map(|tool| serde_json::json!(tool)),
+            );
             integration_response(StatusCode::OK, serde_json::json!({"tools":tools}))
         }
         Ok(None) => credential_required(),
@@ -316,6 +330,7 @@ pub fn router(service: Arc<AuthService>, port: u16) -> Result<Router> {
     );
     Ok(Router::new()
         .route(PATH, post(handle))
+        .merge(relay::local_routes())
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .layer(middleware::from_fn_with_state(port, require_loopback))
         .with_state(service))

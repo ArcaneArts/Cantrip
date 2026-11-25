@@ -1,12 +1,13 @@
-//! Third-party MCP entry points for the local Cantrip discovery profile.
+//! Headless third-party entry points for external Cantrip MCP.
 use super::{rpc, shutdown_signal, stdio};
 use anyhow::{Context, Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use cantrip_protocol::external_mcp::{
     DiscoveryRequest, DiscoveryTool, HOSTED_CAPABILITIES_PATH, HOSTED_DISCOVERY_PATH,
-    HOSTED_RELAY_PATH, LEGACY_VERSIONS, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, MODERN_VERSION,
-    PATH, WORKER_CONTEXT_TOOL, WorkerContextInput, loopback_authority, proxy_header,
-    valid_integration_credential, worker_context_tool,
+    HOSTED_RELAY_PATH, LEGACY_VERSIONS, LOCAL_RELAY_PATH, MAX_RESPONSE_BYTES, MODERN_VERSION, PATH,
+    WORKER_CONTEXT_TOOL, WorkerContextInput, loopback_authority,
+    orchestration::{Call, Selector, Tool},
+    proxy_header, valid_integration_credential, worker_context_tool,
 };
 use cantrip_wire::{Value, parse_json_text, value::json};
 use http_body_util::{BodyExt, Full, Limited};
@@ -18,6 +19,7 @@ use hyper::{
 };
 use hyper_util::rt::TokioIo;
 use std::{
+    collections::HashMap,
     convert::Infallible,
     ffi::OsString,
     io::Read as _,
@@ -30,6 +32,7 @@ use tokio::{
     io::BufReader,
     net::TcpListener,
     sync::{Semaphore, mpsc},
+    task::{AbortHandle, JoinSet},
 };
 use url::Url;
 use zeroize::Zeroizing;
@@ -37,6 +40,7 @@ use zeroize::Zeroizing;
 mod relay;
 
 const USAGE: &str = "Usage: cantrip-worker external-mcp --server <origin> [--http-port <port> | --credential-file <path>]";
+const MAX_REQUEST_BYTES: usize = 32 * 1024;
 
 pub(super) fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
     let mut arguments = arguments.into_iter();
@@ -140,8 +144,11 @@ fn profile() -> &'static Value {
     PROFILE.get_or_init(|| json!({
         "serverInfo":json!({"name":"cantrip-external","title":"Cantrip external MCP","version":crate::version::value()["version"]}),
         "capabilities":json!({"tools":json!({"listChanged":false})}),
-        "instructions":"Find a project with project_list, then use agent_list to find its Cantrip agent chats. Use placement_list to check the exact worker and worktree.",
-        "tools":DiscoveryTool::ALL.map(|tool| Value::from_serialize(&tool.definition())),
+        "instructions":"Find a project with project_list, then find or create an Agent chat. Send work with chat_send and follow replies with chat_read and chat_wait. Use the Task tools for scheduled work.",
+        "tools":DiscoveryTool::ALL.into_iter().map(DiscoveryTool::definition)
+            .chain(std::iter::once(worker_context_tool()))
+            .chain(Tool::ALL.into_iter().map(Tool::definition))
+            .map(|tool| Value::from_serialize(&tool)).collect::<Vec<_>>(),
     }))
 }
 
@@ -170,24 +177,29 @@ impl Host {
         let tools = profile()["tools"]
             .as_array()
             .expect("external MCP tool catalog");
-        let mut scoped: Vec<_> = tools
+        let scoped: Vec<_> = tools
             .iter()
             .filter(|tool| allowed.contains(&tool["name"]))
             .cloned()
             .collect();
-        if allowed.contains(&json!(WORKER_CONTEXT_TOOL)) {
-            scoped.push(Value::from_serialize(&worker_context_tool()));
-        }
         Ok(Value::Array(scoped))
     }
 
     async fn call(&self, params: &Value) -> Value {
         let result = if params["name"] == WORKER_CONTEXT_TOOL {
             self.worker_context(&params["arguments"]).await
+        } else if let Ok(tool) = Tool::decode(&params["name"].stringify()) {
+            self.orchestrate(tool, &params["arguments"]).await
         } else {
             self.call_discovery(params).await
         };
         match result {
+            Ok(payload) if payload["isError"] == true => rpc::tool_error(
+                payload["summary"]
+                    .as_str()
+                    .unwrap_or("Cantrip could not complete the operation.")
+                    .to_owned(),
+            ),
             Ok(payload) => json!({
                 "content":vec![json!({"type":"text","text":payload["summary"]})],
                 "structuredContent":payload,
@@ -197,31 +209,54 @@ impl Host {
     }
 
     async fn worker_context(&self, arguments: &Value) -> Result<Value> {
-        let credential = self
-            .credential
-            .as_deref()
-            .context("Worker context requires an external MCP integration credential.")?;
         let input: WorkerContextInput =
             cantrip_protocol::external_mcp::parse_worker_context(&arguments.stringify())
                 .map_err(|_| anyhow::anyhow!("Enter a Cantrip project ID."))?;
         input.validate().map_err(anyhow::Error::msg)?;
+        let selector = Selector {
+            project_id: uuid::Uuid::parse_str(&input.project_id)?,
+            tool: None,
+            chat_id: None,
+        };
+        self.worker_call(&selector, b"worker-context").await
+    }
+
+    async fn orchestrate(&self, tool: Tool, arguments: &Value) -> Result<Value> {
+        let input = json!({"tool":tool,"arguments":arguments});
+        let call = Call::decode(input.stringify().as_bytes())
+            .map_err(|_| anyhow::anyhow!("Invalid Cantrip tool arguments."))?;
+        call.validate().map_err(anyhow::Error::msg)?;
+        self.worker_call(&call.selector(), &call.encode()).await
+    }
+
+    async fn worker_call(&self, selector: &Selector, request: &[u8]) -> Result<Value> {
+        let credential = self
+            .credential
+            .as_ref()
+            .map(|credential| credential.as_str());
+        let base = if credential.is_some() {
+            HOSTED_RELAY_PATH
+        } else {
+            LOCAL_RELAY_PATH
+        };
         let opened = response_payload(
-            self.request(Method::POST, HOSTED_RELAY_PATH)?
+            self.request(Method::POST, base)?
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(arguments.stringify())
+                .body(selector.encode())
                 .send()
                 .await?,
         )
         .await?;
         let session = relay::session_id(&opened)?;
-        let path = format!("{HOSTED_RELAY_PATH}/{session}");
+        let path = format!("{base}/{session}");
         let result = tokio::time::timeout(
             Duration::from_secs(15),
-            relay::worker_context(
+            relay::call(
                 self.origin.join(&path)?,
                 credential,
                 &opened,
-                &input.project_id,
+                &selector.project_id.to_string(),
+                request,
             ),
         )
         .await;
@@ -342,19 +377,50 @@ impl Host {
         Some(rpc::result(id, payload))
     }
 
-    async fn serve_stdio(&self) -> Result<()> {
+    async fn serve_stdio(self) -> Result<()> {
         let (sender, mut frames) = mpsc::channel(8);
         let reader = tokio::spawn(stdio::read_frames(
             BufReader::new(tokio::io::stdin()),
             sender,
             MAX_REQUEST_BYTES,
         ));
+        let host = Arc::new(self);
         let mut stdout = tokio::io::stdout();
-        while let Some(frame) = frames.recv().await {
-            if let Some(reply) = self.handle(&frame).await {
-                stdio::write_frame(&mut stdout, reply, true).await?;
+        let mut requests = HashMap::<String, AbortHandle>::new();
+        let mut pending = JoinSet::new();
+        loop {
+            tokio::select! {
+                frame = frames.recv() => {
+                    let Some(frame) = frame else { break; };
+                    if frame["method"] == "notifications/cancelled"
+                        && let Some(id) = frame["params"].get("requestId")
+                    {
+                        if let Some(task) = requests.remove(&id.stringify()) { task.abort(); }
+                        continue;
+                    }
+                    let Some(id) = frame.get("id") else { continue; };
+                    let key = id.stringify();
+                    if requests.contains_key(&key) || pending.len() >= 16 {
+                        stdio::write_frame(&mut stdout, rpc::rpc_error(id,-32000,"Too many or duplicate pending MCP requests"), true).await?;
+                        continue;
+                    }
+                    let host = host.clone();
+                    let task = pending.spawn(async move { host.handle(&frame).await });
+                    requests.insert(key, task);
+                }
+                result = pending.join_next_with_id(), if !pending.is_empty() => {
+                    match result.expect("Pending MCP request") {
+                        Ok((task_id, reply)) => {
+                            requests.retain(|_, task| task.id() != task_id);
+                            if let Some(reply) = reply { stdio::write_frame(&mut stdout, reply, true).await?; }
+                        }
+                        Err(error) if error.is_cancelled() => {}
+                        Err(error) => return Err(error.into()),
+                    }
+                }
             }
         }
+        pending.shutdown().await;
         reader.await??;
         Ok(())
     }

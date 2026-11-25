@@ -53,6 +53,7 @@ pub(crate) struct Coordinator {
     wake: Arc<Notify>,
     surfaces: OnceLock<Arc<browser_surface::Manager>>,
     terminals: OnceLock<Arc<terminal::Adapter>>,
+    external_mcp: OnceLock<external_mcp::Client>,
     tunnel_streams: Arc<Semaphore>,
     guest_streams: Mutex<Option<tokio::task::JoinSet<()>>>,
 }
@@ -139,6 +140,7 @@ impl Coordinator {
             wake: Arc::new(Notify::new()),
             surfaces: OnceLock::new(),
             terminals: OnceLock::new(),
+            external_mcp: OnceLock::new(),
             tunnel_streams: Arc::new(Semaphore::new(tunnel::MAX_STREAMS)),
             guest_streams: Mutex::new(Some(tokio::task::JoinSet::new())),
         }
@@ -329,6 +331,19 @@ impl Coordinator {
         assert!(self.surfaces.set(surfaces).is_ok());
     }
 
+    pub(crate) fn configure_external_mcp(
+        &self,
+        config: Arc<Mutex<crate::config::Config>>,
+    ) -> Result<()> {
+        ensure!(
+            self.external_mcp
+                .set(external_mcp::Client::new(config)?)
+                .is_ok(),
+            "External MCP is already configured."
+        );
+        Ok(())
+    }
+
     pub(crate) fn configure_terminals(
         &self,
         shells: Arc<crate::terminal_services::interactive::Shells>,
@@ -397,7 +412,7 @@ impl Coordinator {
                         .as_array()
                         .is_some_and(|operations| operations.contains(&json!("stream:write")))
                 });
-            state.channels.receive(carrier, frame, allow_write)
+            state.channels.receive(carrier, frame, allow_write, self)
         };
         state.channels.flush(&self.outgoing);
         accepted

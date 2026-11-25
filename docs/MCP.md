@@ -23,8 +23,8 @@ cantrip-worker external-mcp --server http://127.0.0.1:4314 --http-port 4315
 
 Both listeners bind to `127.0.0.1`. Give the MCP URL to clients on the same
 machine and keep these ports out of reverse-proxy and port-forwarding rules.
-The tool catalog is read-only. Use `project_list` to find a stable project
-ID, then pass it to `agent_list`, `chat_list`, `task_list`, or
+Use `project_list` to find a stable project ID, then pass it to
+`agent_list`, `chat_list`, `task_list`, or
 `placement_list`. Discovery returns stored metadata for offline workers and
 placements. Encrypted display names remain in Cantrip's protected store.
 Discovery marks these entries with `labelProtected`.
@@ -60,7 +60,8 @@ Cantrip.
 ```
 
 Use `{"kind":"all"}` for access to all your account's projects. Available
-scopes are `projects-read`, `chats-read`, `tasks-read`, and `placements-read`.
+scopes are `projects-read`, `chats-read`, `chats-write`, `tasks-read`,
+`tasks-write`, and `placements-read`.
 
 Write the returned `credential` to a private file as a single line. On Unix,
 make the file owner-readable and owner-writable only (mode `0600`). Configure
@@ -83,6 +84,29 @@ The bridge wraps a fresh per-call key to the approved worker's public key.
 The worker opens the request with its private key and encrypts the reply under
 the per-call key held by the bridge. The existing account encryption keys stay
 with their provisioned clients and workers.
+
+### Delegate and monitor work
+
+Use `agent_list` to find an existing project Agent chat. If you need a new
+chat, call `agent_create` with the project ID, an operation UUID, and an
+optional title. Call `chat_send` with the chat ID, the message, and its own
+operation UUID. Cantrip attributes the message to the integration and admits
+it through the chat queue.
+
+Read the transcript with `chat_read`. Use its cursor with `chat_wait` to
+watch for messages and status changes. Use `agent_read` to inspect the
+chat's placement and recent native subagents.
+
+To schedule work, call `task_create` with a description and a new operation
+UUID. Pass `start: false` to keep it as a draft, then use `task_start` to
+queue it. Use `task_status` or `task_wait` with the returned task ID.
+
+For hosted integrations, grant chat and task read or write scopes separately.
+The responsible worker needs existing chat, task, and private label encryption
+grants for the actions that use that content. Reuse an operation UUID only for
+an identical request, including a retry after a lost response. Wait calls can
+run for up to ten seconds. After a timeout, use the latest cursor for another
+wait. Work already admitted continues under Cantrip's normal controls.
 
 ## In-chat MCP
 
