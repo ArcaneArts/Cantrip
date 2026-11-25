@@ -55,6 +55,7 @@ await writeFile(
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>NSHighResolutionCapable</key><true/>
+${process.env.CANTRIP_QA_BACKGROUND === "true" ? "<key>LSUIElement</key><true/>" : ""}
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>\n`,
 );

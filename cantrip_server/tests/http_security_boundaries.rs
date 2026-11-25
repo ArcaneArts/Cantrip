@@ -25,7 +25,6 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
     let config = ServerConfig::read(
         &Environment::from([
             ("CANTRIP_AUTH_MODE".into(), "accounts".into()),
-            ("CANTRIP_COUNCIL_ENABLED".into(), "true".into()),
             ("CANTRIP_LICENSE_WHITELIST_ENABLED".into(), "false".into()),
         ]),
         root.path(),
