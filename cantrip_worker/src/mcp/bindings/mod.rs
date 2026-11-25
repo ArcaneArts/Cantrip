@@ -102,7 +102,7 @@ pub(crate) const CHAT_TOOLS: [(&str, &str); 4] = [
     ("chat.wait", "chat_wait"),
     ("chat.send", "chat_send"),
 ];
-pub(crate) const COUNCIL_TOOLS: [(&str, &str); 12] = [
+pub(crate) const COUNCIL_TOOLS: [(&str, &str); 13] = [
     ("council.list", "council_list"),
     ("council.create", "council_create"),
     ("council.memory.read", "council_memory_read"),
@@ -114,6 +114,7 @@ pub(crate) const COUNCIL_TOOLS: [(&str, &str); 12] = [
     ("council.project.send", "council_project_send"),
     ("council.project.chat.create", "council_project_chat_create"),
     ("council.project.task.create", "council_project_task_create"),
+    ("council.project.task.start", "council_project_task_start"),
     ("council.project.interrupt", "council_project_interrupt"),
 ];
 
@@ -564,6 +565,7 @@ impl Broker {
                         | "council.project.send"
                         | "council.project.chat.create"
                         | "council.project.task.create"
+                        | "council.project.task.start"
                         | "council.project.interrupt"
                 ) || claims["permissionProfileId"] != ":read-only");
             (operation, tool, supported)

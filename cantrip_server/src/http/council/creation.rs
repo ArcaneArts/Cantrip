@@ -174,10 +174,20 @@ pub(super) async fn task(
             )
         })?;
     let started = request["start"] == true;
-    if started && task["state"] == "draft" && task["dispatch"].is_null() {
-        crate::task_dispatch::Repository::new(service.repository.database.clone())
-            .enqueue(owner, &id, operation, "direct", &task["rowVersion"])
-            .await?;
+    if started {
+        super::task_starts::queue(
+            service,
+            owner,
+            &task,
+            "direct",
+            operation,
+            crate::task_dispatch::CouncilOrigin {
+                agent_id: source.to_owned(),
+                project_id: project.to_owned(),
+                operation_id: Uuid::parse_str(operation)?,
+            },
+        )
+        .await?;
     }
     service
         .chat_mutations
@@ -185,9 +195,6 @@ pub(super) async fn task(
     service
         .chat_mutations
         .publish_invalidation(owner, &id, "task", None);
-    if started {
-        service.execution.scheduler.queue_tick();
-    }
     Ok(json!({
         "summary":if started {"Created a project Task and queued it for execution."} else {"Created a project Task draft."},
         "mutated":true,"target":Value::Null,"worktreeId":chat["activeWorktreeId"],

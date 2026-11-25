@@ -95,6 +95,23 @@ export const councilProjectTaskCreateOutputSchema =
       })
       .strict(),
   });
+
+export const councilProjectTaskStartInputSchema = z
+  .object({
+    operationId: z.uuid(),
+    projectId,
+    taskId: z.uuid(),
+  })
+  .strict();
+
+export const councilProjectTaskStartOutputSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    mutated: z.literal(true),
+    data: councilProjectTaskStartInputSchema.extend({
+      dispatchId: z.uuid(),
+      kind: z.enum(["direct", "initial-plan"]),
+    }),
+  });
 const councilProjectInput = {
   chatId: z.string().uuid(),
   messageId: z.uuid(),

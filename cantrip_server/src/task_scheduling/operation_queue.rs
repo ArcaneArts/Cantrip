@@ -42,6 +42,31 @@ impl Service {
         kind: &str,
         automatic: bool,
     ) -> BoxFuture<'static, Result<Option<Value>>> {
+        let pending = self.queue_with_origin(owner, chat, input, kind, automatic, None);
+        Box::pin(async move { pending.await.map(|(_, task)| task) })
+    }
+
+    pub(crate) fn queue_council(
+        self: &Arc<Self>,
+        owner: &str,
+        chat: &str,
+        input: &Value,
+        kind: &str,
+        origin: task_dispatch::CouncilOrigin,
+    ) -> BoxFuture<'static, Result<Value>> {
+        let pending = self.queue_with_origin(owner, chat, input, kind, false, Some(origin));
+        Box::pin(async move { pending.await.map(|(dispatch, _)| dispatch) })
+    }
+
+    fn queue_with_origin(
+        self: &Arc<Self>,
+        owner: &str,
+        chat: &str,
+        input: &Value,
+        kind: &str,
+        automatic: bool,
+        origin: Option<task_dispatch::CouncilOrigin>,
+    ) -> BoxFuture<'static, Result<(Value, Option<Value>)>> {
         let (this, owner, chat, input, kind) = (
             self.clone(),
             owner.to_owned(),
@@ -50,15 +75,22 @@ impl Service {
             kind.to_owned(),
         );
         self.operations.run(async move {
-            this.dispatch
-                .enqueue(
+            let council = origin.is_some();
+            let (dispatch, inserted) = this
+                .dispatch
+                .enqueue_with_origin(
                     &owner,
                     &chat,
                     &text(&input["operationId"])?,
                     &kind,
                     &input["rowVersion"],
+                    origin,
                 )
                 .await?;
+            if council && !inserted {
+                (this.tick)();
+                return Ok((dispatch, None));
+            }
             if !automatic {
                 this.retries.reset(&owner, &chat).await?;
             }
@@ -71,7 +103,7 @@ impl Service {
                 drop(this.titles.generate_task(&owner, &chat, task));
             }
             (this.tick)();
-            Ok(task)
+            Ok((dispatch, task))
         })
     }
     pub fn retry(

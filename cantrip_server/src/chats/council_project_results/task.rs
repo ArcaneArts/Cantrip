@@ -31,7 +31,7 @@ pub(super) async fn lock_pending(
     status: &str,
 ) -> Result<bool> {
     let rows = tx.query(
-        r#"SELECT c.operation_id FROM council_project_creations c
+        r#"SELECT c.operation_id FROM council_task_dispatches c
            JOIN council_project_task_results r USING (source_chat_id,operation_id)
            WHERE r.owner_id=$1 AND c.source_chat_id=$2 AND c.operation_id=$3::text::uuid
              AND r.cycle_id=$4 AND r.status=$5 AND c.callback_delivered_at IS NULL FOR UPDATE OF c"#,
@@ -42,7 +42,7 @@ pub(super) async fn lock_pending(
 
 pub(super) async fn acknowledge(tx: &Transaction<'_>, chat: &str, operation: &str) -> Result<()> {
     tx.query(
-        "UPDATE council_project_creations SET callback_delivered_at=now() WHERE source_chat_id=$1 AND operation_id=$2::text::uuid",
+        "UPDATE council_task_dispatches SET callback_delivered_at=now() WHERE source_chat_id=$1 AND operation_id=$2::text::uuid",
         &[&chat,&operation],
     ).await?;
     Ok(())
@@ -55,7 +55,7 @@ pub(super) async fn defer(
     at: &chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
     database.query(
-        r#"UPDATE council_project_creations SET callback_attempts=callback_attempts+1,callback_due_at=$3
+        r#"UPDATE council_task_dispatches SET callback_attempts=callback_attempts+1,callback_due_at=$3
            WHERE source_chat_id=$1 AND operation_id=$2::text::uuid AND callback_delivered_at IS NULL"#,
         &[&chat,&operation,&at],
     ).await?;

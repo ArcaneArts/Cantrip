@@ -32,6 +32,8 @@ import {
   councilProjectChatCreateOutputSchema,
   councilProjectTaskCreateInputSchema,
   councilProjectTaskCreateOutputSchema,
+  councilProjectTaskStartInputSchema,
+  councilProjectTaskStartOutputSchema,
   councilProjectInterruptInputSchema,
   councilProjectInterruptOutputSchema,
   workerCantripMcpServerCapabilitiesSchema,
@@ -224,6 +226,13 @@ async function generate() {
       "Create a Task on the selected project's worker. It starts through the normal Task queue unless start is false. Reuse the operation ID when retrying creation.",
       councilProjectTaskCreateInputSchema,
       councilProjectTaskCreateOutputSchema,
+    ],
+    [
+      "council_project_task_start",
+      "council.project.task.start",
+      "Start an existing Task from council_inventory through its normal scheduler. A Plan + Goal Task begins with planning. Reuse the operation ID to get the same dispatch receipt.",
+      councilProjectTaskStartInputSchema,
+      councilProjectTaskStartOutputSchema,
     ],
     [
       "council_project_interrupt",

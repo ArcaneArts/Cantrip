@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { councilProjectResultLink } from "../../packages/protocol/dist/index.js";
 
 import { eventually } from "./full-worker.mjs";
+import { actualCouncilTaskStarts } from "./actual-council-task-starts.mjs";
 
 export function projectToolOutput(plan, callId) {
   const item = plan.request.input.input.find(
@@ -340,4 +341,16 @@ export async function actualCouncilProjectCreation({
   result.steps.push(
     "Council used the normal app grant path, retried two protected creations, received a result from the new project Agent chat, and ran one Task on the assigned project worker.",
   );
+  await actualCouncilTaskStarts({
+    page,
+    model,
+    target,
+    tool: tool("council_project_task_start"),
+    projectId,
+    submit,
+    idle,
+    readTask,
+    taskResults,
+    result,
+  });
 }

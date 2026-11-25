@@ -10,6 +10,7 @@ use crate::{
     wire::{Value, value::json},
 };
 use anyhow::{Context, Result};
+pub(crate) use enqueue::CouncilOrigin;
 use futures::future::BoxFuture;
 pub use reads::scheduler_plan;
 use rows::*;
