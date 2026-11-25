@@ -204,13 +204,34 @@ impl Ensurer {
                         .find(|entry| entry["id"].as_js_string() == Some(turn))
                 })
                 .map_or(Value::Null, |entry| entry["status"].clone());
-            result["recovery"] = checked(
-                "nativeTurnRecoveryObservationSchema",
-                &json!({
+            let mut observed = json!({
                     "threadId": prepared.thread.id(), "runtimeGeneration": prepared.runtime.generation(),
                     "turnId": turn, "status": status,
-                }),
-            )?;
+            });
+            let steer = &incoming["recoverySteerInputs"];
+            if let Some(clients) = steer["clientUserMessageIds"].as_array()
+                && steer["priorRuntimeGeneration"].as_str() != Some(prepared.runtime.generation())
+                && matches!(
+                    status.as_str(),
+                    Some("completed" | "failed" | "interrupted")
+                )
+            {
+                let clients = clients
+                    .iter()
+                    .filter_map(|value| value.as_js_string().cloned())
+                    .collect::<Vec<_>>();
+                observed["observedInputs"] = json!(
+                    crate::codex::turn::observed_inputs(
+                        &prepared.runtime,
+                        prepared.thread.id(),
+                        turn,
+                        &clients,
+                    )
+                    .await
+                );
+                prepared.thread.assert_current(&prepared.runtime)?;
+            }
+            result["recovery"] = checked("nativeTurnRecoveryObservationSchema", &observed)?;
         }
         self.assert_bound(&prepared.bound)?;
         Ok(result)

@@ -438,6 +438,11 @@ async fn run(
             .recovery
             .resume_transitions(&owner, &worker),
     );
+    drop(service.execution.recovery.resume_council_steers(
+        &owner,
+        &worker,
+        &peer.identity.process_generation,
+    ));
     service.managed_preparation.schedule_worker(
         peer.identity.owner.clone(),
         worker.clone(),

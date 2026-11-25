@@ -39,6 +39,7 @@ export async function actualCouncilSteering({
   compaction,
   raceMarker,
   dropReplyMarker,
+  coldRecovery,
 }) {
   const model = await taskModelProvider({ observeStreams: true });
   const role = "Preserve this Council role marker 🌲";
@@ -172,7 +173,7 @@ export async function actualCouncilSteering({
         ),
       );
     const held = model.reply({ hold: true, text: firstAnswer });
-    model.reply({ text: answer });
+    const next = model.reply({ text: answer, hold: Boolean(coldRecovery) });
     const first = await submit(original);
     assert.equal(first.status, "queued");
     await eventually(
@@ -193,7 +194,14 @@ export async function actualCouncilSteering({
     assert.equal(second.status, "queued");
     if (dropReplyMarker) {
       const [steer, dropped] = await eventually(
-        () => readSteerRace(dropReplyMarker),
+        async () => {
+          const trace = await readSteerRace(dropReplyMarker);
+          return coldRecovery
+            ? trace.filter(
+                ({ phase }) => phase === "turn/steer" || phase === "dropped",
+              )
+            : trace;
+        },
         (trace) => assert.equal(trace[1]?.phase, "dropped"),
         timeout,
       );
@@ -202,6 +210,85 @@ export async function actualCouncilSteering({
       assert.ok(steer.turnId);
       assert.deepEqual(dropped, { phase: "dropped", turnId: steer.turnId });
       held.release();
+      if (coldRecovery) {
+        await eventually(
+          () => next.request,
+          (request) => {
+            assert.ok(JSON.stringify(request?.input).includes(followUp));
+            assert.equal(request.completed, false);
+          },
+          timeout,
+        );
+        const before = await readQueue();
+        assert.ok(
+          before.claims.some(({ promptId }) => promptId === second.prompt.id),
+        );
+        await coldRecovery.crashWorker();
+        await eventually(
+          () => next.request.closedBeforeCompletion,
+          (closed) => assert.equal(closed, true),
+          timeout,
+        );
+        next.release();
+        await coldRecovery.restartWorker();
+        const messages = await eventually(
+          readMessages,
+          (messages) => assert.equal(withText(messages, followUp).length, 1),
+          timeout,
+        );
+        const [root] = withText(messages, original);
+        const [recovered] = withText(messages, followUp);
+        assert.ok(root?.executionLaneId);
+        assert.equal(recovered.executionLaneId, root.executionLaneId);
+        await eventually(
+          readQueue,
+          (queue) => {
+            assert.deepEqual(queue.items, []);
+            assert.deepEqual(queue.claims, []);
+          },
+          timeout,
+        );
+
+        const probeAnswer = "The replacement run has the original input";
+        const probe = model.reply({ text: probeAnswer });
+        assert.equal(
+          (await submit("Verify the retained chat")).status,
+          "queued",
+        );
+        await eventually(
+          readMessages,
+          (messages) => assert.equal(withText(messages, probeAnswer).length, 1),
+          timeout,
+        );
+        assert.equal(
+          JSON.stringify(probe.request.input).split(followUp).length,
+          2,
+        );
+        const trace = await readSteerRace(dropReplyMarker);
+        assert.equal(
+          trace.filter(({ phase }) => phase === "turn/steer").length,
+          1,
+        );
+        assert.ok(!trace.some(({ phase }) => phase === "turn/start"));
+        const inputs = trace
+          .filter(({ phase }) => phase === "history")
+          .flatMap(({ inputs }) => inputs ?? [])
+          .filter(({ clientId }) => clientId === steer.clientId);
+        assert.equal(new Set(inputs.map(({ id }) => id)).size, 1);
+        assert.ok(inputs[0]?.id);
+        assert.deepEqual(model.failures, []);
+        result.councilSteeringColdRecovery = {
+          chatId,
+          steeredPromptId: second.prompt.id,
+          nativeTurnId: steer.turnId,
+          executionLaneId: root.executionLaneId,
+          trace,
+        };
+        result.steps.push(
+          "Council recovered a native steer after a Worker process crash without replaying its input",
+        );
+        return;
+      }
       const messages = await eventually(
         readMessages,
         (messages) => {

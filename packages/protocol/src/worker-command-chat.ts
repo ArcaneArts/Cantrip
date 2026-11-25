@@ -799,6 +799,13 @@ export const workerChatCommandSchemas = [
   z.object({
     type: z.literal("chat.thread.ensure"),
     recoveryTurnId: z.string().min(1).optional(),
+    recoverySteerInputs: z
+      .object({
+        priorRuntimeGeneration: z.string().min(1),
+        clientUserMessageIds: z.array(z.string().min(1)).min(1).max(64),
+      })
+      .strict()
+      .optional(),
     session: managedSessionContextSchema.optional(),
     subagentDefaults: managedSessionSubagentDefaultsSchema
       .nullable()

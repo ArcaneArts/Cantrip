@@ -7,6 +7,7 @@ mod computer_use;
 pub(crate) mod console;
 pub(crate) mod context;
 mod control;
+pub(in crate::codex) use control::steer::observed_inputs;
 mod deferred;
 pub(crate) mod goal_recovery;
 pub(crate) mod handoff;

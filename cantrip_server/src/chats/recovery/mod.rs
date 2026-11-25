@@ -1,5 +1,6 @@
 //! Durable queued inputs and pending worktree transitions. Task continuation
 //! and native account preparation are required collaborators, never defaults.
+mod council_steers;
 pub mod outcomes;
 mod queue;
 pub mod scheduler;
