@@ -1091,7 +1091,10 @@ export function ProjectSidebarFileTree({
             !directory.data) ||
           (explorer && directory.isLoading) ? (
           <div className="flex h-16 items-center justify-center text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
+            <Loader2
+              aria-label="Loading project files"
+              className="size-4 animate-spin"
+            />
           </div>
         ) : error ||
           streamEncryption.error ||
@@ -1219,7 +1222,7 @@ export function ProjectSidebarFileTree({
                 {visibleEntries.length === 0 &&
                 newFile.draft?.parentPath !== "" ? (
                   <p className="px-3 py-4 text-center text-[10px] text-muted-foreground">
-                    This folder is empty.
+                    No project files.
                   </p>
                 ) : null}
               </div>
@@ -1227,7 +1230,7 @@ export function ProjectSidebarFileTree({
           </>
         ) : (
           <p className="px-3 py-4 text-center text-[10px] leading-4 text-muted-foreground">
-            Preparing the project files…
+            No project files.
           </p>
         )}
       </section>

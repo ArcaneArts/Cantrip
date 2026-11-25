@@ -315,6 +315,16 @@ describe("project sidebar file tree encryption gate", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it("shows the empty state after project files finish loading", () => {
+    expect(renderToStaticMarkup(tree({ explorer: null }))).toContain(
+      "No project files.",
+    );
+    runtime.entriesByPath.set("", []);
+    expect(renderToStaticMarkup(tree())).toContain("No project files.");
+    runtime.pendingPaths.add("");
+    expect(renderToStaticMarkup(tree())).not.toContain("No project files.");
+  });
+
   it("uses filename icons in the tree without mistaking directories for code", async () => {
     const examples: [string, string][] = [
       ["lib.rs", "rust"],
