@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { actualCouncilBrowserHistory } from "./actual-council-browser-history.mjs";
+import { actualCouncilCompaction } from "./actual-council-compaction.mjs";
 import { actualCouncilMemory } from "./actual-council-memory.mjs";
 import { actualCouncilHistory } from "./actual-council-history.mjs";
 import { eventually } from "./full-worker.mjs";
@@ -25,6 +26,7 @@ export async function actualCouncilSteering({
   memoryAppOrigin,
   historyFixture,
   browserHistory,
+  compaction,
   raceMarker,
   dropReplyMarker,
 }) {
@@ -376,6 +378,21 @@ export async function actualCouncilSteering({
         workerId,
         source: { id: source.id, text: original },
         nearby: followUp,
+        result,
+      });
+    }
+    if (compaction) {
+      const [source] = withText(messages, original);
+      await actualCouncilCompaction({
+        ...compaction,
+        page,
+        chatId,
+        model,
+        submit,
+        readChat,
+        readMessages,
+        source: { id: source.id, text: original },
+        previousAnswer: answer,
         result,
       });
     }
