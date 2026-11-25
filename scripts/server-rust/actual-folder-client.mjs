@@ -419,6 +419,7 @@ const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
 const councilHistory = process.argv.includes("--council-history");
+const councilCompaction = process.argv.includes("--council-compaction");
 const councilBrowserHistory = process.argv.includes(
   "--council-browser-history",
 );
@@ -1046,6 +1047,7 @@ async function flow(
       process.argv.includes("--council-app-mode") ||
       process.argv.includes("--council-memory") ||
       councilHistory ||
+      councilCompaction ||
       councilBrowserHistory ||
       councilSteerTrace
     ) {
@@ -1055,6 +1057,18 @@ async function flow(
         result,
         testCreation: process.argv.includes("--council-agent-tools"),
         historyFixture: councilHistory ? fixture : undefined,
+        compaction: councilCompaction
+          ? {
+              appOrigin: vite.resolvedUrls.local[0],
+              fixture,
+              restartWorker: async () => {
+                const previous = worker.child.pid;
+                await stopWorker();
+                const replacement = await startWorker();
+                assert.notEqual(replacement.child.pid, previous);
+              },
+            }
+          : undefined,
         browserHistory: councilBrowserHistory
           ? {
               appOrigin: vite.resolvedUrls.local[0],
@@ -2141,7 +2155,7 @@ try {
   const usesNative = runtimeCases.some((kinds) => kinds.includes("rust"));
   const executable = !usesNative
     ? undefined
-    : liveTaskDiagnostics || councilHistory
+    : liveTaskDiagnostics || councilHistory || councilCompaction
       ? await buildRustExample("http-sql-fixture")
       : (process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer()));
   if (
@@ -2257,12 +2271,14 @@ try {
       databaseMode,
       startupTimeoutMs: serverStartupTimeoutMs,
       providerAuthDrain: true,
-      liveSqlFixture: liveTaskDiagnostics || councilHistory,
+      liveSqlFixture:
+        liveTaskDiagnostics || councilHistory || councilCompaction,
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
         ...(process.argv.includes("--council-app-mode") ||
         process.argv.includes("--council-memory") ||
-        councilBrowserHistory
+        councilBrowserHistory ||
+        councilCompaction
           ? { CANTRIP_COUNCIL_ENABLED: "true" }
           : {}),
         // Retained-session product flows use the normal server lifetime. The

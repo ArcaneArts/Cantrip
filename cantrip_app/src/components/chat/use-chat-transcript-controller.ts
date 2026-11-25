@@ -1072,19 +1072,23 @@ export function useChatTranscriptController({
     ],
   );
   const slashQuery = slashCommandQuery(draft);
-  const slashSuggestions = useMemo(
-    () =>
-      slashQuery === null ||
-      (!capabilities.projectCommands && !capabilities.skillPicker)
-        ? []
-        : filterCommandPalette(slashQuery, skills.data ?? []),
-    [
-      capabilities.projectCommands,
-      capabilities.skillPicker,
-      skills.data,
-      slashQuery,
-    ],
-  );
+  const slashSuggestions = useMemo(() => {
+    if (slashQuery === null) return [];
+    if (capabilities.council) {
+      return filterCommandPalette(slashQuery, []).filter(
+        ({ invocation }) => invocation === "/compact",
+      );
+    }
+    return capabilities.projectCommands || capabilities.skillPicker
+      ? filterCommandPalette(slashQuery, skills.data ?? [])
+      : [];
+  }, [
+    capabilities.council,
+    capabilities.projectCommands,
+    capabilities.skillPicker,
+    skills.data,
+    slashQuery,
+  ]);
   const slashMenuOpen =
     !slashMenuDismissed && slashQuery !== null && slashSuggestions.length > 0;
   const skillMention = useMemo(
@@ -1866,8 +1870,11 @@ export function useChatTranscriptController({
   };
 
   const executeSlashCommand = async ({ command }: SlashCommandSuggestion) => {
-    if (!capabilities.projectCommands && !capabilities.skillPicker) return;
     const name = command.name;
+    const available = capabilities.council
+      ? name === "compact"
+      : capabilities.projectCommands || capabilities.skillPicker;
+    if (!available) return;
     if (runSettingsCommand(`/${name}`)) return;
     setDraft("");
     setSelectedGithubReferences([]);
@@ -1969,11 +1976,11 @@ export function useChatTranscriptController({
   const executeCommandPalette = async (
     suggestion: CommandPaletteSuggestion,
   ) => {
-    if (!capabilities.projectCommands && !capabilities.skillPicker) return;
     if (suggestion.kind === "builtin") {
       await executeSlashCommand(suggestion.command);
       return;
     }
+    if (!capabilities.projectCommands && !capabilities.skillPicker) return;
     setSlashMenuDismissed(true);
     setCommandNotice(null);
     const text = `$${suggestion.skill.name} `;
