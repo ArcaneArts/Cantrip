@@ -1135,6 +1135,10 @@ export function TaskSurface({
             <ModelReasoningPicker
               configuration={modelConfiguration}
               models={settings?.models ?? []}
+              ollamaCatalog={{
+                providers: settings?.providers,
+                workerId: chat.activeWorkerId,
+              }}
               disabled={!draftEditable}
               onSave={(configuration) => setModelConfiguration(configuration)}
             />
