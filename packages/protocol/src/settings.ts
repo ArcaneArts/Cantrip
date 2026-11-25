@@ -84,6 +84,10 @@ export const userSettingsSchema = z.object({
   defaultChatPermissionProfileId: configurablePermissionProfileIdSchema.default(
     DEFAULT_PERMISSION_PROFILE_ID,
   ),
+  // Older servers omit Council settings. Current servers return both fields.
+  defaultCouncilModelId: z.string().min(1).nullable().optional(),
+  defaultCouncilPermissionProfileId:
+    configurablePermissionProfileIdSchema.optional(),
   defaultWorkerId: z.string().min(1).nullable().default(null),
   lastAppMode: z.enum(["ide", "chat"]).nullable().default(null),
   lastIdeProjectId: z.string().min(1).nullable().default(null),

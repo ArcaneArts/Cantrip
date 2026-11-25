@@ -1,6 +1,6 @@
 mod support;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use cantrip_server::{
     auth::{crypto, service::AuthService},
     config::{Environment, ServerConfig},
@@ -37,6 +37,7 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
             .create_account(email, email, email, crypto::DUMMY_PASSWORD_HASH, "member")
             .await?;
         let id = user.id.clone();
+        service.repository.settings(&id).await?;
         let (state, cookies) = service.create_session(user, "account-password").await?;
         sessions.push((
             id,
@@ -90,6 +91,74 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
                 request
             }
         };
+        let settings_path = "/api/settings";
+        let initial_settings: Value = serde_json::from_str(
+            &request(Method::GET, settings_path, first, false)
+                .send().await?.error_for_status().context("initial Council settings")?.text().await?,
+        )?;
+        assert_eq!(
+            initial_settings["preferences"].get("defaultCouncilModelId"),
+            Some(&Value::Null)
+        );
+        assert_eq!(initial_settings["preferences"]["defaultCouncilPermissionProfileId"], ":workspace");
+
+        database.query(
+            "INSERT INTO model_providers(id,owner_id,name,kind,base_url) VALUES
+                 ('council-provider',$1,'Council provider','ollama','http://127.0.0.1:11434'),
+                 ('foreign-provider',$2,'Foreign provider','ollama','http://127.0.0.1:11434')",
+            &[&first.0, &second.0],
+        ).await?;
+        database.query(
+            "INSERT INTO model_profiles(id,owner_id,name,operation) VALUES
+                 ('council-language',$1,'Council language','language'),
+                 ('council-embedding',$1,'Council embedding','embedding'),
+                 ('foreign-language',$2,'Foreign language','language')",
+            &[&first.0, &second.0],
+        ).await?;
+        database.query(
+            "INSERT INTO model_routes(id,model_id,provider_id,model_name,enabled) VALUES
+                 ('council-language-route','council-language','council-provider','text',false),
+                 ('council-embedding-route','council-embedding','council-provider','embed',true),
+                 ('foreign-language-route','foreign-language','foreign-provider','text',true)",
+            &[],
+        ).await?;
+        let save = |patch: &Value| {
+            request(Method::PATCH, settings_path, first, true)
+                .header("content-type", "application/json")
+                .body(patch.to_string())
+        };
+        for patch in [
+            json!({"defaultCouncilModelId":"foreign-language"}),
+            json!({"defaultCouncilModelId":"council-embedding"}),
+            json!({"defaultCouncilPermissionProfileId":":custom"}),
+        ] {
+            assert_eq!(save(&patch).send().await?.status(), StatusCode::BAD_REQUEST);
+        }
+        let changed: Value = serde_json::from_str(
+            &save(&json!({"defaultCouncilModelId":"council-language", "defaultCouncilPermissionProfileId":":read-only"}))
+                .send().await?.error_for_status().context("save Council defaults")?.text().await?,
+        )?;
+        assert_eq!(changed["preferences"]["defaultCouncilModelId"], "council-language");
+        assert_eq!(changed["preferences"]["defaultCouncilPermissionProfileId"], ":read-only");
+        let unrelated: Value = serde_json::from_str(
+            &save(&json!({"theme":"dark"})).send().await?.error_for_status().context("unrelated settings patch")?.text().await?,
+        )?;
+        assert_eq!(unrelated["preferences"]["defaultCouncilModelId"], "council-language");
+        assert_eq!(unrelated["preferences"]["defaultCouncilPermissionProfileId"], ":read-only");
+        assert_eq!(unrelated["preferences"]["defaultChatPermissionProfileId"], ":workspace");
+        assert_eq!(unrelated["preferences"]["defaultPermissionProfileId"], ":workspace");
+
+        database.query("DELETE FROM model_profiles WHERE id='council-language'", &[]).await?;
+        let removed: Value = serde_json::from_str(
+            &request(Method::GET, settings_path, first, false)
+                .send().await?.error_for_status().context("settings after model deletion")?.text().await?,
+        )?;
+        assert_eq!(
+            removed["preferences"].get("defaultCouncilModelId"),
+            Some(&Value::Null)
+        );
+        assert_eq!(removed["preferences"]["defaultCouncilPermissionProfileId"], ":read-only");
+
         assert_eq!(
             request(
                 Method::POST,

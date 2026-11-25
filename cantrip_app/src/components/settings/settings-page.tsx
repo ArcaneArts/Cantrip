@@ -1383,6 +1383,8 @@ export function SettingsPage({
       }
     },
   });
+  const councilPermissionDefault =
+    settings.data?.preferences.defaultCouncilPermissionProfileId;
   const savedProModeOpacity = settings.data?.preferences.proModeOpacity ?? 80;
   useEffect(() => {
     if (!proModeOpacityDialogOpen) return;
@@ -2160,6 +2162,44 @@ export function SettingsPage({
                             </Button>
                           ))}
                         </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {section === "general" &&
+                  matchesSetting("agent-permissions") &&
+                  councilPermissionDefault !== undefined ? (
+                    <section className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Lock className="size-4 shrink-0 text-muted-foreground" />
+                        <h2 className="text-sm font-semibold">
+                          Council default permission level
+                        </h2>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
+                        {BUILTIN_PERMISSION_PROFILES.map((profile) => {
+                          const selected =
+                            councilPermissionDefault === profile.id;
+                          return (
+                            <Button
+                              key={profile.id}
+                              type="button"
+                              size="sm"
+                              className="h-7 px-2.5 text-xs"
+                              variant={selected ? "default" : "ghost"}
+                              aria-pressed={selected}
+                              disabled={preferences.isPending}
+                              title={profile.description}
+                              onClick={() =>
+                                preferences.mutate({
+                                  defaultCouncilPermissionProfileId: profile.id,
+                                })
+                              }
+                            >
+                              {permissionProfileLabel(profile.id)}
+                            </Button>
+                          );
+                        })}
                       </div>
                     </section>
                   ) : null}
