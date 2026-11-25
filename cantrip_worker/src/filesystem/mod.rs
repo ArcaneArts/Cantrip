@@ -6,6 +6,7 @@ pub(crate) mod command;
 pub mod explorer;
 pub mod folders;
 pub mod paths;
+pub(crate) mod programs;
 pub mod repository;
 pub(crate) mod scratch_files;
 pub mod source_path;

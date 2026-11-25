@@ -539,6 +539,8 @@ export type {
 
 export {
   githubAuthStatusSchema,
+  githubToolsStatusSchema,
+  type GithubToolsStatus,
   githubRepositorySchema,
   githubRepositoryListSchema,
   githubRepositoryOwnerSchema,
