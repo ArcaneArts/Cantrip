@@ -20,6 +20,7 @@ import { errorMessage } from "@/lib/error-message";
 import { CouncilAgentEditor } from "./council-agent-editor";
 import { CouncilHistoryDialog } from "./council-history-dialog";
 import { CouncilMemoryEditor } from "./council-memory-editor";
+import { CouncilProjectApprovals } from "./council-project-approvals";
 import { CouncilRoster } from "./council-roster";
 import type { CouncilWorkspaceController } from "./use-council-workspace";
 
@@ -131,6 +132,7 @@ function CouncilConversation({
         <h1 className="min-w-0 flex-1 truncate text-sm font-medium">
           {agent.title}
         </h1>
+        <CouncilProjectApprovals agentId={agent.id} />
         <Button
           aria-label="Search Council history"
           size="icon"

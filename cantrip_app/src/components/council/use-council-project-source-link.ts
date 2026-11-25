@@ -5,8 +5,9 @@ export function readCouncilProjectSourceLink() {
   const projectId = params.get("councilProject");
   const chatId = params.get("projectChat");
   const messageId = params.get("message");
-  if (!projectId || !chatId || !messageId) return null;
-  return { projectId, chatId, messageId };
+  const requestId = params.get("request");
+  if (!projectId || !chatId || (!messageId && !requestId)) return null;
+  return { projectId, chatId, messageId, requestId };
 }
 
 export function useCouncilProjectSourceLink(

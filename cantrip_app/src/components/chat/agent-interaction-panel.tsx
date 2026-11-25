@@ -526,12 +526,14 @@ export function AgentInteractionPanel({
   planQuestionId,
   requests,
   onRespond,
+  renderSource,
 }: {
   error?: string | null;
   pendingRequestId: string | null;
   planQuestionId?: string | null;
   requests: AgentInteractionRequest[];
   onRespond(requestId: string, response: AgentInteractionResponse): void;
+  renderSource?(request: AgentInteractionRequest): ReactNode;
 }) {
   const visible = requests.filter(
     (request) =>
@@ -548,7 +550,12 @@ export function AgentInteractionPanel({
       }
     >
       {visible.map((request) => (
-        <div key={request.id} data-interaction-request-id={request.id}>
+        <div
+          key={request.id}
+          id={`agent-request-${request.id}`}
+          data-interaction-request-id={request.id}
+        >
+          {renderSource?.(request)}
           <InteractionRequestCard
             request={request}
             disabled={pendingRequestId !== null}

@@ -9,6 +9,7 @@ export async function actualCouncilInventory({
   root,
   cliBinary,
   projectMessages,
+  projectApprovals,
   chatId,
   workerId,
   model,
@@ -222,6 +223,7 @@ export async function actualCouncilInventory({
         councilId: chatId,
         targetChatId: ids.chat,
         targetWorkerId: remote,
+        projectApprovals,
       });
     }
   } finally {

@@ -468,6 +468,7 @@ export const agentInteractionResolutionWireCreateSchema = z.union([
 export const agentInteractionRequestQuerySchema = z
   .object({
     chatId: z.string().min(1).optional(),
+    councilAgentId: z.string().uuid().optional(),
     status: agentInteractionRequestStatusSchema.optional(),
     limit: z.coerce.number().int().min(1).max(500).default(100),
   })
