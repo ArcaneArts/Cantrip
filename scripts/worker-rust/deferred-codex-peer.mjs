@@ -9,6 +9,13 @@ const { WebSocket, WebSocketServer } = createRequire(
 )("ws");
 const [binary, marker, prompt, scenario, ...args] = process.argv.slice(2);
 const liveYolo = scenario === "live-yolo";
+const steerCompletion = scenario === "council-steer-completion";
+function record(event) {
+  writeFileSync(marker, `${JSON.stringify(event)}\n`, {
+    flag: "a",
+    mode: 0o600,
+  });
+}
 const restoring =
   scenario === "resume-approval" ||
   scenario === "resume-cua" ||
@@ -35,7 +42,9 @@ if (
       const approvalId = "cantrip-fixture-approval";
       let liveTurn,
         downgrade,
-        liveTurnCount = 0;
+        liveTurnCount = 0,
+        heldSteer,
+        retriedStartId;
       function requestApproval(suffix, method, fields) {
         worker.send(
           JSON.stringify({
@@ -54,6 +63,27 @@ if (
       native.once("open", () => worker.resume());
       worker.on("message", (raw) => {
         const frame = JSON.parse(String(raw));
+        if (
+          steerCompletion &&
+          frame.params?.input?.some((item) => item.text === prompt)
+        ) {
+          if (frame.method === "turn/steer" && !heldSteer) {
+            heldSteer = { frame, raw, forwarded: false };
+            record({
+              phase: "held",
+              turnId: frame.params.expectedTurnId,
+              clientId: frame.params.clientUserMessageId,
+            });
+            return;
+          }
+          if (frame.method === "turn/start") {
+            retriedStartId = frame.id;
+            record({
+              phase: "retried",
+              clientId: frame.params.clientUserMessageId,
+            });
+          }
+        }
         const approval =
           scenario === "approval" || scenario === "resume-approval" || liveYolo;
         if (
@@ -64,10 +94,7 @@ if (
               frame.id.startsWith(approvalId))) &&
           !frame.method
         ) {
-          writeFileSync(marker, `${JSON.stringify(frame)}\n`, {
-            flag: "a",
-            mode: 0o600,
-          });
+          record(frame);
           if (liveYolo && frame.id === approvalId)
             requestApproval("-file", "fileChange", {});
           return;
@@ -148,6 +175,41 @@ if (
       });
       native.on("message", (raw) => {
         worker.send(raw, { binary: false });
+        if (steerCompletion) {
+          const frame = JSON.parse(String(raw));
+          if (
+            heldSteer &&
+            !heldSteer.forwarded &&
+            frame.method === "turn/completed" &&
+            frame.params.threadId === heldSteer.frame.params.threadId &&
+            frame.params.turn.id === heldSteer.frame.params.expectedTurnId
+          ) {
+            heldSteer.forwarded = true;
+            record({ phase: "completed", turnId: frame.params.turn.id });
+            native.send(heldSteer.raw, { binary: false });
+          } else if (
+            heldSteer &&
+            frame.id === heldSteer.frame.id &&
+            !frame.method
+          ) {
+            record({
+              phase: "answered",
+              error: frame.error,
+              result: frame.result,
+            });
+          }
+          if (
+            retriedStartId !== undefined &&
+            frame.id === retriedStartId &&
+            !frame.method
+          ) {
+            record({
+              phase: "started",
+              turnId: frame.result?.turn?.id,
+              error: frame.error,
+            });
+          }
+        }
         if (!targets.size && !downgrade) return;
         const frame = JSON.parse(String(raw));
         if (liveYolo && frame.id === downgrade && frame.result) {
