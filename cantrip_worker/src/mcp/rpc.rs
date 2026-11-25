@@ -23,6 +23,27 @@ pub(super) fn rpc_error(id: &Value, code: i32, message: &str) -> Value {
 }
 
 pub(super) fn initialize(id: &Value, params: &Value, profile: &Value) -> Value {
+    let protocol = &catalog()["protocol"];
+    initialize_profile(id, params, profile, |version| {
+        if protocol["supported"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry == version)
+        {
+            json!(version)
+        } else {
+            protocol["latest"].clone()
+        }
+    })
+}
+
+pub(super) fn initialize_profile(
+    id: &Value,
+    params: &Value,
+    profile: &Value,
+    negotiate_version: impl FnOnce(&str) -> Value,
+) -> Value {
     let Some(version) = params["protocolVersion"].as_str() else {
         return rpc_error(id, -32602, "Invalid initialize parameters");
     };
@@ -32,17 +53,7 @@ pub(super) fn initialize(id: &Value, params: &Value, profile: &Value) -> Value {
     {
         return rpc_error(id, -32602, "Invalid initialize parameters");
     }
-    let protocol = &catalog()["protocol"];
-    let version = if protocol["supported"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|v| v == version)
-    {
-        json!(version)
-    } else {
-        protocol["latest"].clone()
-    };
+    let version = negotiate_version(version);
     let mut server = profile["serverInfo"].clone();
     server["version"] = crate::version::value()["version"].clone();
     result(

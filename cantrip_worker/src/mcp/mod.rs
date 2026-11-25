@@ -4,6 +4,7 @@ pub mod bindings;
 mod broker;
 mod cua;
 pub(crate) mod discovery;
+mod external;
 mod rpc;
 mod stdio;
 
@@ -22,6 +23,10 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
 
 pub fn run_cua(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
     run_stdio(arguments, true)
+}
+
+pub fn run_external(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
+    external::run(arguments)
 }
 
 fn run_stdio(arguments: impl IntoIterator<Item = OsString>, cua: bool) -> Result<()> {

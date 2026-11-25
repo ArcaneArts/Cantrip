@@ -60,6 +60,7 @@ mod conversations;
 mod direct_attachments;
 mod encryption;
 mod external_chat_history;
+pub mod external_mcp;
 mod file_documents;
 mod folders;
 mod github_conversion;
