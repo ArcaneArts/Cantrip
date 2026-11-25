@@ -277,6 +277,10 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
         councilProjectResult?.targetKind === "task"
           ? "Task result"
           : "Project result";
+      const requestTitle =
+        councilProjectRequest?.targetKind === "task"
+          ? "Task request"
+          : "Project request";
       return (
         <a
           key={message.id}
@@ -293,7 +297,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
                 councilProjectResultLink(councilProjectResult)
           }
         >
-          {councilProjectRequest ? "Project request" : resultTitle}
+          {councilProjectRequest ? requestTitle : resultTitle}
           {councilProjectResult ? (
             <span className="capitalize">· {councilProjectResult.status}</span>
           ) : null}

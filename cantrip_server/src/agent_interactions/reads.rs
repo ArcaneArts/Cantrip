@@ -14,12 +14,12 @@ impl Repository<'_, '_> {
         if let Some(council) = query["councilAgentId"].as_str() {
             return self
                 .rows(
-                    r#"SELECT to_jsonb(r)::text FROM agent_interaction_requests r
+                    r#"SELECT (to_jsonb(r) || jsonb_build_object('target_kind',linked.target_kind))::text
+                    FROM agent_interaction_requests r
+                    JOIN council_project_interactions linked
+                      ON linked.council_chat_id=$5 AND linked.request_id=r.id
                    WHERE r.owner_id=$1 AND ($2::text IS NULL OR r.chat_id=$2)
-                     AND ($3::text IS NULL OR r.status=$3) AND EXISTS (
-                       SELECT 1 FROM council_project_interactions linked
-                       WHERE linked.council_chat_id=$5 AND linked.request_id=r.id
-                     ) ORDER BY r.created_at DESC LIMIT $4"#,
+                     AND ($3::text IS NULL OR r.status=$3) ORDER BY r.created_at DESC LIMIT $4"#,
                     &[&owner, &chat, &status, &limit, &council],
                 )
                 .await?

@@ -34,6 +34,9 @@ pub(super) fn map(row: &Value) -> Result<Value> {
         provenance["owner"] = json!("computer-use");
     }
     let mut result = json!({"id":row["id"],"requestKey":row["request_key"],"projectId":row["project_id"],"provenance":provenance,"status":row["status"],"resolvedByUserId":row["resolved_by_user_id"],"expiresAt":iso(&row["expires_at"])?,"resolvedAt":iso(&row["resolved_at"])?,"createdAt":iso(&row["created_at"])?,"updatedAt":iso(&row["updated_at"])?});
+    if row["target_kind"] == "task" {
+        result["targetKind"] = json!("task");
+    }
     let protected = truthy(row.get("protected_payload"));
     if protected {
         if truthy(row.get("payload")) || truthy(row.get("response")) {

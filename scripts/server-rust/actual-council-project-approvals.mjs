@@ -28,8 +28,32 @@ export async function actualCouncilProjectApprovals({
     api("getAgentInteractionRequests", { ...filter, status: "pending" });
   const command = targetTools.find(({ name }) => name === "exec_command");
   assert.ok(command, "The native project runtime exposes its command tool");
-  await page.getByRole("button", { name: /Agent permissions:/u }).click();
-  await page.getByRole("menuitem", { name: /^Workspace\b/u }).click();
+  await page.evaluate(async (chatId) => {
+    const { getClientSessionIdentitySnapshot } =
+      await import("/src/lib/client-session.ts");
+    const { readNativeSettingsState } =
+      await import("/src/lib/native-settings-api.ts");
+    const { sendNativePermissionUpdate } =
+      await import("/src/lib/native-permission-update.ts");
+    const { getChatPermissionProfiles } = await import("/src/lib/api/chats.ts");
+    const identity = getClientSessionIdentitySnapshot();
+    const { binding } = await readNativeSettingsState({
+      chatId,
+      identity,
+      refresh: true,
+    });
+    const { policyRevision } = await getChatPermissionProfiles(chatId);
+    await sendNativePermissionUpdate({
+      chatId,
+      identity,
+      request: {
+        id: ":workspace",
+        bindingId: binding.bindingId,
+        expectedRevision: policyRevision,
+        operationId: crypto.randomUUID(),
+      },
+    });
+  }, targetChatId);
   await eventually(
     () => api("getChatPermissionProfiles", targetChatId),
     ({ effectiveId }) => assert.equal(effectiveId, ":workspace"),
@@ -100,14 +124,18 @@ export async function actualCouncilProjectApprovals({
     (items) =>
       assert.equal(
         items.filter(({ content }) =>
-          content.some((item) => item.councilProjectRequest),
+          content.some(
+            (item) => item.councilProjectRequest?.chatId === targetChatId,
+          ),
         ).length,
         1,
       ),
     20_000,
   );
   const [forwardedInput] = messages.flatMap(({ content }) =>
-    content.filter((item) => item.councilProjectRequest),
+    content.filter(
+      (item) => item.councilProjectRequest?.chatId === targetChatId,
+    ),
   );
   assert.equal(forwardedInput.councilProjectRequest.requestId, original.id);
   assert.equal(forwardedInput.text, "Project request");
@@ -130,7 +158,7 @@ export async function actualCouncilProjectApprovals({
     '[data-slot="council-conversation"]',
   );
   const forwardedLink = councilConversation.locator(
-    '[data-slot="council-project-request"]',
+    `[data-slot="council-project-request"][href*="request=${original.id}"]`,
   );
   await forwardedLink.waitFor({ state: "visible", timeout: 30_000 });
   assert.equal(
