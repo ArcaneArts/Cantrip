@@ -38,6 +38,14 @@ export interface ProjectSearchResult {
   workspace: ProjectWorkspaceSummary | null;
 }
 
+function projectNameMatchRank(name: string, query: string): number {
+  if (!query) return 0;
+  const normalizedName = name.toLocaleLowerCase();
+  if (normalizedName === query) return 3;
+  if (normalizedName.startsWith(query)) return 2;
+  return normalizedName.includes(query) ? 1 : 0;
+}
+
 export function searchProjects(
   projects: ProjectSummary[],
   workspaces: ProjectWorkspaceSummary[],
@@ -60,25 +68,26 @@ export function searchProjects(
     ? projects
     : projectsInWorkspace(projects, activeWorkspace);
   return candidates
-    .filter((project) => {
-      if (!needle) return true;
-      const workspace = workspaceByProjectId.get(project.id);
-      return [
-        project.name,
-        project.github?.nameWithOwner,
-        project.source?.displayPath,
-        workspace?.name,
-      ]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => value.toLocaleLowerCase().includes(needle));
-    })
     .map((project) => ({
       project,
       workspace: workspaceByProjectId.get(project.id) ?? null,
+      nameRank: projectNameMatchRank(project.name, needle),
     }))
+    .filter(
+      ({ project, workspace, nameRank }) =>
+        !needle ||
+        nameRank > 0 ||
+        [
+          project.github?.nameWithOwner,
+          project.source?.displayPath,
+          workspace?.name,
+        ].some((value) => value?.toLocaleLowerCase().includes(needle)),
+    )
     .sort(
       (left, right) =>
+        right.nameRank - left.nameRank ||
         (recentPositions.get(left.project.id) ?? Number.MAX_SAFE_INTEGER) -
-        (recentPositions.get(right.project.id) ?? Number.MAX_SAFE_INTEGER),
-    );
+          (recentPositions.get(right.project.id) ?? Number.MAX_SAFE_INTEGER),
+    )
+    .map(({ project, workspace }) => ({ project, workspace }));
 }
