@@ -219,7 +219,8 @@ pub(super) async fn native_input(
         params["approvalPolicy"] = json!("never");
     }
     if structured || !permission_profiles {
-        params["sandboxPolicy"] = if structured || primary_read_only {
+        let council_read_only = command.get("councilAgent").is_some() && permission == ":read-only";
+        params["sandboxPolicy"] = if structured || primary_read_only || council_read_only {
             json!({"type": "readOnly", "networkAccess": false})
         } else {
             json!({

@@ -115,51 +115,53 @@
     "mcpStdioInput/chat_wait": 1516,
     "mcpStdioOutput/chat_wait": 16,
     "mcpStdioStandaloneToolHelpInput": 1521,
-    "mcpStdioInput/council_message_post": 1526,
-    "mcpStdioOutput/council_message_post": 1533,
-    "mcpStdioInput/council_automation_list": 1542,
-    "mcpStdioOutput/council_automation_list": 1550,
-    "mcpStdioInput/council_automation_read": 1584,
-    "mcpStdioOutput/council_automation_read": 1587,
-    "mcpStdioInput/council_automation_create": 1590,
-    "mcpStdioOutput/council_automation_create": 1597,
-    "mcpStdioInput/council_automation_update": 1601,
-    "mcpStdioOutput/council_automation_update": 1597,
-    "mcpStdioInput/council_list": 1615,
-    "mcpStdioOutput/council_list": 1617,
-    "mcpStdioInput/council_create": 1627,
-    "mcpStdioOutput/council_create": 1631,
-    "mcpStdioInput/council_memory_read": 1635,
-    "mcpStdioOutput/council_memory_read": 1637,
-    "mcpStdioInput/council_memory_write": 1642,
-    "mcpStdioOutput/council_memory_write": 1645,
-    "mcpStdioInput/council_history_search": 1647,
-    "mcpStdioOutput/council_history_search": 1654,
-    "mcpStdioInput/council_history_read": 1669,
-    "mcpStdioOutput/council_history_read": 1671,
-    "mcpStdioInput/council_inventory": 1682,
-    "mcpStdioOutput/council_inventory": 1697,
-    "mcpStdioInput/council_peer_send": 1738,
-    "mcpStdioOutput/council_peer_send": 1743,
-    "mcpStdioInput/council_project_send": 1753,
-    "mcpStdioOutput/council_project_send": 1757,
-    "mcpStdioInput/council_project_chat_create": 1765,
-    "mcpStdioOutput/council_project_chat_create": 1769,
-    "mcpStdioInput/council_project_task_create": 1776,
-    "mcpStdioOutput/council_project_task_create": 1779,
-    "mcpStdioInput/council_project_task_start": 1787,
-    "mcpStdioOutput/council_project_task_start": 1791,
-    "mcpStdioInput/council_project_interrupt": 1796,
-    "mcpStdioOutput/council_project_interrupt": 1801,
-    "cantripMcpBindingSchema": 1805,
-    "workerCantripMcpServerCapabilitiesSchema": 1827,
-    "cantripMcpToolHelpInputSchema": 1833,
+    "mcpStdioInput/council_mcp_setup": 1526,
+    "mcpStdioOutput/council_mcp_setup": 1551,
+    "mcpStdioInput/council_message_post": 1562,
+    "mcpStdioOutput/council_message_post": 1569,
+    "mcpStdioInput/council_automation_list": 1576,
+    "mcpStdioOutput/council_automation_list": 1584,
+    "mcpStdioInput/council_automation_read": 1618,
+    "mcpStdioOutput/council_automation_read": 1621,
+    "mcpStdioInput/council_automation_create": 1624,
+    "mcpStdioOutput/council_automation_create": 1631,
+    "mcpStdioInput/council_automation_update": 1635,
+    "mcpStdioOutput/council_automation_update": 1631,
+    "mcpStdioInput/council_list": 1649,
+    "mcpStdioOutput/council_list": 1651,
+    "mcpStdioInput/council_create": 1661,
+    "mcpStdioOutput/council_create": 1665,
+    "mcpStdioInput/council_memory_read": 1669,
+    "mcpStdioOutput/council_memory_read": 1671,
+    "mcpStdioInput/council_memory_write": 1676,
+    "mcpStdioOutput/council_memory_write": 1679,
+    "mcpStdioInput/council_history_search": 1681,
+    "mcpStdioOutput/council_history_search": 1688,
+    "mcpStdioInput/council_history_read": 1703,
+    "mcpStdioOutput/council_history_read": 1705,
+    "mcpStdioInput/council_inventory": 1716,
+    "mcpStdioOutput/council_inventory": 1731,
+    "mcpStdioInput/council_peer_send": 1772,
+    "mcpStdioOutput/council_peer_send": 1777,
+    "mcpStdioInput/council_project_send": 1787,
+    "mcpStdioOutput/council_project_send": 1791,
+    "mcpStdioInput/council_project_chat_create": 1799,
+    "mcpStdioOutput/council_project_chat_create": 1803,
+    "mcpStdioInput/council_project_task_create": 1810,
+    "mcpStdioOutput/council_project_task_create": 1813,
+    "mcpStdioInput/council_project_task_start": 1821,
+    "mcpStdioOutput/council_project_task_start": 1825,
+    "mcpStdioInput/council_project_interrupt": 1830,
+    "mcpStdioOutput/council_project_interrupt": 1835,
+    "cantripMcpBindingSchema": 1839,
+    "workerCantripMcpServerCapabilitiesSchema": 1861,
+    "cantripMcpToolHelpInputSchema": 1867,
     "cantripMcpContextGetInputSchema": 47,
-    "mcpHostSessionClaims": 1835,
-    "cuaMcpBrokerRequestSchema": 1838,
-    "cuaMcpResetArgumentsSchema": 1855,
-    "cuaMcpScriptArgumentsSchema": 1857,
-    "cuaMcpResultSchema": 1859
+    "mcpHostSessionClaims": 1869,
+    "cuaMcpBrokerRequestSchema": 1872,
+    "cuaMcpResetArgumentsSchema": 1889,
+    "cuaMcpScriptArgumentsSchema": 1891,
+    "cuaMcpResultSchema": 1893
   },
   "nodes": [
     {
@@ -336,6 +338,7 @@
         "council.history.search",
         "council.history.read",
         "council.inventory",
+        "council.mcp.setup",
         "council.peer.send",
         "council.project.send",
         "council.project.chat.create",
@@ -14912,14 +14915,382 @@
     },
     {
       "type": "object",
-      "name": "councilMessagePostInputSchema",
+      "name": "councilMcpSetupInputSchema",
       "shape": {
         "operationId": 1527,
-        "text": 1528,
-        "kind": 1529,
-        "notify": 1531
+        "configuration": 1528
       },
-      "catchall": 1532,
+      "catchall": 1550,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "union",
+      "name": "mcpServerConfigurationSchema",
+      "options": [
+        1529,
+        1542
+      ],
+      "discriminator": "transport",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "mcpServerStdioConfigurationSchema",
+      "shape": {
+        "name": 1530,
+        "enabled": 1531,
+        "transport": 1533,
+        "command": 1534,
+        "args": 1535,
+        "environment": 1538
+      },
+      "checks": []
+    },
+    {
+      "type": "string",
+      "name": "mcpServerNameSchema",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        },
+        {
+          "message": "Use only letters, numbers, hyphens, and underscores.",
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]+$/u"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1532,
+      "defaultValue": true,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "stdio"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 8192,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1536,
+      "defaultValue": [],
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 1537,
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 8192,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1539,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "record",
+      "keyType": 1540,
+      "valueType": 1541,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "mcp-key-value-count",
+          "messageAfterPath": true,
+          "message": "MCP key/value collections cannot contain more than 100 entries."
+        },
+        {
+          "check": "refinement",
+          "tag": "mcp-key-value-size",
+          "messageAfterPath": true,
+          "message": "MCP key/value collections cannot exceed 512 KiB."
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 256,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 65536,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "mcpServerHttpConfigurationSchema",
+      "shape": {
+        "name": 1530,
+        "enabled": 1531,
+        "transport": 1543,
+        "url": 1544,
+        "bearerTokenEnvironmentVariable": 1545,
+        "headers": 1548,
+        "environmentHeaders": 1549
+      },
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "http"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "url",
+          "abort": false
+        },
+        {
+          "check": "max_length",
+          "maximum": 8192,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1546,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 1547,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 256,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1539,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1539,
+      "defaultValue": {},
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilMcpSetupToolOutputSchema",
+      "shape": {
+        "summary": 50,
+        "target": 1552,
+        "worktreeId": 53,
+        "continuationScheduled": 56,
+        "mutated": 1554,
+        "data": 1555
+      },
+      "catchall": 1561,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1553,
+      "defaultValue": null,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 20,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        true
+      ],
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 1556,
+        "workerId": 1557,
+        "name": 1530,
+        "transport": 1558,
+        "enabled": 1559
+      },
+      "catchall": 1560,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "values": [
+        "stdio",
+        "http"
+      ],
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilMessagePostInputSchema",
+      "shape": {
+        "operationId": 1563,
+        "text": 1564,
+        "kind": 1565,
+        "notify": 1567
+      },
+      "catchall": 1568,
       "checks": []
     },
     {
@@ -14956,7 +15327,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1530,
+      "innerType": 1566,
       "defaultValue": "message",
       "checks": []
     },
@@ -14981,25 +15352,13 @@
       "name": "councilMessagePostOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1536,
-        "data": 1537
+        "mutated": 1570,
+        "data": 1571
       },
       "catchall": 111,
-      "checks": []
-    },
-    {
-      "type": "default",
-      "optionalIn": true,
-      "innerType": 1535,
-      "defaultValue": null,
-      "checks": []
-    },
-    {
-      "type": "nullable",
-      "innerType": 20,
       "checks": []
     },
     {
@@ -15009,11 +15368,11 @@
     {
       "type": "object",
       "shape": {
-        "operationId": 1538,
-        "messageId": 1539,
-        "notify": 1540
+        "operationId": 1572,
+        "messageId": 1573,
+        "notify": 1574
       },
-      "catchall": 1541,
+      "catchall": 1575,
       "checks": []
     },
     {
@@ -15054,18 +15413,18 @@
       "type": "object",
       "name": "councilAutomationListInputSchema",
       "shape": {
-        "agentId": 1543,
-        "offset": 1545,
-        "limit": 1547
+        "agentId": 1577,
+        "offset": 1579,
+        "limit": 1581
       },
-      "catchall": 1549,
+      "catchall": 1583,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1544,
+      "innerType": 1578,
       "checks": []
     },
     {
@@ -15084,7 +15443,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1546,
+      "innerType": 1580,
       "defaultValue": 0,
       "checks": []
     },
@@ -15111,7 +15470,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1548,
+      "innerType": 1582,
       "defaultValue": 20,
       "checks": []
     },
@@ -15144,11 +15503,11 @@
       "name": "councilAutomationListOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1551
+        "data": 1585
       },
       "catchall": 111,
       "checks": []
@@ -15156,15 +15515,15 @@
     {
       "type": "object",
       "shape": {
-        "routines": 1552,
-        "nextOffset": 1581
+        "routines": 1586,
+        "nextOffset": 1615
       },
-      "catchall": 1583,
+      "catchall": 1617,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1553,
+      "element": 1587,
       "checks": [
         {
           "check": "max_length",
@@ -15176,21 +15535,21 @@
     {
       "type": "object",
       "shape": {
-        "id": 1554,
-        "chatId": 1554,
-        "workerId": 1554,
-        "schedule": 1555,
-        "enabled": 1572,
-        "revision": 1573,
-        "nextRunAt": 1574,
-        "lastRunAt": 1575,
-        "lastStatus": 1576,
-        "lastError": 1577,
-        "createdAt": 1560,
-        "updatedAt": 1560,
-        "name": 1579
+        "id": 1588,
+        "chatId": 1588,
+        "workerId": 1588,
+        "schedule": 1589,
+        "enabled": 1606,
+        "revision": 1607,
+        "nextRunAt": 1608,
+        "lastRunAt": 1609,
+        "lastStatus": 1610,
+        "lastError": 1611,
+        "createdAt": 1594,
+        "updatedAt": 1594,
+        "name": 1613
       },
-      "catchall": 1580,
+      "catchall": 1614,
       "checks": []
     },
     {
@@ -15209,9 +15568,9 @@
     {
       "type": "union",
       "options": [
-        1556,
-        1561,
-        1568
+        1590,
+        1595,
+        1602
       ],
       "discriminator": "kind",
       "checks": []
@@ -15219,10 +15578,10 @@
     {
       "type": "object",
       "shape": {
-        "kind": 1557,
-        "every": 1558,
-        "unit": 1559,
-        "startsAt": 1560
+        "kind": 1591,
+        "every": 1592,
+        "unit": 1593,
+        "startsAt": 1594
       },
       "checks": []
     },
@@ -15280,11 +15639,11 @@
     {
       "type": "object",
       "shape": {
-        "kind": 1562,
-        "weekdays": 1563,
-        "hour": 1565,
-        "minute": 1566,
-        "timeZone": 1567
+        "kind": 1596,
+        "weekdays": 1597,
+        "hour": 1599,
+        "minute": 1600,
+        "timeZone": 1601
       },
       "checks": []
     },
@@ -15297,7 +15656,7 @@
     },
     {
       "type": "array",
-      "element": 1564,
+      "element": 1598,
       "checks": [
         {
           "check": "min_length",
@@ -15398,9 +15757,9 @@
     {
       "type": "object",
       "shape": {
-        "kind": 1569,
-        "expression": 1570,
-        "timeZone": 1571
+        "kind": 1603,
+        "expression": 1604,
+        "timeZone": 1605
       },
       "checks": [
         {
@@ -15474,12 +15833,12 @@
     },
     {
       "type": "nullable",
-      "innerType": 1560,
+      "innerType": 1594,
       "checks": []
     },
     {
       "type": "nullable",
-      "innerType": 1560,
+      "innerType": 1594,
       "checks": []
     },
     {
@@ -15496,7 +15855,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1578,
+      "innerType": 1612,
       "checks": []
     },
     {
@@ -15533,7 +15892,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1582,
+      "innerType": 1616,
       "checks": []
     },
     {
@@ -15559,9 +15918,9 @@
       "type": "object",
       "name": "councilAutomationReadInputSchema",
       "shape": {
-        "automationId": 1585
+        "automationId": 1619
       },
-      "catchall": 1586,
+      "catchall": 1620,
       "checks": []
     },
     {
@@ -15586,11 +15945,11 @@
       "name": "councilAutomationReadOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1588
+        "data": 1622
       },
       "catchall": 111,
       "checks": []
@@ -15598,22 +15957,22 @@
     {
       "type": "object",
       "shape": {
-        "id": 1554,
-        "chatId": 1554,
-        "workerId": 1554,
-        "schedule": 1555,
-        "enabled": 1572,
-        "revision": 1573,
-        "nextRunAt": 1574,
-        "lastRunAt": 1575,
-        "lastStatus": 1576,
-        "lastError": 1577,
-        "createdAt": 1560,
-        "updatedAt": 1560,
-        "name": 1579,
-        "prompt": 1589
+        "id": 1588,
+        "chatId": 1588,
+        "workerId": 1588,
+        "schedule": 1589,
+        "enabled": 1606,
+        "revision": 1607,
+        "nextRunAt": 1608,
+        "lastRunAt": 1609,
+        "lastStatus": 1610,
+        "lastError": 1611,
+        "createdAt": 1594,
+        "updatedAt": 1594,
+        "name": 1613,
+        "prompt": 1623
       },
-      "catchall": 1580,
+      "catchall": 1614,
       "checks": []
     },
     {
@@ -15638,20 +15997,20 @@
       "type": "object",
       "name": "councilAutomationCreateInputSchema",
       "shape": {
-        "name": 1579,
-        "prompt": 1589,
-        "schedule": 1555,
-        "enabled": 1591,
-        "operationId": 1593,
-        "agentId": 1594
+        "name": 1613,
+        "prompt": 1623,
+        "schedule": 1589,
+        "enabled": 1625,
+        "operationId": 1627,
+        "agentId": 1628
       },
-      "catchall": 1596,
+      "catchall": 1630,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1592,
+      "innerType": 1626,
       "defaultValue": true,
       "checks": []
     },
@@ -15676,7 +16035,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1595,
+      "innerType": 1629,
       "checks": []
     },
     {
@@ -15701,11 +16060,11 @@
       "name": "councilAutomationMutationOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1598,
-        "data": 1599
+        "mutated": 1632,
+        "data": 1633
       },
       "catchall": 111,
       "checks": []
@@ -15718,14 +16077,14 @@
       "type": "object",
       "name": "councilAutomationMutationReceiptSchema",
       "shape": {
-        "id": 1554,
-        "chatId": 1554,
-        "enabled": 1572,
-        "revision": 1573,
-        "nextRunAt": 1574,
-        "operationId": 1600
+        "id": 1588,
+        "chatId": 1588,
+        "enabled": 1606,
+        "revision": 1607,
+        "nextRunAt": 1608,
+        "operationId": 1634
       },
-      "catchall": 1580,
+      "catchall": 1614,
       "checks": []
     },
     {
@@ -15745,12 +16104,12 @@
       "type": "object",
       "name": "councilAutomationUpdateInputSchema",
       "shape": {
-        "operationId": 1602,
-        "automationId": 1603,
-        "expectedRevision": 1604,
-        "changes": 1605
+        "operationId": 1636,
+        "automationId": 1637,
+        "expectedRevision": 1638,
+        "changes": 1639
       },
-      "catchall": 1614,
+      "catchall": 1648,
       "checks": []
     },
     {
@@ -15797,19 +16156,19 @@
     {
       "type": "object",
       "shape": {
-        "name": 1606,
-        "prompt": 1608,
-        "schedule": 1610,
-        "enabled": 1611
+        "name": 1640,
+        "prompt": 1642,
+        "schedule": 1644,
+        "enabled": 1645
       },
-      "catchall": 1613,
+      "catchall": 1647,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1607,
+      "innerType": 1641,
       "checks": []
     },
     {
@@ -15834,7 +16193,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1609,
+      "innerType": 1643,
       "checks": []
     },
     {
@@ -15859,14 +16218,14 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1555,
+      "innerType": 1589,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1612,
+      "innerType": 1646,
       "checks": []
     },
     {
@@ -15885,7 +16244,7 @@
       "type": "object",
       "name": "councilListToolInputSchema",
       "shape": {},
-      "catchall": 1616,
+      "catchall": 1650,
       "checks": []
     },
     {
@@ -15897,11 +16256,11 @@
       "name": "councilListToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1618
+        "data": 1652
       },
       "catchall": 111,
       "checks": []
@@ -15909,25 +16268,25 @@
     {
       "type": "object",
       "shape": {
-        "agents": 1619
+        "agents": 1653
       },
-      "catchall": 1626,
+      "catchall": 1660,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1620,
+      "element": 1654,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "id": 1621,
-        "title": 1622,
-        "primary": 1623,
-        "scratchStatus": 1624
+        "id": 1655,
+        "title": 1656,
+        "primary": 1657,
+        "scratchStatus": 1658
       },
-      "catchall": 1625,
+      "catchall": 1659,
       "checks": []
     },
     {
@@ -15987,10 +16346,10 @@
       "type": "object",
       "name": "councilCreateToolInputSchema",
       "shape": {
-        "title": 1628,
-        "role": 1629
+        "title": 1662,
+        "role": 1663
       },
-      "catchall": 1630,
+      "catchall": 1664,
       "checks": []
     },
     {
@@ -16038,11 +16397,11 @@
       "name": "councilCreateToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1632,
-        "data": 1633
+        "mutated": 1666,
+        "data": 1667
       },
       "catchall": 111,
       "checks": []
@@ -16057,9 +16416,9 @@
     {
       "type": "object",
       "shape": {
-        "agent": 1620
+        "agent": 1654
       },
-      "catchall": 1634,
+      "catchall": 1668,
       "checks": []
     },
     {
@@ -16070,7 +16429,7 @@
       "type": "object",
       "name": "councilMemoryReadToolInputSchema",
       "shape": {},
-      "catchall": 1636,
+      "catchall": 1670,
       "checks": []
     },
     {
@@ -16082,11 +16441,11 @@
       "name": "councilMemoryReadToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1638
+        "data": 1672
       },
       "catchall": 111,
       "checks": []
@@ -16094,10 +16453,10 @@
     {
       "type": "object",
       "shape": {
-        "revision": 1639,
-        "text": 1640
+        "revision": 1673,
+        "text": 1674
       },
-      "catchall": 1641,
+      "catchall": 1675,
       "checks": []
     },
     {
@@ -16138,10 +16497,10 @@
       "type": "object",
       "name": "councilMemoryWriteToolInputSchema",
       "shape": {
-        "expectedRevision": 1639,
-        "text": 1643
+        "expectedRevision": 1673,
+        "text": 1677
       },
-      "catchall": 1644,
+      "catchall": 1678,
       "checks": []
     },
     {
@@ -16163,11 +16522,11 @@
       "name": "councilMemoryWriteToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1646,
-        "data": 1638
+        "mutated": 1680,
+        "data": 1672
       },
       "catchall": 111,
       "checks": []
@@ -16183,11 +16542,11 @@
       "type": "object",
       "name": "councilHistorySearchInputSchema",
       "shape": {
-        "query": 1648,
-        "mode": 1649,
-        "limit": 1651
+        "query": 1682,
+        "mode": 1683,
+        "limit": 1685
       },
-      "catchall": 1653,
+      "catchall": 1687,
       "checks": []
     },
     {
@@ -16211,7 +16570,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1650,
+      "innerType": 1684,
       "defaultValue": "terms",
       "checks": []
     },
@@ -16226,7 +16585,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1652,
+      "innerType": 1686,
       "defaultValue": 10,
       "checks": []
     },
@@ -16259,11 +16618,11 @@
       "name": "councilHistorySearchToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1655
+        "data": 1689
       },
       "catchall": 111,
       "checks": []
@@ -16272,12 +16631,12 @@
       "type": "object",
       "name": "councilHistorySearchResultSchema",
       "shape": {
-        "coverage": 1656,
-        "indexedMessages": 1657,
-        "unavailableMessages": 1657,
-        "matches": 1658
+        "coverage": 1690,
+        "indexedMessages": 1691,
+        "unavailableMessages": 1691,
+        "matches": 1692
       },
-      "catchall": 1668,
+      "catchall": 1702,
       "checks": []
     },
     {
@@ -16310,7 +16669,7 @@
     },
     {
       "type": "array",
-      "element": 1659,
+      "element": 1693,
       "checks": [
         {
           "check": "max_length",
@@ -16322,16 +16681,16 @@
     {
       "type": "object",
       "shape": {
-        "agentId": 1621,
-        "messageId": 1660,
-        "sequence": 1661,
-        "role": 1662,
-        "source": 1663,
-        "createdAt": 1664,
-        "link": 1665,
-        "snippet": 1666
+        "agentId": 1655,
+        "messageId": 1694,
+        "sequence": 1695,
+        "role": 1696,
+        "source": 1697,
+        "createdAt": 1698,
+        "link": 1699,
+        "snippet": 1700
       },
-      "catchall": 1667,
+      "catchall": 1701,
       "checks": []
     },
     {
@@ -16442,9 +16801,9 @@
       "type": "object",
       "name": "councilHistoryReadInputSchema",
       "shape": {
-        "messageId": 1660
+        "messageId": 1694
       },
-      "catchall": 1670,
+      "catchall": 1704,
       "checks": []
     },
     {
@@ -16456,11 +16815,11 @@
       "name": "councilHistoryReadToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1672
+        "data": 1706
       },
       "catchall": 111,
       "checks": []
@@ -16469,10 +16828,10 @@
       "type": "object",
       "name": "councilHistoryReadResultSchema",
       "shape": {
-        "availability": 1673,
-        "messages": 1674
+        "availability": 1707,
+        "messages": 1708
       },
-      "catchall": 1681,
+      "catchall": 1715,
       "checks": []
     },
     {
@@ -16485,7 +16844,7 @@
     },
     {
       "type": "array",
-      "element": 1675,
+      "element": 1709,
       "checks": [
         {
           "check": "max_length",
@@ -16497,17 +16856,17 @@
     {
       "type": "object",
       "shape": {
-        "agentId": 1621,
-        "messageId": 1660,
-        "sequence": 1661,
-        "role": 1662,
-        "source": 1663,
-        "createdAt": 1664,
-        "link": 1665,
-        "text": 1676,
-        "attachments": 1677
+        "agentId": 1655,
+        "messageId": 1694,
+        "sequence": 1695,
+        "role": 1696,
+        "source": 1697,
+        "createdAt": 1698,
+        "link": 1699,
+        "text": 1710,
+        "attachments": 1711
       },
-      "catchall": 1667,
+      "catchall": 1701,
       "checks": []
     },
     {
@@ -16522,7 +16881,7 @@
     },
     {
       "type": "array",
-      "element": 1678,
+      "element": 1712,
       "checks": [
         {
           "check": "max_length",
@@ -16534,10 +16893,10 @@
     {
       "type": "object",
       "shape": {
-        "id": 1660,
-        "name": 1679
+        "id": 1694,
+        "name": 1713
       },
-      "catchall": 1680,
+      "catchall": 1714,
       "checks": []
     },
     {
@@ -16567,9 +16926,9 @@
       "type": "union",
       "name": "councilInventoryInputSchema",
       "options": [
-        1683,
-        1690,
-        1694
+        1717,
+        1724,
+        1728
       ],
       "discriminator": "section",
       "checks": []
@@ -16577,17 +16936,17 @@
     {
       "type": "object",
       "shape": {
-        "cursor": 1684,
-        "limit": 1686,
-        "section": 1688
+        "cursor": 1718,
+        "limit": 1720,
+        "section": 1722
       },
-      "catchall": 1689,
+      "catchall": 1723,
       "checks": []
     },
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1685,
+      "innerType": 1719,
       "defaultValue": 0,
       "checks": []
     },
@@ -16614,7 +16973,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1687,
+      "innerType": 1721,
       "defaultValue": 25,
       "checks": []
     },
@@ -16657,12 +17016,12 @@
     {
       "type": "object",
       "shape": {
-        "cursor": 1684,
-        "limit": 1686,
-        "section": 1691,
-        "projectId": 1692
+        "cursor": 1718,
+        "limit": 1720,
+        "section": 1725,
+        "projectId": 1726
       },
-      "catchall": 1693,
+      "catchall": 1727,
       "checks": []
     },
     {
@@ -16694,12 +17053,12 @@
     {
       "type": "object",
       "shape": {
-        "cursor": 1684,
-        "limit": 1686,
-        "section": 1695,
-        "projectId": 1692
+        "cursor": 1718,
+        "limit": 1720,
+        "section": 1729,
+        "projectId": 1726
       },
-      "catchall": 1696,
+      "catchall": 1730,
       "checks": []
     },
     {
@@ -16718,11 +17077,11 @@
       "name": "councilInventoryToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
         "mutated": 58,
-        "data": 1698
+        "data": 1732
       },
       "catchall": 111,
       "checks": []
@@ -16731,12 +17090,12 @@
       "type": "object",
       "name": "councilInventoryResultSchema",
       "shape": {
-        "section": 1699,
-        "nextCursor": 1700,
-        "entries": 1702,
-        "managedTools": 1735
+        "section": 1733,
+        "nextCursor": 1734,
+        "entries": 1736,
+        "managedTools": 1769
       },
-      "catchall": 1737,
+      "catchall": 1771,
       "checks": []
     },
     {
@@ -16755,7 +17114,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1701,
+      "innerType": 1735,
       "checks": []
     },
     {
@@ -16780,7 +17139,7 @@
     },
     {
       "type": "array",
-      "element": 1703,
+      "element": 1737,
       "checks": [
         {
           "check": "max_length",
@@ -16792,12 +17151,12 @@
     {
       "type": "union",
       "options": [
-        1704,
-        1713,
-        1718,
-        1722,
-        1726,
-        1730
+        1738,
+        1747,
+        1752,
+        1756,
+        1760,
+        1764
       ],
       "discriminator": "kind",
       "checks": []
@@ -16805,15 +17164,15 @@
     {
       "type": "object",
       "shape": {
-        "id": 1692,
-        "kind": 1705,
-        "projectId": 1692,
-        "workerId": 1706,
-        "status": 1707,
-        "permissionProfileId": 1709,
-        "title": 1710
+        "id": 1726,
+        "kind": 1739,
+        "projectId": 1726,
+        "workerId": 1740,
+        "status": 1741,
+        "permissionProfileId": 1743,
+        "title": 1744
       },
-      "catchall": 1712,
+      "catchall": 1746,
       "checks": []
     },
     {
@@ -16827,12 +17186,12 @@
     },
     {
       "type": "nullable",
-      "innerType": 1692,
+      "innerType": 1726,
       "checks": []
     },
     {
       "type": "nullable",
-      "innerType": 1708,
+      "innerType": 1742,
       "checks": []
     },
     {
@@ -16852,12 +17211,12 @@
     },
     {
       "type": "nullable",
-      "innerType": 1692,
+      "innerType": 1726,
       "checks": []
     },
     {
       "type": "nullable",
-      "innerType": 1711,
+      "innerType": 1745,
       "checks": []
     },
     {
@@ -16882,14 +17241,14 @@
     {
       "type": "object",
       "shape": {
-        "id": 1692,
-        "kind": 1714,
-        "workerId": 1692,
-        "primary": 1715,
-        "status": 1716,
-        "title": 1710
+        "id": 1726,
+        "kind": 1748,
+        "workerId": 1726,
+        "primary": 1749,
+        "status": 1750,
+        "title": 1744
       },
-      "catchall": 1717,
+      "catchall": 1751,
       "checks": []
     },
     {
@@ -16925,12 +17284,12 @@
     {
       "type": "object",
       "shape": {
-        "id": 1692,
-        "kind": 1719,
-        "title": 1710,
-        "value": 1720
+        "id": 1726,
+        "kind": 1753,
+        "title": 1744,
+        "value": 1754
       },
-      "catchall": 1721,
+      "catchall": 1755,
       "checks": []
     },
     {
@@ -16942,7 +17301,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1692,
+      "innerType": 1726,
       "checks": []
     },
     {
@@ -16952,12 +17311,12 @@
     {
       "type": "object",
       "shape": {
-        "id": 1692,
-        "kind": 1723,
-        "title": 1710,
-        "enabledRoutes": 1724
+        "id": 1726,
+        "kind": 1757,
+        "title": 1744,
+        "enabledRoutes": 1758
       },
-      "catchall": 1725,
+      "catchall": 1759,
       "checks": []
     },
     {
@@ -16989,12 +17348,12 @@
     {
       "type": "object",
       "shape": {
-        "id": 1692,
-        "kind": 1727,
-        "title": 1710,
-        "key": 1728
+        "id": 1726,
+        "kind": 1761,
+        "title": 1744,
+        "key": 1762
       },
-      "catchall": 1729,
+      "catchall": 1763,
       "checks": []
     },
     {
@@ -17006,7 +17365,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1692,
+      "innerType": 1726,
       "checks": []
     },
     {
@@ -17016,12 +17375,12 @@
     {
       "type": "object",
       "shape": {
-        "id": 1692,
-        "kind": 1731,
-        "title": 1710,
-        "transport": 1732
+        "id": 1726,
+        "kind": 1765,
+        "title": 1744,
+        "transport": 1766
       },
-      "catchall": 1734,
+      "catchall": 1768,
       "checks": []
     },
     {
@@ -17033,7 +17392,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1733,
+      "innerType": 1767,
       "checks": []
     },
     {
@@ -17052,12 +17411,12 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1736,
+      "innerType": 1770,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1692,
+      "element": 1726,
       "checks": [
         {
           "check": "max_length",
@@ -17074,11 +17433,11 @@
       "type": "object",
       "name": "councilPeerSendInputSchema",
       "shape": {
-        "recipientAgentId": 1739,
-        "operationId": 1740,
-        "message": 1741
+        "recipientAgentId": 1773,
+        "operationId": 1774,
+        "message": 1775
       },
-      "catchall": 1742,
+      "catchall": 1776,
       "checks": []
     },
     {
@@ -17134,11 +17493,11 @@
       "name": "councilPeerSendOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1744,
-        "data": 1745
+        "mutated": 1778,
+        "data": 1779
       },
       "catchall": 111,
       "checks": []
@@ -17153,14 +17512,14 @@
     {
       "type": "object",
       "shape": {
-        "senderAgentId": 1746,
-        "recipientAgentId": 1747,
-        "operationId": 1748,
-        "inputMessageId": 1749,
-        "messageId": 1750,
-        "delivery": 1751
+        "senderAgentId": 1780,
+        "recipientAgentId": 1781,
+        "operationId": 1782,
+        "inputMessageId": 1783,
+        "messageId": 1784,
+        "delivery": 1785
       },
-      "catchall": 1752,
+      "catchall": 1786,
       "checks": []
     },
     {
@@ -17246,8 +17605,8 @@
         "chatId": 1504,
         "operationId": 1513,
         "message": 1514,
-        "projectId": 1754,
-        "steer": 1755
+        "projectId": 1788,
+        "steer": 1789
       },
       "catchall": 1515,
       "checks": []
@@ -17270,7 +17629,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1756,
+      "innerType": 1790,
       "defaultValue": false,
       "checks": []
     },
@@ -17283,11 +17642,11 @@
       "name": "councilProjectSendToolOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1758,
-        "data": 1759
+        "mutated": 1792,
+        "data": 1793
       },
       "catchall": 111,
       "checks": []
@@ -17304,12 +17663,12 @@
       "shape": {
         "chatId": 1504,
         "sourceChatId": 1504,
-        "operationId": 1760,
-        "messageId": 1761,
-        "inputMessageId": 1762,
-        "delivery": 1763
+        "operationId": 1794,
+        "messageId": 1795,
+        "inputMessageId": 1796,
+        "delivery": 1797
       },
-      "catchall": 1764,
+      "catchall": 1798,
       "checks": []
     },
     {
@@ -17360,11 +17719,11 @@
       "type": "object",
       "name": "councilProjectChatCreateInputSchema",
       "shape": {
-        "operationId": 1766,
-        "projectId": 1754,
-        "title": 1767
+        "operationId": 1800,
+        "projectId": 1788,
+        "title": 1801
       },
-      "catchall": 1768,
+      "catchall": 1802,
       "checks": []
     },
     {
@@ -17407,11 +17766,11 @@
       "name": "councilProjectChatCreateOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1770,
-        "data": 1771
+        "mutated": 1804,
+        "data": 1805
       },
       "catchall": 111,
       "checks": []
@@ -17426,12 +17785,12 @@
     {
       "type": "object",
       "shape": {
-        "projectId": 1754,
-        "operationId": 1772,
-        "chatId": 1773,
-        "workerId": 1774
+        "projectId": 1788,
+        "operationId": 1806,
+        "chatId": 1807,
+        "workerId": 1808
       },
-      "catchall": 1775,
+      "catchall": 1809,
       "checks": []
     },
     {
@@ -17481,8 +17840,8 @@
         "description": 1465,
         "title": 1466,
         "operationId": 1468,
-        "projectId": 1754,
-        "start": 1777
+        "projectId": 1788,
+        "start": 1811
       },
       "catchall": 1469,
       "checks": []
@@ -17490,7 +17849,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1778,
+      "innerType": 1812,
       "defaultValue": true,
       "checks": []
     },
@@ -17503,11 +17862,11 @@
       "name": "councilProjectTaskCreateOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1780,
-        "data": 1781
+        "mutated": 1814,
+        "data": 1815
       },
       "catchall": 111,
       "checks": []
@@ -17522,13 +17881,13 @@
     {
       "type": "object",
       "shape": {
-        "projectId": 1754,
-        "operationId": 1782,
-        "taskId": 1783,
-        "workerId": 1784,
-        "started": 1785
+        "projectId": 1788,
+        "operationId": 1816,
+        "taskId": 1817,
+        "workerId": 1818,
+        "started": 1819
       },
-      "catchall": 1786,
+      "catchall": 1820,
       "checks": []
     },
     {
@@ -17579,11 +17938,11 @@
       "type": "object",
       "name": "councilProjectTaskStartInputSchema",
       "shape": {
-        "operationId": 1788,
-        "projectId": 1754,
-        "taskId": 1789
+        "operationId": 1822,
+        "projectId": 1788,
+        "taskId": 1823
       },
-      "catchall": 1790,
+      "catchall": 1824,
       "checks": []
     },
     {
@@ -17621,11 +17980,11 @@
       "name": "councilProjectTaskStartOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1792,
-        "data": 1793
+        "mutated": 1826,
+        "data": 1827
       },
       "catchall": 111,
       "checks": []
@@ -17640,13 +17999,13 @@
     {
       "type": "object",
       "shape": {
-        "operationId": 1788,
-        "projectId": 1754,
-        "taskId": 1789,
-        "dispatchId": 1794,
-        "kind": 1795
+        "operationId": 1822,
+        "projectId": 1788,
+        "taskId": 1823,
+        "dispatchId": 1828,
+        "kind": 1829
       },
-      "catchall": 1790,
+      "catchall": 1824,
       "checks": []
     },
     {
@@ -17674,12 +18033,12 @@
       "type": "object",
       "name": "councilProjectInterruptInputSchema",
       "shape": {
-        "operationId": 1797,
-        "projectId": 1754,
-        "chatId": 1798,
-        "targetKind": 1799
+        "operationId": 1831,
+        "projectId": 1788,
+        "chatId": 1832,
+        "targetKind": 1833
       },
-      "catchall": 1800,
+      "catchall": 1834,
       "checks": []
     },
     {
@@ -17725,11 +18084,11 @@
       "name": "councilProjectInterruptOutputSchema",
       "shape": {
         "summary": 50,
-        "target": 1534,
+        "target": 1552,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1802,
-        "data": 1803
+        "mutated": 1836,
+        "data": 1837
       },
       "catchall": 111,
       "checks": []
@@ -17741,13 +18100,13 @@
     {
       "type": "object",
       "shape": {
-        "operationId": 1797,
-        "projectId": 1754,
-        "chatId": 1798,
-        "targetKind": 1799,
-        "status": 1804
+        "operationId": 1831,
+        "projectId": 1788,
+        "chatId": 1832,
+        "targetKind": 1833,
+        "status": 1838
       },
-      "catchall": 1800,
+      "catchall": 1834,
       "checks": []
     },
     {
@@ -17763,8 +18122,8 @@
       "type": "union",
       "name": "cantripMcpBindingSchema",
       "options": [
-        1806,
-        1820
+        1840,
+        1854
       ],
       "discriminator": "contextKind",
       "checks": [
@@ -17778,22 +18137,22 @@
     {
       "type": "object",
       "shape": {
-        "bindingId": 1807,
-        "ownerId": 1808,
-        "chatId": 1809,
-        "executionLaneId": 1810,
-        "workerId": 1811,
+        "bindingId": 1841,
+        "ownerId": 1842,
+        "chatId": 1843,
+        "executionLaneId": 1844,
+        "workerId": 1845,
         "permissionProfileId": 72,
-        "allowedOperations": 1812,
-        "issuedAt": 1813,
-        "expiresAt": 1814,
-        "contextKind": 1815,
-        "projectId": 1816,
-        "worktreeId": 1817,
+        "allowedOperations": 1846,
+        "issuedAt": 1847,
+        "expiresAt": 1848,
+        "contextKind": 1849,
+        "projectId": 1850,
+        "worktreeId": 1851,
         "rootKind": 74,
-        "scratchRootId": 1818
+        "scratchRootId": 1852
       },
-      "catchall": 1819,
+      "catchall": 1853,
       "checks": []
     },
     {
@@ -17880,7 +18239,7 @@
         },
         {
           "check": "max_length",
-          "maximum": 74,
+          "maximum": 75,
           "when": "length"
         },
         {
@@ -17963,22 +18322,22 @@
     {
       "type": "object",
       "shape": {
-        "bindingId": 1807,
-        "ownerId": 1808,
-        "chatId": 1809,
-        "executionLaneId": 1810,
-        "workerId": 1811,
+        "bindingId": 1841,
+        "ownerId": 1842,
+        "chatId": 1843,
+        "executionLaneId": 1844,
+        "workerId": 1845,
         "permissionProfileId": 72,
-        "allowedOperations": 1812,
-        "issuedAt": 1813,
-        "expiresAt": 1814,
-        "contextKind": 1821,
-        "projectId": 1822,
-        "worktreeId": 1823,
-        "rootKind": 1824,
-        "scratchRootId": 1825
+        "allowedOperations": 1846,
+        "issuedAt": 1847,
+        "expiresAt": 1848,
+        "contextKind": 1855,
+        "projectId": 1856,
+        "worktreeId": 1857,
+        "rootKind": 1858,
+        "scratchRootId": 1859
       },
-      "catchall": 1826,
+      "catchall": 1860,
       "checks": []
     },
     {
@@ -18023,15 +18382,15 @@
       "type": "object",
       "name": "workerCantripMcpServerCapabilitiesSchema",
       "shape": {
-        "bindingProtocolVersions": 1828,
-        "operations": 1830
+        "bindingProtocolVersions": 1862,
+        "operations": 1864
       },
-      "catchall": 1832,
+      "catchall": 1866,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1829,
+      "element": 1863,
       "checks": [
         {
           "check": "min_length",
@@ -18073,7 +18432,7 @@
     },
     {
       "type": "array",
-      "element": 1831,
+      "element": 1865,
       "checks": [
         {
           "check": "min_length",
@@ -18118,7 +18477,7 @@
       "shape": {
         "tool": 135
       },
-      "catchall": 1834,
+      "catchall": 1868,
       "checks": []
     },
     {
@@ -18128,8 +18487,8 @@
     {
       "type": "union",
       "options": [
-        1836,
-        1837
+        1870,
+        1871
       ],
       "discriminator": "contextKind",
       "checks": []
@@ -18137,44 +18496,44 @@
     {
       "type": "object",
       "shape": {
-        "ownerId": 1808,
-        "chatId": 1809,
-        "workerId": 1811,
+        "ownerId": 1842,
+        "chatId": 1843,
+        "workerId": 1845,
         "permissionProfileId": 72,
-        "allowedOperations": 1812,
-        "contextKind": 1815,
-        "projectId": 1816,
-        "worktreeId": 1817,
+        "allowedOperations": 1846,
+        "contextKind": 1849,
+        "projectId": 1850,
+        "worktreeId": 1851,
         "rootKind": 74,
-        "scratchRootId": 1818
+        "scratchRootId": 1852
       },
-      "catchall": 1819,
+      "catchall": 1853,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "ownerId": 1808,
-        "chatId": 1809,
-        "workerId": 1811,
+        "ownerId": 1842,
+        "chatId": 1843,
+        "workerId": 1845,
         "permissionProfileId": 72,
-        "allowedOperations": 1812,
-        "contextKind": 1821,
-        "projectId": 1822,
-        "worktreeId": 1823,
-        "rootKind": 1824,
-        "scratchRootId": 1825
+        "allowedOperations": 1846,
+        "contextKind": 1855,
+        "projectId": 1856,
+        "worktreeId": 1857,
+        "rootKind": 1858,
+        "scratchRootId": 1859
       },
-      "catchall": 1826,
+      "catchall": 1860,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "bindingId": 1839,
-        "request": 1840
+        "bindingId": 1873,
+        "request": 1874
       },
-      "catchall": 1854,
+      "catchall": 1888,
       "checks": []
     },
     {
@@ -18193,8 +18552,8 @@
     {
       "type": "union",
       "options": [
-        1841,
-        1851
+        1875,
+        1885
       ],
       "discriminator": "operation",
       "checks": []
@@ -18202,14 +18561,14 @@
     {
       "type": "object",
       "shape": {
-        "threadId": 1842,
-        "turnId": 1843,
-        "itemId": 1844,
-        "callId": 1846,
-        "operation": 1848,
-        "script": 1849
+        "threadId": 1876,
+        "turnId": 1877,
+        "itemId": 1878,
+        "callId": 1880,
+        "operation": 1882,
+        "script": 1883
       },
-      "catchall": 1850,
+      "catchall": 1884,
       "checks": []
     },
     {
@@ -18250,7 +18609,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1845,
+      "innerType": 1879,
       "checks": []
     },
     {
@@ -18273,7 +18632,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1847,
+      "innerType": 1881,
       "checks": []
     },
     {
@@ -18329,13 +18688,13 @@
     {
       "type": "object",
       "shape": {
-        "threadId": 1842,
-        "turnId": 1843,
-        "itemId": 1844,
-        "callId": 1846,
-        "operation": 1852
+        "threadId": 1876,
+        "turnId": 1877,
+        "itemId": 1878,
+        "callId": 1880,
+        "operation": 1886
       },
-      "catchall": 1853,
+      "catchall": 1887,
       "checks": []
     },
     {
@@ -18356,7 +18715,7 @@
     {
       "type": "object",
       "shape": {},
-      "catchall": 1856,
+      "catchall": 1890,
       "checks": []
     },
     {
@@ -18366,9 +18725,9 @@
     {
       "type": "object",
       "shape": {
-        "script": 1849
+        "script": 1883
       },
-      "catchall": 1858,
+      "catchall": 1892,
       "checks": []
     },
     {
@@ -18378,42 +18737,42 @@
     {
       "type": "object",
       "shape": {
-        "_meta": 1860,
-        "content": 1870,
-        "structuredContent": 1898,
-        "isError": 1902
+        "_meta": 1894,
+        "content": 1904,
+        "structuredContent": 1932,
+        "isError": 1936
       },
-      "catchall": 1904,
+      "catchall": 1938,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1861,
+      "innerType": 1895,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "progressToken": 1862,
-        "io.modelcontextprotocol/related-task": 1866
+        "progressToken": 1896,
+        "io.modelcontextprotocol/related-task": 1900
       },
-      "catchall": 1869,
+      "catchall": 1903,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1863,
+      "innerType": 1897,
       "checks": []
     },
     {
       "type": "union",
       "options": [
-        1864,
-        1865
+        1898,
+        1899
       ],
       "checks": []
     },
@@ -18435,13 +18794,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1867,
+      "innerType": 1901,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "taskId": 1868
+        "taskId": 1902
       },
       "checks": []
     },
@@ -18456,30 +18815,30 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1871,
+      "innerType": 1905,
       "defaultValue": [],
       "checks": []
     },
     {
       "type": "array",
-      "element": 1872,
+      "element": 1906,
       "checks": []
     },
     {
       "type": "union",
       "options": [
-        1873,
-        1889
+        1907,
+        1923
       ],
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "type": 1874,
-        "text": 1875,
-        "annotations": 1876,
-        "_meta": 1885
+        "type": 1908,
+        "text": 1909,
+        "annotations": 1910,
+        "_meta": 1919
       },
       "checks": []
     },
@@ -18498,15 +18857,15 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1877,
+      "innerType": 1911,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "audience": 1878,
-        "priority": 1881,
-        "lastModified": 1883
+        "audience": 1912,
+        "priority": 1915,
+        "lastModified": 1917
       },
       "checks": []
     },
@@ -18514,12 +18873,12 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1879,
+      "innerType": 1913,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1880,
+      "element": 1914,
       "checks": []
     },
     {
@@ -18534,7 +18893,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1882,
+      "innerType": 1916,
       "checks": []
     },
     {
@@ -18556,7 +18915,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1884,
+      "innerType": 1918,
       "checks": []
     },
     {
@@ -18575,13 +18934,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1886,
+      "innerType": 1920,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1887,
-      "valueType": 1888,
+      "keyType": 1921,
+      "valueType": 1922,
       "checks": []
     },
     {
@@ -18595,11 +18954,11 @@
     {
       "type": "object",
       "shape": {
-        "type": 1890,
-        "data": 1891,
-        "mimeType": 1892,
-        "annotations": 1893,
-        "_meta": 1894
+        "type": 1924,
+        "data": 1925,
+        "mimeType": 1926,
+        "annotations": 1927,
+        "_meta": 1928
       },
       "checks": []
     },
@@ -18622,20 +18981,20 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1877,
+      "innerType": 1911,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1895,
+      "innerType": 1929,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1896,
-      "valueType": 1897,
+      "keyType": 1930,
+      "valueType": 1931,
       "checks": []
     },
     {
@@ -18650,13 +19009,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1899,
+      "innerType": 1933,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1900,
-      "valueType": 1901,
+      "keyType": 1934,
+      "valueType": 1935,
       "checks": []
     },
     {
@@ -18671,7 +19030,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1903,
+      "innerType": 1937,
       "checks": []
     },
     {

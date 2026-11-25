@@ -479,6 +479,7 @@ const councilProjectMessages =
   councilProjectCreation ||
   councilProjectSteering ||
   process.argv.includes("--council-project-messages");
+const councilMcpSetup = process.argv.includes("--council-mcp-setup");
 const councilAccountInventory = process.argv.includes(
   "--council-account-inventory",
 );
@@ -1177,6 +1178,7 @@ async function flow(
       councilHistory ||
       councilPeerMessages ||
       councilInventory ||
+      councilMcpSetup ||
       councilCompaction ||
       councilBrowserHistory ||
       councilAutomations ||
@@ -1234,6 +1236,7 @@ async function flow(
               workers,
             }
           : undefined,
+        mcpSetupRoot: councilMcpSetup ? root : undefined,
         inventory: councilInventory
           ? {
               fixture,
@@ -2492,6 +2495,7 @@ try {
         councilProviderTest ||
         councilActiveProvider ||
         councilRoutineAuthoring ||
+        councilMcpSetup ||
         councilPeerMessages ||
         councilProjectMessages
           ? { CANTRIP_COUNCIL_ENABLED: "true" }

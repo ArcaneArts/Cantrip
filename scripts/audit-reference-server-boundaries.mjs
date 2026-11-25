@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "6be765e0a886708984315e1e6405829c252d906d4736337ab9037774edf50d91",
+    "dbb17409639e7a1a84a7fd0c24c1c15dcf9aa51df6f2e0b677a7c983300d7b8d",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -4108,6 +4108,13 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation === "council.mcp.setup") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "The active Council worker seals the MCP configuration with the existing settings key. Core stores the protected configuration for the bound Worker, and the tool returns only setup metadata.",
+    };
+  }
   if (operation === "council.message.post") {
     return {
       classification: "endpoint-protected",

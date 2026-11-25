@@ -11,6 +11,7 @@ import {
 import { actualCouncilRoutineAuthoring } from "./actual-council-routine-authoring.mjs";
 import { actualCouncilBrowserHistory } from "./actual-council-browser-history.mjs";
 import { actualCouncilCompaction } from "./actual-council-compaction.mjs";
+import { actualCouncilMcpSetup } from "./actual-council-mcp-setup.mjs";
 import { actualCouncilMemory } from "./actual-council-memory.mjs";
 import { actualCouncilHistory } from "./actual-council-history.mjs";
 import { actualCouncilInventory } from "./actual-council-inventory.mjs";
@@ -36,6 +37,7 @@ export async function actualCouncilSteering({
   memoryAppOrigin,
   historyFixture,
   inventory,
+  mcpSetupRoot,
   peerAppOrigin,
   browserHistory,
   automations,
@@ -79,6 +81,7 @@ export async function actualCouncilSteering({
         testCreation,
         readOnly,
         nativeCli,
+        mcpSetup,
       }) => {
         const models = await import("/src/lib/api/models.ts");
         const provider = await models.createModelProvider({
@@ -129,6 +132,9 @@ export async function actualCouncilSteering({
             ? { defaultCouncilPermissionProfileId: ":read-only" }
             : {}),
           ...(nativeCli ? { defaultCouncilPermissionProfileId: ":yolo" } : {}),
+          ...(mcpSetup
+            ? { defaultCouncilPermissionProfileId: ":workspace" }
+            : {}),
         });
         const workers = await (
           await import("/src/lib/api/worker-wire.ts")
@@ -182,6 +188,7 @@ export async function actualCouncilSteering({
             providerRecovery,
           ) && !testCreation,
         nativeCli: Boolean(inventory || peerAppOrigin),
+        mcpSetup: Boolean(mcpSetupRoot),
       },
     );
     await eventually(
@@ -602,6 +609,19 @@ export async function actualCouncilSteering({
         submit,
         readChat,
         readMessages,
+        result,
+      });
+    }
+    if (mcpSetupRoot) {
+      await actualCouncilMcpSetup({
+        page,
+        root: mcpSetupRoot,
+        chatId,
+        workerId,
+        model,
+        tools: modelFunctions(held.request.input.tools),
+        submit,
+        readChat,
         result,
       });
     }

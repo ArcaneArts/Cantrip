@@ -3,6 +3,7 @@ mod controls;
 mod creation;
 mod history;
 pub(super) mod inventory;
+mod mcp_setup;
 mod memory;
 mod notifications;
 mod peers;
@@ -76,6 +77,7 @@ pub(super) async fn execute_agent_operation(
             history::execute_agent_operation(&repository, owner, context, operation, arguments)
                 .await
         }
+        "council.mcp.setup" => mcp_setup::create(service, owner, context, arguments).await,
         "council.inventory" => inventory::read(service, owner, context, arguments).await,
         "council.peer.send" => peers::send(service, owner, context, arguments).await,
         "council.project.send" => {
