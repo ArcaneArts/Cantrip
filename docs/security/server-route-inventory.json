@@ -255,7 +255,7 @@
     "websocket": 7,
     "workerCredentialRoutes": 46,
     "durableTables": 135,
-    "agentOperations": 64,
+    "agentOperations": 66,
     "workerCommands": 326,
     "liveResources": 47,
     "clientControlCommands": 4,
@@ -271,7 +271,7 @@
     }
   },
   "contractSetDigests": {
-    "agentOperations": "dba793cdcdbc4f20a282cad2aa7c8e07e71589e14ce0b1c92d53699550a5344a",
+    "agentOperations": "69d702ba5da1589b8ec4882ba9efa91ac5950a21260a7b565d064cae6f100087",
     "applicationRoutes": "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
     "cliCommands": "eda5c53bda92870bd738663b686243a6183683a8d04af6af5f1bd43e02893f57",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
@@ -8657,9 +8657,19 @@
       "rationale": "The active Council binding selects its own fast memory. Browser and worker endpoints open and seal row-bound content, while Core stores ciphertext and revision."
     },
     {
+      "operation": "council.project.chat.create",
+      "classification": "endpoint-protected",
+      "rationale": "The active Council worker seals the project chat title and any Task definition. Core resolves the owned placement and reserves the original encrypted creation request."
+    },
+    {
       "operation": "council.project.send",
       "classification": "endpoint-protected",
       "rationale": "The active Council worker seals the input and history copies. Core verifies the owned target and records only delivery and message identities for retry."
+    },
+    {
+      "operation": "council.project.task.create",
+      "classification": "endpoint-protected",
+      "rationale": "The active Council worker seals the project chat title and any Task definition. Core resolves the owned placement and reserves the original encrypted creation request."
     },
     {
       "operation": "explorer.list",

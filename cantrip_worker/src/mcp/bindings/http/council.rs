@@ -10,6 +10,7 @@ use cantrip_crypto::{
     content::{decrypt_private_label, encrypt_private_label},
     derive_field_key, encrypt_payload,
 };
+use cantrip_protocol::external_mcp::orchestration::resource_id;
 use cantrip_protocol::{mcp_host, response::response_error};
 use cantrip_wire::{Value, value::json};
 
@@ -35,6 +36,31 @@ impl Inner {
         let agent_id = &authorization.active.binding["chatId"];
         let arguments = match operation {
             "council.create" => protect(service, authorization, &request, &input)?,
+            "council.project.chat.create" | "council.project.task.create" => {
+                let task = operation == "council.project.task.create";
+                let operation_id = input["operationId"]
+                    .as_str()
+                    .context("Creation operation ID")?;
+                let id = resource_id(
+                    authorization.identity.0.as_str().context("Council owner")?,
+                    agent_id.as_str().context("Council agent ID")?,
+                    uuid::Uuid::parse_str(operation_id)?,
+                    if task {
+                        "council-project-task"
+                    } else {
+                        "council-project-chat"
+                    },
+                )
+                .to_string();
+                if task {
+                    let (title, definition) =
+                        super::tasks::protect_task_creation(service, authorization, &input, &id)?;
+                    json!({"projectId":input["projectId"],"operationId":operation_id,"taskId":id,"titleProtection":title,"task":definition,"start":input["start"]})
+                } else {
+                    let title = protect_title(service, authorization, &id, &input["title"])?;
+                    json!({"projectId":input["projectId"],"operationId":operation_id,"chatId":id,"titleProtection":title})
+                }
+            }
             "council.memory.write" => {
                 let key = grant(service, authorization, "chat-content", None)?;
                 json!({"expectedRevision":input["expectedRevision"],"protectedMemory":council_memory::seal(&key, agent_id,
@@ -71,6 +97,7 @@ impl Inner {
                 );
                 reply["data"] = council_inventory::open(service, &identity, &reply["data"])?;
             }
+            "council.project.chat.create" | "council.project.task.create" => {}
             _ => {
                 reply["data"] = open_memory(service, authorization, agent_id, &reply["data"])?;
             }
@@ -119,20 +146,29 @@ fn grant(
     Ok(grant)
 }
 
+fn protect_title(
+    service: &Service,
+    authorization: &Authorized,
+    id: &str,
+    title: &Value,
+) -> Result<Value> {
+    let label = grant(service, authorization, "private-surface-metadata", None)?;
+    encrypt_private_label(
+        &label.component.key,
+        &json!({
+            "ownerId":label.owner_id,"keyRevision":label.component.key_revision,"recordKind":"chat","rowId":id,
+        }),
+        title,
+    )
+}
+
 fn protect(
     service: &Service,
     authorization: &Authorized,
     id: &str,
     input: &Value,
 ) -> Result<Value> {
-    let label = grant(service, authorization, "private-surface-metadata", None)?;
-    let title = encrypt_private_label(
-        &label.component.key,
-        &json!({
-            "ownerId":label.owner_id,"keyRevision":label.component.key_revision,"recordKind":"chat","rowId":id,
-        }),
-        &input["title"],
-    )?;
+    let title = protect_title(service, authorization, id, &input["title"])?;
     let role = Zeroizing::new(
         input["role"]
             .as_str()

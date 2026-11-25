@@ -1,3 +1,4 @@
+import type { WorkerSummary } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
@@ -9,12 +10,21 @@ import {
   type CouncilAgent,
 } from "@/lib/api/council";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
+import { useReadyChatWorkerContentGrant } from "@/lib/alert-worker-encryption";
 
 const rosterKey = ["council", "agents"] as const;
 
-export function useCouncilWorkspace(active: boolean) {
+export function useCouncilWorkspace(
+  active: boolean,
+  workers?: WorkerSummary[],
+) {
   const cache = useQueryClient();
   const liveStatus = useAppLiveStatus();
+  useReadyChatWorkerContentGrant(
+    active ? workers : undefined,
+    "private-surface-metadata",
+  );
+  useReadyChatWorkerContentGrant(active ? workers : undefined, "task-content");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [history, setHistory] = useState<{
     agentId: string;

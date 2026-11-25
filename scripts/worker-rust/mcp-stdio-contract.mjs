@@ -26,6 +26,10 @@ import {
   councilMemoryWriteToolOutputSchema,
   councilProjectSendInputSchema,
   councilProjectSendToolOutputSchema,
+  councilProjectChatCreateInputSchema,
+  councilProjectChatCreateOutputSchema,
+  councilProjectTaskCreateInputSchema,
+  councilProjectTaskCreateOutputSchema,
   workerCantripMcpServerCapabilitiesSchema,
 } from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
@@ -196,11 +200,25 @@ async function generate() {
       councilProjectSendInputSchema,
       councilProjectSendToolOutputSchema,
     ],
+    [
+      "council_project_chat_create",
+      "council.project.chat.create",
+      "Create an Agent chat in a project from council_inventory. Send the work to the returned chat ID. Reuse the operation ID when retrying creation.",
+      councilProjectChatCreateInputSchema,
+      councilProjectChatCreateOutputSchema,
+    ],
+    [
+      "council_project_task_create",
+      "council.project.task.create",
+      "Create a Task on the selected project's worker. It starts through the normal Task queue unless start is false. Reuse the operation ID when retrying creation.",
+      councilProjectTaskCreateInputSchema,
+      councilProjectTaskCreateOutputSchema,
+    ],
   ];
   profiles.council = {
     ...profiles["standalone-web"],
     instructions:
-      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Use council_inventory to find projects, chats, and Tasks. Read and update your fast memory with council_memory_read and council_memory_write. Search retained work with council_history_search and open evidence with council_history_read. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
+      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Use council_inventory to find projects, chats, and Tasks. Create project Agent chats or Tasks with the Council project tools. Read and update your fast memory with council_memory_read and council_memory_write. Search retained work with council_history_search and open evidence with council_history_read. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
     tools: [
       ...profiles["standalone-web"].tools,
       ...council.map(([name, operation, description, input, output]) => {

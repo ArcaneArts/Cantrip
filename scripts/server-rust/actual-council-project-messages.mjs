@@ -7,6 +7,7 @@ import {
 import { eventually } from "./full-worker.mjs";
 import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
 import { actualCouncilProjectApprovals } from "./actual-council-project-approvals.mjs";
+import { actualCouncilProjectCreation } from "./actual-council-project-creation.mjs";
 
 export async function actualCouncilProjectMessages({
   page,
@@ -19,7 +20,9 @@ export async function actualCouncilProjectMessages({
   councilId,
   targetChatId,
   targetWorkerId,
+  workerId,
   projectApprovals,
+  projectCreation,
 }) {
   const target = await taskModelProvider();
   const prepareText = "Open the existing project chat on its worker.";
@@ -374,11 +377,14 @@ export async function actualCouncilProjectMessages({
     );
     await link.waitFor({ state: "visible", timeout: 30_000 });
     assert.equal(await page.getByText(answer, { exact: true }).count(), 0);
-    await link.click();
-    await page
-      .locator(`[data-chat-message-id="${receipt.inputMessageId}"]`)
-      .first()
-      .waitFor({ state: "visible", timeout: 30_000 });
+    const openSource = async () => {
+      await link.click();
+      await page
+        .locator(`[data-chat-message-id="${receipt.inputMessageId}"]`)
+        .first()
+        .waitFor({ state: "visible", timeout: 30_000 });
+    };
+    await openSource();
 
     result.councilProjectMessages = { targetWorkerId, projectId, ...receipt };
     result.councilProjectResult = source;
@@ -391,7 +397,23 @@ export async function actualCouncilProjectMessages({
     result.steps.push(
       "A second project result steered the Council agent's existing native execution lane.",
     );
+    if (projectCreation)
+      await actualCouncilProjectCreation({
+        page,
+        model,
+        target,
+        tools,
+        submit,
+        idle,
+        sender,
+        projectId,
+        workerId,
+        targetWorkerId,
+        targetProfileId: ready.profileId,
+        result,
+      });
     if (projectApprovals) {
+      if (projectCreation) await openSource();
       await actualCouncilProjectApprovals({
         page,
         model,

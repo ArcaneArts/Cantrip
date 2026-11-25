@@ -123,6 +123,8 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
             | "council.history.read"
             | "council.inventory"
             | "council.project.send"
+            | "council.project.chat.create"
+            | "council.project.task.create"
     ) {
         return super::council::execute_agent_operation(
             service,
