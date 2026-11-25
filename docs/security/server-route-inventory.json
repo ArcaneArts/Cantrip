@@ -255,7 +255,7 @@
     "websocket": 7,
     "workerCredentialRoutes": 46,
     "durableTables": 135,
-    "agentOperations": 63,
+    "agentOperations": 64,
     "workerCommands": 324,
     "liveResources": 47,
     "clientControlCommands": 4,
@@ -271,7 +271,7 @@
     }
   },
   "contractSetDigests": {
-    "agentOperations": "bcecd905fdfe55468dccca48834ffbb0070b937c80245f10dc98ad3e588f591f",
+    "agentOperations": "dba793cdcdbc4f20a282cad2aa7c8e07e71589e14ce0b1c92d53699550a5344a",
     "applicationRoutes": "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
     "cliCommands": "eda5c53bda92870bd738663b686243a6183683a8d04af6af5f1bd43e02893f57",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
@@ -8655,6 +8655,11 @@
       "operation": "council.memory.write",
       "classification": "endpoint-protected",
       "rationale": "The active Council binding selects its own fast memory. Browser and worker endpoints open and seal row-bound content, while Core stores ciphertext and revision."
+    },
+    {
+      "operation": "council.project.send",
+      "classification": "endpoint-protected",
+      "rationale": "The active Council worker seals the input and history copies. Core verifies the owned target and records only delivery and message identities for retry."
     },
     {
       "operation": "explorer.list",

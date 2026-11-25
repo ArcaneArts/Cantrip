@@ -15,6 +15,64 @@ pub(super) async fn execute(
     arguments: &Value,
 ) -> Result<Value> {
     let input = parse("agentChatSendWireSchema", arguments)?;
+    deliver(service, owner, source, &source["projectId"], &input).await
+}
+
+pub(super) async fn execute_council(
+    service: &Arc<AuthService>,
+    owner: &str,
+    source: &Value,
+    arguments: &Value,
+) -> Result<Value> {
+    let input = parse("councilProjectSendExchangeSchema", arguments)?;
+    if input["kind"] == "send" {
+        return deliver(
+            service,
+            owner,
+            source,
+            &input["projectId"],
+            &input["delivery"],
+        )
+        .await;
+    }
+    let project = input["projectId"].as_str().context("Receiving project")?;
+    let catalog = super::agent_operations::project_chats(service, owner, project).await?;
+    let target = catalog
+        .iter()
+        .find(|chat| chat["experience"] == "agent" && chat["id"] == input["chatId"])
+        .ok_or(chats::agent_delivery::DeliveryError::ReceiverUnavailable)?;
+    let settings =
+        crate::settings::repository::SettingsRepository::new(service.repository.database.clone());
+    let default = if target["modelId"].is_null() {
+        Value::from_serialize(&settings.get_user_settings(owner).await?["defaultModelId"])
+    } else {
+        Value::Null
+    };
+    let repository = chats::Repository::new(service.repository.database.clone());
+    let sender = repository
+        .council_agents(owner)
+        .await?
+        .into_iter()
+        .find(|agent| agent["id"] == source["chatId"])
+        .ok_or(chats::agent_delivery::DeliveryError::SenderUnavailable)?;
+    let data = parse(
+        "councilProjectChatTargetWireSchema",
+        &json!({
+            "chat":super::agent_chats::descriptor(target, &default),
+            "sender":json!({"id":source["chatId"],"titleProtection":sender["titleProtection"],"status":source["status"],
+                "configuration":source["modelConfiguration"],"automationPaused":false}),
+        }),
+    )?;
+    Ok(json!({"summary":"Resolved the Council sender and project chat.","data":data}))
+}
+
+async fn deliver(
+    service: &Arc<AuthService>,
+    owner: &str,
+    source: &Value,
+    project: &Value,
+    input: &Value,
+) -> Result<Value> {
     if input["chatId"] == source["chatId"] {
         return Err(OperationError::new(
             409,
@@ -80,14 +138,11 @@ pub(super) async fn execute(
         .into());
     }
     let repository = chats::Repository::new(service.repository.database.clone());
-    chats::agent_delivery::receiver(
-        repository.execution_context(owner, target).await?,
-        &source["projectId"],
-    )?;
-    let (received, sent) = repository
-        .deliver_agent_message(owner, source, target, &input)
+    chats::agent_delivery::receiver(repository.execution_context(owner, target).await?, project)?;
+    let delivered = repository
+        .deliver_agent_message(owner, source, target, project, input)
         .await?;
-    for message in [&received, &sent] {
+    for message in &delivered.messages {
         service
             .chat_mutations
             .publish_persisted_message(
@@ -99,7 +154,11 @@ pub(super) async fn execute(
             .await;
     }
     drop(service.execution.recovery.dispatch(owner, target));
+    let mut data = json!({"chatId":target,"sourceChatId":source["chatId"],"operationId":input["operationId"],"messageId":delivered.received_id,"delivery":"queued"});
+    if source.get("councilAgent").is_some() {
+        data["inputMessageId"] = delivered.input_id;
+    }
     Ok(
-        json!({"summary":"Agent message delivered to the receiving chat queue.","data":json!({"chatId":target,"sourceChatId":source["chatId"],"operationId":input["operationId"],"messageId":received["id"],"delivery":"queued"}),"mutated":true,"target":Value::Null,"worktreeId":source["worktreeId"],"continuationScheduled":false}),
+        json!({"summary":"Agent message delivered to the receiving chat queue.","data":data,"mutated":true,"target":Value::Null,"worktreeId":source["worktreeId"],"continuationScheduled":false}),
     )
 }

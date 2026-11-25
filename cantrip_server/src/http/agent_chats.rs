@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
-fn descriptor(chat: &Value, default_model: &Value) -> Value {
+pub(super) fn descriptor(chat: &Value, default_model: &Value) -> Value {
     json!({"id":chat["id"],"titleProtection":chat["titleProtection"],"status":chat["status"],"automationPaused":chat["automationPaused"],"configuration":json!({
         "modelId":if chat["modelId"].is_null(){default_model}else{&chat["modelId"]},
         "reasoningEffort":chat["reasoningEffort"],"customSubagentModel":chat["customSubagentModel"],"subagentModelId":chat["subagentModelId"],"subagentReasoningEffort":chat["subagentReasoningEffort"]

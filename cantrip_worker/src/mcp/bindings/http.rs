@@ -359,7 +359,7 @@ impl Inner {
             "task.list" | "task.status" | "task.wait" | "task.create" => {
                 self.task(authorization, &call, operation).await
             }
-            "chat.list" | "chat.read" | "chat.wait" | "chat.send" => {
+            "chat.list" | "chat.read" | "chat.wait" | "chat.send" | "council.project.send" => {
                 self.chat(authorization, &call, operation).await
             }
             "council.list"

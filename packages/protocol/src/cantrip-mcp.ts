@@ -73,6 +73,7 @@ export const cantripAgentOperationNameSchema = z.enum([
   "council.history.search",
   "council.history.read",
   "council.inventory",
+  "council.project.send",
 ]);
 
 export const CANTRIP_MCP_READ_OPERATIONS = [

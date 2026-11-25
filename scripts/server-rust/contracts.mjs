@@ -1069,6 +1069,8 @@ export const contractRoots = [
   "councilInventoryInputSchema",
   "councilInventoryWireSchema",
   "councilInventoryResultSchema",
+  "councilProjectSendExchangeSchema",
+  "councilProjectChatTargetWireSchema",
   "councilHistoryReadInputSchema",
   "councilHistorySearchCommandSchema",
   "councilHistorySearchExchangeSchema",

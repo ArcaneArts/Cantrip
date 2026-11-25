@@ -102,7 +102,7 @@ pub(crate) const CHAT_TOOLS: [(&str, &str); 4] = [
     ("chat.wait", "chat_wait"),
     ("chat.send", "chat_send"),
 ];
-pub(crate) const COUNCIL_TOOLS: [(&str, &str); 7] = [
+pub(crate) const COUNCIL_TOOLS: [(&str, &str); 8] = [
     ("council.list", "council_list"),
     ("council.create", "council_create"),
     ("council.memory.read", "council_memory_read"),
@@ -110,6 +110,7 @@ pub(crate) const COUNCIL_TOOLS: [(&str, &str); 7] = [
     ("council.history.search", "council_history_search"),
     ("council.history.read", "council_history_read"),
     ("council.inventory", "council_inventory"),
+    ("council.project.send", "council_project_send"),
 ];
 
 #[derive(Clone)]
@@ -552,7 +553,8 @@ impl Broker {
             let supported = council
                 && self.inner.encryption.is_some()
                 && capabilities.supports(operation)
-                && (operation != "council.create" || claims["permissionProfileId"] != ":read-only");
+                && (!matches!(operation, "council.create" | "council.project.send")
+                    || claims["permissionProfileId"] != ":read-only");
             (operation, tool, supported)
         }))
         .chain(
