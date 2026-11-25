@@ -4,6 +4,7 @@
 use super::{
     super::{
         admit::{raw_one, reject, text},
+        runtime::finish_gui::GuiClosure,
         suspension,
     },
     outcomes,
@@ -50,12 +51,15 @@ pub(in crate::native_commands) async fn finish(
         &worker,
         &logical,
         &text(&root["operation_generation"])?,
-        if row["terminal_evidence"]["terminalStatus"] == "failed" {
-            "failed"
-        } else {
-            "idle"
+        GuiClosure {
+            status: if row["terminal_evidence"]["terminalStatus"] == "failed" {
+                "failed"
+            } else {
+                "idle"
+            },
+            transport_ended: false,
+            reply: None,
         },
-        false,
     )
     .await?;
     Ok(())

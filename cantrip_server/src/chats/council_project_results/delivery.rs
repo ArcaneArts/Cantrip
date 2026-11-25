@@ -150,7 +150,7 @@ impl Delivery {
                 Event::TaskResult => task::acknowledge(tx, chat, operation).await?,
                 Event::ChatResult => {
                     let status = result_status.context("Council project result status")?;
-                    tx.query("UPDATE council_project_deliveries SET result_status=$3,callback_delivered_at=now() WHERE source_chat_id=$1 AND operation_id=$2::text::uuid", &[chat, operation, &status]).await?;
+                    tx.query("UPDATE council_project_deliveries SET result_status=$3,protected_reply=NULL,callback_delivered_at=now() WHERE source_chat_id=$1 AND operation_id=$2::text::uuid", &[chat, operation, &status]).await?;
                 }
             }
             Ok(true)
@@ -170,13 +170,16 @@ impl Backend for Delivery {
             let rows = self.database.query(
                 r#"SELECT jsonb_build_object(
                     'ownerId',source.owner_id,'chatId',d.source_chat_id,'operationId',d.operation_id,
-                    'attempts',d.callback_attempts,'result',result.message,
+                    'attempts',d.callback_attempts,
+                    'result',CASE WHEN COALESCE(terminal.status,d.result_status)='completed'
+                        THEN COALESCE(result.message, stored.protected_reply) END,
                     'source',jsonb_build_object(
                       'projectId',target.project_id,'chatId',d.target_chat_id,'inputMessageId',d.input_message_id,
                       'threadId',d.result_thread_id,'turnId',d.result_turn_id,'status',COALESCE(terminal.status,d.result_status)
                     )
                   )::text
                   FROM council_project_ready_results d
+                  JOIN council_project_deliveries stored USING (source_chat_id,operation_id)
                   JOIN council_agents source ON source.chat_id=d.source_chat_id
                   JOIN chats target ON target.id=d.target_chat_id AND target.owner_id=source.owner_id
                   LEFT JOIN native_commands n ON n.operation_id=d.result_operation_id AND n.chat_id=target.id

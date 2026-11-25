@@ -3,7 +3,12 @@ mod continuation;
 mod outcomes;
 mod pending;
 mod restored;
-use super::{Repository, admit::text, context};
+use super::{
+    Repository,
+    admit::text,
+    context,
+    runtime::finish_gui::{GuiClosure, GuiReply},
+};
 use crate::{
     database::{Executor, Transaction},
     wire::Value,
@@ -60,13 +65,42 @@ impl Repository {
         status: &str,
         transport_ended: bool,
     ) -> Result<bool> {
+        self.finish_logical_gui_outcome(
+            owner,
+            worker,
+            root,
+            generation,
+            GuiClosure {
+                status,
+                transport_ended,
+                reply: None,
+            },
+        )
+        .await
+    }
+    pub(super) async fn finish_logical_gui_outcome(
+        &self,
+        owner: &str,
+        worker: &str,
+        root: &str,
+        generation: &str,
+        closure: GuiClosure<'_>,
+    ) -> Result<bool> {
         let (owner, worker, root, generation, status) = (
             owner.to_owned(),
             worker.to_owned(),
             root.to_owned(),
             generation.to_owned(),
-            status.to_owned(),
+            closure.status.to_owned(),
         );
+        let reply = closure.reply.map(|reply| {
+            (
+                reply.thread_id.to_owned(),
+                reply.turn_id.to_owned(),
+                reply.message.clone(),
+            )
+        });
+        let transport_ended = closure.transport_ended;
         self.database
             .transaction(|tx| {
                 Box::pin(async move {
@@ -76,8 +110,17 @@ impl Repository {
                         &worker,
                         &root,
                         &generation,
-                        &status,
-                        transport_ended,
+                        GuiClosure {
+                            status: &status,
+                            transport_ended,
+                            reply: reply
+                                .as_ref()
+                                .map(|(thread_id, turn_id, message)| GuiReply {
+                                    thread_id,
+                                    turn_id,
+                                    message,
+                                }),
+                        },
                     )
                     .await
                 })

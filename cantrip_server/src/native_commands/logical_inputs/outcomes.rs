@@ -5,6 +5,7 @@ use crate::{
     native_commands::{
         admit::{raw_one, reject, text},
         context, queue, receipt,
+        runtime::finish_gui::GuiClosure,
     },
     wire::{Value, coercion::truthy, value::json},
 };
@@ -102,9 +103,13 @@ pub(super) async fn finish(
     worker: &str,
     root: &str,
     generation: &str,
-    status: &str,
-    transport_ended: bool,
+    closure: GuiClosure<'_>,
 ) -> Result<bool> {
+    let GuiClosure {
+        status,
+        transport_ended,
+        reply,
+    } = closure;
     let captured =
         context::read(Executor::Transaction(tx), owner, worker, root, generation).await?;
     let chat = text(&captured["chat_id"])?;
@@ -214,6 +219,7 @@ pub(super) async fn finish(
         &completed,
         logical_status,
         transport_ended,
+        reply,
     )
     .await?;
     Ok(finished)

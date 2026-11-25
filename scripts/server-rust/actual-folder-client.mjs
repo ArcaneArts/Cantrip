@@ -432,8 +432,12 @@ const councilProjectControls = process.argv.includes(
 const councilProjectSteeringRace = process.argv.includes(
   "--council-project-steering-race",
 );
+const councilProjectReplyWithoutHistory = process.argv.includes(
+  "--council-project-reply-without-history",
+);
 const councilProjectSteering =
   councilProjectSteeringRace ||
+  councilProjectReplyWithoutHistory ||
   process.argv.includes("--council-project-steering");
 const councilProjectCreation =
   councilProjectControls || process.argv.includes("--council-project-creation");
@@ -1103,6 +1107,7 @@ async function flow(
               projectControls: councilProjectControls,
               projectSteering: councilProjectSteering,
               projectSteeringRace: councilProjectSteeringRace,
+              projectReplyWithoutHistory: councilProjectReplyWithoutHistory,
             }
           : undefined,
         compaction: councilCompaction
@@ -2204,7 +2209,10 @@ try {
   const usesNative = runtimeCases.some((kinds) => kinds.includes("rust"));
   const executable = !usesNative
     ? undefined
-    : liveTaskDiagnostics || councilHistory || councilCompaction
+    : liveTaskDiagnostics ||
+        councilHistory ||
+        councilCompaction ||
+        councilProjectReplyWithoutHistory
       ? await buildRustExample("http-sql-fixture")
       : (process.env.CANTRIP_TEST_SERVER_BINARY ?? (await buildRustServer()));
   if (

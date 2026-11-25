@@ -307,7 +307,7 @@ impl Runtime {
                         self.record_deferred_input(&sink, index, began).await;
                         self.dependencies
                             .bootstrap
-                            .finish(&turn, "idle", false)
+                            .finish(&turn, "idle", false, None)
                             .await?;
                         self.dependencies.events.live.publish_summary(
                             &turn.owner,

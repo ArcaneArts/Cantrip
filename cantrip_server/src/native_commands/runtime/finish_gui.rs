@@ -10,6 +10,25 @@ use std::sync::Arc;
 pub struct GuiClosure<'a> {
     pub status: &'a str,
     pub transport_ended: bool,
+    pub reply: Option<GuiReply<'a>>,
+}
+
+/// The protected final answer carried by the same worker outcome as the turn ID.
+#[derive(Clone, Copy)]
+pub struct GuiReply<'a> {
+    pub thread_id: &'a str,
+    pub turn_id: &'a str,
+    pub message: &'a Value,
+}
+
+impl<'a> GuiReply<'a> {
+    pub fn from_outcome(result: &'a Value, message: &'a Value) -> Option<Self> {
+        Some(Self {
+            thread_id: result["threadId"].as_str()?,
+            turn_id: result["turnId"].as_str()?,
+            message,
+        })
+    }
 }
 
 /// Commit the logical GUI closure before releasing its native successors.
@@ -31,6 +50,7 @@ pub async fn finish_managed_gui(
         GuiClosure {
             status,
             transport_ended: false,
+            reply: None,
         },
         on_acknowledgment_error,
     )
@@ -49,14 +69,7 @@ pub async fn finish_managed_gui_with_transport(
     let operation = text(&receipt["operationId"])?;
     let generation = text(&receipt["operationGeneration"])?;
     let finished = repository
-        .finish_logical_gui_with_transport(
-            owner,
-            worker,
-            &operation,
-            &generation,
-            closure.status,
-            closure.transport_ended,
-        )
+        .finish_logical_gui_outcome(owner, worker, &operation, &generation, closure)
         .await?;
     let acknowledgment = async {
         if let Some(entry) = repository

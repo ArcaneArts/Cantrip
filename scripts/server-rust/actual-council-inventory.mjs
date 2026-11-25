@@ -17,6 +17,7 @@ export async function actualCouncilInventory({
   projectControls,
   projectSteering,
   projectSteeringRace,
+  projectReplyWithoutHistory,
   chatId,
   workerId,
   model,
@@ -248,6 +249,7 @@ export async function actualCouncilInventory({
         projectControls,
         projectSteering,
         steerRaceMarker,
+        historyFault: projectReplyWithoutHistory ? fixture : undefined,
       });
     }
   } finally {

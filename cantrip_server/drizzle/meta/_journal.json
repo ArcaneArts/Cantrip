@@ -2178,6 +2178,13 @@
       "when": 1795608120000,
       "tag": "0310_council_steered_interactions",
       "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1795609680000,
+      "tag": "0311_council_protected_project_replies",
+      "breakpoints": true
     }
   ]
 }
