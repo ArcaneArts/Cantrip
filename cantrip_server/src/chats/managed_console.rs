@@ -52,8 +52,11 @@ pub fn turn_session_context(context: &Value) -> Option<Value> {
     }
     if context["contextKind"] == "standalone" {
         let mut session = json!({"chatId":context["chatId"],"computerUseEnabled":context["computerUseEnabled"]==true,"contextKind":"standalone","projectId":Value::Null,"worktreeId":Value::Null,"rootKind":Value::Null,"scratchRootId":context["scratchRootId"]});
-        if context.get("councilAgent").is_some() {
+        if let Some(agent) = context.get("councilAgent") {
             session["council"] = json!(true);
+            if let Some(epoch) = agent.get("historyEpoch") {
+                session["councilHistoryEpoch"] = epoch.clone();
+            }
         }
         return Some(session);
     }
@@ -253,20 +256,25 @@ impl ManagedConsole {
             // Keep the two source transactions distinct. A canonical binding
             // failure must prevent terminal.open after model selection commits.
             self.repository
-                .update_runtime(RuntimeUpdate {
-                    chat,
-                    worker: worker.clone(),
-                    worktree: context["worktreeId"].as_str().map(str::to_owned),
-                    thread: thread
-                        .as_js_string()
-                        .map(|value| value.lossy().into_owned()),
-                    route: text(&model, "routeId")?,
-                    status: "ready".into(),
-                    provider_account: provider
-                        .get("accountId")
-                        .map(|v| v.as_str().map(str::to_owned)),
-                    scratch_root: context["scratchRootId"].as_str().map(str::to_owned),
-                })
+                .update_runtime_at_council_epoch(
+                    RuntimeUpdate {
+                        chat,
+                        worker: worker.clone(),
+                        worktree: context["worktreeId"].as_str().map(str::to_owned),
+                        thread: thread
+                            .as_js_string()
+                            .map(|value| value.lossy().into_owned()),
+                        route: text(&model, "routeId")?,
+                        status: "ready".into(),
+                        provider_account: provider
+                            .get("accountId")
+                            .map(|v| v.as_str().map(str::to_owned)),
+                        scratch_root: context["scratchRootId"].as_str().map(str::to_owned),
+                    },
+                    context
+                        .get("councilAgent")
+                        .map(|agent| agent["historyEpoch"].clone()),
+                )
                 .await?;
         }
         fields["type"] = json!("codex");

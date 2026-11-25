@@ -38,6 +38,18 @@ function historyPath(agent: string) {
   return `/api/council/agents/${encodeURIComponent(agent)}/history`;
 }
 
+export async function deleteCouncilHistoryMessage(
+  agent: string,
+  message: string,
+) {
+  const { snapshot } = identity();
+  await request(
+    `${historyPath(agent)}/${encodeURIComponent(message)}`,
+    { method: "DELETE" },
+    { expectedIdentity: snapshot },
+  );
+}
+
 export async function searchCouncilHistory(
   agent: string,
   query: string,

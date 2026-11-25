@@ -72,8 +72,18 @@ impl Repository {
     }
 
     pub async fn update_runtime(&self, input: RuntimeUpdate) -> Result<()> {
+        self.update_runtime_at_council_epoch(input, None).await
+    }
+
+    pub(super) async fn update_runtime_at_council_epoch(
+        &self,
+        input: RuntimeUpdate,
+        epoch: Option<Value>,
+    ) -> Result<()> {
         self.database
-            .transaction(|tx| Box::pin(async move { update_in_transaction(tx, input).await }))
+            .transaction(|tx| {
+                Box::pin(async move { update_at_council_epoch(tx, input, epoch.as_ref()).await })
+            })
             .await
     }
 }
@@ -81,6 +91,14 @@ impl Repository {
 pub(crate) async fn update_in_transaction(
     tx: &crate::database::Transaction<'_>,
     input: RuntimeUpdate,
+) -> Result<()> {
+    update_at_council_epoch(tx, input, None).await
+}
+
+async fn update_at_council_epoch(
+    tx: &crate::database::Transaction<'_>,
+    input: RuntimeUpdate,
+    epoch: Option<&Value>,
 ) -> Result<()> {
     if input.worktree.is_none() == input.scratch_root.is_none() {
         bail!("Chat runtime requires exactly one execution root.");
@@ -94,6 +112,11 @@ pub(crate) async fn update_in_transaction(
         .get::<String>(0)?;
     guard::lock_chat(tx, &owner, &input.chat).await?;
     guard::assert_runtime_writable(tx, &input.chat, None, None, Access::Write).await?;
+    if let Some(epoch) = epoch
+        && tx.query("SELECT chat_id FROM council_agents WHERE chat_id=$1 AND owner_id=$2 AND native_history_epoch IS NOT DISTINCT FROM $3::text::uuid", &[&input.chat,&owner,&epoch.as_str()]).await?.is_empty()
+    {
+        bail!(guard::NativeCommandError::new("council-history-changed", Some("Council history changed while preparing the conversation. Please retry."), 409));
+    }
     let rows = tx
         .query(
             "SELECT state::text FROM native_settings_states WHERE chat_id=$1",

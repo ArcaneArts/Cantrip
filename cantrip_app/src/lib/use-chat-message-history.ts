@@ -33,6 +33,17 @@ interface UseChatMessageHistoryOptions {
     | ((messages: import("@cantrip/protocol").ChatMessage[]) => false | number);
 }
 
+export function useChatMessageLiveOverlay(chatId: string, enabled = true) {
+  return useQuery({
+    enabled: false,
+    subscribed: enabled,
+    gcTime: CHAT_MESSAGE_CACHE_GC_MS,
+    initialData: EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
+    queryKey: chatMessageLiveQueryKey(chatId),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
 export function useChatMessageHistory({
   autoLoadOlder = false,
   chatId,
@@ -52,14 +63,7 @@ export function useChatMessageHistory({
     queryKey: loadedHeadKey,
     staleTime: Number.POSITIVE_INFINITY,
   });
-  const live = useQuery({
-    enabled: false,
-    subscribed: enabled,
-    gcTime: CHAT_MESSAGE_CACHE_GC_MS,
-    initialData: EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
-    queryKey: chatMessageLiveQueryKey(chatId),
-    staleTime: Number.POSITIVE_INFINITY,
-  });
+  const live = useChatMessageLiveOverlay(chatId, enabled);
   const provisional = useQuery({
     enabled: false,
     subscribed: enabled,

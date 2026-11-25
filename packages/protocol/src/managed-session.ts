@@ -33,6 +33,7 @@ export const managedSessionContextSchema = z.discriminatedUnion("contextKind", [
       ...common,
       contextKind: z.literal("standalone"),
       council: z.literal(true).optional(),
+      councilHistoryEpoch: z.uuid().optional(),
       projectId: z.null(),
       worktreeId: z.null(),
       rootKind: z.null(),

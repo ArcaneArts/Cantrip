@@ -192,6 +192,31 @@ async fn source_handle(
     result.unwrap_or_else(|cause| middleware::failure(&service, &context.id, &cause))
 }
 
+async fn delete_handle(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<Context>>,
+    Path((agent, message)): Path<(String, String)>,
+) -> Response {
+    let owner = &context.principal.user.as_ref().expect("Council owner").id;
+    let repository = Repository::new(service.repository.database.clone());
+    match repository
+        .delete_council_history_message(owner, &agent, &message)
+        .await
+    {
+        Ok(true) => {
+            let _ = service.live.publish_event(json!({"ownerId":owner,
+                "scope":json!({"kind":"chat","chatId":agent}),"resource":"chat-message","action":"deleted",
+                "entityId":message,"revision":Value::Null,"payload":Value::Null}));
+            axum::response::IntoResponse::into_response(StatusCode::NO_CONTENT)
+        }
+        Ok(false) => error(404, "Council message not found."),
+        Err(cause) => match cause.downcast_ref::<crate::chats::guard::NativeCommandError>() {
+            Some(expected) => error(expected.status, expected.message.as_str()),
+            None => middleware::failure(&service, &context.id, &cause),
+        },
+    }
+}
+
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .route(
@@ -200,7 +225,7 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         )
         .route(
             "/api/council/agents/{agentId}/history/{messageId}",
-            get(range_handle),
+            get(range_handle).delete(delete_handle),
         )
         .route("/api/internal/council-history/source", post(source_handle))
 }

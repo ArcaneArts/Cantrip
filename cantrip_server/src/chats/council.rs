@@ -198,6 +198,9 @@ pub(super) fn apply_execution_context(
         "protectedRole": agent["protected_role"],
         "primary": agent["is_primary"],
     });
+    if agent["native_history_epoch"].is_string() {
+        context["councilAgent"]["historyEpoch"] = agent["native_history_epoch"].clone();
+    }
     if agent["protected_memory"].is_object() {
         context["councilAgent"]["protectedMemory"] = agent["protected_memory"].clone();
     }

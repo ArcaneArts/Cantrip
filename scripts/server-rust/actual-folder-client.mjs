@@ -419,7 +419,11 @@ const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
 const councilHistory = process.argv.includes("--council-history");
-const councilCompaction = process.argv.includes("--council-compaction");
+const councilHistoryRedaction = process.argv.includes(
+  "--council-history-redaction",
+);
+const councilCompaction =
+  councilHistoryRedaction || process.argv.includes("--council-compaction");
 const councilBrowserHistory = process.argv.includes(
   "--council-browser-history",
 );
@@ -1061,6 +1065,7 @@ async function flow(
           ? {
               appOrigin: vite.resolvedUrls.local[0],
               fixture,
+              redact: councilHistoryRedaction,
               restartWorker: async () => {
                 const previous = worker.child.pid;
                 await stopWorker();

@@ -1,8 +1,9 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { MessageContent } from "@/components/chat/message-content";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -13,10 +14,17 @@ import {
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
 import {
+  deleteCouncilHistoryMessage,
   readCouncilHistory,
   searchCouncilHistory,
 } from "@/lib/api/council-history";
+import {
+  chatMessageLiveQueryKey,
+  deleteFromChatMessageLiveOverlay,
+  type ChatMessageLiveOverlay,
+} from "@/lib/chat-message-history";
 import { errorMessage } from "@/lib/error-message";
+import { useChatMessageLiveOverlay } from "@/lib/use-chat-message-history";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -35,11 +43,15 @@ export function CouncilHistoryDialog({
   const [query, setQuery] = useState("");
   const [exact, setExact] = useState(false);
   const [focused, setFocused] = useState(messageId);
+  const { deletedIds } = useChatMessageLiveOverlay(agentId).data;
   const search = useMutation({
     gcTime: 0,
     mutationFn: ({ text, literal }: { text: string; literal: boolean }) =>
       searchCouncilHistory(agentId, text, literal ? "literal" : "terms"),
   });
+  const matches = search.data?.matches.filter(
+    (match) => !deletedIds.includes(match.messageId),
+  );
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
@@ -63,6 +75,11 @@ export function CouncilHistoryDialog({
               key={focused}
               agentId={agentId}
               messageId={focused}
+              deletedIds={deletedIds}
+              onDeleted={() => {
+                search.reset();
+                setQuery("");
+              }}
               onOpenFile={onOpenFile}
             />
           </>
@@ -115,9 +132,9 @@ export function CouncilHistoryDialog({
                     Some retained messages could not be fully indexed.
                   </p>
                 ) : null}
-                {search.data.matches.length ? (
+                {matches?.length ? (
                   <ul className="space-y-2">
-                    {search.data.matches.map((hit) => (
+                    {matches.map((hit) => (
                       <li key={hit.messageId}>
                         <button
                           className="w-full rounded-md border p-3 text-left hover:bg-muted focus-visible:outline-2"
@@ -166,12 +183,39 @@ function HistoryLabel({
 function HistoryEvidence({
   agentId,
   messageId,
+  deletedIds,
+  onDeleted,
   onOpenFile,
-}: Omit<Props, "onClose" | "messageId"> & { messageId: string }) {
+}: Omit<Props, "onClose" | "messageId"> & {
+  messageId: string;
+  deletedIds: readonly string[];
+  onDeleted(): void;
+}) {
+  const cache = useQueryClient();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const historyKey = ["council", "history", agentId] as const;
+  const rangeKey = [...historyKey, messageId] as const;
   const range = useQuery({
-    queryKey: ["council", "history", agentId, messageId],
+    queryKey: rangeKey,
     queryFn: () => readCouncilHistory(agentId, messageId),
     gcTime: 0,
+  });
+  const remove = useMutation({
+    mutationFn: () => deleteCouncilHistoryMessage(agentId, messageId),
+    onSuccess: () => {
+      cache.setQueryData<ChatMessageLiveOverlay>(
+        chatMessageLiveQueryKey(agentId),
+        (current) => deleteFromChatMessageLiveOverlay(current, messageId),
+      );
+      cache.setQueryData(rangeKey, {
+        messages: [],
+        available: false,
+        incomplete: false,
+      });
+      void cache.invalidateQueries({ queryKey: historyKey });
+      setConfirmOpen(false);
+      onDeleted();
+    },
   });
   if (range.isError)
     return <InlineAlert>{errorMessage(range.error)}</InlineAlert>;
@@ -181,9 +225,10 @@ function HistoryEvidence({
         Opening message…
       </p>
     );
+  const available = range.data.available && !deletedIds.includes(messageId);
   return (
     <div className="space-y-3">
-      {!range.data.available ? (
+      {!available ? (
         <p role="status" className="text-sm text-muted-foreground">
           This message is unavailable.
         </p>
@@ -193,25 +238,49 @@ function HistoryEvidence({
           Some nearby messages could not be opened.
         </p>
       ) : null}
-      {range.data.messages.map((message) => (
-        <article
-          key={message.id}
-          aria-label={
-            message.id === messageId ? "Selected message" : "Nearby message"
-          }
-          className={cn(
-            "min-w-0 space-y-2 rounded-md border p-3",
-            message.id === messageId && "border-primary/60 bg-muted/30",
-          )}
+      {range.data.messages
+        .filter(({ id }) => !deletedIds.includes(id))
+        .map((message) => (
+          <article
+            key={message.id}
+            aria-label={
+              message.id === messageId ? "Selected message" : "Nearby message"
+            }
+            className={cn(
+              "min-w-0 space-y-2 rounded-md border p-3",
+              message.id === messageId && "border-primary/60 bg-muted/30",
+            )}
+          >
+            <HistoryLabel role={message.role} at={message.createdAt} />
+            <MessageContent
+              message={message}
+              onOpenFile={onOpenFile}
+              trackGlobalKey={false}
+            />
+          </article>
+        ))}
+      {available ? (
+        <Button
+          variant="outline"
+          onClick={() => {
+            remove.reset();
+            setConfirmOpen(true);
+          }}
         >
-          <HistoryLabel role={message.role} at={message.createdAt} />
-          <MessageContent
-            message={message}
-            onOpenFile={onOpenFile}
-            trackGlobalKey={false}
-          />
-        </article>
-      ))}
+          Delete message
+        </Button>
+      ) : null}
+      <ConfirmDialog
+        title="Delete Council message?"
+        description="This permanently removes the selected message and clears the agent’s current Codex context. The agent can still search the rest of its history."
+        open={confirmOpen}
+        pending={remove.isPending}
+        confirmLabel="Delete message"
+        confirmPendingLabel="Deleting…"
+        error={remove.isError ? errorMessage(remove.error) : null}
+        onOpenChange={setConfirmOpen}
+        onConfirm={() => remove.mutate()}
+      />
     </div>
   );
 }
