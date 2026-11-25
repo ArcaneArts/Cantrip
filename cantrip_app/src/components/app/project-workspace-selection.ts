@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { projectPaneViews } from "@cantrip/protocol";
-import type { AppMode, ProjectTabLayoutSummary } from "@cantrip/protocol";
+import type { ProjectTabLayoutSummary } from "@cantrip/protocol";
 import {
   useEffect,
   useMemo,
@@ -13,6 +13,7 @@ import type { ShellEnvironment } from "@/components/app/shell-environment";
 import type { ProjectInventory } from "@/components/app/project-inventory";
 import type { ProjectWorkspaceResources } from "@/components/app/project-workspace-resources";
 import { useAppLiveScope } from "@/lib/app-live-react";
+import type { ShellAppMode } from "@/lib/app-mode";
 import {
   buildProjectSurfaceIndex,
   omitProjectSurfaceTabs,
@@ -95,7 +96,7 @@ export function useWorkspaceLiveScopes({
   selectedProjectId,
   selectedStandaloneChatId,
 }: {
-  appMode: AppMode | null;
+  appMode: ShellAppMode | null;
   selectedChatId: string | null;
   selectedProjectId: string | null;
   selectedStandaloneChatId: string | null;

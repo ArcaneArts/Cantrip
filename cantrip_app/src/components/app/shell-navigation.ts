@@ -1,7 +1,6 @@
 import { workspacePaneViews } from "@cantrip/protocol";
 import type {
   AppDestinationUpdate,
-  AppMode,
   ChatSummary,
   ClientControlCommand,
   ProjectSummary,
@@ -15,6 +14,7 @@ import type {
   TunnelSummary,
 } from "@cantrip/protocol";
 import { projectSurfaceViewId } from "@cantrip/protocol";
+import type { ShellAppMode } from "@/lib/app-mode";
 import type { WorkspaceCommandClient } from "@/lib/workspace-command-client";
 import { openWorkspaceWindowPresentation } from "@/lib/workspace-window-presentation";
 import type { QueryClient } from "@tanstack/react-query";
@@ -318,7 +318,7 @@ export function useShellNavigationState(
     popoutProjectId,
     projectOverviewPopoutTarget,
   } = environment;
-  const [appMode, setAppModeState] = useState<AppMode | null>(
+  const [appMode, setAppModeState] = useState<ShellAppMode | null>(
     isPopout || gitHistoryTarget ? "ide" : null,
   );
   const [selectedStandaloneChatId, setSelectedStandaloneChatId] = useState<
@@ -335,7 +335,7 @@ export function useShellNavigationState(
   const startupNavigationResolvedRef = useRef(
     isPopout || Boolean(gitHistoryTarget),
   );
-  const setAppMode = useCallback<Dispatch<SetStateAction<AppMode | null>>>(
+  const setAppMode = useCallback<Dispatch<SetStateAction<ShellAppMode | null>>>(
     (mode) => {
       // A local destination is newer than pending startup preferences. Resolve
       // startup synchronously, before its queries can publish an older choice.

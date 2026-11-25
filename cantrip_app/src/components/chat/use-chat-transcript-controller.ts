@@ -235,10 +235,12 @@ export function useChatTranscriptController({
   const projectId = chat.projectId;
   const projectChatQueryKey = useMemo(
     () =>
-      capabilities.context === "standalone"
-        ? (["standalone-chats"] as const)
-        : (["chats", projectId] as const),
-    [capabilities.context, projectId],
+      capabilities.council
+        ? (["council", "chat", chat.id] as const)
+        : capabilities.context === "standalone"
+          ? (["standalone-chats"] as const)
+          : (["chats", projectId] as const),
+    [capabilities.context, capabilities.council, chat.id, projectId],
   );
   const composerDraftQueryKey = useMemo(
     () => ["chat-composer-draft", chat.id] as const,
@@ -562,8 +564,11 @@ export function useChatTranscriptController({
       stopWatching?.();
     };
   }, [chat.id, refocusOnWindowActivation, transferLocked]);
-  const fallbackModelId =
-    chat.contextKind === "standalone"
+  const fallbackModelId = capabilities.council
+    ? (settings?.preferences.defaultCouncilModelId ??
+      settings?.preferences.defaultModelId ??
+      null)
+    : chat.contextKind === "standalone"
       ? (settings?.preferences.defaultChatModelId ??
         settings?.preferences.defaultModelId ??
         null)
@@ -864,7 +869,9 @@ export function useChatTranscriptController({
     [chat.id],
   );
   const permissionProfiles = useQuery({
-    enabled: Boolean(nativeModelSettings.binding || selectedModelId),
+    enabled:
+      !capabilities.council &&
+      Boolean(nativeModelSettings.binding || selectedModelId),
     queryFn: () => getChatPermissionProfiles(chat.id),
     queryKey: [
       "permission-profiles",
@@ -1299,7 +1306,9 @@ export function useChatTranscriptController({
       const worker = workers.data?.find(
         ({ workerId }) => workerId === chat.activeWorkerId,
       );
-      await ensureChatWorkerEncryption({ worker });
+      if (!capabilities.council || worker?.online) {
+        await ensureChatWorkerEncryption({ worker });
+      }
       if (
         nativeModelSettings.observed.state.data?.binding &&
         nativeModeChange
@@ -1319,7 +1328,8 @@ export function useChatTranscriptController({
         },
         attachments,
         mode,
-        settings?.preferences.autoNameChats &&
+        !capabilities.council &&
+          settings?.preferences.autoNameChats &&
           !settings.preferences.randomAgentNames
           ? worker
           : undefined,

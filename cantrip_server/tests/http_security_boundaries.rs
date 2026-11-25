@@ -25,6 +25,7 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
     let config = ServerConfig::read(
         &Environment::from([
             ("CANTRIP_AUTH_MODE".into(), "accounts".into()),
+            ("CANTRIP_COUNCIL_ENABLED".into(), "true".into()),
             ("CANTRIP_LICENSE_WHITELIST_ENABLED".into(), "false".into()),
         ]),
         root.path(),
@@ -95,6 +96,11 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
             }
         };
         let council_path = "/api/council/agents";
+        let bootstrap: Value = serde_json::from_str(
+            &request(Method::GET, "/api/bootstrap", first, false)
+                .send().await?.error_for_status()?.text().await?,
+        )?;
+        assert_eq!(bootstrap["capabilities"]["council"], true);
         assert_eq!(
             client.get(origin.clone() + council_path).send().await?.status(),
             StatusCode::UNAUTHORIZED,
@@ -242,6 +248,15 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
         // Seed the initial placement. No worker is connected to this HTTP router.
         cantrip_server::chats::Repository::new(database.clone())
             .create_council_agent(&first.0, create, |_| true).await?;
+        let conversation = format!("{council_path}/{agent}/chat");
+        assert_eq!(request(Method::GET, &conversation, second, false).send().await?.status(), StatusCode::NOT_FOUND);
+        let chat: Value = serde_json::from_str(
+            &request(Method::GET, &conversation, first, false)
+                .send().await?.error_for_status()?.text().await?,
+        )?;
+        assert_eq!(chat["id"], agent);
+        assert_eq!(chat["contextKind"], "standalone");
+        assert!(chat.get("protectedRole").is_none());
         let turns = format!("/api/chats/{agent}/turns");
         let submit = |session| request(Method::POST, &turns, session, true)
             .header("content-type", "application/json").body(turn.to_string());

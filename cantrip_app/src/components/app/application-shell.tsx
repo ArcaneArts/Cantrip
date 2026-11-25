@@ -32,6 +32,8 @@ import {
   type WorktreeBindingTarget,
 } from "@/components/app/application-shell-model";
 import { ApplicationShellRender } from "@/components/app/application-shell-render";
+import { useCouncilWorkspace } from "@/components/council/use-council-workspace";
+import type { ShellAppMode } from "@/lib/app-mode";
 import {
   createDesktopPaneSelectionCommands,
   useDesktopPopoutEffects,
@@ -670,6 +672,15 @@ export function App() {
     projectResourcesLive,
   });
   const { bootstrap, settings, workers } = applicationInventory;
+  const councilAvailable = bootstrap.data?.capabilities.council === true;
+  const councilWorkspace = useCouncilWorkspace(
+    councilAvailable && appMode === "council",
+  );
+  useEffect(() => {
+    if (appMode === "council" && bootstrap.isSuccess && !councilAvailable) {
+      setAppMode("chat");
+    }
+  }, [appMode, bootstrap.isSuccess, councilAvailable, setAppMode]);
   const persistAppDestination = useAppDestinationPersistence({
     destinationWriteRef,
     queryClient,
@@ -1965,6 +1976,23 @@ export function App() {
     settings: settings.data,
     visibleProjects,
   });
+  const switchToCouncil =
+    councilAvailable && !isPopout
+      ? () => {
+          revealWorkspace();
+          setShowArchivedStandaloneChats(false);
+          setCommandBarOpen(false);
+          setFolderProjectDialogOpen(false);
+          setAppMode("council");
+        }
+      : undefined;
+  const chooseAppMode = switchToCouncil
+    ? (mode: ShellAppMode) => {
+        if (mode === "council") switchToCouncil();
+        else if (mode === "ide") switchToIde();
+        else switchToChat();
+      }
+    : undefined;
   const returnToCompactProjectOverview = () => {
     if (!selectedProjectId) {
       returnToLegacyCompactProjectOverview();
@@ -2222,9 +2250,9 @@ export function App() {
     activeWorktreeTarget, agentInspectOpenChats, appActionContext, appMode,
     appToast, archiveStandaloneChat, archivedStandaloneChats, beginSidebarResize, bindChatWorktree,
     bindWorktreeMutation, bootstrap, browsers, chatRelocationOpen, chatRelocations,
-    chatConsoleOpenChats, chats, closeCompactProject, closeProjectTask, codeAppearance,
+    chatConsoleOpenChats, chats, chooseAppMode, closeCompactProject, closeProjectTask, codeAppearance,
     codeHeader, codeTabs, stagedExplorerTransfers, stagedCodeTransfers, stagedTerminalTransfers, incomingTerminalViews, incomingExplorerViews, incomingFileDocumentViews, incomingCodeViews, incomingBrowserViews, incomingChatViews, incomingRemoteDesktopViews, commandBarOpen, compactManagedHeader, compactShell,
-    createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile, importSidebarFiles,
+    councilWorkspace, createProjectSurface, createSidebarExplorerMutation, createSidebarFolder, createSidebarFile, importSidebarFiles,
     createWorkspaceMutation, createWorktreeMutation, creatingSurfaceKinds, currentRelocation, deleteBrowserMutation, dockPresentationMutation,
     deleteChatMutation, deleteCodeTabMutation, deleteExplorerMutation, deleteProjectViewMutation, deleteSidebarFileEntry,
     closeSurfaceView, keepSurfaceOpen, deleteSurfaceResource, deleteTerminalMutation, desktopRuntime, desktopSidebarDrawer,
@@ -2274,7 +2302,7 @@ export function App() {
     sidebarFileWorkerId, sidebarFileWorkerOnline,
     sidebarRef, sidebarResizing, sidebarWidth,
     standaloneChatCreationAvailable, standaloneChatCreationUnavailableReason, standaloneChatWorkerAvailable, standaloneChats, standaloneFilePath,
-    standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToIde,
+    standaloneFilesOpen, stopAndDeleteRunTerminalMutation, surfaceCreationFailure, switchToChat, switchToCouncil, switchToIde,
     tabLayout, tabLayoutMutation, terminals, terminalCommandPaletteTerminalId, terminalServiceTerminalId, updateBrowserMutation, updateCodeTabMutation,
     placeConversation, conversationArchiveRequest, setConversationArchiveRequest, sidebarFileReveal, projectSidebarPage, setProjectSidebarPage,
     visibleProjects, workers, workspaceConnection, legacyDocumentMigration, workspaceDragError, workspaceSelection, worktreeActionError,

@@ -94,6 +94,8 @@ pub struct ServerConfig {
     pub metrics_token: Option<String>,
     pub cookie_same_site: SameSite,
     pub cookie_secure: bool,
+    #[serde(skip)]
+    pub council_enabled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password_hash: Option<String>,
     pub pairing_rate_limit_per_minute: u64,
@@ -483,6 +485,7 @@ impl ServerConfig {
             public_origin,
             public_registration: e.boolean("CANTRIP_PUBLIC_REGISTRATION")?,
             license_whitelist_enabled,
+            council_enabled: e.boolean("CANTRIP_COUNCIL_ENABLED")?,
             redis_url,
             session_ttl_seconds: e.bounded(
                 "CANTRIP_SESSION_TTL_SECONDS",

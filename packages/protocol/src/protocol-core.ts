@@ -268,6 +268,7 @@ export const serverBootstrapSchema = z.object({
   }),
   capabilities: z.object({
     accounts: z.boolean(),
+    council: z.boolean().optional(),
     passwordProtection: z.boolean(),
     linkCodes: z.boolean(),
     multipleWorkers: z.boolean(),

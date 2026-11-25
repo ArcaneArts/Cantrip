@@ -21,6 +21,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { MobileAppModeSwitch } from "@/components/mobile/mobile-app-mode-switch";
+import type { ShellAppMode } from "@/lib/app-mode";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,7 @@ export function MobileProjectSelector({
   error,
   loading,
   onCreateWorkspace,
+  onChooseMode,
   onManageWorkspaces,
   onNewProject,
   onOpenAdmin,
@@ -106,6 +108,7 @@ export function MobileProjectSelector({
   onNewProject(source: ProjectCreateSource): void;
   onOpenAdmin(): void;
   onOpenSettings(): void;
+  onChooseMode?(mode: ShellAppMode): void;
   onSwitchChat(): void;
   onSelectProject(projectId: string): void;
   onSelectWorkspace(workspaceId: string): void;
@@ -148,6 +151,7 @@ export function MobileProjectSelector({
         </div>
         <MobileAppModeSwitch
           currentMode="ide"
+          onChooseMode={onChooseMode}
           labeled
           onSwitch={onSwitchChat}
         />

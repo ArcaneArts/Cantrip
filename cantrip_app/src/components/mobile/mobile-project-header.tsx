@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { MobileAppModeSwitch } from "@/components/mobile/mobile-app-mode-switch";
 import { Button } from "@/components/ui/button";
+import type { ShellAppMode } from "@/lib/app-mode";
 
 export function MobileProjectHeader({
   actions,
@@ -10,15 +11,17 @@ export function MobileProjectHeader({
   context,
   onBack,
   onCloseProject,
+  onChooseMode,
   onOpenProjectSettings,
   onSwitchAppMode,
   title,
 }: {
   actions?: ReactNode;
-  appMode?: "chat" | "ide" | null;
+  appMode?: ShellAppMode | null;
   context?: string | null;
   onBack?: () => void;
   onCloseProject?: () => void;
+  onChooseMode?(mode: ShellAppMode): void;
   onOpenProjectSettings?: () => void;
   onSwitchAppMode?: () => void;
   title: string;
@@ -73,6 +76,7 @@ export function MobileProjectHeader({
           {appMode && onSwitchAppMode ? (
             <MobileAppModeSwitch
               currentMode={appMode}
+              onChooseMode={onChooseMode}
               onSwitch={onSwitchAppMode}
             />
           ) : null}

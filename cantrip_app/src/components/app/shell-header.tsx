@@ -54,6 +54,7 @@ export function ShellHeader({
     activeWorktreeId,
     activeWorktreeTarget,
     appMode,
+    chooseAppMode,
     bindWorktreeMutation,
     closeCompactProject,
     codeHeader,
@@ -261,6 +262,7 @@ export function ShellHeader({
           appMode={appMode}
           context={activeProjectWorkspace?.name ?? "Choose a repository"}
           onBack={closeCompactProject}
+          onChooseMode={chooseAppMode}
           onSwitchAppMode={switchAppMode ?? undefined}
           title="GitHub repositories"
         />
@@ -275,6 +277,7 @@ export function ShellHeader({
               () => setShowSettings(false),
             )
           }
+          onChooseMode={chooseAppMode}
           onSwitchAppMode={switchAppMode ?? undefined}
           title="Settings"
         />
@@ -283,6 +286,7 @@ export function ShellHeader({
           appMode={appMode}
           context="Recover or permanently delete conversations"
           onBack={() => setShowArchivedStandaloneChats(false)}
+          onChooseMode={chooseAppMode}
           onSwitchAppMode={switchAppMode ?? undefined}
           title="Archived chats"
         />
@@ -291,6 +295,7 @@ export function ShellHeader({
           appMode={appMode}
           context="Account access and server policy"
           onBack={closeCompactProject}
+          onChooseMode={chooseAppMode}
           onSwitchAppMode={switchAppMode ?? undefined}
           title="Server administration"
         />
@@ -312,6 +317,7 @@ export function ShellHeader({
               returnToCompactProjectOverview,
             )
           }
+          onChooseMode={chooseAppMode}
           onSwitchAppMode={switchAppMode ?? undefined}
           title="Project settings"
         />
@@ -328,6 +334,7 @@ export function ShellHeader({
           }
           onCloseProject={closeCompactProject}
           onOpenProjectSettings={() => openProjectSettings(selectedProject.id)}
+          onChooseMode={chooseAppMode}
           onSwitchAppMode={switchAppMode ?? undefined}
           title={selectedProject.name}
         />
@@ -404,41 +411,45 @@ export function ShellHeader({
                         ? "Archived chats"
                         : showServerAdmin
                           ? "Server administration"
-                          : appMode === "chat"
-                            ? (selectedStandaloneChat?.title ?? "Chat")
-                            : showProjectSettings
-                              ? "Project settings"
-                              : projectOverviewSelected && selectedProject
-                                ? selectedProject.name
-                                : gitHistoryProject
-                                  ? (selectedProjectView?.title ?? "Git")
-                                  : selectedProjectView?.kind ===
-                                      "remote-desktop"
-                                    ? selectedProjectView.title
-                                    : selectedCodeTab
-                                      ? activeFilePath
-                                        ? sidebarFileName(activeFilePath)
-                                        : selectedCodeTab.title
-                                      : selectedBrowser
-                                        ? selectedBrowser.title
-                                        : selectedFileDocument
-                                          ? sidebarFileName(
-                                              selectedFileDocument.path,
-                                            )
-                                          : selectedExplorer
-                                            ? activeFilePath
-                                              ? sidebarFileName(activeFilePath)
-                                              : selectedExplorer.title
-                                            : selectedTerminal
-                                              ? selectedTerminal.linkedChatId
-                                                ? (linkedConsoleChat?.title ??
-                                                  "Agent")
-                                                : selectedTerminal.title
-                                              : selectedChat
-                                                ? selectedChat.title
-                                                : (selectedProject?.github
-                                                    ?.nameWithOwner ??
-                                                  "Cantrip")}
+                          : appMode === "council"
+                            ? "Council"
+                            : appMode === "chat"
+                              ? (selectedStandaloneChat?.title ?? "Chat")
+                              : showProjectSettings
+                                ? "Project settings"
+                                : projectOverviewSelected && selectedProject
+                                  ? selectedProject.name
+                                  : gitHistoryProject
+                                    ? (selectedProjectView?.title ?? "Git")
+                                    : selectedProjectView?.kind ===
+                                        "remote-desktop"
+                                      ? selectedProjectView.title
+                                      : selectedCodeTab
+                                        ? activeFilePath
+                                          ? sidebarFileName(activeFilePath)
+                                          : selectedCodeTab.title
+                                        : selectedBrowser
+                                          ? selectedBrowser.title
+                                          : selectedFileDocument
+                                            ? sidebarFileName(
+                                                selectedFileDocument.path,
+                                              )
+                                            : selectedExplorer
+                                              ? activeFilePath
+                                                ? sidebarFileName(
+                                                    activeFilePath,
+                                                  )
+                                                : selectedExplorer.title
+                                              : selectedTerminal
+                                                ? selectedTerminal.linkedChatId
+                                                  ? (linkedConsoleChat?.title ??
+                                                    "Agent")
+                                                  : selectedTerminal.title
+                                                : selectedChat
+                                                  ? selectedChat.title
+                                                  : (selectedProject?.github
+                                                      ?.nameWithOwner ??
+                                                    "Cantrip")}
               </span>
               {worktreeControl}
             </div>
@@ -459,7 +470,7 @@ export function ShellHeader({
                 "Recover or permanently delete conversations"
               ) : showServerAdmin ? (
                 "Account access and server policy"
-              ) : appMode === "chat" ? (
+              ) : appMode === "council" ? null : appMode === "chat" ? (
                 selectedStandaloneChat ? (
                   `Standalone conversation · ${selectedStandaloneChat.status}`
                 ) : (
@@ -554,6 +565,7 @@ export function ShellHeader({
             {compactShell && switchAppMode ? (
               <MobileAppModeSwitch
                 currentMode={appMode}
+                onChooseMode={chooseAppMode}
                 onSwitch={switchAppMode}
               />
             ) : null}
