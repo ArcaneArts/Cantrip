@@ -6,6 +6,16 @@ import { projectAutomationContentOpaqueSchema } from "./project-automation-conte
 const idSchema = z.string().trim().min(1);
 const timestampSchema = z.string().datetime();
 
+export const chatAutomationSourceSchema = z
+  .object({
+    automationId: z.uuid(),
+    runId: z.uuid(),
+    name: z.string().min(1).max(200),
+    targetKind: z.enum(["project", "council"]),
+  })
+  .strict();
+export type ChatAutomationSource = z.infer<typeof chatAutomationSourceSchema>;
+
 export const projectAutomationIntervalUnitSchema = z.enum([
   "minute",
   "hour",
@@ -226,6 +236,34 @@ export const projectAutomationWireSchema = projectAutomationSchema
 export const projectAutomationWireListSchema = z.array(
   projectAutomationWireSchema,
 );
+
+export const councilAutomationWireSchema = projectAutomationWireSchema.extend({
+  projectId: z.null(),
+});
+
+export const councilAutomationWireListSchema = z.array(
+  councilAutomationWireSchema,
+);
+
+export const workerAutomationWireListSchema = z.array(
+  z.union([projectAutomationWireSchema, councilAutomationWireSchema]),
+);
+
+export const automationRunWireSchema = z
+  .object({
+    id: z.uuid(),
+    automationId: z.uuid(),
+    chatId: z.uuid(),
+    scheduledFor: timestampSchema,
+    status: projectAutomationStatusSchema.exclude(["idle"]),
+    error: z.string().max(5_000).nullable(),
+    protectedName: projectAutomationContentOpaqueSchema,
+    protectedPrompt: projectAutomationContentOpaqueSchema,
+  })
+  .strict();
+export const councilAutomationRunWireListSchema = z
+  .array(automationRunWireSchema)
+  .max(30);
 
 export const projectAutomationListSchema = z.array(projectAutomationSchema);
 

@@ -4,6 +4,7 @@ import {
   encryptProjectAutomationContent,
 } from "@cantrip/crypto";
 import {
+  automationRunWireSchema,
   encryptedProjectAutomationCreateSchema,
   encryptedProjectAutomationUpdateSchema,
   projectAutomationProtectedConditionSchema,
@@ -17,6 +18,7 @@ import {
   type ProjectAutomationCreate,
   type ProjectAutomationUpdate,
 } from "@cantrip/protocol/automations";
+import type { ProjectAutomationContentOpaque } from "@cantrip/protocol/project-automation-content";
 
 import type { ClientSessionContext } from "./client-session";
 import { getClientSession } from "./client-session";
@@ -52,7 +54,44 @@ function encryptionContext(options: TrustedOptions) {
     }),
     keyRevision: snapshot.masterKeyRevision,
     ownerId: session.user.id,
+    service,
+    identity: snapshot.identity,
   };
+}
+
+async function openField<T>(input: {
+  automationId: string;
+  encrypted: ProjectAutomationContentOpaque;
+  field: "name" | "prompt" | "condition";
+  schema: { parse(value: unknown): T };
+  context: ReturnType<typeof encryptionContext>;
+}) {
+  const { context, encrypted } = input;
+  const componentKey =
+    encrypted.keyRevision === context.keyRevision
+      ? context.componentKey
+      : context.service.componentKey({
+          component: "workflow-content",
+          identity: context.identity,
+          keyRevision: encrypted.keyRevision,
+        });
+  try {
+    return await decryptProjectAutomationContent({
+      ownerId: context.ownerId,
+      context: {
+        recordKind: "project-automation",
+        recordId: input.automationId,
+        field: input.field,
+      },
+      keyRevision: encrypted.keyRevision,
+      componentKey,
+      encrypted,
+      schema: input.schema,
+    });
+  } finally {
+    if (componentKey !== context.componentKey)
+      clearSensitiveBytes(componentKey);
+  }
 }
 
 async function protectField<T>(input: {
@@ -173,41 +212,26 @@ export async function openProjectAutomationWire(
   const context = encryptionContext(options);
   try {
     const [name, prompt, condition] = await Promise.all([
-      decryptProjectAutomationContent({
-        ownerId: context.ownerId,
-        context: {
-          recordKind: "project-automation",
-          recordId: automation.id,
-          field: "name",
-        },
-        keyRevision: automation.content.protectedName.keyRevision,
-        componentKey: context.componentKey,
+      openField({
+        automationId: automation.id,
+        field: "name",
         encrypted: automation.content.protectedName,
         schema: projectAutomationProtectedNameSchema,
+        context,
       }),
-      decryptProjectAutomationContent({
-        ownerId: context.ownerId,
-        context: {
-          recordKind: "project-automation",
-          recordId: automation.id,
-          field: "prompt",
-        },
-        keyRevision: automation.content.protectedPrompt.keyRevision,
-        componentKey: context.componentKey,
+      openField({
+        automationId: automation.id,
+        field: "prompt",
         encrypted: automation.content.protectedPrompt,
         schema: projectAutomationProtectedPromptSchema,
+        context,
       }),
-      decryptProjectAutomationContent({
-        ownerId: context.ownerId,
-        context: {
-          recordKind: "project-automation",
-          recordId: automation.id,
-          field: "condition",
-        },
-        keyRevision: automation.content.protectedCondition.keyRevision,
-        componentKey: context.componentKey,
+      openField({
+        automationId: automation.id,
+        field: "condition",
         encrypted: automation.content.protectedCondition,
         schema: projectAutomationProtectedConditionSchema,
+        context,
       }),
     ]);
     return projectAutomationSchema.parse({
@@ -222,6 +246,36 @@ export async function openProjectAutomationWire(
       "decryption-failed",
       "Protected automation content could not be authenticated.",
     );
+  } finally {
+    clearSensitiveBytes(context.componentKey);
+  }
+}
+
+export async function openAutomationRunWire(
+  raw: unknown,
+  options: TrustedOptions = {},
+) {
+  const { protectedName, protectedPrompt, ...run } =
+    automationRunWireSchema.parse(raw);
+  const context = encryptionContext(options);
+  try {
+    const [name, prompt] = await Promise.all([
+      openField({
+        automationId: run.automationId,
+        field: "name",
+        encrypted: protectedName,
+        schema: projectAutomationProtectedNameSchema,
+        context,
+      }),
+      openField({
+        automationId: run.automationId,
+        field: "prompt",
+        encrypted: protectedPrompt,
+        schema: projectAutomationProtectedPromptSchema,
+        context,
+      }),
+    ]);
+    return { ...run, name: name.name, prompt: prompt.prompt };
   } finally {
     clearSensitiveBytes(context.componentKey);
   }

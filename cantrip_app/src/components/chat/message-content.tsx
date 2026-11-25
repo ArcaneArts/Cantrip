@@ -2,6 +2,7 @@ import type { ChatAttachmentSummary, ChatMessage } from "@cantrip/protocol";
 import { memo, useCallback, useState } from "react";
 
 import { Activity } from "@/components/chat/activity";
+import { AutomationRunLink } from "./automation-run-link";
 import {
   AttachmentPreview,
   AttachmentViewerDialog,
@@ -37,7 +38,14 @@ export const MessageContent = memo(function MessageContent({
       >
         {message.content.map((item, index) =>
           item.type === "text" ? (
-            item.councilPeerMessage ? (
+            item.automation ? (
+              <div key={"text:" + index} className="space-y-2">
+                <AutomationRunLink source={item.automation} />
+                {item.automation.targetKind === "project" ? (
+                  <Markdown onOpenFile={openMessageFile}>{item.text}</Markdown>
+                ) : null}
+              </div>
+            ) : item.councilPeerMessage ? (
               <CouncilHandoffLink
                 key={"text:" + index}
                 agentId={message.chatId}

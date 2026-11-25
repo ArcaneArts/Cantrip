@@ -1,6 +1,7 @@
 // Browser SDK, native server, full worker, and bundled Codex App Server.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { actualCouncilAutomations } from "./actual-council-automations.mjs";
 import { actualCouncilBrowserHistory } from "./actual-council-browser-history.mjs";
 import { actualCouncilCompaction } from "./actual-council-compaction.mjs";
 import { actualCouncilMemory } from "./actual-council-memory.mjs";
@@ -30,6 +31,7 @@ export async function actualCouncilSteering({
   inventory,
   peerAppOrigin,
   browserHistory,
+  automations,
   compaction,
   raceMarker,
   dropReplyMarker,
@@ -111,7 +113,7 @@ export async function actualCouncilSteering({
         nativeModel: model.model,
         role,
         testCreation,
-        readOnly: Boolean(memoryAppOrigin) && !testCreation,
+        readOnly: Boolean(memoryAppOrigin || automations) && !testCreation,
         nativeCli: Boolean(inventory || peerAppOrigin),
       },
     );
@@ -346,6 +348,19 @@ export async function actualCouncilSteering({
     result.steps.push(
       "Council steers an active native turn through its durable queue",
     );
+    if (automations) {
+      await actualCouncilAutomations({
+        ...automations,
+        page,
+        chatId,
+        workerId,
+        model,
+        submit,
+        readChat,
+        readMessages,
+        result,
+      });
+    }
     if (historyFixture) {
       await actualCouncilHistory({
         fixture: historyFixture,

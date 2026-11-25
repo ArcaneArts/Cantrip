@@ -1,4 +1,6 @@
 import {
+  councilAutomationWireListSchema,
+  councilAutomationWireSchema,
   projectAutomationCreateSchema,
   projectAutomationUpdateSchema,
   projectAutomationWireListSchema,
@@ -9,6 +11,7 @@ import {
 
 import { post, request } from "@/lib/api-client";
 import {
+  openAutomationRunWire,
   openProjectAutomationWire,
   protectProjectAutomationCreate,
   protectProjectAutomationUpdate,
@@ -59,4 +62,54 @@ export async function deleteProjectAutomation(automationId: string) {
   await request(`/api/automations/${encodeURIComponent(automationId)}`, {
     method: "DELETE",
   });
+}
+
+export async function getAutomationRun(automationId: string, runId: string) {
+  return openAutomationRunWire(
+    await request(
+      `/api/automations/${encodeURIComponent(automationId)}/runs/${encodeURIComponent(runId)}`,
+    ),
+  );
+}
+
+function councilAutomationsPath(agentId: string) {
+  return `/api/council/agents/${encodeURIComponent(agentId)}/automations`;
+}
+
+export async function getCouncilAutomations(agentId: string) {
+  return councilAutomationWireListSchema.parse(
+    await request(councilAutomationsPath(agentId)),
+  );
+}
+
+export async function createCouncilAutomation(
+  agentId: string,
+  input: Omit<ProjectAutomationCreate, "chatId" | "condition">,
+) {
+  const trusted = projectAutomationCreateSchema.parse({
+    ...input,
+    chatId: agentId,
+    condition: null,
+  });
+  return councilAutomationWireSchema.parse(
+    await post(
+      councilAutomationsPath(agentId),
+      await protectProjectAutomationCreate(trusted),
+    ),
+  );
+}
+
+export async function updateCouncilAutomation(
+  automationId: string,
+  input: Omit<ProjectAutomationUpdate, "chatId" | "condition">,
+) {
+  const trusted = projectAutomationUpdateSchema.parse(input);
+  return councilAutomationWireSchema.parse(
+    await request(`/api/automations/${encodeURIComponent(automationId)}`, {
+      body: JSON.stringify(
+        await protectProjectAutomationUpdate(automationId, trusted),
+      ),
+      method: "PATCH",
+    }),
+  );
 }
