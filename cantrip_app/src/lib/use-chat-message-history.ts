@@ -196,6 +196,7 @@ export function useChatMessageHistory({
     nativeTurnSettings,
     fetchOlder,
     hasOlder,
+    isError: head.isError || older.isError,
     isFetching: head.isFetching || older.isFetching,
     isFetchingOlder: older.isFetching,
     isLoading: head.isLoading,

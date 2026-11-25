@@ -256,6 +256,7 @@ export const queuedPromptProtectedContentSchema = z
     version: z.literal(1),
     classification: queuedPromptProtectedClassificationSchema,
     text: z.string().trim().max(100_000),
+    internal: z.literal(true).optional(),
   })
   .strict()
   .refine(

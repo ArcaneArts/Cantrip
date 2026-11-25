@@ -820,6 +820,9 @@ const councilExports = [
   "councilMemoryWriteToolInputSchema",
   "councilMemoryWriteToolOutputSchema",
   "councilProjectChatTargetWireSchema",
+  "councilProjectResultLink",
+  "councilProjectResultPrepareCommandSchema",
+  "councilProjectResultSourceSchema",
   "councilProjectSendExchangeSchema",
   "councilProjectSendInputSchema",
   "councilProjectSendToolOutputSchema",
@@ -1180,15 +1183,18 @@ describe("protocol public surface compatibility", () => {
         modelAndGoalCommands.includes(type),
       ),
     ).toEqual(modelAndGoalCommands);
+    const councilCommands = [
+      "council.history.search",
+      "council.project-result.prepare",
+    ];
     expect(
       currentAdvertisedCommandTypes.filter((type) =>
         type.startsWith("council."),
       ),
-    ).toEqual(["council.history.search"]);
+    ).toEqual(councilCommands);
     const advertisedCommandTypes = currentAdvertisedCommandTypes.filter(
       (type) =>
-        !modelAndGoalCommands.includes(type) &&
-        type !== "council.history.search",
+        !modelAndGoalCommands.includes(type) && !councilCommands.includes(type),
     );
     // Reviewed explicit cold recovery preserves every previous discriminator.
     expect(

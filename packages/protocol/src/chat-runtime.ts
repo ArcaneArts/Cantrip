@@ -208,6 +208,7 @@ export const chatTurnCreateSchema = z
   });
 
 export const queuedPromptSchema = z.object({
+  internal: z.literal(true).optional(),
   revision: z.number().int().nonnegative().optional(),
   nativeAction: z
     .enum(["plain", "literal", "parseSlash", "runShell"])

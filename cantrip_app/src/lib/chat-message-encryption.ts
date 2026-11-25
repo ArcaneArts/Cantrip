@@ -241,10 +241,14 @@ export async function openChatMessageOpaqueSummary(
         attachmentIds: message.attachmentIds,
       },
     });
-    return chatMessageSchema.parse({
-      ...message,
-      content: chatMessageContentSchema.parse(opened.content),
-    });
+    const content = chatMessageContentSchema
+      .parse(opened.content)
+      .map((item) =>
+        item.type === "text" && item.councilProjectResult
+          ? { ...item, text: "Project result" }
+          : item,
+      );
+    return chatMessageSchema.parse({ ...message, content });
   } finally {
     clearSensitiveBytes(componentKey);
   }
@@ -273,7 +277,8 @@ export async function openQueuedPromptOpaqueSummary(
     return {
       id: prompt.id,
       chatId: prompt.chatId,
-      text: opened.text,
+      text: opened.internal ? "Internal Council input" : opened.text,
+      internal: opened.internal,
       attachments: await openAttachmentOpaqueList(prompt.attachments, options),
       mode: prompt.classification.mode,
       modelId: prompt.modelId,

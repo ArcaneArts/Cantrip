@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { uniqueChatCommunicationMessages } from "../../packages/protocol/dist/index.js";
+import {
+  councilProjectResultLink,
+  uniqueChatCommunicationMessages,
+} from "../../packages/protocol/dist/index.js";
 import { eventually } from "./full-worker.mjs";
 import { taskModelProvider } from "./task-model-provider.mjs";
 
@@ -24,10 +27,19 @@ export async function actualCouncilProjectMessages({
   const expectedPermission = ":read-only";
   const idle = () =>
     eventually(readChat, (chat) => assert.equal(chat.status, "idle"), 60_000);
-  const read = () =>
+  const readMessages = (chatId) =>
     page.evaluate(
       async (chat) => (await import("/src/lib/api/chats.ts")).getMessages(chat),
-      targetChatId,
+      chatId,
+    );
+  const read = () => readMessages(targetChatId);
+  const resultInputs = async () =>
+    (await readMessages(councilId)).flatMap((message) =>
+      message.content.flatMap((item) =>
+        item.type === "text" && item.councilProjectResult
+          ? [{ message, text: item.text, source: item.councilProjectResult }]
+          : [],
+      ),
     );
   try {
     const initial = target.reply({
@@ -69,13 +81,14 @@ export async function actualCouncilProjectMessages({
         ).ensureChatWorkerEncryption({ worker });
         const api = await import("/src/lib/api/chats.ts");
         await api.updateChatPermissionProfile(targetChatId, expectedPermission);
-        return api.startTurn(targetChatId, prepareText, {
+        const receipt = await api.startTurn(targetChatId, prepareText, {
           modelId: profile.id,
           reasoningEffort: null,
           customSubagentModel: false,
           subagentModelId: null,
           subagentReasoningEffort: null,
         });
+        return { receipt, profileId: profile.id };
       },
       {
         baseUrl: target.baseUrl,
@@ -86,7 +99,7 @@ export async function actualCouncilProjectMessages({
         expectedPermission,
       },
     );
-    assert.equal(ready.status, "queued");
+    assert.equal(ready.receipt.status, "queued");
     await eventually(
       () => initial.request?.completed,
       (complete) => assert.equal(complete, true),
@@ -118,15 +131,15 @@ export async function actualCouncilProjectMessages({
       chatId: targetChatId,
       message: delegatedText,
     };
-    const signal = (key) =>
+    const signal = (key, input = args) =>
       model.reply({
         responseId: `council-project-${key}`,
-        calls: [{ ...send, arguments: args }],
+        calls: [{ ...send, arguments: input }],
       });
     signal("first");
     const duplicate = signal("retry");
     const done = model.reply({ text: "I sent the work to the project chat." });
-    const remote = target.reply({ text: answer });
+    const remote = target.reply({ hold: true, text: answer });
     assert.equal(
       (
         await submit(
@@ -162,6 +175,9 @@ export async function actualCouncilProjectMessages({
     assert.equal(receipt.sourceChatId, councilId);
     assert.equal(receipt.operationId, operationId);
     assert.equal(receipt.chatId, targetChatId);
+    await idle();
+    const callback = model.reply({ text: "I received the project result." });
+    remote.release();
     const messages = await eventually(
       read,
       (messages) =>
@@ -221,9 +237,157 @@ export async function actualCouncilProjectMessages({
       targetChatId,
     );
     assert.equal(permissions.effectiveId, expectedPermission);
+    await eventually(
+      () => callback.request?.completed,
+      (complete) =>
+        assert.equal(complete, true, JSON.stringify(model.failures)),
+      60_000,
+    );
+    const records = await eventually(
+      resultInputs,
+      (inputs) => assert.equal(inputs.length, 1),
+      60_000,
+    );
+    const { source, text } = records[0];
+    assert.equal(source.projectId, projectId);
+    assert.equal(source.chatId, targetChatId);
+    assert.equal(source.inputMessageId, receipt.inputMessageId);
+    assert.equal(source.status, "completed");
+    assert.ok(source.threadId && source.turnId);
+    assert.equal(text, "Project result");
+    assert.ok(JSON.stringify(callback.request.input.input).includes(answer));
+    await idle();
+
+    const unrelated = target.reply({ text: "This was a separate human turn." });
+    const priorSourceRequests = model.requests.length;
+    const independent = await page.evaluate(
+      async ({ chat, profileId }) =>
+        (await import("/src/lib/api/chats.ts")).startTurn(
+          chat,
+          "An unrelated human request",
+          {
+            modelId: profileId,
+            reasoningEffort: null,
+            customSubagentModel: false,
+            subagentModelId: null,
+            subagentReasoningEffort: null,
+          },
+        ),
+      { chat: targetChatId, profileId: ready.profileId },
+    );
+    assert.equal(independent.status, "queued");
+    await eventually(
+      () => unrelated.request?.completed,
+      (complete) => assert.equal(complete, true),
+      60_000,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    assert.equal((await resultInputs()).length, 1);
+    assert.equal(model.requests.length, priorSourceRequests);
+    assert.deepEqual(model.failures, []);
+
+    const busyAnswer =
+      "The second project result arrived during an active Council turn.";
+    const busyRemote = target.reply({ hold: true, text: busyAnswer });
+    signal("busy", {
+      ...args,
+      operationId: randomUUID(),
+      message: "Deliver a result while Council is busy.",
+    });
+    const sentAgain = model.reply({ text: "The second brief is queued." });
+    await submit("Send another brief and continue with other work.");
+    await eventually(
+      () => sentAgain.request?.completed,
+      (complete) => assert.equal(complete, true),
+      60_000,
+    );
+    const secondReceipt = delivery(sentAgain, "busy");
+    await idle();
+
+    const activePrompt = "Continue an independent Council briefing.";
+    const held = model.reply({
+      hold: true,
+      text: "I am working on the briefing.",
+    });
+    await submit(activePrompt);
+    try {
+      await eventually(
+        () => held.entered,
+        (entered) => assert.ok(entered),
+        60_000,
+      );
+      const continued = model.reply({
+        text: "I added the second project result to the briefing.",
+      });
+      busyRemote.release();
+      const callbacks = await eventually(
+        resultInputs,
+        (inputs) => assert.equal(inputs.length, 2),
+        60_000,
+      );
+      const steered = callbacks.find(
+        ({ source }) => source.inputMessageId === secondReceipt.inputMessageId,
+      );
+      assert.ok(steered);
+      const activeInput = (await readMessages(councilId)).find(
+        ({ role, content }) =>
+          role === "user" && content.some(({ text }) => text === activePrompt),
+      );
+      assert.ok(activeInput?.executionLaneId);
+      assert.equal(
+        steered.message.executionLaneId,
+        activeInput.executionLaneId,
+      );
+      assert.equal(held.request.completed, false);
+      held.release();
+      await eventually(
+        () => continued.request?.completed,
+        (complete) => assert.equal(complete, true),
+        60_000,
+      );
+      assert.ok(
+        JSON.stringify(continued.request.input.input).includes(busyAnswer),
+      );
+      await idle();
+      assert.equal((await resultInputs()).length, 2);
+      assert.deepEqual(model.failures, []);
+    } finally {
+      held.release();
+      busyRemote.release();
+    }
+
+    await page.setViewportSize({ width: 1344, height: 900 });
+    await page.goto(new URL("/", page.url()).href);
+    await page
+      .getByRole("button", { name: /switch cantrip mode/iu })
+      .first()
+      .click();
+    await page.getByRole("menuitem", { name: "Cantrip Council" }).click();
+    await page
+      .getByRole("navigation", { name: "Council agents" })
+      .getByRole("button", { name: new RegExp(sender, "u") })
+      .click();
+    const link = page.locator(
+      `[data-slot="council-project-result"][href="${councilProjectResultLink(source)}"]`,
+    );
+    await link.waitFor({ state: "visible", timeout: 30_000 });
+    assert.equal(await page.getByText(answer, { exact: true }).count(), 0);
+    await link.click();
+    await page
+      .locator(`[data-chat-message-id="${receipt.inputMessageId}"]`)
+      .first()
+      .waitFor({ state: "visible", timeout: 30_000 });
+
     result.councilProjectMessages = { targetWorkerId, projectId, ...receipt };
+    result.councilProjectResult = source;
     result.steps.push(
       "Council retried one stable project delivery and the remote Worker ran one input with Council attribution and the chat's read-only permission",
+    );
+    result.steps.push(
+      "The exact project result woke Council once, hid its internal prompt, and linked to the originating input. An unrelated project turn did not wake Council.",
+    );
+    result.steps.push(
+      "A second project result steered the Council agent's existing native execution lane.",
     );
   } finally {
     await target.close();

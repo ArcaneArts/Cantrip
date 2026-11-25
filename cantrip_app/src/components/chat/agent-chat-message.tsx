@@ -28,6 +28,7 @@ export function AgentChatMessage({
     <div
       className={cn("flex gap-3", sent && "justify-end")}
       data-slot="agent-chat-message"
+      data-chat-message-id={message.id}
       data-direction={communication.direction}
     >
       {!sent && (

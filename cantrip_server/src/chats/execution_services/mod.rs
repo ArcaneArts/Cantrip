@@ -64,6 +64,7 @@ pub struct Service {
     pub receipts: Arc<ReceiptService>,
     pub receipt_notifications: ReceiptNotifications,
     queue_delivery: Arc<QueueDelivery>,
+    council_results: Arc<crate::native_commands::runtime::logical_delivery::LogicalDelivery>,
     outcome_timers: Arc<recovery::scheduler::Scheduler>,
     quota: Arc<runtime_quota::Service>,
     titles: Arc<MessageTitles>,
@@ -230,6 +231,12 @@ impl Service {
             telemetry,
             logger: d.logger.clone(),
         });
+        let council_results = super::council_project_results::delivery::new(
+            d.database.clone(),
+            d.commands.clone(),
+            turns.recovery.clone(),
+            d.logger.clone(),
+        );
         Arc::new(Self {
             thread_sync,
             runtime: turns.runtime,
@@ -244,6 +251,7 @@ impl Service {
             receipts,
             receipt_notifications,
             queue_delivery,
+            council_results,
             outcome_timers,
             quota,
             titles,
@@ -261,6 +269,7 @@ impl Service {
     pub fn start(&self) {
         self.scheduler.start();
         self.queue_delivery.start();
+        self.council_results.start();
     }
 
     pub fn name_task(&self, owner: &str, chat: &str, task: &Value) {
@@ -272,6 +281,7 @@ impl Service {
     pub fn stop(&self) {
         self.thread_sync.close();
         self.queue_delivery.stop();
+        self.council_results.stop();
         self.scheduler.stop_timer();
         self.scheduler.stop_automatic_retries();
         self.outcome_timers.clear();
@@ -285,6 +295,7 @@ impl Service {
     pub async fn drained(&self) {
         self.thread_sync.drained().await;
         self.queue_delivery.drained().await;
+        self.council_results.drained().await;
         self.scheduler.drained().await;
         self.outcome_timers.drained().await;
         self.outcomes.drained().await;
