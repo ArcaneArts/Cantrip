@@ -48,6 +48,9 @@ fn import_public(input: &Value) -> Result<Public> {
         .map_err(|_| anyhow!("Invalid HPKE public key."))
 }
 pub fn wrap_key(key: &[u8], recipient: &Value, aad: &Value) -> Result<Value> {
+    wrap_key_bytes(key, recipient, &associated_data(aad)?)
+}
+pub(crate) fn wrap_key_bytes(key: &[u8], recipient: &Value, aad: &[u8]) -> Result<Value> {
     require_length(key, 32, "Key")?;
     let public = import_public(recipient)?;
     let (enc, ciphertext) = hpke::single_shot_seal::<AesGcm256, HkdfSha256, Kem>(
@@ -55,7 +58,7 @@ pub fn wrap_key(key: &[u8], recipient: &Value, aad: &Value) -> Result<Value> {
         &public,
         INFO,
         key,
-        &associated_data(aad)?,
+        aad,
     )
     .map_err(|_| anyhow!("HPKE key wrapping failed."))?;
     checked(
@@ -67,6 +70,14 @@ pub fn unwrap_key(
     envelope: &Value,
     recipient: &HpkeKeyPair,
     aad: &Value,
+) -> Result<Zeroizing<Vec<u8>>> {
+    let aad = associated_data(aad).map_err(|_| decryption_error())?;
+    unwrap_key_bytes(envelope, recipient, &aad)
+}
+pub(crate) fn unwrap_key_bytes(
+    envelope: &Value,
+    recipient: &HpkeKeyPair,
+    aad: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>> {
     let open = || -> Result<Zeroizing<Vec<u8>>> {
         let envelope = checked("hpkeWrappedKeyEnvelopeSchema", envelope)?;
@@ -82,7 +93,7 @@ pub fn unwrap_key(
                 &enc,
                 INFO,
                 &encoded_field(&envelope, "ciphertext")?,
-                &associated_data(aad)?,
+                aad,
             )
             .map_err(|_| decryption_error())?,
         );

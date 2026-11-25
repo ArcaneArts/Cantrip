@@ -86,6 +86,15 @@ pub fn mobile_code() -> Result<MobileCode> {
     })
 }
 
+/// Integration credentials are separate from account sessions and worker tokens.
+pub(super) fn external_mcp_credential() -> Result<String> {
+    use cantrip_protocol::external_mcp::INTEGRATION_CREDENTIAL_PREFIX;
+    Ok(format!(
+        "{INTEGRATION_CREDENTIAL_PREFIX}{}",
+        URL_SAFE_NO_PAD.encode(random::<32>()?)
+    ))
+}
+
 /// Password work runs off the async executor, with bounded memory concurrency.
 #[derive(Clone)]
 pub struct PasswordService {

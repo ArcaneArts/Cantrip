@@ -125,7 +125,7 @@ fn bandwidth(header: &Value) -> &'static str {
         "browser" | "remote-desktop" => "remote-surface-relay",
         "project-share" => "project-share-relay",
         "tunnel" => "tunnel-relay",
-        "observations" => "other",
+        "observations" | "external-mcp" => "other",
         _ => unreachable!("validated grant kind"),
     }
 }

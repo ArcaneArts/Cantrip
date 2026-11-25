@@ -3,10 +3,160 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub const PATH: &str = "/api/external-mcp/discovery";
+pub const HOSTED_DISCOVERY_PATH: &str = "/api/external-mcp/hosted/discovery";
+pub const HOSTED_CAPABILITIES_PATH: &str = "/api/external-mcp/hosted/capabilities";
+pub const HOSTED_RELAY_PATH: &str = "/api/external-mcp/hosted/relay";
+pub const WORKER_CONTEXT_TOOL: &str = "worker_context";
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkerContextInput {
+    pub project_id: String,
+}
+
+impl WorkerContextInput {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        uuid::Uuid::parse_str(&self.project_id)
+            .map(|_| ())
+            .map_err(|_| "Enter a Cantrip project ID.")
+    }
+}
+
+pub fn parse_worker_context(input: &str) -> serde_json::Result<WorkerContextInput> {
+    serde_json::from_str(input)
+}
+
+pub fn worker_context_tool() -> Value {
+    json!({
+        "name": WORKER_CONTEXT_TOOL,
+        "description": "Ask the live worker assigned to a project for its execution context.",
+        "inputSchema": {
+            "type":"object",
+            "additionalProperties":false,
+            "required":["projectId"],
+            "properties":{"projectId":{"type":"string","format":"uuid"}},
+        },
+        "annotations":{"readOnlyHint":true},
+    })
+}
 pub const MAX_REQUEST_BYTES: usize = 8 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 512 * 1024;
 pub const MODERN_VERSION: &str = "2026-07-28";
 pub const LEGACY_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26"];
+pub const MAX_GRANT_SECONDS: u32 = 365 * 24 * 60 * 60;
+pub const INTEGRATION_CREDENTIAL_PREFIX: &str = "ctmcp_";
+
+pub fn valid_integration_credential(credential: &str) -> bool {
+    credential
+        .strip_prefix(INTEGRATION_CREDENTIAL_PREFIX)
+        .is_some_and(|key| {
+            key.len() == 43
+                && key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        })
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum IntegrationScope {
+    ProjectsRead,
+    ChatsRead,
+    TasksRead,
+    PlacementsRead,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum ProjectAccess {
+    All,
+    Selected {
+        #[serde(rename = "projectIds")]
+        project_ids: Vec<String>,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IntegrationPermissions {
+    pub projects: ProjectAccess,
+    pub scopes: Vec<IntegrationScope>,
+}
+
+impl IntegrationPermissions {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.scopes.is_empty()
+            || self
+                .scopes
+                .iter()
+                .enumerate()
+                .any(|(index, scope)| self.scopes[..index].contains(scope))
+        {
+            return Err("Choose one or more distinct integration scopes.");
+        }
+        if let ProjectAccess::Selected { project_ids } = &self.projects
+            && (project_ids.is_empty()
+                || project_ids.len() > 100
+                || project_ids.iter().enumerate().any(|(index, id)| {
+                    uuid::Uuid::parse_str(id).is_err() || project_ids[..index].contains(id)
+                }))
+        {
+            return Err("Choose between 1 and 100 distinct projects.");
+        }
+        Ok(())
+    }
+
+    pub fn permits_project(&self, project_id: &str) -> bool {
+        match &self.projects {
+            ProjectAccess::All => true,
+            ProjectAccess::Selected { project_ids } => {
+                project_ids.iter().any(|id| id == project_id)
+            }
+        }
+    }
+
+    pub fn permits_tool(&self, tool: DiscoveryTool) -> bool {
+        self.scopes.contains(&tool.integration_scope())
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IntegrationCreate {
+    pub label: String,
+    pub permissions: IntegrationPermissions,
+    pub expires_in_seconds: u32,
+}
+
+impl IntegrationCreate {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.label.trim().is_empty()
+            || self.label.encode_utf16().count() > 100
+            || self.label.chars().any(char::is_control)
+        {
+            return Err("Enter an integration name of up to 100 characters.");
+        }
+        if !(1..=MAX_GRANT_SECONDS).contains(&self.expires_in_seconds) {
+            return Err("Set an expiry between one second and one year.");
+        }
+        self.permissions.validate()
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IntegrationRotate {
+    pub expires_in_seconds: u32,
+}
+
+impl IntegrationRotate {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if !(1..=MAX_GRANT_SECONDS).contains(&self.expires_in_seconds) {
+            return Err("Set an expiry between one second and one year.");
+        }
+        Ok(())
+    }
+}
 
 /// Validate the request authority on a listener bound to 127.0.0.1.
 pub fn loopback_authority(host: &str, origin: Option<&str>, port: u16) -> bool {
@@ -61,6 +211,15 @@ impl DiscoveryTool {
             self,
             Self::ChatList | Self::AgentList | Self::TaskList | Self::PlacementList
         )
+    }
+
+    pub fn integration_scope(self) -> IntegrationScope {
+        match self {
+            Self::WorkspaceList | Self::ProjectList => IntegrationScope::ProjectsRead,
+            Self::ChatList | Self::AgentList => IntegrationScope::ChatsRead,
+            Self::TaskList => IntegrationScope::TasksRead,
+            Self::PlacementList | Self::WorkerList => IntegrationScope::PlacementsRead,
+        }
     }
 
     pub fn definition(self) -> Value {
@@ -173,6 +332,38 @@ fn default_limit() -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn integration_scope_applies_to_projects_and_tool_families() {
+        let project = "11111111-1111-4111-8111-111111111111";
+        let permissions: IntegrationPermissions = serde_json::from_value(json!({
+            "projects":{"kind":"selected","projectIds":[project]},
+            "scopes":["projects-read","chats-read"],
+        }))
+        .unwrap();
+        assert!(permissions.validate().is_ok());
+        assert!(permissions.permits_project(project));
+        assert!(!permissions.permits_project("22222222-2222-4222-8222-222222222222"));
+        assert!(permissions.permits_tool(DiscoveryTool::ProjectList));
+        assert!(permissions.permits_tool(DiscoveryTool::AgentList));
+        assert!(!permissions.permits_tool(DiscoveryTool::TaskList));
+        assert!(!permissions.permits_tool(DiscoveryTool::WorkerList));
+    }
+
+    #[test]
+    fn integration_credentials_are_distinct_from_other_cantrip_credentials() {
+        assert!(valid_integration_credential(&format!(
+            "ctmcp_{}",
+            "A".repeat(43)
+        )));
+        for credential in [
+            "ctmcp_too-short".to_owned(),
+            format!("ctwk_{}", "A".repeat(43)),
+            format!("ctmcp_{}=", "A".repeat(42)),
+        ] {
+            assert!(!valid_integration_credential(&credential));
+        }
+    }
 
     #[test]
     fn loopback_authority_rejects_dns_rebinding_and_cross_origin_requests() {

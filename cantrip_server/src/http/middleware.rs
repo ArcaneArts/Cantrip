@@ -67,9 +67,16 @@ fn public(path: &str) -> bool {
         "/api/auth/register",
         "/api/auth/mobile-sign-in/exchange",
         "/api/auth/session",
+        cantrip_protocol::external_mcp::HOSTED_DISCOVERY_PATH,
+        cantrip_protocol::external_mcp::HOSTED_CAPABILITIES_PATH,
+        cantrip_protocol::external_mcp::HOSTED_RELAY_PATH,
     ]
     .contains(&path)
         || path.starts_with("/api/internal/")
+        || path
+            .strip_prefix(cantrip_protocol::external_mcp::HOSTED_RELAY_PATH)
+            .and_then(|suffix| suffix.strip_prefix('/'))
+            .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok())
 }
 fn trusted(ip: IpAddr, rules: &[String]) -> bool {
     let ip = match ip {

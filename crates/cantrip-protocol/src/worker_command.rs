@@ -916,6 +916,14 @@ pub(super) fn refine(
             false
         }
         "link-grant" => {
+            if (value["binding"]["resource"]["kind"] == "external-mcp")
+                != value.get("externalMcp").is_some()
+            {
+                issue!(
+                    &[json!("externalMcp")],
+                    "External MCP grants require the approved worker principal."
+                );
+            }
             if (value["binding"]["resource"]["kind"] == "observations")
                 != value.get("observation").is_some()
             {

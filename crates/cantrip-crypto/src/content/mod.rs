@@ -5,6 +5,7 @@ mod automation;
 mod backup;
 mod communication;
 mod endpoint;
+pub mod external_mcp;
 mod labels;
 mod native_command;
 mod native_resources;

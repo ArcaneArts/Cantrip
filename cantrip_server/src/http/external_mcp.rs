@@ -1,7 +1,10 @@
-//! Dedicated loopback control endpoint for external MCP discovery.
-use super::wire_json_response;
+//! Discovery control endpoints and account management for external MCP.
+use super::{json_response, middleware::Context as RequestContext, wire_json_response};
 use crate::{
-    auth::service::AuthService,
+    auth::{
+        external_mcp::{IntegrationActor, IntegrationPrincipal, lease_account},
+        service::AuthService,
+    },
     config::{AuthMode, DeploymentMode},
     projects::{
         repository::ProjectRepository, targets::TargetRepository, workspaces::WorkspaceRepository,
@@ -11,18 +14,299 @@ use crate::{
 };
 use anyhow::{Context, Result, ensure};
 use axum::{
-    Json, Router,
-    extract::{DefaultBodyLimit, Request, State},
-    http::{StatusCode, header},
+    Extension, Json, Router,
+    extract::{DefaultBodyLimit, Path as RoutePath, Request, State},
+    http::{HeaderMap, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{delete, get, post},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cantrip_protocol::external_mcp::{
-    DiscoveryRequest, DiscoveryTool, MAX_REQUEST_BYTES, PATH, loopback_authority, proxy_header,
+    DiscoveryRequest, DiscoveryTool, HOSTED_CAPABILITIES_PATH, HOSTED_DISCOVERY_PATH,
+    IntegrationCreate, IntegrationPermissions, IntegrationRotate, MAX_REQUEST_BYTES, PATH,
+    ProjectAccess, WORKER_CONTEXT_TOOL, loopback_authority, proxy_header,
 };
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
+
+mod relay;
+
+pub(super) fn hosted_routes() -> Router<Arc<AuthService>> {
+    Router::new()
+        .route(HOSTED_DISCOVERY_PATH, post(hosted_discovery))
+        .route(HOSTED_CAPABILITIES_PATH, get(hosted_capabilities))
+        .merge(relay::routes())
+        .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
+}
+
+async fn authenticate(
+    service: &AuthService,
+    headers: &HeaderMap,
+) -> Result<Option<IntegrationPrincipal>> {
+    if service.config.auth_mode == AuthMode::None {
+        return Ok(None);
+    }
+    let mut auth = headers.get_all(header::AUTHORIZATION).iter();
+    let Some((scheme, credential)) = auth
+        .next()
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split_once(' '))
+    else {
+        return Ok(None);
+    };
+    if auth.next().is_some() || !scheme.eq_ignore_ascii_case("Bearer") {
+        return Ok(None);
+    }
+    service
+        .repository
+        .authenticate_mcp_integration(credential)
+        .await
+}
+
+fn credential_required() -> Response {
+    let mut response = failure(
+        StatusCode::UNAUTHORIZED,
+        "A valid MCP integration credential is required.",
+    );
+    response.headers_mut().insert(
+        header::WWW_AUTHENTICATE,
+        header::HeaderValue::from_static("Bearer"),
+    );
+    response
+}
+
+async fn hosted_capabilities(
+    State(service): State<Arc<AuthService>>,
+    headers: HeaderMap,
+) -> Response {
+    match authenticate(&service, &headers).await {
+        Ok(Some(principal)) => {
+            let mut tools: Vec<_> = DiscoveryTool::ALL
+                .into_iter()
+                .filter(|tool| principal.integration.permissions.permits_tool(*tool))
+                .map(DiscoveryTool::name)
+                .collect();
+            if principal
+                .integration
+                .permissions
+                .permits_tool(DiscoveryTool::PlacementList)
+            {
+                tools.push(WORKER_CONTEXT_TOOL);
+            }
+            integration_response(StatusCode::OK, serde_json::json!({"tools":tools}))
+        }
+        Ok(None) => credential_required(),
+        Err(_) => failure(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "MCP authentication is unavailable.",
+        ),
+    }
+}
+
+async fn hosted_discovery(
+    State(service): State<Arc<AuthService>>,
+    headers: HeaderMap,
+    Json(request): Json<DiscoveryRequest>,
+) -> Response {
+    match authenticate(&service, &headers).await {
+        Ok(Some(principal)) => {
+            let permissions = &principal.integration.permissions;
+            if !permissions.permits_tool(request.tool) {
+                return failure(
+                    StatusCode::FORBIDDEN,
+                    "The integration does not have this MCP scope.",
+                );
+            }
+            if request
+                .arguments
+                .project_id
+                .as_deref()
+                .is_some_and(|id| !permissions.permits_project(id))
+            {
+                return failure(StatusCode::NOT_FOUND, "Project not found.");
+            }
+            discovery_response(&service, &principal.owner_id, request, Some(permissions)).await
+        }
+        Ok(None) => credential_required(),
+        Err(_) => failure(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "MCP authentication is unavailable.",
+        ),
+    }
+}
+
+pub(super) fn integration_routes() -> Router<Arc<AuthService>> {
+    Router::new()
+        .route(
+            "/api/account/external-mcp-integrations",
+            get(list_integrations).post(create_integration),
+        )
+        .route(
+            "/api/account/external-mcp-integrations/{id}",
+            delete(revoke_integration),
+        )
+        .route(
+            "/api/account/external-mcp-integrations/{id}/rotate",
+            post(rotate_integration),
+        )
+        .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
+}
+
+fn integration_actor(context: &RequestContext) -> Option<IntegrationActor> {
+    Some(IntegrationActor {
+        owner: context.principal.user.as_ref()?.id.clone(),
+        session: context.principal.session_id.clone()?,
+        request_id: context.id.clone(),
+    })
+}
+
+fn integration_response(status: StatusCode, value: impl serde::Serialize) -> Response {
+    let mut response = json_response(status, value);
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
+async fn list_integrations(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<RequestContext>>,
+) -> Response {
+    let Some(actor) = integration_actor(&context) else {
+        return failure(
+            StatusCode::UNAUTHORIZED,
+            "Sign in to manage MCP integrations.",
+        );
+    };
+    match service.repository.list_mcp_integrations(&actor.owner).await {
+        Ok(rows) => integration_response(StatusCode::OK, rows),
+        Err(_) => failure(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Could not list MCP integrations.",
+        ),
+    }
+}
+
+async fn create_integration(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<RequestContext>>,
+    Json(input): Json<IntegrationCreate>,
+) -> Response {
+    let Some(actor) = integration_actor(&context) else {
+        return failure(
+            StatusCode::UNAUTHORIZED,
+            "Sign in to manage MCP integrations.",
+        );
+    };
+    if let Err(message) = input.validate() {
+        return failure(StatusCode::BAD_REQUEST, message);
+    }
+    if let ProjectAccess::Selected { project_ids } = &input.permissions.projects {
+        let count = service
+            .repository
+            .database
+            .query(
+                "SELECT count(*)::integer FROM projects WHERE owner_id=$1 AND id=ANY($2)",
+                &[&actor.owner, project_ids],
+            )
+            .await
+            .and_then(|rows| rows[0].get::<i32>(0));
+        match count {
+            Ok(count) if count as usize == project_ids.len() => {}
+            Ok(_) => return failure(StatusCode::NOT_FOUND, "A selected project is unavailable."),
+            Err(_) => {
+                return failure(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Could not resolve selected projects.",
+                );
+            }
+        }
+    }
+    match service
+        .repository
+        .create_mcp_integration(actor, input)
+        .await
+    {
+        Ok(issued) => integration_response(StatusCode::CREATED, issued),
+        Err(_) => failure(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Could not create the MCP integration.",
+        ),
+    }
+}
+
+async fn rotate_integration(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<RequestContext>>,
+    RoutePath(id): RoutePath<String>,
+    Json(input): Json<IntegrationRotate>,
+) -> Response {
+    let Some(actor) = integration_actor(&context) else {
+        return failure(
+            StatusCode::UNAUTHORIZED,
+            "Sign in to manage MCP integrations.",
+        );
+    };
+    if let Err(message) = input.validate() {
+        return failure(StatusCode::BAD_REQUEST, message);
+    }
+    match service
+        .repository
+        .rotate_mcp_integration(actor, &id, input.expires_in_seconds)
+        .await
+    {
+        Ok(Some(issued)) => {
+            let account = lease_account(&issued.integration.id, issued.integration.generation - 1);
+            if service.worker_links.revoke_account(&account).await.is_err() {
+                return failure(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "The credential rotated. Retry rotation to obtain a new credential.",
+                );
+            }
+            integration_response(StatusCode::OK, issued)
+        }
+        Ok(None) => failure(StatusCode::NOT_FOUND, "MCP integration not found."),
+        Err(_) => failure(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Could not rotate the MCP integration.",
+        ),
+    }
+}
+
+async fn revoke_integration(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<RequestContext>>,
+    RoutePath(id): RoutePath<String>,
+) -> Response {
+    let Some(actor) = integration_actor(&context) else {
+        return failure(
+            StatusCode::UNAUTHORIZED,
+            "Sign in to manage MCP integrations.",
+        );
+    };
+    match service.repository.revoke_mcp_integration(actor, &id).await {
+        Ok(Some(integration)) => {
+            if service
+                .worker_links
+                .revoke_account(&integration.lease_account())
+                .await
+                .is_err()
+            {
+                return failure(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "The credential is revoked. Could not close all live routes.",
+                );
+            }
+            integration_response(StatusCode::OK, integration)
+        }
+        Ok(None) => failure(StatusCode::NOT_FOUND, "MCP integration not found."),
+        Err(_) => failure(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Could not revoke the MCP integration.",
+        ),
+    }
+}
 
 pub fn router(service: Arc<AuthService>, port: u16) -> Result<Router> {
     ensure!(
@@ -71,6 +355,26 @@ async fn handle(
     State(service): State<Arc<AuthService>>,
     Json(request): Json<DiscoveryRequest>,
 ) -> Response {
+    let owner = service
+        .principal(None)
+        .await
+        .ok()
+        .and_then(|principal| principal.user);
+    let Some(owner) = owner else {
+        return failure(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "The local Cantrip owner is unavailable.",
+        );
+    };
+    discovery_response(&service, &owner.id, request, None).await
+}
+
+async fn discovery_response(
+    service: &AuthService,
+    owner: &str,
+    request: DiscoveryRequest,
+    permissions: Option<&IntegrationPermissions>,
+) -> Response {
     if let Err(message) = request.validate() {
         return failure(StatusCode::BAD_REQUEST, message);
     }
@@ -84,12 +388,9 @@ async fn handle(
         }
     };
     let result = async {
-        let owner = service
-            .principal(None)
-            .await?
-            .user
-            .context("Local Cantrip owner")?;
-        let Some((rows, source_truncated)) = discovery(&service, &owner.id, &request).await? else {
+        let Some((rows, source_truncated)) =
+            discovery(service, owner, &request, permissions).await?
+        else {
             return Ok(None);
         };
         Ok::<_, anyhow::Error>(Some(page(
@@ -101,7 +402,14 @@ async fn handle(
     }
     .await;
     match result {
-        Ok(Some(page)) => wire_json_response(StatusCode::OK, &page),
+        Ok(Some(page)) => {
+            let mut response = wire_json_response(StatusCode::OK, &page);
+            response.headers_mut().insert(
+                header::CACHE_CONTROL,
+                header::HeaderValue::from_static("no-store"),
+            );
+            response
+        }
         Ok(None) => failure(StatusCode::NOT_FOUND, "Project not found."),
         Err(_) => failure(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -118,9 +426,16 @@ async fn discovery(
     service: &AuthService,
     owner: &str,
     request: &DiscoveryRequest,
+    permissions: Option<&IntegrationPermissions>,
 ) -> Result<Option<(Vec<Value>, bool)>> {
     let database = &service.repository.database;
     let project_id = request.arguments.project_id.as_deref().unwrap_or_default();
+    let project_allowed = |id: &Value| {
+        permissions.is_none_or(|permissions| {
+            id.as_str()
+                .is_some_and(|id| permissions.permits_project(id))
+        })
+    };
     if request.tool.project_scoped()
         && ProjectRepository::new(database.clone())?
             .get(owner, project_id)
@@ -138,17 +453,28 @@ async fn discovery(
                 .as_array()
                 .context("Workspace list")?
                 .iter()
-                .map(|row| {
+                .filter_map(|row| {
+                    let project_count = row["projectIds"]
+                        .as_array()?
+                        .iter()
+                        .filter(|id| project_allowed(id))
+                        .count();
+                    if permissions.is_some_and(|permissions| {
+                        matches!(permissions.projects, ProjectAccess::Selected { .. })
+                    }) && project_count == 0
+                    {
+                        return None;
+                    }
                     let name =
                         (row["nameProtection"]["state"] == "system-default").then_some("Default");
-                    json!({
+                    Some(json!({
                         "id": row["id"],
                         "name": name,
                         "labelProtected": row["nameProtection"]["state"] == "encrypted",
                         "storageKind": row["storage"]["kind"],
                         "workerId": row["storage"]["workerId"],
-                        "projectCount": row["projectIds"].as_array().map_or(0, Vec::len),
-                    })
+                        "projectCount": project_count,
+                    }))
                 })
                 .collect()
         }
@@ -158,6 +484,7 @@ async fn discovery(
                 .await?;
             projects
                 .iter()
+                .filter(|row| project_allowed(&row["id"]))
                 .map(|row| {
                     let mut result = select(
                         row,
@@ -225,11 +552,19 @@ async fn discovery(
                 .collect()
         }
         DiscoveryTool::WorkerList => {
+            let permitted_workers = visible_worker_ids(service, owner, permissions, None).await?;
             let workers = WorkerRepository::new(database.clone())
                 .list_workers(owner)
                 .await?;
             workers
                 .into_iter()
+                .filter(|row| {
+                    permitted_workers.as_ref().is_none_or(|worker_ids| {
+                        row["workerId"]
+                            .as_str()
+                            .is_some_and(|id| worker_ids.contains(id))
+                    })
+                })
                 .map(|row| {
                     let row = Value::from_serialize(&row);
                     let mut result = select(
@@ -254,6 +589,8 @@ async fn discovery(
                 .collect()
         }
         DiscoveryTool::PlacementList => {
+            let permitted_workers =
+                visible_worker_ids(service, owner, permissions, Some(project_id)).await?;
             let connected = |worker: &str| service.workers.bridge.is_connected(worker);
             let Some(catalog) = TargetRepository::new(database.clone())
                 .catalog(owner, project_id, Some(&connected))
@@ -265,6 +602,13 @@ async fn discovery(
                 .as_array()
                 .context("Placement targets")?
                 .iter()
+                .filter(|row| {
+                    permitted_workers.as_ref().is_none_or(|worker_ids| {
+                        row["placement"]["workerId"]
+                            .as_str()
+                            .is_some_and(|id| worker_ids.contains(id))
+                    })
+                })
                 .filter_map(|row| {
                     let kind = row["resourceKind"].as_str()?;
                     let key = match kind {
@@ -292,6 +636,47 @@ async fn discovery(
         }
     };
     Ok(Some((rows, false)))
+}
+
+async fn visible_worker_ids(
+    service: &AuthService,
+    owner: &str,
+    permissions: Option<&IntegrationPermissions>,
+    selected_project: Option<&str>,
+) -> Result<Option<HashSet<String>>> {
+    let Some(ProjectAccess::Selected { project_ids }) =
+        permissions.map(|permissions| &permissions.projects)
+    else {
+        return Ok(None);
+    };
+    let projects = ProjectRepository::new(service.repository.database.clone())?
+        .list(owner)
+        .await?;
+    let mut workers = HashSet::new();
+    for project in &projects {
+        if !project["id"].as_str().is_some_and(|id| {
+            selected_project.is_none_or(|selected| selected == id)
+                && project_ids.iter().any(|allowed| allowed == id)
+        }) {
+            continue;
+        }
+        workers.extend(
+            [
+                &project["preferredWorkerId"],
+                &project["source"]["workerId"],
+            ]
+            .into_iter()
+            .chain(
+                project["replicas"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|replica| &replica["workerId"]),
+            )
+            .filter_map(|id| id.as_str().map(str::to_owned)),
+        );
+    }
+    Ok(Some(workers))
 }
 
 fn decode_cursor(request: &DiscoveryRequest) -> Result<Option<String>> {

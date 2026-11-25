@@ -131,6 +131,9 @@ impl Coordinator {
         if let Some(observation) = input.get("observation") {
             installed["observation"] = observation.clone()
         }
+        if let Some(external_mcp) = input.get("externalMcp") {
+            installed["externalMcp"] = external_mcp.clone()
+        }
         let installed = checked("installedWorkerLinkGrantSchema", installed)?;
         let grant_id = id(&binding, "grantId");
         let grant = Arc::new(Mutex::new(installed.clone()));

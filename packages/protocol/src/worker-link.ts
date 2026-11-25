@@ -95,6 +95,7 @@ export const workerLinkResourceKindSchema = z.enum([
   "browser",
   "remote-desktop",
   "observations",
+  "external-mcp",
 ]);
 
 export const workerLinkGrantOperationSchema = z.enum([
@@ -654,10 +655,24 @@ export const installedWorkerLinkGrantSchema = z
   .object({
     binding: workerLinkGrantBindingSchema,
     observation: workerLinkObservationInstallationSchema.optional(),
+    externalMcp: z
+      .object({ workerPrincipalId: z.string().uuid() })
+      .strict()
+      .optional(),
     tokenHash: workerLinkGrantTokenHashSchema,
   })
   .strict()
   .superRefine((grant, context) => {
+    if (
+      (grant.binding.resource.kind === "external-mcp") !==
+      (grant.externalMcp !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["externalMcp"],
+        message: "External MCP grants require the approved worker principal.",
+      });
+    }
     const observationGrant = grant.binding.resource.kind === "observations";
     if (observationGrant !== (grant.observation !== undefined)) {
       context.addIssue({
@@ -779,6 +794,7 @@ export const workerLinkDirectionSchema = z.enum([
 export const workerLinkPayloadFormatSchema = z.enum([
   "raw",
   "tunnel-data-plane-v1",
+  "external-mcp-v1",
 ]);
 
 export const workerLinkChannelRejectCodeSchema = z.enum([

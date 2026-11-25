@@ -2,7 +2,7 @@
 use super::{
     Coordinator, Session,
     carrier::{Carrier, Output, OutputKey},
-    id,
+    external_mcp, id,
     observation::Observation,
     terminal::Terminal,
     tunnel::{Inbound, Tunnel},
@@ -104,6 +104,7 @@ enum Resource {
     },
     Terminal(Terminal),
     Tunnel(Box<Tunnel>),
+    ExternalMcp(Box<external_mcp::Channel>),
     Surface {
         lane: Box<browser_surface::Lane>,
         payload_limit: usize,
@@ -115,6 +116,7 @@ impl Resource {
         match self {
             Self::Tunnel(tunnel) if !tunnel.listening() => "tunnel-data-plane-v1",
             Self::Tunnel(_) => "raw",
+            Self::ExternalMcp(_) => "external-mcp-v1",
             Self::Observation { .. } | Self::Terminal(_) | Self::Surface { .. } => "raw",
         }
     }
@@ -426,6 +428,22 @@ impl Channels {
                 let ready = !tunnel.listening();
                 (Resource::Tunnel(tunnel), ready)
             }
+            Some("external-mcp")
+                if header["lane"] == "stream" && header["channelKind"] == "reliable-stream" =>
+            {
+                let operations = installed["operations"].as_array().unwrap();
+                if !operations.contains(&json!("stream:read"))
+                    || !operations.contains(&json!("stream:write"))
+                {
+                    return Err("unauthorized");
+                }
+                let channel = external_mcp::Channel::new(
+                    &grant.value,
+                    &header["channel"],
+                    gateway.encryption.clone(),
+                );
+                (Resource::ExternalMcp(Box::new(channel)), true)
+            }
             Some("browser" | "remote-desktop") if header["channelKind"] == "reliable-stream" => {
                 let operations = installed["operations"].as_array().unwrap();
                 if !operations.contains(&json!("stream:read")) {
@@ -531,6 +549,11 @@ impl Channels {
                         .map(|()| Inbound::Retained)
                         .map_err(|_| "congested"),
                     Resource::Tunnel(tunnel) => tunnel.receive(bytes),
+                    Resource::ExternalMcp(mcp) => mcp.reply(bytes).map(|reply| {
+                        channel.push(reply);
+                        channel.close_after_drain = true;
+                        Inbound::Consumed
+                    }),
                     Resource::Surface { lane, .. } => {
                         lane.receive(bytes).map(|()| Inbound::Consumed)
                     }
