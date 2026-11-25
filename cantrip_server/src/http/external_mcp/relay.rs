@@ -28,11 +28,19 @@ use cantrip_protocol::external_mcp::{
 use std::sync::Arc;
 use uuid::Uuid;
 
+mod carriers;
+
 pub(super) fn routes() -> Router<Arc<AuthService>> {
-    Router::new().route(HOSTED_RELAY_PATH, post(open)).route(
-        &format!("{HOSTED_RELAY_PATH}/{{session}}"),
-        get(connect).delete(release),
-    )
+    Router::new()
+        .route(HOSTED_RELAY_PATH, post(open))
+        .route(
+            &format!("{HOSTED_RELAY_PATH}/{{session}}"),
+            get(connect).delete(release),
+        )
+        .route(
+            &format!("{HOSTED_RELAY_PATH}/{{session}}/carrier"),
+            post(carriers::hosted),
+        )
 }
 
 pub(super) fn local_routes() -> Router<Arc<AuthService>> {
@@ -41,6 +49,10 @@ pub(super) fn local_routes() -> Router<Arc<AuthService>> {
         .route(
             &format!("{LOCAL_RELAY_PATH}/{{session}}"),
             get(connect_local).delete(release_local),
+        )
+        .route(
+            &format!("{LOCAL_RELAY_PATH}/{{session}}/carrier"),
+            post(carriers::local),
         )
 }
 
@@ -383,7 +395,18 @@ async fn release_local(
 }
 
 async fn release_for(service: &AuthService, principal: Principal, session_id: &str) -> Response {
-    match session(service, &principal, session_id).await {
+    let current = session(service, &principal, session_id).await;
+    if matches!(&current, Ok(Some(_))) {
+        service
+            .direct_attachments
+            .revoke_scope(crate::direct_attachments::Scope::Resource {
+                owner: json!(principal.owner()),
+                kind: json!("worker-link"),
+                resource: json!(session_id),
+            })
+            .await;
+    }
+    match current {
         Ok(None) => StatusCode::NO_CONTENT.into_response(),
         Ok(Some(_))
             if service

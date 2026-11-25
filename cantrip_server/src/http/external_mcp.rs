@@ -29,6 +29,7 @@ use cantrip_protocol::external_mcp::{
 };
 use std::{collections::HashSet, sync::Arc};
 
+mod oauth;
 mod orchestration;
 mod receipts;
 mod relay;
@@ -40,6 +41,7 @@ pub(super) fn hosted_routes() -> Router<Arc<AuthService>> {
         .merge(relay::routes())
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .merge(orchestration::routes())
+        .merge(oauth::routes())
 }
 
 async fn authenticate(
@@ -60,10 +62,14 @@ async fn authenticate(
     if auth.next().is_some() || !scheme.eq_ignore_ascii_case("Bearer") {
         return Ok(None);
     }
-    service
-        .repository
-        .authenticate_mcp_integration(credential)
-        .await
+    if credential.starts_with("ctmb_") {
+        oauth::authenticate_bridge(service, credential).await
+    } else {
+        service
+            .repository
+            .authenticate_mcp_integration(credential)
+            .await
+    }
 }
 
 fn credential_required() -> Response {

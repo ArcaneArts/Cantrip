@@ -89,8 +89,12 @@ pub fn mobile_code() -> Result<MobileCode> {
 /// Integration credentials are separate from account sessions and worker tokens.
 pub(super) fn external_mcp_credential() -> Result<String> {
     use cantrip_protocol::external_mcp::INTEGRATION_CREDENTIAL_PREFIX;
+    authentication_secret(INTEGRATION_CREDENTIAL_PREFIX)
+}
+
+pub(crate) fn authentication_secret(prefix: &str) -> Result<String> {
     Ok(format!(
-        "{INTEGRATION_CREDENTIAL_PREFIX}{}",
+        "{prefix}{}",
         URL_SAFE_NO_PAD.encode(random::<32>()?)
     ))
 }

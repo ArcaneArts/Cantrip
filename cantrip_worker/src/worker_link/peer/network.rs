@@ -30,7 +30,7 @@ use webrtc::runtime::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::worker_link) enum PeerRoute {
+pub(crate) enum PeerRoute {
     Lan,
     Wan,
 }
@@ -43,7 +43,7 @@ impl PeerRoute {
         }
     }
 
-    pub(super) fn configuration(self, policy: &Value) -> RTCConfiguration {
+    pub(crate) fn configuration(self, policy: &Value) -> RTCConfiguration {
         let mut configuration = RTCConfigurationBuilder::new();
         if self == Self::Wan
             && let Some(url) = policy["stunUrls"]
@@ -58,7 +58,7 @@ impl PeerRoute {
         configuration.build()
     }
 
-    pub(super) fn remote_candidate_allowed(self, candidate: &str, trickled: bool) -> bool {
+    pub(crate) fn remote_candidate_allowed(self, candidate: &str, trickled: bool) -> bool {
         let mut fields = candidate
             .trim()
             .trim_start_matches("a=")
@@ -80,7 +80,7 @@ impl PeerRoute {
             && self.allows_remote(address, candidate_type.as_str().into(), trickled)
     }
 
-    pub(super) fn offer_allowed(self, sdp: &str) -> bool {
+    pub(crate) fn offer_allowed(self, sdp: &str) -> bool {
         sdp.lines().all(|line| {
             !(line.starts_with("a=candidate:") || line.starts_with("candidate:"))
                 || self.remote_candidate_allowed(line, false)
@@ -131,7 +131,7 @@ fn stun_url(value: &str) -> Option<String> {
 }
 
 #[derive(Debug)]
-pub(super) struct PeerRuntime {
+pub(crate) struct PeerRuntime {
     route: PeerRoute,
     // Ports are assigned by the driver. Keep the interface classification by
     // IP for host and server-reflexive candidate admission.
@@ -140,7 +140,7 @@ pub(super) struct PeerRuntime {
 }
 
 impl PeerRuntime {
-    pub(super) fn bind(route: PeerRoute, config: &Value) -> Result<(Self, Vec<SocketAddr>)> {
+    pub(crate) fn bind(route: PeerRoute, config: &Value) -> Result<(Self, Vec<SocketAddr>)> {
         let policy = &config["interfacePolicy"];
         let lan_allowlist = &config["vpnPolicy"]["lanAllowlist"];
         let mut bound = Vec::new();

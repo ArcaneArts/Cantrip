@@ -1,13 +1,14 @@
 //! Worker-owned WebRTC rounds under Core's installed WorkerLink authority.
 mod lane;
-mod network;
+pub(crate) mod network;
 
 use super::{
     Coordinator, Session, checked, expiration, id, route_enabled, timestamp, validate_renewal,
 };
 use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{JsString, Value, parse_json_text, value::json};
-use lane::{CONTROL, LANES, MAX_MESSAGE, Queue};
+use lane::Queue;
+pub(crate) use lane::{CONTROL, LANES, MAX_MESSAGE};
 pub(super) use lane::{PeerCarrier, index as lane_index};
 pub(super) use network::PeerRoute;
 use rtc::peer_connection::configuration::setting_engine::{

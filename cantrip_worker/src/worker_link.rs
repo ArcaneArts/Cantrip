@@ -5,7 +5,7 @@ mod channels;
 mod direct_broker;
 mod external_mcp;
 mod observation;
-mod peer;
+pub(crate) mod peer;
 mod terminal;
 mod tunnel;
 pub(crate) use tunnel::guest::PREPARE as PREPARE_GUEST_TUNNEL;

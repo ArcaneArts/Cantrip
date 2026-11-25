@@ -95,21 +95,42 @@ pub(super) async fn execute(
         service.transport_metrics.worker_link(&input["samples"]);
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
-    let core = &service.direct_attachments;
-    let mut authorization = authorization(ctx);
-    authorization["attachmentId"] = json!(session);
     if path.ends_with("/direct-activate") {
-        let capability = input["capabilityId"].as_str().unwrap();
-        if !core.matches(capability, &authorization) {
-            core.activate(capability, &authorization, "capability_mismatch");
-            return Ok(error(404, "Direct attachment not found."));
-        }
-        return Ok(if core.activate(capability, &authorization, "completed") {
-            StatusCode::NO_CONTENT.into_response()
-        } else {
-            error(409, "Direct attachment changed while activating.")
-        });
+        return Ok(activate_direct(
+            service,
+            &current,
+            input["capabilityId"].as_str().unwrap(),
+        ));
     }
+    prepare_direct(service, &current).await
+}
+
+pub(super) fn activate_direct(
+    service: &AuthService,
+    current: &Value,
+    capability: &str,
+) -> Response {
+    let core = &service.direct_attachments;
+    let identity = &current["identity"];
+    let authorization = json!({
+        "ownerId":identity["ownerId"],"authSessionId":identity["accountSessionId"],
+        "attachmentId":current["sessionId"],
+    });
+    if !core.matches(capability, &authorization) {
+        core.activate(capability, &authorization, "capability_mismatch");
+        return error(404, "Direct attachment not found.");
+    }
+    if core.activate(capability, &authorization, "completed") {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        error(409, "Direct attachment changed while activating.")
+    }
+}
+
+pub(super) async fn prepare_direct(service: &AuthService, current: &Value) -> Result<Response> {
+    let core = &service.direct_attachments;
+    let identity = &current["identity"];
+    let session = &current["sessionId"];
     if !current["routePolicy"]["enabled"]
         .as_array()
         .unwrap()
@@ -117,7 +138,7 @@ pub(super) async fn execute(
     {
         return Ok(error(409, "WorkerLink LOCAL is not enabled."));
     }
-    let lease_input = json!({"ownerId":authorization["ownerId"],"authSessionId":authorization["authSessionId"],"resourceId":session,"resourceKind":"worker-link"});
+    let lease_input = json!({"ownerId":identity["ownerId"],"authSessionId":identity["accountSessionId"],"resourceId":session,"resourceKind":"worker-link"});
     let Some(lease) = core.acquire_preparation(lease_input.clone()) else {
         return Ok(error(409, "WorkerLink route is changing."));
     };
@@ -126,7 +147,7 @@ pub(super) async fn execute(
             .workers
             .repository
             .get_worker(
-                authorization["ownerId"].as_str().unwrap(),
+                identity["ownerId"].as_str().unwrap(),
                 current["identity"]["workerId"].as_str().unwrap(),
             )
             .await?

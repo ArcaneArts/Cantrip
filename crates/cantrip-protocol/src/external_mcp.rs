@@ -12,6 +12,23 @@ pub const HOSTED_CAPABILITIES_PATH: &str = "/api/external-mcp/hosted/capabilitie
 pub const HOSTED_RELAY_PATH: &str = "/api/external-mcp/hosted/relay";
 pub const LOCAL_RELAY_PATH: &str = "/api/external-mcp/relay";
 pub const LOCAL_LEASE_ACCOUNT: &str = "external-mcp:local";
+pub const OAUTH_SCOPE: &str = "mcp";
+pub const OAUTH_AUTHORIZE_PATH: &str = "/api/external-mcp/oauth/authorize";
+pub const OAUTH_TOKEN_PATH: &str = "/api/external-mcp/oauth/token";
+pub const OAUTH_REGISTER_PATH: &str = "/api/external-mcp/oauth/register";
+pub const OAUTH_EXCHANGE_PATH: &str = "/api/external-mcp/oauth/exchange";
+pub const OAUTH_RESOURCE_PATH: &str = "/.well-known/oauth-protected-resource/mcp";
+pub const OAUTH_METADATA_PATH: &str = "/.well-known/oauth-authorization-server";
+
+pub fn opaque_secret(value: &str, prefix: &str) -> bool {
+    value.strip_prefix(prefix).is_some_and(|secret| {
+        secret.len() == 43
+            && secret
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    })
+}
+
 pub const RELAY_READY: &str = "cantrip-external-mcp-relay-ready";
 pub const WORKER_CONTEXT_TOOL: &str = "worker_context";
 
@@ -54,14 +71,7 @@ pub const MAX_GRANT_SECONDS: u32 = 365 * 24 * 60 * 60;
 pub const INTEGRATION_CREDENTIAL_PREFIX: &str = "ctmcp_";
 
 pub fn valid_integration_credential(credential: &str) -> bool {
-    credential
-        .strip_prefix(INTEGRATION_CREDENTIAL_PREFIX)
-        .is_some_and(|key| {
-            key.len() == 43
-                && key
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-        })
+    opaque_secret(credential, INTEGRATION_CREDENTIAL_PREFIX)
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -15,6 +15,8 @@ const { values } = parseArgs({
     worker: { type: "string" },
     codex: { type: "string" },
     browser: { type: "boolean" },
+    carrier: { type: "string" },
+    https: { type: "boolean" },
   },
 });
 assert.ok(values.server, "Pass the --server binary.");
@@ -51,9 +53,25 @@ const env = {
   CANTRIP_PUBLIC_REGISTRATION: "true",
 };
 delete env.CANTRIP_WORKER_TOKEN;
+const carrier = values.carrier ?? "relay";
+assert.ok(["local", "lan", "wan", "relay", "fallback"].includes(carrier));
+env.CANTRIP_WORKER_LINK_LOCAL_ENABLED = String(carrier === "local");
+env.CANTRIP_WORKER_LINK_LAN_ENABLED = String(
+  carrier === "lan" || carrier === "fallback",
+);
+env.CANTRIP_WORKER_LINK_WAN_ENABLED = String(carrier === "wan");
+if (carrier === "fallback")
+  env.CANTRIP_WORKER_LINK_INTERFACE_ALLOWLIST = "missing-mcp-test-interface";
 
-let server, app;
+let server, app, https;
 try {
+  if (values.https) {
+    assert.ok(values.worker, "--https requires --worker.");
+    const { startHttps } = await import("./external-mcp-https-cases.mjs");
+    https = await startHttps(directory);
+    Object.assign(env, https.env);
+    env.CANTRIP_APP_ORIGINS += "," + https.env.CANTRIP_PUBLIC_ORIGIN;
+  }
   if (values.browser) {
     assert.ok(
       values.worker && values.codex,
@@ -72,6 +90,8 @@ try {
       env,
     },
   );
+  if (https)
+    server.origin = await https.configure(server.origin, values.worker);
   const owner = productionClient(server);
   const unrelated = productionClient(server);
   let ownerId;
@@ -239,7 +259,7 @@ try {
   );
   const credentialFile = path.join(directory, "integration.credential");
   await writeFile(credentialFile, created.credential + "\n", { mode: 0o600 });
-  const connectMcp = async (file, suppressOperation) => {
+  const connectMcp = async (file, suppressOperation, onSuppressed) => {
     const client = new Client({
       name: "hosted-external-mcp-smoke",
       version: "1",
@@ -260,10 +280,9 @@ try {
       if (suppressOperation) {
         const forward = transport.onmessage;
         transport.onmessage = (message) => {
-          if (
-            message.result?.structuredContent?.operationId !== suppressOperation
-          )
-            forward(message);
+          const result = message.result?.structuredContent;
+          if (result?.operationId === suppressOperation) onSuppressed?.(result);
+          else forward(message);
         };
       }
       return client;
@@ -335,6 +354,9 @@ try {
       integrations,
       request,
       connectMcp,
+      transport: carrier === "fallback" ? "relay" : carrier,
+      verifyHttps: https?.verify,
+      setLocalEnabled: carrier === "local" ? https?.setLocalEnabled : undefined,
       verifyApp:
         app &&
         ((input) =>
@@ -347,6 +369,8 @@ try {
       hostedCredentialLifecycle: true,
       sdkScopeDiscovery: Boolean(values.worker),
       encryptedHostedRelay: Boolean(values.worker),
+      carrier,
+      https: Boolean(https),
       orchestration: Boolean(values.worker && values.codex),
       checkoutInspection: Boolean(values.worker),
       execution: Boolean(values.worker && values.codex),
@@ -355,6 +379,7 @@ try {
   );
 } finally {
   await app?.close();
+  await https?.close();
   await server?.close();
   await rm(directory, { recursive: true, force: true });
 }
