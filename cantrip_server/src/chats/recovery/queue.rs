@@ -63,7 +63,6 @@ impl Service {
             .chats
             .execution_context(owner, chat)
             .await?
-            .filter(|c| !truthy(c.get("automationPaused")))
         else {
             return Ok(());
         };
@@ -76,6 +75,14 @@ impl Service {
         {
             // No input has been claimed. Recovery can dispatch once the
             // worker or its scratch root becomes available.
+            return Ok(());
+        }
+        if context.get("councilAgent").is_some()
+            && self.recover_live_council_provider(owner, &context).await?
+        {
+            return Ok(());
+        }
+        if truthy(context.get("automationPaused")) {
             return Ok(());
         }
         if executing(&context) {

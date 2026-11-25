@@ -38,7 +38,12 @@ import {
 } from "./actual-council-steering.mjs";
 import { actualCouncilAppMode } from "./actual-council-app-mode.mjs";
 import { fixtureCodex } from "../worker-rust/deferred-receipt-smoke-cases.mjs";
-import { providerTestBoundary } from "./provider-test-boundary.mjs";
+import {
+  disposableProviderTls,
+  providerTestBoundary,
+} from "./provider-test-boundary.mjs";
+import { councilQuotaAccounts } from "./actual-council-active-provider.mjs";
+import { taskModelProvider } from "./task-model-provider.mjs";
 import { observePostgresErrors } from "./postgres-error-observation.mjs";
 import { observeFolderLive } from "./folder-live-observation.mjs";
 import { actualGithubConversion } from "./actual-github-conversion.mjs";
@@ -151,7 +156,9 @@ function startupTimeout(name) {
 }
 const serverStartupTimeoutMs = startupTimeout("--server-startup-timeout-ms");
 const workerStartupTimeoutMs = startupTimeout("--worker-startup-timeout-ms");
-const databaseMode = option("--database") ?? "pglite";
+const databaseMode =
+  option("--database") ??
+  (process.argv.includes("--council-active-provider") ? "postgres" : "pglite");
 const sharedPair = option("--server-pair");
 // A test-owned service can run on the host when the product runs in a guest.
 const externalRedisUrl = process.env.CANTRIP_TEST_EXTERNAL_REDIS_URL;
@@ -432,6 +439,9 @@ const councilProviderStop = process.argv.includes("--council-provider-stop");
 const councilProviderExhausted = process.argv.includes(
   "--council-provider-exhausted",
 );
+const councilActiveProvider = process.argv.includes(
+  "--council-active-provider",
+);
 const councilProviderTest =
   councilProviderRecovery ||
   councilProviderBlocked ||
@@ -646,6 +656,20 @@ async function flow(
     ? await providerTestBoundary(
         path.join(root, fixture.kind, "provider-test-boundary"),
       )
+    : undefined;
+  const activeQuotaTls = councilActiveProvider
+    ? await disposableProviderTls(
+        path.join(root, fixture.kind, "council-quota-tls"),
+        "127.0.0.1",
+        "IP:127.0.0.1",
+      )
+    : undefined;
+  const activeQuotaModel = activeQuotaTls
+    ? await taskModelProvider({
+        observeStreams: true,
+        chatgptAccounts: councilQuotaAccounts,
+        tls: activeQuotaTls,
+      })
     : undefined;
   let worker, tunnel, productFailed;
   const startWorker = async (
@@ -1071,10 +1095,27 @@ async function flow(
           input: councilSteeringFollowUp,
         })
       : undefined;
-    await startWorker(enrollment.code, {
-      environment: councilSteerProxy
+    const quotaCodex = activeQuotaModel
+      ? await fixtureCodex(root, process.env.CANTRIP_CODEX_BIN, {
+          scenario: "passthrough",
+          chatgptBaseUrl: new URL("/backend-api/", activeQuotaModel.baseUrl)
+            .href,
+        })
+      : undefined;
+    const councilWorkerEnvironment = quotaCodex
+      ? {
+          CANTRIP_CODEX_BIN: quotaCodex,
+          CODEX_CA_CERTIFICATE: activeQuotaTls.caPath,
+          SSL_CERT_FILE: activeQuotaTls.caPath,
+          HTTPS_PROXY: "http://127.0.0.1:1",
+          HTTP_PROXY: "http://127.0.0.1:1",
+          NO_PROXY: "127.0.0.1,localhost,::1",
+        }
+      : councilSteerProxy
         ? { CANTRIP_CODEX_BIN: councilSteerProxy }
-        : {},
+        : {};
+    await startWorker(enrollment.code, {
+      environment: councilWorkerEnvironment,
     });
     await eventually(workers, (workers) => {
       assert.equal(workers.length, 1);
@@ -1110,6 +1151,7 @@ async function flow(
       councilAutomations ||
       councilNotifications ||
       councilProviderTest ||
+      councilActiveProvider ||
       councilRoutineAuthoring ||
       councilSteerTrace
     ) {
@@ -1131,6 +1173,22 @@ async function flow(
               initiallyBlocked: councilProviderBlocked || councilProviderStop,
               stopBlockedRecovery: councilProviderStop,
               exhaustAlternate: councilProviderExhausted,
+            }
+          : undefined,
+        activeQuota: councilActiveProvider
+          ? {
+              appOrigin: vite.resolvedUrls.local[0],
+              databaseUrl: fixture.environment.DATABASE_URL,
+              model: activeQuotaModel,
+              workerDirectory: dataDirectory,
+              restartWorker: async () => {
+                const previous = worker.child.pid;
+                await stopWorker();
+                const replacement = await startWorker(undefined, {
+                  environment: councilWorkerEnvironment,
+                });
+                assert.notEqual(replacement.child.pid, previous);
+              },
             }
           : undefined,
         routineAuthoring: councilRoutineAuthoring
@@ -2223,6 +2281,7 @@ async function flow(
       ["worker", stopWorker],
       ["tunnel", () => tunnel?.close()],
       ["provider boundary", () => providerBoundary?.close()],
+      ["Council quota model", () => activeQuotaModel?.close()],
       [
         "browser context",
         async () => {
@@ -2398,6 +2457,7 @@ try {
         councilAutomations ||
         councilNotifications ||
         councilProviderTest ||
+        councilActiveProvider ||
         councilRoutineAuthoring ||
         councilPeerMessages ||
         councilProjectMessages

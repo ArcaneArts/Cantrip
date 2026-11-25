@@ -291,6 +291,13 @@ impl Turns {
                 let terminal = terminal?;
                 cua_finished?;
                 published.await?;
+                if binding.council && terminal.result.as_ref().err()
+                    .and_then(|error| error.downcast_ref::<output::NativeFailure>())
+                    .is_some_and(|failure| failure.provider_quota)
+                {
+                    receipt.finish_native_council_quota(&turn).await?;
+                    return Ok(Value::Null);
+                }
                 let result = match terminal.status {
                     "completed" => terminal.result?,
                     "interrupted" => json!({"interrupted":true}),

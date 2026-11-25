@@ -147,6 +147,7 @@ pub async fn run(
                 console: console.clone(),
                 tasks,
                 outcomes: timers.clone(),
+                council_pause: None,
                 account_failover: cantrip_server::chats::account_failover::Service::new(
                     database.clone(),
                     cantrip_server::native_handoffs::service::Service::new(

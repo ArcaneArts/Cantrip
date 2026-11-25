@@ -70,6 +70,7 @@ pub async fn run(
     let service = recovery::Service::new(recovery::Dependencies {
         database: database.clone(),
         live,
+        council_pause: None,
         account_failover: cantrip_server::chats::account_failover::Service::new(
             database.clone(),
             cantrip_server::native_handoffs::service::Service::new(

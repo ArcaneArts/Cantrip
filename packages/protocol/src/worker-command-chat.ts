@@ -126,6 +126,16 @@ const councilRecoverySnapshotMessage = chatMessageOpaqueContentSchema
   .extend({ id: z.string().min(1).max(200) });
 
 export const workerChatCommandSchemas = [
+  z.strictObject({
+    type: z.literal("chat.council-provider-retire"),
+    chatId: z.string().min(1).max(200),
+    threadId: z.string().min(1).max(500),
+    nativeActivationGeneration: z.string().min(1).max(200),
+    nativeRuntimeGeneration: z.string().min(1).max(200),
+    modelRouteId: z.string().min(1).max(200),
+    providerAccountId: z.string().min(1).max(200).nullable(),
+    checkpoint: nativeSuspensionEvidenceSchema,
+  }),
   councilHistorySearchCommandSchema,
   councilProjectResultPrepareCommandSchema,
   councilProjectRequestPrepareCommandSchema,

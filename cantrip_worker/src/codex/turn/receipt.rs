@@ -660,6 +660,27 @@ impl<'a> Receipt<'a> {
     }
 
     pub async fn finish_native(&self, turn: &JsString, status: &str, result: &Value) -> Result<()> {
+        self.finish_native_with_cause(turn, status, result, None)
+            .await
+    }
+
+    pub async fn finish_native_council_quota(&self, turn: &JsString) -> Result<()> {
+        self.finish_native_with_cause(
+            turn,
+            "failed",
+            &json!({"failed":true}),
+            Some("provider-quota"),
+        )
+        .await
+    }
+
+    async fn finish_native_with_cause(
+        &self,
+        turn: &JsString,
+        status: &str,
+        result: &Value,
+        cause: Option<&str>,
+    ) -> Result<()> {
         let grant = self.scope.material(None)?;
         let (envelope, digest) = protect_native_command_terminal_result(
             &grant.key,
@@ -675,6 +696,9 @@ impl<'a> Receipt<'a> {
         body["executionComplete"] = json!(true);
         body["executionStatus"] = json!(if status == "failed" { "failed" } else { "idle" });
         body["reconciliation"] = reconciliation(&self.session, Some(turn), Some(status)).unwrap();
+        if let Some(cause) = cause {
+            body["reconciliation"]["terminalCause"] = json!(cause);
+        }
         self.settle(body, "applied").await
     }
 
@@ -1446,7 +1470,11 @@ impl Client {
         } else {
             "turn/interrupt"
         };
-        let operation = JsString::from(uuid::Uuid::new_v4().to_string());
+        let operation = action
+            .recovery_operation()
+            .and_then(Value::as_js_string)
+            .cloned()
+            .unwrap_or_else(|| JsString::from(uuid::Uuid::new_v4().to_string()));
         let grant = scope.material(None)?;
         let (envelope, digest) = protect_native_command_request(
             &grant.key,
@@ -1466,6 +1494,9 @@ impl Client {
         if action.durable() {
             intent["durableSuspension"] = json!(true);
             intent["workerGeneration"] = json!(self.generation);
+        }
+        if action.recovery_operation().is_some() {
+            intent["councilProviderPause"] = json!(true);
         }
         if let Some(control_id) = action.control_id() {
             intent["expectedSuspensionControlId"] = control_id;

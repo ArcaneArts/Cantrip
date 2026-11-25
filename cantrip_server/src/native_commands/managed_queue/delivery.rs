@@ -5,7 +5,10 @@ impl QueueRepository {
         self.database.query(&format!("SELECT DISTINCT c.owner_id,c.id FROM queued_prompts p INNER JOIN chats c ON c.id=p.chat_id WHERE c.experience='agent' AND c.automation_paused=false AND c.managed_autonomy_stopped=false AND {NO_PERMISSION} AND {NO_HANDOFF} AND NOT EXISTS(SELECT 1 FROM managed_queue_states s WHERE s.chat_id=c.id AND s.goal_recovery IS NOT NULL) AND ((p.state='pending' AND p.frozen=false AND NOT EXISTS(SELECT 1 FROM managed_queue_claims q WHERE q.prompt_id=p.id AND q.prompt_revision=p.revision AND q.status='rejected')) OR (p.state='claimed' AND EXISTS(SELECT 1 FROM managed_queue_claims q WHERE q.prompt_id=p.id AND q.status='claimed' AND q.operation_id IS NULL)))
             UNION SELECT c.owner_id,c.id FROM council_provider_recoveries r JOIN chats c ON c.id=r.chat_id
               WHERE r.phase IN ('pending','blocked','switching') AND c.archived_at IS NULL
-                AND c.automation_paused=false AND c.managed_autonomy_stopped=false"),&[]).await?.iter().map(|r|Ok(json!({"ownerId":r.get::<String>(0)?,"chatId":r.get::<String>(1)?}))).collect()
+                AND c.automation_paused=false AND c.managed_autonomy_stopped=false
+            UNION SELECT c.owner_id,c.id FROM council_live_provider_switches s JOIN chats c ON c.id=s.chat_id
+              WHERE s.phase IN ('observed','pausing','restarting','resuming')
+                AND c.archived_at IS NULL AND NOT c.managed_autonomy_stopped"),&[]).await?.iter().map(|r|Ok(json!({"ownerId":r.get::<String>(0)?,"chatId":r.get::<String>(1)?}))).collect()
     }
     pub async fn pending_notifications(&self, limit: Option<f64>) -> Result<Vec<Value>> {
         let limit = limit.unwrap_or(64.0);

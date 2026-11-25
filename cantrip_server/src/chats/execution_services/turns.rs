@@ -124,6 +124,7 @@ pub(super) fn build(
                 }),
             });
             let tasks = TaskServices::new(goals.clone(), task_recovery.clone());
+            let council_pause = Some(pause.clone());
             task_services = Some((goals, task_recovery, pause));
             recovery::Dependencies {
                 database: d.database.clone(),
@@ -136,6 +137,7 @@ pub(super) fn build(
                 logger: d.logger.clone(),
                 prepare_account: d.account_failover.queued_preparation(),
                 account_failover: d.account_failover.clone(),
+                council_pause,
                 begin: Arc::new({
                     let runtime = runtime.clone();
                     move |owner, context, input, options| {

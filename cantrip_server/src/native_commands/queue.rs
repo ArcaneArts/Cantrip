@@ -74,6 +74,7 @@ pub(super) async fn stop_autonomy(tx: &Transaction<'_>, chat: &str) -> Result<()
     changed(tx, chat).await?;
     cancel_goal_handoffs(tx, chat).await?;
     super::council_provider_recovery::stop(tx, chat).await?;
+    super::council_live_provider::cancel(tx, chat).await?;
     let now = crate::auth::now();
     tx.query("UPDATE native_commands SET status='rejected',rejection_code='autonomy-stopped',updated_at=$1 WHERE chat_id=$2 AND status='accepted' AND intent->>'resumeAutonomy'='true'",&[&now,&chat]).await?;
     Ok(())

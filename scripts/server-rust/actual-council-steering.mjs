@@ -4,6 +4,10 @@ import { readFile } from "node:fs/promises";
 import { actualCouncilAutomations } from "./actual-council-automations.mjs";
 import { actualCouncilNotifications } from "./actual-council-notifications.mjs";
 import { actualCouncilProviderRecovery } from "./actual-council-provider-recovery.mjs";
+import {
+  actualCouncilActiveProvider,
+  prepareActiveCouncilAccounts,
+} from "./actual-council-active-provider.mjs";
 import { actualCouncilRoutineAuthoring } from "./actual-council-routine-authoring.mjs";
 import { actualCouncilBrowserHistory } from "./actual-council-browser-history.mjs";
 import { actualCouncilCompaction } from "./actual-council-compaction.mjs";
@@ -38,12 +42,14 @@ export async function actualCouncilSteering({
   routineAuthoring,
   notificationsAppOrigin,
   providerRecovery,
+  activeQuota,
   compaction,
   raceMarker,
   dropReplyMarker,
   coldRecovery,
 }) {
-  const model = await taskModelProvider({ observeStreams: true });
+  const model =
+    activeQuota?.model ?? (await taskModelProvider({ observeStreams: true }));
   const alternate = providerRecovery
     ? await taskModelProvider({ observeStreams: true })
     : undefined;
@@ -59,11 +65,14 @@ export async function actualCouncilSteering({
       configuration,
       profile: configuredProfile,
       alternateProvider,
+      quotaProvider,
+      quotaAccounts,
     } = await page.evaluate(
       async ({
         workerId,
         baseUrl,
         alternateUrl,
+        usesProviderAccounts,
         initiallyBlocked,
         nativeModel,
         role,
@@ -74,10 +83,20 @@ export async function actualCouncilSteering({
         const models = await import("/src/lib/api/models.ts");
         const provider = await models.createModelProvider({
           name: "Disposable Council provider",
-          kind: "openai-compatible",
+          kind: usesProviderAccounts ? "chatgpt" : "openai-compatible",
           baseUrl,
           apiKey: null,
         });
+        const quotaAccounts = usesProviderAccounts
+          ? [
+              await models.createModelProviderAccount(provider.id, {
+                label: "Council source account",
+              }),
+              await models.createModelProviderAccount(provider.id, {
+                label: "Council alternate account",
+              }),
+            ]
+          : null;
         const second = alternateUrl
           ? await models.createModelProvider({
               name: "Disposable Council backup provider",
@@ -132,8 +151,10 @@ export async function actualCouncilSteering({
         window.folderLive.retainScope({ kind: "chat", chatId: agent.id });
         return {
           chatId: agent.id,
-          profile: alternateUrl ? profile : null,
+          profile: alternateUrl || usesProviderAccounts ? profile : null,
           alternateProvider: second?.id,
+          quotaProvider: usesProviderAccounts ? provider.id : null,
+          quotaAccounts: quotaAccounts?.map(({ id }) => id) ?? null,
           configuration: {
             modelId: profile.id,
             reasoningEffort: null,
@@ -147,6 +168,7 @@ export async function actualCouncilSteering({
         workerId,
         baseUrl: model.baseUrl,
         alternateUrl: alternate?.baseUrl,
+        usesProviderAccounts: Boolean(activeQuota),
         initiallyBlocked: providerRecovery?.initiallyBlocked,
         nativeModel: model.model,
         role,
@@ -156,6 +178,7 @@ export async function actualCouncilSteering({
             memoryAppOrigin ||
             automations ||
             notificationsAppOrigin ||
+            activeQuota ||
             providerRecovery,
           ) && !testCreation,
         nativeCli: Boolean(inventory || peerAppOrigin),
@@ -209,6 +232,30 @@ export async function actualCouncilSteering({
           (item) => item.type === "text" && item.text === text,
         ),
       );
+    if (activeQuota) {
+      await prepareActiveCouncilAccounts({
+        page,
+        workerId,
+        workerDirectory: activeQuota.workerDirectory,
+        providerId: quotaProvider,
+        accounts: quotaAccounts,
+        model,
+      });
+      await actualCouncilActiveProvider({
+        ...activeQuota,
+        page,
+        chatId,
+        model,
+        submit,
+        readChat,
+        readMessages,
+        result,
+        sourceRoute: configuredProfile.routes[0].id,
+        sourceAccount: quotaAccounts[0],
+        targetAccount: quotaAccounts[1],
+      });
+      return;
+    }
     if (alternate) {
       await actualCouncilProviderRecovery({
         page,
@@ -731,6 +778,9 @@ export async function actualCouncilSteering({
       );
     }
   } finally {
-    await Promise.all([model.close(), alternate?.close()]);
+    await Promise.all([
+      activeQuota ? undefined : model.close(),
+      alternate?.close(),
+    ]);
   }
 }

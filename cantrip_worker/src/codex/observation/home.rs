@@ -148,15 +148,11 @@ async fn selection(
     saved_home: Option<&Path>,
 ) -> Result<Option<(String, PathBuf)>> {
     let root = root(data, scope, thread);
-    let homes = root.join("homes");
-    if saved_home.is_some_and(|saved| !saved.starts_with(&homes)) {
-        return Ok(None);
-    }
     let Some(head) = current(&root, scope, thread).await? else {
         return Ok(None);
     };
     let operation = head["operationId"].as_str().unwrap().to_owned();
-    let home = homes.join(&operation);
+    let home = selected_home(data, &root, &head);
     if saved_home.is_some_and(|saved| saved != home) {
         return Ok(None);
     }
@@ -168,6 +164,78 @@ async fn selection(
         bail!("The managed runtime route changed. Reload the canonical conversation binding.");
     }
     Ok(Some((operation, home)))
+}
+
+fn selected_home(data: &Path, root: &Path, record: &Value) -> PathBuf {
+    let storage = &record["storageHome"];
+    match storage["kind"].as_str() {
+        Some("standalone") => data
+            .join("codex-standalone-homes")
+            .join(storage["id"].as_str().unwrap()),
+        Some("namespace") => root.join("homes").join(storage["id"].as_str().unwrap()),
+        _ => root
+            .join("homes")
+            .join(record["operationId"].as_str().unwrap()),
+    }
+}
+
+fn valid_storage(storage: &Value) -> bool {
+    storage.as_object().is_some_and(|value| value.len() == 2)
+        && match storage["kind"].as_str() {
+            Some("namespace") => uuid(&storage["id"]).is_some(),
+            Some("standalone") => storage["id"].as_str().is_some_and(|id| {
+                id.len() == 64 && id.bytes().all(|byte| byte.is_ascii_hexdigit())
+            }),
+            _ => false,
+        }
+}
+
+/// A quota account change keeps the native writer on the authenticated
+/// checkpoint's existing home and changes only the account configuration.
+pub(in crate::codex) async fn select_council_checkpoint(
+    data: &Path,
+    scope: &Value,
+    provider: &Value,
+    saved: &crate::codex::suspension_store::Opened,
+) -> Result<()> {
+    let thread = saved.source["threadId"]
+        .as_js_string()
+        .context("Council native thread")?;
+    let checkpoint = &saved.evidence["suspension"]["checkpointId"];
+    let root = root(data, scope, thread);
+    let last = current(&root, scope, thread).await?;
+    let storage = if saved.home.parent() == Some(data.join("codex-standalone-homes").as_path()) {
+        "standalone"
+    } else if saved.home.parent() == Some(root.join("homes").as_path()) {
+        "namespace"
+    } else {
+        bail!("The saved Council home is outside its managed storage.");
+    };
+    let location =
+        json!({"kind":storage,"id":saved.home.file_name().and_then(|name| name.to_str())});
+    if !valid_storage(&location) {
+        bail!("The saved Council home has an invalid storage identity.");
+    }
+    if let Some(current) = &last
+        && (current["chatId"] != saved.source["chatId"]
+            || selected_home(data, &root, current) != saved.home
+            || (current["operationId"] != *checkpoint
+                && current["provider"]["accountId"] != saved.source["providerAccountId"]))
+    {
+        bail!("The saved Council home no longer owns the managed thread.");
+    }
+    let parent = last.as_ref().map_or(Value::Null, |head| {
+        if head["operationId"] == *checkpoint {
+            head["previousOperationId"].clone()
+        } else {
+            head["operationId"].clone()
+        }
+    });
+    publish_selection(data, scope, thread, json!({
+        "version":1, "scope":scope, "chatId":saved.source["chatId"], "threadId":thread,
+        "operationId":checkpoint, "previousOperationId":parent, "storageHome":location,
+        "provider":json!({"id":provider["id"],"kind":provider["kind"],"accountId":provider["accountId"]}),
+    })).await
 }
 
 fn root(data: &Path, scope: &Value, thread: &JsString) -> PathBuf {
@@ -254,7 +322,6 @@ pub(in crate::codex) async fn select_committed(
     provider: &Value,
     previous: &Value,
 ) -> Result<()> {
-    use cantrip_history::files::{ensure_directory, queue, read_json, write_immutable};
     let source = &handoff["source"];
     let binding = &handoff["binding"];
     let prepared = &handoff["prepared"];
@@ -285,7 +352,18 @@ pub(in crate::codex) async fn select_committed(
         "operationId":handoff["operationId"], "previousOperationId":previous,
         "provider":json!({"id":provider["id"],"kind":provider["kind"],"accountId":provider["accountId"]}),
     });
-    let operation = validate_record(&record, scope, &thread)?.to_owned();
+    publish_selection(data, scope, &thread, record).await
+}
+
+async fn publish_selection(
+    data: &Path,
+    scope: &Value,
+    thread: &JsString,
+    record: Value,
+) -> Result<()> {
+    use cantrip_history::files::{ensure_directory, queue, read_json, write_immutable};
+    let operation = validate_record(&record, scope, thread)?.to_owned();
+    let thread = thread.clone();
     let root = root(data, scope, &thread);
     let directory = root.join("selections");
     let scope = scope.clone();
@@ -351,7 +429,11 @@ fn uuid(value: &Value) -> Option<&str> {
 fn validate_record<'a>(record: &'a Value, scope: &Value, thread: &JsString) -> Result<&'a str> {
     let operation = uuid(&record["operationId"]);
     let provider = &record["provider"];
-    if record.as_object().is_none_or(|fields| fields.len() != 7)
+    let storage = record.get("storageHome");
+    if record
+        .as_object()
+        .is_none_or(|fields| fields.len() != 7 + usize::from(storage.is_some()))
+        || storage.is_some_and(|value| !valid_storage(value))
         || record["version"].as_i64() != Some(1)
         || !is_id(&record["chatId"])
         || !is_id(&record["threadId"])

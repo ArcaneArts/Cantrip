@@ -61,6 +61,7 @@ export const nativeCommandIntentSchema = z
     resumeAutonomy: z.boolean().optional(),
     paused: z.boolean().optional(),
     durableSuspension: z.literal(true).optional(),
+    councilProviderPause: z.literal(true).optional(),
     expectedSuspensionControlId: z.uuid().optional(),
     /** Stamped only by the dedicated suspension observer admission. */
     restoredSuspension: z

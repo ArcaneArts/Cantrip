@@ -117,9 +117,14 @@ impl Repository {
                      'routeId',attempt.identity->>'modelRouteId',
                      'accountId',attempt.identity->>'providerAccountId'
                    ))
-                   FROM council_provider_recoveries p JOIN native_commands attempt
-                   ON attempt.operation_id=p.source_operation_id AND attempt.chat_id=p.chat_id
-                   WHERE p.run_id=r.run_id AND p.chat_id=r.chat_id
+                   FROM native_commands attempt WHERE attempt.chat_id=r.chat_id AND (
+                     attempt.operation_id IN (SELECT p.source_operation_id
+                       FROM council_provider_recoveries p WHERE p.run_id=r.run_id AND p.chat_id=r.chat_id)
+                     OR (attempt.logical_operation_id=r.run_id AND attempt.operation_id IN (
+                       SELECT s.source_operation_id FROM council_live_provider_switches s
+                       WHERE s.chat_id=r.chat_id AND s.phase IN ('resuming','completed')
+                     ))
+                   )
                 ),
                 'sourceReady',s.execution_completed_at IS NOT NULL OR s.logical_completed_at IS NOT NULL,
                 'targetModelRouteId',r.target_model_route_id,'targetProviderAccountId',r.target_provider_account_id,

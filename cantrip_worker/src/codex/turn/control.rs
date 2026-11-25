@@ -9,7 +9,7 @@ pub(crate) const PAUSE_SET: &str = "chat.pause.set";
 mod task_stop;
 use super::{Active, Phase, RPC_TIMEOUT, Runtime, Turns, output};
 use crate::{chat_content::Scope, codex::rpc_requests::Failure, http::checked, metadata::Signal};
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use cantrip_wire::{JsString, Value, payload_digest, value::json};
 use std::sync::{OnceLock, atomic::Ordering};
 use tokio::sync::{Mutex, watch};
@@ -19,14 +19,16 @@ pub(super) enum Action<'a> {
     Stop,
     DurableStop(Option<&'a Value>),
     Pause(bool),
+    ProviderPause(&'a Value),
     Resume(&'a Value),
 }
 
-impl Action<'_> {
+impl<'a> Action<'a> {
     pub(super) fn paused(self) -> Option<bool> {
         match self {
             Self::Stop | Self::DurableStop(_) => None,
             Self::Pause(paused) => Some(paused),
+            Self::ProviderPause(_) => Some(true),
             Self::Resume(_) => Some(false),
         }
     }
@@ -43,6 +45,13 @@ impl Action<'_> {
             _ => None,
         }
     }
+
+    pub(super) fn recovery_operation(self) -> Option<&'a Value> {
+        match self {
+            Self::ProviderPause(operation) => Some(operation),
+            _ => None,
+        }
+    }
 }
 
 pub(super) struct Binding {
@@ -52,6 +61,7 @@ pub(super) struct Binding {
     council: bool,
     published: watch::Sender<Option<bool>>,
     checkpoint: OnceLock<output::Continuation>,
+    retired_for_provider: OnceLock<Value>,
     pause_control: Mutex<()>,
     pub(super) thread_version: u64,
     pub(super) interactions: OnceLock<super::interactions::Handle>,
@@ -70,13 +80,14 @@ impl Binding {
             interactions: OnceLock::new(),
             auto_approve: watch::channel(false).0,
             permission,
-            council: target.get("councilAgent").is_some(),
+            council: target.get("councilAgent").is_some() || target["session"]["council"] == true,
             input_target: json!({
                 "model":target["model"],"provider":json!({"kind":target["provider"]["kind"]}),
                 "osExecution":target["osExecution"],
             }),
             published: watch::channel(None).0,
             checkpoint: OnceLock::new(),
+            retired_for_provider: OnceLock::new(),
             pause_control: Mutex::default(),
             thread_version,
         }
@@ -164,11 +175,70 @@ impl Active {
 }
 
 impl Turns {
+    pub(crate) async fn retire_council_provider(&self, command: &Value) -> Result<Value> {
+        let key = self.key(command)?;
+        let active = self
+            .active
+            .lock()
+            .unwrap()
+            .active
+            .get(&key)
+            .cloned()
+            .context("The held Council runtime is no longer attached.")?;
+        let binding = active
+            .control
+            .get()
+            .filter(|binding| binding.council && binding.matches(command))
+            .context("The Council provider retirement no longer owns this runtime.")?;
+        ensure!(
+            active
+                .root
+                .as_ref()
+                .is_some_and(|root| command["nativeActivationGeneration"] == root.activation),
+            "The Council quota activation changed."
+        );
+        let checkpoint = &command["checkpoint"]["suspension"];
+        ensure!(
+            checkpoint["threadId"] == command["threadId"] && checkpoint["turnId"].is_string(),
+            "The held Council checkpoint belongs to another native turn."
+        );
+        let _pause = binding.pause_control.lock().await;
+        let result = || {
+            json!({"retired":true,"runtimeGeneration":command["nativeRuntimeGeneration"],
+            "threadId":checkpoint["threadId"],"turnId":checkpoint["turnId"],"checkpointId":checkpoint["checkpointId"]})
+        };
+        if binding.retired_for_provider.get() == Some(checkpoint) {
+            return Ok(result());
+        }
+        let selected = active
+            .select_control(binding, true)
+            .await?
+            .context("The Council turn ended before its provider could switch.")?;
+        ensure!(
+            checkpoint["turnId"].as_js_string() == Some(&selected.turn),
+            "The held Council turn changed."
+        );
+        selected.confirm_held(checkpoint).await?;
+        let mut changes = active.changed.subscribe();
+        selected.runtime.close().await?;
+        while !matches!(*active.phase.lock().unwrap(), Phase::Finished) {
+            changes.changed().await?;
+        }
+        let _ = binding.retired_for_provider.set(checkpoint.clone());
+        Ok(result())
+    }
+
     pub(crate) async fn control(&self, command: &Value, signal: Signal) -> Result<Value> {
         let action = match command["control"]["kind"].as_str() {
             Some("reply") => return self.interaction(command).await,
             Some("interrupt") => Action::Stop,
-            Some("pause") => Action::Pause(command["control"]["paused"] == true),
+            Some("pause") => {
+                if command["control"]["paused"] == true && command["operationId"].is_string() {
+                    Action::ProviderPause(&command["operationId"])
+                } else {
+                    Action::Pause(command["control"]["paused"] == true)
+                }
+            }
             Some("steer") => return self.steer(command, signal).await,
             _ => bail!("This native control requires a different managed execution path."),
         };
@@ -233,6 +303,10 @@ impl Turns {
             .get()
             .filter(|binding| binding.matches(command))
             .context(mismatch)?;
+        ensure!(
+            action.recovery_operation().is_none() || binding.council,
+            mismatch
+        );
         if action.paused() == Some(true) && binding.checkpoint.get().is_none() {
             bail!("The native turn observer was not attached for durable Pause.");
         }
@@ -255,6 +329,7 @@ impl Turns {
         let Some(selected) = active.select_control(binding, true).await? else {
             return match action {
                 Action::Pause(paused) => pause::result(paused, None),
+                Action::ProviderPause(_) => pause::result(true, None),
                 Action::Resume(_) => Err(anyhow::anyhow!(
                     "The suspended native turn is no longer attached."
                 )),
