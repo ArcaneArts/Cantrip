@@ -757,6 +757,7 @@ export function useChatTranscriptController({
     if (
       !source ||
       source.chatId !== chat.id ||
+      !source.messageId ||
       openedProjectSource.current === source.messageId ||
       !messages.data
     )

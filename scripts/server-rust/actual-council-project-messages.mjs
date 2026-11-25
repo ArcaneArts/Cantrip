@@ -5,7 +5,8 @@ import {
   uniqueChatCommunicationMessages,
 } from "../../packages/protocol/dist/index.js";
 import { eventually } from "./full-worker.mjs";
-import { taskModelProvider } from "./task-model-provider.mjs";
+import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
+import { actualCouncilProjectApprovals } from "./actual-council-project-approvals.mjs";
 
 export async function actualCouncilProjectMessages({
   page,
@@ -18,6 +19,7 @@ export async function actualCouncilProjectMessages({
   councilId,
   targetChatId,
   targetWorkerId,
+  projectApprovals,
 }) {
   const target = await taskModelProvider();
   const prepareText = "Open the existing project chat on its worker.";
@@ -389,6 +391,23 @@ export async function actualCouncilProjectMessages({
     result.steps.push(
       "A second project result steered the Council agent's existing native execution lane.",
     );
+    if (projectApprovals) {
+      await actualCouncilProjectApprovals({
+        page,
+        model,
+        target,
+        submit,
+        idle,
+        sender,
+        councilId,
+        targetChatId,
+        projectId,
+        targetProfileId: ready.profileId,
+        send,
+        targetTools: modelFunctions(initial.request.input.tools),
+        result,
+      });
+    }
   } finally {
     await target.close();
   }

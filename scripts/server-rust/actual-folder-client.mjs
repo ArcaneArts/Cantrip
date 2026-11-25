@@ -419,9 +419,12 @@ const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
 const councilHistory = process.argv.includes("--council-history");
-const councilProjectMessages = process.argv.includes(
-  "--council-project-messages",
+const councilProjectApprovals = process.argv.includes(
+  "--council-project-approvals",
 );
+const councilProjectMessages =
+  councilProjectApprovals ||
+  process.argv.includes("--council-project-messages");
 const councilInventory =
   councilProjectMessages || process.argv.includes("--council-inventory");
 const councilHistoryRedaction = process.argv.includes(
@@ -1073,6 +1076,7 @@ async function flow(
               root,
               cliBinary,
               projectMessages: councilProjectMessages,
+              projectApprovals: councilProjectApprovals,
             }
           : undefined,
         compaction: councilCompaction
