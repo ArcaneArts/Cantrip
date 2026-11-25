@@ -1,7 +1,7 @@
 // Real Node and Rust repositories against separate migrated databases. Native
 // frames here are worker evidence; native GUI/TUI execution is tested separately.
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildRustExample } from "./build.mjs";
@@ -66,7 +66,13 @@ try {
       );
       const state = nativeSuspensionRecordSchema.parse(raw.state);
       assert.equal(state.phase, phase);
-      assert.equal(raw.paused, phase !== "running" && phase !== "completed");
+      assert.equal(
+        raw.paused,
+        phase !== "running" &&
+          phase !== "completed" &&
+          !(kind === "rust" && phase === "stopped"),
+      );
+      if (phase === "stopped") assert.equal(raw.stopped, true);
       assert.deepEqual(state.active, active);
       assert.deepEqual(state.checkpoint, evidence);
       assert.equal(state.target.workerId, "alpha");
@@ -358,6 +364,21 @@ try {
         );
         await call("settle", stop);
         await snapshot("stopped", active, null);
+        if (kind === "rust" && key === "gui-stop") {
+          await fixture.seed(
+            "UPDATE chats SET automation_paused=true,managed_autonomy_stopped=false WHERE id='chat'",
+          );
+          await fixture.seed(
+            await readFile(
+              new URL(
+                "../../cantrip_server/drizzle/0289_stopped_agent_chat_hold.sql",
+                import.meta.url,
+              ),
+              "utf8",
+            ),
+          );
+          await snapshot("stopped", active, null);
+        }
       }
       await observe("suspended-execution", null);
       if (origin === "gui") await observe("logical-finish");
