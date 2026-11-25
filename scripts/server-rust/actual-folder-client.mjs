@@ -32,6 +32,7 @@ import { actualInlineChatLabels } from "./actual-inline-chat-labels.mjs";
 import { actualAgentInteractionCancel } from "./actual-agent-interaction-cancel.mjs";
 import { actualProviderAuthClient } from "./actual-provider-auth-client.mjs";
 import { actualProjectChatClient } from "./actual-project-chat-client.mjs";
+import { actualCouncilSteering } from "./actual-council-steering.mjs";
 import { providerTestBoundary } from "./provider-test-boundary.mjs";
 import { observePostgresErrors } from "./postgres-error-observation.mjs";
 import { observeFolderLive } from "./folder-live-observation.mjs";
@@ -1009,6 +1010,11 @@ async function flow(
       (fixture.workerFixture ?? fixture).server.origin,
     );
     assert.ok(credential);
+    if (process.argv.includes("--council-steering")) {
+      await actualCouncilSteering({ page, workerId, result });
+      assert.deepEqual(errors, []);
+      return;
+    }
     if (providerAuth) {
       await actualProviderAuthClient({
         page,

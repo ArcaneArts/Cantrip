@@ -803,6 +803,12 @@ impl<'a> Receipt<'a> {
             .await
     }
 
+    pub async fn rejected_steer_target_ended(&self, error: &Value) -> Result<()> {
+        let mut body = self.result_body("rejected", Some(&json!({"error": error})))?;
+        body["rejectionCode"] = json!("native-steer-target-ended");
+        self.settle(body, "rejected").await
+    }
+
     pub async fn defer_queue_input(&self, error: &Value, retained: Option<Value>) -> Result<bool> {
         let (envelope, digest) = self.seal_result(&json!({"error":error}))?;
         let mut body = self.body();

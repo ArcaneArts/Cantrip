@@ -63,7 +63,7 @@ impl Service {
             .chats
             .execution_context(owner, chat)
             .await?
-            .filter(|c| !truthy(c.get("automationPaused")) && !executing(c))
+            .filter(|c| !truthy(c.get("automationPaused")))
         else {
             return Ok(());
         };
@@ -76,6 +76,12 @@ impl Service {
         {
             // No input has been claimed. Recovery can dispatch once the
             // worker or its scratch root becomes available.
+            return Ok(());
+        }
+        if executing(&context) {
+            if context.get("councilAgent").is_some() {
+                self.steer_council(owner, chat).await?;
+            }
             return Ok(());
         }
         let managed = session_context(&context).is_some();

@@ -157,13 +157,22 @@ impl Turns {
         } else {
             None
         };
-        let result = dispatch(&active, &selected, params, receipt.as_ref(), || {
-            ensure!(
-                self.key(command)? == key,
-                "The worker binding changed during Chat steering."
-            );
-            signal.check()
-        })
+        let council_queue = command["queueClaim"].is_object()
+            && active_binding.is_some_and(|(binding, _)| binding.council);
+        let result = dispatch(
+            &active,
+            &selected,
+            params,
+            receipt.as_ref(),
+            council_queue,
+            || {
+                ensure!(
+                    self.key(command)? == key,
+                    "The worker binding changed during Chat steering."
+                );
+                signal.check()
+            },
+        )
         .await;
         match result {
             Ok(_) => Ok(json!({"steered":true,"turnId":selected.turn})),
@@ -253,10 +262,17 @@ impl Turns {
                 root.activation.clone(),
             )
             .await?;
-        dispatch(&active, &selected, params.clone(), Some(&receipt), || {
-            assert_view()?;
-            signal.check()
-        })
+        dispatch(
+            &active,
+            &selected,
+            params.clone(),
+            Some(&receipt),
+            false,
+            || {
+                assert_view()?;
+                signal.check()
+            },
+        )
         .await
     }
 }
@@ -266,6 +282,7 @@ async fn dispatch(
     selected: &Selection,
     params: Value,
     receipt: Option<&Receipt<'_>>,
+    council_queue: bool,
     assert_current: impl FnOnce() -> Result<()>,
 ) -> Result<Value> {
     if let Some(receipt) = receipt
@@ -291,9 +308,12 @@ async fn dispatch(
         Ok(request) => request,
         Err(error) => {
             if let Some(receipt) = receipt {
-                receipt
-                    .rejected(&json!({"code":-32000,"message":"The steer was not forwarded."}))
-                    .await?;
+                let proof = json!({"code":-32000,"message":"The steer was not forwarded."});
+                if council_queue {
+                    receipt.rejected_steer_target_ended(&proof).await?;
+                } else {
+                    receipt.rejected(&proof).await?;
+                }
             }
             return Err(error);
         }
@@ -310,7 +330,11 @@ async fn dispatch(
                 && let Some(native) = native_error(&error)
             {
                 if let Some(receipt) = receipt {
-                    receipt.rejected(native).await?;
+                    if council_queue && native_target_ended(native, &selected.turn) {
+                        receipt.rejected_steer_target_ended(native).await?;
+                    } else {
+                        receipt.rejected(native).await?;
+                    }
                 }
                 return Err(error);
             }
@@ -320,6 +344,19 @@ async fn dispatch(
             bail!("Codex could not confirm steering for the selected turn.");
         }
     }
+}
+
+fn native_target_ended(error: &Value, expected: &cantrip_wire::JsString) -> bool {
+    // The bundled App Server rejects these requests before accepting input.
+    // Other RPC errors and missing replies cannot prove the steer was unused.
+    error["code"] == json!(-32600)
+        && error["message"].as_str().is_some_and(|message| {
+            message == "no active turn to steer"
+                || message.starts_with(&format!(
+                    "expected active turn id `{}` but found `",
+                    expected.lossy()
+                ))
+        })
 }
 
 pub(in crate::codex::turn) fn native_error(error: &anyhow::Error) -> Option<&Value> {
