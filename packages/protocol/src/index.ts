@@ -95,3 +95,4 @@ export * from "./cantrip-os-system-management.js";
 export * from "./council.js";
 export * from "./council-history.js";
 export * from "./council-inventory.js";
+export * from "./council-project.js";

@@ -24,6 +24,8 @@ import {
   councilMemoryReadToolOutputSchema,
   councilMemoryWriteToolInputSchema,
   councilMemoryWriteToolOutputSchema,
+  councilProjectSendInputSchema,
+  councilProjectSendToolOutputSchema,
   workerCantripMcpServerCapabilitiesSchema,
 } from "../../packages/protocol/dist/index.js";
 import { buildContractManifest } from "../server-rust/contracts.mjs";
@@ -186,6 +188,13 @@ async function generate() {
       "List projects across your Cantrip account. Use the project ID to list that project's chats or Tasks. Repeat with nextCursor when present.",
       councilInventoryInputSchema,
       councilInventoryToolOutputSchema,
+    ],
+    [
+      "council_project_send",
+      "council.project.send",
+      "Send a message to an existing project Agent chat. Use IDs from council_inventory. Reuse the operation ID when retrying the same delivery.",
+      councilProjectSendInputSchema,
+      councilProjectSendToolOutputSchema,
     ],
   ];
   profiles.council = {

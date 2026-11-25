@@ -122,6 +122,7 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
             | "council.history.search"
             | "council.history.read"
             | "council.inventory"
+            | "council.project.send"
     ) {
         return super::council::execute_agent_operation(
             service,
@@ -375,6 +376,9 @@ async fn handle_operation(
                 "run-configuration.restart" => "run-configuration.mcp.restarted",
                 "run-configuration.stop" => "run-configuration.mcp.stopped",
                 "run-configuration.delete" => "run-configuration.mcp.deleted",
+                "council.project.send" if call["request"]["arguments"]["kind"] == "resolve" => {
+                    "mcp.operation.executed"
+                }
                 _ if agent_alerts::is_mutation(operation) => "mcp.operation.mutated",
                 _ => "mcp.operation.executed",
             };

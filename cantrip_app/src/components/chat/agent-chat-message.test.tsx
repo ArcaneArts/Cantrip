@@ -67,6 +67,21 @@ describe("agent messages between chats", () => {
       expect(html).not.toContain("<details");
     },
   );
+  it("attributes an incoming Council delivery to its sending agent", () => {
+    const html = renderToStaticMarkup(
+      <AgentChatMessage
+        message={agentMessage("received")}
+        communication={{
+          ...communication,
+          direction: "received",
+          senderKind: "council",
+        }}
+        onOpenFile={() => {}}
+      />,
+    );
+    expect(html).toContain("Sent via Main");
+    expect(html).toContain(">Council</span>");
+  });
   it("keeps sent messages outside collapsed work without treating them as the final answer", () => {
     const sent = agentMessage("sent");
     const work: ChatMessage = {

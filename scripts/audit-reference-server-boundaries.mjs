@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "bcecd905fdfe55468dccca48834ffbb0070b937c80245f10dc98ad3e588f591f",
+    "dba793cdcdbc4f20a282cad2aa7c8e07e71589e14ce0b1c92d53699550a5344a",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -4077,6 +4077,12 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation === "council.project.send")
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "The active Council worker seals the input and history copies. Core verifies the owned target and records only delivery and message identities for retry.",
+    };
   if (operation === "council.inventory")
     return {
       classification: "endpoint-protected",

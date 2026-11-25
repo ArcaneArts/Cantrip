@@ -24,14 +24,21 @@ impl Inner {
             .as_ref()
             .context("Chat encryption is unavailable.")?;
         let scope = chat_content::Scope::new(encryption.clone())?;
+        let council = operation == "council.project.send";
         ensure!(
-            authorization.active.binding["contextKind"] == "project"
+            authorization.active.binding["contextKind"]
+                == if council { "standalone" } else { "project" }
                 && (&scope.owner, &scope.server)
                     == (&authorization.identity.0, &authorization.identity.1),
-            "Chat tools require the current project's authorized worker."
+            if council {
+                "Project messages require the current Council agent's authorized worker."
+            } else {
+                "Chat tools require the current project's authorized worker."
+            }
         );
         let tool = crate::mcp::bindings::CHAT_TOOLS
             .iter()
+            .chain(crate::mcp::bindings::COUNCIL_TOOLS.iter())
             .find(|(candidate, _)| *candidate == operation)
             .map(|(_, tool)| *tool)
             .context("Unsupported Cantrip MCP Chat operation.")?;
@@ -66,7 +73,7 @@ impl Inner {
                 response["data"]["chats"] = json!(opened);
                 response
             }
-            "chat.send" => {
+            "chat.send" | "council.project.send" => {
                 self.send_chat(authorization, encryption, &scope, &input, &request_id)
                     .await?
             }
@@ -94,14 +101,29 @@ impl Inner {
         input: &Value,
         request_id: &str,
     ) -> Result<Value> {
+        let project = input.get("projectId");
+        let lookup = match project {
+            Some(project) => {
+                json!({"operation":"council.project.send","arguments":json!({"kind":"resolve","projectId":project,"chatId":input["chatId"]})})
+            }
+            None => {
+                json!({"operation":"chat.read","arguments":json!({"chatId":input["chatId"],"limit":1})})
+            }
+        };
         let response = self
-            .relay_project(
-                authorization,
-                json!({"operation":"chat.read","arguments":json!({"chatId":input["chatId"],"limit":1})}),
-                request_id,
-            )
+            .relay_project(authorization, lookup, request_id)
             .await?;
-        let wire = read_wire(authorization, &response, &input["chatId"])?;
+        let wire = if project.is_some() {
+            let wire = checked("councilProjectChatTargetWireSchema", &response["data"])?;
+            ensure!(
+                wire["chat"]["id"] == input["chatId"]
+                    && wire["sender"]["id"] == authorization.active.binding["chatId"],
+                "Cantrip returned another Council delivery target."
+            );
+            wire
+        } else {
+            read_wire(authorization, &response, &input["chatId"])?
+        };
         let source = descriptor(encryption, scope, &wire["sender"])?;
         let target = descriptor(encryption, scope, &wire["chat"])?;
         ensure!(
@@ -118,6 +140,9 @@ impl Inner {
             "deliveryId":input["operationId"],"sourceChatId":source["id"],"sourceTitle":source["title"],
             "targetChatId":target["id"],"targetTitle":target["title"],"direction":"received",
         });
+        if project.is_some() {
+            communication["senderKind"] = json!("council");
+        }
         let mut draft = wire["chat"]["configuration"].clone();
         draft["idempotencyKey"] = json!(format!("{key}:input"));
         draft["messageId"] = json!(stable_id(&format!("{key}:input")));
@@ -143,22 +168,24 @@ impl Inner {
             }),
         )?;
         scope.identity()?;
-        let mut result = self
-            .relay_project(
-                authorization,
-                json!({"operation":"chat.send","arguments":delivery}),
-                request_id,
-            )
-            .await?;
+        let send = match project {
+            Some(project) => {
+                json!({"operation":"council.project.send","arguments":json!({"kind":"send","projectId":project,"delivery":delivery})})
+            }
+            None => json!({"operation":"chat.send","arguments":delivery}),
+        };
+        let mut result = self.relay_project(authorization, send, request_id).await?;
         ensure!(result["data"].is_object(), "Invalid chat delivery receipt.");
         result["summary"] = json!(crate::native_items::concat(&[
             "Sent an agent message to ".into(),
             target["title"].as_js_string().unwrap().clone(),
             ".".into(),
         ]));
-        result["data"]["message"] = input["message"].clone();
-        result["data"]["sourceTitle"] = source["title"].clone();
-        result["data"]["targetTitle"] = target["title"].clone();
+        if project.is_none() {
+            result["data"]["message"] = input["message"].clone();
+            result["data"]["sourceTitle"] = source["title"].clone();
+            result["data"]["targetTitle"] = target["title"].clone();
+        }
         Ok(result)
     }
 

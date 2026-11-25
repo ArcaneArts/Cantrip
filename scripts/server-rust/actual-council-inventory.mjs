@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
+import { actualCouncilProjectMessages } from "./actual-council-project-messages.mjs";
 import { eventually, launchActualWorker } from "./full-worker.mjs";
 
 export async function actualCouncilInventory({
@@ -7,6 +8,7 @@ export async function actualCouncilInventory({
   fixture,
   root,
   cliBinary,
+  projectMessages,
   chatId,
   workerId,
   model,
@@ -208,6 +210,20 @@ export async function actualCouncilInventory({
     result.steps.push(
       "Council discovered a project, chat, and Task on another worker through managed MCP and the installed CLI",
     );
+    if (projectMessages) {
+      await actualCouncilProjectMessages({
+        page,
+        model,
+        tools,
+        submit,
+        readChat,
+        result,
+        projectId,
+        councilId: chatId,
+        targetChatId: ids.chat,
+        targetWorkerId: remote,
+      });
+    }
   } finally {
     result.workerStops.push(await worker.close());
     result.workerDiagnostics.push(worker.diagnostics());

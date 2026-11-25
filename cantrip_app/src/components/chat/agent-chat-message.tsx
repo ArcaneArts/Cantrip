@@ -45,10 +45,12 @@ export function AgentChatMessage({
           <span>
             {sent
               ? `Sent to ${communication.targetTitle}`
-              : `From ${communication.sourceTitle}`}
+              : communication.senderKind
+                ? `Sent via ${communication.sourceTitle}`
+                : `From ${communication.sourceTitle}`}
           </span>
           <span className="rounded border px-1.5 py-0.5 text-[10px]">
-            Agent
+            {communication.senderKind === "council" ? "Council" : "Agent"}
           </span>
         </div>
         {message.content.map((item, index) =>

@@ -419,7 +419,11 @@ const liveTaskDiagnostics =
   process.argv.includes("--task-diagnostics") ||
   process.argv.includes("--postgres-errors");
 const councilHistory = process.argv.includes("--council-history");
-const councilInventory = process.argv.includes("--council-inventory");
+const councilProjectMessages = process.argv.includes(
+  "--council-project-messages",
+);
+const councilInventory =
+  councilProjectMessages || process.argv.includes("--council-inventory");
 const councilHistoryRedaction = process.argv.includes(
   "--council-history-redaction",
 );
@@ -1063,7 +1067,14 @@ async function flow(
         result,
         testCreation: process.argv.includes("--council-agent-tools"),
         historyFixture: councilHistory ? fixture : undefined,
-        inventory: councilInventory ? { fixture, root, cliBinary } : undefined,
+        inventory: councilInventory
+          ? {
+              fixture,
+              root,
+              cliBinary,
+              projectMessages: councilProjectMessages,
+            }
+          : undefined,
         compaction: councilCompaction
           ? {
               appOrigin: vite.resolvedUrls.local[0],

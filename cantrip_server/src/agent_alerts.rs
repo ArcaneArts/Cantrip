@@ -64,6 +64,7 @@ pub const OPERATIONS: &[&str] = &[
     "council.history.search",
     "council.history.read",
     "council.inventory",
+    "council.project.send",
 ];
 pub fn is_mutation(operation: &str) -> bool {
     matches!(
@@ -98,6 +99,7 @@ pub fn is_mutation(operation: &str) -> bool {
             | "client.focus-surface"
             | "client.show-interaction"
             | "council.create"
+            | "council.project.send"
             | "council.memory.write"
     )
 }

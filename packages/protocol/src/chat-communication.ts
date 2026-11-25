@@ -8,6 +8,7 @@ export const chatCommunicationSchema = z
     targetChatId: chatId,
     targetTitle: z.string().min(1).max(500),
     direction: z.enum(["sent", "received"]),
+    senderKind: z.literal("council").optional(),
   })
   .strict();
 export type ChatCommunication = z.infer<typeof chatCommunicationSchema>;

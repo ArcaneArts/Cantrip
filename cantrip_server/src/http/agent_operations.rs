@@ -107,6 +107,10 @@ impl OperationError {
                     (404, "not-found")
                 }
                 crate::chats::agent_delivery::DeliveryError::ModelRequired => (409, "conflict"),
+                crate::chats::agent_delivery::DeliveryError::SenderUnavailable => {
+                    (409, "stale-binding")
+                }
+                crate::chats::agent_delivery::DeliveryError::OperationConflict => (409, "conflict"),
             };
             return Self::new(status, code, error.to_string());
         }

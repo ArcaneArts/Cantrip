@@ -819,6 +819,10 @@ const councilExports = [
   "councilMemoryWireSchema",
   "councilMemoryWriteToolInputSchema",
   "councilMemoryWriteToolOutputSchema",
+  "councilProjectChatTargetWireSchema",
+  "councilProjectSendExchangeSchema",
+  "councilProjectSendInputSchema",
+  "councilProjectSendToolOutputSchema",
 ];
 const nativeResourceAndTimingExports = [
   "inferenceCommandTimingSchema",
