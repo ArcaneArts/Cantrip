@@ -1,6 +1,7 @@
 import type { ChatMessage } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
+import { mergeAgentCardsIntoTimeline } from "./agent-turn-projection";
 import {
   buildChatTimeline,
   findLatestLiveActivityGroupKey,
@@ -35,6 +36,39 @@ function message(
     appliedReasoningEffort: null,
     reasoningAdjusted: false,
   };
+}
+
+function turnCorrelation(turnId: string) {
+  return {
+    diagnosticId: null,
+    itemId: null,
+    sourceMethod: "item/completed",
+    threadId: "thread",
+    turnId,
+  };
+}
+
+function commandMessage(
+  id: string,
+  createdAt: string,
+  turnId: string,
+  status: "completed" | "running" = "completed",
+): ChatMessage {
+  return message(id, "assistant", createdAt, [
+    {
+      type: "activity",
+      activity: {
+        type: "command",
+        id,
+        command: "git status",
+        cwd: ".",
+        status,
+        exitCode: status === "completed" ? 0 : null,
+        output: null,
+        correlation: turnCorrelation(turnId),
+      },
+    },
+  ]);
 }
 
 describe("chat activity timeline", () => {
@@ -323,6 +357,88 @@ describe("chat activity timeline", () => {
     expect(
       formatElapsedTime("2026-08-07T12:00:00.000Z", "2026-08-07T12:01:44.000Z"),
     ).toBe("1m 44s");
+  });
+
+  it.each([true, false])(
+    "keeps commands received after the final answer in its completed work (existing work: %s)",
+    (existingWork) => {
+      const orderedMessages = [
+        message("user", "user", "2026-08-07T12:00:00.000Z", [
+          { type: "text", text: "Inspect the checkout" },
+        ]),
+        ...(existingWork
+          ? [
+              commandMessage(
+                "earlier-command",
+                "2026-08-07T12:00:01.000Z",
+                "turn",
+              ),
+            ]
+          : []),
+        message("answer", "assistant", "2026-08-07T12:00:32.000Z", [
+          {
+            type: "text",
+            text: "Done.",
+            phase: "final_answer",
+            correlation: turnCorrelation("turn"),
+          },
+        ]),
+        commandMessage("late-command", "2026-08-07T12:00:33.000Z", "turn"),
+      ].map((item, index) => ({ ...item, sequence: index + 1 }));
+      const timeline = buildChatTimeline(orderedMessages);
+
+      expect(timeline).toHaveLength(3);
+      expect(timeline[1]).toMatchObject({
+        type: "activityGroup",
+        kind: "turn",
+        turnKey: "runtime:turn",
+        startedAt: "2026-08-07T12:00:00.000Z",
+        endedAt: "2026-08-07T12:00:32.000Z",
+        messages: [
+          ...(existingWork ? [{ id: "earlier-command" }] : []),
+          { id: "late-command" },
+        ],
+      });
+      expect(timeline[2]).toMatchObject({
+        type: "message",
+        message: { id: "answer" },
+      });
+      expect(mergeAgentCardsIntoTimeline(timeline, [])).toEqual(
+        timeline.map((entry) => ({ type: "timeline", entry })),
+      );
+    },
+  );
+
+  it("leaves work from a following autonomous turn in its own live group", () => {
+    const timeline = buildChatTimeline([
+      commandMessage("earlier", "2026-08-07T12:00:01.000Z", "first"),
+      message("answer", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "text",
+          text: "Done.",
+          phase: "final_answer",
+          correlation: turnCorrelation("first"),
+        },
+      ]),
+      commandMessage("late", "2026-08-07T12:00:03.000Z", "first"),
+      commandMessage("new", "2026-08-07T12:00:04.000Z", "second", "running"),
+    ]);
+
+    expect(timeline).toHaveLength(3);
+    expect(timeline[0]).toMatchObject({
+      type: "activityGroup",
+      kind: "turn",
+      turnId: "first",
+      messages: [{ id: "earlier" }, { id: "late" }],
+    });
+    expect(timeline[2]).toMatchObject({
+      type: "activityGroup",
+      kind: "tool",
+      turnId: "second",
+      endedAt: null,
+      messages: [{ id: "new" }],
+    });
+    expect(findLatestLiveActivityGroupKey(timeline)).toBe("activities:new:0");
   });
 
   it("keeps an active turn expanded by leaving its end open", () => {
