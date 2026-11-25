@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { councilProjectResultLink } from "../../packages/protocol/dist/index.js";
 
 import { eventually } from "./full-worker.mjs";
 
@@ -28,6 +29,7 @@ export async function actualCouncilProjectCreation({
   submit,
   idle,
   sender,
+  councilId,
   projectId,
   workerId,
   targetWorkerId,
@@ -56,16 +58,19 @@ export async function actualCouncilProjectCreation({
     description: taskBrief,
   };
 
-  await page.goto(new URL("/", page.url()).href);
-  await page
-    .getByRole("button", { name: /switch cantrip mode/iu })
-    .first()
-    .click();
-  await page.getByRole("menuitem", { name: "Cantrip Council" }).click();
-  await page
-    .getByRole("navigation", { name: "Council agents" })
-    .getByRole("button", { name: new RegExp(sender, "u") })
-    .click();
+  const openCouncil = async () => {
+    await page.goto(new URL("/", page.url()).href);
+    await page
+      .getByRole("button", { name: /switch cantrip mode/iu })
+      .first()
+      .click();
+    await page.getByRole("menuitem", { name: "Cantrip Council" }).click();
+    await page
+      .getByRole("navigation", { name: "Council agents" })
+      .getByRole("button", { name: new RegExp(sender, "u") })
+      .click();
+  };
+  await openCouncil();
   await eventually(
     () =>
       page.evaluate(async () =>
@@ -101,7 +106,7 @@ export async function actualCouncilProjectCreation({
   const retry = proposals("retry");
   const done = model.reply({ text: "I created the project chat and Task." });
   const taskAnswer = "The Council-created Task finished on the project worker.";
-  const taskRun = target.reply({ text: taskAnswer });
+  const taskRun = target.reply({ text: taskAnswer, hold: true });
   assert.equal(
     (
       await submit(
@@ -142,12 +147,21 @@ export async function actualCouncilProjectCreation({
     chats.filter(({ title }) => title === taskTitle).map(({ id }) => id),
     [task.taskId],
   );
+  const readTask = (id) =>
+    page.evaluate(
+      async (chatId) => (await import("/src/lib/api/tasks.ts")).getTask(chatId),
+      id,
+    );
+  await idle();
+  await eventually(
+    () => taskRun.entered,
+    (entered) => assert.ok(entered, JSON.stringify(target.failures)),
+    60_000,
+  );
+  const resultTurn = model.reply({ text: "I received the Task result." });
+  taskRun.release();
   const completed = await eventually(
-    () =>
-      page.evaluate(
-        async (id) => (await import("/src/lib/api/tasks.ts")).getTask(id),
-        task.taskId,
-      ),
+    () => readTask(task.taskId),
     (value) =>
       assert.equal(value.state, "complete", JSON.stringify(target.failures)),
     60_000,
@@ -156,6 +170,36 @@ export async function actualCouncilProjectCreation({
   assert.equal(completed.modelConfiguration.modelId, targetProfileId);
   assert.equal(taskRun.request.completed, true);
   assert.ok(JSON.stringify(await read(task.taskId)).includes(taskAnswer));
+  await eventually(
+    () => resultTurn.request?.completed,
+    (complete) => assert.equal(complete, true, JSON.stringify(model.failures)),
+    60_000,
+  );
+  assert.ok(
+    JSON.stringify(resultTurn.request.input.input).includes(taskAnswer),
+  );
+  const taskResults = async () =>
+    (await read(councilId)).flatMap(({ content }) =>
+      content.flatMap(({ councilProjectResult }) =>
+        councilProjectResult?.targetKind === "task"
+          ? [councilProjectResult]
+          : [],
+      ),
+    );
+  const [taskResult] = await eventually(
+    taskResults,
+    (results) => assert.equal(results.length, 1),
+    60_000,
+  );
+  assert.equal(taskResult.chatId, task.taskId);
+  assert.equal(taskResult.status, "completed");
+  assert.equal(taskResult.threadId, completed.dispatch.codexThreadId);
+  assert.equal(taskResult.turnId, completed.dispatch.turnId);
+  assert.ok(
+    (await read(task.taskId)).some(
+      ({ id, role }) => id === taskResult.inputMessageId && role === "user",
+    ),
+  );
 
   await idle();
   const chatBrief = "Send a brief to the Agent chat Council just created.";
@@ -188,11 +232,99 @@ export async function actualCouncilProjectCreation({
   );
   assert.ok(JSON.stringify(chatRun.request.input.input).includes(chatBrief));
   assert.ok(JSON.stringify(callback.request.input.input).includes(chatAnswer));
+
+  await idle();
+  model.reply({
+    responseId: "council-project-draft",
+    calls: [
+      {
+        ...taskTool,
+        arguments: {
+          ...taskArgs,
+          title: "Task started independently",
+          description: "The human will start this draft separately.",
+          start: false,
+          operationId: randomUUID(),
+        },
+      },
+    ],
+  });
+  const draftTurn = model.reply({ text: "I saved a Task draft." });
+  await submit("Save a Task draft for me to start myself.");
+  await eventually(
+    () => draftTurn.request?.completed,
+    (complete) => assert.equal(complete, true),
+    60_000,
+  );
+  const draft = output(draftTurn, "council-project-draft-call-0");
+  assert.equal(draft.started, false);
+  const draftTask = await readTask(draft.taskId);
+  assert.equal(draftTask.state, "draft");
+  await idle();
+  const sourceInferences = model.requests.filter(
+    ({ method }) => method === "POST",
+  ).length;
+  const independentlyStarted = target.reply({
+    text: "The independently queued Task finished.",
+  });
+  const input = { rowVersion: draftTask.rowVersion, operationId: randomUUID() };
+  await page.evaluate(
+    async ({ id, input }) =>
+      (await import("/src/lib/api/tasks.ts")).startTaskDirectly(id, input),
+    { id: draft.taskId, input },
+  );
+  await eventually(
+    () => readTask(draft.taskId),
+    (value) => assert.equal(value.state, "complete"),
+    60_000,
+  );
+  assert.equal(independentlyStarted.request.completed, true);
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  assert.deepEqual(await taskResults(), [taskResult]);
+  assert.equal(
+    model.requests.filter(({ method }) => method === "POST").length,
+    sourceInferences,
+  );
+
+  const conversation = page.locator('[data-slot="council-conversation"]');
+  const taskLink = conversation.locator(
+    `[data-slot="council-project-result"][href="${councilProjectResultLink(taskResult)}"]`,
+  );
+  await taskLink.waitFor({ state: "visible", timeout: 30_000 });
+  assert.equal(
+    await conversation
+      .getByText(taskAnswer, { exact: true })
+      .filter({ visible: true })
+      .count(),
+    0,
+  );
+  await taskLink.click();
+  try {
+    await page
+      .getByRole("region", { name: "Task prompt" })
+      .getByText(taskBrief, { exact: true })
+      .waitFor({ state: "visible", timeout: 20_000 });
+  } catch (error) {
+    result.councilTaskLinkDiagnostic = {
+      url: page.url(),
+      taskId: task.taskId,
+      content: (await page.locator("body").innerText()).slice(-4_000),
+    };
+    throw error;
+  }
+  await openCouncil();
   assert.deepEqual(model.failures, []);
   assert.deepEqual(target.failures, []);
   await idle();
 
   result.councilProjectCreation = { chat, task };
+  result.councilProjectTaskResult = {
+    source: taskResult,
+    independentTaskId: draft.taskId,
+  };
+  result.steps.push(
+    "The exact delegated Task result woke Council once and linked to the original Task input. A Council-created draft dispatched by the human did not wake Council.",
+  );
   result.steps.push(
     "Council used the normal app grant path, retried two protected creations, received a result from the new project Agent chat, and ran one Task on the assigned project worker.",
   );

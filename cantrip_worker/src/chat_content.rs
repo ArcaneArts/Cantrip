@@ -89,7 +89,7 @@ pub(crate) fn execute(service: Arc<Service>, command: &Value) -> Result<Value> {
     let result = match command["type"].as_str() {
         Some(TURN) => turn(&scope, command),
         Some(QUEUE_PREPARE) => queue::prepare(&scope, command),
-        Some(COUNCIL_PROJECT_RESULT) => council_result::prepare(&scope, command),
+        Some(COUNCIL_PROJECT_RESULT) => council_result::prepare(&scope, &service, command),
         Some(COUNCIL_PROJECT_REQUEST) => council_request::prepare(&scope, &service, command),
         Some(MESSAGE | MESSAGES) => {
             let keys = ServiceKeys(service);
