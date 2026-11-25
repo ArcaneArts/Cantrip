@@ -130,22 +130,22 @@
     "mcpStdioInput/council_inventory": 1595,
     "mcpStdioOutput/council_inventory": 1610,
     "mcpStdioInput/council_project_send": 1626,
-    "mcpStdioOutput/council_project_send": 1628,
-    "mcpStdioInput/council_project_chat_create": 1636,
-    "mcpStdioOutput/council_project_chat_create": 1640,
-    "mcpStdioInput/council_project_task_create": 1647,
-    "mcpStdioOutput/council_project_task_create": 1650,
-    "mcpStdioInput/council_project_interrupt": 1658,
-    "mcpStdioOutput/council_project_interrupt": 1663,
-    "cantripMcpBindingSchema": 1667,
-    "workerCantripMcpServerCapabilitiesSchema": 1689,
-    "cantripMcpToolHelpInputSchema": 1695,
+    "mcpStdioOutput/council_project_send": 1630,
+    "mcpStdioInput/council_project_chat_create": 1638,
+    "mcpStdioOutput/council_project_chat_create": 1642,
+    "mcpStdioInput/council_project_task_create": 1649,
+    "mcpStdioOutput/council_project_task_create": 1652,
+    "mcpStdioInput/council_project_interrupt": 1660,
+    "mcpStdioOutput/council_project_interrupt": 1665,
+    "cantripMcpBindingSchema": 1669,
+    "workerCantripMcpServerCapabilitiesSchema": 1691,
+    "cantripMcpToolHelpInputSchema": 1697,
     "cantripMcpContextGetInputSchema": 47,
-    "mcpHostSessionClaims": 1697,
-    "cuaMcpBrokerRequestSchema": 1700,
-    "cuaMcpResetArgumentsSchema": 1717,
-    "cuaMcpScriptArgumentsSchema": 1719,
-    "cuaMcpResultSchema": 1721
+    "mcpHostSessionClaims": 1699,
+    "cuaMcpBrokerRequestSchema": 1702,
+    "cuaMcpResetArgumentsSchema": 1719,
+    "cuaMcpScriptArgumentsSchema": 1721,
+    "cuaMcpResultSchema": 1723
   },
   "nodes": [
     {
@@ -15886,7 +15886,8 @@
         "chatId": 1504,
         "operationId": 1513,
         "message": 1514,
-        "projectId": 1627
+        "projectId": 1627,
+        "steer": 1628
       },
       "catchall": 1515,
       "checks": []
@@ -15907,6 +15908,17 @@
       ]
     },
     {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1629,
+      "defaultValue": false,
+      "checks": []
+    },
+    {
+      "type": "boolean",
+      "checks": []
+    },
+    {
       "type": "object",
       "name": "councilProjectSendToolOutputSchema",
       "shape": {
@@ -15914,8 +15926,8 @@
         "target": 1529,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1629,
-        "data": 1630
+        "mutated": 1631,
+        "data": 1632
       },
       "catchall": 111,
       "checks": []
@@ -15932,12 +15944,12 @@
       "shape": {
         "chatId": 1504,
         "sourceChatId": 1504,
-        "operationId": 1631,
-        "messageId": 1632,
-        "inputMessageId": 1633,
-        "delivery": 1634
+        "operationId": 1633,
+        "messageId": 1634,
+        "inputMessageId": 1635,
+        "delivery": 1636
       },
-      "catchall": 1635,
+      "catchall": 1637,
       "checks": []
     },
     {
@@ -15988,11 +16000,11 @@
       "type": "object",
       "name": "councilProjectChatCreateInputSchema",
       "shape": {
-        "operationId": 1637,
+        "operationId": 1639,
         "projectId": 1627,
-        "title": 1638
+        "title": 1640
       },
-      "catchall": 1639,
+      "catchall": 1641,
       "checks": []
     },
     {
@@ -16038,8 +16050,8 @@
         "target": 1529,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1641,
-        "data": 1642
+        "mutated": 1643,
+        "data": 1644
       },
       "catchall": 111,
       "checks": []
@@ -16055,11 +16067,11 @@
       "type": "object",
       "shape": {
         "projectId": 1627,
-        "operationId": 1643,
-        "chatId": 1644,
-        "workerId": 1645
+        "operationId": 1645,
+        "chatId": 1646,
+        "workerId": 1647
       },
-      "catchall": 1646,
+      "catchall": 1648,
       "checks": []
     },
     {
@@ -16110,7 +16122,7 @@
         "title": 1466,
         "operationId": 1468,
         "projectId": 1627,
-        "start": 1648
+        "start": 1650
       },
       "catchall": 1469,
       "checks": []
@@ -16118,7 +16130,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1649,
+      "innerType": 1651,
       "defaultValue": true,
       "checks": []
     },
@@ -16134,8 +16146,8 @@
         "target": 1529,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1651,
-        "data": 1652
+        "mutated": 1653,
+        "data": 1654
       },
       "catchall": 111,
       "checks": []
@@ -16151,12 +16163,12 @@
       "type": "object",
       "shape": {
         "projectId": 1627,
-        "operationId": 1653,
-        "taskId": 1654,
-        "workerId": 1655,
-        "started": 1656
+        "operationId": 1655,
+        "taskId": 1656,
+        "workerId": 1657,
+        "started": 1658
       },
-      "catchall": 1657,
+      "catchall": 1659,
       "checks": []
     },
     {
@@ -16207,12 +16219,12 @@
       "type": "object",
       "name": "councilProjectInterruptInputSchema",
       "shape": {
-        "operationId": 1659,
+        "operationId": 1661,
         "projectId": 1627,
-        "chatId": 1660,
-        "targetKind": 1661
+        "chatId": 1662,
+        "targetKind": 1663
       },
-      "catchall": 1662,
+      "catchall": 1664,
       "checks": []
     },
     {
@@ -16261,8 +16273,8 @@
         "target": 1529,
         "worktreeId": 53,
         "continuationScheduled": 56,
-        "mutated": 1664,
-        "data": 1665
+        "mutated": 1666,
+        "data": 1667
       },
       "catchall": 111,
       "checks": []
@@ -16274,13 +16286,13 @@
     {
       "type": "object",
       "shape": {
-        "operationId": 1659,
+        "operationId": 1661,
         "projectId": 1627,
-        "chatId": 1660,
-        "targetKind": 1661,
-        "status": 1666
+        "chatId": 1662,
+        "targetKind": 1663,
+        "status": 1668
       },
-      "catchall": 1662,
+      "catchall": 1664,
       "checks": []
     },
     {
@@ -16296,8 +16308,8 @@
       "type": "union",
       "name": "cantripMcpBindingSchema",
       "options": [
-        1668,
-        1682
+        1670,
+        1684
       ],
       "discriminator": "contextKind",
       "checks": [
@@ -16311,22 +16323,22 @@
     {
       "type": "object",
       "shape": {
-        "bindingId": 1669,
-        "ownerId": 1670,
-        "chatId": 1671,
-        "executionLaneId": 1672,
-        "workerId": 1673,
+        "bindingId": 1671,
+        "ownerId": 1672,
+        "chatId": 1673,
+        "executionLaneId": 1674,
+        "workerId": 1675,
         "permissionProfileId": 72,
-        "allowedOperations": 1674,
-        "issuedAt": 1675,
-        "expiresAt": 1676,
-        "contextKind": 1677,
-        "projectId": 1678,
-        "worktreeId": 1679,
+        "allowedOperations": 1676,
+        "issuedAt": 1677,
+        "expiresAt": 1678,
+        "contextKind": 1679,
+        "projectId": 1680,
+        "worktreeId": 1681,
         "rootKind": 74,
-        "scratchRootId": 1680
+        "scratchRootId": 1682
       },
-      "catchall": 1681,
+      "catchall": 1683,
       "checks": []
     },
     {
@@ -16496,22 +16508,22 @@
     {
       "type": "object",
       "shape": {
-        "bindingId": 1669,
-        "ownerId": 1670,
-        "chatId": 1671,
-        "executionLaneId": 1672,
-        "workerId": 1673,
+        "bindingId": 1671,
+        "ownerId": 1672,
+        "chatId": 1673,
+        "executionLaneId": 1674,
+        "workerId": 1675,
         "permissionProfileId": 72,
-        "allowedOperations": 1674,
-        "issuedAt": 1675,
-        "expiresAt": 1676,
-        "contextKind": 1683,
-        "projectId": 1684,
-        "worktreeId": 1685,
-        "rootKind": 1686,
-        "scratchRootId": 1687
+        "allowedOperations": 1676,
+        "issuedAt": 1677,
+        "expiresAt": 1678,
+        "contextKind": 1685,
+        "projectId": 1686,
+        "worktreeId": 1687,
+        "rootKind": 1688,
+        "scratchRootId": 1689
       },
-      "catchall": 1688,
+      "catchall": 1690,
       "checks": []
     },
     {
@@ -16556,15 +16568,15 @@
       "type": "object",
       "name": "workerCantripMcpServerCapabilitiesSchema",
       "shape": {
-        "bindingProtocolVersions": 1690,
-        "operations": 1692
+        "bindingProtocolVersions": 1692,
+        "operations": 1694
       },
-      "catchall": 1694,
+      "catchall": 1696,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1691,
+      "element": 1693,
       "checks": [
         {
           "check": "min_length",
@@ -16606,7 +16618,7 @@
     },
     {
       "type": "array",
-      "element": 1693,
+      "element": 1695,
       "checks": [
         {
           "check": "min_length",
@@ -16651,7 +16663,7 @@
       "shape": {
         "tool": 135
       },
-      "catchall": 1696,
+      "catchall": 1698,
       "checks": []
     },
     {
@@ -16661,8 +16673,8 @@
     {
       "type": "union",
       "options": [
-        1698,
-        1699
+        1700,
+        1701
       ],
       "discriminator": "contextKind",
       "checks": []
@@ -16670,44 +16682,44 @@
     {
       "type": "object",
       "shape": {
-        "ownerId": 1670,
-        "chatId": 1671,
-        "workerId": 1673,
+        "ownerId": 1672,
+        "chatId": 1673,
+        "workerId": 1675,
         "permissionProfileId": 72,
-        "allowedOperations": 1674,
-        "contextKind": 1677,
-        "projectId": 1678,
-        "worktreeId": 1679,
+        "allowedOperations": 1676,
+        "contextKind": 1679,
+        "projectId": 1680,
+        "worktreeId": 1681,
         "rootKind": 74,
-        "scratchRootId": 1680
+        "scratchRootId": 1682
       },
-      "catchall": 1681,
+      "catchall": 1683,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "ownerId": 1670,
-        "chatId": 1671,
-        "workerId": 1673,
+        "ownerId": 1672,
+        "chatId": 1673,
+        "workerId": 1675,
         "permissionProfileId": 72,
-        "allowedOperations": 1674,
-        "contextKind": 1683,
-        "projectId": 1684,
-        "worktreeId": 1685,
-        "rootKind": 1686,
-        "scratchRootId": 1687
+        "allowedOperations": 1676,
+        "contextKind": 1685,
+        "projectId": 1686,
+        "worktreeId": 1687,
+        "rootKind": 1688,
+        "scratchRootId": 1689
       },
-      "catchall": 1688,
+      "catchall": 1690,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "bindingId": 1701,
-        "request": 1702
+        "bindingId": 1703,
+        "request": 1704
       },
-      "catchall": 1716,
+      "catchall": 1718,
       "checks": []
     },
     {
@@ -16726,8 +16738,8 @@
     {
       "type": "union",
       "options": [
-        1703,
-        1713
+        1705,
+        1715
       ],
       "discriminator": "operation",
       "checks": []
@@ -16735,14 +16747,14 @@
     {
       "type": "object",
       "shape": {
-        "threadId": 1704,
-        "turnId": 1705,
-        "itemId": 1706,
-        "callId": 1708,
-        "operation": 1710,
-        "script": 1711
+        "threadId": 1706,
+        "turnId": 1707,
+        "itemId": 1708,
+        "callId": 1710,
+        "operation": 1712,
+        "script": 1713
       },
-      "catchall": 1712,
+      "catchall": 1714,
       "checks": []
     },
     {
@@ -16762,29 +16774,6 @@
           "when": "length"
         }
       ]
-    },
-    {
-      "type": "string",
-      "checks": [
-        {
-          "check": "trim"
-        },
-        {
-          "check": "min_length",
-          "minimum": 1,
-          "when": "length"
-        },
-        {
-          "check": "max_length",
-          "maximum": 256,
-          "when": "length"
-        }
-      ]
-    },
-    {
-      "type": "nullable",
-      "innerType": 1707,
-      "checks": []
     },
     {
       "type": "string",
@@ -16807,6 +16796,29 @@
     {
       "type": "nullable",
       "innerType": 1709,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "trim"
+        },
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 256,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 1711,
       "checks": []
     },
     {
@@ -16862,13 +16874,13 @@
     {
       "type": "object",
       "shape": {
-        "threadId": 1704,
-        "turnId": 1705,
-        "itemId": 1706,
-        "callId": 1708,
-        "operation": 1714
+        "threadId": 1706,
+        "turnId": 1707,
+        "itemId": 1708,
+        "callId": 1710,
+        "operation": 1716
       },
-      "catchall": 1715,
+      "catchall": 1717,
       "checks": []
     },
     {
@@ -16889,18 +16901,6 @@
     {
       "type": "object",
       "shape": {},
-      "catchall": 1718,
-      "checks": []
-    },
-    {
-      "type": "never",
-      "checks": []
-    },
-    {
-      "type": "object",
-      "shape": {
-        "script": 1711
-      },
       "catchall": 1720,
       "checks": []
     },
@@ -16911,28 +16911,24 @@
     {
       "type": "object",
       "shape": {
-        "_meta": 1722,
-        "content": 1732,
-        "structuredContent": 1760,
-        "isError": 1764
+        "script": 1713
       },
-      "catchall": 1766,
+      "catchall": 1722,
       "checks": []
     },
     {
-      "type": "optional",
-      "optionalIn": true,
-      "optionalOut": true,
-      "innerType": 1723,
+      "type": "never",
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "progressToken": 1724,
-        "io.modelcontextprotocol/related-task": 1728
+        "_meta": 1724,
+        "content": 1734,
+        "structuredContent": 1762,
+        "isError": 1766
       },
-      "catchall": 1731,
+      "catchall": 1768,
       "checks": []
     },
     {
@@ -16943,10 +16939,26 @@
       "checks": []
     },
     {
+      "type": "object",
+      "shape": {
+        "progressToken": 1726,
+        "io.modelcontextprotocol/related-task": 1730
+      },
+      "catchall": 1733,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 1727,
+      "checks": []
+    },
+    {
       "type": "union",
       "options": [
-        1726,
-        1727
+        1728,
+        1729
       ],
       "checks": []
     },
@@ -16968,13 +16980,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1729,
+      "innerType": 1731,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "taskId": 1730
+        "taskId": 1732
       },
       "checks": []
     },
@@ -16989,30 +17001,30 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1733,
+      "innerType": 1735,
       "defaultValue": [],
       "checks": []
     },
     {
       "type": "array",
-      "element": 1734,
+      "element": 1736,
       "checks": []
     },
     {
       "type": "union",
       "options": [
-        1735,
-        1751
+        1737,
+        1753
       ],
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "type": 1736,
-        "text": 1737,
-        "annotations": 1738,
-        "_meta": 1747
+        "type": 1738,
+        "text": 1739,
+        "annotations": 1740,
+        "_meta": 1749
       },
       "checks": []
     },
@@ -17031,15 +17043,15 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1739,
+      "innerType": 1741,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "audience": 1740,
-        "priority": 1743,
-        "lastModified": 1745
+        "audience": 1742,
+        "priority": 1745,
+        "lastModified": 1747
       },
       "checks": []
     },
@@ -17047,12 +17059,12 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1741,
+      "innerType": 1743,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1742,
+      "element": 1744,
       "checks": []
     },
     {
@@ -17067,7 +17079,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1744,
+      "innerType": 1746,
       "checks": []
     },
     {
@@ -17089,7 +17101,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1746,
+      "innerType": 1748,
       "checks": []
     },
     {
@@ -17108,13 +17120,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1748,
+      "innerType": 1750,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1749,
-      "valueType": 1750,
+      "keyType": 1751,
+      "valueType": 1752,
       "checks": []
     },
     {
@@ -17128,11 +17140,11 @@
     {
       "type": "object",
       "shape": {
-        "type": 1752,
-        "data": 1753,
-        "mimeType": 1754,
-        "annotations": 1755,
-        "_meta": 1756
+        "type": 1754,
+        "data": 1755,
+        "mimeType": 1756,
+        "annotations": 1757,
+        "_meta": 1758
       },
       "checks": []
     },
@@ -17155,20 +17167,20 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1739,
+      "innerType": 1741,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1757,
+      "innerType": 1759,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1758,
-      "valueType": 1759,
+      "keyType": 1760,
+      "valueType": 1761,
       "checks": []
     },
     {
@@ -17183,13 +17195,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1761,
+      "innerType": 1763,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1762,
-      "valueType": 1763,
+      "keyType": 1764,
+      "valueType": 1765,
       "checks": []
     },
     {
@@ -17204,7 +17216,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1765,
+      "innerType": 1767,
       "checks": []
     },
     {

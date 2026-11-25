@@ -132,7 +132,7 @@ impl Delivery {
             }
             let pending = match event {
                 Event::Request => request::lock_pending(tx, owner, chat, operation).await?,
-                Event::ChatResult => !tx.query("SELECT operation_id FROM council_project_deliveries WHERE source_chat_id=$1 AND operation_id=$2::text::uuid AND result_status IS NOT NULL AND callback_delivered_at IS NULL FOR UPDATE", &[chat, operation]).await?.is_empty(),
+                Event::ChatResult => !tx.query("SELECT d.operation_id FROM council_project_deliveries d JOIN council_project_ready_results r USING (source_chat_id,operation_id) WHERE d.source_chat_id=$1 AND d.operation_id=$2::text::uuid AND d.callback_delivered_at IS NULL FOR UPDATE OF d", &[chat, operation]).await?.is_empty(),
                 Event::TaskResult => task::lock_pending(tx, owner, chat, operation, identity(&cycle)?,
                     result_status.as_deref().context("Task result status")?).await?,
             };
@@ -176,7 +176,7 @@ impl Backend for Delivery {
                       'threadId',d.result_thread_id,'turnId',d.result_turn_id,'status',COALESCE(terminal.status,d.result_status)
                     )
                   )::text
-                  FROM council_project_deliveries d
+                  FROM council_project_ready_results d
                   JOIN council_agents source ON source.chat_id=d.source_chat_id
                   JOIN chats target ON target.id=d.target_chat_id AND target.owner_id=source.owner_id
                   LEFT JOIN native_commands n ON n.operation_id=d.result_operation_id AND n.chat_id=target.id

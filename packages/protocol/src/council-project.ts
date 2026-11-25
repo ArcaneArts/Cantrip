@@ -136,7 +136,10 @@ export const councilProjectRequestPrepareCommandSchema = z
   .strict();
 
 export const councilProjectSendInputSchema =
-  cantripMcpChatSendInputSchema.extend({ projectId });
+  cantripMcpChatSendInputSchema.extend({
+    projectId,
+    steer: z.boolean().default(false),
+  });
 
 export const councilProjectSendExchangeSchema = z.discriminatedUnion("kind", [
   z
@@ -150,6 +153,7 @@ export const councilProjectSendExchangeSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("send"),
       projectId,
+      steer: z.boolean().default(false),
       delivery: agentChatSendWireSchema,
     })
     .strict(),

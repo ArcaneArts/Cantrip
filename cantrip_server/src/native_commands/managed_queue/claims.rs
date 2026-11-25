@@ -76,10 +76,11 @@ async fn claim_next(
         current["status"].as_str(),
         Some("running" | "waiting-for-approval")
     );
-    if (council && active != steer_activation.is_some()) || (!council && steer_activation.is_some())
+    if (steer_activation.is_some() && !active) || (council && active && steer_activation.is_none())
     {
         return Ok(None);
     }
+    let explicit_steer_only = steer_activation.is_some() && !council;
     if tx
         .query(
             &format!("SELECT c.id FROM chats c WHERE c.id=$1 AND {NO_PERMISSION} AND {NO_HANDOFF}
@@ -96,12 +97,14 @@ async fn claim_next(
         return Ok(None);
     }
     if let Some(existing) = raw_one(tx,
-        "SELECT (to_jsonb(c) || jsonb_build_object('mode',p.mode,'method',p.opaque_content->'executionMethod'))::text
+        "SELECT (to_jsonb(c) || jsonb_build_object('mode',p.mode,'method',p.opaque_content->'executionMethod',
+            'explicitSteer',EXISTS(SELECT 1 FROM council_project_deliveries d WHERE d.queued_prompt_id=p.id AND d.target_chat_id=c.chat_id AND d.steer_requested)))::text
          FROM managed_queue_claims c JOIN queued_prompts p ON p.id=c.prompt_id
          WHERE c.chat_id=$1 AND c.status IN ('claimed','accepted','dispatched','uncertain')
          ORDER BY c.created_at ASC LIMIT 1", &[&chat],
     ).await? {
         return if existing["status"] == "claimed"
+            && (!explicit_steer_only || existing["explicitSteer"] == true)
             && (steer_activation.is_none() || steerable(&existing["mode"], &existing["method"]))
         {
             claim_value(&existing).map(Some)
@@ -109,7 +112,9 @@ async fn claim_next(
             Ok(None)
         };
     }
-    let row=raw_one(tx,"SELECT to_jsonb(p)::text FROM queued_prompts p WHERE chat_id=$1 AND state='pending' AND frozen=false AND NOT EXISTS(SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id=p.id AND c.prompt_revision=p.revision AND c.status='rejected') ORDER BY position ASC,created_at ASC LIMIT 1",&[&chat]).await?;
+    let row=raw_one(tx,"SELECT to_jsonb(p)::text FROM queued_prompts p WHERE chat_id=$1 AND state='pending' AND frozen=false AND NOT EXISTS(SELECT 1 FROM managed_queue_claims c WHERE c.prompt_id=p.id AND c.prompt_revision=p.revision AND c.status='rejected')
+        AND (NOT $2 OR EXISTS(SELECT 1 FROM council_project_deliveries d WHERE d.queued_prompt_id=p.id AND d.target_chat_id=p.chat_id AND d.steer_requested))
+        ORDER BY position ASC,created_at ASC LIMIT 1",&[&chat,&explicit_steer_only]).await?;
     let Some(row) = row else {
         return Ok(None);
     };
@@ -175,7 +180,7 @@ impl QueueRepository {
             .transaction(|tx| Box::pin(async move { claim_next(tx, &owner, &chat, None).await }))
             .await
     }
-    pub async fn claim_next_council_steer(
+    pub async fn claim_next_steer(
         &self,
         owner: &str,
         chat: &str,

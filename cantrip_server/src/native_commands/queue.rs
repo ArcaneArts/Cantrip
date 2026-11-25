@@ -131,8 +131,9 @@ pub(super) async fn settle(
                 && truthy(row.get("protected_result"))
                 && truthy(row.get("result_digest"))
                 && !tx.query(
-                    "SELECT id FROM chats WHERE id=$1 AND owner_id=$2 AND context_kind='council'",
-                    &[&text(&row["chat_id"])?, &text(&row["owner_id"])?],
+                    "SELECT id FROM chats WHERE id=$1 AND owner_id=$2 AND (context_kind='council'
+                      OR EXISTS(SELECT 1 FROM council_project_deliveries d WHERE d.target_chat_id=$1 AND d.queued_prompt_id=$3 AND d.steer_requested))",
+                    &[&text(&row["chat_id"])?, &text(&row["owner_id"])?, &text(&claim["prompt_id"])?],
                 ).await?.is_empty()));
     let rejected = row["status"] == "rejected" && !deferred;
     let mut applied_goal = parent_goal && row["status"] == "applied";

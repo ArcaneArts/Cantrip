@@ -9,6 +9,7 @@ import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
 import { actualCouncilProjectApprovals } from "./actual-council-project-approvals.mjs";
 import { actualCouncilProjectCreation } from "./actual-council-project-creation.mjs";
 import { actualCouncilProjectControls } from "./actual-council-project-controls.mjs";
+import { actualCouncilProjectSteering } from "./actual-council-project-steering.mjs";
 
 export async function actualCouncilProjectMessages({
   page,
@@ -25,6 +26,8 @@ export async function actualCouncilProjectMessages({
   projectApprovals,
   projectCreation,
   projectControls,
+  projectSteering,
+  steerRaceMarker,
 }) {
   const target = await taskModelProvider({ observeStreams: projectControls });
   const prepareText = "Open the existing project chat on its worker.";
@@ -427,6 +430,21 @@ export async function actualCouncilProjectMessages({
         projectId,
         targetChatId,
         targetProfileId: ready.profileId,
+        result,
+      });
+    if (projectSteering)
+      await actualCouncilProjectSteering({
+        page,
+        model,
+        target,
+        send,
+        submit,
+        idle,
+        resultInputs,
+        projectId,
+        targetChatId,
+        targetProfileId: ready.profileId,
+        steerRaceMarker,
         result,
       });
     if (projectApprovals) {

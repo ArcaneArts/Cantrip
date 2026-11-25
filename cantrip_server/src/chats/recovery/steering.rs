@@ -5,7 +5,7 @@ use crate::{
 };
 
 impl Service {
-    pub(super) async fn steer_council(&self, owner: &str, chat: &str) -> Result<()> {
+    pub(super) async fn steer_active(&self, owner: &str, chat: &str) -> Result<()> {
         let native = native_commands::Repository::new(self.dependencies.database.clone());
         let control = native.control_context(owner, chat).await?;
         let Some(activation) = control["activationGeneration"].as_str() else {
@@ -13,16 +13,12 @@ impl Service {
         };
         let context = &control["context"];
         let worker = text(&context["workerId"])?;
-        let Some(claim) = self
-            .queue
-            .claim_next_council_steer(owner, chat, activation)
-            .await?
-        else {
+        let Some(claim) = self.queue.claim_next_steer(owner, chat, activation).await? else {
             return Ok(());
         };
         let claim_id = text(&claim["id"])?;
         let delivery = self
-            .deliver_council_steer(owner, chat, &worker, &control, &claim, &claim_id)
+            .deliver_steer(owner, chat, &worker, &control, &claim, &claim_id)
             .await;
         if delivery.is_err() {
             // The claim can only be released here if no native operation
@@ -35,7 +31,7 @@ impl Service {
         Ok(())
     }
 
-    async fn deliver_council_steer(
+    async fn deliver_steer(
         &self,
         owner: &str,
         chat: &str,
@@ -48,7 +44,7 @@ impl Service {
             .prompts
             .get_encrypted(owner, &text(&claim["promptId"])?)
             .await?
-            .context("Claimed Council prompt is unavailable")?;
+            .context("Claimed steering prompt is unavailable")?;
         let context = &control["context"];
         let attachments = self
             .chats
@@ -66,6 +62,9 @@ impl Service {
         );
         let operation = json!(format!("council-steer:{claim_id}"));
         steering::bind_claim(&mut command, &prompt, claim, &operation)?;
+        if context["contextKind"] == "project" {
+            command["control"]["recoverQueueSteer"] = json!(true);
+        }
         self.dependencies
             .commands
             .request(worker, command, None, None)

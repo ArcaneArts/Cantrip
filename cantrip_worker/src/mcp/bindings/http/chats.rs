@@ -170,7 +170,7 @@ impl Inner {
         scope.identity()?;
         let send = match project {
             Some(project) => {
-                json!({"operation":"council.project.send","arguments":json!({"kind":"send","projectId":project,"delivery":delivery})})
+                json!({"operation":"council.project.send","arguments":json!({"kind":"send","projectId":project,"steer":input["steer"],"delivery":delivery})})
             }
             None => json!({"operation":"chat.send","arguments":delivery}),
         };

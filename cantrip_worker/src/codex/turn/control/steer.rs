@@ -158,14 +158,16 @@ impl Turns {
         } else {
             None
         };
-        let council_queue = command["queueClaim"].is_object()
-            && active_binding.is_some_and(|(binding, _)| binding.council);
+        let recoverable_queue = command["queueClaim"].is_object()
+            && active_binding.is_some_and(|(binding, _)| {
+                binding.council || control["recoverQueueSteer"] == true
+            });
         let result = dispatch(
             &active,
             &selected,
             params,
             receipt.as_ref(),
-            council_queue,
+            recoverable_queue,
             || {
                 ensure!(
                     self.key(command)? == key,
@@ -283,12 +285,12 @@ async fn dispatch(
     selected: &Selection,
     params: Value,
     receipt: Option<&Receipt<'_>>,
-    council_queue: bool,
+    recoverable_queue: bool,
     assert_current: impl FnOnce() -> Result<()>,
 ) -> Result<Value> {
     let client = params["clientUserMessageId"]
         .as_js_string()
-        .filter(|client| council_queue && !client.is_empty())
+        .filter(|client| recoverable_queue && !client.is_empty())
         .cloned();
     if let Some(receipt) = receipt
         && let Err(error) = receipt.dispatch().await
@@ -314,7 +316,7 @@ async fn dispatch(
         Err(error) => {
             if let Some(receipt) = receipt {
                 let proof = json!({"code":-32000,"message":"The steer was not forwarded."});
-                if council_queue {
+                if recoverable_queue {
                     receipt.rejected_steer_target_ended(&proof).await?;
                 } else {
                     receipt.rejected(&proof).await?;
@@ -335,7 +337,7 @@ async fn dispatch(
                 && let Some(native) = native_error(&error)
             {
                 if let Some(receipt) = receipt {
-                    if council_queue && native_target_ended(native, &selected.turn) {
+                    if recoverable_queue && native_target_ended(native, &selected.turn) {
                         receipt.rejected_steer_target_ended(native).await?;
                     } else {
                         receipt.rejected(native).await?;

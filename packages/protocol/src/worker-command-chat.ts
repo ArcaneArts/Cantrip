@@ -523,6 +523,7 @@ export const workerChatCommandSchemas = [
           .object({
             kind: z.literal("steer"),
             protectedPrompt: chatMessageOpaqueContentSchema,
+            recoverQueueSteer: z.boolean().optional(),
             attachments: z
               .array(workerChatAttachmentSchema)
               .max(20)
