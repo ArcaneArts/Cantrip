@@ -113,7 +113,10 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
         crate::auth::now().timestamp_millis(),
     )
     .map_err(|error| OperationError::new(error.status, error.code, error.message))?;
-    if matches!(operation, "council.list" | "council.create") {
+    if matches!(
+        operation,
+        "council.list" | "council.create" | "council.memory.read" | "council.memory.write"
+    ) {
         return super::council::execute_agent_operation(
             service,
             owner,

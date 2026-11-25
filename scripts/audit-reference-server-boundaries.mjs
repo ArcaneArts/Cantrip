@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "d601feb0bc8ecb9f17b5e7507fd01e4578280e73e8b76dcac83202a644864d6f",
+    "544b2dbddd452997f47856c9018d7fc710cfcbb81df825fac70a5f04109fe639",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -4069,6 +4069,16 @@ function agentOperationContentClassification(operation) {
       classification: "endpoint-protected",
       rationale:
         "An active Council binding authorizes account-owned roster access. The worker seals names and roles before relaying them and opens protected labels for the model.",
+    };
+  }
+  if (
+    operation === "council.memory.read" ||
+    operation === "council.memory.write"
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "The active Council binding selects its own fast memory. Browser and worker endpoints open and seal row-bound content, while Core stores ciphertext and revision.",
     };
   }
   if (

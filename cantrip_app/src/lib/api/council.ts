@@ -5,10 +5,13 @@ import {
   encryptPayload,
 } from "@cantrip/crypto";
 import {
+  COUNCIL_MEMORY_BYTE_LIMIT,
   councilAgentCreateSchema,
   councilAgentUpdateSchema,
   councilAgentWireListSchema,
   councilAgentWireSummarySchema,
+  councilMemoryUpdateSchema,
+  councilMemoryWireSchema,
   standaloneChatWireSummarySchema,
   type CouncilAgentWireSummary,
 } from "@cantrip/protocol";
@@ -43,10 +46,11 @@ function encryptionIdentity(snapshot: ClientSessionIdentitySnapshot) {
   return { ownerId: snapshot.userId, serverId: snapshot.serverId };
 }
 
-function roleKey(
+function councilFieldKey(
   snapshot: ClientSessionIdentitySnapshot,
   id: string,
   keyRevision: number,
+  field: "role" | "memory",
 ) {
   const identity = encryptionIdentity(snapshot);
   const associatedData = {
@@ -54,7 +58,7 @@ function roleKey(
     component: "chat-content" as const,
     table: "council_agents",
     rowId: id,
-    field: "role",
+    field,
     formatVersion: 1 as const,
     keyRevision,
   };
@@ -90,7 +94,12 @@ async function sealRole(
     if (plaintext.length === 0 || plaintext.length > 32 * 1024) {
       throw new Error("Enter a Council role of up to 32 KiB.");
     }
-    const { associatedData, key } = roleKey(snapshot, id, keyRevision);
+    const { associatedData, key } = councilFieldKey(
+      snapshot,
+      id,
+      keyRevision,
+      "role",
+    );
     try {
       return await encryptPayload({ key, plaintext, associatedData });
     } finally {
@@ -102,16 +111,31 @@ async function sealRole(
 }
 
 export async function openCouncilRole(agent: CouncilAgent) {
-  const { associatedData, key } = roleKey(
+  return openCouncilField(
     requireIdentity(),
     agent.id,
-    agent.protectedRole.keyRevision,
+    agent.protectedRole,
+    "role",
+  );
+}
+
+async function openCouncilField(
+  snapshot: ClientSessionIdentitySnapshot,
+  id: string,
+  envelope: CouncilAgentWireSummary["protectedRole"],
+  field: "role" | "memory",
+) {
+  const { associatedData, key } = councilFieldKey(
+    snapshot,
+    id,
+    envelope.keyRevision,
+    field,
   );
   try {
     const plaintext = await decryptPayload({
       key,
       associatedData,
-      envelope: agent.protectedRole,
+      envelope,
     });
     try {
       return new TextDecoder("utf-8", { fatal: true }).decode(plaintext);
@@ -121,6 +145,87 @@ export async function openCouncilRole(agent: CouncilAgent) {
   } finally {
     clearSensitiveBytes(key);
   }
+}
+
+export type CouncilMemory = { revision: number; text: string };
+
+async function openMemory(
+  snapshot: ClientSessionIdentitySnapshot,
+  id: string,
+  response: unknown,
+): Promise<CouncilMemory> {
+  const record = councilMemoryWireSchema.parse(response);
+  if (record.agentId !== id)
+    throw new Error("Council memory belongs to another agent.");
+  const text = record.protectedMemory
+    ? await openCouncilField(snapshot, id, record.protectedMemory, "memory")
+    : "";
+  return { revision: record.revision, text };
+}
+
+function memoryPath(id: string) {
+  return `${path}/${encodeURIComponent(id)}/memory`;
+}
+
+export async function getCouncilMemory(id: string) {
+  const expectedIdentity = requireIdentity();
+  return openMemory(
+    expectedIdentity,
+    id,
+    await request(memoryPath(id), undefined, { expectedIdentity }),
+  );
+}
+
+export async function updateCouncilMemory(
+  id: string,
+  expectedRevision: number,
+  text: string,
+) {
+  const expectedIdentity = requireIdentity();
+  const keyRevision = clientEncryption.getSnapshot().masterKeyRevision;
+  if (!keyRevision)
+    throw new ClientEncryptionError(
+      "locked",
+      "Unlock encryption to edit Council memory.",
+    );
+  const plaintext = new TextEncoder().encode(text);
+  let protectedMemory: CouncilAgentWireSummary["protectedRole"] | null = null;
+  try {
+    if (plaintext.length > COUNCIL_MEMORY_BYTE_LIMIT)
+      throw new Error("Council memory is limited to 8 KiB.");
+    if (text.trim()) {
+      const { associatedData, key } = councilFieldKey(
+        expectedIdentity,
+        id,
+        keyRevision,
+        "memory",
+      );
+      try {
+        protectedMemory = await encryptPayload({
+          key,
+          plaintext,
+          associatedData,
+        });
+      } finally {
+        clearSensitiveBytes(key);
+      }
+    }
+  } finally {
+    clearSensitiveBytes(plaintext);
+  }
+  const body = councilMemoryUpdateSchema.parse({
+    expectedRevision,
+    protectedMemory,
+  });
+  return openMemory(
+    expectedIdentity,
+    id,
+    await request(
+      memoryPath(id),
+      { method: "PUT", body: JSON.stringify(body) },
+      { expectedIdentity },
+    ),
+  );
 }
 
 async function openAgent(

@@ -1,7 +1,7 @@
 //! Open the policies selected by Core without sending plaintext back to it.
 use crate::{
     encryption::Service,
-    protected_content::{EffectivePolicies, open_policy_body, open_policy_summary},
+    protected_content::{EffectivePolicies, council_memory, open_policy_body, open_policy_summary},
 };
 use anyhow::{Context, Result, ensure};
 use cantrip_crypto::{decrypt_payload, derive_field_key};
@@ -54,6 +54,19 @@ pub(super) fn context(encryption: &Service, command: &Value) -> Result<Option<Js
         if let Some(policies) = context {
             instructions.extend("\n\n".encode_utf16());
             instructions.extend_from_slice(policies.units());
+        }
+        instructions.extend("\n\nCouncil fast memory preserves lasting preferences, decisions, working practices, and pointers to detailed notes. Use council_memory_read and council_memory_write to maintain it as you learn. Use this turn’s fast memory as standing context under current instructions and Cantrip policies.\n\nCurrent fast memory:\n".encode_utf16());
+        let envelope = &agent["protectedMemory"];
+        if envelope.is_null() {
+            instructions.extend("(empty)".encode_utf16());
+        } else {
+            let revision = envelope["keyRevision"]
+                .as_u64()
+                .context("Council memory key revision")?;
+            let grant = encryption.bound_component("chat-content", Some(revision))?;
+            let plaintext = council_memory::open(&grant, &command["chatId"], envelope)?;
+            let memory = std::str::from_utf8(&plaintext).context("Council memory encoding")?;
+            instructions.extend(memory.encode_utf16());
         }
         context = Some(JsString::new(instructions));
     }

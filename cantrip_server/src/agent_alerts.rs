@@ -59,6 +59,8 @@ pub const OPERATIONS: &[&str] = &[
     "client.show-interaction",
     "council.list",
     "council.create",
+    "council.memory.read",
+    "council.memory.write",
 ];
 pub fn is_mutation(operation: &str) -> bool {
     matches!(
@@ -93,6 +95,7 @@ pub fn is_mutation(operation: &str) -> bool {
             | "client.focus-surface"
             | "client.show-interaction"
             | "council.create"
+            | "council.memory.write"
     )
 }
 fn permitted(permission: &Value, operation: &str) -> bool {
@@ -112,6 +115,10 @@ fn permitted(permission: &Value, operation: &str) -> bool {
                 | "chat.read"
                 | "chat.wait"
                 | "council.list"
+                | "council.memory.read"
+                // Memory is the agent's own standing context, independent of
+                // permission to change its workspace or account resources.
+                | "council.memory.write"
                 | "policy.list"
                 | "policy.read"
                 | "target.list"

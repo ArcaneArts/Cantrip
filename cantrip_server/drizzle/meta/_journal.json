@@ -2073,6 +2073,13 @@
       "when": 1795588126182,
       "tag": "0295_external_mcp_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 296,
+      "version": "7",
+      "when": 1795588793000,
+      "tag": "0296_council_fast_memory",
+      "breakpoints": true
     }
   ]
 }

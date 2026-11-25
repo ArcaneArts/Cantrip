@@ -1,3 +1,5 @@
+mod memory;
+
 use super::{Repository, catalog::compatible_scratch_worker, roots};
 use crate::{
     database::Executor,
@@ -195,6 +197,9 @@ pub(super) fn apply_execution_context(
         "protectedRole": agent["protected_role"],
         "primary": agent["is_primary"],
     });
+    if agent["protected_memory"].is_object() {
+        context["councilAgent"]["protectedMemory"] = agent["protected_memory"].clone();
+    }
     context["defaultPermissionProfileId"] =
         settings["default_council_permission_profile_id"].clone();
     context["permissionProfileId"] = Value::Null;

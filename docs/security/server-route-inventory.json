@@ -255,7 +255,7 @@
     "websocket": 7,
     "workerCredentialRoutes": 46,
     "durableTables": 135,
-    "agentOperations": 58,
+    "agentOperations": 60,
     "workerCommands": 323,
     "liveResources": 47,
     "clientControlCommands": 4,
@@ -271,7 +271,7 @@
     }
   },
   "contractSetDigests": {
-    "agentOperations": "d601feb0bc8ecb9f17b5e7507fd01e4578280e73e8b76dcac83202a644864d6f",
+    "agentOperations": "544b2dbddd452997f47856c9018d7fc710cfcbb81df825fac70a5f04109fe639",
     "applicationRoutes": "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
     "cliCommands": "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
     "clientControlCommands": "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
@@ -8630,6 +8630,16 @@
       "operation": "council.list",
       "classification": "endpoint-protected",
       "rationale": "An active Council binding authorizes account-owned roster access. The worker seals names and roles before relaying them and opens protected labels for the model."
+    },
+    {
+      "operation": "council.memory.read",
+      "classification": "endpoint-protected",
+      "rationale": "The active Council binding selects its own fast memory. Browser and worker endpoints open and seal row-bound content, while Core stores ciphertext and revision."
+    },
+    {
+      "operation": "council.memory.write",
+      "classification": "endpoint-protected",
+      "rationale": "The active Council binding selects its own fast memory. Browser and worker endpoints open and seal row-bound content, while Core stores ciphertext and revision."
     },
     {
       "operation": "explorer.list",
