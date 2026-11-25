@@ -822,6 +822,7 @@ impl Ensurer {
                                     "council_memory_write":json!({"approval_mode":"approve"}),
                                     "council_history_search":json!({"approval_mode":"approve"}),
                                     "council_history_read":json!({"approval_mode":"approve"}),
+                                    "council_message_post":json!({"approval_mode":"approve"}),
                                 });
                             }
                             if computer_use {

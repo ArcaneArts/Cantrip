@@ -74,6 +74,7 @@ pub const OPERATIONS: &[&str] = &[
     "council.automation.read",
     "council.automation.create",
     "council.automation.update",
+    "council.message.post",
 ];
 pub fn is_mutation(operation: &str) -> bool {
     matches!(
@@ -116,6 +117,7 @@ pub fn is_mutation(operation: &str) -> bool {
             | "council.project.interrupt"
             | "council.automation.create"
             | "council.automation.update"
+            | "council.message.post"
             | "council.memory.write"
     )
 }
@@ -145,6 +147,7 @@ fn permitted(permission: &Value, operation: &str) -> bool {
                 | "council.inventory"
                 | "council.automation.list"
                 | "council.automation.read"
+                | "council.message.post"
                 | "policy.list"
                 | "policy.read"
                 | "target.list"

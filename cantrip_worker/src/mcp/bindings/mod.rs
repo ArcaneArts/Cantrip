@@ -102,7 +102,7 @@ pub(crate) const CHAT_TOOLS: [(&str, &str); 4] = [
     ("chat.wait", "chat_wait"),
     ("chat.send", "chat_send"),
 ];
-pub(crate) const COUNCIL_TOOLS: [(&str, &str); 17] = [
+pub(crate) const COUNCIL_TOOLS: [(&str, &str); 18] = [
     ("council.list", "council_list"),
     ("council.create", "council_create"),
     ("council.memory.read", "council_memory_read"),
@@ -120,6 +120,7 @@ pub(crate) const COUNCIL_TOOLS: [(&str, &str); 17] = [
     ("council.automation.read", "council_automation_read"),
     ("council.automation.create", "council_automation_create"),
     ("council.automation.update", "council_automation_update"),
+    ("council.message.post", "council_message_post"),
 ];
 
 #[derive(Clone)]

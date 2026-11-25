@@ -31,6 +31,8 @@ import {
   councilMemoryReadToolOutputSchema,
   councilMemoryWriteToolInputSchema,
   councilMemoryWriteToolOutputSchema,
+  councilMessagePostInputSchema,
+  councilMessagePostOutputSchema,
   councilPeerSendInputSchema,
   councilPeerSendOutputSchema,
   councilProjectSendInputSchema,
@@ -158,6 +160,13 @@ async function generate() {
   );
   const council = [
     [
+      "council_message_post",
+      "council.message.post",
+      "Post a message to your user during the current turn. Set notify to false for quiet progress and true when an update should alert the user. Reuse operationId only when retrying the same post.",
+      councilMessagePostInputSchema,
+      councilMessagePostOutputSchema,
+    ],
+    [
       "council_automation_list",
       "council.automation.list",
       "List a Council agent’s scheduled routines and their current revisions. Omit agentId to use your own routines. Repeat with nextOffset when present.",
@@ -280,7 +289,7 @@ async function generate() {
   profiles.council = {
     ...profiles["standalone-web"],
     instructions:
-      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Use council_inventory to find projects, chats, and Tasks. Create project Agent chats or Tasks with the Council project tools. When asked to stop delegated project work, interrupt the specified Agent chat or Task with council_project_interrupt. Read and update your fast memory with council_memory_read and council_memory_write. Search retained work with council_history_search and open evidence with council_history_read. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
+      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Use council_inventory to find projects, chats, and Tasks. Create project Agent chats or Tasks with the Council project tools. When asked to stop delegated project work, interrupt the specified Agent chat or Task with council_project_interrupt. Read and update your fast memory with council_memory_read and council_memory_write. Search retained work with council_history_search and open evidence with council_history_read. Use council_message_post for quiet progress during a run or to notify the user when a report is ready. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
     tools: [
       ...profiles["standalone-web"].tools,
       ...council.map(([name, operation, description, input, output]) => {

@@ -375,7 +375,8 @@ impl Inner {
             | "council.automation.list"
             | "council.automation.read"
             | "council.automation.create"
-            | "council.automation.update" => self.council(authorization, &call, operation).await,
+            | "council.automation.update"
+            | "council.message.post" => self.council(authorization, &call, operation).await,
             "council.history.search" | "council.history.read" => {
                 self.council_history(authorization, &call, operation).await
             }

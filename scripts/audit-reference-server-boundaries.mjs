@@ -118,7 +118,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "1aa72e26fbc3160d329b9b859dcb08df81030fad1a1f18a6da96520a001a971b",
+    "6be765e0a886708984315e1e6405829c252d906d4736337ab9037774edf50d91",
   applicationRoutes:
     "7f79fe780180625d9f56319ce8702d280a4263786aba54143897468dc7ae749f",
   clientControlCommands:
@@ -126,7 +126,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   cliCommands:
     "eda5c53bda92870bd738663b686243a6183683a8d04af6af5f1bd43e02893f57",
   liveResources:
-    "e45939021b223626ec22a30500fff896e905a29201c9072fb57f3523aa5b2472",
+    "08ae093282f7451cc3b9ff34413133d5a8fc51ad8a91b9b2f20463aba8747477",
   workerCommands:
     "2f494af21cd4a6abb2731c1acb2040c4a6205f1b93bf499aad2ba1a040546364",
   tunnelFrameKinds:
@@ -3989,6 +3989,13 @@ function workerCommandContentClassification(command) {
 }
 
 function liveResourceContentClassification(resource) {
+  if (resource === "council-notification") {
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "The invalidation carries a message ID. Clients fetch the encrypted content under account authorization.",
+    };
+  }
   if (resource === "worker-inference")
     return {
       classification: "minimized-operational-metadata",
@@ -4089,6 +4096,13 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
+  if (operation === "council.message.post") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "The Council worker encrypts the visible message. Core persists the notification intent and message ID with the encrypted content.",
+    };
+  }
   if (operation.startsWith("council.automation.")) {
     return {
       classification: "endpoint-protected",

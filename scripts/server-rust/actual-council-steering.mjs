@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { actualCouncilAutomations } from "./actual-council-automations.mjs";
+import { actualCouncilNotifications } from "./actual-council-notifications.mjs";
 import { actualCouncilRoutineAuthoring } from "./actual-council-routine-authoring.mjs";
 import { actualCouncilBrowserHistory } from "./actual-council-browser-history.mjs";
 import { actualCouncilCompaction } from "./actual-council-compaction.mjs";
@@ -34,6 +35,7 @@ export async function actualCouncilSteering({
   browserHistory,
   automations,
   routineAuthoring,
+  notificationsAppOrigin,
   compaction,
   raceMarker,
   dropReplyMarker,
@@ -115,7 +117,9 @@ export async function actualCouncilSteering({
         nativeModel: model.model,
         role,
         testCreation,
-        readOnly: Boolean(memoryAppOrigin || automations) && !testCreation,
+        readOnly:
+          Boolean(memoryAppOrigin || automations || notificationsAppOrigin) &&
+          !testCreation,
         nativeCli: Boolean(inventory || peerAppOrigin),
       },
     );
@@ -350,6 +354,18 @@ export async function actualCouncilSteering({
     result.steps.push(
       "Council steers an active native turn through its durable queue",
     );
+    if (notificationsAppOrigin) {
+      await actualCouncilNotifications({
+        page,
+        appOrigin: notificationsAppOrigin,
+        chatId,
+        model,
+        tools: modelFunctions(held.request.input.tools),
+        submit,
+        readMessages,
+        result,
+      });
+    }
     if (automations) {
       await actualCouncilAutomations({
         ...automations,

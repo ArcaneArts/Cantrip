@@ -1,4 +1,5 @@
 import { ComputerUseEffectsSettings } from "./computer-use-effects-settings";
+import { CouncilNotificationSetting } from "@/components/council/council-notification-setting";
 import { ModelOperationFields } from "./model-operation-fields";
 import {
   operationCapabilityText,
@@ -2202,6 +2203,12 @@ export function SettingsPage({
                         })}
                       </div>
                     </section>
+                  ) : null}
+
+                  {section === "general" &&
+                  matchesSetting("agent-permissions") &&
+                  councilPermissionDefault !== undefined ? (
+                    <CouncilNotificationSetting />
                   ) : null}
 
                   {section === "general" &&

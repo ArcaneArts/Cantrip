@@ -99,3 +99,4 @@ export * from "./council-project.js";
 export * from "./council-peers.js";
 export * from "./council-input.js";
 export * from "./council-automations.js";
+export * from "./council-notifications.js";

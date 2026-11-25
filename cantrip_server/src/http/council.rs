@@ -4,6 +4,7 @@ mod creation;
 mod history;
 pub(super) mod inventory;
 mod memory;
+mod notifications;
 mod peers;
 mod task_starts;
 
@@ -45,6 +46,9 @@ pub(super) async fn execute_agent_operation(
     }
     let repository = Repository::new(service.repository.database.clone());
     match operation {
+        "council.message.post" => {
+            notifications::post_message(service, owner, context, arguments).await
+        }
         "council.automation.list"
         | "council.automation.read"
         | "council.automation.create"
@@ -213,6 +217,7 @@ async fn linked_work(
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .merge(history::routes())
+        .merge(notifications::routes())
         .route(
             "/api/council/agents/{agentId}/peers/{peerId}",
             get(peers::history),

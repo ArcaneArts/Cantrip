@@ -132,6 +132,7 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
             | "council.automation.read"
             | "council.automation.create"
             | "council.automation.update"
+            | "council.message.post"
     ) {
         return super::council::execute_agent_operation(
             service,

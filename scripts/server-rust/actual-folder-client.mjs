@@ -421,6 +421,7 @@ const liveTaskDiagnostics =
 const councilHistory = process.argv.includes("--council-history");
 const councilPeerMessages = process.argv.includes("--council-peer-messages");
 const councilAutomations = process.argv.includes("--council-automations");
+const councilNotifications = process.argv.includes("--council-notifications");
 const councilRoutineAuthoring = process.argv.includes(
   "--council-routine-authoring",
 );
@@ -1089,6 +1090,7 @@ async function flow(
       councilCompaction ||
       councilBrowserHistory ||
       councilAutomations ||
+      councilNotifications ||
       councilRoutineAuthoring ||
       councilSteerTrace
     ) {
@@ -1101,6 +1103,9 @@ async function flow(
           ? vite.resolvedUrls.local[0]
           : undefined,
         historyFixture: councilHistory ? fixture : undefined,
+        notificationsAppOrigin: councilNotifications
+          ? vite.resolvedUrls.local[0]
+          : undefined,
         routineAuthoring: councilRoutineAuthoring
           ? vite.resolvedUrls.local[0]
           : undefined,
@@ -2354,6 +2359,7 @@ try {
         councilBrowserHistory ||
         councilCompaction ||
         councilAutomations ||
+        councilNotifications ||
         councilRoutineAuthoring ||
         councilPeerMessages ||
         councilProjectMessages
