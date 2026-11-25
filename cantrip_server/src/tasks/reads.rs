@@ -8,7 +8,14 @@ impl Repository {
             return Ok(None);
         };
         let task = serde_json::from_str::<Value>(&row.get::<String>(0)?)?;
-        let cycle = one(ex,"SELECT to_jsonb(c)::text FROM task_dispatch_cycles c WHERE c.chat_id=$1 ORDER BY c.created_at DESC,c.id DESC LIMIT 1",&[&chat]).await?;
+        let cycle = one(ex, r#"SELECT (to_jsonb(c) || CASE WHEN sender.protected_label IS NULL THEN '{}'::jsonb
+                    ELSE jsonb_build_object('councilOrigin',jsonb_build_object('agentId',sender.id,'titleProtection',sender.protected_label)) END)::text
+            FROM task_dispatch_cycles c
+            LEFT JOIN council_task_dispatches origin ON origin.dispatch_id=c.id
+            LEFT JOIN council_agents agent ON agent.chat_id=origin.source_chat_id AND agent.owner_id=c.owner_id
+            LEFT JOIN chats sender ON sender.id=agent.chat_id AND sender.owner_id=agent.owner_id
+            WHERE c.chat_id=$1 AND c.owner_id=$2 ORDER BY c.created_at DESC,c.id DESC LIMIT 1"#,
+            &[&chat,&owner]).await?;
         summary(&task, cycle.as_ref()).map(Some)
     }
     pub async fn list(&self, owner: &str, project: &str) -> Result<Vec<Value>> {

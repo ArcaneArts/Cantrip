@@ -446,6 +446,11 @@ export function TaskPlanReview({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {task.councilOrigin ? (
+        <p className="shrink-0 border-b px-5 py-2 text-xs text-muted-foreground">
+          <CouncilOriginLink {...task.councilOrigin} />
+        </p>
+      ) : null}
       {task.automaticRetry && !failed ? (
         <p className="border-b px-5 py-3 text-sm text-muted-foreground">
           <TaskRetryStatus task={task} paused={chat.automationPaused} />
@@ -764,3 +769,4 @@ export function TaskPlanReview({
     </div>
   );
 }
+import { CouncilOriginLink } from "@/components/council/council-origin-link";

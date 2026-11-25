@@ -6,8 +6,8 @@
     "protectedScriptCommandListSchema": 45,
     "projectTaskWorkloadOpaqueSchema": 60,
     "repositoryOperationOpaqueSchema": 49,
-    "scriptCommandOperationIdSchema": 247,
-    "scriptCommandListSchema": 248
+    "scriptCommandOperationIdSchema": 261,
+    "scriptCommandListSchema": 262
   },
   "nodes": [
     {
@@ -440,7 +440,7 @@
       "type": "object",
       "name": "projectTaskWorkloadOpaqueSchema",
       "shape": { "projectId": 61, "items": 62 },
-      "catchall": 246,
+      "catchall": 260,
       "checks": []
     },
     {
@@ -458,8 +458,8 @@
     {
       "type": "object",
       "name": "projectTaskWorkloadOpaqueItemSchema",
-      "shape": { "task": 64, "plan": 192, "messages": 209 },
-      "catchall": 245,
+      "shape": { "task": 64, "plan": 206, "messages": 223 },
+      "catchall": 259,
       "checks": [
         {
           "check": "refinement",
@@ -491,17 +491,18 @@
         "continuityFamily": 113,
         "lastTaskWorkerId": 116,
         "dispatch": 119,
-        "activeOperationId": 172,
-        "draftAttachmentIds": 174,
-        "protectedContent": 176,
-        "implementationStartedAt": 181,
-        "completedAt": 183,
-        "schedulerRevision": 186,
-        "rowVersion": 188,
-        "createdAt": 189,
-        "updatedAt": 190
+        "councilOrigin": 172,
+        "activeOperationId": 186,
+        "draftAttachmentIds": 188,
+        "protectedContent": 190,
+        "implementationStartedAt": 195,
+        "completedAt": 197,
+        "schedulerRevision": 200,
+        "rowVersion": 202,
+        "createdAt": 203,
+        "updatedAt": 204
       },
-      "catchall": 191,
+      "catchall": 205,
       "checks": []
     },
     {
@@ -1201,7 +1202,115 @@
       ]
     },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 173, "checks": [] },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 173,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilOriginWireSchema",
+      "shape": { "agentId": 174, "titleProtection": 175 },
+      "catchall": 185,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "uuid",
+          "abort": false,
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+          "flags": "",
+          "displayPattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "name": "privateDisplayLabelOpaqueSchema",
+      "shape": { "classification": 176, "protectedLabel": 179 },
+      "catchall": 184,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "privateDisplayLabelClassificationSchema",
+      "shape": { "recordKind": 177 },
+      "catchall": 178,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "name": "privateDisplayLabelRecordKindSchema",
+      "values": [
+        "project",
+        "chat",
+        "terminal",
+        "explorer",
+        "code-tab",
+        "browser",
+        "remote-surface",
+        "project-view",
+        "tab-group"
+      ],
+      "checks": []
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "encryptedPrivateDisplayLabelSchema",
+      "shape": { "formatVersion": 180, "keyRevision": 51, "envelope": 181 },
+      "catchall": 183,
+      "checks": [
+        {
+          "check": "refinement",
+          "tag": "private-label-envelope",
+          "messageAfterPath": false
+        }
+      ]
+    },
+    { "type": "literal", "values": [1], "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 53,
+        "algorithm": 54,
+        "keyRevision": 51,
+        "nonce": 55,
+        "ciphertext": 182
+      },
+      "catchall": 57,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 5483, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    { "type": "nullable", "innerType": 187, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1211,7 +1320,7 @@
     },
     {
       "type": "array",
-      "element": 175,
+      "element": 189,
       "checks": [
         { "check": "max_length", "maximum": 100, "when": "length" },
         {
@@ -1232,8 +1341,8 @@
     {
       "type": "object",
       "name": "encryptedTaskProtectedContentSchema",
-      "shape": { "formatVersion": 177, "keyRevision": 51, "envelope": 178 },
-      "catchall": 180,
+      "shape": { "formatVersion": 191, "keyRevision": 51, "envelope": 192 },
+      "catchall": 194,
       "checks": [
         {
           "check": "refinement",
@@ -1250,7 +1359,7 @@
         "algorithm": 54,
         "keyRevision": 51,
         "nonce": 55,
-        "ciphertext": 179
+        "ciphertext": 193
       },
       "catchall": 57,
       "checks": []
@@ -1277,7 +1386,7 @@
       ]
     },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 182, "checks": [] },
+    { "type": "nullable", "innerType": 196, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1293,11 +1402,11 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 184,
+      "innerType": 198,
       "defaultValue": null,
       "checks": []
     },
-    { "type": "nullable", "innerType": 185, "checks": [] },
+    { "type": "nullable", "innerType": 199, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1313,7 +1422,7 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 187,
+      "innerType": 201,
       "defaultValue": 1,
       "checks": []
     },
@@ -1360,13 +1469,13 @@
       "type": "object",
       "name": "encryptedChatPlanWireStateSchema",
       "shape": {
-        "kind": 193,
-        "chatId": 194,
-        "mode": 195,
-        "hasQuestion": 196,
-        "state": 197
+        "kind": 207,
+        "chatId": 208,
+        "mode": 209,
+        "hasQuestion": 210,
+        "state": 211
       },
-      "catchall": 208,
+      "catchall": 222,
       "checks": [
         {
           "check": "refinement",
@@ -1390,19 +1499,19 @@
       "checks": []
     },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 198, "checks": [] },
+    { "type": "nullable", "innerType": 212, "checks": [] },
     {
       "type": "object",
       "name": "chatPlanOpaqueStateSchema",
-      "shape": { "classification": 199, "protectedContent": 202 },
-      "catchall": 207,
+      "shape": { "classification": 213, "protectedContent": 216 },
+      "catchall": 221,
       "checks": []
     },
     {
       "type": "object",
       "name": "chatPlanProtectedClassificationSchema",
-      "shape": { "hasQuestion": 200 },
-      "catchall": 201,
+      "shape": { "hasQuestion": 214 },
+      "catchall": 215,
       "checks": []
     },
     { "type": "boolean", "checks": [] },
@@ -1410,8 +1519,8 @@
     {
       "type": "object",
       "name": "encryptedChatPlanProtectedContentSchema",
-      "shape": { "formatVersion": 203, "keyRevision": 51, "envelope": 204 },
-      "catchall": 206,
+      "shape": { "formatVersion": 217, "keyRevision": 51, "envelope": 218 },
+      "catchall": 220,
       "checks": [
         {
           "check": "refinement",
@@ -1428,7 +1537,7 @@
         "algorithm": 54,
         "keyRevision": 51,
         "nonce": 55,
-        "ciphertext": 205
+        "ciphertext": 219
       },
       "catchall": 57,
       "checks": []
@@ -1459,41 +1568,41 @@
     { "type": "never", "checks": [] },
     {
       "type": "array",
-      "element": 210,
+      "element": 224,
       "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
     },
     {
       "type": "object",
       "name": "taskRelocationContextMessageSchema",
       "shape": {
-        "role": 211,
-        "mode": 212,
-        "attachmentIds": 213,
-        "id": 215,
-        "chatId": 216,
-        "worktreeId": 217,
-        "executionLaneId": 218,
-        "sequence": 220,
-        "protectedContent": 221,
-        "modelId": 226,
-        "modelRouteId": 228,
-        "providerId": 230,
-        "providerName": 232,
-        "providerModelName": 234,
-        "reasoningEffort": 236,
-        "appliedReasoningEffort": 238,
-        "reasoningAdjusted": 240,
-        "idempotencyKey": 241,
-        "createdAt": 243
+        "role": 225,
+        "mode": 226,
+        "attachmentIds": 227,
+        "id": 229,
+        "chatId": 230,
+        "worktreeId": 231,
+        "executionLaneId": 232,
+        "sequence": 234,
+        "protectedContent": 235,
+        "modelId": 240,
+        "modelRouteId": 242,
+        "providerId": 244,
+        "providerName": 246,
+        "providerModelName": 248,
+        "reasoningEffort": 250,
+        "appliedReasoningEffort": 252,
+        "reasoningAdjusted": 254,
+        "idempotencyKey": 255,
+        "createdAt": 257
       },
-      "catchall": 244,
+      "catchall": 258,
       "checks": []
     },
     { "type": "enum", "values": ["user", "assistant", "system"], "checks": [] },
     { "type": "enum", "values": ["default", "plan", "goal"], "checks": [] },
     {
       "type": "array",
-      "element": 214,
+      "element": 228,
       "checks": [
         { "check": "max_length", "maximum": 20, "when": "length" },
         {
@@ -1532,7 +1641,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 219, "checks": [] },
+    { "type": "nullable", "innerType": 233, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1550,8 +1659,8 @@
     {
       "type": "object",
       "name": "encryptedTaskMessageProtectedContentSchema",
-      "shape": { "formatVersion": 222, "keyRevision": 51, "envelope": 223 },
-      "catchall": 225,
+      "shape": { "formatVersion": 236, "keyRevision": 51, "envelope": 237 },
+      "catchall": 239,
       "checks": [
         {
           "check": "refinement",
@@ -1568,7 +1677,7 @@
         "algorithm": 54,
         "keyRevision": 51,
         "nonce": 55,
-        "ciphertext": 224
+        "ciphertext": 238
       },
       "catchall": 57,
       "checks": []
@@ -1595,7 +1704,7 @@
       ]
     },
     { "type": "never", "checks": [] },
-    { "type": "nullable", "innerType": 227, "checks": [] },
+    { "type": "nullable", "innerType": 241, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1603,7 +1712,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 229, "checks": [] },
+    { "type": "nullable", "innerType": 243, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1611,7 +1720,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 231, "checks": [] },
+    { "type": "nullable", "innerType": 245, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1619,7 +1728,7 @@
         { "check": "max_length", "maximum": 200, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 233, "checks": [] },
+    { "type": "nullable", "innerType": 247, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1627,7 +1736,7 @@
         { "check": "max_length", "maximum": 500, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 235, "checks": [] },
+    { "type": "nullable", "innerType": 249, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1635,7 +1744,7 @@
         { "check": "max_length", "maximum": 500, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 237, "checks": [] },
+    { "type": "nullable", "innerType": 251, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1643,7 +1752,7 @@
         { "check": "max_length", "maximum": 100, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 239, "checks": [] },
+    { "type": "nullable", "innerType": 253, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1652,7 +1761,7 @@
       ]
     },
     { "type": "boolean", "checks": [] },
-    { "type": "nullable", "innerType": 242, "checks": [] },
+    { "type": "nullable", "innerType": 256, "checks": [] },
     {
       "type": "string",
       "checks": [
@@ -1691,19 +1800,19 @@
     {
       "type": "array",
       "name": "scriptCommandListSchema",
-      "element": 249,
+      "element": 263,
       "checks": [{ "check": "max_length", "maximum": 500, "when": "length" }]
     },
     {
       "type": "object",
       "name": "scriptCommandSchema",
       "shape": {
-        "id": 250,
-        "kind": 251,
-        "name": 252,
-        "command": 253,
-        "description": 254,
-        "source": 256
+        "id": 264,
+        "kind": 265,
+        "name": 266,
+        "command": 267,
+        "description": 268,
+        "source": 270
       },
       "checks": []
     },
@@ -1746,7 +1855,7 @@
         { "check": "max_length", "maximum": 4096, "when": "length" }
       ]
     },
-    { "type": "nullable", "innerType": 255, "checks": [] },
+    { "type": "nullable", "innerType": 269, "checks": [] },
     {
       "type": "string",
       "checks": [

@@ -10,6 +10,7 @@ import {
   councilAgentUpdateSchema,
   councilAgentWireListSchema,
   councilAgentWireSummarySchema,
+  councilLinkedWorkWireListSchema,
   councilMemoryUpdateSchema,
   councilMemoryWireSchema,
   standaloneChatWireSummarySchema,
@@ -33,6 +34,28 @@ export type CouncilAgent = Omit<CouncilAgentWireSummary, "titleProtection"> & {
 };
 
 const path = "/api/council/agents";
+
+export async function listCouncilLinkedWork(agentId: string) {
+  const snapshot = requireIdentity();
+  const rows = councilLinkedWorkWireListSchema.parse(
+    await request(`${path}/${encodeURIComponent(agentId)}/work`, undefined, {
+      expectedIdentity: snapshot,
+    }),
+  );
+  return Promise.all(
+    rows.map(async ({ titleProtection, ...row }) => ({
+      ...row,
+      title: titleProtection
+        ? await decodePrivateDisplayLabelForClient({
+            identity: encryptionIdentity(snapshot),
+            opaque: titleProtection,
+            recordKind: "chat",
+            rowId: row.chatId,
+          }).catch(() => null)
+        : null,
+    })),
+  );
+}
 
 function requireIdentity() {
   const snapshot = getClientSessionIdentitySnapshot();

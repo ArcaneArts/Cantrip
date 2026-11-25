@@ -2,6 +2,7 @@ import type { ChatCommunication, ChatMessage } from "@cantrip/protocol";
 import { ArrowDownLeft, ArrowUpRight, Bot } from "lucide-react";
 import { Markdown } from "./markdown";
 import { cn } from "@/lib/utils";
+import { CouncilOriginLink } from "@/components/council/council-origin-link";
 
 export function messageCommunication(
   message: ChatMessage,
@@ -43,13 +44,20 @@ export function AgentChatMessage({
           ) : (
             <ArrowDownLeft className="size-3.5" />
           )}
-          <span>
-            {sent
-              ? `Sent to ${communication.targetTitle}`
-              : communication.senderKind
-                ? `Sent via ${communication.sourceTitle}`
-                : `From ${communication.sourceTitle}`}
-          </span>
+          {!sent && communication.senderKind === "council" ? (
+            <CouncilOriginLink
+              agentId={communication.sourceChatId}
+              title={communication.sourceTitle}
+            />
+          ) : (
+            <span>
+              {sent
+                ? `Sent to ${communication.targetTitle}`
+                : communication.senderKind
+                  ? `Sent via ${communication.sourceTitle}`
+                  : `From ${communication.sourceTitle}`}
+            </span>
+          )}
           <span className="rounded border px-1.5 py-0.5 text-[10px]">
             {communication.senderKind === "council" ? "Council" : "Agent"}
           </span>

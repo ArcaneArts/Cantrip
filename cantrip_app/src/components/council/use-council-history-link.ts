@@ -9,6 +9,7 @@ export function useCouncilHistoryLink(
   openHistory: (agentId: string, messageId: string) => void,
   openPeer: (agentId: string, peerId: string) => void,
   closePeer: () => void,
+  selectAgent: (agentId: string) => void,
   setAppMode: (mode: "council") => void,
 ) {
   useEffect(() => {
@@ -33,10 +34,13 @@ export function useCouncilHistoryLink(
       if (!peer.success && agent.success && message.success) {
         setAppMode("council");
         openHistory(agent.data, message.data.messageId);
+      } else if (!peer.success && agent.success) {
+        setAppMode("council");
+        selectAgent(agent.data);
       }
     };
     openLink();
     window.addEventListener("popstate", openLink);
     return () => window.removeEventListener("popstate", openLink);
-  }, [enabled, openHistory, openPeer, closePeer, setAppMode]);
+  }, [enabled, openHistory, openPeer, closePeer, selectAgent, setAppMode]);
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
+  councilAgentLink,
   councilProjectResultLink,
   uniqueChatCommunicationMessages,
 } from "../../packages/protocol/dist/index.js";
@@ -391,6 +392,14 @@ export async function actualCouncilProjectMessages({
         .waitFor({ state: "visible", timeout: 30_000 });
     };
     await openSource();
+    const attribution = page
+      .getByRole("link", { name: `Sent via ${sender}`, exact: true })
+      .first();
+    await attribution.waitFor({ state: "visible" });
+    assert.equal(
+      await attribution.getAttribute("href"),
+      councilAgentLink(councilId),
+    );
 
     result.councilProjectMessages = { targetWorkerId, projectId, ...receipt };
     result.councilProjectResult = source;

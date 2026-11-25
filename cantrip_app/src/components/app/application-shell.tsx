@@ -684,6 +684,7 @@ export function App() {
     councilWorkspace.openHistory,
     councilWorkspace.openPeer,
     councilWorkspace.closePeer,
+    councilWorkspace.select,
     setAppMode,
   );
   useCouncilProjectSourceLink({

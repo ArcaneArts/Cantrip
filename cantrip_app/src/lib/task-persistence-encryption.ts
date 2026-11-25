@@ -32,6 +32,7 @@ import { getClientSession } from "./client-session";
 import type { ClientEncryptionService } from "./client-encryption";
 import { ClientEncryptionError, clientEncryption } from "./client-encryption";
 import { prepareTaskOperationRelay } from "./task-operation-encryption";
+import { decodePrivateDisplayLabelForClient } from "./private-label-encryption";
 
 type TrustedOptions = {
   service?: ClientEncryptionService;
@@ -202,6 +203,18 @@ export async function openTaskOpaqueSummary(
       continuityFamily: opaque.continuityFamily,
       lastTaskWorkerId: opaque.lastTaskWorkerId,
       dispatch: opaque.dispatch,
+      ...(opaque.councilOrigin && {
+        councilOrigin: {
+          agentId: opaque.councilOrigin.agentId,
+          title: await decodePrivateDisplayLabelForClient({
+            identity: context.identity,
+            recordKind: "chat",
+            rowId: opaque.councilOrigin.agentId,
+            opaque: opaque.councilOrigin.titleProtection,
+            service: context.service,
+          }).catch(() => "Council agent"),
+        },
+      }),
       state: opaque.state,
       stableStateBeforeFailure: opaque.stableStateBeforeFailure,
       activeOperationId: opaque.activeOperationId,

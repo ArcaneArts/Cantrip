@@ -11,6 +11,7 @@ import type {
 import { useEffect, useMemo, useState } from "react";
 
 import { TaskGitChangeMetrics } from "./task-git-change-metrics";
+import { CouncilOriginLink } from "@/components/council/council-origin-link";
 import { formatGoalElapsed } from "@/components/chat/goal-panel";
 import { projectTrajectory } from "@/components/chat/trajectory-model";
 import { TrajectoryActivityBar } from "@/components/chat/trajectory-timeline";
@@ -103,6 +104,11 @@ export function TaskOverviewSummary({
     : null;
   return (
     <section className="border-b py-5" aria-label="Task progress">
+      {task.councilOrigin ? (
+        <p className="mb-3 text-xs text-muted-foreground">
+          <CouncilOriginLink {...task.councilOrigin} />
+        </p>
+      ) : null}
       <InferenceQueueNotice queue={inferenceQueue.data} />
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
         <div>

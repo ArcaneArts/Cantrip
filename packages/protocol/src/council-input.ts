@@ -1,6 +1,53 @@
 import { z } from "zod";
+import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 
 const sourceId = z.string().min(1).max(255);
+
+const councilOrigin = { agentId: z.uuid() };
+
+export const councilOriginSchema = z
+  .object({
+    ...councilOrigin,
+    title: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const councilOriginWireSchema = z
+  .object({
+    ...councilOrigin,
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict();
+
+export const councilLinkedWorkWireListSchema = z
+  .array(
+    z
+      .object({
+        projectId: sourceId,
+        chatId: sourceId,
+        targetKind: z.enum(["chat", "task"]),
+        messageId: sourceId.nullable(),
+        status: z.enum([
+          "created",
+          "draft",
+          "delegated",
+          "queued",
+          "running",
+          "paused",
+          "completed",
+          "failed",
+          "interrupted",
+          "unavailable",
+        ]),
+        titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
+      })
+      .strict(),
+  )
+  .max(40);
+
+export function councilAgentLink(agentId: string) {
+  return `?${new URLSearchParams({ councilAgent: agentId })}`;
+}
 
 export const councilPeerMessageSourceSchema = z
   .object({
@@ -53,11 +100,25 @@ export type CouncilProjectRequestSource = z.infer<
 >;
 
 export function councilProjectResultLink(source: CouncilProjectResultSource) {
+  return councilLinkedWorkLink({
+    projectId: source.projectId,
+    chatId: source.chatId,
+    messageId: source.inputMessageId,
+    targetKind: source.targetKind ?? "chat",
+  });
+}
+
+export function councilLinkedWorkLink(
+  source: Pick<
+    z.infer<typeof councilLinkedWorkWireListSchema>[number],
+    "projectId" | "chatId" | "messageId" | "targetKind"
+  >,
+) {
   const query = new URLSearchParams({
     councilProject: source.projectId,
     projectChat: source.chatId,
   });
-  if (source.inputMessageId) query.set("message", source.inputMessageId);
+  if (source.messageId) query.set("message", source.messageId);
   if (source.targetKind === "task") query.set("task", "true");
   return `?${query}`;
 }

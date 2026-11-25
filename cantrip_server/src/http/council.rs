@@ -189,6 +189,20 @@ async fn conversation(
     result.unwrap_or_else(|cause| middleware::failure(&service, &context.id, &cause))
 }
 
+async fn linked_work(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<Context>>,
+    Path(id): Path<String>,
+) -> Response {
+    let owner = &context.principal.user.as_ref().expect("Council owner").id;
+    let repository = Repository::new(service.repository.database.clone());
+    let result = match repository.council_linked_work(owner, &id).await {
+        Ok(work) => output(200, "councilLinkedWorkWireListSchema", &Value::Array(work)),
+        Err(cause) => Err(cause),
+    };
+    result.unwrap_or_else(|cause| middleware::failure(&service, &context.id, &cause))
+}
+
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .merge(history::routes())
@@ -199,6 +213,7 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/council/agents", get(collection).post(collection))
         .route("/api/council/agents/{agentId}", patch(update))
         .route("/api/council/agents/{agentId}/chat", get(conversation))
+        .route("/api/council/agents/{agentId}/work", get(linked_work))
         .route(
             "/api/council/agents/{agentId}/memory",
             get(memory::handle).put(memory::handle),

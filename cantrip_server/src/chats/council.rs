@@ -1,6 +1,7 @@
 mod history;
 mod memory;
 mod peers;
+mod work;
 pub(crate) use peers::peer_target;
 
 use super::{Repository, catalog::compatible_scratch_worker, roots};
