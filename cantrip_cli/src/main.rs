@@ -61,7 +61,7 @@ impl ContextSelection {
 enum Command {
     /// Show the worker connection and inferred project context.
     Status,
-    /// Discover project work from a running Council agent.
+    /// Inspect Cantrip from a running Council agent.
     Council {
         #[command(subcommand)]
         command: CouncilCommand,
@@ -105,7 +105,7 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum CouncilCommand {
-    /// List projects or a project's conversations.
+    /// List account resources, settings, and available tools.
     Inventory {
         #[command(subcommand)]
         section: CouncilInventorySection,
@@ -120,10 +120,20 @@ enum CouncilCommand {
 enum CouncilInventorySection {
     /// List projects across the account.
     Projects,
+    /// List personal Council agents.
+    Agents,
     /// List Agent chats in a project.
     Chats { project_id: String },
     /// List Tasks in a project.
     Tasks { project_id: String },
+    /// Show effective account defaults.
+    Settings,
+    /// List configured model profiles.
+    Models,
+    /// List policies applied to Council turns.
+    Policies,
+    /// List managed tools and the Worker’s effective MCP servers.
+    Tools,
 }
 
 #[derive(Debug, Subcommand)]
@@ -441,11 +451,26 @@ fn invocation(command: Command) -> Result<Invocation, String> {
                 CouncilInventorySection::Projects => {
                     json!({"section":"projects","cursor":cursor,"limit":limit})
                 }
+                CouncilInventorySection::Agents => {
+                    json!({"section":"agents","cursor":cursor,"limit":limit})
+                }
                 CouncilInventorySection::Chats { project_id } => {
                     json!({"section":"chats","projectId":project_id,"cursor":cursor,"limit":limit})
                 }
                 CouncilInventorySection::Tasks { project_id } => {
                     json!({"section":"tasks","projectId":project_id,"cursor":cursor,"limit":limit})
+                }
+                CouncilInventorySection::Settings => {
+                    json!({"section":"settings","cursor":cursor,"limit":limit})
+                }
+                CouncilInventorySection::Models => {
+                    json!({"section":"models","cursor":cursor,"limit":limit})
+                }
+                CouncilInventorySection::Policies => {
+                    json!({"section":"policies","cursor":cursor,"limit":limit})
+                }
+                CouncilInventorySection::Tools => {
+                    json!({"section":"tools","cursor":cursor,"limit":limit})
                 }
             },
         },

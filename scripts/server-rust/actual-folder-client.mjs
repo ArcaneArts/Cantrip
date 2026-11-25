@@ -479,8 +479,13 @@ const councilProjectMessages =
   councilProjectCreation ||
   councilProjectSteering ||
   process.argv.includes("--council-project-messages");
+const councilAccountInventory = process.argv.includes(
+  "--council-account-inventory",
+);
 const councilInventory =
-  councilProjectMessages || process.argv.includes("--council-inventory");
+  councilAccountInventory ||
+  councilProjectMessages ||
+  process.argv.includes("--council-inventory");
 const councilHistoryRedaction = process.argv.includes(
   "--council-history-redaction",
 );
@@ -1123,8 +1128,25 @@ async function flow(
       : councilSteerProxy
         ? { CANTRIP_CODEX_BIN: councilSteerProxy }
         : {};
+    const accountSkillHome = councilAccountInventory
+      ? path.join(dataDirectory, "account-skill-home")
+      : undefined;
+    if (accountSkillHome) {
+      const skill = path.join(
+        accountSkillHome,
+        "skills",
+        "council-release-playbook",
+      );
+      await mkdir(skill, { recursive: true });
+      await writeFile(
+        path.join(skill, "SKILL.md"),
+        "---\nname: council-release-playbook\ndescription: Private fixture for checking a Council release.\n---\n\nConfirm the release identifier.\n",
+      );
+    }
     await startWorker(enrollment.code, {
-      environment: councilWorkerEnvironment,
+      environment: accountSkillHome
+        ? { ...councilWorkerEnvironment, CODEX_HOME: accountSkillHome }
+        : councilWorkerEnvironment,
     });
     await eventually(workers, (workers) => {
       assert.equal(workers.length, 1);
@@ -1217,6 +1239,7 @@ async function flow(
               fixture,
               root,
               cliBinary,
+              accountMetadata: councilAccountInventory,
               projectMessages: councilProjectMessages,
               projectApprovals: councilProjectApprovals,
               steeredApprovals: councilSteeredApprovals,

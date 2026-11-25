@@ -239,7 +239,7 @@ async function generate() {
     [
       "council_inventory",
       "council.inventory",
-      "List projects across your Cantrip account. Use the project ID to list that project's chats or Tasks. Repeat with nextCursor when present.",
+      "Discover your Cantrip projects, Council agents, account defaults, configured models, effective policies, and tools. Use a project ID to list its chats or Tasks. Tool listings include managed names and the Worker’s effective MCP servers without credential values. Repeat with nextCursor when present.",
       councilInventoryInputSchema,
       councilInventoryToolOutputSchema,
     ],

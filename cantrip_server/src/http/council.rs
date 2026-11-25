@@ -76,7 +76,7 @@ pub(super) async fn execute_agent_operation(
             history::execute_agent_operation(&repository, owner, context, operation, arguments)
                 .await
         }
-        "council.inventory" => inventory::read(service, owner, arguments).await,
+        "council.inventory" => inventory::read(service, owner, context, arguments).await,
         "council.peer.send" => peers::send(service, owner, context, arguments).await,
         "council.project.send" => {
             super::agent_chat_send::execute_council(service, owner, context, arguments).await

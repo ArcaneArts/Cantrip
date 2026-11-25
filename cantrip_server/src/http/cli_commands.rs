@@ -146,7 +146,7 @@ pub(super) async fn execute(
         {
             return Err(missing().into());
         }
-        return super::council::inventory::read(service, owner, &call["arguments"]).await;
+        return super::council::inventory::read(service, owner, &context, &call["arguments"]).await;
     }
     let reader = Arc::new(cli::repository::Repository {
         database: service.repository.database.clone(),
