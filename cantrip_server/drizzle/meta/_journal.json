@@ -2045,6 +2045,13 @@
       "when": 1795582670804,
       "tag": "0291_council_account_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 292,
+      "version": "7",
+      "when": 1795583300253,
+      "tag": "0292_council_agent_roster",
+      "breakpoints": true
     }
   ]
 }

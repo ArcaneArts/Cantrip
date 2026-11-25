@@ -1033,7 +1033,11 @@
     "projectAutomationProtectedPromptSchema": 14723,
     "projectAutomationProtectedConditionSchema": 14727,
     "standaloneChatFileOperationRequestContentSchema": 14739,
-    "githubToolsStatusSchema": 14778
+    "githubToolsStatusSchema": 14778,
+    "councilAgentCreateSchema": 14783,
+    "councilAgentUpdateSchema": 14791,
+    "councilAgentWireListSchema": 14798,
+    "councilAgentWireSummarySchema": 14799
   },
   "nodes": [
     {
@@ -88359,6 +88363,144 @@
     {
       "type": "string",
       "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
-    }
+    },
+    {
+      "type": "object",
+      "name": "councilAgentCreateSchema",
+      "shape": { "id": 3202, "titleProtection": 14784, "protectedRole": 14788 },
+      "catchall": 14790,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "classification": 14785, "protectedLabel": 1426 },
+      "catchall": 1431,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "recordKind": 14786 },
+      "catchall": 14787,
+      "checks": []
+    },
+    { "type": "literal", "values": ["chat"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "version": 15,
+        "algorithm": 16,
+        "keyRevision": 13,
+        "nonce": 17,
+        "ciphertext": 14789
+      },
+      "catchall": 19,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "regex",
+          "pattern": "^[A-Za-z0-9_-]*$",
+          "flags": "u",
+          "displayPattern": "/^[A-Za-z0-9_-]*$/u"
+        },
+        {
+          "check": "refinement",
+          "tag": "canonical-base64url",
+          "messageAfterPath": true,
+          "message": "Value is not canonical unpadded base64url."
+        },
+        { "check": "max_length", "maximum": 22369643, "when": "length" },
+        { "check": "min_length", "minimum": 22, "when": "length" },
+        { "check": "max_length", "maximum": 43712, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "councilAgentUpdateSchema",
+      "shape": {
+        "expectedRevision": 14792,
+        "titleProtection": 14793,
+        "protectedRole": 14794,
+        "primary": 14795
+      },
+      "catchall": 14797,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false },
+        { "check": "less_than", "value": 2147483647, "inclusive": true }
+      ]
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14784,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14788,
+      "checks": []
+    },
+    {
+      "type": "optional",
+      "optionalIn": true,
+      "optionalOut": true,
+      "innerType": 14796,
+      "checks": []
+    },
+    { "type": "boolean", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "array",
+      "name": "councilAgentWireListSchema",
+      "element": 14799,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilAgentWireSummarySchema",
+      "shape": {
+        "id": 3202,
+        "workerId": 14800,
+        "titleProtection": 14784,
+        "protectedRole": 14788,
+        "primary": 14801,
+        "revision": 14802,
+        "scratchStatus": 14803
+      },
+      "catchall": 14804,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [{ "check": "min_length", "minimum": 1, "when": "length" }]
+    },
+    { "type": "boolean", "checks": [] },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "standaloneChatRootStatusSchema",
+      "values": ["provisioning", "ready", "offline", "failed", "deleting"],
+      "checks": []
+    },
+    { "type": "never", "checks": [] }
   ]
 }

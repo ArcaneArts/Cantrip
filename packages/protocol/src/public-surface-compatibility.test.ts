@@ -783,6 +783,12 @@ const desktopIoExports = [
 
 // Reviewed canonical-resource authorization, physical outcome facts, timing and
 // captured OS tunnel source helpers. Preserve every unrelated export baseline.
+const councilExports = [
+  "councilAgentCreateSchema",
+  "councilAgentUpdateSchema",
+  "councilAgentWireListSchema",
+  "councilAgentWireSummarySchema",
+];
 const nativeResourceAndTimingExports = [
   "inferenceCommandTimingSchema",
   "inferenceProviderCommandTimingSchema",
@@ -931,8 +937,12 @@ describe("protocol public surface compatibility", () => {
     expect(
       currentExportNames.filter((name) => nativeWorkerExports.includes(name)),
     ).toEqual(nativeWorkerExports);
+    expect(
+      currentExportNames.filter((name) => councilExports.includes(name)),
+    ).toEqual(councilExports);
     const allExportNames = currentExportNames.filter(
       (name) =>
+        !councilExports.includes(name) &&
         !modelAndGoalExports.includes(name) &&
         !endpointProviderExports.includes(name) &&
         !desktopIoExports.includes(name) &&
@@ -941,6 +951,7 @@ describe("protocol public surface compatibility", () => {
     );
     expect(currentExportNames).toHaveLength(
       allExportNames.length +
+        councilExports.length +
         modelAndGoalExports.length +
         endpointProviderExports.length +
         desktopIoExports.length +
