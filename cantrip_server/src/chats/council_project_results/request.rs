@@ -9,7 +9,8 @@ pub(super) async fn pending(database: &Database) -> Result<Vec<Value>> {
         r#"SELECT jsonb_build_object(
              'ownerId',r.owner_id,'chatId',link.council_chat_id,'operationId',r.id,
              'attempts',r.council_forward_attempts,'requestKey',r.request_key,
-             'source',jsonb_build_object('projectId',r.project_id,'chatId',r.chat_id,'requestId',r.id),
+             'source',jsonb_build_object('projectId',r.project_id,'chatId',r.chat_id,'requestId',r.id)
+                 || CASE WHEN link.target_kind='task' THEN jsonb_build_object('targetKind','task') ELSE '{}'::jsonb END,
              'request',jsonb_build_object(
                'classification',jsonb_build_object('kind',r.kind),'protectedPayload',r.protected_payload
              )

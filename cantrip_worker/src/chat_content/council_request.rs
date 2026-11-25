@@ -10,11 +10,14 @@ pub(super) fn prepare(scope: &Scope, encryption: &Service, command: &Value) -> R
     let chat = source["chatId"].as_str().context("Project chat ID")?;
     let request_id = source["requestId"].as_str().context("Project request ID")?;
     let project = source["projectId"].as_str().context("Project ID")?;
+    let task = source["targetKind"] == "task";
+    let target = if task { "project Task" } else { "project chat" };
     let link = format!(
-        "/?councilProject={}&projectChat={}&request={}",
+        "/?councilProject={}&projectChat={}&request={}{}",
         utf8_percent_encode(project, NON_ALPHANUMERIC),
         utf8_percent_encode(chat, NON_ALPHANUMERIC),
         utf8_percent_encode(request_id, NON_ALPHANUMERIC),
+        if task { "&task=true" } else { "" },
     );
 
     let request = &command["request"];
@@ -64,7 +67,7 @@ pub(super) fn prepare(scope: &Scope, encryption: &Service, command: &Value) -> R
         command,
         "councilProjectRequest",
         format!(
-            "A Cantrip project chat you delegated to is waiting for a human to answer its {kind}. You can explain this request and point the user to it. The user responds to the original request in Cantrip.\nSource: {link}\n\n{detail}"
+            "A Cantrip {target} you delegated to is waiting for a human to answer its {kind}. You can explain this request and point the user to it. The user responds to the original request in Cantrip.\nSource: {link}\n\n{detail}"
         ),
     )
 }

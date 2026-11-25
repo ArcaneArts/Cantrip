@@ -78,7 +78,8 @@ export function CouncilProjectApprovals({ agentId }: { agentId: string }) {
           <DialogHeader>
             <DialogTitle>Project requests</DialogTitle>
             <DialogDescription>
-              Respond to requests from project chats this agent contacted.
+              Respond to requests from project chats and Tasks this agent
+              started or contacted.
             </DialogDescription>
           </DialogHeader>
           {requests.length ? (
@@ -99,9 +100,13 @@ export function CouncilProjectApprovals({ agentId }: { agentId: string }) {
                       projectId: request.projectId,
                       chatId: request.provenance.chatId,
                       requestId: request.id,
+                      targetKind: request.targetKind,
                     })}
                   >
-                    Open in project chat <ArrowUpRight className="size-3" />
+                    {request.targetKind === "task"
+                      ? "Open in Task"
+                      : "Open in project chat"}
+                    <ArrowUpRight className="size-3" />
                   </a>
                 ) : null
               }

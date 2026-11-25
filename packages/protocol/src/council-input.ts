@@ -44,6 +44,7 @@ export const councilProjectRequestSourceSchema = z
     projectId: sourceId,
     chatId: sourceId,
     requestId: sourceId,
+    targetKind: z.literal("task").optional(),
   })
   .strict();
 
@@ -67,5 +68,6 @@ export function councilProjectRequestLink(source: CouncilProjectRequestSource) {
     projectChat: source.chatId,
     request: source.requestId,
   });
+  if (source.targetKind === "task") query.set("task", "true");
   return `?${query}#agent-request-${encodeURIComponent(source.requestId)}`;
 }

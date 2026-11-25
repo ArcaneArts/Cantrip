@@ -331,6 +331,7 @@ export const agentInteractionRequestSchema = z
     id: z.string().min(1),
     requestKey: z.string().min(1),
     projectId: z.string().min(1).nullable(),
+    targetKind: z.literal("task").optional(),
     provenance: agentInteractionProvenanceSchema,
     payload: agentInteractionRequestPayloadSchema,
     status: agentInteractionRequestStatusSchema,
@@ -394,6 +395,7 @@ export const encryptedAgentInteractionRequestSchema = z
     id: z.string().min(1),
     requestKey: z.string().min(1),
     projectId: z.string().min(1).nullable(),
+    targetKind: z.literal("task").optional(),
     provenance: agentInteractionProvenanceSchema,
     classification: interactionProtectedClassificationSchema,
     protectedPayload:

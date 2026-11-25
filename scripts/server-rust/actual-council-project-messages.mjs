@@ -10,6 +10,7 @@ import { actualCouncilProjectApprovals } from "./actual-council-project-approval
 import { actualCouncilProjectCreation } from "./actual-council-project-creation.mjs";
 import { actualCouncilProjectControls } from "./actual-council-project-controls.mjs";
 import { actualCouncilProjectSteering } from "./actual-council-project-steering.mjs";
+import { actualCouncilTaskApprovals } from "./actual-council-task-approvals.mjs";
 
 export async function actualCouncilProjectMessages({
   page,
@@ -448,7 +449,21 @@ export async function actualCouncilProjectMessages({
         result,
       });
     if (projectApprovals) {
-      if (projectCreation) await openSource();
+      const targetTools = modelFunctions(initial.request.input.tools);
+      if (projectCreation) {
+        await actualCouncilTaskApprovals({
+          page,
+          model,
+          target,
+          submit,
+          idle,
+          councilId,
+          projectId,
+          tools,
+          targetTools,
+          result,
+        });
+      }
       await actualCouncilProjectApprovals({
         page,
         model,
@@ -461,7 +476,7 @@ export async function actualCouncilProjectMessages({
         projectId,
         targetProfileId: ready.profileId,
         send,
-        targetTools: modelFunctions(initial.request.input.tools),
+        targetTools,
         result,
       });
     }
