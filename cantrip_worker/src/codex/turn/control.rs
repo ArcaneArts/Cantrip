@@ -54,6 +54,7 @@ pub(super) struct Binding {
     pause_control: Mutex<()>,
     pub(super) thread_version: u64,
     pub(super) interactions: OnceLock<super::interactions::Handle>,
+    pub(super) auto_approve: watch::Sender<bool>,
 }
 
 impl Binding {
@@ -66,6 +67,7 @@ impl Binding {
         Self {
             session,
             interactions: OnceLock::new(),
+            auto_approve: watch::channel(false).0,
             permission,
             input_target: json!({
                 "model":target["model"],"provider":json!({"kind":target["provider"]["kind"]}),

@@ -90,10 +90,48 @@ describe("bound permission presentation", () => {
         },
       });
       expect(result.requestedLabel).toBe("YOLO mode");
-      expect(result.status).toBe("queued");
+      expect(result.status).toBeNull();
+      expect(result.liveYolo).toBe(true);
       expect(result.confirmedPresetId).toBe(":workspace");
     },
   );
+  it("keeps live YOLO while a lower profile waits for the turn boundary", () => {
+    const current = session();
+    const yolo = {
+      selectedId: ":yolo",
+      resolvedSelectedId: ":yolo",
+      effectiveId: ":yolo",
+      expectedRevision: "0",
+    };
+    current.observed.state = {
+      data: {
+        pending: [
+          {
+            bindingId: "binding",
+            status: "dispatched",
+            intent: { operationId: "yolo", permissionTransition: yolo },
+          },
+        ],
+      },
+    } as unknown as NativeSettingsController["observed"]["state"];
+    const result = nativePermissionControlState(current, {
+      ...preference,
+      transition: {
+        selectedId: ":read-only",
+        resolvedSelectedId: ":read-only",
+        effectiveId: ":read-only",
+        expectedRevision: "0",
+        operationId: "read-only",
+        status: "dispatched",
+      },
+    });
+    expect(result).toMatchObject({
+      liveYolo: true,
+      requestedLabel: "Read only",
+      status: "queued",
+      confirmedPresetId: ":workspace",
+    });
+  });
   it("does not replace actual native security with a requested or Primary-forced profile label", () => {
     const result = nativePermissionControlState(session(), preference);
     expect(result.confirmedPresetId).toBe(":workspace");

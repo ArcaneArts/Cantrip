@@ -106,9 +106,21 @@ pub fn assert_transition(context: &Value, state: &Value, input: &Value) -> Resul
         truthy(entry.get("permissionTransition"))
             && entry.get("operationId") != input.get("operationId")
     };
-    let pending = state["pending"]
-        .as_array()
-        .is_some_and(|entries| entries.iter().any(|entry| other(&entry["intent"])));
+    let pending = state["pending"].as_array().is_some_and(|entries| {
+        entries.iter().any(|entry| {
+            let prior = &entry["intent"];
+            let downgrade_after_live_yolo = entry["status"] == "dispatched"
+                && prior["permissionTransition"]["effectiveId"] == ":yolo"
+                && transition["effectiveId"] != ":yolo"
+                && prior["permissionTransition"]["expectedRevision"] == revision
+                && entry["bindingId"] == state["binding"]["bindingId"]
+                && matches!(
+                    context["status"].as_str(),
+                    Some("running" | "waiting-for-approval")
+                );
+            other(prior) && !downgrade_after_live_yolo
+        })
+    });
     let uncertain = other(&state["desired"]) && state["desiredStatus"] == "uncertain";
     if pending || uncertain {
         return Err(reject(

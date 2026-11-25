@@ -89,6 +89,30 @@ describe("permissionProfileLabel", () => {
     expect(markup).toContain('role="status"');
     expect(markup).toContain("animate-spin");
   });
+  it.each([null, "Read only"])(
+    "shows live YOLO and only labels a pending downgrade (%s)",
+    (requestedLabel) => {
+      const markup = renderToStaticMarkup(
+        createElement(PermissionProfileControl, {
+          pending: false,
+          state: undefined,
+          onChange: () => undefined,
+          native: {
+            confirmed: null,
+            confirmedPresetId: null,
+            liveYolo: true,
+            requestedLabel: requestedLabel ?? "YOLO mode",
+            status: requestedLabel ? "queued" : null,
+          },
+        }),
+      );
+      expect(markup).toContain("Agent permissions: YOLO mode");
+      expect(markup).not.toContain("YOLO mode pending");
+      expect(markup.includes("Read only pending")).toBe(
+        Boolean(requestedLabel),
+      );
+    },
+  );
   it("clears the queued notice when YOLO mode is confirmed", () => {
     const markup = renderToStaticMarkup(
       createElement(PermissionProfileControl, {

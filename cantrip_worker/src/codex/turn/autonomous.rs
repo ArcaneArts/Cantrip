@@ -331,7 +331,7 @@ impl Autonomous {
                     let result = interactions::Turn {
                         runtime: &runtime, authority: interactions::Authority::Receipt(&receipt), thread, turn,
                         thread_version: binding.thread_version, encryption: &self.encryption,
-                        emit: &emit, protected: true,
+                        emit: &emit, protected: true, auto_approve: Some(binding.auto_approve.subscribe()),
                     }.observe(&binding.interactions, &mut native_interactions.events, collecting).await;
                     drop(native_interactions);
                     drop(emit);

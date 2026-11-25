@@ -19,7 +19,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, watch},
     time::Instant,
 };
 
@@ -235,6 +235,7 @@ pub(super) struct Turn<'a> {
     pub(super) encryption: &'a Arc<Service>,
     pub(super) emit: &'a Emit,
     pub(super) protected: bool,
+    pub(super) auto_approve: Option<watch::Receiver<bool>>,
 }
 
 struct Owner<'a> {
@@ -335,6 +336,26 @@ impl Turn<'_> {
         Ok(opened["response"].clone())
     }
 
+    fn resolution(&self, key: &JsString, kind: &str, frame: &Value) -> Result<Option<Value>> {
+        let Some(response) = protocol::response(kind, frame.get("result")) else {
+            return Ok(None);
+        };
+        if !self.protected {
+            return Ok(Some(json!({"response":response})));
+        }
+        let grant = self.component(None)?;
+        let classification = json!({"kind":response["kind"]});
+        let opaque = encrypt_communication(
+            Communication::InteractionResponse,
+            &grant.component.key,
+            &json!({"ownerId":grant.owner_id,"requestKey":key,"keyRevision":grant.component.key_revision}),
+            &json!({"version":1,"classification":classification,"response":response}),
+        )?;
+        Ok(Some(
+            json!({"classification":classification,"protectedResponse":opaque}),
+        ))
+    }
+
     fn identity(&self) -> Result<(JsString, JsString)> {
         match self.authority {
             Authority::Receipt(receipt) => receipt.scope().identity(),
@@ -383,6 +404,19 @@ impl Owner<'_> {
             tokio::select! {
                 biased;
                 _ = self.stop.cancelled() => return Ok(()),
+                _ = async {
+                    if let Some(policy) = &mut self.turn.auto_approve {
+                        if policy.changed().await.is_ok() { return; }
+                    }
+                    std::future::pending().await
+                } => {
+                    let now = Instant::now();
+                    for pending in self.pending.values_mut() {
+                        if protocol::auto_approval(&pending.request["payload"]).is_some() {
+                            pending.retry = Some(now);
+                        }
+                    }
+                }
                 frame = events.recv() => self.frame(frame.context("The native interaction channel closed.")?)?,
                 command = commands.recv() => {
                     let Command { key, action, complete } = command.context("The interaction command owner closed.")?;
@@ -485,7 +519,9 @@ impl Owner<'_> {
         }
         self.turn.current()?;
         let pending = self.pending.get_mut(&key).unwrap();
-        if let Authority::Receipt(receipt) = self.turn.authority {
+        if !pending.published
+            && let Authority::Receipt(receipt) = self.turn.authority
+        {
             let guard = Guard::metadata_timeout(None, None, Duration::from_secs(2));
             if receipt
                 .register_interaction(&pending.descriptor(), &guard)
@@ -497,6 +533,36 @@ impl Owner<'_> {
             }
         }
         if self.stop.check().is_err() {
+            return Ok(());
+        }
+        if self
+            .turn
+            .auto_approve
+            .as_ref()
+            .is_some_and(|policy| *policy.borrow())
+            && let Some(result) = protocol::auto_approval(&pending.request["payload"])
+        {
+            let frame = json!({"id":pending.id,"result":result});
+            let resolution = if pending.published {
+                self.turn
+                    .resolution(&key, pending.kind(), &frame)
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
+            if self
+                .deliver_reply(&key, frame, resolution, None, true)
+                .await
+                .is_err()
+                && let Some(pending) = self.pending.get_mut(&key)
+            {
+                pending.retry = Some(Instant::now() + Duration::from_millis(350));
+            }
+            return Ok(());
+        }
+        if pending.published {
+            pending.retry = None;
             return Ok(());
         }
         let published = self.turn.publish_request(&pending.request).and_then(|()| {
@@ -526,17 +592,17 @@ impl Owner<'_> {
         Ok(())
     }
 
-    fn pending(&self, key: &JsString) -> Result<&Pending> {
+    fn pending(&self, key: &JsString, automated: bool) -> Result<&Pending> {
         self.stop.check()?;
         self.turn.current()?;
         self.pending
             .get(key)
-            .filter(|pending| pending.published && pending.expires > Instant::now())
+            .filter(|pending| (automated || pending.published) && pending.expires > Instant::now())
             .context("The agent interaction is no longer pending.")
     }
 
     async fn reply(&mut self, key: &JsString, response: &Value, protected: bool) -> Result<Value> {
-        let pending = self.pending(key)?;
+        let pending = self.pending(key, false)?;
         let plain = self
             .turn
             .open_reply(key, response, protected)
@@ -551,7 +617,8 @@ impl Owner<'_> {
         } else {
             json!({"response":plain})
         };
-        self.deliver_reply(key, frame, Some(resolution), None).await
+        self.deliver_reply(key, frame, Some(resolution), None, false)
+            .await
     }
 
     async fn terminal_reply(
@@ -562,31 +629,13 @@ impl Owner<'_> {
         open: &Signal,
     ) -> Result<Value> {
         open.check()?;
-        let pending = self.pending(key)?;
+        let pending = self.pending(key, false)?;
         ensure!(
             frame["id"] == pending.id,
             "The console response belongs to a different request."
         );
-        let resolution = if let Some(response) =
-            protocol::response(pending.kind(), frame.get("result"))
-        {
-            if self.turn.protected {
-                let grant = self.turn.component(None)?;
-                let classification = json!({"kind":response["kind"]});
-                let opaque = encrypt_communication(
-                    Communication::InteractionResponse,
-                    &grant.component.key,
-                    &json!({"ownerId":grant.owner_id,"requestKey":key,"keyRevision":grant.component.key_revision}),
-                    &json!({"version":1,"classification":classification,"response":response}),
-                )?;
-                Some(json!({"classification":classification,"protectedResponse":opaque}))
-            } else {
-                Some(json!({"response":response}))
-            }
-        } else {
-            None
-        };
-        self.deliver_reply(key, frame, resolution, Some((session, open)))
+        let resolution = self.turn.resolution(key, pending.kind(), &frame)?;
+        self.deliver_reply(key, frame, resolution, Some((session, open)), false)
             .await
     }
 
@@ -596,6 +645,7 @@ impl Owner<'_> {
         frame: Value,
         resolution: Option<Value>,
         terminal: Option<(&Value, &Signal)>,
+        automated: bool,
     ) -> Result<Value> {
         let receipt = if let Authority::Receipt(root) = self.turn.authority {
             let scope = Scope::new(self.turn.encryption.clone())?;
@@ -603,7 +653,7 @@ impl Owner<'_> {
                 .admit_interaction_reply(
                     scope,
                     self.turn.turn,
-                    &self.pending(key)?.descriptor(),
+                    &self.pending(key, automated)?.descriptor(),
                     &frame,
                     terminal.map(|(session, _)| session),
                 )
@@ -618,7 +668,7 @@ impl Owner<'_> {
                 return Err(error);
             }
             if let Err(error) = self
-                .pending(key)
+                .pending(key, automated)
                 .and_then(|_| terminal.map_or(Ok(()), |(_, open)| open.check()))
             {
                 let _ = receipt.rejected(&json!({"code":-32000,"message":"The native reply no longer belongs to an active request."})).await;
@@ -636,7 +686,7 @@ impl Owner<'_> {
                 terminal.is_none(),
                 "A Task reply requires its owning command."
             );
-            self.pending(key)?;
+            self.pending(key, automated)?;
             None
         };
         // Claim before sending, even if the native transport subsequently fails.
@@ -673,7 +723,9 @@ impl Owner<'_> {
             resolution["idempotencyKey"] = json!(concat(&["native-response:".into(), key.clone()]));
             event["resolution"] = resolution;
         }
-        let _ = pending.publish_terminal(self.turn.emit, event);
+        if pending.published {
+            let _ = pending.publish_terminal(self.turn.emit, event);
+        }
         let acknowledged = if let (Some(receipt), Some(_)) = (&receipt, terminal) {
             json!({"delivered":true,"operationGeneration":receipt.operation().generation})
         } else {

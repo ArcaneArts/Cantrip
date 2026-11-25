@@ -102,6 +102,33 @@ pub(super) async fn publish(
                 .as_str()
                 .context("Confirmed permission revision")?
                 .parse::<BigInt>()?;
+    // An active turn can queue a downgrade behind live YOLO. Both were
+    // admitted against the same confirmed revision. Only that turn's YOLO
+    // application may advance the revision before the downgrade is published.
+    let follows_live_yolo = current_source
+        && newer
+        && !current_policy
+        && previous["effectiveId"] == ":yolo"
+        && transition["effectiveId"] != ":yolo"
+        && policy_revision == increment(transition.get("expectedRevision"))?
+        && truthy(command.get("activation_generation"))
+        && !tx
+            .query(
+                "SELECT 1 FROM native_commands WHERE chat_id=$1
+               AND operation_id=$2 AND operation_generation=$3
+               AND activation_generation=$4 AND created_at<=($5::text)::timestamptz
+               AND intent->'permissionTransition'->>'expectedRevision'=$6",
+                &[
+                    &chat,
+                    &text(&previous["operationId"])?,
+                    &text(&previous["operationGeneration"])?,
+                    &text(&command["activation_generation"])?,
+                    &text(&command["created_at"])?,
+                    &text(&transition["expectedRevision"])?,
+                ],
+            )
+            .await?
+            .is_empty();
     let permitted = !context.as_ref().is_some_and(|c| {
         truthy(c.get("isPrimary")) && c["worktreePolicy"] == "required-for-writes"
     }) || transition["effectiveId"] == ":read-only";
@@ -110,7 +137,12 @@ pub(super) async fn publish(
         && truthy(Some(previous))
         && previous["source"].get("runtimeGeneration") == effective
         && previous.get("settingsVersion") == claim.get("settingsVersion");
-    if current_source && (current_policy || same_operation) && !published && newer && permitted {
+    if current_source
+        && (current_policy || same_operation || follows_live_yolo)
+        && !published
+        && newer
+        && permitted
+    {
         let revision = if same_operation {
             previous["revision"].clone()
         } else {

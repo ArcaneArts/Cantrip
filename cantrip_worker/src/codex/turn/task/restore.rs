@@ -268,7 +268,7 @@ impl Turns {
                     runtime,
                     authority: interactions::Authority::Task(&task.key, &task.input),
                     thread, turn, thread_version: selected.thread_version,
-                    encryption: &self.encryption, emit: &emit, protected: true,
+                    encryption: &self.encryption, emit: &emit, protected: true, auto_approve: None,
                 }.observe(&task.input.interactions, &mut interactions.events, collecting).await
             } else { collecting.await };
             drop(native_interactions);

@@ -16,14 +16,17 @@ changes. Primary placements with `required-for-writes` retain the requested
 selection while enforcing the read-only effective profile.
 
 Admission and dispatch both check the actual chat, placement, account, source,
-policy, and expected revision under the chat lock. A competing unresolved
-permission change receives `permission-transition-pending`; the caller can retry
-after it settles. This is an explicit conflict, not a dropped choice.
+policy, and expected revision under the chat lock. A dispatched YOLO selection
+can be followed by a more restrictive selection during the same turn. Codex
+applies both selections in order at quiescence. Other competing unresolved
+changes receive `permission-transition-pending`.
 
 A successful native RPC means queued. Desired and pending selections are retained
-in the existing native settings journal; they do not change the confirmed chat
-permission or active computer-use authority. The native permission request applies
-at the root/descendant quiescent boundary. Application requires correlated native
+in the existing native settings journal. The native permission profile applies
+at the root/descendant quiescent boundary. Once Codex acknowledges an effective
+YOLO selection, the worker accepts open and subsequent command, file, and
+turn-scoped permission approvals for the owning turn. A queued downgrade keeps
+its pending indicator until the native profile applies. Application requires correlated native
 operation/submission evidence. The worker compares the actual native security
 settings with the admitted target before publishing the public profile claim.
 The server stores that claim alongside the encrypted evidence and updates the
