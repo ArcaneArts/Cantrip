@@ -42,6 +42,9 @@ struct Arguments {
     host: Option<String>,
     #[arg(long)]
     port: Option<u16>,
+    /// Enable the external MCP discovery control endpoint on 127.0.0.1.
+    #[arg(long, conflicts_with = "migrate_only")]
+    external_mcp_local_port: Option<u16>,
     #[arg(long)]
     data_dir: Option<PathBuf>,
     #[arg(long)]
@@ -641,6 +644,29 @@ async fn run(
         };
         let port = arguments.port.unwrap_or(config.port as u16);
         let listener = tokio::net::TcpListener::bind((config.host.as_str(), port)).await?;
+        let (mcp_shutdown, mcp_closed) = tokio::sync::oneshot::channel::<()>();
+        let local_mcp = if let Some(port) = arguments.external_mcp_local_port {
+            let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
+                .await
+                .context("bind external MCP discovery listener")?;
+            let address = listener.local_addr()?;
+            let router = http::external_mcp::router(service.clone(), address.port())?;
+            use std::io::Write;
+            writeln!(
+                parent_output,
+                "\n{}",
+                json!({"event":"server.external-mcp.listening", "origin":format!("http://{address}")})
+            )?;
+            Some(tokio::spawn(async move {
+                axum::serve(listener, router)
+                    .with_graceful_shutdown(async {
+                        let _ = mcp_closed.await;
+                    })
+                    .await
+            }))
+        } else {
+            None
+        };
         service.usage.start();
         service.logical_completion_delivery.start();
         service.history_publication_delivery.start();
@@ -682,8 +708,12 @@ async fn run(
             shutdown_service.history_publication_delivery.stop();
             shutdown_service.live.transports.pre_close();
             shutdown_service.workers.pre_close();
+            let _ = mcp_shutdown.send(());
         })
         .await?;
+        if let Some(local_mcp) = local_mcp {
+            local_mcp.await??;
+        }
         // Pre-close queues socket CLOSE frames. Physical peer closure retains
         // normal disconnect semantics. Finish HTTP before closing the bridge,
         // disabling publications, or draining service/database owners.

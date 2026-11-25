@@ -1,5 +1,36 @@
 # Managed Cantrip MCP
 
+## External MCP discovery
+
+External MCP lets a local MCP client look up Cantrip workspaces, projects,
+chats, agents, tasks, workers, and placements. Enable the discovery service on
+a local server with `CANTRIP_AUTH_MODE=none` by passing
+`--external-mcp-local-port 4314` to `cantrip-server`. The server prints the
+selected control origin as `server.external-mcp.listening`. Use port `0` to
+let the OS choose the port.
+
+Configure a stdio MCP client to launch the worker with these arguments.
+
+```sh
+cantrip-worker external-mcp --server http://127.0.0.1:4314
+```
+
+For a Streamable HTTP client, start the bridge and use the loopback URL it prints.
+
+```sh
+cantrip-worker external-mcp --server http://127.0.0.1:4314 --http-port 4315
+```
+
+Both listeners bind to `127.0.0.1`. Give the MCP URL to clients on the same
+machine and keep these ports out of reverse-proxy and port-forwarding rules.
+The tool catalog is read-only. Use `project_list` to find a stable project
+ID, then pass it to `agent_list`, `chat_list`, `task_list`, or
+`placement_list`. Discovery returns stored metadata for offline workers and
+placements. Encrypted display names remain in Cantrip's protected store.
+Discovery marks these entries with `labelProtected`.
+
+## In-chat MCP
+
 Cantrip gives every project Agent chat and standalone Chat a worker-owned MCP
 server named `cantrip`. One server implementation is exposed through two
 profiles: IDE/project agents receive the full catalog, while standalone Chat

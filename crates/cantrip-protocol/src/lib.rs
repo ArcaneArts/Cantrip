@@ -7,6 +7,7 @@ mod cantrip_os;
 pub use cantrip_wire::coercion;
 mod contract_blocks;
 mod external_chats;
+pub mod external_mcp;
 pub mod history;
 mod history_content;
 mod history_source;

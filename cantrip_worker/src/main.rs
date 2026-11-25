@@ -7,6 +7,9 @@ fn main() -> Result<()> {
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("mcp")) {
         return cantrip_worker::mcp::run(std::env::args_os().skip(2));
     }
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("external-mcp")) {
+        return cantrip_worker::mcp::run_external(std::env::args_os().skip(2));
+    }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("cua-mcp")) {
         return cantrip_worker::mcp::run_cua(std::env::args_os().skip(2));
     }
@@ -30,7 +33,7 @@ fn main() -> Result<()> {
             "--no-env-file" => env_file = None,
             "--help" => {
                 println!(
-                    "cantrip-worker [--shutdown-on-stdin-close] [--env-file-if-exists=<path> | --no-env-file] [--version]\ncantrip-worker mcp --connection <path>\ncantrip-worker cua-mcp --connection <path>\ncantrip-worker chromium-probe <executable>"
+                    "cantrip-worker [--shutdown-on-stdin-close] [--env-file-if-exists=<path> | --no-env-file] [--version]\ncantrip-worker mcp --connection <path>\ncantrip-worker external-mcp --server <loopback-origin> [--http-port <port>]\ncantrip-worker cua-mcp --connection <path>\ncantrip-worker chromium-probe <executable>"
                 );
                 return Ok(());
             }

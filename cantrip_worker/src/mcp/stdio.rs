@@ -113,7 +113,7 @@ pub(super) async fn serve(
     outcome
 }
 
-async fn read_frames(
+pub(super) async fn read_frames(
     mut input: BufReader<impl AsyncRead + Unpin>,
     frames: mpsc::Sender<Value>,
     maximum_line: usize,
@@ -147,7 +147,7 @@ async fn read_frames(
     }
 }
 
-async fn write_frame(
+pub(super) async fn write_frame(
     output: &mut (impl AsyncWrite + Unpin),
     frame: Value,
     unicode_scalars: bool,
