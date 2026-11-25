@@ -3,8 +3,10 @@ use super::{rpc, shutdown_signal, stdio};
 use anyhow::{Context, Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use cantrip_protocol::external_mcp::{
-    DiscoveryRequest, DiscoveryTool, LEGACY_VERSIONS, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES,
-    MODERN_VERSION, PATH, loopback_authority, proxy_header,
+    DiscoveryRequest, DiscoveryTool, HOSTED_CAPABILITIES_PATH, HOSTED_DISCOVERY_PATH,
+    HOSTED_RELAY_PATH, LEGACY_VERSIONS, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, MODERN_VERSION,
+    PATH, WORKER_CONTEXT_TOOL, WorkerContextInput, loopback_authority, proxy_header,
+    valid_integration_credential, worker_context_tool,
 };
 use cantrip_wire::{Value, parse_json_text, value::json};
 use http_body_util::{BodyExt, Full, Limited};
@@ -18,7 +20,9 @@ use hyper_util::rt::TokioIo;
 use std::{
     convert::Infallible,
     ffi::OsString,
+    io::Read as _,
     net::Ipv4Addr,
+    path::Path,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -28,9 +32,11 @@ use tokio::{
     sync::{Semaphore, mpsc},
 };
 use url::Url;
+use zeroize::Zeroizing;
 
-const USAGE: &str =
-    "Usage: cantrip-worker external-mcp --server <loopback-origin> [--http-port <port>]";
+mod relay;
+
+const USAGE: &str = "Usage: cantrip-worker external-mcp --server <origin> [--http-port <port> | --credential-file <path>]";
 
 pub(super) fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
     let mut arguments = arguments.into_iter();
@@ -46,24 +52,32 @@ pub(super) fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
         .next()
         .and_then(|value| value.into_string().ok())
         .context(USAGE)?;
-    let http_port = match arguments.next() {
-        None => None,
-        Some(flag) if flag == "--http-port" => Some(
-            arguments
-                .next()
-                .and_then(|value| value.to_str()?.parse::<u16>().ok())
-                .context(USAGE)?,
+    let (http_port, credential) = match arguments.next() {
+        None => (None, None),
+        Some(flag) if flag == "--http-port" => (
+            Some(
+                arguments
+                    .next()
+                    .and_then(|value| value.to_str()?.parse::<u16>().ok())
+                    .context(USAGE)?,
+            ),
+            None,
         ),
+        Some(flag) if flag == "--credential-file" => {
+            let path = arguments.next().context(USAGE)?;
+            (None, Some(read_credential(Path::new(&path))?))
+        }
         Some(_) => bail!("{USAGE}"),
     };
     ensure!(arguments.next().is_none(), "{USAGE}");
-    let control = control_endpoint(&origin)?;
+    let origin = server_origin(&origin, credential.is_some())?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
     let result = runtime.block_on(async {
         let host = Host {
-            control,
+            origin,
+            credential,
             client: reqwest::Client::builder()
                 .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
@@ -85,24 +99,39 @@ pub(super) fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<()> {
     result
 }
 
-fn control_endpoint(origin: &str) -> Result<Url> {
-    let url = Url::parse(origin).context("Invalid local MCP server origin")?;
+fn read_credential(path: &Path) -> Result<Zeroizing<String>> {
+    let mut credential = Zeroizing::new(String::new());
+    super::broker::private_document(path)?
+        .take(256)
+        .read_to_string(&mut credential)?;
+    let length = credential.trim_end_matches(['\r', '\n']).len();
+    credential.truncate(length);
     ensure!(
-        url.scheme() == "http"
-            && url.host_str() == Some("127.0.0.1")
+        valid_integration_credential(&credential),
+        "Invalid Cantrip MCP integration credential file."
+    );
+    Ok(credential)
+}
+
+fn server_origin(origin: &str, hosted: bool) -> Result<Url> {
+    let url = Url::parse(origin).context("Invalid Cantrip MCP server origin")?;
+    let loopback = url.scheme() == "http" && url.host_str() == Some("127.0.0.1");
+    ensure!(
+        (loopback || (hosted && url.scheme() == "https" && url.host_str().is_some()))
             && url.port_or_known_default().is_some_and(|port| port > 0)
             && url.path() == "/"
             && url.username().is_empty()
             && url.password().is_none()
             && url.query().is_none()
             && url.fragment().is_none(),
-        "External MCP discovery requires the 127.0.0.1 HTTP origin published by Cantrip Server."
+        "Use the Cantrip loopback origin for local MCP or a Cantrip HTTPS origin with an integration credential."
     );
-    Ok(url.join(PATH)?)
+    Ok(url)
 }
 
 struct Host {
-    control: Url,
+    origin: Url,
+    credential: Option<Zeroizing<String>>,
     client: reqwest::Client,
 }
 
@@ -117,19 +146,48 @@ fn profile() -> &'static Value {
 }
 
 impl Host {
-    async fn call(&self, params: &Value) -> Value {
-        let arguments = params
-            .get("arguments")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
-        let input = json!({"tool":params["name"],"arguments":arguments});
-        let Ok(request) = DiscoveryRequest::decode(&input.stringify()) else {
-            return rpc::tool_error("Unknown discovery tool or invalid arguments.");
-        };
-        if let Err(message) = request.validate() {
-            return rpc::tool_error(message);
+    fn request(&self, method: Method, path: &str) -> Result<reqwest::RequestBuilder> {
+        let request = self.client.request(method, self.origin.join(path)?);
+        Ok(match &self.credential {
+            Some(credential) => request.bearer_auth(credential.as_str()),
+            None => request,
+        })
+    }
+
+    async fn tools(&self) -> Result<Value> {
+        if self.credential.is_none() {
+            return Ok(profile()["tools"].clone());
         }
-        match self.discover(&request).await {
+        let payload = response_payload(
+            self.request(Method::GET, HOSTED_CAPABILITIES_PATH)?
+                .send()
+                .await?,
+        )
+        .await?;
+        let allowed = payload["tools"]
+            .as_array()
+            .context("Invalid Cantrip integration capabilities")?;
+        let tools = profile()["tools"]
+            .as_array()
+            .expect("external MCP tool catalog");
+        let mut scoped: Vec<_> = tools
+            .iter()
+            .filter(|tool| allowed.contains(&tool["name"]))
+            .cloned()
+            .collect();
+        if allowed.contains(&json!(WORKER_CONTEXT_TOOL)) {
+            scoped.push(Value::from_serialize(&worker_context_tool()));
+        }
+        Ok(Value::Array(scoped))
+    }
+
+    async fn call(&self, params: &Value) -> Value {
+        let result = if params["name"] == WORKER_CONTEXT_TOOL {
+            self.worker_context(&params["arguments"]).await
+        } else {
+            self.call_discovery(params).await
+        };
+        match result {
             Ok(payload) => json!({
                 "content":vec![json!({"type":"text","text":payload["summary"]})],
                 "structuredContent":payload,
@@ -138,10 +196,66 @@ impl Host {
         }
     }
 
+    async fn worker_context(&self, arguments: &Value) -> Result<Value> {
+        let credential = self
+            .credential
+            .as_deref()
+            .context("Worker context requires an external MCP integration credential.")?;
+        let input: WorkerContextInput =
+            cantrip_protocol::external_mcp::parse_worker_context(&arguments.stringify())
+                .map_err(|_| anyhow::anyhow!("Enter a Cantrip project ID."))?;
+        input.validate().map_err(anyhow::Error::msg)?;
+        let opened = response_payload(
+            self.request(Method::POST, HOSTED_RELAY_PATH)?
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(arguments.stringify())
+                .send()
+                .await?,
+        )
+        .await?;
+        let session = relay::session_id(&opened)?;
+        let path = format!("{HOSTED_RELAY_PATH}/{session}");
+        let result = tokio::time::timeout(
+            Duration::from_secs(15),
+            relay::worker_context(
+                self.origin.join(&path)?,
+                credential,
+                &opened,
+                &input.project_id,
+            ),
+        )
+        .await;
+        let _ = self
+            .request(Method::DELETE, &path)?
+            .timeout(Duration::from_secs(3))
+            .send()
+            .await;
+        result.context("The assigned worker did not respond in time.")?
+    }
+
+    async fn call_discovery(&self, params: &Value) -> Result<Value> {
+        let arguments = params
+            .get("arguments")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        let input = json!({"tool":params["name"],"arguments":arguments});
+        let Ok(request) = DiscoveryRequest::decode(&input.stringify()) else {
+            bail!("Unknown discovery tool or invalid arguments.");
+        };
+        if let Err(message) = request.validate() {
+            bail!(message);
+        }
+        self.discover(&request).await
+    }
+
     async fn discover(&self, request: &DiscoveryRequest) -> Result<Value> {
-        let mut response = self
-            .client
-            .post(self.control.clone())
+        let path = if self.credential.is_some() {
+            HOSTED_DISCOVERY_PATH
+        } else {
+            PATH
+        };
+        let response = self
+            .request(Method::POST, path)?
             .header(header::CONTENT_TYPE, "application/json")
             .body(request.encode())
             .send()
@@ -149,24 +263,7 @@ impl Host {
             .context(
                 "Cantrip discovery is unavailable. Check the server's external MCP listener.",
             )?;
-        if response.status() == StatusCode::NOT_FOUND {
-            bail!("The project or Cantrip external MCP listener is unavailable.");
-        }
-        ensure!(
-            response.status().is_success(),
-            "Cantrip discovery failed with HTTP {}.",
-            response.status().as_u16()
-        );
-        let mut payload = Vec::new();
-        while let Some(chunk) = response.chunk().await? {
-            ensure!(
-                payload.len().saturating_add(chunk.len()) <= MAX_RESPONSE_BYTES,
-                "Cantrip discovery response is too large. Retry with a smaller limit."
-            );
-            payload.extend_from_slice(&chunk);
-        }
-        let result = parse_json_text(std::str::from_utf8(&payload)?)
-            .map_err(|_| anyhow::anyhow!("Invalid Cantrip discovery response."))?;
+        let result = response_payload(response).await?;
         ensure!(
             result["summary"].is_string()
                 && result["entries"]
@@ -232,7 +329,10 @@ impl Host {
                 }));
             }
             "ping" => json!({}),
-            "tools/list" => json!({"tools":profile()["tools"]}),
+            "tools/list" => match self.tools().await {
+                Ok(tools) => json!({"tools":tools}),
+                Err(error) => return Some(rpc::rpc_error(id, -32000, &error.to_string())),
+            },
             "tools/call" => self.call(params).await,
             _ => return Some(rpc::rpc_error(id, -32601, "Method not found")),
         };
@@ -391,6 +491,35 @@ impl Host {
             None => reply(StatusCode::ACCEPTED, None),
         }
     }
+}
+
+async fn response_payload(mut response: reqwest::Response) -> Result<Value> {
+    match response.status() {
+        StatusCode::UNAUTHORIZED => {
+            bail!("The Cantrip integration credential is invalid, expired, or revoked.")
+        }
+        StatusCode::FORBIDDEN => bail!("The Cantrip integration does not have the required scope."),
+        StatusCode::NOT_FOUND => {
+            bail!("The project or Cantrip external MCP endpoint is unavailable.")
+        }
+        StatusCode::CONFLICT => {
+            bail!("The assigned worker or project placement changed or is unavailable.")
+        }
+        status if !status.is_success() => {
+            bail!("Cantrip discovery failed with HTTP {}.", status.as_u16())
+        }
+        _ => {}
+    }
+    let mut payload = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        ensure!(
+            payload.len().saturating_add(chunk.len()) <= MAX_RESPONSE_BYTES,
+            "Cantrip discovery response is too large. Retry with a smaller limit."
+        );
+        payload.extend_from_slice(&chunk);
+    }
+    parse_json_text(std::str::from_utf8(&payload)?)
+        .map_err(|_| anyhow::anyhow!("Invalid Cantrip discovery response."))
 }
 
 fn valid_frame(frame: &Value) -> bool {

@@ -2031,6 +2031,13 @@
       "when": 1795572660000,
       "tag": "0289_stopped_agent_chat_hold",
       "breakpoints": true
+    },
+    {
+      "idx": 290,
+      "version": "7",
+      "when": 1795580042638,
+      "tag": "0290_external_mcp_integrations",
+      "breakpoints": true
     }
   ]
 }

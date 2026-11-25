@@ -1,0 +1,364 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import {
+  deriveComponentKey,
+  generateAccountMasterKey,
+  generateHpkeKeyPair,
+  publicKeyForPair,
+  wrapAccountMasterKeyForClient,
+  wrapAccountMasterKeyWithPassword,
+  wrapComponentKeyForWorker,
+} from "../../packages/crypto/dist/index.js";
+import {
+  decodeWorkerLinkFrame,
+  encodeWorkerLinkFrame,
+} from "../../packages/protocol/dist/worker-link.js";
+
+const WebSocket = createRequire(
+  new URL("../../tests/reference-node-server/package.json", import.meta.url),
+)("ws");
+const relay = "/api/external-mcp/hosted/relay";
+const protection = {
+  classification: { recordKind: "project" },
+  protectedLabel: {
+    formatVersion: 1,
+    keyRevision: 1,
+    envelope: {
+      version: 1,
+      algorithm: "AES-256-GCM",
+      keyRevision: 1,
+      nonce: Buffer.alloc(12).toString("base64url"),
+      ciphertext: Buffer.alloc(32).toString("base64url"),
+    },
+  },
+};
+
+export async function verifyHostedRelay({
+  binary,
+  directory,
+  env,
+  server,
+  owner,
+  ownerId,
+  password,
+  unrelated,
+  outsideScope,
+  outsideAccount,
+  integrations,
+  request,
+  connectMcp,
+}) {
+  const workerId = randomUUID();
+  const projectId = randomUUID();
+  const workerDirectory = path.join(directory, "relay-worker");
+  const ownerVisit = (method, route, status, json) =>
+    owner.visit("hosted relay", method, route, { status, json });
+  const enrollment = await ownerVisit(
+    "POST",
+    "/api/workers/enrollment-codes",
+    201,
+    { label: "Hosted MCP relay worker" },
+  );
+  const sockets = new Set();
+  let worker;
+  let exit;
+  let client;
+
+  async function startWorker(enrollmentCode) {
+    worker = spawn(path.resolve(binary), ["--shutdown-on-stdin-close"], {
+      cwd: directory,
+      env: {
+        ...env,
+        CANTRIP_WORKER_DATA_DIR: workerDirectory,
+        CANTRIP_WORKER_ID: workerId,
+        CANTRIP_SERVER_URL: server.origin,
+        ...(enrollmentCode
+          ? { CANTRIP_WORKER_ENROLLMENT_CODE: enrollmentCode }
+          : {}),
+      },
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    exit = once(worker, "close");
+    await eventually(async () => {
+      await ownerVisit("GET", `/api/workers/${workerId}/version`, 200);
+    });
+  }
+
+  async function stopWorker() {
+    if (!worker) return;
+    worker.stdin.end();
+    const timer = setTimeout(() => worker.kill("SIGKILL"), 10_000);
+    try {
+      assert.deepEqual(await exit, [0, null]);
+    } finally {
+      clearTimeout(timer);
+      worker = undefined;
+    }
+  }
+
+  const open = (credential, id, status = 201) =>
+    request(relay, credential, { projectId: id }, status);
+  const newIntegration = (account, projects) =>
+    account.visit("relay integration", "POST", integrations, {
+      status: 201,
+      json: {
+        label: "Hosted MCP relay fixture",
+        permissions: { projects, scopes: ["projects-read", "placements-read"] },
+        expiresInSeconds: 240,
+      },
+    });
+
+  async function connectSession(credential, sessionId) {
+    const origin = server.origin.replace(/^http/u, "ws");
+    const socket = new WebSocket(origin + relay + "/" + sessionId, {
+      headers: { authorization: `Bearer ${credential}` },
+      handshakeTimeout: 10_000,
+    });
+    // The awaited socket operations below report errors to the assertions.
+    socket.on("error", () => {});
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+    await once(socket, "open", { signal: AbortSignal.timeout(10_000) });
+    return socket;
+  }
+
+  async function startChannel(credential, opened) {
+    const { session, grant } = opened;
+    const socket = await connectSession(credential, session.sessionId);
+    const route = {
+      protocolVersion: 1,
+      sessionId: session.sessionId,
+      routeGeneration: session.routeGeneration,
+      effectiveRoute: "relay",
+      channel: { channelId: randomUUID(), connectionId: randomUUID() },
+      lane: "stream",
+    };
+    const next = async () => {
+      const [frame] = await once(socket, "message", {
+        signal: AbortSignal.timeout(10_000),
+      });
+      return decodeWorkerLinkFrame(frame).header;
+    };
+    const accepted = next();
+    socket.send(
+      encodeWorkerLinkFrame(
+        {
+          ...route,
+          kind: "open",
+          sequence: 0,
+          openNonce: randomUUID(),
+          channelKind: "reliable-stream",
+          grant,
+          initialCreditBytes: 64 * 1024,
+        },
+        new Uint8Array(),
+      ),
+    );
+    const reply = await accepted;
+    assert.equal(reply.kind, "accept", JSON.stringify(reply));
+    return { socket, route, next };
+  }
+
+  try {
+    await startWorker(enrollment.code);
+    const workerEncryption = `/api/workers/${workerId}/encryption/refresh`;
+    const refresh = () =>
+      ownerVisit("POST", workerEncryption, 200, {
+        component: "repository-content",
+        keyRevision: 1,
+      });
+    const master = generateAccountMasterKey();
+    const clientId = randomUUID();
+    const publicKey = await publicKeyForPair(await generateHpkeKeyPair());
+    const passwordWrappedMasterKey = await wrapAccountMasterKeyWithPassword({
+      password,
+      ownerId,
+      accountMasterKey: master,
+      masterKeyRevision: 1,
+    });
+    await ownerVisit("POST", "/api/encryption/profile/initialize", 201, {
+      profile: {
+        formatVersion: 1,
+        activeMasterKeyRevision: 1,
+        passwordKdf: passwordWrappedMasterKey.kdf,
+        passwordWrappedMasterKey,
+        payloadMigrationStatus: "pending",
+      },
+      initialClient: {
+        id: clientId,
+        label: "Hosted MCP account fixture",
+        publicKey,
+        wrappedMasterKey: await wrapAccountMasterKeyForClient({
+          ownerId,
+          clientId,
+          accountMasterKey: master,
+          masterKeyRevision: 1,
+          clientPublicKey: publicKey,
+        }),
+      },
+    });
+    await refresh();
+    const principals = await ownerVisit(
+      "GET",
+      "/api/encryption/principals",
+      200,
+    );
+    const principal = principals.find((row) => row.workerId === workerId);
+    assert.ok(principal);
+    const principalRoute = `/api/encryption/principals/${principal.id}`;
+    await ownerVisit("POST", principalRoute + "/approve", 200, {
+      expectedRevision: principal.revision,
+    });
+    const component = "repository-content";
+    const keyRevision = 1;
+    const key = deriveComponentKey({
+      accountMasterKey: master,
+      ownerId,
+      component,
+      keyRevision,
+    });
+    await ownerVisit("POST", principalRoute + "/grants", 201, {
+      component,
+      keyRevision,
+      wrappedKey: await wrapComponentKeyForWorker({
+        ownerId,
+        workerId,
+        component,
+        keyRevision,
+        componentKey: key,
+        workerPublicKey: principal.publicKey,
+      }),
+    });
+    master.fill(0);
+    key.fill(0);
+    assert.equal((await refresh()).status.state, "ready");
+    await ownerVisit("POST", "/api/projects/from-folder", 202, {
+      id: projectId,
+      workerId,
+      nameProtection: protection,
+    });
+    await eventually(async () => {
+      const job = await ownerVisit(
+        "GET",
+        `/api/projects/${projectId}/folder-setup`,
+        200,
+      );
+      assert.equal(job.state, "succeeded", JSON.stringify(job.error));
+    });
+
+    const selected = { kind: "selected", projectIds: [projectId] };
+    const first = await newIntegration(owner, selected);
+    const foreign = await newIntegration(unrelated, { kind: "all" });
+    await open(null, projectId, 401);
+    await open(first.credential, outsideScope, 404);
+    await open(first.credential, outsideAccount, 404);
+    await open(foreign.credential, projectId, 404);
+
+    const credentialFile = path.join(directory, "relay.credential");
+    const callWorker = async (credential) => {
+      await client?.close();
+      await writeFile(credentialFile, credential + "\n", { mode: 0o600 });
+      client = await connectMcp(credentialFile);
+      assert.ok(
+        (await client.listTools()).tools.some(
+          ({ name }) => name === "worker_context",
+        ),
+      );
+      const result = await client.callTool({
+        name: "worker_context",
+        arguments: { projectId },
+      });
+      assert.equal(result.isError, undefined, JSON.stringify(result.content));
+      assert.equal(result.structuredContent.projectId, projectId);
+      assert.equal(result.structuredContent.workerId, workerId);
+      return result.structuredContent.processGeneration;
+    };
+    const generation = await callWorker(first.credential);
+    const bad = await open(first.credential, projectId);
+    const badSession = relay + "/" + bad.session.sessionId;
+    await request(badSession, null, null, 401);
+    await request(badSession, foreign.credential, null, 404);
+    const plaintext = await startChannel(first.credential, bad);
+    const rejected = plaintext.next();
+    plaintext.socket.send(
+      encodeWorkerLinkFrame(
+        {
+          ...plaintext.route,
+          kind: "data",
+          sequence: 1,
+          direction: "client-to-worker",
+          payloadFormat: "external-mcp-v1",
+        },
+        Buffer.from("worker-context"),
+      ),
+    );
+    const close = await rejected;
+    assert.equal(close.kind, "close");
+    assert.equal(close.code, "protocol-error");
+    plaintext.socket.close();
+
+    const stale = await open(first.credential, projectId);
+    await stopWorker();
+    await eventually(() => open(first.credential, projectId, 409));
+    await startWorker();
+    assert.notEqual(await callWorker(first.credential), generation);
+    await request(
+      relay + "/" + stale.session.sessionId,
+      first.credential,
+      null,
+      404,
+    );
+
+    const active = await startChannel(
+      first.credential,
+      await open(first.credential, projectId),
+    );
+    const disconnected = once(active.socket, "close", {
+      signal: AbortSignal.timeout(10_000),
+    });
+    const rotation = await ownerVisit(
+      "POST",
+      `${integrations}/${first.integration.id}/rotate`,
+      200,
+      { expiresInSeconds: 240 },
+    );
+    await disconnected;
+    await open(first.credential, projectId, 401);
+    await callWorker(rotation.credential);
+
+    const revoked = await startChannel(
+      rotation.credential,
+      await open(rotation.credential, projectId),
+    );
+    const revokedStream = once(revoked.socket, "close", {
+      signal: AbortSignal.timeout(10_000),
+    });
+    const target = `${integrations}/${rotation.integration.id}`;
+    await ownerVisit("DELETE", target, 200);
+    await revokedStream;
+    await ownerVisit("DELETE", target, 200);
+    await open(rotation.credential, projectId, 401);
+  } finally {
+    for (const socket of sockets) socket.terminate();
+    await client?.close();
+    await stopWorker();
+  }
+}
+
+async function eventually(assertion) {
+  const deadline = Date.now() + 25_000;
+  for (;;) {
+    try {
+      return await assertion();
+    } catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await delay(200);
+    }
+  }
+}

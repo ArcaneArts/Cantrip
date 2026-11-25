@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod cookie;
 pub mod crypto;
+pub mod external_mcp;
 pub mod rate_limit;
 pub mod repository;
 pub mod security_repository;

@@ -22,6 +22,7 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use std::{
+    future::Future,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -145,19 +146,46 @@ async fn connect(
     {
         return error(409, "WorkerLink route generation is stale.");
     }
+    let client = RelayClient {
+        owner: current["identity"]["ownerId"]
+            .as_str()
+            .expect("WorkerLink owner")
+            .to_owned(),
+        account: ctx.principal.session_id.clone(),
+        request_id: ctx.id.clone(),
+        expires_at: None,
+    };
+    let auth_service = service.clone();
+    upgrade_relay(request, service, client, async move {
+        authorized(&auth_service, &ctx, &session, &query).await
+    })
+}
+
+pub(super) struct RelayClient {
+    pub owner: String,
+    pub account: Option<String>,
+    pub request_id: String,
+    pub expires_at: Option<tokio::time::Instant>,
+}
+
+pub(super) fn upgrade_relay(
+    request: Request,
+    service: Arc<AuthService>,
+    client: RelayClient,
+    authorize: impl Future<Output = Result<Option<Value>>> + Send + 'static,
+) -> Response {
     let lifetime = service.live.transports.begin();
     websocket::upgrade(
         request,
         service.config.websocket_max_payload_bytes as usize,
-        move |socket, _| run(socket, service, ctx, session, query, lifetime),
+        move |socket, _| run(socket, service, client, authorize, lifetime),
     )
 }
 async fn run(
     mut socket: WebSocket,
     service: Arc<AuthService>,
-    ctx: Arc<Context>,
-    session: String,
-    query: Value,
+    client: RelayClient,
+    authorize: impl Future<Output = Result<Option<Value>>> + Send,
     lifetime: TransportLifetime,
 ) {
     let (send, mut outgoing) = mpsc::unbounded_channel();
@@ -171,16 +199,11 @@ async fn run(
         deadline,
     });
     lifetime.attach(peer.clone());
-    let user = ctx
-        .principal
-        .user
-        .as_ref()
-        .expect("Authenticated WorkerLink client");
     let registration =
         service
             .live
             .sessions
-            .register(peer.clone(), &user.id, ctx.principal.session_id.as_deref());
+            .register(peer.clone(), &client.owner, client.account.as_deref());
     let registered = registration.is_some();
     let connection_slot = Arc::new(Mutex::new(None::<Arc<relay::Connection>>));
     let relay = service.worker_links.relay.clone();
@@ -195,14 +218,7 @@ async fn run(
         drop(lifetime);
     });
     let connection = if registered {
-        match authorization::wait(
-            &mut socket,
-            &peer,
-            &mut outgoing,
-            authorized(&service, &ctx, &session, &query),
-        )
-        .await
-        {
+        match authorization::wait(&mut socket, &peer, &mut outgoing, authorize).await {
             Some(Ok(Some(session))) => service.worker_links.relay.attach(session, peer.clone()),
             Some(Ok(None)) => {
                 peer.close(1008, "WorkerLink session is unavailable");
@@ -213,7 +229,7 @@ async fn run(
                 // async route handler rejects, without a protocol Close frame.
                 eprintln!(
                     "{}",
-                    serde_json::json!({"event":"worker-link.authorization.failed","subsystem":"worker-link","operation":"authorize-relay","reasonCode":"authorization-unavailable","status":"failed","requestId":ctx.id})
+                    serde_json::json!({"event":"worker-link.authorization.failed","subsystem":"worker-link","operation":"authorize-relay","reasonCode":"authorization-unavailable","status":"failed","requestId":client.request_id})
                 );
                 forced.store(true, Ordering::Release);
                 return;
@@ -307,6 +323,13 @@ async fn run(
     tokio::select! {
         _=reader=>{}, _=writer=>{},
         _=expiration=>{ forced.store(true, Ordering::Release); },
+        _=async {
+            if let Some(deadline) = client.expires_at {
+                tokio::time::sleep_until(deadline).await;
+            } else {
+                std::future::pending::<()>().await;
+            }
+        }=>{ forced.store(true, Ordering::Release); },
     }
     peer.open.store(false, Ordering::Release);
 }

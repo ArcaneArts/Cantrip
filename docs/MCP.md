@@ -29,6 +29,61 @@ ID, then pass it to `agent_list`, `chat_list`, `task_list`, or
 placements. Encrypted display names remain in Cantrip's protected store.
 Discovery marks these entries with `labelProtected`.
 
+### Hosted integrations
+
+Sign in to an account-mode Cantrip Server to manage integrations. Use the
+account session and its CSRF token for mutations to the integration API.
+
+| Method | Path                                                 | Result                                                                                |
+| ------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| GET    | `/api/account/external-mcp-integrations`             | List your grants and their expiration or revocation times.                            |
+| POST   | `/api/account/external-mcp-integrations`             | Create a grant and return its credential once.                                        |
+| POST   | `/api/account/external-mcp-integrations/{id}/rotate` | Set a new expiration and replace the credential. Send `expiresInSeconds` in the body. |
+| DELETE | `/api/account/external-mcp-integrations/{id}`        | Revoke the grant and close its relay connections.                                     |
+
+For example, this create request allows project discovery and worker context for
+one project for 24 hours. Replace the example UUID with the project ID shown in
+Cantrip.
+
+```json
+{
+  "label": "Project assistant",
+  "permissions": {
+    "projects": {
+      "kind": "selected",
+      "projectIds": ["af64fefd-7f60-4aa6-aca5-006c7bbcb2d7"]
+    },
+    "scopes": ["projects-read", "placements-read"]
+  },
+  "expiresInSeconds": 86400
+}
+```
+
+Use `{"kind":"all"}` for access to all your account's projects. Available
+scopes are `projects-read`, `chats-read`, `tasks-read`, and `placements-read`.
+
+Write the returned `credential` to a private file as a single line. On Unix,
+make the file owner-readable and owner-writable only (mode `0600`). Configure
+the MCP client to launch the stdio bridge with the file path.
+
+```sh
+cantrip-worker external-mcp --server https://cantrip.example.com \
+  --credential-file /path/to/cantrip-mcp.credential
+```
+
+After rotating the credential, replace the file contents and restart the
+bridge. Use `project_list` to find a project, then call `worker_context` with
+its ID to check the assigned worker. The project must have a live Explorer
+placement and the worker must have an approved encryption identity.
+
+Cantrip Server verifies the integration credential and issues a separate,
+short-lived WorkerLink grant for the exact integration generation, worker
+process, project, and worktree. It relays the request and reply as ciphertext.
+The bridge wraps a fresh per-call key to the approved worker's public key.
+The worker opens the request with its private key and encrypts the reply under
+the per-call key held by the bridge. The existing account encryption keys stay
+with their provisioned clients and workers.
+
 ## In-chat MCP
 
 Cantrip gives every project Agent chat and standalone Chat a worker-owned MCP

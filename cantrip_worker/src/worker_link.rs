@@ -3,6 +3,7 @@
 mod carrier;
 mod channels;
 mod direct_broker;
+mod external_mcp;
 mod observation;
 mod peer;
 mod terminal;

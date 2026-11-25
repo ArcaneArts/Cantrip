@@ -33,7 +33,7 @@ fn main() -> Result<()> {
             "--no-env-file" => env_file = None,
             "--help" => {
                 println!(
-                    "cantrip-worker [--shutdown-on-stdin-close] [--env-file-if-exists=<path> | --no-env-file] [--version]\ncantrip-worker mcp --connection <path>\ncantrip-worker external-mcp --server <loopback-origin> [--http-port <port>]\ncantrip-worker cua-mcp --connection <path>\ncantrip-worker chromium-probe <executable>"
+                    "cantrip-worker [--shutdown-on-stdin-close] [--env-file-if-exists=<path> | --no-env-file] [--version]\ncantrip-worker mcp --connection <path>\ncantrip-worker external-mcp --server <origin> [--http-port <port> | --credential-file <path>]\ncantrip-worker cua-mcp --connection <path>\ncantrip-worker chromium-probe <executable>"
                 );
                 return Ok(());
             }

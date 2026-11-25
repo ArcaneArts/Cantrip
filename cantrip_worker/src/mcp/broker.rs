@@ -188,7 +188,7 @@ fn transport_error(error: reqwest::Error) -> anyhow::Error {
     }
 }
 
-fn private_document(path: &Path) -> Result<File> {
+pub(super) fn private_document(path: &Path) -> Result<File> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]

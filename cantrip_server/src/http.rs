@@ -271,6 +271,8 @@ pub fn router(service: Arc<AuthService>) -> Router {
         .merge(worker_link_socket::routes())
         .merge(encryption::routes())
         .merge(account::routes())
+        .merge(external_mcp::integration_routes())
+        .merge(external_mcp::hosted_routes())
         .merge(usage::routes())
         .merge(policies::routes())
         .merge(projects::routes())

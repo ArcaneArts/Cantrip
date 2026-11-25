@@ -102,6 +102,26 @@ impl Service {
     pub fn registration(&self) -> Value {
         self.state.lock().unwrap().identity.registration()
     }
+    pub(crate) fn open_external_mcp(
+        &self,
+        binding: &Value,
+        principal_id: &Value,
+        exchange: &cantrip_crypto::content::external_mcp::Exchange,
+        record: &[u8],
+    ) -> anyhow::Result<(
+        cantrip_crypto::Zeroizing<Vec<u8>>,
+        cantrip_crypto::Zeroizing<Vec<u8>>,
+    )> {
+        let state = self.state.lock().unwrap();
+        let identity = &binding["identity"];
+        anyhow::ensure!(
+            identity["ownerId"].as_js_string() == Some(&state.owner_id()?)
+                && identity["serverId"] == state.server_identity()?
+                && state.identity.registration()["principalId"] == *principal_id,
+            "The MCP grant belongs to a different worker encryption identity."
+        );
+        exchange.open_request(state.identity.key_pair(), record)
+    }
     pub fn owner_id(&self) -> Result<JsString, ServiceError> {
         self.state.lock().unwrap().owner_id()
     }
