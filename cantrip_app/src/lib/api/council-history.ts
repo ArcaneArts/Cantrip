@@ -12,6 +12,9 @@ import {
   councilHistorySearchReplySchema,
   councilHistorySearchResultSchema,
   councilHistorySourceRangeSchema,
+  councilPeerPageSchema,
+  type ChatMessageProtectedClassification,
+  type EncryptedChatMessageProtectedContent,
 } from "@cantrip/protocol";
 
 import { request } from "@/lib/api-client";
@@ -36,6 +39,33 @@ function identity() {
 
 function historyPath(agent: string) {
   return `/api/council/agents/${encodeURIComponent(agent)}/history`;
+}
+
+async function openMessage(
+  encryption: ReturnType<typeof identity>["encryption"],
+  id: string,
+  classification: ChatMessageProtectedClassification,
+  protectedContent: EncryptedChatMessageProtectedContent,
+) {
+  const keyRevision = protectedContent.keyRevision;
+  const componentKey = clientEncryption.componentKey({
+    component: "chat-content",
+    identity: encryption,
+    keyRevision,
+  });
+  try {
+    const decrypted = await decryptChatMessageProtectedContent({
+      ownerId: encryption.ownerId,
+      messageId: id,
+      keyRevision,
+      componentKey,
+      encrypted: protectedContent,
+      publicClassification: classification,
+    });
+    return chatMessageContentSchema.parse(decrypted.content);
+  } finally {
+    clearSensitiveBytes(componentKey);
+  }
 }
 
 export async function deleteCouncilHistoryMessage(
@@ -150,33 +180,20 @@ export async function readCouncilHistory(agent: string, message: string) {
         createdAt,
         sequence,
       }) => {
-        const keyRevision = protectedContent.keyRevision;
-        const componentKey = clientEncryption.componentKey({
-          component: "chat-content",
-          identity: encryption,
-          keyRevision,
-        });
-        try {
-          const decrypted = await decryptChatMessageProtectedContent({
-            ownerId: encryption.ownerId,
-            messageId: id,
-            keyRevision,
-            componentKey,
-            encrypted: protectedContent,
-            publicClassification: { role, mode, attachmentIds },
-          });
-          return {
+        return {
+          id,
+          role,
+          createdAt,
+          sequence,
+          chatId: agent,
+          worktreeId: null,
+          content: await openMessage(
+            encryption,
             id,
-            role,
-            createdAt,
-            sequence,
-            chatId: agent,
-            worktreeId: null,
-            content: chatMessageContentSchema.parse(decrypted.content),
-          };
-        } finally {
-          clearSensitiveBytes(componentKey);
-        }
+            { role, mode, attachmentIds },
+            protectedContent,
+          ),
+        };
       },
     ),
   );
@@ -187,5 +204,60 @@ export async function readCouncilHistory(agent: string, message: string) {
     messages,
     available: messages.some(({ id }) => id === message),
     incomplete: messages.length < range.records.length,
+  };
+}
+
+export async function readCouncilPeerPage(
+  agent: string,
+  peer: string,
+  before: string | null,
+) {
+  const { snapshot, encryption } = identity();
+  const path = `/api/council/agents/${encodeURIComponent(agent)}/peers/${encodeURIComponent(peer)}`;
+  const page = councilPeerPageSchema.parse(
+    await request(
+      before ? `${path}?before=${encodeURIComponent(before)}` : path,
+      undefined,
+      { expectedIdentity: snapshot },
+    ),
+  );
+  const messages = await Promise.allSettled(
+    page.messages.map(
+      async ({
+        id,
+        role,
+        mode,
+        attachmentIds,
+        protectedContent,
+        createdAt,
+        senderAgentId,
+        recipientAgentId,
+        operationId,
+      }) => {
+        const content = await openMessage(
+          encryption,
+          id,
+          { role, mode, attachmentIds },
+          protectedContent,
+        );
+        const item = content.find(
+          (item) =>
+            item.type === "text" &&
+            item.councilPeerMessage?.senderAgentId === senderAgentId &&
+            item.councilPeerMessage.recipientAgentId === recipientAgentId &&
+            item.councilPeerMessage.operationId === operationId,
+        );
+        if (item?.type !== "text")
+          throw new Error("Council handoff source does not match its history.");
+        return { id, createdAt, senderAgentId, text: item.text };
+      },
+    ),
+  );
+  return {
+    nextBefore: page.nextBefore,
+    messages: messages.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    ),
+    incomplete: messages.some((result) => result.status === "rejected"),
   };
 }

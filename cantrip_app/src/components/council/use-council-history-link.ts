@@ -7,6 +7,8 @@ import { useEffect } from "react";
 export function useCouncilHistoryLink(
   enabled: boolean,
   openHistory: (agentId: string, messageId: string) => void,
+  openPeer: (agentId: string, peerId: string) => void,
+  closePeer: () => void,
   setAppMode: (mode: "council") => void,
 ) {
   useEffect(() => {
@@ -19,7 +21,16 @@ export function useCouncilHistoryLink(
       const message = councilHistoryReadInputSchema.safeParse({
         messageId: params.get("message"),
       });
-      if (agent.success && message.success) {
+      const peer = standaloneChatIdentitySchema.safeParse(
+        params.get("peerAgent"),
+      );
+      if (agent.success && peer.success && agent.data !== peer.data) {
+        setAppMode("council");
+        openPeer(agent.data, peer.data);
+      } else {
+        closePeer();
+      }
+      if (!peer.success && agent.success && message.success) {
         setAppMode("council");
         openHistory(agent.data, message.data.messageId);
       }
@@ -27,5 +38,5 @@ export function useCouncilHistoryLink(
     openLink();
     window.addEventListener("popstate", openLink);
     return () => window.removeEventListener("popstate", openLink);
-  }, [enabled, openHistory, setAppMode]);
+  }, [enabled, openHistory, openPeer, closePeer, setAppMode]);
 }

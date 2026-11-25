@@ -1,4 +1,5 @@
 use super::{Authorized, Inner};
+mod peer;
 use crate::{
     encryption::Service,
     mcp::bindings::COUNCIL_TOOLS,
@@ -33,6 +34,13 @@ impl Inner {
         let input = mcp_host::parse(&format!("mcpStdioInput/{name}"), call.get("arguments"))
             .map_err(response_error)?;
         let request = uuid::Uuid::new_v4().to_string();
+        if operation == "council.peer.send" {
+            let reply = self
+                .send_council_peer(authorization, &input, &request)
+                .await?;
+            return mcp_host::parse(&format!("mcpStdioOutput/{name}"), Some(&reply))
+                .map_err(response_error);
+        }
         let agent_id = &authorization.active.binding["chatId"];
         let arguments = match operation {
             "council.create" => protect(service, authorization, &request, &input)?,
@@ -197,7 +205,23 @@ fn protect(
 
 fn open(service: &Service, authorization: &Authorized, agent: &Value) -> Result<Value> {
     let agent = crate::http::checked("councilAgentWireSummarySchema", agent)?;
-    let opaque = &agent["titleProtection"];
+    let title = open_title(
+        service,
+        authorization,
+        &agent["id"],
+        &agent["titleProtection"],
+    )?;
+    Ok(
+        json!({"id":agent["id"],"title":title,"primary":agent["primary"],"scratchStatus":agent["scratchStatus"]}),
+    )
+}
+
+fn open_title(
+    service: &Service,
+    authorization: &Authorized,
+    agent: &Value,
+    opaque: &Value,
+) -> Result<Value> {
     let revision = opaque["protectedLabel"]["keyRevision"]
         .as_u64()
         .context("Council label revision")?;
@@ -207,14 +231,11 @@ fn open(service: &Service, authorization: &Authorized, agent: &Value) -> Result<
         "private-surface-metadata",
         Some(revision),
     )?;
-    let title = decrypt_private_label(
+    decrypt_private_label(
         &label.component.key,
         &json!({
-            "ownerId":label.owner_id,"keyRevision":revision,"recordKind":"chat","rowId":agent["id"],
+            "ownerId":label.owner_id,"keyRevision":revision,"recordKind":"chat","rowId":agent,
         }),
         opaque,
-    )?;
-    Ok(
-        json!({"id":agent["id"],"title":title,"primary":agent["primary"],"scratchStatus":agent["scratchStatus"]}),
     )
 }

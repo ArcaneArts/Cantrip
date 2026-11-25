@@ -64,6 +64,7 @@ pub const OPERATIONS: &[&str] = &[
     "council.history.search",
     "council.history.read",
     "council.inventory",
+    "council.peer.send",
     "council.project.send",
     "council.project.chat.create",
     "council.project.task.create",
@@ -102,6 +103,7 @@ pub fn is_mutation(operation: &str) -> bool {
             | "client.focus-surface"
             | "client.show-interaction"
             | "council.create"
+            | "council.peer.send"
             | "council.project.send"
             | "council.project.chat.create"
             | "council.project.task.create"

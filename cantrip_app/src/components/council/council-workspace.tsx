@@ -20,6 +20,7 @@ import { errorMessage } from "@/lib/error-message";
 import { CouncilAgentEditor } from "./council-agent-editor";
 import { CouncilHistoryDialog } from "./council-history-dialog";
 import { CouncilMemoryEditor } from "./council-memory-editor";
+import { CouncilPeerDialog } from "./council-peer-dialog";
 import { CouncilProjectApprovals } from "./council-project-approvals";
 import { CouncilRoster } from "./council-roster";
 import type { CouncilWorkspaceController } from "./use-council-workspace";
@@ -83,8 +84,11 @@ function CouncilConversation({
     agent,
     chat,
     closeHistory,
+    closePeer,
     history,
     openHistory,
+    peerId,
+    roster,
     select,
     showEditor,
   } = controller;
@@ -226,6 +230,27 @@ function CouncilConversation({
           messageId={history.messageId}
           onClose={closeHistory}
           onOpenFile={openFile}
+        />
+      ) : null}
+      {peerId ? (
+        <CouncilPeerDialog
+          key={peerId}
+          agentId={agent.id}
+          peerId={peerId}
+          agentTitle={agent.title}
+          peerTitle={
+            roster.data?.find(({ id }) => id === peerId)?.title ??
+            "Council agent"
+          }
+          onClose={() => {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has("peerAgent")) {
+              url.searchParams.delete("peerAgent");
+              url.searchParams.delete("councilAgent");
+              window.history.replaceState(window.history.state, "", url);
+            }
+            closePeer();
+          }}
         />
       ) : null}
     </div>

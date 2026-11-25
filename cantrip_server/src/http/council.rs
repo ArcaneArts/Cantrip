@@ -3,6 +3,7 @@ mod creation;
 mod history;
 pub(super) mod inventory;
 mod memory;
+mod peers;
 
 use super::{
     body,
@@ -64,6 +65,7 @@ pub(super) async fn execute_agent_operation(
                 .await
         }
         "council.inventory" => inventory::read(service, owner, arguments).await,
+        "council.peer.send" => peers::send(service, owner, context, arguments).await,
         "council.project.send" => {
             super::agent_chat_send::execute_council(service, owner, context, arguments).await
         }
@@ -186,6 +188,10 @@ async fn conversation(
 pub(super) fn routes() -> Router<Arc<AuthService>> {
     Router::new()
         .merge(history::routes())
+        .route(
+            "/api/council/agents/{agentId}/peers/{peerId}",
+            get(peers::history),
+        )
         .route("/api/council/agents", get(collection).post(collection))
         .route("/api/council/agents/{agentId}", patch(update))
         .route("/api/council/agents/{agentId}/chat", get(conversation))

@@ -7,6 +7,7 @@ import {
   AttachmentViewerDialog,
 } from "@/components/chat/attachment-preview";
 import { Markdown } from "@/components/chat/markdown";
+import { CouncilHandoffLink } from "@/components/council/council-handoff-link";
 import { chatAttachmentContentUrl } from "@/lib/api";
 
 export const MessageContent = memo(function MessageContent({
@@ -36,7 +37,13 @@ export const MessageContent = memo(function MessageContent({
       >
         {message.content.map((item, index) =>
           item.type === "text" ? (
-            item.phase === "commentary" ? (
+            item.councilPeerMessage ? (
+              <CouncilHandoffLink
+                key={"text:" + index}
+                agentId={message.chatId}
+                source={item.councilPeerMessage}
+              />
+            ) : item.phase === "commentary" ? (
               <div key={"text:" + index} className="text-muted-foreground">
                 <Markdown onOpenFile={openMessageFile}>{item.text}</Markdown>
               </div>

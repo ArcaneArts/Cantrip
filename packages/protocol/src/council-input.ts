@@ -2,6 +2,18 @@ import { z } from "zod";
 
 const sourceId = z.string().min(1).max(255);
 
+export const councilPeerMessageSourceSchema = z
+  .object({
+    senderAgentId: z.uuid(),
+    recipientAgentId: z.uuid(),
+    operationId: z.uuid(),
+  })
+  .strict();
+
+export type CouncilPeerMessageSource = z.infer<
+  typeof councilPeerMessageSourceSchema
+>;
+
 const councilProjectSource = z
   .object({
     projectId: sourceId,

@@ -6,6 +6,7 @@ import { actualCouncilCompaction } from "./actual-council-compaction.mjs";
 import { actualCouncilMemory } from "./actual-council-memory.mjs";
 import { actualCouncilHistory } from "./actual-council-history.mjs";
 import { actualCouncilInventory } from "./actual-council-inventory.mjs";
+import { actualCouncilPeers } from "./actual-council-peers.mjs";
 import { eventually } from "./full-worker.mjs";
 import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
 
@@ -27,6 +28,7 @@ export async function actualCouncilSteering({
   memoryAppOrigin,
   historyFixture,
   inventory,
+  peerAppOrigin,
   browserHistory,
   compaction,
   raceMarker,
@@ -110,7 +112,7 @@ export async function actualCouncilSteering({
         role,
         testCreation,
         readOnly: Boolean(memoryAppOrigin) && !testCreation,
-        nativeCli: Boolean(inventory),
+        nativeCli: Boolean(inventory || peerAppOrigin),
       },
     );
     await eventually(
@@ -366,6 +368,20 @@ export async function actualCouncilSteering({
         tools: modelFunctions(held.request.input.tools),
         submit,
         readChat,
+        result,
+      });
+    }
+    if (peerAppOrigin) {
+      await actualCouncilPeers({
+        page,
+        chatId,
+        configuration,
+        appOrigin: peerAppOrigin,
+        model,
+        tools: modelFunctions(held.request.input.tools),
+        submit,
+        readChat,
+        readMessages,
         result,
       });
     }

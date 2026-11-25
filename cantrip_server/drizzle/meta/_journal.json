@@ -2143,6 +2143,13 @@
       "when": 1795603380000,
       "tag": "0305_council_project_steering",
       "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1795604700000,
+      "tag": "0306_council_peer_deliveries",
+      "breakpoints": true
     }
   ]
 }

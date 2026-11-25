@@ -26,22 +26,31 @@ export function useCouncilWorkspace(
   );
   useReadyChatWorkerContentGrant(active ? workers : undefined, "task-content");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [peerId, setPeerId] = useState<string | null>(null);
   const [history, setHistory] = useState<{
     agentId: string;
     messageId: string | null;
   } | null>(null);
   const select = useCallback((id: string | null) => {
     setSelectedId(id);
+    setPeerId(null);
     setHistory(null);
   }, []);
   const openHistory = useCallback(
     (agentId: string, messageId: string | null = null) => {
       setSelectedId(agentId);
+      setPeerId(null);
       setHistory({ agentId, messageId });
     },
     [],
   );
   const closeHistory = useCallback(() => setHistory(null), []);
+  const openPeer = useCallback((agent: string, peer: string) => {
+    setSelectedId(agent);
+    setHistory(null);
+    setPeerId(peer);
+  }, []);
+  const closePeer = useCallback(() => setPeerId(null), []);
   const [editor, setEditor] = useState<"new" | CouncilAgent | null>(null);
   const roster = useQuery({
     enabled: active,
@@ -100,6 +109,9 @@ export function useCouncilWorkspace(
     history,
     openHistory,
     closeHistory,
+    peerId,
+    openPeer,
+    closePeer,
   };
 }
 

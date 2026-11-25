@@ -122,6 +122,7 @@ async fn execute_operation(service: &Arc<AuthService>, owner: &str, call: &Value
             | "council.history.search"
             | "council.history.read"
             | "council.inventory"
+            | "council.peer.send"
             | "council.project.send"
             | "council.project.chat.create"
             | "council.project.task.create"
