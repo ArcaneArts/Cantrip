@@ -20,7 +20,7 @@ export function CouncilAgentEditor({
 }: {
   controller: CouncilWorkspaceController;
 }) {
-  const { editor, save, showEditor } = controller;
+  const { changeState, editor, save, showEditor } = controller;
   const agent = editor === "new" ? null : editor;
   const [title, setTitle] = useState(agent?.title ?? "");
   const [role, setRole] = useState<string | null>(agent ? null : "");
@@ -45,7 +45,8 @@ export function CouncilAgentEditor({
     <Dialog
       open={Boolean(editor)}
       onOpenChange={(open) => {
-        if (!open && !save.isPending) showEditor(null);
+        if (!open && !save.isPending && !changeState.isPending)
+          showEditor(null);
       }}
     >
       <DialogContent>
@@ -106,19 +107,59 @@ export function CouncilAgentEditor({
             <Button
               type="button"
               variant="ghost"
-              disabled={save.isPending}
+              disabled={save.isPending || changeState.isPending}
               onClick={() => showEditor(null)}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={!title.trim() || !role?.trim() || save.isPending}
+              disabled={
+                !title.trim() ||
+                !role?.trim() ||
+                save.isPending ||
+                changeState.isPending
+              }
             >
               {agent ? "Save" : "Create agent"}
             </Button>
           </DialogFooter>
         </form>
+        {agent ? (
+          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={save.isPending || changeState.isPending}
+              onClick={() =>
+                changeState.mutate({ agent, hidden: !agent.hidden })
+              }
+            >
+              {agent.hidden ? "Show in roster" : "Hide from roster"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={save.isPending || changeState.isPending}
+              onClick={() =>
+                changeState.mutate({ agent, paused: !agent.paused })
+              }
+            >
+              {agent.paused ? "Resume agent" : "Pause agent"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={save.isPending || changeState.isPending}
+              onClick={() => changeState.mutate({ agent, archived: true })}
+            >
+              Archive agent
+            </Button>
+            {changeState.error ? (
+              <InlineAlert>{errorMessage(changeState.error)}</InlineAlert>
+            ) : null}
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

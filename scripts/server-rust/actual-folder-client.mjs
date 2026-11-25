@@ -479,6 +479,7 @@ const councilProjectMessages =
   councilProjectCreation ||
   councilProjectSteering ||
   process.argv.includes("--council-project-messages");
+const councilLifecycle = process.argv.includes("--council-agent-lifecycle");
 const councilMcpSetup = process.argv.includes("--council-mcp-setup");
 const councilAccountInventory = process.argv.includes(
   "--council-account-inventory",
@@ -1179,6 +1180,7 @@ async function flow(
       councilPeerMessages ||
       councilInventory ||
       councilMcpSetup ||
+      councilLifecycle ||
       councilCompaction ||
       councilBrowserHistory ||
       councilAutomations ||
@@ -1237,6 +1239,12 @@ async function flow(
             }
           : undefined,
         mcpSetupRoot: councilMcpSetup ? root : undefined,
+        lifecycle: councilLifecycle
+          ? {
+              appOrigin: vite.resolvedUrls.local[0],
+              workerDirectory: dataDirectory,
+            }
+          : undefined,
         inventory: councilInventory
           ? {
               fixture,
@@ -2496,6 +2504,7 @@ try {
         councilActiveProvider ||
         councilRoutineAuthoring ||
         councilMcpSetup ||
+        councilLifecycle ||
         councilPeerMessages ||
         councilProjectMessages
           ? { CANTRIP_COUNCIL_ENABLED: "true" }

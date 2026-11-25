@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 
 import {
   createCouncilAgent,
+  deleteArchivedCouncilAgent,
   getCouncilChat,
   listCouncilAgents,
   updateCouncilAgent,
@@ -67,12 +68,16 @@ export function useCouncilWorkspace(
   });
   const agent = roster.data?.find((item) => item.id === selectedId);
   const chat = useQuery({
-    enabled: active && Boolean(agent),
+    enabled: active && Boolean(agent) && !agent?.archived,
     queryFn: () => getCouncilChat(selectedId!),
     queryKey: ["council", "chat", selectedId],
     refetchInterval: active && liveStatus !== "live" ? 3_000 : false,
   });
-  useAppLiveScope(active && agent ? { kind: "chat", chatId: agent.id } : null);
+  useAppLiveScope(
+    active && agent && !agent.archived
+      ? { kind: "chat", chatId: agent.id }
+      : null,
+  );
 
   const save = useMutation({
     mutationFn: (input: { title: string; role: string; primary: boolean }) => {
@@ -93,16 +98,50 @@ export function useCouncilWorkspace(
       setEditor(null);
     },
   });
+  const changeState = useMutation({
+    mutationFn: (input: {
+      agent: CouncilAgent;
+      hidden?: boolean;
+      paused?: boolean;
+      archived?: boolean;
+    }) => {
+      const { agent, ...change } = input;
+      return updateCouncilAgent(agent, change);
+    },
+    onSuccess: (saved, change) => {
+      cache.setQueryData<CouncilAgent[]>(rosterKey, (current = []) =>
+        current.map((value) => (value.id === saved.id ? saved : value)),
+      );
+      void cache.invalidateQueries({ queryKey: rosterKey });
+      void cache.invalidateQueries({ queryKey: ["council", "chat", saved.id] });
+      if (change.hidden === true || change.archived === true) select(null);
+      setEditor(null);
+    },
+  });
+  const removeArchived = useMutation({
+    mutationFn: deleteArchivedCouncilAgent,
+    onSuccess: (_, id) => {
+      cache.setQueryData<CouncilAgent[]>(rosterKey, (current = []) =>
+        current.filter((value) => value.id !== id),
+      );
+      cache.removeQueries({ queryKey: ["council", "chat", id] });
+      void cache.invalidateQueries({ queryKey: rosterKey });
+      select(null);
+    },
+  });
   function showEditor(value: "new" | CouncilAgent | null) {
     save.reset();
+    changeState.reset();
     setEditor(value);
   }
 
   return {
     agent,
+    changeState,
     chat,
     editor,
     roster,
+    removeArchived,
     save,
     select,
     showEditor,

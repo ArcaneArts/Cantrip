@@ -332,14 +332,30 @@ export async function createCouncilAgent(title: string, role: string) {
 
 export async function updateCouncilAgent(
   agent: CouncilAgent,
-  change: { title: string; role: string; primary: boolean },
+  change: {
+    title?: string;
+    role?: string;
+    primary?: boolean;
+    hidden?: boolean;
+    paused?: boolean;
+    archived?: boolean;
+  },
 ) {
   const expectedIdentity = requireIdentity();
   const body = councilAgentUpdateSchema.parse({
     expectedRevision: agent.revision,
-    titleProtection: await chatTitleEncryption.protect(agent.id, change.title),
-    protectedRole: await sealRole(expectedIdentity, agent.id, change.role),
+    titleProtection:
+      change.title === undefined
+        ? undefined
+        : await chatTitleEncryption.protect(agent.id, change.title),
+    protectedRole:
+      change.role === undefined
+        ? undefined
+        : await sealRole(expectedIdentity, agent.id, change.role),
     primary: change.primary,
+    hidden: change.hidden,
+    paused: change.paused,
+    archived: change.archived,
   });
   return openAgent(
     expectedIdentity,
@@ -350,5 +366,13 @@ export async function updateCouncilAgent(
         { expectedIdentity },
       ),
     ),
+  );
+}
+
+export async function deleteArchivedCouncilAgent(agentId: string) {
+  await request(
+    `${path}/${encodeURIComponent(agentId)}`,
+    { method: "DELETE" },
+    { expectedIdentity: requireIdentity() },
   );
 }

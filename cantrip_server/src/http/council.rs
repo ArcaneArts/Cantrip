@@ -23,8 +23,8 @@ use anyhow::Result;
 use axum::{
     Extension, Router,
     extract::{Path, Request, State},
-    http::Method,
-    response::Response,
+    http::{Method, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, patch},
 };
 use std::sync::Arc;
@@ -109,7 +109,7 @@ async fn execute(
         return output(
             200,
             "councilAgentWireListSchema",
-            &Value::Array(repository.council_agents(owner).await?),
+            &Value::Array(repository.council_roster(owner).await?),
         );
     }
     let schema = if id.is_some() {
@@ -128,6 +128,7 @@ async fn execute(
     if id.is_some() && council::empty_update(&input) {
         return Ok(error(400, "Change at least one Council agent field."));
     }
+    let updates_execution = input.get("archived").is_some() || input.get("paused").is_some();
     let owner = owner.to_owned();
     let root_service = service.scratch_roots.clone();
     root_service
@@ -153,6 +154,13 @@ async fn execute(
                     let _ = service
                         .live
                         .publish_event(council::notification(&owner, &agent));
+                    if updates_execution
+                        && agent["paused"] == false
+                        && agent["archived"] == false
+                        && let Some(id) = agent["id"].as_str()
+                    {
+                        drop(service.execution.recovery.dispatch(&owner, id));
+                    }
                     output(status, "councilAgentWireSummarySchema", &agent)
                 }
                 Err(cause) => match cause.downcast_ref::<council::RosterError>() {
@@ -185,6 +193,36 @@ async fn update(
         Ok(response) => response,
         Err(cause) => middleware::failure(&service, &context.id, &cause),
     }
+}
+
+async fn delete_archived(
+    State(service): State<Arc<AuthService>>,
+    Extension(context): Extension<Arc<Context>>,
+    Path(id): Path<String>,
+) -> Response {
+    let owner = context
+        .principal
+        .user
+        .as_ref()
+        .expect("Council owner")
+        .id
+        .clone();
+    let root_service = service.scratch_roots.clone();
+    let owned = service.clone();
+    let result = root_service
+        .owned(async move {
+            let repository = &owned.scratch_roots.repository;
+            if repository.purge_council(&owner, &id).await?.is_none() {
+                return Ok(error(404, "Archived Council agent not found."));
+            }
+            let _ = owned
+                .live
+                .publish_event(council::notification(&owner, &json!({"id":id})));
+            owned.scratch_roots.queue();
+            Ok(StatusCode::NO_CONTENT.into_response())
+        })
+        .await;
+    result.unwrap_or_else(|cause| middleware::failure(&service, &context.id, &cause))
 }
 
 async fn conversation(
@@ -225,7 +263,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
             get(peers::history),
         )
         .route("/api/council/agents", get(collection).post(collection))
-        .route("/api/council/agents/{agentId}", patch(update))
+        .route(
+            "/api/council/agents/{agentId}",
+            patch(update).delete(delete_archived),
+        )
         .route("/api/council/agents/{agentId}/chat", get(conversation))
         .route("/api/council/agents/{agentId}/work", get(linked_work))
         .route(

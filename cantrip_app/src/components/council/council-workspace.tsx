@@ -20,6 +20,7 @@ import { resolveStandaloneChatFilePath } from "@/lib/api/files";
 import { errorMessage } from "@/lib/error-message";
 
 import { CouncilAgentEditor } from "./council-agent-editor";
+import { CouncilArchivedAgent } from "./council-archived-agent";
 import { CouncilHistoryDialog } from "./council-history-dialog";
 import { CouncilMemoryEditor } from "./council-memory-editor";
 import { CouncilPeerDialog } from "./council-peer-dialog";
@@ -45,7 +46,14 @@ export function CouncilWorkspace(props: Props) {
   const { agent, editor, showEditor } = controller;
   return (
     <>
-      {agent ? (
+      {agent?.archived ? (
+        <CouncilArchivedAgent
+          key={agent.id}
+          compact={compact}
+          controller={controller}
+          agent={agent}
+        />
+      ) : agent ? (
         <CouncilConversation key={agent.id} {...props} agent={agent} />
       ) : compact ? (
         <CouncilRoster controller={controller} />
@@ -86,6 +94,7 @@ function CouncilConversation({
   workers,
 }: Props & { agent: CouncilAgent }) {
   const {
+    changeState,
     chat,
     closeHistory,
     closePeer,
@@ -120,8 +129,9 @@ function CouncilConversation({
     );
   };
   const worker = workers.find(({ workerId }) => workerId === agent.workerId);
-  const status =
-    worker && !worker.online
+  const status = agent.paused
+    ? "Agent paused. Messages queue until you resume it."
+    : worker && !worker.online
       ? "Worker offline. Messages queue until it reconnects."
       : agent.scratchStatus === "provisioning"
         ? "Preparing the agent’s workspace. Messages will queue in the meantime."
@@ -255,7 +265,19 @@ function CouncilConversation({
           inspectOverlay={narrowViewport}
           onConfigureModels={onConfigureModels}
           onCreateChat={() => showEditor("new")}
-          onDelete={() => undefined}
+          onDelete={() =>
+            changeState.mutate(
+              { agent, archived: true },
+              {
+                onError: (error) =>
+                  onToast({
+                    title: "Could not archive Council agent",
+                    message: errorMessage(error),
+                    tone: "error",
+                  }),
+              },
+            )
+          }
           onFilesOpenChange={setFilesOpen}
           onForked={() => undefined}
           onInspectOpenChange={() => undefined}
