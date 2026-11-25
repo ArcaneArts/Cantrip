@@ -1,10 +1,15 @@
 use super::*;
+use crate::native_commands::runtime::finish_gui::{
+    GuiClosure, GuiReply, finish_managed_gui_with_transport,
+};
+
 impl Service {
     pub(super) async fn finish(
         &self,
         input: &Recovery<'_>,
         ok: bool,
         finalized: Option<&str>,
+        reply: Option<GuiReply<'_>>,
     ) -> Result<()> {
         let Recovery {
             owner,
@@ -21,13 +26,17 @@ impl Service {
             .await?;
         let status = if ok { "idle" } else { "failed" };
         let finished = if let Some(logical) = logical {
-            native_commands::runtime::finish_gui::finish_managed_gui(
+            finish_managed_gui_with_transport(
                 &self.native,
                 &self.dependencies.commands,
                 owner,
                 worker,
                 logical,
-                status,
+                GuiClosure {
+                    status,
+                    transport_ended: false,
+                    reply,
+                },
                 &|error| {
                     self.log(
                         "warn",

@@ -31,6 +31,7 @@ export async function actualCouncilProjectMessages({
   projectControls,
   projectSteering,
   steerRaceMarker,
+  historyFault,
 }) {
   const target = await taskModelProvider({ observeStreams: projectControls });
   const prepareText = "Open the existing project chat on its worker.";
@@ -456,6 +457,7 @@ export async function actualCouncilProjectMessages({
         targetChatId,
         targetProfileId: ready.profileId,
         steerRaceMarker,
+        historyFault,
         result,
       });
     if (projectApprovals) {

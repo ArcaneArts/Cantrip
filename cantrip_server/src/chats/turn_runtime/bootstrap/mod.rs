@@ -12,7 +12,7 @@ use crate::{
     native_commands::{
         Repository as NativeCommands,
         runtime::{
-            finish_gui::{GuiClosure, finish_managed_gui_with_transport},
+            finish_gui::{GuiClosure, GuiReply, finish_managed_gui_with_transport},
             gui_admission::GuiAdmission,
         },
     },
@@ -204,7 +204,7 @@ impl Bootstrap {
         );
         turn.attribution = json!({"contextKind":turn.execution["contextKind"],"executionLaneId":turn.execution["executionLaneId"],"worktreeId":turn.execution["worktreeId"],"scratchRootId":turn.execution["scratchRootId"]});
         if let Err(error) = self.persist(&mut turn).await {
-            if turn.options["taskResumption"].is_null() { self.finish(&turn, "failed", false).await?; }
+            if turn.options["taskResumption"].is_null() { self.finish(&turn, "failed", false, None).await?; }
             self.live.publish_summary(
                 &turn.owner,
                 &turn.execution["chatId"],
@@ -235,21 +235,29 @@ impl Bootstrap {
         turn: &PreparedTurn,
         status: &str,
         pause_automation: bool,
+        reply: Option<GuiReply<'_>>,
     ) -> Result<bool> {
-        self.finish_with_transport(turn, status, pause_automation, false)
-            .await
+        self.finish_with_transport(
+            turn,
+            pause_automation,
+            GuiClosure {
+                status,
+                transport_ended: false,
+                reply,
+            },
+        )
+        .await
     }
     pub async fn finish_with_transport(
         &self,
         turn: &PreparedTurn,
-        status: &str,
         pause_automation: bool,
-        transport_ended: bool,
+        closure: GuiClosure<'_>,
     ) -> Result<bool> {
         let chat = text(&turn.execution, "chatId")?;
         if let Some(receipt) = &turn.native_receipt {
             let logger = self.logger.clone();
-            finish_managed_gui_with_transport(&NativeCommands::new(self.database.clone()),&self.commands,&turn.owner,text(&turn.execution,"workerId")?,receipt,GuiClosure { status, transport_ended },&move |_| {
+            finish_managed_gui_with_transport(&NativeCommands::new(self.database.clone()),&self.commands,&turn.owner,text(&turn.execution,"workerId")?,receipt,closure,&move |_| {
                 (logger)(LogCall::event("warn","The worker did not acknowledge logical GUI completion.",json!({"event":"native-command.logical-completion-ack-failed","chatId":chat,"operationId":receipt["operationId"]})));
             }).await
         } else {
@@ -261,7 +269,7 @@ impl Bootstrap {
                 .finish(
                     chat,
                     text(&turn.execution, "executionLaneId")?,
-                    status,
+                    closure.status,
                     &options,
                 )
                 .await

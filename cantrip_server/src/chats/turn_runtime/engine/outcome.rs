@@ -3,6 +3,7 @@ use crate::chats::{
     live_mutations::{MessageOptions, RouteSelection},
     message_queries::MessageKind,
 };
+use crate::native_commands::runtime::finish_gui::GuiReply;
 impl Runtime {
     pub(super) async fn complete(
         self: &Arc<Self>,
@@ -67,6 +68,7 @@ impl Runtime {
             result: result.clone(),
             task_input_operation: sink.task_input_operation.lock().unwrap().clone(),
         };
+        let mut reply = None;
         if truthy(turn.options.get("structuredResult")) {
             (hooks
                 .structured
@@ -118,6 +120,9 @@ impl Runtime {
                     } else {
                         "The encrypted chat message result metadata is invalid."
                     });
+                }
+                if e["contextKind"] == "project" && matches!(kind, MessageKind::Encrypted) {
+                    reply = GuiReply::from_outcome(&result, &result["structuredResult"]["message"]);
                 }
                 message.clone()
             } else {
@@ -186,7 +191,7 @@ impl Runtime {
         let finished = self
             .dependencies
             .bootstrap
-            .finish(turn, "idle", false)
+            .finish(turn, "idle", false, reply)
             .await?;
         self.dependencies.events.live.publish_boundary(
             &turn.owner,

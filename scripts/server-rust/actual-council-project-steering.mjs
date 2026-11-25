@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { projectToolOutput } from "./actual-council-project-creation.mjs";
 import { eventually } from "./full-worker.mjs";
+import { literal } from "./project-target-state.mjs";
 
 export const projectSteeringText =
   "Steer the active project Agent with this new detail 🌲.";
@@ -13,6 +14,33 @@ async function readTrace(marker) {
     throw error;
   });
   return raw.split("\n").filter(Boolean).map(JSON.parse);
+}
+
+async function withholdProjectHistory(fixture, chatId) {
+  await fixture.sql([
+    `CREATE FUNCTION fixture_withhold_project_history() RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN
+         IF TG_TABLE_NAME='native_history_turns' THEN
+           IF NEW.status='completed' AND EXISTS (
+             SELECT 1 FROM native_history_bindings WHERE id=NEW.binding_id AND chat_id=${literal(chatId)}
+           ) THEN NEW.status := 'inProgress'; END IF;
+         ELSIF NEW.chat_id=${literal(chatId)} AND NEW.component='assistant' AND NEW.state='completed' THEN
+           NEW.state := 'unknown';
+         END IF;
+         RETURN NEW;
+       END;
+     $$`,
+    `CREATE TRIGGER fixture_withhold_project_turn BEFORE INSERT OR UPDATE ON native_history_turns
+       FOR EACH ROW EXECUTE FUNCTION fixture_withhold_project_history()`,
+    `CREATE TRIGGER fixture_withhold_project_reply BEFORE INSERT OR UPDATE ON native_history_items
+       FOR EACH ROW EXECUTE FUNCTION fixture_withhold_project_history()`,
+  ]);
+  return () =>
+    fixture.sql([
+      "DROP TRIGGER fixture_withhold_project_reply ON native_history_items",
+      "DROP TRIGGER fixture_withhold_project_turn ON native_history_turns",
+      "DROP FUNCTION fixture_withhold_project_history()",
+    ]);
 }
 
 export async function actualCouncilProjectSteering({
@@ -27,6 +55,7 @@ export async function actualCouncilProjectSteering({
   targetChatId,
   targetProfileId,
   steerRaceMarker,
+  historyFault,
   result,
 }) {
   const original = "Start the remote project turn for Council to steer.";
@@ -190,6 +219,7 @@ export async function actualCouncilProjectSteering({
     const fallbackAnswer =
       "The project handled the queued detail in a new turn.";
     const fallback = target.reply({ text: fallbackAnswer, hold: true });
+    let restoreHistory;
     try {
       model.reply({
         responseId: "council-steer-project-fallback",
@@ -219,6 +249,12 @@ export async function actualCouncilProjectSteering({
       const fallbackNotice = model.reply({
         text: "I received the result from the next project turn.",
       });
+      if (historyFault) {
+        restoreHistory = await withholdProjectHistory(
+          historyFault,
+          targetChatId,
+        );
+      }
       fallback.release();
       await complete(fallback);
       assert.ok(
@@ -237,12 +273,38 @@ export async function actualCouncilProjectSteering({
       assert.equal(idleMatches.length, 1);
       assert.equal(idleMatches[0].source.status, "completed");
       assert.notEqual(idleMatches[0].source.turnId, matches[0].source.turnId);
+      if (historyFault) {
+        const [evidence] = await historyFault.sql(
+          [],
+          [
+            `SELECT jsonb_build_object(
+              'canonicalDone',EXISTS(
+                SELECT 1 FROM native_history_items WHERE chat_id=d.target_chat_id
+                  AND thread_id=d.result_thread_id AND turn_id=d.result_turn_id
+                  AND component='assistant' AND identity_kind='canonical' AND state='completed'),
+              'historyDone', EXISTS(
+                SELECT 1 FROM native_history_turns t JOIN native_history_bindings b ON b.id=t.binding_id
+                WHERE b.chat_id=d.target_chat_id AND b.thread_id=d.result_thread_id
+                  AND t.turn_id=d.result_turn_id AND t.status='completed'),
+              'replyCleared',d.protected_reply IS NULL,'delivered',d.callback_delivered_at IS NOT NULL
+            )::text FROM council_project_deliveries d WHERE d.input_message_id=${literal(idleReceipt.inputMessageId)}`,
+          ],
+        );
+        assert.deepEqual(evidence, {
+          canonicalDone: false,
+          historyDone: false,
+          replyCleared: true,
+          delivered: true,
+        });
+        result.councilProjectReplyWithoutHistory = evidence;
+      }
       result.councilProjectSteerFallback = {
         receipt: idleReceipt,
         source: idleMatches[0].source,
       };
     } finally {
       fallback.release();
+      await restoreHistory?.();
     }
     assert.deepEqual(model.failures, []);
     assert.deepEqual(target.failures, []);

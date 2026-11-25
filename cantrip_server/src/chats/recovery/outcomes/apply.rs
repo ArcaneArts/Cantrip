@@ -1,4 +1,6 @@
 use super::*;
+use crate::native_commands::runtime::finish_gui::GuiReply;
+
 impl Service {
     pub(super) async fn apply(&self, input: Recovery<'_>) -> Result<()> {
         let Recovery {
@@ -123,6 +125,24 @@ impl Service {
         let assistant_key = format!("assistant:{}", text(&n["clientMessageId"])?);
         let error_key = format!("error:{}", text(&n["clientMessageId"])?);
         let task_chat = !standalone && context["chat"]["experience"] == "task";
+        let protected_reply = if reported_ok
+            && !standalone
+            && !task_chat
+            && input.logical.is_some()
+            && result["structuredResult"]["message"].is_object()
+        {
+            let encrypted = crate::settings::parse_response(
+                "chatMessageRelayResultSchema",
+                result.get("structuredResult"),
+            )?;
+            anyhow::ensure!(
+                encrypted["message"]["idempotencyKey"] == assistant_key.as_str(),
+                "Recovered project reply belongs to another input."
+            );
+            Some(encrypted["message"].clone())
+        } else {
+            None
+        };
         let existing_assistant = if task_chat {
             None
         } else {
@@ -196,12 +216,29 @@ impl Service {
                     )
                     .await?;
             } else if operation.is_none() && existing_assistant.is_none() {
-                let text = result
-                    .get("text")
-                    .filter(|v| truthy(Some(v)))
-                    .cloned()
-                    .unwrap_or_else(|| json!("The agent completed without a message."));
-                self.write_visible(owner,chat,&json!({"role":"assistant","content":json!([json!({"type":"text","text":text,"phase":"final_answer"})]),"idempotencyKey":if existing_error.is_some(){&error_key}else{&assistant_key}}),&attribution).await?;
+                if let Some(message) = &protected_reply {
+                    self.dependencies
+                        .live
+                        .write_message(
+                            owner,
+                            chat,
+                            message,
+                            MessageOptions {
+                                attribution: Some(&attribution),
+                                kind: MessageKind::Encrypted,
+                                upsert: false,
+                                routing: None,
+                            },
+                        )
+                        .await?;
+                } else {
+                    let text = result
+                        .get("text")
+                        .filter(|v| truthy(Some(v)))
+                        .cloned()
+                        .unwrap_or_else(|| json!("The agent completed without a message."));
+                    self.write_visible(owner,chat,&json!({"role":"assistant","content":json!([json!({"type":"text","text":text,"phase":"final_answer"})]),"idempotencyKey":if existing_error.is_some(){&error_key}else{&assistant_key}}),&attribution).await?;
+                }
             }
         } else if !standalone && !task_chat && operation.is_none() && existing_assistant.is_none() {
             self.lanes
@@ -214,7 +251,10 @@ impl Service {
                 .await?;
             self.write_visible(owner,chat,&json!({"role":"system","content":json!([json!({"type":"text","text":identifier(&[&json!("Agent failed: "),&n["outcome"]["error"]])})]),"idempotencyKey":error_key}),&attribution).await?;
         }
-        self.finish(&input, ok, finalized).await
+        let reply = protected_reply
+            .as_ref()
+            .and_then(|message| GuiReply::from_outcome(result, message));
+        self.finish(&input, ok, finalized, reply).await
     }
     async fn write_visible(
         &self,

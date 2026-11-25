@@ -215,13 +215,16 @@ impl Runtime {
             .bootstrap
             .finish_with_transport(
                 &turn,
-                if interrupted || e["contextKind"] == "standalone" {
-                    "idle"
-                } else {
-                    "failed"
-                },
                 worker_interrupted,
-                transport_ended,
+                crate::native_commands::runtime::finish_gui::GuiClosure {
+                    status: if interrupted || e["contextKind"] == "standalone" {
+                        "idle"
+                    } else {
+                        "failed"
+                    },
+                    transport_ended,
+                    reply: None,
+                },
             )
             .await?;
         self.dependencies
