@@ -32,7 +32,12 @@ interface ChatTimelineActivityGroupBase {
 }
 
 type ChatTimelineActivityGroup =
-  | (ChatTimelineActivityGroupBase & { kind: "turn"; endedAt: string })
+  | (ChatTimelineActivityGroupBase & {
+      kind: "turn";
+      endedAt: string;
+      // A group built from late work sorts immediately before its answer.
+      anchorSequence?: number;
+    })
   | (ChatTimelineActivityGroupBase & {
       kind: "compaction" | "tool";
       endedAt: string | null;
@@ -45,6 +50,13 @@ export type ChatTimelineEntry =
       turnMetadata: ChatTurnMetadata | null;
     }
   | ChatTimelineActivityGroup;
+
+export function chatTimelineEntrySequence(entry: ChatTimelineEntry): number {
+  if (entry.type === "message") return entry.message.sequence;
+  if (entry.kind === "turn" && entry.anchorSequence !== undefined)
+    return entry.anchorSequence;
+  return Math.min(...entry.messages.map((message) => message.sequence));
+}
 
 export function findLatestLiveActivityGroupKey(
   entries: readonly ChatTimelineEntry[],
@@ -77,22 +89,6 @@ export function findLatestLiveActivityGroupKey(
     }
   }
   return null;
-}
-
-function activities(message: ChatMessage): AgentActivity[] | null {
-  if (
-    message.role !== "assistant" ||
-    message.content.length === 0 ||
-    message.content.some((item) => item.type !== "activity")
-  ) {
-    return null;
-  }
-  return message.content.map((item) => {
-    if (item.type !== "activity") {
-      throw new Error("Expected activity content.");
-    }
-    return item.activity;
-  });
 }
 
 function precedingTurnStart(messages: ChatMessage[], index: number): string {
@@ -201,12 +197,13 @@ function messageActivities(message: ChatMessage): AgentActivity[] {
   );
 }
 
-function trailingTurnMetadata(activities: AgentActivity[]): boolean {
-  return activities.every(
-    (activity) =>
-      activity.type === "usage" ||
-      activity.type === "rateLimit" ||
-      activity.type === "turnSummary",
+function trailingTurnMetadata(message: ChatMessage): boolean {
+  return message.content.every(
+    (item) =>
+      item.type === "activity" &&
+      (item.activity.type === "usage" ||
+        item.activity.type === "rateLimit" ||
+        item.activity.type === "turnSummary"),
   );
 }
 
@@ -345,6 +342,7 @@ function segmentedMessage(
 }
 
 function projectWorkEntries(input: {
+  anchorSequence?: number;
   displayedMessages: ChatMessage[];
   endedAt: string | null;
   identity: ChatTurnIdentity;
@@ -357,6 +355,9 @@ function projectWorkEntries(input: {
         type: "activityGroup",
         kind: "turn",
         key: `turn:${firstMessage.id}`,
+        ...(input.anchorSequence !== undefined
+          ? { anchorSequence: input.anchorSequence }
+          : {}),
         messages: input.displayedMessages,
         startedAt: input.startedAt,
         endedAt: input.endedAt,
@@ -430,6 +431,22 @@ function projectWorkEntries(input: {
   return projected;
 }
 
+function precedingActivityGroup(
+  entries: readonly ChatTimelineEntry[],
+  terminalTurnId: string | null,
+): ChatTimelineActivityGroup | undefined {
+  for (let cursor = entries.length - 2; cursor >= 0; cursor -= 1) {
+    const entry = entries[cursor]!;
+    if (entry.type === "activityGroup") {
+      return terminalTurnId && entry.turnId && terminalTurnId !== entry.turnId
+        ? undefined
+        : entry;
+    }
+    if (entry.message.role === "user" || terminalMessage(entry.message)) break;
+  }
+  return undefined;
+}
+
 function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
   const entries: ChatTimelineEntry[] = [];
   const pendingTurnMetadata = new Map<string, ChatTurnMetadata>();
@@ -464,6 +481,25 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
       groupedTurnId && nextTurnId && groupedTurnId !== nextTurnId
         ? undefined
         : nextMessage;
+    const previousEntry = entries.at(-1);
+    const previousTerminal =
+      previousEntry?.type === "message" &&
+      terminalMessage(previousEntry.message)
+        ? previousEntry
+        : undefined;
+    const terminalTurnId = messageTurnId(previousTerminal?.message);
+    const previousActivityEntry = previousTerminal
+      ? precedingActivityGroup(entries, terminalTurnId)
+      : undefined;
+    const previousTurnId = terminalTurnId ?? previousActivityEntry?.turnId;
+    const trailingTerminal =
+      previousTerminal &&
+      (groupedTurnId && previousTurnId
+        ? groupedTurnId === previousTurnId
+        : groupedMessages.every(trailingTurnMetadata))
+        ? previousTerminal
+        : undefined;
+    const terminal = trailingTerminal?.message ?? followingMessage;
     const metadata = activityTurnMetadata(grouped);
     const turnSummary = [...grouped]
       .reverse()
@@ -471,10 +507,7 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
         (activity) =>
           activity.type === "turnSummary" && activity.status !== "running",
       );
-    const terminalStatus = terminalActivityStatus(
-      followingMessage,
-      turnSummary,
-    );
+    const terminalStatus = terminalActivityStatus(terminal, turnSummary);
     const failedSummaryMessage =
       turnSummary?.status === "failed"
         ? groupedMessages.find((entry) =>
@@ -538,41 +571,20 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
     const identity = resolveChatTurnIdentity({
       messages,
       startIndex: index,
-      terminalMessage: followingMessage,
+      terminalMessage: terminal,
       turnMessages: groupedMessages,
     });
 
-    const previousMessageEntry = entries.at(-1);
-    let previousActivityEntry:
-      Extract<ChatTimelineEntry, { type: "activityGroup" }> | undefined;
-    for (let cursor = entries.length - 2; cursor >= 0; cursor -= 1) {
-      const entry = entries[cursor];
-      if (!entry) continue;
-      if (entry.type === "message" && entry.message.role === "user") break;
-      if (entry.type === "activityGroup") {
-        previousActivityEntry = entry;
-        break;
-      }
-    }
-    if (
-      groupedMessages.every((groupedMessage) => {
-        const groupedActivities = activities(groupedMessage);
-        return (
-          groupedActivities !== null && trailingTurnMetadata(groupedActivities)
-        );
-      }) &&
-      previousMessageEntry?.type === "message" &&
-      terminalMessage(previousMessageEntry.message)
-    ) {
-      previousMessageEntry.turnMetadata = mergeTurnMetadata(
-        previousMessageEntry.turnMetadata,
+    if (trailingTerminal) {
+      trailingTerminal.turnMetadata = mergeTurnMetadata(
+        trailingTerminal.turnMetadata,
         metadata,
       );
-      if (previousActivityEntry?.type === "activityGroup") {
+      if (previousActivityEntry) {
         const trailingIdentity = resolveChatTurnIdentity({
           messages,
           startIndex: index,
-          terminalMessage: previousMessageEntry.message,
+          terminalMessage: trailingTerminal.message,
           turnMessages: [...previousActivityEntry.messages, ...groupedMessages],
         });
         const previousTurnKey = previousActivityEntry.turnKey;
@@ -591,10 +603,13 @@ function buildAgentChatTimeline(messages: ChatMessage[]): ChatTimelineEntry[] {
           previousActivityEntry.messages.push(...displayedMessages);
         } else {
           const trailingEntries = projectWorkEntries({
+            anchorSequence: trailingTerminal.message.sequence,
             displayedMessages,
-            endedAt: previousMessageEntry.message.createdAt,
+            endedAt: trailingTerminal.message.createdAt,
             identity,
-            startedAt: precedingTurnStart(messages, index),
+            startedAt:
+              precedingTurnAnchor(messages, index)?.createdAt ??
+              trailingTerminal.message.createdAt,
           });
           entries.splice(entries.length - 1, 0, ...trailingEntries);
         }
@@ -668,11 +683,9 @@ export function buildChatTimeline(
         : new Date(endedAtMs).toISOString(),
     });
   }
-  const sequence = (entry: ChatTimelineEntry) =>
-    entry.type === "message"
-      ? entry.message.sequence
-      : entry.messages[0]!.sequence;
-  return entries.sort((a, b) => sequence(a) - sequence(b));
+  return entries.sort(
+    (a, b) => chatTimelineEntrySequence(a) - chatTimelineEntrySequence(b),
+  );
 }
 
 function formatDuration(durationMs: number): string {

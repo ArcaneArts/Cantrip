@@ -1,6 +1,6 @@
 import type { AgentActivity, AgentScope, ChatMessage } from "@cantrip/protocol";
 
-import type { ChatTimelineEntry } from "./timeline";
+import { chatTimelineEntrySequence, type ChatTimelineEntry } from "./timeline";
 
 type ChatMessageContentItem = ChatMessage["content"][number];
 
@@ -354,12 +354,6 @@ export function buildAgentTurnProjection(
   };
 }
 
-function timelineSequence(entry: ChatTimelineEntry): number {
-  return entry.type === "message"
-    ? entry.message.sequence
-    : Math.min(...entry.messages.map((message) => message.sequence));
-}
-
 export function mergeAgentCardsIntoTimeline(
   timeline: readonly ChatTimelineEntry[],
   agents: readonly AgentTurnParticipant[],
@@ -374,11 +368,11 @@ export function mergeAgentCardsIntoTimeline(
     const leftSequence =
       left.type === "agent"
         ? left.agent.firstSequence
-        : timelineSequence(left.entry);
+        : chatTimelineEntrySequence(left.entry);
     const rightSequence =
       right.type === "agent"
         ? right.agent.firstSequence
-        : timelineSequence(right.entry);
+        : chatTimelineEntrySequence(right.entry);
     if (leftSequence !== rightSequence) return leftSequence - rightSequence;
     if (left.type !== right.type) return left.type === "timeline" ? -1 : 1;
     if (left.type === "agent" && right.type === "agent") {
