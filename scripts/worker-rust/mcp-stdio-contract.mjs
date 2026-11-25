@@ -12,6 +12,10 @@ import {
   cantripMcpBindingSchema,
   councilCreateToolInputSchema,
   councilCreateToolOutputSchema,
+  councilHistoryReadInputSchema,
+  councilHistoryReadToolOutputSchema,
+  councilHistorySearchInputSchema,
+  councilHistorySearchToolOutputSchema,
   councilListToolInputSchema,
   councilListToolOutputSchema,
   councilMemoryReadToolInputSchema,
@@ -160,11 +164,25 @@ async function generate() {
       councilMemoryWriteToolInputSchema,
       councilMemoryWriteToolOutputSchema,
     ],
+    [
+      "council_history_search",
+      "council.history.search",
+      "Search your retained conversation. Use literal mode for exact paths, errors, or identifiers. Use terms for topics and try alternate terms when recalling a decision.",
+      councilHistorySearchInputSchema,
+      councilHistorySearchToolOutputSchema,
+    ],
+    [
+      "council_history_read",
+      "council.history.read",
+      "Open a retained Council message by ID and read nearby messages and attachment references.",
+      councilHistoryReadInputSchema,
+      councilHistoryReadToolOutputSchema,
+    ],
   ];
   profiles.council = {
     ...profiles["standalone-web"],
     instructions:
-      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Read and update your fast memory with council_memory_read and council_memory_write. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
+      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Read and update your fast memory with council_memory_read and council_memory_write. Search retained work with council_history_search and open evidence with council_history_read. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
     tools: [
       ...profiles["standalone-web"].tools,
       ...council.map(([name, operation, description, input, output]) => {

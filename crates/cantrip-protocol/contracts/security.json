@@ -1039,7 +1039,13 @@
     "councilAgentWireListSchema": 14812,
     "councilAgentWireSummarySchema": 14813,
     "councilMemoryWireSchema": 14819,
-    "councilMemoryUpdateSchema": 14822
+    "councilMemoryUpdateSchema": 14822,
+    "councilHistoryHeadSchema": 14825,
+    "councilHistoryReadInputSchema": 14828,
+    "councilHistorySourceChangesSchema": 14831,
+    "councilHistorySourcePageSchema": 14841,
+    "councilHistorySourceRangeSchema": 14844,
+    "councilHistorySourceRequestSchema": 14848
   },
   "nodes": [
     {
@@ -65376,7 +65382,7 @@
       "element": 10839,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
-        { "check": "max_length", "maximum": 60, "when": "length" },
+        { "check": "max_length", "maximum": 62, "when": "length" },
         {
           "check": "refinement",
           "tag": "worker-command-unique",
@@ -65448,7 +65454,9 @@
         "council.list",
         "council.create",
         "council.memory.read",
-        "council.memory.write"
+        "council.memory.write",
+        "council.history.search",
+        "council.history.read"
       ],
       "checks": []
     },
@@ -88651,6 +88659,174 @@
       "checks": []
     },
     { "type": "nullable", "innerType": 5758, "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "councilHistoryHeadSchema",
+      "shape": { "revision": 14826, "throughSequence": 14826 },
+      "catchall": 14827,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "councilHistoryReadInputSchema",
+      "shape": { "messageId": 14829 },
+      "catchall": 14830,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        { "check": "min_length", "minimum": 1, "when": "length" },
+        { "check": "max_length", "maximum": 200, "when": "length" }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "councilHistorySourceChangesSchema",
+      "shape": { "changes": 14832 },
+      "catchall": 14840,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14833,
+      "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "messageId": 14829,
+        "revision": 14826,
+        "sequence": 14834,
+        "record": 14835
+      },
+      "catchall": 14839,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    { "type": "nullable", "innerType": 14836, "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "role": 2322,
+        "mode": 2323,
+        "attachmentIds": 2324,
+        "id": 14829,
+        "sequence": 14837,
+        "createdAt": 14838,
+        "protectedContent": 2327
+      },
+      "catchall": 2326,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": true },
+        { "check": "number_format", "format": "safeint", "abort": false },
+        { "check": "greater_than", "value": 0, "inclusive": false }
+      ]
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "string_format",
+          "format": "datetime",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+          "flags": "",
+          "displayPattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$/"
+        }
+      ]
+    },
+    { "type": "never", "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "councilHistorySourcePageSchema",
+      "shape": { "records": 14842 },
+      "catchall": 14843,
+      "checks": []
+    },
+    {
+      "type": "array",
+      "element": 14836,
+      "checks": [{ "check": "max_length", "maximum": 128, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "name": "councilHistorySourceRangeSchema",
+      "shape": { "availability": 14845, "records": 14846 },
+      "catchall": 14847,
+      "checks": []
+    },
+    { "type": "enum", "values": ["available", "unavailable"], "checks": [] },
+    {
+      "type": "array",
+      "element": 14836,
+      "checks": [{ "check": "max_length", "maximum": 9, "when": "length" }]
+    },
+    { "type": "never", "checks": [] },
+    {
+      "type": "union",
+      "name": "councilHistorySourceRequestSchema",
+      "options": [14849, 14852, 14855],
+      "discriminator": "kind",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": { "kind": 14850 },
+      "catchall": 14851,
+      "checks": []
+    },
+    { "type": "literal", "values": ["head"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 14853,
+        "afterSequence": 14826,
+        "throughSequence": 14826
+      },
+      "catchall": 14854,
+      "checks": []
+    },
+    { "type": "literal", "values": ["page"], "checks": [] },
+    { "type": "never", "checks": [] },
+    {
+      "type": "object",
+      "shape": {
+        "kind": 14856,
+        "afterRevision": 14826,
+        "afterSequence": 14826,
+        "throughRevision": 14826
+      },
+      "catchall": 14857,
+      "checks": []
+    },
+    { "type": "literal", "values": ["changes"], "checks": [] },
     { "type": "never", "checks": [] }
   ]
 }

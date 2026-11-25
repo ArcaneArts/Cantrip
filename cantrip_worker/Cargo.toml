@@ -53,6 +53,7 @@ icu_collator = { version = "=2.1.1", path = "../cantrip_server/third-party/icu_c
 icu_locale_core = "2.4"
 regex = "1"
 regress = { version = "0.12", features = ["utf16"] }
+rusqlite = { version = "=0.42.0", features = ["bundled"] }
 sha2 = "0.11"
 subtle = "2"
 getrandom = { version = "0.3", features = ["std"] }

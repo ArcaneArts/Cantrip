@@ -1,3 +1,4 @@
+mod history;
 mod memory;
 
 use super::{Repository, catalog::compatible_scratch_worker, roots};

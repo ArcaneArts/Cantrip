@@ -6,6 +6,7 @@ mod cantrip_server {
 
     pub mod http {
         use ::cantrip_server::auth::service::AuthService;
+        pub use ::cantrip_server::http::external_mcp;
         use anyhow::Context;
         use axum::{
             Json, Router,

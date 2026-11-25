@@ -4,6 +4,7 @@
 pub mod adapters;
 pub mod attachments;
 pub mod client;
+pub(crate) mod council;
 pub mod input_materializer;
 pub mod lineage;
 pub mod live;

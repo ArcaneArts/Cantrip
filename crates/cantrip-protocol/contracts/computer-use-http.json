@@ -797,7 +797,7 @@
       "element": 110,
       "checks": [
         { "check": "min_length", "minimum": 1, "when": "length" },
-        { "check": "max_length", "maximum": 60, "when": "length" },
+        { "check": "max_length", "maximum": 62, "when": "length" },
         {
           "check": "refinement",
           "tag": "worker-command-unique",
@@ -869,7 +869,9 @@
         "council.list",
         "council.create",
         "council.memory.read",
-        "council.memory.write"
+        "council.memory.write",
+        "council.history.search",
+        "council.history.read"
       ],
       "checks": []
     },
