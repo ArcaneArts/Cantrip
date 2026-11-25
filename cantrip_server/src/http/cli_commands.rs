@@ -121,6 +121,33 @@ pub(super) async fn execute(
     call: &Value,
 ) -> Result<Value> {
     let command = call["command"].as_str().context("CLI command")?;
+    if command == "council.inventory" {
+        let missing = || {
+            Error::new(
+                403,
+                "context-not-found",
+                "Run this command in an active Council agent.",
+            )
+        };
+        let chat = call["chatContext"]["chatId"].as_str().ok_or_else(missing)?;
+        let context = crate::chats::Repository::new(service.repository.database.clone())
+            .execution_context(owner, chat)
+            .await?
+            .ok_or_else(missing)?;
+        if context.get("councilAgent").is_none()
+            || context["workerId"] != call["workerId"]
+            || context["executionLaneId"] != call["chatContext"]["executionLaneId"]
+            || !call["context"]["codexThreadId"].is_string()
+            || context["threadId"] != call["context"]["codexThreadId"]
+            || !matches!(
+                context["status"].as_str(),
+                Some("running" | "waiting-for-approval")
+            )
+        {
+            return Err(missing().into());
+        }
+        return super::council::inventory::read(service, owner, &call["arguments"]).await;
+    }
     let reader = Arc::new(cli::repository::Repository {
         database: service.repository.database.clone(),
         owner: owner.to_owned(),

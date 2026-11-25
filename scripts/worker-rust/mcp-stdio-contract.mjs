@@ -16,6 +16,8 @@ import {
   councilHistoryReadToolOutputSchema,
   councilHistorySearchInputSchema,
   councilHistorySearchToolOutputSchema,
+  councilInventoryInputSchema,
+  councilInventoryToolOutputSchema,
   councilListToolInputSchema,
   councilListToolOutputSchema,
   councilMemoryReadToolInputSchema,
@@ -178,11 +180,18 @@ async function generate() {
       councilHistoryReadInputSchema,
       councilHistoryReadToolOutputSchema,
     ],
+    [
+      "council_inventory",
+      "council.inventory",
+      "List projects across your Cantrip account. Use the project ID to list that project's chats or Tasks. Repeat with nextCursor when present.",
+      councilInventoryInputSchema,
+      councilInventoryToolOutputSchema,
+    ],
   ];
   profiles.council = {
     ...profiles["standalone-web"],
     instructions:
-      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Read and update your fast memory with council_memory_read and council_memory_write. Search retained work with council_history_search and open evidence with council_history_read. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
+      "Use council_list to find agents on this Cantrip account and council_create to create an agent from a requested role. Use council_inventory to find projects, chats, and Tasks. Read and update your fast memory with council_memory_read and council_memory_write. Search retained work with council_history_search and open evidence with council_history_read. Use web_search and web_read for research. A stale binding requires a fresh Council turn.",
     tools: [
       ...profiles["standalone-web"].tools,
       ...council.map(([name, operation, description, input, output]) => {

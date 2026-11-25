@@ -61,6 +61,11 @@ impl ContextSelection {
 enum Command {
     /// Show the worker connection and inferred project context.
     Status,
+    /// Discover project work from a running Council agent.
+    Council {
+        #[command(subcommand)]
+        command: CouncilCommand,
+    },
     /// Read effective Cantrip policies for the current project.
     Policy {
         #[command(subcommand)]
@@ -96,6 +101,29 @@ enum Command {
         #[command(subcommand)]
         command: RunCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum CouncilCommand {
+    /// List projects or a project's conversations.
+    Inventory {
+        #[command(subcommand)]
+        section: CouncilInventorySection,
+        #[arg(long, global = true, default_value_t = 0)]
+        cursor: u32,
+        #[arg(long, global = true, default_value_t = 25)]
+        limit: u32,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum CouncilInventorySection {
+    /// List projects across the account.
+    Projects,
+    /// List Agent chats in a project.
+    Chats { project_id: String },
+    /// List Tasks in a project.
+    Tasks { project_id: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -399,6 +427,27 @@ fn invocation(command: Command) -> Result<Invocation, String> {
         Command::Status => Invocation {
             command: "status",
             arguments: json!({}),
+        },
+        Command::Council {
+            command:
+                CouncilCommand::Inventory {
+                    section,
+                    cursor,
+                    limit,
+                },
+        } => Invocation {
+            command: "council.inventory",
+            arguments: match section {
+                CouncilInventorySection::Projects => {
+                    json!({"section":"projects","cursor":cursor,"limit":limit})
+                }
+                CouncilInventorySection::Chats { project_id } => {
+                    json!({"section":"chats","projectId":project_id,"cursor":cursor,"limit":limit})
+                }
+                CouncilInventorySection::Tasks { project_id } => {
+                    json!({"section":"tasks","projectId":project_id,"cursor":cursor,"limit":limit})
+                }
+            },
         },
         Command::Policy { command } => match command {
             PolicyCommand::List => Invocation {

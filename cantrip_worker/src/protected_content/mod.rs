@@ -1,5 +1,6 @@
 //! Native equivalents of the worker endpoint/surface content helpers. Resource
 //! authorization and cancellation remain with the owning execution adapters.
+pub(crate) mod council_inventory;
 pub(crate) mod council_memory;
 pub(crate) mod customization;
 mod endpoint;

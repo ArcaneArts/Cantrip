@@ -8,6 +8,7 @@ export const cantripCliCommandResultSchema = cantripAgentOperationResultSchema;
 
 export const cantripCliCommandNameSchema = z.enum([
   "status",
+  "council.inventory",
   "policy.list",
   "policy.read",
   "worktree.list",

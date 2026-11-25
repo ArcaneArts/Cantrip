@@ -127,15 +127,17 @@
     "mcpStdioOutput/council_history_search": 1567,
     "mcpStdioInput/council_history_read": 1582,
     "mcpStdioOutput/council_history_read": 1584,
-    "cantripMcpBindingSchema": 1595,
-    "workerCantripMcpServerCapabilitiesSchema": 1617,
-    "cantripMcpToolHelpInputSchema": 1623,
+    "mcpStdioInput/council_inventory": 1595,
+    "mcpStdioOutput/council_inventory": 1610,
+    "cantripMcpBindingSchema": 1626,
+    "workerCantripMcpServerCapabilitiesSchema": 1648,
+    "cantripMcpToolHelpInputSchema": 1654,
     "cantripMcpContextGetInputSchema": 47,
-    "mcpHostSessionClaims": 1625,
-    "cuaMcpBrokerRequestSchema": 1628,
-    "cuaMcpResetArgumentsSchema": 1645,
-    "cuaMcpScriptArgumentsSchema": 1647,
-    "cuaMcpResultSchema": 1649
+    "mcpHostSessionClaims": 1656,
+    "cuaMcpBrokerRequestSchema": 1659,
+    "cuaMcpResetArgumentsSchema": 1676,
+    "cuaMcpScriptArgumentsSchema": 1678,
+    "cuaMcpResultSchema": 1680
   },
   "nodes": [
     {
@@ -310,7 +312,8 @@
         "council.memory.read",
         "council.memory.write",
         "council.history.search",
-        "council.history.read"
+        "council.history.read",
+        "council.inventory"
       ],
       "checks": []
     },
@@ -15570,10 +15573,306 @@
     },
     {
       "type": "union",
-      "name": "cantripMcpBindingSchema",
+      "name": "councilInventoryInputSchema",
       "options": [
         1596,
-        1610
+        1603,
+        1607
+      ],
+      "discriminator": "section",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "cursor": 1597,
+        "limit": 1599,
+        "section": 1601
+      },
+      "catchall": 1602,
+      "checks": []
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1598,
+      "defaultValue": 0,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 100000,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "default",
+      "optionalIn": true,
+      "innerType": 1600,
+      "defaultValue": 25,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 1,
+          "inclusive": true
+        },
+        {
+          "check": "less_than",
+          "value": 100,
+          "inclusive": true
+        }
+      ]
+    },
+    {
+      "type": "literal",
+      "values": [
+        "projects"
+      ],
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "cursor": 1597,
+        "limit": 1599,
+        "section": 1604,
+        "projectId": 1605
+      },
+      "catchall": 1606,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "chats"
+      ],
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 255,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "shape": {
+        "cursor": 1597,
+        "limit": 1599,
+        "section": 1608,
+        "projectId": 1605
+      },
+      "catchall": 1609,
+      "checks": []
+    },
+    {
+      "type": "literal",
+      "values": [
+        "tasks"
+      ],
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilInventoryToolOutputSchema",
+      "shape": {
+        "summary": 50,
+        "target": 1529,
+        "worktreeId": 53,
+        "continuationScheduled": 56,
+        "mutated": 58,
+        "data": 1611
+      },
+      "catchall": 111,
+      "checks": []
+    },
+    {
+      "type": "object",
+      "name": "councilInventoryResultSchema",
+      "shape": {
+        "section": 1612,
+        "nextCursor": 1613,
+        "entries": 1615
+      },
+      "catchall": 1625,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "projects",
+        "chats",
+        "tasks"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 1614,
+      "checks": []
+    },
+    {
+      "type": "number",
+      "checks": [
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        },
+        {
+          "check": "greater_than",
+          "value": 0,
+          "inclusive": false
+        },
+        {
+          "check": "number_format",
+          "format": "safeint",
+          "abort": false
+        }
+      ]
+    },
+    {
+      "type": "array",
+      "element": 1616,
+      "checks": [
+        {
+          "check": "max_length",
+          "maximum": 100,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shape": {
+        "id": 1605,
+        "kind": 1617,
+        "projectId": 1605,
+        "workerId": 1618,
+        "status": 1619,
+        "permissionProfileId": 1621,
+        "title": 1622
+      },
+      "catchall": 1624,
+      "checks": []
+    },
+    {
+      "type": "enum",
+      "values": [
+        "project",
+        "chat",
+        "task"
+      ],
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 1605,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 1620,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 64,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "nullable",
+      "innerType": 1605,
+      "checks": []
+    },
+    {
+      "type": "nullable",
+      "innerType": 1623,
+      "checks": []
+    },
+    {
+      "type": "string",
+      "checks": [
+        {
+          "check": "min_length",
+          "minimum": 1,
+          "when": "length"
+        },
+        {
+          "check": "max_length",
+          "maximum": 1000,
+          "when": "length"
+        }
+      ]
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "never",
+      "checks": []
+    },
+    {
+      "type": "union",
+      "name": "cantripMcpBindingSchema",
+      "options": [
+        1627,
+        1641
       ],
       "discriminator": "contextKind",
       "checks": [
@@ -15587,22 +15886,22 @@
     {
       "type": "object",
       "shape": {
-        "bindingId": 1597,
-        "ownerId": 1598,
-        "chatId": 1599,
-        "executionLaneId": 1600,
-        "workerId": 1601,
+        "bindingId": 1628,
+        "ownerId": 1629,
+        "chatId": 1630,
+        "executionLaneId": 1631,
+        "workerId": 1632,
         "permissionProfileId": 72,
-        "allowedOperations": 1602,
-        "issuedAt": 1603,
-        "expiresAt": 1604,
-        "contextKind": 1605,
-        "projectId": 1606,
-        "worktreeId": 1607,
+        "allowedOperations": 1633,
+        "issuedAt": 1634,
+        "expiresAt": 1635,
+        "contextKind": 1636,
+        "projectId": 1637,
+        "worktreeId": 1638,
         "rootKind": 74,
-        "scratchRootId": 1608
+        "scratchRootId": 1639
       },
-      "catchall": 1609,
+      "catchall": 1640,
       "checks": []
     },
     {
@@ -15689,7 +15988,7 @@
         },
         {
           "check": "max_length",
-          "maximum": 62,
+          "maximum": 63,
           "when": "length"
         },
         {
@@ -15772,22 +16071,22 @@
     {
       "type": "object",
       "shape": {
-        "bindingId": 1597,
-        "ownerId": 1598,
-        "chatId": 1599,
-        "executionLaneId": 1600,
-        "workerId": 1601,
+        "bindingId": 1628,
+        "ownerId": 1629,
+        "chatId": 1630,
+        "executionLaneId": 1631,
+        "workerId": 1632,
         "permissionProfileId": 72,
-        "allowedOperations": 1602,
-        "issuedAt": 1603,
-        "expiresAt": 1604,
-        "contextKind": 1611,
-        "projectId": 1612,
-        "worktreeId": 1613,
-        "rootKind": 1614,
-        "scratchRootId": 1615
+        "allowedOperations": 1633,
+        "issuedAt": 1634,
+        "expiresAt": 1635,
+        "contextKind": 1642,
+        "projectId": 1643,
+        "worktreeId": 1644,
+        "rootKind": 1645,
+        "scratchRootId": 1646
       },
-      "catchall": 1616,
+      "catchall": 1647,
       "checks": []
     },
     {
@@ -15832,15 +16131,15 @@
       "type": "object",
       "name": "workerCantripMcpServerCapabilitiesSchema",
       "shape": {
-        "bindingProtocolVersions": 1618,
-        "operations": 1620
+        "bindingProtocolVersions": 1649,
+        "operations": 1651
       },
-      "catchall": 1622,
+      "catchall": 1653,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1619,
+      "element": 1650,
       "checks": [
         {
           "check": "min_length",
@@ -15882,7 +16181,7 @@
     },
     {
       "type": "array",
-      "element": 1621,
+      "element": 1652,
       "checks": [
         {
           "check": "min_length",
@@ -15927,7 +16226,7 @@
       "shape": {
         "tool": 135
       },
-      "catchall": 1624,
+      "catchall": 1655,
       "checks": []
     },
     {
@@ -15937,8 +16236,8 @@
     {
       "type": "union",
       "options": [
-        1626,
-        1627
+        1657,
+        1658
       ],
       "discriminator": "contextKind",
       "checks": []
@@ -15946,44 +16245,44 @@
     {
       "type": "object",
       "shape": {
-        "ownerId": 1598,
-        "chatId": 1599,
-        "workerId": 1601,
+        "ownerId": 1629,
+        "chatId": 1630,
+        "workerId": 1632,
         "permissionProfileId": 72,
-        "allowedOperations": 1602,
-        "contextKind": 1605,
-        "projectId": 1606,
-        "worktreeId": 1607,
+        "allowedOperations": 1633,
+        "contextKind": 1636,
+        "projectId": 1637,
+        "worktreeId": 1638,
         "rootKind": 74,
-        "scratchRootId": 1608
+        "scratchRootId": 1639
       },
-      "catchall": 1609,
+      "catchall": 1640,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "ownerId": 1598,
-        "chatId": 1599,
-        "workerId": 1601,
+        "ownerId": 1629,
+        "chatId": 1630,
+        "workerId": 1632,
         "permissionProfileId": 72,
-        "allowedOperations": 1602,
-        "contextKind": 1611,
-        "projectId": 1612,
-        "worktreeId": 1613,
-        "rootKind": 1614,
-        "scratchRootId": 1615
+        "allowedOperations": 1633,
+        "contextKind": 1642,
+        "projectId": 1643,
+        "worktreeId": 1644,
+        "rootKind": 1645,
+        "scratchRootId": 1646
       },
-      "catchall": 1616,
+      "catchall": 1647,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "bindingId": 1629,
-        "request": 1630
+        "bindingId": 1660,
+        "request": 1661
       },
-      "catchall": 1644,
+      "catchall": 1675,
       "checks": []
     },
     {
@@ -16002,8 +16301,8 @@
     {
       "type": "union",
       "options": [
-        1631,
-        1641
+        1662,
+        1672
       ],
       "discriminator": "operation",
       "checks": []
@@ -16011,14 +16310,14 @@
     {
       "type": "object",
       "shape": {
-        "threadId": 1632,
-        "turnId": 1633,
-        "itemId": 1634,
-        "callId": 1636,
-        "operation": 1638,
-        "script": 1639
+        "threadId": 1663,
+        "turnId": 1664,
+        "itemId": 1665,
+        "callId": 1667,
+        "operation": 1669,
+        "script": 1670
       },
-      "catchall": 1640,
+      "catchall": 1671,
       "checks": []
     },
     {
@@ -16059,7 +16358,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1635,
+      "innerType": 1666,
       "checks": []
     },
     {
@@ -16082,7 +16381,7 @@
     },
     {
       "type": "nullable",
-      "innerType": 1637,
+      "innerType": 1668,
       "checks": []
     },
     {
@@ -16138,13 +16437,13 @@
     {
       "type": "object",
       "shape": {
-        "threadId": 1632,
-        "turnId": 1633,
-        "itemId": 1634,
-        "callId": 1636,
-        "operation": 1642
+        "threadId": 1663,
+        "turnId": 1664,
+        "itemId": 1665,
+        "callId": 1667,
+        "operation": 1673
       },
-      "catchall": 1643,
+      "catchall": 1674,
       "checks": []
     },
     {
@@ -16165,7 +16464,7 @@
     {
       "type": "object",
       "shape": {},
-      "catchall": 1646,
+      "catchall": 1677,
       "checks": []
     },
     {
@@ -16175,9 +16474,9 @@
     {
       "type": "object",
       "shape": {
-        "script": 1639
+        "script": 1670
       },
-      "catchall": 1648,
+      "catchall": 1679,
       "checks": []
     },
     {
@@ -16187,42 +16486,42 @@
     {
       "type": "object",
       "shape": {
-        "_meta": 1650,
-        "content": 1660,
-        "structuredContent": 1688,
-        "isError": 1692
+        "_meta": 1681,
+        "content": 1691,
+        "structuredContent": 1719,
+        "isError": 1723
       },
-      "catchall": 1694,
+      "catchall": 1725,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1651,
+      "innerType": 1682,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "progressToken": 1652,
-        "io.modelcontextprotocol/related-task": 1656
+        "progressToken": 1683,
+        "io.modelcontextprotocol/related-task": 1687
       },
-      "catchall": 1659,
+      "catchall": 1690,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1653,
+      "innerType": 1684,
       "checks": []
     },
     {
       "type": "union",
       "options": [
-        1654,
-        1655
+        1685,
+        1686
       ],
       "checks": []
     },
@@ -16244,13 +16543,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1657,
+      "innerType": 1688,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "taskId": 1658
+        "taskId": 1689
       },
       "checks": []
     },
@@ -16265,30 +16564,30 @@
     {
       "type": "default",
       "optionalIn": true,
-      "innerType": 1661,
+      "innerType": 1692,
       "defaultValue": [],
       "checks": []
     },
     {
       "type": "array",
-      "element": 1662,
+      "element": 1693,
       "checks": []
     },
     {
       "type": "union",
       "options": [
-        1663,
-        1679
+        1694,
+        1710
       ],
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "type": 1664,
-        "text": 1665,
-        "annotations": 1666,
-        "_meta": 1675
+        "type": 1695,
+        "text": 1696,
+        "annotations": 1697,
+        "_meta": 1706
       },
       "checks": []
     },
@@ -16307,15 +16606,15 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1667,
+      "innerType": 1698,
       "checks": []
     },
     {
       "type": "object",
       "shape": {
-        "audience": 1668,
-        "priority": 1671,
-        "lastModified": 1673
+        "audience": 1699,
+        "priority": 1702,
+        "lastModified": 1704
       },
       "checks": []
     },
@@ -16323,12 +16622,12 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1669,
+      "innerType": 1700,
       "checks": []
     },
     {
       "type": "array",
-      "element": 1670,
+      "element": 1701,
       "checks": []
     },
     {
@@ -16343,7 +16642,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1672,
+      "innerType": 1703,
       "checks": []
     },
     {
@@ -16365,7 +16664,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1674,
+      "innerType": 1705,
       "checks": []
     },
     {
@@ -16384,13 +16683,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1676,
+      "innerType": 1707,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1677,
-      "valueType": 1678,
+      "keyType": 1708,
+      "valueType": 1709,
       "checks": []
     },
     {
@@ -16404,11 +16703,11 @@
     {
       "type": "object",
       "shape": {
-        "type": 1680,
-        "data": 1681,
-        "mimeType": 1682,
-        "annotations": 1683,
-        "_meta": 1684
+        "type": 1711,
+        "data": 1712,
+        "mimeType": 1713,
+        "annotations": 1714,
+        "_meta": 1715
       },
       "checks": []
     },
@@ -16431,20 +16730,20 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1667,
+      "innerType": 1698,
       "checks": []
     },
     {
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1685,
+      "innerType": 1716,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1686,
-      "valueType": 1687,
+      "keyType": 1717,
+      "valueType": 1718,
       "checks": []
     },
     {
@@ -16459,13 +16758,13 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1689,
+      "innerType": 1720,
       "checks": []
     },
     {
       "type": "record",
-      "keyType": 1690,
-      "valueType": 1691,
+      "keyType": 1721,
+      "valueType": 1722,
       "checks": []
     },
     {
@@ -16480,7 +16779,7 @@
       "type": "optional",
       "optionalIn": true,
       "optionalOut": true,
-      "innerType": 1693,
+      "innerType": 1724,
       "checks": []
     },
     {

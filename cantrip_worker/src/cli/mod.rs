@@ -354,6 +354,16 @@ impl Handler {
                 .lookup(&request["context"]["codexThreadId"], &self.encryption),
         );
         match request["command"].as_str().context("CLI command name")? {
+            "council.inventory" => {
+                let identity = self.encryption.bound_identity()?;
+                let mut result = relay.execute(request, id).await?;
+                result["data"] = crate::protected_content::council_inventory::open(
+                    &self.encryption,
+                    &identity,
+                    &result["data"],
+                )?;
+                checked("cantripCliCommandResultSchema", &result)
+            }
             "run.logs" => run::logs(&relay, &self.encryption, request, id).await,
             "run.secret-set" => run::set_secret(&relay, &self.encryption, request, id).await,
             "policy.list" | "policy.read" => {

@@ -1,5 +1,9 @@
 use super::{Authorized, Inner};
-use crate::{encryption::Service, mcp::bindings::COUNCIL_TOOLS, protected_content::council_memory};
+use crate::{
+    encryption::Service,
+    mcp::bindings::COUNCIL_TOOLS,
+    protected_content::{council_inventory, council_memory},
+};
 use anyhow::{Context, Result, ensure};
 use cantrip_crypto::{
     Zeroizing,
@@ -59,6 +63,13 @@ impl Inner {
                         .map(|agent| open(service, authorization, agent))
                         .collect::<Result<Vec<_>>>()?
                 );
+            }
+            "council.inventory" => {
+                let identity = (
+                    authorization.identity.0.clone(),
+                    json!(authorization.identity.1),
+                );
+                reply["data"] = council_inventory::open(service, &identity, &reply["data"])?;
             }
             _ => {
                 reply["data"] = open_memory(service, authorization, agent_id, &reply["data"])?;

@@ -5,6 +5,7 @@ import { actualCouncilBrowserHistory } from "./actual-council-browser-history.mj
 import { actualCouncilCompaction } from "./actual-council-compaction.mjs";
 import { actualCouncilMemory } from "./actual-council-memory.mjs";
 import { actualCouncilHistory } from "./actual-council-history.mjs";
+import { actualCouncilInventory } from "./actual-council-inventory.mjs";
 import { eventually } from "./full-worker.mjs";
 import { modelFunctions, taskModelProvider } from "./task-model-provider.mjs";
 
@@ -25,6 +26,7 @@ export async function actualCouncilSteering({
   testCreation = false,
   memoryAppOrigin,
   historyFixture,
+  inventory,
   browserHistory,
   compaction,
   raceMarker,
@@ -46,6 +48,7 @@ export async function actualCouncilSteering({
         role,
         testCreation,
         readOnly,
+        nativeCli,
       }) => {
         const models = await import("/src/lib/api/models.ts");
         const provider = await models.createModelProvider({
@@ -68,6 +71,7 @@ export async function actualCouncilSteering({
           ...(readOnly
             ? { defaultCouncilPermissionProfileId: ":read-only" }
             : {}),
+          ...(nativeCli ? { defaultCouncilPermissionProfileId: ":yolo" } : {}),
         });
         const workers = await (
           await import("/src/lib/api/worker-wire.ts")
@@ -77,7 +81,7 @@ export async function actualCouncilSteering({
         ).ensureChatWorkerEncryption({
           worker: workers.find((worker) => worker.workerId === workerId),
         });
-        if (testCreation) {
+        if (testCreation || nativeCli) {
           await (
             await import("/src/lib/private-label-worker-encryption.ts")
           ).ensurePrivateLabelWorkerEncryption({
@@ -106,6 +110,7 @@ export async function actualCouncilSteering({
         role,
         testCreation,
         readOnly: Boolean(memoryAppOrigin) && !testCreation,
+        nativeCli: Boolean(inventory),
       },
     );
     await eventually(
@@ -348,6 +353,19 @@ export async function actualCouncilSteering({
         submit,
         readChat,
         readMessages,
+        result,
+      });
+    }
+    if (inventory) {
+      await actualCouncilInventory({
+        ...inventory,
+        page,
+        chatId,
+        workerId,
+        model,
+        tools: modelFunctions(held.request.input.tools),
+        submit,
+        readChat,
         result,
       });
     }
