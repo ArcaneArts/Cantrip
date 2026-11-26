@@ -244,16 +244,27 @@ export async function actualTaskClient({
         projectId,
         "Private actual Goal Task",
       );
+      const { uploadChatAttachment } =
+        await import("/src/lib/api/attachments.ts");
+      const attachment = await uploadChatAttachment(
+        created.chat.id,
+        new File(["Private planning attachment"], "task-plan-input.txt", {
+          type: "text/plain",
+        }),
+        "text",
+        "file",
+      );
       const task = await api.updateTaskDraft(created.chat.id, {
         rowVersion: created.task.rowVersion,
         briefMarkdown: "Private full-worker planning brief 🍄",
         planGoalEnabled: true,
+        draftAttachmentIds: [attachment.id],
       });
       window.folderLive.retainScope({ kind: "chat", chatId: created.chat.id });
       return { chat: created.chat, task };
     }, projectId);
     const planText = "Private full-worker implementation plan 🌲";
-    model.reply({
+    const planner = model.reply({
       text: JSON.stringify({ planMarkdown: planText, questions: [] }),
     });
     await page.evaluate(
@@ -277,6 +288,11 @@ export async function actualTaskClient({
     );
     assert.equal(review.planMarkdown, planText);
     assert.equal(review.planningRound, 1);
+    assert.match(
+      JSON.stringify(planner.request?.input),
+      /task-plan-input\.txt/,
+      "the scheduled planning turn includes a path for its saved attachment",
+    );
     const objective = "Private full-worker implementation objective 🌙";
     const finalizer = model.reply({
       text: JSON.stringify({

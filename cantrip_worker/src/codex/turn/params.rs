@@ -5,7 +5,8 @@ use cantrip_wire::{JsString, Value, value::json};
 use std::path::Path;
 
 pub(super) fn validate(command: &Value) -> Result<()> {
-    let task = super::task::is_round(command) || super::task::is_goal(command);
+    let task_round = super::task::is_round(command);
+    let task = task_round || super::task::is_goal(command);
     let queued = super::queued::is_queued(command);
     let guest = command["executionProfile"] == "cantrip-os";
     let supported_content = if task {
@@ -26,6 +27,7 @@ pub(super) fn validate(command: &Value) -> Result<()> {
                 || !command["taskResumption"].is_null()))
         || (!guest
             && !queued
+            && !task_round
             && command["attachments"]
                 .as_array()
                 .is_some_and(|items| !items.is_empty()))
@@ -271,4 +273,28 @@ fn worktree_policy(command: &Value, primary_read_only: bool) -> String {
         "This chat is Agent managed and may use the managed Cantrip MCP `worktree_create` and `worktree_switch` tools when isolation is appropriate; use `cantrip worktree` only as a fallback."
     };
     format!("{placement} {mode}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate;
+    use cantrip_wire::value::json;
+
+    #[test]
+    fn scheduled_task_rounds_accept_resolved_attachments() {
+        let mut command = json!({
+            "contextKind": "project",
+            "resultMode": json!({"kind": "task-encrypted"}),
+            "taskDispatchLease": json!({}),
+            "taskInferenceInput": json!({}),
+            "attachments": vec![json!({"id": "draft-attachment"})],
+        });
+        validate(&command).unwrap();
+
+        command["resultMode"] = json!({"kind": "visible"});
+        command["taskDispatchLease"] = json!(null);
+        command["taskInferenceInput"] = json!(null);
+        command["prompt"] = json!("plain turn");
+        assert!(validate(&command).is_err());
+    }
 }
