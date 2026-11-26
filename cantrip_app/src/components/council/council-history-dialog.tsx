@@ -43,7 +43,7 @@ export function CouncilHistoryDialog({
   const [query, setQuery] = useState("");
   const [exact, setExact] = useState(false);
   const [focused, setFocused] = useState(messageId);
-  const { deletedIds } = useChatMessageLiveOverlay(agentId).data;
+  const { deletedIds } = useChatMessageLiveOverlay(agentId);
   const search = useMutation({
     gcTime: 0,
     mutationFn: ({ text, literal }: { text: string; literal: boolean }) =>

@@ -1,5 +1,6 @@
 import { nativeTurnSettingsForMessages } from "./native-turn-settings-evidence";
 import {
+  skipToken,
   useInfiniteQuery,
   useQuery,
   useQueryClient,
@@ -34,14 +35,16 @@ interface UseChatMessageHistoryOptions {
 }
 
 export function useChatMessageLiveOverlay(chatId: string, enabled = true) {
-  return useQuery({
+  const { data = EMPTY_CHAT_MESSAGE_LIVE_OVERLAY } = useQuery({
     enabled: false,
     subscribed: enabled,
     gcTime: CHAT_MESSAGE_CACHE_GC_MS,
     initialData: EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
+    queryFn: skipToken,
     queryKey: chatMessageLiveQueryKey(chatId),
     staleTime: Number.POSITIVE_INFINITY,
   });
+  return data;
 }
 
 export function useChatMessageHistory({
@@ -60,6 +63,7 @@ export function useChatMessageHistory({
     enabled: false,
     subscribed: enabled,
     gcTime: CHAT_MESSAGE_CACHE_GC_MS,
+    queryFn: skipToken,
     queryKey: loadedHeadKey,
     staleTime: Number.POSITIVE_INFINITY,
   });
@@ -69,6 +73,7 @@ export function useChatMessageHistory({
     subscribed: enabled,
     gcTime: CHAT_MESSAGE_CACHE_GC_MS,
     initialData: EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
+    queryFn: skipToken,
     queryKey: chatMessageProvisionalQueryKey(chatId),
     staleTime: Number.POSITIVE_INFINITY,
   });
@@ -141,13 +146,8 @@ export function useChatMessageHistory({
   );
   const data = useMemo(
     () =>
-      mergeChatMessageHistory(
-        pages,
-        live.data,
-        maxCachedMessages,
-        provisional.data,
-      ),
-    [live.data, maxCachedMessages, pages, provisional.data],
+      mergeChatMessageHistory(pages, live, maxCachedMessages, provisional.data),
+    [live, maxCachedMessages, pages, provisional.data],
   );
   const nativeTurnSettings = useMemo(
     () =>
