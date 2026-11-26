@@ -26,6 +26,28 @@ afterEach(() => {
 });
 
 describe("authenticated API client", () => {
+  it("passes an aborted request back to its caller without logging a network error", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(controller.signal.reason));
+    await expect(
+      request("/api/chats/chat/messages", { signal: controller.signal }),
+    ).rejects.toBe(controller.signal.reason);
+    expect(readClientLogs().records).toEqual([]);
+
+    const networkError = new TypeError("failed to fetch");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(networkError));
+    await expect(request("/api/chats/chat/messages")).rejects.toBe(
+      networkError,
+    );
+    expect(readClientLogs().records).toContainEqual(
+      expect.objectContaining({
+        level: "error",
+        context: expect.objectContaining({ reasonCode: "network-error" }),
+      }),
+    );
+  });
+
   it("does not send a bound request after its account lifetime changes", async () => {
     setClientSession({
       authMode: "accounts",
