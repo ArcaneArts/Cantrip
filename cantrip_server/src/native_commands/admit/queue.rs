@@ -1,9 +1,6 @@
 use super::{Admission, raw_one, reject, text};
 use crate::native_commands::goal_handoff;
-use crate::{
-    database::Transaction,
-    wire::{coercion::truthy, value::json},
-};
+use crate::{database::Transaction, wire::coercion::truthy};
 use anyhow::Result;
 impl Admission<'_> {
     pub(super) async fn check_queue(&self, tx: &Transaction<'_>) -> Result<()> {
@@ -128,19 +125,9 @@ impl Admission<'_> {
                 &[&text(&claim["prompt_id"])?],
             )
             .await?;
-            let method = prompt
-                .as_ref()
-                .and_then(|p| p["opaque_content"].get("executionMethod"))
-                .filter(|v| !v.is_null())
-                .cloned()
-                .unwrap_or_else(|| {
-                    if prompt.as_ref().is_some_and(|p| p["mode"] == "goal") {
-                        json!("thread/goal/set")
-                    } else {
-                        json!("turn/start")
-                    }
-                });
             if !prompt.is_some_and(|p| {
+                let method =
+                    super::super::queued_prompt::execution_method(&p["opaque_content"], &p["mode"]);
                 p["state"] == "claimed"
                     && p["revision"] == claim["prompt_revision"]
                     && (input["method"] == method

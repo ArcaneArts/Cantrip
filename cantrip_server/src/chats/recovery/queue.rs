@@ -147,17 +147,10 @@ impl Service {
             };
             context = next;
         }
-        let method = prompt
-            .get("executionMethod")
-            .filter(|v| !v.is_null())
-            .cloned()
-            .unwrap_or_else(|| {
-                json!(if prompt["classification"]["mode"] == "goal" {
-                    "thread/goal/set"
-                } else {
-                    "turn/start"
-                })
-            });
+        let method = json!(crate::native_commands::queued_prompt::execution_method(
+            &prompt,
+            &prompt["classification"]["mode"],
+        ));
         if let Some(claim) = claim.as_ref().filter(|_| method != "turn/start") {
             return self
                 .execute_native_action(owner, chat, &prompt, claim, &method)
