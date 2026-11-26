@@ -279,6 +279,7 @@ function ModelList({
 
 export function ModelsSettings({
   activeTab,
+  inSearchResults = false,
   workerId = null,
   models,
   providers,
@@ -299,6 +300,7 @@ export function ModelsSettings({
   renderProviderOverview,
 }: {
   activeTab: ModelsSettingsTab;
+  inSearchResults?: boolean;
   workerId?: string | null;
   models: ModelProfileSummary[];
   providers: ModelProviderSummary[];
@@ -441,103 +443,119 @@ export function ModelsSettings({
     onClick: () => onTabChange(tab),
   });
   return (
-    <div className="min-w-0 space-y-4" data-slot="models-settings">
-      <div className="sticky top-0 z-10 flex min-w-0 items-center gap-1 border-b bg-transparent">
-        <div
-          ref={tabList}
-          role="tablist"
-          aria-label="Model providers"
-          aria-orientation="horizontal"
-          className="flex min-w-0 items-center overflow-x-auto overflow-y-hidden overscroll-x-contain"
-          onKeyDown={navigateTabs}
-        >
-          <Button type="button" variant="ghost" {...tabProps("general")}>
-            <SlidersHorizontal className="size-3.5" />
-            General
-          </Button>
-          {providers.map((provider) => {
-            const tab = providerModelsTab(provider.id);
-            return (
-              <ContextMenu.Root key={provider.id}>
-                <ContextMenu.Trigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    {...tabProps(tab)}
-                    title={provider.name}
-                  >
-                    <Server className="size-3.5 shrink-0" />
-                    <span className="truncate">{provider.name}</span>
-                  </Button>
-                </ContextMenu.Trigger>
-                <ContextMenu.Portal>
-                  <StyledContextMenuContent>
-                    <StyledContextMenuItem
-                      onSelect={() => onEditProvider(provider)}
-                    >
-                      <Pencil className="size-3.5" />
-                      Edit
-                    </StyledContextMenuItem>
-                  </StyledContextMenuContent>
-                </ContextMenu.Portal>
-              </ContextMenu.Root>
-            );
-          })}
-        </div>
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <Button
-              className="size-8 shrink-0"
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label="Add provider"
-              title="Add provider"
-            >
-              <Plus className="size-4" />
+    <div
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      data-slot="models-settings"
+    >
+      <div
+        data-content-gutter={inSearchResults ? undefined : "standard"}
+        className={cn(
+          "shrink-0",
+          !inSearchResults && "px-4 pt-4 sm:px-6 sm:pt-6",
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-1 border-b">
+          <div
+            ref={tabList}
+            role="tablist"
+            aria-label="Model providers"
+            aria-orientation="horizontal"
+            className="flex min-w-0 items-center overflow-x-auto overflow-y-hidden overscroll-x-contain"
+            onKeyDown={navigateTabs}
+          >
+            <Button type="button" variant="ghost" {...tabProps("general")}>
+              <SlidersHorizontal className="size-3.5" />
+              General
             </Button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <StyledDropdownMenuContent align="end" sideOffset={4}>
-              {providerSetupOptions.map((setup) => {
-                const unavailableReason = providerSetupUnavailableReason(
-                  setup.kind,
-                  providers,
-                );
-                return (
-                  <StyledDropdownMenuItem
-                    key={setup.id}
-                    disabled={Boolean(unavailableReason)}
-                    onSelect={() => {
-                      if (!unavailableReason) onAddProvider(setup.id);
-                    }}
-                    title={unavailableReason ?? undefined}
-                    textValue={setup.label}
-                  >
-                    <ProviderSetupIcon setup={setup.id} />
-                    {unavailableReason ? (
-                      <span className="grid gap-0.5">
-                        <span>{setup.label}</span>
-                        <span className="text-xs">
-                          Already added · manage sign-ins in its tab
+            {providers.map((provider) => {
+              const tab = providerModelsTab(provider.id);
+              return (
+                <ContextMenu.Root key={provider.id}>
+                  <ContextMenu.Trigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      {...tabProps(tab)}
+                      title={provider.name}
+                    >
+                      <Server className="size-3.5 shrink-0" />
+                      <span className="truncate">{provider.name}</span>
+                    </Button>
+                  </ContextMenu.Trigger>
+                  <ContextMenu.Portal>
+                    <StyledContextMenuContent>
+                      <StyledContextMenuItem
+                        onSelect={() => onEditProvider(provider)}
+                      >
+                        <Pencil className="size-3.5" />
+                        Edit
+                      </StyledContextMenuItem>
+                    </StyledContextMenuContent>
+                  </ContextMenu.Portal>
+                </ContextMenu.Root>
+              );
+            })}
+          </div>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <Button
+                className="size-8 shrink-0"
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Add provider"
+                title="Add provider"
+              >
+                <Plus className="size-4" />
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <StyledDropdownMenuContent align="end" sideOffset={4}>
+                {providerSetupOptions.map((setup) => {
+                  const unavailableReason = providerSetupUnavailableReason(
+                    setup.kind,
+                    providers,
+                  );
+                  return (
+                    <StyledDropdownMenuItem
+                      key={setup.id}
+                      disabled={Boolean(unavailableReason)}
+                      onSelect={() => {
+                        if (!unavailableReason) onAddProvider(setup.id);
+                      }}
+                      title={unavailableReason ?? undefined}
+                      textValue={setup.label}
+                    >
+                      <ProviderSetupIcon setup={setup.id} />
+                      {unavailableReason ? (
+                        <span className="grid gap-0.5">
+                          <span>{setup.label}</span>
+                          <span className="text-xs">
+                            Already added · manage sign-ins in its tab
+                          </span>
                         </span>
-                      </span>
-                    ) : (
-                      setup.label
-                    )}
-                  </StyledDropdownMenuItem>
-                );
-              })}
-            </StyledDropdownMenuContent>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+                      ) : (
+                        setup.label
+                      )}
+                    </StyledDropdownMenuItem>
+                  );
+                })}
+              </StyledDropdownMenuContent>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        </div>
       </div>
       <div
         role="tabpanel"
         id={`${id}-panel`}
         aria-labelledby={`${id}-tab-${selectedTab}`}
         tabIndex={0}
-        className="min-w-0 space-y-4 outline-none"
+        data-content-gutter={inSearchResults ? undefined : "standard"}
+        className={cn(
+          "min-w-0 space-y-4 pt-4 outline-none",
+          !inSearchResults &&
+            "min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pb-4 sm:px-6 sm:pb-6",
+        )}
       >
         {provider ? (
           <section

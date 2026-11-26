@@ -1825,10 +1825,12 @@ export function SettingsPage({
         {(section, searchResults) => {
           const matchesSetting = (...ids: string[]) =>
             !searchResults || searchResults.some(({ id }) => ids.includes(id));
+          const modelsViewport =
+            section === "models" && !searchResults && Boolean(settings.data);
           return (
             <div
               data-content-gutter={
-                searchResults
+                searchResults || modelsViewport
                   ? undefined
                   : section === "logs"
                     ? "expansive"
@@ -1836,7 +1838,7 @@ export function SettingsPage({
                       ? "wide"
                       : "standard"
               }
-              className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${searchResults ? (section === "logs" ? "h-[32rem] overflow-hidden" : "overflow-visible") : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
+              className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${modelsViewport ? "flex flex-col overflow-hidden" : searchResults ? (section === "logs" ? "h-[32rem] overflow-hidden" : "overflow-visible") : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
             >
               <div
                 className={`${section === "general" || section === "appearance" || section === "computer-use" || section === "remote-desktop" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
@@ -2338,7 +2340,11 @@ export function SettingsPage({
                 </div>
               </div>
               {section === "models" && settings.isError ? (
-                <p role="alert" className="text-sm text-destructive">
+                <p
+                  role="alert"
+                  data-content-gutter={modelsViewport ? "standard" : undefined}
+                  className={`text-sm text-destructive${modelsViewport ? " shrink-0 px-4 pt-4 sm:px-6 sm:pt-6" : ""}`}
+                >
                   {errorText(settings.error)}
                 </p>
               ) : null}
@@ -2350,6 +2356,7 @@ export function SettingsPage({
               {section === "models" && settings.data ? (
                 <ModelsSettings
                   activeTab={activeModelsTab}
+                  inSearchResults={Boolean(searchResults)}
                   workerId={worker?.workerId ?? null}
                   models={models}
                   providers={providers}
