@@ -13,6 +13,7 @@ import {
   MDXEditor,
   type MDXEditorMethods,
   type RealmPlugin,
+  type Translation,
   Separator,
   StrikeThroughSupSubToggles,
   UndoRedo,
@@ -26,8 +27,15 @@ import {
   tablePlugin,
   thematicBreakPlugin,
   toolbarPlugin,
+  translation$,
 } from "@mdxeditor/editor";
-import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type KeyboardEvent,
+} from "react";
 
 import "./task-markdown-editor.css";
 
@@ -138,15 +146,30 @@ export function TaskMarkdownEditor({
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<MDXEditorMethods>(null);
   const latestEditorMarkdownRef = useRef(value);
-  const plugins = useMemo(createTaskMarkdownPlugins, []);
+  const translation = useCallback<Translation>(
+    (key, defaultValue, interpolations = {}) => {
+      if (key === "contentArea.editableMarkdown") return ariaLabel;
+      for (const [name, value] of Object.entries(interpolations)) {
+        defaultValue = defaultValue.replaceAll(`{{${name}}}`, String(value));
+      }
+      return defaultValue;
+    },
+    [ariaLabel],
+  );
+  const plugins = useMemo<RealmPlugin[]>(
+    () => [
+      ...createTaskMarkdownPlugins(),
+      { update: (realm) => realm.pub(translation$, translation) },
+    ],
+    [translation],
+  );
 
   useEffect(() => {
     const contentEditable = containerRef.current?.querySelector<HTMLElement>(
       ".mdxeditor-root-contenteditable [contenteditable]",
     );
-    contentEditable?.setAttribute("aria-label", ariaLabel);
     contentEditable?.setAttribute("aria-multiline", "true");
-  }, [ariaLabel, readOnly]);
+  }, [readOnly]);
 
   useEffect(() => {
     if (!shouldSyncTaskMarkdown(value, latestEditorMarkdownRef.current)) return;
@@ -182,6 +205,7 @@ export function TaskMarkdownEditor({
         spellCheck
         suppressHtmlProcessing
         toMarkdownOptions={{ bullet: "-", emphasis: "_" }}
+        translation={translation}
         trim={false}
         onChange={(markdown, initialMarkdownNormalize) => {
           latestEditorMarkdownRef.current = markdown;
