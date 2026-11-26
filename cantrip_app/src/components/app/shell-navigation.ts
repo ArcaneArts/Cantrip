@@ -974,7 +974,7 @@ export function createShellNavigationCommands({
       setWorkspaceSelection(emptyWorkspaceSelection(candidate));
       setPendingSurfaceSelection(null);
     }
-    setShowImporter(candidate === null);
+    setShowImporter(projects !== undefined && candidate === null);
     setShowSettings(false);
     setShowArchivedStandaloneChats(false);
     setShowServerAdmin(false);

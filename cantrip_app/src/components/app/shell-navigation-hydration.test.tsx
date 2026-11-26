@@ -117,11 +117,13 @@ afterEach(async () => {
 async function mount({
   persist = false,
   projects = [project],
+  projectsLoading = false,
   initial,
   fetchSettings = () => Promise.resolve(bundle()),
 }: {
   persist?: boolean;
   projects?: ProjectSummary[];
+  projectsLoading?: boolean;
   initial?: SettingsBundle;
   fetchSettings?: () => Promise<SettingsBundle>;
 } = {}) {
@@ -139,6 +141,7 @@ async function mount({
     settingsReady: boolean;
   };
   function Harness() {
+    const availableProjects = projectsLoading ? undefined : projects;
     const navigation = useShellNavigationState({
       isPopout: false,
       gitHistoryTarget: null,
@@ -158,7 +161,7 @@ async function mount({
       isPopout: false,
       navigation,
       popoutProjectId: null,
-      projects: { data: projects, isSuccess: true },
+      projects: { data: availableProjects, isSuccess: !projectsLoading },
       projectWorkspaces: { data: [], isSuccess: true },
       standaloneChats: { data: [], isSuccess: true, isError: false },
       settings,
@@ -174,7 +177,7 @@ async function mount({
       isPopout: false,
       navigation,
       persistAppDestination: persist ? save : async () => {},
-      projects,
+      projects: availableProjects,
       projectWorkspaces: [],
       setActiveProjectWorkspaceId: vi.fn(),
       setCommandBarOpen: vi.fn(),
@@ -183,7 +186,7 @@ async function mount({
       setPendingSurfaceSelection: vi.fn(),
       setWorkspaceSelection: vi.fn(),
       settings: settings.data,
-      visibleProjects: projects,
+      visibleProjects: availableProjects ?? [],
     });
     current = { navigation, commands, save, settingsReady: settings.isSuccess };
     return <span>{navigation.appMode ?? "loading"}</span>;
@@ -238,6 +241,23 @@ it.each(["chat", "council"] as const)(
 );
 
 describe("startup navigation and explicit mode choices", () => {
+  it("keeps GitHub import closed when entering IDE before projects have loaded", async () => {
+    const h = await mount({ projectsLoading: true });
+    await act(async () => h.current.commands.switchToChat());
+    await act(async () => h.current.commands.switchToIde());
+
+    expect(h.current.navigation.appMode).toBe("ide");
+    expect(h.current.navigation.showImporter).toBe(false);
+  });
+
+  it("opens GitHub import when the project inventory has loaded empty", async () => {
+    const h = await mount({ projects: [] });
+    await act(async () => h.current.commands.switchToIde());
+
+    expect(h.current.navigation.appMode).toBe("ide");
+    expect(h.current.navigation.showImporter).toBe(true);
+  });
+
   it.each(["ide", "chat"] as const)(
     "keeps an explicit %s selection when older settings arrive",
     async (mode) => {
