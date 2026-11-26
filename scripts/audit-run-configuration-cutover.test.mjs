@@ -53,3 +53,30 @@ test("audits current tracked and new source while ignoring deleted and ignored f
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("keeps the supported external Run status command outside the retired identifier check", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-cutover-audit-"));
+  const status = ["run", "status"].join("_");
+  const start = ["run", "start"].join("_");
+  const schema = "crates/cantrip-protocol/src/external_mcp/execution.rs";
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    await mkdir(path.dirname(path.join(root, schema)), { recursive: true });
+    await mkdir(path.join(root, "docs"));
+    await mkdir(path.join(root, "scripts"));
+    await writeFile(path.join(root, schema), status);
+    await writeFile(path.join(root, "docs/MCP.md"), status + "\n" + start);
+    await writeFile(path.join(root, "scripts/new.js"), status);
+    assert.deepEqual(
+      (await auditRunConfigurationCutover(root)).map(
+        ({ identifier, relativePath }) => [identifier, relativePath],
+      ),
+      [
+        [start, "docs/MCP.md"],
+        [status, "scripts/new.js"],
+      ],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
