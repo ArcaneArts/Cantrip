@@ -210,19 +210,18 @@ describe("Council default model", () => {
 
 describe("Models provider navigation", () => {
   it.each(["general", "provider:local"] as const)(
-    "leaves the tab strip transparent with %s selected",
+    "keeps the tab strip outside the scroll viewport with %s selected",
     async (activeTab) => {
       let view!: TestRenderer.ReactTestRenderer;
       await act(async () => {
         view = createView(<ModelsSettings {...props({ activeTab })} />);
       });
       const strip = view.root.findByProps({ role: "tablist" }).parent!;
-      const classes = (strip.props.className as string).split(/\s+/);
-      expect(classes.filter((name) => name.startsWith("bg-"))).toEqual([
-        "bg-transparent",
-      ]);
-      expect(classes).toContain("sticky");
-      expect(classes).toContain("border-b");
+      const panel = view.root.findByProps({ role: "tabpanel" });
+      expect(strip.parent?.parent).toBe(panel.parent);
+      expect(strip.props.className).toContain("border-b");
+      expect(strip.props.className).not.toMatch(/\b(sticky|bg-|backdrop-)/);
+      expect(panel.props.className).toContain("overflow-y-auto");
       await act(async () => view.unmount());
     },
   );
