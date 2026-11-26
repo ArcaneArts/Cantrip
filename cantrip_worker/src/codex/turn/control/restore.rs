@@ -203,8 +203,12 @@ impl Turns {
                 };
 
                 // Codex can ask for approval as soon as Resume releases the saved turn.
+                let session = receipt.session();
                 let mut native_interactions = runtime.interaction_requests(
-                    &thread, receipt.session()["contextKind"] == "project" && prepared.environment.is_none())?;
+                    &thread,
+                    (session["contextKind"] == "project" || session["council"] == true)
+                        && prepared.environment.is_none(),
+                )?;
                 native_interactions.bind_turn(&turn)?;
                 {
                     let _control = binding.pause_control.lock().await;

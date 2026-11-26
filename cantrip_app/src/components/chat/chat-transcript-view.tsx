@@ -1132,11 +1132,11 @@ export function ChatTranscriptView({
                       ) : undefined
                     }
                     subagentCapability={
-                      capabilities.subagents
+                      capabilities.subagents || capabilities.council
                         ? activeChatWorker?.codexRuntime.nativeSubagents
                         : undefined
                     }
-                    subagents={capabilities.subagents}
+                    subagents={capabilities.subagents || capabilities.council}
                     onSave={(configuration) =>
                       selectModelConfiguration.mutateAsync(configuration)
                     }

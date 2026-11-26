@@ -302,8 +302,13 @@ impl SettingsRepository {
                             if !ops.is_empty() && !ops.contains(&"language") {
                                 operation=ops[0].to_owned();
                                 tx.query("UPDATE model_profiles SET operation=$2,default_reasoning_effort=NULL,updated_at=$3 WHERE id=$1", &[&profile,&operation,&at]).await?;
-                                for column in ["default_model_id","default_chat_model_id","default_council_model_id","default_subagent_model_id","labeling_model_id"] {
-                                    let reset=if column=="default_subagent_model_id" {",default_custom_subagent_model=false"} else {""};
+                                for column in ["default_model_id","default_chat_model_id","default_council_model_id","default_council_subagent_model_id","default_subagent_model_id","labeling_model_id"] {
+                                    let reset = match column {
+                                        "default_subagent_model_id" => ",default_custom_subagent_model=false",
+                                        "default_council_subagent_model_id" => ",default_council_custom_subagent_model=NULL,default_council_subagent_reasoning_effort=NULL",
+                                        "default_council_model_id" => ",default_council_reasoning_effort=NULL,default_council_custom_subagent_model=NULL,default_council_subagent_model_id=NULL,default_council_subagent_reasoning_effort=NULL",
+                                        _ => "",
+                                    };
                                     tx.query(&format!("UPDATE user_settings SET {column}=NULL,updated_at=$3{reset} WHERE user_id=$1 AND {column}=$2"), &[&owner,&profile,&at]).await?;
                                 }
                             }

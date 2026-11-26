@@ -183,13 +183,24 @@ impl Repository {
             let chat = tx.query(
                 "INSERT INTO chats(
                      id,owner_id,context_kind,protected_label,experience,position,active_worker_id,
-                     active_scratch_root_id,worktree_mode,model_id,reasoning_effort,permission_profile_id
+                     active_scratch_root_id,worktree_mode,model_id,reasoning_effort,permission_profile_id,
+                     custom_subagent_model,subagent_model_id,subagent_reasoning_effort
                  ) SELECT $1,s.user_id,'council',$2::text::jsonb,'agent',
                      (SELECT coalesce(max(position)+1,0) FROM chats WHERE owner_id=s.user_id AND context_kind='council'),
                      $3,$4,NULL,coalesce(s.default_council_model_id,s.default_model_id),
-                     CASE WHEN s.default_council_model_id IS NULL THEN s.default_reasoning_effort END,
-                     s.default_council_permission_profile_id
-                 FROM user_settings s WHERE s.user_id=$5
+                     CASE WHEN defaults.inherited THEN s.default_reasoning_effort ELSE s.default_council_reasoning_effort END,
+                     s.default_council_permission_profile_id,
+                     CASE WHEN defaults.inherited THEN s.default_custom_subagent_model
+                          ELSE s.default_council_custom_subagent_model IS TRUE AND s.default_council_subagent_model_id IS NOT NULL END,
+                     CASE WHEN defaults.inherited THEN s.default_subagent_model_id ELSE s.default_council_subagent_model_id END,
+                     CASE WHEN defaults.inherited THEN s.default_subagent_reasoning_effort ELSE s.default_council_subagent_reasoning_effort END
+                 FROM user_settings s
+                 CROSS JOIN LATERAL (
+                     SELECT ROW(s.default_council_model_id,s.default_council_reasoning_effort,
+                         s.default_council_custom_subagent_model,s.default_council_subagent_model_id,
+                         s.default_council_subagent_reasoning_effort) IS NULL AS inherited
+                 ) defaults
+                 WHERE s.user_id=$5
                  ON CONFLICT(id) DO NOTHING RETURNING id",
                 &[&id,&label,&worker,&root,&owner],
             ).await?;

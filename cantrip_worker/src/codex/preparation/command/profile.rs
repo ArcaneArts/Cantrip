@@ -146,11 +146,12 @@ pub(super) async fn configuration(
     environment: Option<&Environment>,
 ) -> Result<Configuration> {
     let path = cwd.as_str().context("Invalid Unicode workspace path")?;
+    let council = command["session"]["council"] == true;
     let (workspace, instructions) = if let Some(environment) = environment {
         (path.to_owned(), environment.instructions.clone())
     } else {
         let workspace = std::path::absolute(Path::new(path))?;
-        let instructions = developer_instructions(standalone, &workspace).await;
+        let instructions = developer_instructions(standalone, council, &workspace).await;
         let workspace = workspace
             .to_str()
             .context("Invalid Unicode workspace path")?
@@ -158,7 +159,7 @@ pub(super) async fn configuration(
         (workspace, instructions)
     };
     let cwd = workspace.as_str();
-    let subagents = !standalone && environment.is_none();
+    let subagents = (!standalone || council) && environment.is_none();
     let defaults = if subagents {
         &command["subagentDefaults"]["model"]
     } else {
@@ -196,7 +197,11 @@ pub(super) async fn configuration(
         start["sandbox"] = json!("workspace-write");
     }
     if !command["model"]["reasoningEffort"].is_null() {
-        start["effort"] = command["model"]["reasoningEffort"].clone();
+        if council {
+            start["config"]["model_reasoning_effort"] = command["model"]["reasoningEffort"].clone();
+        } else {
+            start["effort"] = command["model"]["reasoningEffort"].clone();
+        }
     }
     if !defaults.is_null() {
         start["config"]["agents"]["default_subagent_model"] = defaults["name"].clone();
@@ -453,8 +458,14 @@ async fn call(runtime: &Runtime, method: &str, params: Value) -> Result<Value> {
         .with_context(|| format!("Codex did not return a {method} result."))
 }
 
-async fn developer_instructions(standalone: bool, workspace: &Path) -> String {
-    let base = if standalone { STANDALONE } else { PROJECT };
+async fn developer_instructions(standalone: bool, council: bool, workspace: &Path) -> String {
+    let base = if council {
+        COUNCIL
+    } else if standalone {
+        STANDALONE
+    } else {
+        PROJECT
+    };
     let mut instructions = format!("Computer use is not enabled.\n\n{base}");
     if !standalone && !has_git_metadata(workspace).await {
         instructions.push_str("\n\n");
@@ -477,4 +488,5 @@ async fn has_git_metadata(workspace: &Path) -> bool {
 // Keep the host thread instruction strings in sync with the Node reference.
 const PROJECT: &str = r#"The managed `cantrip` MCP server is the preferred interface for Cantrip-owned state and surfaces. Start with `context_get`; use its exact context-window occupancy to judge whether imminent high-volume work fits. Call `context_compact` when the user requests `/compact` or the remaining context is inadequate, then finish the current turn so native compaction can run at the idle boundary. List targets instead of guessing identifiers, and call `tool_help` for the live exact schema before guessing tool arguments. Use `policy_list` plus `policy_read` whenever an effective policy summary requires its current full body. Use `run_configuration_detect` for typed project discovery, then `run_configuration_create`, `run_configuration_get`, and revision-checked `run_configuration_update` to author shared definitions under `.cantrip/run-configurations`. Always use stable configuration IDs and exact worktree IDs, never display names. Run lifecycle intent is explicit through `run_configuration_start`, `run_configuration_restart`, `run_configuration_stop`, `run_configuration_status`, and `run_configuration_read_output`; omitting the worktree selects Primary. Use `run_configuration_secret_set` for write-only encrypted values. If the managed MCP server or a required tool is unavailable, use the worker-authenticated `cantrip` CLI as a fallback and run `cantrip -h` for concise help. When a Cantrip tool or command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely."#;
 const NON_GIT: &str = r#"The current project path has no local `.git` metadata in it or any parent directory, so treat this project as a non-Git folder. Do not run Git or GitHub commands, inspect branches, remotes, or worktrees, or attempt commits or pull requests. Work directly with its files. Do not initialize Git unless the user explicitly asks."#;
+const COUNCIL: &str = r#"You are an account-owned Cantrip Council agent. Treat your private scratch folder as the normal workspace root. Use the managed Cantrip tools to discover resources and coordinate authorized work in projects."#;
 const STANDALONE: &str = r#"You are in a standalone Cantrip Chat with an isolated scratch folder. This is not an IDE project. The managed `cantrip` MCP exposes only `tool_help`, `web_search`, and `web_read`; use those tools for web research and do not request unavailable project tools through `tool_help`. Do not use or request Cantrip project, worktree, Task, Code, CodeGraph, console, relocation, trajectory, interactive browser, or subagent features. Treat the current scratch folder as the only normal workspace root."#;

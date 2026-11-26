@@ -168,6 +168,7 @@ impl SettingsRepository {
                 }
             }
             tx.query("UPDATE user_settings SET default_custom_subagent_model=false,updated_at=$3 WHERE user_id=$1 AND default_subagent_model_id=$2 AND EXISTS (SELECT 1 FROM model_profiles m WHERE m.id=$2 AND m.owner_id=$1)", &[&owner,&model,&now()]).await?;
+            tx.query("UPDATE user_settings SET default_council_reasoning_effort=CASE WHEN default_council_model_id=$2 THEN NULL ELSE default_council_reasoning_effort END, default_council_custom_subagent_model=NULL, default_council_subagent_model_id=NULL, default_council_subagent_reasoning_effort=NULL, updated_at=$3 WHERE user_id=$1 AND (default_council_model_id=$2 OR default_council_subagent_model_id=$2) AND EXISTS (SELECT 1 FROM model_profiles m WHERE m.id=$2 AND m.owner_id=$1)", &[&owner,&model,&now()]).await?;
             Ok(!tx.query("DELETE FROM model_profiles WHERE id=$1 AND owner_id=$2 RETURNING id", &[&model,&owner]).await?.is_empty())
         })).await
     }

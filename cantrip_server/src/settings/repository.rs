@@ -82,6 +82,10 @@ const PREFERENCES: &[&str] = &[
     "defaultChatReasoningEffort",
     "defaultChatPermissionProfileId",
     "defaultCouncilModelId",
+    "defaultCouncilReasoningEffort",
+    "defaultCouncilCustomSubagentModel",
+    "defaultCouncilSubagentModelId",
+    "defaultCouncilSubagentReasoningEffort",
     "defaultCouncilPermissionProfileId",
     "defaultWorkerId",
     "lastAppMode",
@@ -627,7 +631,14 @@ impl SettingsRepository {
         // A stored default must name an owned language model. Route and worker
         // availability are resolved when execution uses that model.
         let updated = self.database.query(&format!(
-            "UPDATE user_settings s SET {} FROM jsonb_populate_record(NULL::user_settings,$2::jsonb) v WHERE s.user_id=$1 AND (v.default_council_model_id IS NULL OR EXISTS (SELECT 1 FROM model_profiles m WHERE m.id=v.default_council_model_id AND m.owner_id=s.user_id AND m.operation='language' FOR SHARE)) RETURNING s.user_id",
+            "UPDATE user_settings s SET {} FROM jsonb_populate_record(NULL::user_settings,$2::jsonb) v
+             WHERE s.user_id=$1
+             AND NOT EXISTS (
+                SELECT 1 FROM unnest(ARRAY[v.default_council_model_id,v.default_council_subagent_model_id]) AS choice(id)
+                WHERE choice.id IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM model_profiles m WHERE m.id=choice.id AND m.owner_id=s.user_id AND m.operation='language' FOR SHARE
+                )
+             ) RETURNING s.user_id",
             sets.join(",")
         ), &[&owner,&Value::Object(values),&now()]).await?;
         if updated.is_empty() {

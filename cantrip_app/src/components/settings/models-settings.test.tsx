@@ -183,6 +183,24 @@ describe("Council default model", () => {
     expect(current).toContain('aria-label="Council default model"');
     expect(current).toContain("Use IDE default model");
   });
+
+  it("opens the shared full configuration on servers with Council model defaults", () => {
+    const settings = renderToStaticMarkup(
+      <ModelsSettings
+        {...props({
+          preferences: {
+            ...preferences,
+            defaultCouncilModelId: null,
+            defaultCouncilReasoningEffort: null,
+          },
+        })}
+      />,
+    );
+    expect(settings).toContain(
+      'aria-label="Council default model configuration"',
+    );
+    expect(settings).not.toContain('aria-label="Council default model"');
+  });
 });
 
 describe("Models provider navigation", () => {

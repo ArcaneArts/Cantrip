@@ -157,6 +157,9 @@ async fn current_native_http_authority_isolated_from_reference_server() -> Resul
         for patch in [
             json!({"defaultCouncilModelId":"foreign-language"}),
             json!({"defaultCouncilModelId":"council-embedding"}),
+            json!({"defaultCouncilSubagentModelId":"foreign-language"}),
+            json!({"defaultCouncilSubagentModelId":"council-embedding"}),
+            json!({"defaultCouncilCustomSubagentModel":true}),
             json!({"defaultCouncilPermissionProfileId":":custom"}),
         ] {
             assert_eq!(save(&patch).send().await?.status(), StatusCode::BAD_REQUEST);

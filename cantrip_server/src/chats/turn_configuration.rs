@@ -23,7 +23,8 @@ pub fn validate(context: &Value, input: &Value, options: &Value) -> Result<()> {
     Ok(())
 }
 pub fn model_configuration(context: &Value, input: &Value, model: Option<&Value>) -> Result<Value> {
-    let standalone = property(Some(context), "contextKind")?.is_some_and(|v| v == "standalone");
+    let standalone = property(Some(context), "contextKind")?.is_some_and(|v| v == "standalone")
+        && context.get("councilAgent").is_none();
     let requested = property(Some(input), "reasoningEffort")?
         .or(property(Some(context), "reasoningEffort")?)
         .cloned();

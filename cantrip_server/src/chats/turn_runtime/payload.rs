@@ -119,16 +119,14 @@ impl EventSink {
         } else {
             Vec::new()
         });
-        command["subagentDefaults"] = if let Some(child) = self
-            .subagent
-            .as_ref()
-            .filter(|_| e["contextKind"] == "project")
-        {
-            json!({"model":child["model"],"provider":child["provider"]})
-        } else {
-            Value::Null
-        };
-        if e["contextKind"] == "project"
+        let supports_subagents = e["contextKind"] == "project" || e.get("councilAgent").is_some();
+        command["subagentDefaults"] =
+            if let Some(child) = self.subagent.as_ref().filter(|_| supports_subagents) {
+                json!({"model":child["model"],"provider":child["provider"]})
+            } else {
+                Value::Null
+            };
+        if (e["contextKind"] == "project" || !command["subagentDefaults"].is_null())
             && t.attributed_worker.as_ref().is_some_and(|v| {
                 v["codexRuntime"]["nativeSubagents"]["available"] == true
                     && v["codexRuntime"]["nativeSubagents"]["protocolVersion"] == 1

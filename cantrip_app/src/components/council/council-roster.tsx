@@ -1,4 +1,5 @@
 import { Plus, Star } from "lucide-react";
+import { useId } from "react";
 
 import { Button } from "@/components/ui/button";
 import { InlineAlert } from "@/components/ui/inline-alert";
@@ -13,6 +14,7 @@ export function CouncilRoster({
   controller: CouncilWorkspaceController;
 }) {
   const { agent, roster, select, showEditor } = controller;
+  const rosterId = useId();
   const agents = roster.data ?? [];
   const list = (items: CouncilAgent[]) => (
     <ul>
@@ -20,15 +22,25 @@ export function CouncilRoster({
         <li key={item.id}>
           <Button
             aria-current={item.id === agent?.id ? "page" : undefined}
+            aria-describedby={item.role ? `${rosterId}-${item.id}` : undefined}
+            aria-label={item.title}
             className={cn(
-              "w-full justify-start gap-2 px-2 font-normal",
+              "h-auto min-h-9 w-full justify-start px-2 py-1.5 font-normal",
               item.id === agent?.id && "bg-accent",
             )}
             onClick={() => select(item.id)}
             variant="ghost"
           >
-            <span className="min-w-0 flex-1 truncate text-left">
-              {item.title}
+            <span className="grid min-w-0 flex-1 text-left">
+              <span className="truncate">{item.title}</span>
+              {item.role ? (
+                <span
+                  id={`${rosterId}-${item.id}`}
+                  className="truncate text-xs text-muted-foreground"
+                >
+                  {item.role}
+                </span>
+              ) : null}
             </span>
             {item.paused && !item.archived ? (
               <span className="text-xs text-muted-foreground">Paused</span>
@@ -49,7 +61,7 @@ export function CouncilRoster({
   return (
     <nav
       aria-label="Council agents"
-      className="flex min-h-0 flex-col gap-3 p-3"
+      className="flex min-h-0 flex-1 flex-col gap-3 p-3"
     >
       <Button variant="outline" onClick={() => showEditor("new")}>
         <Plus className="size-4" /> New agent
@@ -60,7 +72,7 @@ export function CouncilRoster({
       {roster.isPending ? (
         <p className="px-2 text-sm text-muted-foreground">Loading agents…</p>
       ) : null}
-      <div className="min-h-0 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {list(agents.filter((item) => !item.hidden && !item.archived))}
         {hidden.length ? (
           <details>

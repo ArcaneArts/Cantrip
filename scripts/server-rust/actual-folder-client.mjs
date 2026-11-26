@@ -1348,6 +1348,7 @@ async function flow(
           page,
           result,
           appOrigin: vite.resolvedUrls.local[0],
+          workerId,
         });
       }
       assert.deepEqual(errors, []);

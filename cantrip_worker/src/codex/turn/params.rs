@@ -215,6 +215,13 @@ pub(super) async fn native_input(
     if !command["model"]["reasoningEffort"].is_null() {
         params["effort"] = command["model"]["reasoningEffort"].clone();
     }
+    if command.get("councilAgent").is_some() {
+        // When present, Codex gives collaboration settings precedence over the
+        // top-level model and effort for a turn.
+        params["collaborationMode"]["settings"]["model"] = command["model"]["name"].clone();
+        params["collaborationMode"]["settings"]["reasoning_effort"] =
+            command["model"]["reasoningEffort"].clone();
+    }
     if structured {
         params["approvalPolicy"] = json!("never");
     }
