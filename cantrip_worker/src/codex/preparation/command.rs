@@ -665,6 +665,9 @@ impl Ensurer {
                             let runner =
                                 payload_digest(&json!([json!(chat), json!(history_epoch)]));
                             profile.id = surround("", &profile.id, &format!(":council:{runner}"));
+                            // Keep the existing Council rollout location while
+                            // adding the account's configured global skills.
+                            profile.extra_skill_roots.extend(this.0.skills.clone());
                         }
                         this.assert_bound(&bound)?;
                         let codex_home = profile.codex_home.clone();
@@ -995,8 +998,17 @@ impl Ensurer {
                                 message.clone(),
                             );
                         }
-                        if first_message.is_some() || command["taskGoalPermissions"] == true {
-                            profile::apply_goal_permissions(
+                        // Council's shared default applies between turns while the
+                        // existing native thread retains its history.
+                        let council_turn = session["council"] == true
+                            && command["type"] == "chat.turn"
+                            && held.is_none()
+                            && !stopping;
+                        if council_turn
+                            || first_message.is_some()
+                            || command["taskGoalPermissions"] == true
+                        {
+                            profile::apply_execution_permissions(
                                 &runtime,
                                 &loaded,
                                 &command,

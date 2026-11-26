@@ -36,7 +36,10 @@ import {
   actualCouncilSteering,
   councilSteeringFollowUp,
 } from "./actual-council-steering.mjs";
-import { actualCouncilAppMode } from "./actual-council-app-mode.mjs";
+import {
+  actualCouncilAppMode,
+  actualCouncilDisabled,
+} from "./actual-council-app-mode.mjs";
 import { fixtureCodex } from "../worker-rust/deferred-receipt-smoke-cases.mjs";
 import {
   disposableProviderTls,
@@ -479,8 +482,19 @@ const councilProjectMessages =
   councilProjectCreation ||
   councilProjectSteering ||
   process.argv.includes("--council-project-messages");
+const councilLaunchMobile = process.argv.includes("--council-launch-mobile");
+const councilLaunch =
+  councilLaunchMobile || process.argv.includes("--council-launch");
+const councilDisabled = process.argv.includes("--council-disabled");
+const councilLifecycle = process.argv.includes("--council-agent-lifecycle");
+const councilMcpSetup = process.argv.includes("--council-mcp-setup");
+const councilAccountInventory = process.argv.includes(
+  "--council-account-inventory",
+);
 const councilInventory =
-  councilProjectMessages || process.argv.includes("--council-inventory");
+  councilAccountInventory ||
+  councilProjectMessages ||
+  process.argv.includes("--council-inventory");
 const councilHistoryRedaction = process.argv.includes(
   "--council-history-redaction",
 );
@@ -563,7 +577,15 @@ async function flow(
   nativeProbeBinary,
   directBrokerBinary,
 ) {
-  const context = await browser.newContext();
+  const context = await browser.newContext(
+    councilLaunchMobile
+      ? {
+          isMobile: true,
+          hasTouch: true,
+          viewport: { width: 412, height: 839 },
+        }
+      : undefined,
+  );
   const page = await context.newPage();
   const taskOutcomeOrderKind = ["goal", "round"].find((kind) =>
     process.argv.includes(`--task-${kind}-outcome-order`),
@@ -1123,8 +1145,25 @@ async function flow(
       : councilSteerProxy
         ? { CANTRIP_CODEX_BIN: councilSteerProxy }
         : {};
+    const accountSkillHome = councilAccountInventory
+      ? path.join(dataDirectory, "account-skill-home")
+      : undefined;
+    if (accountSkillHome) {
+      const skill = path.join(
+        accountSkillHome,
+        "skills",
+        "council-release-playbook",
+      );
+      await mkdir(skill, { recursive: true });
+      await writeFile(
+        path.join(skill, "SKILL.md"),
+        "---\nname: council-release-playbook\ndescription: Private fixture for checking a Council release.\n---\n\nConfirm the release identifier.\n",
+      );
+    }
     await startWorker(enrollment.code, {
-      environment: councilWorkerEnvironment,
+      environment: accountSkillHome
+        ? { ...councilWorkerEnvironment, CODEX_HOME: accountSkillHome }
+        : councilWorkerEnvironment,
     });
     await eventually(workers, (workers) => {
       assert.equal(workers.length, 1);
@@ -1147,6 +1186,15 @@ async function flow(
       (fixture.workerFixture ?? fixture).server.origin,
     );
     assert.ok(credential);
+    if (councilDisabled) {
+      await actualCouncilDisabled({
+        page,
+        result,
+        appOrigin: vite.resolvedUrls.local[0],
+      });
+      assert.deepEqual(errors, []);
+      return;
+    }
     if (
       process.argv.includes("--council-steering") ||
       process.argv.includes("--council-agent-tools") ||
@@ -1155,6 +1203,9 @@ async function flow(
       councilHistory ||
       councilPeerMessages ||
       councilInventory ||
+      councilMcpSetup ||
+      councilLifecycle ||
+      councilLaunch ||
       councilCompaction ||
       councilBrowserHistory ||
       councilAutomations ||
@@ -1212,11 +1263,34 @@ async function flow(
               workers,
             }
           : undefined,
+        mcpSetupRoot: councilMcpSetup ? root : undefined,
+        launch: councilLaunch
+          ? {
+              mobile: councilLaunchMobile,
+              appOrigin: vite.resolvedUrls.local[0],
+              fixture,
+              root,
+              cliBinary,
+              restartPrimary: async () => {
+                const previous = worker.child.pid;
+                await stopWorker();
+                const replacement = await startWorker();
+                assert.notEqual(replacement.child.pid, previous);
+              },
+            }
+          : undefined,
+        lifecycle: councilLifecycle
+          ? {
+              appOrigin: vite.resolvedUrls.local[0],
+              workerDirectory: dataDirectory,
+            }
+          : undefined,
         inventory: councilInventory
           ? {
               fixture,
               root,
               cliBinary,
+              accountMetadata: councilAccountInventory,
               projectMessages: councilProjectMessages,
               projectApprovals: councilProjectApprovals,
               steeredApprovals: councilSteeredApprovals,
@@ -2460,8 +2534,7 @@ try {
         liveTaskDiagnostics || councilHistory || councilCompaction,
       environment: {
         CANTRIP_AUTH_MODE: "accounts",
-        ...(process.argv.includes("--council-app-mode") ||
-        process.argv.includes("--council-memory") ||
+        ...(process.argv.includes("--council-memory") ||
         councilBrowserHistory ||
         councilCompaction ||
         councilAutomations ||
@@ -2469,10 +2542,13 @@ try {
         councilProviderTest ||
         councilActiveProvider ||
         councilRoutineAuthoring ||
+        councilMcpSetup ||
+        councilLifecycle ||
         councilPeerMessages ||
         councilProjectMessages
           ? { CANTRIP_COUNCIL_ENABLED: "true" }
           : {}),
+        ...(councilDisabled ? { CANTRIP_COUNCIL_ENABLED: "false" } : {}),
         // Retained-session product flows use the normal server lifetime. The
         // short HTTP fixture lifetime can expire during an emulated restart.
         CANTRIP_SESSION_TTL_SECONDS: String(30 * 24 * 60 * 60),

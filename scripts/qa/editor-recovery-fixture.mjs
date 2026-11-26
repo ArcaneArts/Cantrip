@@ -73,6 +73,7 @@ export async function startEditorRecoveryFixture({
   cuaBinary,
   projectAlerts = false,
   serverExecutable,
+  workerExecutable,
   serverEnvironment = {},
   clientPlugins = [],
 } = {}) {
@@ -409,7 +410,8 @@ export async function startEditorRecoveryFixture({
         flags: "a",
       });
       logStreams.push(stream);
-      const nativeServer = name === "server" && serverExecutable;
+      const nativeExecutable =
+        name === "server" ? serverExecutable : workerExecutable;
       const environment =
         name === "server"
           ? { ...childEnvironment, ...serverEnvironment }
@@ -417,8 +419,8 @@ export async function startEditorRecoveryFixture({
             ? { ...childEnvironment, CANTRIP_CUA_BIN: cuaBinary }
             : childEnvironment;
       const child = spawn(
-        nativeServer ? path.resolve(serverExecutable) : process.execPath,
-        nativeServer
+        nativeExecutable ? path.resolve(nativeExecutable) : process.execPath,
+        nativeExecutable
           ? []
           : [
               "--import",
@@ -450,9 +452,7 @@ export async function startEditorRecoveryFixture({
       event("process.start", {
         name,
         pid: child.pid,
-        ...(name === "server"
-          ? { runtime: nativeServer ? "rust" : "node-reference" }
-          : {}),
+        runtime: nativeExecutable ? "rust" : "node-reference",
       });
       return child;
     };

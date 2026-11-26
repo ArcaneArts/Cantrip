@@ -46,19 +46,40 @@ impl Repository {
             if let Some(at)=expired_by.as_ref() { parameters.push(at); }
             let rows=tx.query(&statement,&parameters).await?;
             anyhow::ensure!(!rows.is_empty(),RootJobError::Conflict("The standalone Chat scratch root no longer exists."));
-            let rows=tx.query("INSERT INTO standalone_chat_root_jobs(id,owner_id,root_id,chat_id,worker_id,kind,state) VALUES($1,$2,$3,$4,$5,'delete','queued') ON CONFLICT(root_id,kind) DO NOTHING RETURNING to_jsonb(standalone_chat_root_jobs)::text",
-                &[&input.id,&input.owner_id,&input.root_id,&input.chat_id,&input.worker_id]).await?;
-            let existing=if let Some(row)=rows.first(){Some(raw(row)?)}else{
-                tx.query("SELECT to_jsonb(j)::text FROM standalone_chat_root_jobs j WHERE root_id=$1 AND kind='delete' LIMIT 1",&[&input.root_id]).await?.first().map(raw).transpose()?
-            };
-            let row=existing.filter(|r|same_identity(r,&input,"delete")).ok_or(RootJobError::Conflict("The standalone Chat cleanup tombstone conflicts with an existing job."))?;
-            tx.query("UPDATE standalone_chat_roots SET status='deleting',deletion_job_id=$2,updated_at=$3 WHERE id=$1",&[&input.root_id,&input.id,&crate::auth::now()]).await?;
-            let completed=crate::auth::now();let updated=crate::auth::now();
-            tx.query("UPDATE standalone_chat_root_jobs SET state='failed',state_revision=state_revision+1,command_id=NULL,lease_expires_at=NULL,last_error_code='root-conflict',error_retryable=false,completed_at=$2,updated_at=$3 WHERE root_id=$1 AND kind='provision' AND state IN ('queued','blocked')",&[&input.root_id,&completed,&updated]).await?;
-            tx.query("DELETE FROM chats WHERE id=$1 AND owner_id=$2 AND context_kind='standalone'",&[&input.chat_id,&input.owner_id]).await?;
-            summary(&row)
+            purge_locked(tx, &input, "standalone").await
         })).await
     }
+    pub async fn purge_council(&self, owner: &str, chat: &str) -> Result<Option<Value>> {
+        let (owner, chat) = (owner.to_owned(), chat.to_owned());
+        self.database
+            .transaction(move |tx| {
+                Box::pin(async move {
+                    let rows = tx
+                        .query(
+                            "SELECT r.id,r.worker_id FROM chats c
+                 JOIN standalone_chat_roots r ON r.id=c.active_scratch_root_id
+                   AND r.chat_id=c.id AND r.owner_id=c.owner_id
+                 WHERE c.id=$1 AND c.owner_id=$2 AND c.context_kind='council'
+                   AND c.archived_at IS NOT NULL FOR UPDATE OF c,r",
+                            &[&chat, &owner],
+                        )
+                        .await?;
+                    let Some(row) = rows.first() else {
+                        return Ok(None);
+                    };
+                    let input = Identity {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        owner_id: owner,
+                        chat_id: chat,
+                        root_id: row.get(0)?,
+                        worker_id: row.get(1)?,
+                    };
+                    purge_locked(tx, &input, "council").await.map(Some)
+                })
+            })
+            .await
+    }
+
     pub async fn purge_expired(&self, owner: &str, at: DateTime<Utc>) -> Result<Vec<Value>> {
         let rows=self.database.query(
             "SELECT r.chat_id,r.owner_id,r.id,r.worker_id FROM standalone_chat_roots r INNER JOIN chats c ON c.id=r.chat_id AND c.owner_id=r.owner_id WHERE r.owner_id=$1 AND c.context_kind='standalone' AND c.archived_at IS NOT NULL AND r.archive_expires_at IS NOT NULL AND r.archive_expires_at<=$2",
@@ -96,4 +117,33 @@ impl Repository {
         }
         Ok(changes)
     }
+}
+
+async fn purge_locked(
+    tx: &crate::database::Transaction<'_>,
+    input: &Identity,
+    kind: &str,
+) -> Result<Value> {
+    let rows=tx.query("INSERT INTO standalone_chat_root_jobs(id,owner_id,root_id,chat_id,worker_id,kind,state) VALUES($1,$2,$3,$4,$5,'delete','queued') ON CONFLICT(root_id,kind) DO NOTHING RETURNING to_jsonb(standalone_chat_root_jobs)::text",
+        &[&input.id,&input.owner_id,&input.root_id,&input.chat_id,&input.worker_id]).await?;
+    let existing = if let Some(row) = rows.first() {
+        Some(raw(row)?)
+    } else {
+        tx.query("SELECT to_jsonb(j)::text FROM standalone_chat_root_jobs j WHERE root_id=$1 AND kind='delete' LIMIT 1",&[&input.root_id]).await?.first().map(raw).transpose()?
+    };
+    let row = existing
+        .filter(|r| same_identity(r, &input, "delete"))
+        .ok_or(RootJobError::Conflict(
+            "The standalone Chat cleanup tombstone conflicts with an existing job.",
+        ))?;
+    tx.query("UPDATE standalone_chat_roots SET status='deleting',deletion_job_id=$2,updated_at=$3 WHERE id=$1",&[&input.root_id,&input.id,&crate::auth::now()]).await?;
+    let completed = crate::auth::now();
+    let updated = crate::auth::now();
+    tx.query("UPDATE standalone_chat_root_jobs SET state='failed',state_revision=state_revision+1,command_id=NULL,lease_expires_at=NULL,last_error_code='root-conflict',error_retryable=false,completed_at=$2,updated_at=$3 WHERE root_id=$1 AND kind='provision' AND state IN ('queued','blocked')",&[&input.root_id,&completed,&updated]).await?;
+    tx.query(
+        "DELETE FROM chats WHERE id=$1 AND owner_id=$2 AND context_kind=$3",
+        &[&input.chat_id, &input.owner_id, &kind],
+    )
+    .await?;
+    summary(&row)
 }

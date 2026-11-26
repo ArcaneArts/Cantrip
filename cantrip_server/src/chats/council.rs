@@ -17,6 +17,7 @@ pub enum RosterError {
     Duplicate,
     NotFound,
     Conflict,
+    InFlight,
 }
 impl std::fmt::Display for RosterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -25,25 +26,35 @@ impl std::fmt::Display for RosterError {
             Self::Duplicate => "This Council agent already exists.",
             Self::NotFound => "Council agent not found.",
             Self::Conflict => "The Council agent changed. Reload it and try again.",
+            Self::InFlight => {
+                "Let the current Council input finish or stop the agent before archiving it."
+            }
         })
     }
 }
 impl std::error::Error for RosterError {}
 
-async fn roster(executor: Executor<'_, '_>, owner: &str, id: Option<&str>) -> Result<Vec<Value>> {
+async fn roster(
+    executor: Executor<'_, '_>,
+    owner: &str,
+    id: Option<&str>,
+    include_archived: bool,
+) -> Result<Vec<Value>> {
     executor
         .query(
             "SELECT jsonb_build_object(
                  'id', a.chat_id, 'workerId', c.active_worker_id, 'titleProtection', c.protected_label,
                  'protectedRole', a.protected_role, 'primary', a.is_primary, 'revision', a.revision,
-                 'scratchStatus', r.status
+                 'scratchStatus', r.status, 'hidden', a.hidden,
+                 'paused', c.automation_paused, 'archived', c.archived_at IS NOT NULL
              )::text
              FROM council_agents a
              JOIN chats c ON c.id=a.chat_id AND c.owner_id=a.owner_id AND c.context_kind='council'
              JOIN standalone_chat_roots r ON r.id=c.active_scratch_root_id
              WHERE a.owner_id=$1 AND ($2::text IS NULL OR a.chat_id=$2)
+               AND ($3 OR c.archived_at IS NULL)
              ORDER BY c.position,c.id",
-            &[&owner, &id],
+            &[&owner, &id, &include_archived],
         )
         .await?
         .iter()
@@ -53,7 +64,11 @@ async fn roster(executor: Executor<'_, '_>, owner: &str, id: Option<&str>) -> Re
 
 impl Repository {
     pub async fn council_agents(&self, owner: &str) -> Result<Vec<Value>> {
-        roster(Executor::Database(&self.database), owner, None).await
+        roster(Executor::Database(&self.database), owner, None, false).await
+    }
+
+    pub async fn council_roster(&self, owner: &str) -> Result<Vec<Value>> {
+        roster(Executor::Database(&self.database), owner, None, true).await
     }
 
     pub async fn council_conversation(&self, owner: &str, chat: &str) -> Result<Option<Value>> {
@@ -184,7 +199,7 @@ impl Repository {
                 &[&id,&owner,&role,&primary],
             ).await?;
             roots::provision_new_chat(tx,&owner,&id,&worker,&root,"Initial Council agent scratch root").await?;
-            roster(Executor::Transaction(tx),&owner,Some(&id)).await?.pop().context("Created Council agent")
+            roster(Executor::Transaction(tx),&owner,Some(&id),true).await?.pop().context("Created Council agent")
         })).await
     }
 
@@ -194,33 +209,62 @@ impl Repository {
         self.database.transaction(move |tx| Box::pin(async move {
             let revision = input["expectedRevision"].stringify();
             let role = input.get("protectedRole").map(Value::stringify);
-            let primary = input.get("primary").and_then(Value::as_bool);
-            let label = input.get("titleProtection").map(Value::stringify);
+            let primary = input["primary"].as_bool();
+            let title = input.get("titleProtection").map(Value::stringify);
+            let hidden = input["hidden"].as_bool();
+            let paused = input["paused"].as_bool();
+            let archived = input["archived"].as_bool();
+            let chat = tx.query(
+                "SELECT status FROM chats WHERE id=$1 AND owner_id=$2 AND context_kind='council' FOR UPDATE",
+                &[&id,&owner],
+            ).await?;
+            let chat = chat.first().ok_or(RosterError::NotFound)?;
             let changed = tx.query(
                 "UPDATE council_agents SET revision=revision+1,
-                     protected_role=coalesce($4::text::jsonb,protected_role),is_primary=coalesce($5,is_primary)
+                    protected_role=coalesce($4::text::jsonb,protected_role),
+                    is_primary=coalesce($5,is_primary),hidden=coalesce($6,hidden)
                  WHERE owner_id=$1 AND chat_id=$2 AND revision=$3::text::integer RETURNING chat_id",
-                &[&owner,&id,&revision,&role,&primary],
+                &[&owner,&id,&revision,&role,&primary,&hidden],
             ).await?;
-            if changed.is_empty() {
-                let existing = tx.query("SELECT chat_id FROM council_agents WHERE owner_id=$1 AND chat_id=$2", &[&owner,&id]).await?;
-                return Err(if existing.is_empty() { RosterError::NotFound } else { RosterError::Conflict }.into());
+            ensure!(!changed.is_empty(), RosterError::Conflict);
+            if archived == Some(true) {
+                let status = chat.get::<&str>(0)?;
+                let pending = tx.query(
+                    "SELECT id FROM managed_queue_claims WHERE chat_id=$1
+                     AND status IN ('claimed','accepted','dispatched','uncertain') LIMIT 1",
+                    &[&id],
+                ).await?;
+                ensure!(
+                    !matches!(status, "running" | "waiting-for-approval") && pending.is_empty(),
+                    RosterError::InFlight
+                );
             }
-            if let Some(label) = label {
+            if title.is_some() || paused.is_some() || archived.is_some() {
                 tx.query(
-                    "UPDATE chats SET protected_label=$3::text::jsonb,updated_at=now() WHERE id=$1 AND owner_id=$2 AND context_kind='council'",
-                    &[&id,&owner,&label],
+                    "UPDATE chats SET protected_label=coalesce($3::text::jsonb,protected_label),
+                        automation_paused=coalesce($4,automation_paused),
+                        archived_at=CASE $5::boolean WHEN true THEN coalesce(archived_at,now())
+                            WHEN false THEN NULL ELSE archived_at END,updated_at=now()
+                     WHERE id=$1 AND owner_id=$2 AND context_kind='council'",
+                    &[&id,&owner,&title,&paused,&archived],
                 ).await?;
             }
-            roster(Executor::Transaction(tx),&owner,Some(&id)).await?.pop().context("Updated Council agent")
+            roster(Executor::Transaction(tx),&owner,Some(&id),true).await?.pop().context("Updated Council agent")
         })).await
     }
 }
 
 pub(crate) fn empty_update(input: &Value) -> bool {
-    ["primary", "protectedRole", "titleProtection"]
-        .iter()
-        .all(|key| input.get(key).is_none())
+    [
+        "primary",
+        "protectedRole",
+        "titleProtection",
+        "hidden",
+        "paused",
+        "archived",
+    ]
+    .iter()
+    .all(|key| input.get(key).is_none())
 }
 
 pub(crate) fn notification(owner: &str, agent: &Value) -> Value {

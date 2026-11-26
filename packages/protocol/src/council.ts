@@ -79,6 +79,9 @@ export const councilAgentUpdateSchema = z
     titleProtection: councilAgentTitleSchema.optional(),
     protectedRole: councilRoleEnvelopeSchema.optional(),
     primary: z.boolean().optional(),
+    hidden: z.boolean().optional(),
+    paused: z.boolean().optional(),
+    archived: z.boolean().optional(),
   })
   .strict();
 
@@ -91,6 +94,9 @@ export const councilAgentWireSummarySchema = z
     primary: z.boolean(),
     revision: z.number().int().positive(),
     scratchStatus: standaloneChatRootStatusSchema,
+    hidden: z.boolean().default(false),
+    paused: z.boolean().default(false),
+    archived: z.boolean().default(false),
   })
   .strict();
 

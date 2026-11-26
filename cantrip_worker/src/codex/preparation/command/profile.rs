@@ -309,7 +309,7 @@ pub(in crate::codex) async fn collaboration_mode(
     }))
 }
 
-pub(super) async fn apply_goal_permissions(
+pub(super) async fn apply_execution_permissions(
     runtime: &Runtime,
     thread: &LoadedThread,
     command: &Value,
@@ -332,7 +332,7 @@ pub(super) async fn apply_goal_permissions(
         .await?;
         thread.assert_current(runtime)?;
         if observed["threadId"].as_js_string() != Some(thread.id()) {
-            bail!("Native Goal settings read returned another thread.");
+            bail!("Native permission settings read returned another thread.");
         }
         let actual = &observed["threadSettings"];
         if actual["approvalPolicy"] == approval
@@ -363,7 +363,7 @@ pub(super) async fn apply_goal_permissions(
         if actual["approvalPolicy"] != approval
             || (named && actual["activePermissionProfile"]["id"] != permissions)
         {
-            bail!("Native Goal did not apply the selected implementation permissions.");
+            bail!("The native thread did not apply the selected execution permissions.");
         }
         Ok(())
     })

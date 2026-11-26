@@ -1,5 +1,6 @@
 use super::{Authorized, Inner};
 mod automations;
+mod mcp_setup;
 mod messages;
 mod peer;
 use crate::{
@@ -55,6 +56,7 @@ impl Inner {
                 &input,
             )?,
             "council.create" => protect(service, authorization, &request, &input)?,
+            "council.mcp.setup" => mcp_setup::protect(service, authorization, agent_id, &input)?,
             "council.automation.create" => {
                 automations::protect_create(service, authorization, agent_id, &input)?
             }
@@ -91,7 +93,7 @@ impl Inner {
                 json!({"expectedRevision":input["expectedRevision"],"protectedMemory":council_memory::seal(&key, agent_id,
                     input["text"].as_str().context("Council memory must be valid UTF-8.")?)?})
             }
-            _ => input,
+            _ => input.clone(),
         };
         let mut reply = self
             .relay_project(
@@ -114,6 +116,9 @@ impl Inner {
                         .map(|agent| open(service, authorization, agent))
                         .collect::<Result<Vec<_>>>()?
                 );
+            }
+            "council.mcp.setup" => {
+                reply["data"] = mcp_setup::open(service, authorization, &input, &reply["data"])?;
             }
             "council.inventory" => {
                 let identity = (

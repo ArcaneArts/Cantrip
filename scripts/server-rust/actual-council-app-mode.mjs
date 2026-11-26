@@ -47,9 +47,37 @@ export async function actualCouncilAppMode({ page, result, appOrigin }) {
   await modePicker().click();
   await page.getByRole("menuitem", { name: "Cantrip Chat" }).click();
   await modePicker().click();
+  await page.getByRole("menuitem", { name: "Cantrip IDE" }).click();
+  await modePicker().click();
   await page.getByRole("menuitem", { name: "Cantrip Council" }).click();
   await page.getByRole("heading", { name: renamed }).waitFor();
   result.steps.push(
     "Council mode opens from the browser shell at desktop and mobile widths",
+  );
+}
+
+export async function actualCouncilDisabled({ page, result, appOrigin }) {
+  const enabled = await page.evaluate(async () => {
+    const { getServerBootstrap } = await import("/src/lib/api/account.ts");
+    return Boolean((await getServerBootstrap()).capabilities.council);
+  });
+  assert.equal(enabled, false);
+  await page.goto(appOrigin);
+  const modePicker = page
+    .getByRole("button", { name: /switch cantrip mode/iu })
+    .first();
+  await modePicker.click();
+  await page.getByRole("menuitem", { name: "Cantrip Chat" }).waitFor();
+  assert.equal(
+    await page.getByRole("menuitem", { name: "Cantrip Council" }).count(),
+    0,
+  );
+  await page.getByRole("menuitem", { name: "Cantrip Chat" }).click();
+  await modePicker.click();
+  await page.getByRole("menuitem", { name: "Cantrip IDE" }).click();
+  await modePicker.click();
+  await page.getByRole("menuitem", { name: "Cantrip Chat" }).waitFor();
+  result.steps.push(
+    "An explicit server opt-out hides Council and leaves Chat and IDE available.",
   );
 }

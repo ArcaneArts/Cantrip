@@ -25,6 +25,8 @@ import {
   councilHistorySearchToolOutputSchema,
   councilInventoryInputSchema,
   councilInventoryToolOutputSchema,
+  councilMcpSetupInputSchema,
+  councilMcpSetupToolOutputSchema,
   councilListToolInputSchema,
   councilListToolOutputSchema,
   councilMemoryReadToolInputSchema,
@@ -160,6 +162,13 @@ async function generate() {
   );
   const council = [
     [
+      "council_mcp_setup",
+      "council.mcp.setup",
+      "Add a supported stdio or HTTP MCP server to Chat settings on this Council Worker. It becomes available through the usual MCP configuration on a subsequent turn. Prefer existing credential environment variables when supported. Reuse operationId only to retry the same configuration.",
+      councilMcpSetupInputSchema,
+      councilMcpSetupToolOutputSchema,
+    ],
+    [
       "council_message_post",
       "council.message.post",
       "Post a message to your user during the current turn. Set notify to false for quiet progress and true when an update should alert the user. Reuse operationId only when retrying the same post.",
@@ -239,7 +248,7 @@ async function generate() {
     [
       "council_inventory",
       "council.inventory",
-      "List projects across your Cantrip account. Use the project ID to list that project's chats or Tasks. Repeat with nextCursor when present.",
+      "Discover your Cantrip projects, Council agents, account defaults, configured models, effective policies, and tools. Use a project ID to list its chats or Tasks. Tool listings include managed names and the Worker’s effective MCP servers without credential values. Repeat with nextCursor when present.",
       councilInventoryInputSchema,
       councilInventoryToolOutputSchema,
     ],

@@ -1083,6 +1083,7 @@ export const contractRoots = [
   "councilInventoryInputSchema",
   "councilInventoryWireSchema",
   "councilInventoryResultSchema",
+  "councilMcpSetupWireSchema",
   "councilProjectSendExchangeSchema",
   "councilPeerSendExchangeSchema",
   "councilPeerPageQuerySchema",
