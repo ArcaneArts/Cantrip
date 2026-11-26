@@ -13,7 +13,7 @@ import { Check, ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ModelCombobox } from "@/components/chat/model-combobox";
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -70,6 +70,7 @@ function sameConfiguration(
 }
 
 export interface ModelReasoningPickerProps {
+  buttonTooltips?: boolean;
   open?: boolean;
   onOpenChange?(open: boolean): void;
   configuration: ModelConfiguration;
@@ -426,6 +427,7 @@ function ReasoningSlider({
 }
 
 export function ModelReasoningPicker({
+  buttonTooltips = false,
   open: controlledOpen,
   onOpenChange,
   configuration,
@@ -641,7 +643,8 @@ export function ModelReasoningPicker({
       {open && ollamaCatalog ? (
         <OllamaModelPickerRefresh {...ollamaCatalog} />
       ) : null}
-      <Button
+      <TooltipButton
+        tooltip={buttonTooltips ? "Configure model and reasoning" : undefined}
         type="button"
         variant={mode === "settings" ? "outline" : "ghost"}
         className={cn(
@@ -674,9 +677,12 @@ export function ModelReasoningPicker({
         ) : configuration.customSubagentModel ? (
           <Check className="size-3.5 shrink-0 text-primary" />
         ) : null}
-      </Button>
+      </TooltipButton>
 
-      <DialogContent className="max-w-xl">
+      <DialogContent
+        className="max-w-xl"
+        closeTooltip={buttonTooltips ? "Close model configuration" : undefined}
+      >
         <DialogHeader>
           <DialogTitle>
             {label ??
@@ -723,6 +729,7 @@ export function ModelReasoningPicker({
             </div>
             <ModelCombobox
               ariaLabel="Root model"
+              tooltip={buttonTooltips ? "Choose the root model" : undefined}
               className="w-full"
               value={draft.modelId ?? ""}
               disabled={readOnly || effectivePending}
@@ -782,6 +789,9 @@ export function ModelReasoningPicker({
                 <div className="space-y-2 pl-0 sm:pl-4">
                   <ModelCombobox
                     ariaLabel="Subagent model"
+                    tooltip={
+                      buttonTooltips ? "Choose the subagent model" : undefined
+                    }
                     className="w-full"
                     value={draft.subagentModelId ?? ""}
                     disabled={
@@ -842,15 +852,17 @@ export function ModelReasoningPicker({
           pending: effectivePending,
         })}
         <DialogFooter>
-          <Button
+          <TooltipButton
+            tooltip={buttonTooltips ? "Cancel" : undefined}
             type="button"
             variant="outline"
             disabled={effectivePending}
             onClick={() => handleOpenChange(false)}
           >
             Cancel
-          </Button>
-          <Button
+          </TooltipButton>
+          <TooltipButton
+            tooltip={buttonTooltips ? "Save configuration" : undefined}
             type="button"
             disabled={
               readOnly ||
@@ -867,7 +879,7 @@ export function ModelReasoningPicker({
               <Loader2 className="size-4 animate-spin" />
             ) : null}
             Save configuration
-          </Button>
+          </TooltipButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

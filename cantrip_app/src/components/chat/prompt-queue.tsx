@@ -29,6 +29,7 @@ import {
 import { useState, type CSSProperties } from "react";
 
 import { Button } from "@/components/ui/button";
+import { TooltipButton, TooltipTarget } from "@/components/ui/tooltip";
 import {
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
@@ -46,6 +47,7 @@ const claimLabels = {
 };
 
 function PromptRow({
+  buttonTooltips,
   disabled,
   executing,
   onDelete,
@@ -55,6 +57,7 @@ function PromptRow({
   prompt,
   claim,
 }: {
+  buttonTooltips?: boolean;
   disabled: boolean;
   executing: boolean;
   onDelete(): void;
@@ -64,6 +67,16 @@ function PromptRow({
   prompt: QueuedPrompt;
   claim?: ManagedQueueClaim;
 }) {
+  const steerLabel = executing
+    ? "Steer"
+    : claim?.status === "rejected"
+      ? "Retry"
+      : "Start";
+  const steerTooltip = !executing
+    ? "Start this queued prompt"
+    : prompt.mode === "default"
+      ? "Steer the active turn"
+      : `${prompt.mode === "goal" ? "Goal" : "Plan"} mode starts with the next turn and cannot steer an active turn`;
   const sortable = useSortable({ id: prompt.id, disabled });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(sortable.transform),
@@ -78,16 +91,20 @@ function PromptRow({
         sortable.isDragging && "opacity-30",
       )}
     >
-      <button
-        type="button"
-        className="grid size-7 shrink-0 touch-none place-items-center rounded-md text-muted-foreground/60 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed"
-        disabled={disabled}
-        aria-label="Drag queued prompt"
-        {...sortable.attributes}
-        {...sortable.listeners}
+      <TooltipTarget
+        tooltip={buttonTooltips ? "Drag queued prompt" : undefined}
       >
-        <GripVertical className="size-3.5" />
-      </button>
+        <button
+          type="button"
+          className="grid size-7 shrink-0 touch-none place-items-center rounded-md text-muted-foreground/60 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed"
+          disabled={disabled}
+          aria-label="Drag queued prompt"
+          {...sortable.attributes}
+          {...sortable.listeners}
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+      </TooltipTarget>
       {prompt.frozen ? (
         <Snowflake className="size-3.5 shrink-0 text-muted-foreground" />
       ) : null}
@@ -130,37 +147,36 @@ function PromptRow({
           {claimLabels[claim.status]}
         </span>
       ) : null}
-      <Button
+      <TooltipButton
+        tooltip={buttonTooltips ? steerTooltip : undefined}
+        aria-label={buttonTooltips ? steerLabel : undefined}
         type="button"
         size="sm"
         variant="ghost"
         className="h-7 shrink-0 gap-1.5 px-2 text-xs text-muted-foreground"
         disabled={disabled || (executing && prompt.mode !== "default")}
-        title={
-          !executing
-            ? "Start this queued prompt"
-            : prompt.mode === "default"
-              ? "Steer the active turn"
-              : `${prompt.mode === "goal" ? "Goal" : "Plan"} mode starts with the next turn and cannot steer an active turn`
-        }
+        title={steerTooltip}
         onClick={onSteer}
       >
-        <CornerDownRight className="size-3.5" />{" "}
-        {executing ? "Steer" : claim?.status === "rejected" ? "Retry" : "Start"}
-      </Button>
+        <CornerDownRight className="size-3.5" /> {steerLabel}
+      </TooltipButton>
       <DropdownMenuPrimitive.Root>
-        <DropdownMenuPrimitive.Trigger asChild>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="size-7 shrink-0"
-            disabled={disabled}
-          >
-            <MoreHorizontal className="size-3.5" />
-            <span className="sr-only">Queued prompt actions</span>
-          </Button>
-        </DropdownMenuPrimitive.Trigger>
+        <TooltipTarget
+          tooltip={buttonTooltips ? "Queued prompt actions" : undefined}
+        >
+          <DropdownMenuPrimitive.Trigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-7 shrink-0"
+              disabled={disabled}
+            >
+              <MoreHorizontal className="size-3.5" />
+              <span className="sr-only">Queued prompt actions</span>
+            </Button>
+          </DropdownMenuPrimitive.Trigger>
+        </TooltipTarget>
         <DropdownMenuPrimitive.Portal>
           <StyledDropdownMenuContent
             align="end"
@@ -189,6 +205,7 @@ function PromptRow({
 }
 
 export function PromptQueue({
+  buttonTooltips,
   disabled,
   editingPromptId,
   executing,
@@ -200,6 +217,7 @@ export function PromptQueue({
   prompts,
   claims = [],
 }: {
+  buttonTooltips?: boolean;
   disabled: boolean;
   editingPromptId: string | null;
   executing: boolean;
@@ -253,6 +271,7 @@ export function PromptQueue({
                 : undefined;
             return (
               <PromptRow
+                buttonTooltips={buttonTooltips}
                 key={prompt.id}
                 prompt={prompt}
                 claim={claim}

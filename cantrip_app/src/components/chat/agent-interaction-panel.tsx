@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 
 type InteractionPayload = AgentInteractionRequest["payload"];
 
@@ -76,6 +76,7 @@ const COMMAND_LABELS: Record<
 };
 
 function UserInputCard({
+  buttonTooltips,
   disabled,
   onRespond,
   request,
@@ -189,7 +190,8 @@ function UserInputCard({
           </fieldset>
         ))}
       </div>
-      <Button
+      <TooltipButton
+        tooltip={buttonTooltips ? "Send answer" : undefined}
         type="button"
         size="sm"
         disabled={disabled || !response}
@@ -197,12 +199,13 @@ function UserInputCard({
       >
         {disabled ? <Loader2 className="size-3.5 animate-spin" /> : null}
         Send answer
-      </Button>
+      </TooltipButton>
     </InteractionCard>
   );
 }
 
 type CardProps = {
+  buttonTooltips?: boolean;
   disabled: boolean;
   onRespond(requestId: string, response: AgentInteractionResponse): void;
 };
@@ -242,6 +245,7 @@ function InteractionCard({
 }
 
 function InteractionRequestCard({
+  buttonTooltips,
   disabled,
   onRespond,
   request,
@@ -252,6 +256,7 @@ function InteractionRequestCard({
   if (payload.kind === "userInput") {
     return (
       <UserInputCard
+        buttonTooltips={buttonTooltips}
         request={{ ...request, payload }}
         disabled={disabled}
         onRespond={onRespond}
@@ -303,7 +308,8 @@ function InteractionRequestCard({
         ) : null}
         <div className="flex flex-wrap gap-2">
           {decisions.map((decision) => (
-            <Button
+            <TooltipButton
+              tooltip={buttonTooltips ? COMMAND_LABELS[decision] : undefined}
               key={decision}
               type="button"
               size="sm"
@@ -317,7 +323,7 @@ function InteractionRequestCard({
               }
             >
               {COMMAND_LABELS[decision]}
-            </Button>
+            </TooltipButton>
           ))}
         </div>
       </InteractionCard>
@@ -346,7 +352,8 @@ function InteractionRequestCard({
               ["cancel", "Cancel turn"],
             ] as const
           ).map(([decision, label]) => (
-            <Button
+            <TooltipButton
+              tooltip={buttonTooltips ? label : undefined}
               key={decision}
               type="button"
               size="sm"
@@ -357,7 +364,7 @@ function InteractionRequestCard({
               }
             >
               {label}
-            </Button>
+            </TooltipButton>
           ))}
         </div>
       </InteractionCard>
@@ -365,6 +372,10 @@ function InteractionRequestCard({
   }
   if (payload.kind === "permissions") {
     const computerUse = request.provenance.owner === "computer-use";
+    const grantTurnLabel =
+      computerUse && request.provenance.turnId === null
+        ? "Grant once"
+        : "Grant for turn";
     return (
       <InteractionCard
         icon={KeyRound}
@@ -380,7 +391,8 @@ function InteractionRequestCard({
           {displayJson(payload.requestedPermissions)}
         </pre>
         <div className="flex flex-wrap gap-2">
-          <Button
+          <TooltipButton
+            tooltip={buttonTooltips ? grantTurnLabel : undefined}
             type="button"
             size="sm"
             disabled={disabled}
@@ -393,11 +405,10 @@ function InteractionRequestCard({
               })
             }
           >
-            {computerUse && request.provenance.turnId === null
-              ? "Grant once"
-              : "Grant for turn"}
-          </Button>
-          <Button
+            {grantTurnLabel}
+          </TooltipButton>
+          <TooltipButton
+            tooltip={buttonTooltips ? "Grant for session" : undefined}
             type="button"
             size="sm"
             variant="outline"
@@ -412,8 +423,9 @@ function InteractionRequestCard({
             }
           >
             Grant for session
-          </Button>
-          <Button
+          </TooltipButton>
+          <TooltipButton
+            tooltip={buttonTooltips ? "Deny" : undefined}
             type="button"
             size="sm"
             variant="outline"
@@ -428,7 +440,7 @@ function InteractionRequestCard({
             }
           >
             Deny
-          </Button>
+          </TooltipButton>
         </div>
       </InteractionCard>
     );
@@ -481,7 +493,8 @@ function InteractionRequestCard({
         <p className="text-xs text-destructive">Enter valid JSON.</p>
       ) : null}
       <div className="flex flex-wrap gap-2">
-        <Button
+        <TooltipButton
+          tooltip={buttonTooltips ? "Accept" : undefined}
           type="button"
           size="sm"
           disabled={disabled || !validContent}
@@ -495,9 +508,16 @@ function InteractionRequestCard({
           }
         >
           Accept
-        </Button>
+        </TooltipButton>
         {(["decline", "cancel"] as const).map((action) => (
-          <Button
+          <TooltipButton
+            tooltip={
+              buttonTooltips
+                ? action === "decline"
+                  ? "Decline"
+                  : "Cancel turn"
+                : undefined
+            }
             key={action}
             type="button"
             size="sm"
@@ -513,7 +533,7 @@ function InteractionRequestCard({
             }
           >
             {action === "decline" ? "Decline" : "Cancel turn"}
-          </Button>
+          </TooltipButton>
         ))}
       </div>
     </InteractionCard>
@@ -521,6 +541,7 @@ function InteractionRequestCard({
 }
 
 export function AgentInteractionPanel({
+  buttonTooltips,
   error,
   pendingRequestId,
   planQuestionId,
@@ -528,6 +549,7 @@ export function AgentInteractionPanel({
   onRespond,
   renderSource,
 }: {
+  buttonTooltips?: boolean;
   error?: string | null;
   pendingRequestId: string | null;
   planQuestionId?: string | null;
@@ -557,6 +579,7 @@ export function AgentInteractionPanel({
         >
           {renderSource?.(request)}
           <InteractionRequestCard
+            buttonTooltips={buttonTooltips}
             request={request}
             disabled={pendingRequestId !== null}
             onRespond={onRespond}

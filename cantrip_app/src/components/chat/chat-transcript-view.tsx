@@ -56,6 +56,7 @@ import { PendingQueueImports } from "@/components/chat/pending-queue-imports";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   EmptyState,
   EmptyStateContent,
@@ -346,7 +347,10 @@ export function ChatTranscriptView({
         >
           {messages.hasOlder ? (
             <div className="flex justify-center">
-              <Button
+              <TooltipButton
+                tooltip={
+                  capabilities.council ? "Load earlier messages" : undefined
+                }
                 disabled={messages.isFetchingOlder}
                 onClick={() => void loadOlderMessages()}
                 size="sm"
@@ -357,7 +361,7 @@ export function ChatTranscriptView({
                   <Loader2 className="animate-spin" />
                 ) : null}
                 Load earlier messages
-              </Button>
+              </TooltipButton>
             </div>
           ) : null}
           {messages.data?.length === 0 ? (
@@ -381,6 +385,7 @@ export function ChatTranscriptView({
           ) : null}
 
           <ChatTranscriptEntries
+            buttonTooltips={capabilities.council}
             chatId={chat.id}
             copiedMessageId={copiedMessageId}
             editedMessageRef={editedMessageRef}
@@ -450,7 +455,10 @@ export function ChatTranscriptView({
         >
           {composerNotice ? <ChatComposerNotice {...composerNotice} /> : null}
           {showScrollToBottom ? (
-            <Button
+            <TooltipButton
+              tooltip={
+                capabilities.council ? "Scroll to latest message" : undefined
+              }
               type="button"
               size="icon"
               variant="outline"
@@ -460,7 +468,7 @@ export function ChatTranscriptView({
               onClick={scrollTranscriptToBottom}
             >
               <ArrowDown className="size-4" />
-            </Button>
+            </TooltipButton>
           ) : null}
           {githubMenuOpen ? (
             <div
@@ -714,6 +722,7 @@ export function ChatTranscriptView({
             </p>
           ) : null}
           <AgentInteractionPanel
+            buttonTooltips={capabilities.council}
             requests={interactionRequests.data ?? []}
             pendingRequestId={respondingRequestId}
             planQuestionId={planState.data?.question?.id}
@@ -750,6 +759,7 @@ export function ChatTranscriptView({
           ) : null}
           <PendingQueueImports imports={pendingQueueImports} />
           <PromptQueue
+            buttonTooltips={capabilities.council}
             prompts={queuedPrompts.data ?? []}
             claims={queueClaims}
             editingPromptId={editingPrompt?.id ?? null}
@@ -808,6 +818,7 @@ export function ChatTranscriptView({
                 <div className="flex max-h-44 flex-wrap gap-2 overflow-y-auto px-1 pb-2">
                   {draftAttachments.map((item) => (
                     <AttachmentPreview
+                      buttonTooltips={capabilities.council}
                       key={item.attachment.id}
                       attachment={item.attachment}
                       contentUrl={item.contentUrl}
@@ -1071,7 +1082,8 @@ export function ChatTranscriptView({
                     event.target.value = "";
                   }}
                 />
-                <Button
+                <TooltipButton
+                  tooltip={capabilities.council ? "Attach files" : undefined}
                   type="button"
                   size="icon"
                   variant="ghost"
@@ -1082,7 +1094,7 @@ export function ChatTranscriptView({
                 >
                   <Plus className="size-4" />
                   <span className="sr-only">Attach files</span>
-                </Button>
+                </TooltipButton>
                 {settingsPicker === "model" ? (
                   <OllamaModelPickerRefresh
                     providers={settings?.providers}
@@ -1106,6 +1118,7 @@ export function ChatTranscriptView({
                   />
                 ) : (
                   <ChatModelReasoningPicker
+                    buttonTooltips={capabilities.council}
                     chatId={chat.id}
                     workerId={chat.activeWorkerId}
                     scratchRootId={chat.activeScratchRootId ?? null}
@@ -1183,6 +1196,7 @@ export function ChatTranscriptView({
               </div>
             </div>
             <ChatComposerPrimaryActions
+              buttonTooltips={capabilities.council}
               active={
                 chat.status === "running" ||
                 chat.status === "waiting-for-approval"
@@ -1224,6 +1238,7 @@ export function ChatTranscriptView({
             />
           </div>
           <AttachmentViewerDialog
+            buttonTooltips={capabilities.council}
             attachment={viewingAttachment}
             contentUrl={
               viewingAttachment
@@ -1247,6 +1262,7 @@ export function ChatTranscriptView({
       ) : null}
       {capabilities.inspect ? (
         <AgentInspectPanelShell
+          buttonTooltips={capabilities.council}
           ariaLabel={
             sidePanelView.type !== "inspect"
               ? "Subagent transcript"
@@ -1304,6 +1320,7 @@ export function ChatTranscriptView({
       ) : null}
       {standaloneFilesVisible && chat.contextKind === "standalone" ? (
         <AgentInspectPanelShell
+          buttonTooltips={capabilities.council}
           ariaLabel="Chat scratch files"
           className="absolute inset-y-0 right-0 z-30"
           headerIcon={<FolderOpen className="size-4 text-muted-foreground" />}
@@ -1314,6 +1331,7 @@ export function ChatTranscriptView({
           panelTitle="Files"
         >
           <StandaloneChatFilesPanel
+            buttonTooltips={capabilities.council}
             chat={chat}
             desktopRuntime={desktopRuntime}
             requestedPath={filesRequestedPath}

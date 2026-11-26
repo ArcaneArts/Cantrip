@@ -2,7 +2,7 @@ import { COUNCIL_MEMORY_BYTE_LIMIT } from "@cantrip/protocol";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -32,7 +32,7 @@ export function CouncilMemoryEditor({
   });
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent closeTooltip="Close fast memory">
         <DialogHeader>
           <DialogTitle>Fast memory</DialogTitle>
           <DialogDescription>
@@ -97,9 +97,13 @@ function MemoryForm({
         <InlineAlert>{errorMessage(save.error)}</InlineAlert>
       ) : null}
       <div className="flex justify-end">
-        <Button type="submit" disabled={overLimit || save.isPending}>
+        <TooltipButton
+          tooltip="Save memory"
+          type="submit"
+          disabled={overLimit || save.isPending}
+        >
           Save memory
-        </Button>
+        </TooltipButton>
       </div>
     </form>
   );

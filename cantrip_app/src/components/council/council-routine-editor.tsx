@@ -5,7 +5,7 @@ import {
 } from "@cantrip/protocol/automations";
 import { useState, type FormEvent } from "react";
 
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -184,7 +184,8 @@ export function CouncilRoutineEditor({
             <legend className="mb-1 text-sm">Repeat on</legend>
             <div className="flex flex-wrap gap-1">
               {days.map((day, index) => (
-                <Button
+                <TooltipButton
+                  tooltip={day}
                   key={day}
                   type="button"
                   size="sm"
@@ -199,7 +200,7 @@ export function CouncilRoutineEditor({
                   }
                 >
                   {day}
-                </Button>
+                </TooltipButton>
               ))}
             </div>
           </fieldset>
@@ -236,17 +237,22 @@ export function CouncilRoutineEditor({
       ) : null}
       {error ? <InlineAlert>{error}</InlineAlert> : null}
       <div className="flex justify-end gap-2">
-        <Button
+        <TooltipButton
+          tooltip="Cancel"
           type="button"
           variant="outline"
           disabled={pending}
           onClick={onCancel}
         >
           Cancel
-        </Button>
-        <Button type="submit" disabled={pending}>
+        </TooltipButton>
+        <TooltipButton
+          tooltip={pending ? "Saving…" : "Save routine"}
+          type="submit"
+          disabled={pending}
+        >
           {pending ? "Saving…" : "Save routine"}
-        </Button>
+        </TooltipButton>
       </div>
     </form>
   );

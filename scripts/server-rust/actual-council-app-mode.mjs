@@ -12,6 +12,27 @@ export async function actualCouncilAppMode({
   const modePicker = () =>
     page.getByRole("button", { name: /switch cantrip mode/iu }).first();
   const roster = () => page.getByRole("navigation", { name: "Council agents" });
+  const button = (name) => page.getByRole("button", { name, exact: true });
+  const tooltip = (label) =>
+    page.locator('[data-slot="tooltip-content"]').filter({ hasText: label });
+  const hoverTooltip = async (name, label = name, control = button(name)) => {
+    assert.equal(await control.getAttribute("title"), null);
+    const target = (await control.isDisabled())
+      ? control.locator("xpath=..")
+      : control;
+    await target.hover();
+    try {
+      await tooltip(label).waitFor({ timeout: 5_000 });
+    } catch (error) {
+      const active = await page
+        .locator('[data-slot="tooltip-content"]')
+        .allTextContents();
+      throw new Error(
+        `Tooltip for ${label} did not open. Visible tooltips: ${active.join(", ")}`,
+        { cause: error },
+      );
+    }
+  };
   const enterCouncil = async () => {
     await modePicker().click();
     await page.getByRole("menuitem", { name: "Cantrip Council" }).click();
@@ -43,12 +64,37 @@ export async function actualCouncilAppMode({
       28,
     "The Council footer stays at the bottom with a short roster.",
   );
+  await hoverTooltip(
+    "New agent",
+    "New agent",
+    roster().getByRole("button", { name: "New agent", exact: true }),
+  );
   await roster().getByText("Preserve this Council role marker 🌲").waitFor();
-  await roster()
-    .getByRole("button", { name: /Disposable Operations Agent/u })
-    .click();
+  await hoverTooltip(title, `Open ${title}`);
+  await button(title).click();
   await page.getByRole("heading", { name: title }).waitFor();
-  await page.getByRole("button", { name: "Edit Council agent" }).click();
+  assert.equal(await button("Send prompt").isDisabled(), true);
+  for (const name of [
+    "Search Council history",
+    "Edit fast memory",
+    "Open agent files",
+    "Send prompt",
+    "Council routines",
+  ]) {
+    await hoverTooltip(name);
+  }
+  await button("Search Council history").press("Tab");
+  assert.equal(
+    await button("Edit Council agent").evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+  );
+  await tooltip("Edit Council agent").waitFor();
+  await page.keyboard.press("Enter");
+  result.steps.push(
+    "Council tooltips appear on hover, on disabled actions, and on keyboard focus",
+  );
   const edit = page.getByRole("dialog", { name: "Edit Council agent" });
   await edit.locator("textarea:enabled").waitFor();
   assert.equal(await edit.getByLabel("Primary agent").isChecked(), true);
@@ -65,6 +111,13 @@ export async function actualCouncilAppMode({
     .getByRole("button", { name: renamed })
     .getByText("Release coordinator")
     .waitFor();
+
+  await button("Council routines").click();
+  const routines = page.getByRole("dialog", { name: "Council routines" });
+  await routines.waitFor();
+  await hoverTooltip("Close", "Close routines");
+  await routines.getByRole("button", { name: "Close", exact: true }).click();
+  await routines.waitFor({ state: "hidden" });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Back to Council agents" }).click();

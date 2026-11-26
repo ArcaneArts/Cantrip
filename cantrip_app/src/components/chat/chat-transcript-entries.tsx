@@ -37,7 +37,7 @@ import {
 import { SubagentLifecycleCard } from "@/components/chat/subagent-lifecycle-card";
 import { formatTurnMetadata } from "@/components/chat/timeline";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { NativeTurnSettingsEvidence } from "@/lib/native-turn-settings-evidence";
 import { transcriptModelLabels } from "./transcript-model-labels";
@@ -126,6 +126,7 @@ function completedTurnWorkSegments(
 }
 
 export interface ChatTranscriptEntriesProps {
+  buttonTooltips?: boolean;
   chatId?: string;
   copiedMessageId: string | null;
   editedMessageRef: RefObject<HTMLTextAreaElement | null>;
@@ -148,6 +149,7 @@ export interface ChatTranscriptEntriesProps {
 }
 
 export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
+  buttonTooltips,
   chatId,
   copiedMessageId,
   editedMessageRef,
@@ -209,6 +211,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
               ) : (
                 <div data-slot="completed-turn-thought" key={segment.key}>
                   <MessageContent
+                    buttonTooltips={buttonTooltips}
                     message={segment.message}
                     onOpenFile={onOpenFile}
                   />
@@ -227,6 +230,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
           >
             {entry.messages.map((message) => (
               <MessageContent
+                buttonTooltips={buttonTooltips}
                 key={message.id}
                 message={message}
                 onOpenFile={onOpenFile}
@@ -446,6 +450,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
                 />
                 {messageAttachments.length > 0 ? (
                   <MessageContent
+                    buttonTooltips={buttonTooltips}
                     message={{
                       ...message,
                       content: messageAttachments.map((attachment) => ({
@@ -463,7 +468,11 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
                 ) : null}
               </div>
             ) : (
-              <MessageContent message={message} onOpenFile={onOpenFile} />
+              <MessageContent
+                buttonTooltips={buttonTooltips}
+                message={message}
+                onOpenFile={onOpenFile}
+              />
             )}
             {fileSummary ? (
               chatId ? (
@@ -493,7 +502,8 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
               data-slot="message-actions"
               className="mt-2 flex items-center gap-1 text-muted-foreground"
             >
-              <Button
+              <TooltipButton
+                tooltip={buttonTooltips ? "Copy response" : undefined}
                 size="icon"
                 variant="ghost"
                 className="size-7"
@@ -506,9 +516,12 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
                   <Copy className="size-3.5" />
                 )}
                 <span className="sr-only">Copy response</span>
-              </Button>
+              </TooltipButton>
               {onForkMessage ? (
-                <Button
+                <TooltipButton
+                  tooltip={
+                    buttonTooltips ? "Fork agent from this response" : undefined
+                  }
                   size="icon"
                   variant="ghost"
                   className="size-7"
@@ -518,7 +531,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
                 >
                   <GitFork className="size-3.5" />
                   <span className="sr-only">Fork agent from this response</span>
-                </Button>
+                </TooltipButton>
               ) : null}
               {turnMetadata ? (
                 <span className="ml-1 text-[10px] tabular-nums text-muted-foreground/70">
@@ -532,7 +545,9 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
               data-slot="message-actions"
               className="mt-2 flex items-center gap-2"
             >
-              <Button
+              <TooltipButton
+                tooltip={buttonTooltips ? "Cancel editing" : undefined}
+                aria-label={buttonTooltips ? "Cancel" : undefined}
                 disabled={retryPending}
                 onClick={onCancelEditingMessage}
                 size="sm"
@@ -540,8 +555,10 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
                 variant="ghost"
               >
                 Cancel
-              </Button>
-              <Button
+              </TooltipButton>
+              <TooltipButton
+                tooltip={buttonTooltips ? "Resend edited message" : undefined}
+                aria-label={buttonTooltips ? "Send" : undefined}
                 disabled={
                   retryPending ||
                   (!editingSentMessage.text.trim() &&
@@ -552,7 +569,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
               >
                 {retryPending ? <Loader2 className="animate-spin" /> : null}
                 Send
-              </Button>
+              </TooltipButton>
             </div>
           ) : null}
           {user &&
@@ -562,7 +579,8 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
               data-slot="message-actions"
               className="mt-2 flex items-center gap-1 text-muted-foreground"
             >
-              <Button
+              <TooltipButton
+                tooltip={buttonTooltips ? "Edit and resend" : undefined}
                 aria-label="Edit and resend latest message"
                 className="size-7 text-muted-foreground"
                 onClick={() => onEditMessage(message)}
@@ -572,7 +590,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
                 variant="ghost"
               >
                 <Pencil className="size-3.5" />
-              </Button>
+              </TooltipButton>
             </div>
           ) : null}
         </MessageContainer>

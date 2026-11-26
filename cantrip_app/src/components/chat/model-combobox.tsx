@@ -12,6 +12,7 @@ export { modelSearchText, filterConfiguredModels } from "./model-search";
 import { ListPageControls } from "@/components/ui/list-page-controls";
 
 import { Button } from "@/components/ui/button";
+import { TooltipTarget } from "@/components/ui/tooltip";
 import {
   Command,
   CommandEmpty,
@@ -39,6 +40,7 @@ export interface ModelComboboxProps {
   models: ModelProfileSummary[];
   placeholder?: string;
   searchPlaceholder?: string;
+  tooltip?: string;
   value: string | null;
   onValueChange(value: string): void;
 }
@@ -186,6 +188,7 @@ export function ModelCombobox({
   onValueChange,
   placeholder = "Select a model",
   searchPlaceholder,
+  tooltip,
   value,
 }: ModelComboboxProps) {
   const [open, setOpen] = useState(false);
@@ -209,34 +212,36 @@ export function ModelCombobox({
 
   return (
     <Popover modal open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <Button
-          aria-expanded={open}
-          aria-haspopup="listbox"
-          aria-label={ariaLabel}
-          className={cn(
-            "w-full min-w-0 justify-between bg-background px-3 font-normal",
-            className,
-          )}
-          disabled={disabled}
-          role="combobox"
-          type="button"
-          variant="outline"
-        >
-          <span
+      <TooltipTarget tooltip={tooltip} side="top">
+        <PopoverTrigger asChild>
+          <Button
+            aria-expanded={open}
+            aria-haspopup="listbox"
+            aria-label={ariaLabel}
             className={cn(
-              "min-w-0 flex-1 truncate text-left",
-              !selectedModel && "text-muted-foreground",
+              "w-full min-w-0 justify-between bg-background px-3 font-normal",
+              className,
             )}
+            disabled={disabled}
+            role="combobox"
+            type="button"
+            variant="outline"
           >
-            {selectedModel?.name ?? placeholder}
-          </span>
-          <ChevronsUpDown
-            aria-hidden="true"
-            className="size-3.5 shrink-0 text-muted-foreground"
-          />
-        </Button>
-      </PopoverTrigger>
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-left",
+                !selectedModel && "text-muted-foreground",
+              )}
+            >
+              {selectedModel?.name ?? placeholder}
+            </span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="size-3.5 shrink-0 text-muted-foreground"
+            />
+          </Button>
+        </PopoverTrigger>
+      </TooltipTarget>
       <PopoverContent
         align="start"
         className="z-[80] w-[var(--radix-popover-trigger-width)] min-w-56 max-w-[calc(100vw-2rem)] overflow-hidden p-0"

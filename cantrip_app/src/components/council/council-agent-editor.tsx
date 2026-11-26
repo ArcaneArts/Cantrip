@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -49,7 +49,7 @@ export function CouncilAgentEditor({
           showEditor(null);
       }}
     >
-      <DialogContent>
+      <DialogContent closeTooltip="Close agent editor">
         <DialogHeader>
           <DialogTitle>
             {agent ? "Edit Council agent" : "New Council agent"}
@@ -104,15 +104,17 @@ export function CouncilAgentEditor({
             <InlineAlert>{errorMessage(loadError ?? save.error)}</InlineAlert>
           ) : null}
           <DialogFooter>
-            <Button
+            <TooltipButton
+              tooltip="Cancel"
               type="button"
               variant="ghost"
               disabled={save.isPending || changeState.isPending}
               onClick={() => showEditor(null)}
             >
               Cancel
-            </Button>
-            <Button
+            </TooltipButton>
+            <TooltipButton
+              tooltip={agent ? "Save" : "Create agent"}
               type="submit"
               disabled={
                 !title.trim() ||
@@ -122,12 +124,13 @@ export function CouncilAgentEditor({
               }
             >
               {agent ? "Save" : "Create agent"}
-            </Button>
+            </TooltipButton>
           </DialogFooter>
         </form>
         {agent ? (
           <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-            <Button
+            <TooltipButton
+              tooltip={agent.hidden ? "Show in roster" : "Hide from roster"}
               size="sm"
               variant="ghost"
               disabled={save.isPending || changeState.isPending}
@@ -136,8 +139,9 @@ export function CouncilAgentEditor({
               }
             >
               {agent.hidden ? "Show in roster" : "Hide from roster"}
-            </Button>
-            <Button
+            </TooltipButton>
+            <TooltipButton
+              tooltip={agent.paused ? "Resume agent" : "Pause agent"}
               size="sm"
               variant="ghost"
               disabled={save.isPending || changeState.isPending}
@@ -146,15 +150,16 @@ export function CouncilAgentEditor({
               }
             >
               {agent.paused ? "Resume agent" : "Pause agent"}
-            </Button>
-            <Button
+            </TooltipButton>
+            <TooltipButton
+              tooltip="Archive agent"
               size="sm"
               variant="ghost"
               disabled={save.isPending || changeState.isPending}
               onClick={() => changeState.mutate({ agent, archived: true })}
             >
               Archive agent
-            </Button>
+            </TooltipButton>
             {changeState.error ? (
               <InlineAlert>{errorMessage(changeState.error)}</InlineAlert>
             ) : null}
