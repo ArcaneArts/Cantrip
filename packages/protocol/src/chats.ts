@@ -430,15 +430,14 @@ const legacyProjectChatContextFields = {
 } as const;
 
 const standaloneChatContextFields = {
+  // Council uses the same scratch placement and carries model configuration
+  // through the shared summary fields.
   contextKind: z.literal("standalone"),
   projectId: z.null(),
   activeWorktreeId: z.null(),
   activeScratchRootId: z.string().min(1),
   worktreeMode: z.null(),
   experience: z.literal("agent"),
-  customSubagentModel: z.literal(false).optional(),
-  subagentModelId: z.null().optional(),
-  subagentReasoningEffort: z.null().optional(),
   planMode: z.literal("default"),
   hasPendingPlanQuestion: z.literal(false),
 } as const;

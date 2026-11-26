@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { actualCouncilModels } from "./actual-council-models.mjs";
 
-export async function actualCouncilAppMode({ page, result, appOrigin }) {
+export async function actualCouncilAppMode({
+  page,
+  result,
+  appOrigin,
+  workerId,
+}) {
   const title = "Disposable Operations Agent";
   const renamed = "Release Operations";
   const modePicker = () =>
@@ -23,6 +29,21 @@ export async function actualCouncilAppMode({ page, result, appOrigin }) {
       { cause: error },
     );
   }
+  const aside = page.locator('[data-slot="app-sidebar"]');
+  const footer = aside.getByRole("button", { name: "Open settings" });
+  const [sidebarBounds, footerBounds] = await Promise.all([
+    aside.boundingBox(),
+    footer.boundingBox(),
+  ]);
+  assert.ok(sidebarBounds && footerBounds);
+  assert.ok(
+    sidebarBounds.y +
+      sidebarBounds.height -
+      (footerBounds.y + footerBounds.height) <
+      28,
+    "The Council footer stays at the bottom with a short roster.",
+  );
+  await roster().getByText("Preserve this Council role marker 🌲").waitFor();
   await roster()
     .getByRole("button", { name: /Disposable Operations Agent/u })
     .click();
@@ -36,12 +57,21 @@ export async function actualCouncilAppMode({ page, result, appOrigin }) {
     /Preserve this Council role marker/u,
   );
   await edit.getByLabel("Name").fill(renamed);
+  await edit.getByLabel("Role").fill("Release coordinator");
   await edit.getByLabel("Primary agent").uncheck();
   await edit.getByRole("button", { name: "Save" }).click();
   await page.getByRole("heading", { name: renamed }).waitFor();
+  await roster()
+    .getByRole("button", { name: renamed })
+    .getByText("Release coordinator")
+    .waitFor();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Back to Council agents" }).click();
+  await roster()
+    .getByRole("button", { name: renamed })
+    .getByText("Release coordinator")
+    .waitFor();
   await roster().getByRole("button", { name: renamed }).click();
   await page.getByRole("heading", { name: renamed }).waitFor();
   await modePicker().click();
@@ -54,6 +84,8 @@ export async function actualCouncilAppMode({ page, result, appOrigin }) {
   result.steps.push(
     "Council mode opens from the browser shell at desktop and mobile widths",
   );
+  await page.setViewportSize({ width: 1344, height: 900 });
+  await actualCouncilModels({ page, result, workerId });
 }
 
 export async function actualCouncilDisabled({ page, result, appOrigin }) {

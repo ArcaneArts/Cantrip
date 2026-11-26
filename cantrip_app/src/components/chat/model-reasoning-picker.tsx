@@ -89,6 +89,7 @@ export interface ModelReasoningPickerProps {
   loadReasoningState?: (modelId: string) => Promise<ChatReasoningState>;
   subagentCapability?: NativeSubagentRuntimeCapability;
   subagents?: boolean;
+  label?: string;
   onSave(configuration: ModelConfiguration): Promise<unknown> | unknown;
 }
 
@@ -179,6 +180,61 @@ export function standaloneChatModelConfigurationSettingsUpdate(
   return {
     defaultChatModelId: configuration.modelId,
     defaultChatReasoningEffort: configuration.reasoningEffort,
+  };
+}
+
+type CouncilModelPreferences = Pick<
+  UserSettings,
+  | "defaultCouncilModelId"
+  | "defaultCouncilReasoningEffort"
+  | "defaultCouncilCustomSubagentModel"
+  | "defaultCouncilSubagentModelId"
+  | "defaultCouncilSubagentReasoningEffort"
+>;
+
+export function inheritsCouncilModelConfiguration(
+  settings: CouncilModelPreferences,
+) {
+  return (
+    settings.defaultCouncilModelId == null &&
+    settings.defaultCouncilReasoningEffort == null &&
+    settings.defaultCouncilCustomSubagentModel == null &&
+    settings.defaultCouncilSubagentModelId == null &&
+    settings.defaultCouncilSubagentReasoningEffort == null
+  );
+}
+
+export function defaultCouncilModelConfiguration(
+  settings: CouncilModelPreferences &
+    Parameters<typeof defaultModelConfiguration>[0],
+): ModelConfiguration {
+  if (inheritsCouncilModelConfiguration(settings)) {
+    return defaultModelConfiguration(settings);
+  }
+  return modelConfigurationSchema.parse({
+    modelId: settings.defaultCouncilModelId ?? settings.defaultModelId,
+    reasoningEffort: settings.defaultCouncilReasoningEffort ?? null,
+    customSubagentModel: Boolean(
+      settings.defaultCouncilCustomSubagentModel &&
+      settings.defaultCouncilSubagentModelId,
+    ),
+    subagentModelId: settings.defaultCouncilSubagentModelId ?? null,
+    subagentReasoningEffort:
+      settings.defaultCouncilSubagentReasoningEffort ?? null,
+  });
+}
+
+export function councilModelConfigurationSettingsUpdate(
+  configuration: ModelConfiguration | null,
+): UserSettingsUpdate {
+  return {
+    defaultCouncilModelId: configuration?.modelId ?? null,
+    defaultCouncilReasoningEffort: configuration?.reasoningEffort ?? null,
+    defaultCouncilCustomSubagentModel:
+      configuration?.customSubagentModel ?? null,
+    defaultCouncilSubagentModelId: configuration?.subagentModelId ?? null,
+    defaultCouncilSubagentReasoningEffort:
+      configuration?.subagentReasoningEffort ?? null,
   };
 }
 
@@ -387,6 +443,7 @@ export function ModelReasoningPicker({
   renderAdditionalSettings,
   subagentCapability,
   subagents = true,
+  label,
 }: ModelReasoningPickerProps) {
   const models = useMemo(
     () => configuredModels.filter(isLanguageModelProfile),
@@ -595,9 +652,10 @@ export function ModelReasoningPicker({
         )}
         disabled={disabled}
         aria-label={
-          mode === "settings"
+          label ??
+          (mode === "settings"
             ? "Configure default models"
-            : "Configure agent models"
+            : "Configure agent models")
         }
         title="Configure model and reasoning"
         onClick={() => handleOpenChange(true)}
@@ -621,9 +679,10 @@ export function ModelReasoningPicker({
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>
-            {mode === "settings"
-              ? "Default model configuration"
-              : "Model configuration"}
+            {label ??
+              (mode === "settings"
+                ? "Default model configuration"
+                : "Model configuration")}
           </DialogTitle>
           <DialogDescription>
             {mode === "settings"

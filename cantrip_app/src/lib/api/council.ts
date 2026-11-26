@@ -32,6 +32,7 @@ import { decodePrivateDisplayLabelForClient } from "@/lib/private-label-encrypti
 import { openModelProviderAccountLabel } from "@/lib/protected-secrets";
 
 export type CouncilAgent = Omit<CouncilAgentWireSummary, "titleProtection"> & {
+  role: string | null;
   title: string;
 };
 
@@ -258,13 +259,18 @@ async function openAgent(
   agent: CouncilAgentWireSummary,
 ): Promise<CouncilAgent> {
   const { titleProtection, ...fields } = agent;
-  const title = await decodePrivateDisplayLabelForClient({
-    identity: encryptionIdentity(snapshot),
-    opaque: titleProtection,
-    recordKind: "chat",
-    rowId: agent.id,
-  });
-  return { ...fields, title };
+  const [title, role] = await Promise.all([
+    decodePrivateDisplayLabelForClient({
+      identity: encryptionIdentity(snapshot),
+      opaque: titleProtection,
+      recordKind: "chat",
+      rowId: agent.id,
+    }),
+    openCouncilField(snapshot, agent.id, agent.protectedRole, "role").catch(
+      () => null,
+    ),
+  ]);
+  return { ...fields, title, role };
 }
 
 export async function listCouncilAgents() {

@@ -23,11 +23,11 @@ export function CouncilAgentEditor({
   const { changeState, editor, save, showEditor } = controller;
   const agent = editor === "new" ? null : editor;
   const [title, setTitle] = useState(agent?.title ?? "");
-  const [role, setRole] = useState<string | null>(agent ? null : "");
+  const [role, setRole] = useState<string | null>(agent ? agent.role : "");
   const [primary, setPrimary] = useState(agent?.primary ?? false);
   const [loadError, setLoadError] = useState<unknown>(null);
   useEffect(() => {
-    if (!agent) return;
+    if (!agent || agent.role !== null) return;
     let active = true;
     void openCouncilRole(agent).then(
       (value) => {

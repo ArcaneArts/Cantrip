@@ -105,7 +105,7 @@ impl SettingsRepository {
         self.database
             .transaction(move |tx| {
                 Box::pin(async move {
-                    let models = tx.query("SELECT DISTINCT r.model_id FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id AND m.owner_id=$1 INNER JOIN user_settings s ON s.user_id=$1 WHERE r.provider_id=$2 AND r.model_id IN (s.default_model_id,s.default_chat_model_id,s.default_council_model_id,s.default_subagent_model_id,s.labeling_model_id,s.default_embedding_model_id,s.default_decision_model_id)", &[&owner,&provider]).await?
+                    let models = tx.query("SELECT DISTINCT r.model_id FROM model_routes r INNER JOIN model_profiles m ON m.id=r.model_id AND m.owner_id=$1 INNER JOIN user_settings s ON s.user_id=$1 WHERE r.provider_id=$2 AND r.model_id IN (s.default_model_id,s.default_chat_model_id,s.default_council_model_id,s.default_council_subagent_model_id,s.default_subagent_model_id,s.labeling_model_id,s.default_embedding_model_id,s.default_decision_model_id)", &[&owner,&provider]).await?
                         .iter().map(|row| row.get::<String>(0)).collect::<Result<Vec<_>>>()?;
                     if tx.query("DELETE FROM model_providers WHERE id=$1 AND owner_id=$2 RETURNING id", &[&provider,&owner]).await?.is_empty() {
                         return Ok(false);
@@ -118,15 +118,17 @@ impl SettingsRepository {
                             "default_model_id",
                             "default_chat_model_id",
                             "default_council_model_id",
+                            "default_council_subagent_model_id",
                             "default_subagent_model_id",
                             "labeling_model_id",
                             "default_embedding_model_id",
                             "default_decision_model_id",
                         ] {
-                            let subagent_reset = if column == "default_subagent_model_id" {
-                                ",default_custom_subagent_model=false"
-                            } else {
-                                ""
+                            let subagent_reset = match column {
+                                "default_subagent_model_id" => ",default_custom_subagent_model=false",
+                                "default_council_subagent_model_id" => ",default_council_custom_subagent_model=NULL,default_council_subagent_reasoning_effort=NULL",
+                                "default_council_model_id" => ",default_council_reasoning_effort=NULL,default_council_custom_subagent_model=NULL,default_council_subagent_model_id=NULL,default_council_subagent_reasoning_effort=NULL",
+                                _ => "",
                             };
                             tx.query(&format!("UPDATE user_settings SET {column}=NULL{subagent_reset},updated_at=$3 WHERE user_id=$1 AND {column}=ANY($2::text[]) AND NOT EXISTS (SELECT 1 FROM model_routes r WHERE r.model_id=user_settings.{column} AND r.enabled=true)"), &[&owner,&models,&at]).await?;
                         }

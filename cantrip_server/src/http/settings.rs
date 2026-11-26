@@ -65,6 +65,7 @@ fn storage_preferences(mut value: Value) -> Result<serde_json::Value> {
         "defaultModelId",
         "defaultChatModelId",
         "defaultCouncilModelId",
+        "defaultCouncilSubagentModelId",
         "defaultSubagentModelId",
         "defaultWorkerId",
         "lastIdeProjectId",
@@ -77,29 +78,42 @@ fn storage_preferences(mut value: Value) -> Result<serde_json::Value> {
     }
     Ok(serde_json::from_str(&value.stringify())?)
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ModelDefaults {
+    Ide,
+    Chat,
+    Council,
+}
+
 async fn validate_defaults(
     repository: &SettingsRepository,
     owner: &str,
     input: &Value,
-    chat: bool,
+    scope: ModelDefaults,
 ) -> Result<Option<Response>> {
-    let fields = if chat {
-        &["defaultChatModelId", "defaultChatReasoningEffort"][..]
-    } else {
-        &[
+    let fields: &[&str] = match scope {
+        ModelDefaults::Chat => &["defaultChatModelId", "defaultChatReasoningEffort"],
+        ModelDefaults::Ide => &[
             "defaultModelId",
             "defaultReasoningEffort",
             "defaultCustomSubagentModel",
             "defaultSubagentModelId",
             "defaultSubagentReasoningEffort",
-        ][..]
+        ],
+        ModelDefaults::Council => &[
+            "defaultCouncilModelId",
+            "defaultCouncilReasoningEffort",
+            "defaultCouncilCustomSubagentModel",
+            "defaultCouncilSubagentModelId",
+            "defaultCouncilSubagentReasoningEffort",
+        ],
     };
     if fields.iter().all(|field| input.get(field).is_none()) {
         return Ok(None);
     }
     let current = Value::from_serialize(&repository.get_user_settings(owner).await?);
     let saved = |field: &str| input.get(field).unwrap_or(&current[field]).clone();
-    let configuration = if chat {
+    let configuration = if scope == ModelDefaults::Chat {
         Value::object([
             ("modelId", saved(fields[0])),
             ("reasoningEffort", saved(fields[1])),
@@ -108,10 +122,23 @@ async fn validate_defaults(
             ("subagentReasoningEffort", Value::Null),
         ])
     } else {
+        let mut model = saved(fields[0]);
+        let mut custom = saved(fields[2]);
+        let effort = saved(fields[1]);
+        if scope == ModelDefaults::Council {
+            custom = Value::Bool(custom == Value::Bool(true));
+            // Model-only Council writes retain their existing settings contract.
+            if effort.is_null() && custom == Value::Bool(false) {
+                return Ok(None);
+            }
+            if model.is_null() {
+                model = saved("defaultModelId");
+            }
+        }
         Value::object([
-            ("modelId", saved(fields[0])),
-            ("reasoningEffort", saved(fields[1])),
-            ("customSubagentModel", saved(fields[2])),
+            ("modelId", model),
+            ("reasoningEffort", effort),
+            ("customSubagentModel", custom),
             ("subagentModelId", saved(fields[3])),
             ("subagentReasoningEffort", saved(fields[4])),
         ])
@@ -298,8 +325,12 @@ async fn execute(
         Err(response) => return Ok(response),
     };
     if path == "/api/settings" {
-        for chat in [false, true] {
-            if let Some(response) = validate_defaults(&repository, owner, &input, chat).await? {
+        for scope in [
+            ModelDefaults::Ide,
+            ModelDefaults::Chat,
+            ModelDefaults::Council,
+        ] {
+            if let Some(response) = validate_defaults(&repository, owner, &input, scope).await? {
                 return Ok(response);
             }
         }

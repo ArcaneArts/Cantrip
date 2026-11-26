@@ -603,7 +603,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
               </>
             )}
 
-            <div className="p-3">
+            <div className="shrink-0 p-3">
               <div className="flex items-center gap-1">
                 <ServerSwitcher
                   currentUserName={

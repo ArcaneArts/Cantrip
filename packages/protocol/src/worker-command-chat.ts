@@ -438,8 +438,9 @@ export const workerChatCommandSchemas = [
         command.policyProjectId === null &&
         command.planMode === "default" &&
         command.automationPaused === false &&
-        command.subagentDefaults == null &&
-        command.subagentProtocolVersion === undefined &&
+        (command.councilAgent !== undefined ||
+          (command.subagentDefaults == null &&
+            command.subagentProtocolVersion === undefined)) &&
         command.taskDispatchLease === undefined;
       if (!projectShape && !standaloneShape) {
         context.addIssue({

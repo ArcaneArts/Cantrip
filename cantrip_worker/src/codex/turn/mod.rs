@@ -1107,7 +1107,8 @@ impl Turns {
                 };
                 let mut native_interactions = if interactions.is_some() {
                     Some(runtime.interaction_requests(thread,
-                        command["contextKind"] == "project" && prepared.environment.is_none())?)
+                        (command["contextKind"] == "project" || command.get("councilAgent").is_some())
+                        && prepared.environment.is_none())?)
                 } else { None };
                 let send = || async {
                     if goal {

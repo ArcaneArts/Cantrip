@@ -83,6 +83,22 @@ fn setting_entries(settings: &Value) -> Vec<Value> {
     [
         ("defaultCouncilModelId", "Council default model"),
         (
+            "defaultCouncilReasoningEffort",
+            "Council default reasoning effort",
+        ),
+        (
+            "defaultCouncilCustomSubagentModel",
+            "Council custom subagent model enabled",
+        ),
+        (
+            "defaultCouncilSubagentModelId",
+            "Council default subagent model",
+        ),
+        (
+            "defaultCouncilSubagentReasoningEffort",
+            "Council default subagent reasoning effort",
+        ),
+        (
             "defaultCouncilPermissionProfileId",
             "Council default permissions",
         ),

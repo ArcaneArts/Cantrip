@@ -570,8 +570,8 @@ impl Ensurer {
             .get("subagentDefaults")
             .filter(|value| value.is_object())
         {
-            if standalone || guest {
-                bail!("Custom subagents require a Host Project Chat.");
+            if (standalone && session["council"] != true) || guest {
+                bail!("Custom subagents require a Host Project Chat or Council agent.");
             }
             let child = open_runtime_provider(&self.0.encryption, &defaults["provider"])?;
             if ["id", "kind", "accountId", "credentialHomeKey"]
@@ -700,15 +700,6 @@ impl Ensurer {
                                     &command["model"],
                                     &command["subagentDefaults"]["model"],
                                 )?;
-                                if command["session"]["council"] == true {
-                                    // Council peers use the Cantrip roster. Keep native subagents
-                                    // disabled in both the initial and restored process.
-                                    launch.profile.provider_arguments.extend([
-                                        "features.multi_agent=false".into(),
-                                        "features.multi_agent_v2.enabled=false".into(),
-                                        "agents.enabled=false".into(),
-                                    ]);
-                                }
                                 if let Some(environment) = &environment {
                                     environment.configure_launch(&mut launch);
                                 }

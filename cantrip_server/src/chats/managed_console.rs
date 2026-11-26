@@ -146,7 +146,9 @@ impl ManagedConsole {
             .context("No provider route is currently available.")?;
         let root = &pair["root"]["runtime"];
         let child = &pair["subagent"]["runtime"];
-        let subagent = if context["contextKind"] != "standalone" && truthy(Some(child)) {
+        let supports_subagents =
+            context["contextKind"] == "project" || context.get("councilAgent").is_some();
+        let subagent = if supports_subagents && truthy(Some(child)) {
             json!({"model":child["model"],"provider":child["provider"]})
         } else {
             Value::Null

@@ -37,16 +37,21 @@ async fn raw_one(ex: Executor<'_, '_>, sql: &str, params: Parameters<'_>) -> Res
 }
 
 fn assert_standalone(context: &Value, prompt: &Value) -> Result<()> {
-    if matches!(
-        context["context_kind"].as_str(),
-        Some("standalone" | "council")
-    ) && (prompt["classification"]["mode"] != "default"
-        || !prompt["worktreeId"].is_null()
-        || truthy(prompt.get("customSubagentModel"))
+    let standalone = context["context_kind"] == "standalone";
+    let subagents = truthy(prompt.get("customSubagentModel"))
         || !prompt["subagentModelId"].is_null()
-        || !prompt["subagentReasoningEffort"].is_null())
+        || !prompt["subagentReasoningEffort"].is_null();
+    if (standalone || context["context_kind"] == "council")
+        && (prompt["classification"]["mode"] != "default"
+            || !prompt["worktreeId"].is_null()
+            || (standalone && subagents))
     {
-        return Err(LaneError::Conflict("Standalone Chat queued prompts must use default mode without worktree or subagent settings.".into()).into());
+        let message = if standalone {
+            "Standalone Chat queued prompts must use default mode without worktree or subagent settings."
+        } else {
+            "Council queued prompts must use default mode without a worktree."
+        };
+        return Err(LaneError::Conflict(message.into()).into());
     }
     Ok(())
 }

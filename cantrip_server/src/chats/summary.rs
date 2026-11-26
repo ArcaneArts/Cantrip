@@ -47,9 +47,6 @@ pub(super) fn wire_summary(raw: &Value) -> Result<Value> {
             ("experience", json!("agent")),
             ("activeWorktreeId", Value::Null),
             ("worktreeMode", Value::Null),
-            ("customSubagentModel", json!(false)),
-            ("subagentModelId", Value::Null),
-            ("subagentReasoningEffort", Value::Null),
             ("planMode", json!("default")),
             ("hasPendingPlanQuestion", json!(false)),
         ] {

@@ -41,8 +41,11 @@ import {
 } from "react";
 
 import {
+  councilModelConfigurationSettingsUpdate,
+  defaultCouncilModelConfiguration,
   defaultModelConfiguration,
   defaultStandaloneChatModelConfiguration,
+  inheritsCouncilModelConfiguration,
   ModelReasoningPicker,
   modelConfigurationSettingsUpdate,
   standaloneChatModelConfigurationSettingsUpdate,
@@ -632,7 +635,55 @@ export function ModelsSettings({
                 />
               </div>
             </div>
-            {preferences.defaultCouncilModelId !== undefined ? (
+            {preferences.defaultCouncilReasoningEffort !== undefined ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">Council defaults</p>
+                    {inheritsCouncilModelConfiguration(preferences) ? (
+                      <Badge variant="outline">Inherits IDE</Badge>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Root and subagent defaults for newly created Council agents.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!inheritsCouncilModelConfiguration(preferences) ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={preferencesPending}
+                      onClick={() =>
+                        void onPreferencesChange(
+                          councilModelConfigurationSettingsUpdate(null),
+                        ).catch(() => undefined)
+                      }
+                    >
+                      Use IDE defaults
+                    </Button>
+                  ) : null}
+                  <ModelReasoningPicker
+                    configuration={defaultCouncilModelConfiguration(
+                      preferences,
+                    )}
+                    disabled={preferencesPending}
+                    label="Council default model configuration"
+                    loadReasoningState={getModelReasoningOptions}
+                    mode="settings"
+                    models={languageModels}
+                    ollamaCatalog={{ providers, workerId }}
+                    pending={preferencesPending}
+                    onSave={(configuration) =>
+                      onPreferencesChange(
+                        councilModelConfigurationSettingsUpdate(configuration),
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            ) : preferences.defaultCouncilModelId !== undefined ? (
               <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
                 <p className="text-sm font-medium">Council default model</p>
                 <div className="grid w-full gap-1 sm:w-72">

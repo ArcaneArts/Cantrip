@@ -496,8 +496,9 @@ pub(super) fn refine(
                 && value["policyProjectId"].is_null()
                 && value["planMode"] == "default"
                 && value["automationPaused"] == false
-                && value.get("subagentDefaults").is_none_or(Value::is_null)
-                && value.get("subagentProtocolVersion").is_none()
+                && (value.get("councilAgent").is_some()
+                    || (value.get("subagentDefaults").is_none_or(Value::is_null)
+                        && value.get("subagentProtocolVersion").is_none()))
                 && value.get("taskDispatchLease").is_none();
             if !project && !standalone {
                 issue!(

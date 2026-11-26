@@ -2234,6 +2234,13 @@
       "when": 1795624660000,
       "tag": "0318_council_agent_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 319,
+      "version": "7",
+      "when": 1795660748000,
+      "tag": "0319_council_model_configuration",
+      "breakpoints": true
     }
   ]
 }
