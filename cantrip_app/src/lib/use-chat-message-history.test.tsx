@@ -62,6 +62,7 @@ it("suspends hidden history subscriptions and older loading, then rejoins the la
     cancelIdleCallback: vi.fn(),
   });
   const renders = vi.fn();
+  const consoleError = vi.spyOn(console, "error");
   function Probe({ enabled }: { enabled: boolean }) {
     renders();
     const history = useChatMessageHistory({
@@ -112,7 +113,11 @@ it("suspends hidden history subscriptions and older loading, then rejoins the la
       "latest",
     );
     expect(idle).toHaveBeenCalledTimes(1);
+    expect(consoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining("No queryFn was passed"),
+    );
   } finally {
+    consoleError.mockRestore();
     await act(async () => renderer?.unmount());
     client.clear();
     vi.unstubAllGlobals();
