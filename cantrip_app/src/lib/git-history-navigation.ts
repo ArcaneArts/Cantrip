@@ -161,6 +161,13 @@ export function replaceGitHistoryRoute(state: GitHistoryRouteState): void {
   window.history.replaceState(window.history.state, "", url);
 }
 
+export function clearGitHistoryRoute(): void {
+  const url = new URL(window.location.href);
+  if (!allParameterNames.some((name) => url.searchParams.has(name))) return;
+  for (const name of allParameterNames) url.searchParams.delete(name);
+  window.history.replaceState(window.history.state, "", url);
+}
+
 export function pushGitHistoryRoute(state: GitHistoryRouteState): void {
   const url = new URL(window.location.href);
   url.search = gitHistoryRouteSearch(url.search, state);

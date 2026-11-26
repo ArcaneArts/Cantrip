@@ -88,8 +88,16 @@ beforeEach(() => {
     removeItem: (key: string) => items.delete(key),
   };
   vi.stubGlobal("localStorage", localStorage);
+  const location = { href: "https://cantrip.example.test/" };
   vi.stubGlobal("window", {
     localStorage,
+    location,
+    history: {
+      state: { index: 2 },
+      replaceState: vi.fn((_state: unknown, _title: string, url: URL) => {
+        location.href = url.href;
+      }),
+    },
     dispatchEvent: vi.fn(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -203,6 +211,31 @@ async function hydrated(h: Awaited<ReturnType<typeof mount>>) {
     expect(h.current.settingsReady).toBe(true);
   });
 }
+
+it.each(["chat", "council"] as const)(
+  "clears the History deep link when switching from IDE to %s",
+  async (mode) => {
+    const h = await mount({ initial: bundle("ide") });
+    await hydrated(h);
+    window.location.href =
+      "https://cantrip.example.test/?gitProject=project-a&gitWorktree=primary&gitFirstParent=1&other=kept#anchor";
+
+    await act(async () => {
+      if (mode === "chat") h.current.commands.switchToChat();
+      else h.current.navigation.setAppMode("council");
+    });
+
+    expect(h.current.navigation.appMode).toBe(mode);
+    expect(window.location.href).toBe(
+      "https://cantrip.example.test/?other=kept#anchor",
+    );
+    expect(window.history.replaceState).toHaveBeenCalledWith(
+      window.history.state,
+      "",
+      new URL(window.location.href),
+    );
+  },
+);
 
 describe("startup navigation and explicit mode choices", () => {
   it.each(["ide", "chat"] as const)(

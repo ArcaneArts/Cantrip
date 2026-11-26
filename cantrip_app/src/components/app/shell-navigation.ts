@@ -45,6 +45,7 @@ import {
 } from "@/lib/api";
 import { revealDockPresentation } from "@/components/app/project-dock-presentation";
 import { resolveAppStartupNavigation } from "@/lib/app-navigation";
+import { clearGitHistoryRoute } from "@/lib/git-history-navigation";
 import { useAppLiveClientControl } from "@/lib/app-live-react";
 import { openClientNotification } from "@/lib/client-control-content-encryption";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
@@ -340,6 +341,7 @@ export function useShellNavigationState(
       // A local destination is newer than pending startup preferences. Resolve
       // startup synchronously, before its queries can publish an older choice.
       startupNavigationResolvedRef.current = true;
+      if (mode === "chat" || mode === "council") clearGitHistoryRoute();
       setAppModeState(mode);
     },
     [],
