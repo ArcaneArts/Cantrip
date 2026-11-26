@@ -304,6 +304,14 @@ export async function requestResponse(
   try {
     response = await sendRequest(url, method, init);
   } catch (error) {
+    if (
+      init?.signal?.aborted &&
+      (error === init.signal.reason ||
+        (error instanceof DOMException && error.name === "AbortError")) &&
+      !(error instanceof DOMException && error.name === "TimeoutError")
+    ) {
+      throw error;
+    }
     clientLogger.rateLimited(
       `api:${method}:${route}:network`,
       "error",
