@@ -13,6 +13,12 @@ const intentionallyHistoricalPaths = new Set([
   "docs/RUN_CONFIGURATIONS.md",
   auditPath,
 ]);
+// The external typed CLI command is a supported wire name. Its dispatcher
+// delegates to the current Run configuration implementation.
+const externalRunStatusPaths = new Set([
+  "crates/cantrip-protocol/src/external_mcp/execution.rs",
+  "docs/MCP.md",
+]);
 const legacyIdentifiers = new Map([
   ["run_config_list", "run_configuration_list"],
   ["run_config_read", "run_configuration_get"],
@@ -86,6 +92,11 @@ export async function auditRunConfigurationCutover(root = repositoryRoot) {
     }
     if (content.includes("\0")) continue;
     for (const [identifier, replacement] of legacyIdentifiers) {
+      if (
+        identifier === "run_status" &&
+        externalRunStatusPaths.has(relativePath)
+      )
+        continue;
       let offset = content.indexOf(identifier);
       while (offset >= 0) {
         const before = content.slice(0, offset);
