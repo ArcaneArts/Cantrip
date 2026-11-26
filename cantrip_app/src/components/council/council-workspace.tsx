@@ -13,7 +13,7 @@ import { ChatTranscript } from "@/components/chat/chat-transcript";
 import { COUNCIL_CHAT_SURFACE_CAPABILITIES } from "@/components/chat/chat-surface-capabilities";
 import { useChatExecutionControls } from "@/components/chat/use-chat-execution-controls";
 import type { AppToastInput } from "@/components/ui/app-toast";
-import { Button } from "@/components/ui/button";
+import { TooltipButton, TooltipProvider } from "@/components/ui/tooltip";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import type { CouncilAgent } from "@/lib/api/council";
 import { resolveStandaloneChatFilePath } from "@/lib/api/files";
@@ -45,7 +45,7 @@ export function CouncilWorkspace(props: Props) {
   const { controller, compact } = props;
   const { agent, editor, showEditor } = controller;
   return (
-    <>
+    <TooltipProvider disableHoverableContent>
       {agent?.archived ? (
         <CouncilArchivedAgent
           key={agent.id}
@@ -67,7 +67,12 @@ export function CouncilWorkspace(props: Props) {
                 : "Create your first Council agent"}
             </h1>
             {!controller.roster.data?.length ? (
-              <Button onClick={() => showEditor("new")}>New agent</Button>
+              <TooltipButton
+                tooltip="New agent"
+                onClick={() => showEditor("new")}
+              >
+                New agent
+              </TooltipButton>
             ) : null}
           </div>
         </div>
@@ -78,7 +83,7 @@ export function CouncilWorkspace(props: Props) {
           controller={controller}
         />
       ) : null}
-    </>
+    </TooltipProvider>
   );
 }
 
@@ -161,14 +166,15 @@ function CouncilConversation({
     >
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
         {compact ? (
-          <Button
+          <TooltipButton
+            tooltip="Back to Council agents"
             aria-label="Back to Council agents"
             size="icon"
             variant="ghost"
             onClick={() => select(null)}
           >
             <ArrowLeft className="size-4" />
-          </Button>
+          </TooltipButton>
         ) : null}
         <h1 className="min-w-0 flex-1 truncate text-sm font-medium">
           {agent.title}
@@ -176,32 +182,36 @@ function CouncilConversation({
         <CouncilProjectApprovals agentId={agent.id} />
         <CouncilLinkedWork agentId={agent.id} />
         <CouncilRoutines agentId={agent.id} />
-        <Button
+        <TooltipButton
+          tooltip="Search Council history"
           aria-label="Search Council history"
           size="icon"
           variant="ghost"
           onClick={() => openHistory(agent.id)}
         >
           <Search className="size-4" />
-        </Button>
-        <Button
+        </TooltipButton>
+        <TooltipButton
+          tooltip="Edit Council agent"
           aria-label="Edit Council agent"
           size="icon"
           variant="ghost"
           onClick={() => showEditor(agent)}
         >
           <Settings2 className="size-4" />
-        </Button>
-        <Button
+        </TooltipButton>
+        <TooltipButton
+          tooltip="Edit fast memory"
           aria-label="Edit fast memory"
           size="icon"
           variant="ghost"
           onClick={() => setMemoryOpen(true)}
         >
           <NotebookPen className="size-4" />
-        </Button>
-        <Button
-          aria-label="Open agent files"
+        </TooltipButton>
+        <TooltipButton
+          tooltip={filesOpen ? "Close agent files" : "Open agent files"}
+          aria-label={filesOpen ? "Close agent files" : "Open agent files"}
           aria-pressed={filesOpen}
           size="icon"
           variant="ghost"
@@ -209,7 +219,7 @@ function CouncilConversation({
           onClick={() => setFilesOpen((open) => !open)}
         >
           <FolderOpen className="size-4" />
-        </Button>
+        </TooltipButton>
       </div>
       {status ? (
         <p
@@ -225,7 +235,8 @@ function CouncilConversation({
             {providerStatus}
           </p>
           {recoveryActive ? (
-            <Button
+            <TooltipButton
+              tooltip="Stop recovery"
               size="sm"
               variant="ghost"
               disabled={interrupt.isPending}
@@ -241,7 +252,7 @@ function CouncilConversation({
               }
             >
               Stop recovery
-            </Button>
+            </TooltipButton>
           ) : null}
         </div>
       ) : null}

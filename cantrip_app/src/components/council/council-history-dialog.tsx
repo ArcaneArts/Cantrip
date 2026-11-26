@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { MessageContent } from "@/components/chat/message-content";
-import { Button } from "@/components/ui/button";
+import { TooltipButton, TooltipTarget } from "@/components/ui/tooltip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
@@ -54,7 +54,10 @@ export function CouncilHistoryDialog({
   );
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent
+        closeTooltip="Close Council history"
+        className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl"
+      >
         <DialogHeader>
           <DialogTitle>Council history</DialogTitle>
           <DialogDescription>
@@ -63,14 +66,15 @@ export function CouncilHistoryDialog({
         </DialogHeader>
         {focused ? (
           <>
-            <Button
+            <TooltipButton
+              tooltip="Back to search"
               type="button"
               variant="ghost"
               className="w-fit"
               onClick={() => setFocused(null)}
             >
               Back to search
-            </Button>
+            </TooltipButton>
             <HistoryEvidence
               key={focused}
               agentId={agentId}
@@ -101,12 +105,13 @@ export function CouncilHistoryDialog({
                   value={query}
                   onChange={(event) => setQuery(event.currentTarget.value)}
                 />
-                <Button
+                <TooltipButton
+                  tooltip="Search"
                   type="submit"
                   disabled={!query.trim() || search.isPending}
                 >
                   Search
-                </Button>
+                </TooltipButton>
               </div>
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -136,16 +141,18 @@ export function CouncilHistoryDialog({
                   <ul className="space-y-2">
                     {matches.map((hit) => (
                       <li key={hit.messageId}>
-                        <button
-                          className="w-full rounded-md border p-3 text-left hover:bg-muted focus-visible:outline-2"
-                          type="button"
-                          onClick={() => setFocused(hit.messageId)}
-                        >
-                          <HistoryLabel role={hit.role} at={hit.createdAt} />
-                          <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm">
-                            {hit.snippet}
-                          </p>
-                        </button>
+                        <TooltipTarget tooltip="Open message in history">
+                          <button
+                            className="w-full rounded-md border p-3 text-left hover:bg-muted focus-visible:outline-2"
+                            type="button"
+                            onClick={() => setFocused(hit.messageId)}
+                          >
+                            <HistoryLabel role={hit.role} at={hit.createdAt} />
+                            <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm">
+                              {hit.snippet}
+                            </p>
+                          </button>
+                        </TooltipTarget>
                       </li>
                     ))}
                   </ul>
@@ -260,7 +267,8 @@ function HistoryEvidence({
           </article>
         ))}
       {available ? (
-        <Button
+        <TooltipButton
+          tooltip="Delete message"
           variant="outline"
           onClick={() => {
             remove.reset();
@@ -268,9 +276,10 @@ function HistoryEvidence({
           }}
         >
           Delete message
-        </Button>
+        </TooltipButton>
       ) : null}
       <ConfirmDialog
+        buttonTooltips
         title="Delete Council message?"
         description="This permanently removes the selected message and clears the agent’s current Codex context. The agent can still search the rest of its history."
         open={confirmOpen}

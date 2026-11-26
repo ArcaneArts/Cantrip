@@ -5,7 +5,7 @@ import { ArrowUpRight, CircleAlert } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel";
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -64,17 +64,21 @@ export function CouncilProjectApprovals({ agentId }: { agentId: string }) {
   return (
     <>
       {requests.length ? (
-        <Button
+        <TooltipButton
+          tooltip="View project requests"
           aria-label={`Project requests (${requests.length})`}
           onClick={() => setOpen(true)}
           size="sm"
           variant="outline"
         >
           <CircleAlert className="size-4" /> {requests.length}
-        </Button>
+        </TooltipButton>
       ) : null}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent
+          closeTooltip="Close project requests"
+          className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl"
+        >
           <DialogHeader>
             <DialogTitle>Project requests</DialogTitle>
             <DialogDescription>
@@ -84,6 +88,7 @@ export function CouncilProjectApprovals({ agentId }: { agentId: string }) {
           </DialogHeader>
           {requests.length ? (
             <AgentInteractionPanel
+              buttonTooltips
               error={reply.isError ? errorMessage(reply.error) : null}
               pendingRequestId={
                 reply.isPending ? reply.variables.requestId : null

@@ -55,6 +55,24 @@ export function TooltipContent({
   );
 }
 
+export function TooltipTarget({
+  children,
+  tooltip,
+  side = "bottom",
+}: {
+  children: React.ReactElement;
+  tooltip: React.ReactNode;
+  side?: React.ComponentProps<typeof TooltipContent>["side"];
+}) {
+  if (tooltip == null) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side}>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function SuppressibleTooltip({
   children,
   disabled,
@@ -80,14 +98,19 @@ export function TooltipButton({
   disabled,
   pending,
   tooltip,
+  tooltipClassName,
   tooltipDisabled,
   tooltipSide = "bottom",
   ...props
 }: React.ComponentProps<typeof Button> & {
   tooltip: React.ReactNode;
+  tooltipClassName?: string;
   tooltipDisabled?: boolean;
   tooltipSide?: React.ComponentProps<typeof TooltipContent>["side"];
 }) {
+  if (tooltip == null) {
+    return <Button {...props} disabled={disabled} pending={pending} />;
+  }
   const ariaLabel =
     props["aria-label"] ?? (typeof tooltip === "string" ? tooltip : undefined);
   const button = (
@@ -108,7 +131,9 @@ export function TooltipButton({
           button
         )}
       </TooltipTrigger>
-      <TooltipContent side={tooltipSide}>{tooltip}</TooltipContent>
+      <TooltipContent className={tooltipClassName} side={tooltipSide}>
+        {tooltip}
+      </TooltipContent>
     </>
   );
 

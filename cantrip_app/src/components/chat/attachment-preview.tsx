@@ -13,7 +13,7 @@ import {
   formatAttachmentBytes,
   pastedTextAttachmentLabel,
 } from "@/components/chat/attachment-utils";
-import { Button } from "@/components/ui/button";
+import { TooltipButton, TooltipTarget } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -91,6 +91,7 @@ function AttachmentIcon({ kind }: Pick<AttachmentPresentation, "kind">) {
 
 export function AttachmentPreview({
   attachment,
+  buttonTooltips,
   contentUrl,
   error,
   onOpen,
@@ -99,6 +100,7 @@ export function AttachmentPreview({
   uploading = false,
 }: {
   attachment: AttachmentPresentation;
+  buttonTooltips?: boolean;
   contentUrl: string;
   error?: string | null;
   onOpen?(): void;
@@ -125,53 +127,67 @@ export function AttachmentPreview({
           error && "border-destructive/40",
         )}
       >
-        <button
-          type="button"
-          className="flex w-full min-w-0 items-center gap-2 pr-7 text-left"
-          disabled={uploading || !onOpen}
-          onClick={onOpen}
+        <TooltipTarget
+          tooltip={
+            buttonTooltips ? `Preview ${attachment.fileName}` : undefined
+          }
         >
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg border bg-background/60 text-muted-foreground">
-            {uploading ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <FileText className="size-3.5" />
-            )}
-          </span>
-          <span
-            className="min-w-0 flex-1 truncate text-xs font-medium"
-            title={label}
+          <button
+            type="button"
+            className="flex w-full min-w-0 items-center gap-2 pr-7 text-left"
+            disabled={uploading || !onOpen}
+            onClick={onOpen}
           >
-            {label}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={cn(
-            "ml-10 mt-0.5 inline-flex items-center gap-0.5 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-60",
-            error && "text-destructive",
-          )}
-          disabled={uploading || restoring}
-          title={error ?? undefined}
-          onClick={() => {
-            setRestoring(true);
-            void Promise.resolve()
-              .then(onRestoreText)
-              .catch(() => undefined)
-              .finally(() => setRestoring(false));
-          }}
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg border bg-background/60 text-muted-foreground">
+              {uploading ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <FileText className="size-3.5" />
+              )}
+            </span>
+            <span
+              className="min-w-0 flex-1 truncate text-xs font-medium"
+              title={label}
+            >
+              {label}
+            </span>
+          </button>
+        </TooltipTarget>
+        <TooltipTarget
+          tooltip={buttonTooltips ? (error ?? "Show in text field") : undefined}
         >
-          {restoring
-            ? "Restoring…"
-            : uploading
-              ? "Uploading…"
-              : "Show in text field"}
-          {!restoring && !uploading ? (
-            <ChevronRight className="size-3" />
-          ) : null}
-        </button>
+          <button
+            type="button"
+            className={cn(
+              "ml-10 mt-0.5 inline-flex items-center gap-0.5 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-60",
+              error && "text-destructive",
+            )}
+            disabled={uploading || restoring}
+            title={error ?? undefined}
+            onClick={() => {
+              setRestoring(true);
+              void Promise.resolve()
+                .then(onRestoreText)
+                .catch(() => undefined)
+                .finally(() => setRestoring(false));
+            }}
+          >
+            {restoring
+              ? "Restoring…"
+              : uploading
+                ? "Uploading…"
+                : "Show in text field"}
+            {!restoring && !uploading ? (
+              <ChevronRight className="size-3" />
+            ) : null}
+          </button>
+        </TooltipTarget>
         {onRemove ? (
-          <Button
+          <TooltipButton
+            tooltip={
+              buttonTooltips ? `Remove ${attachment.fileName}` : undefined
+            }
+            aria-label={buttonTooltips ? "Remove attachment" : undefined}
             type="button"
             size="icon"
             variant="ghost"
@@ -181,7 +197,7 @@ export function AttachmentPreview({
           >
             <X className="size-3" />
             <span className="sr-only">Remove attachment</span>
-          </Button>
+          </TooltipButton>
         ) : null}
       </div>
     );
@@ -195,53 +211,59 @@ export function AttachmentPreview({
         error && "border-destructive/40",
       )}
     >
-      <button
-        type="button"
-        className="block w-full text-left"
-        disabled={uploading}
-        onClick={onOpen}
+      <TooltipTarget
+        tooltip={buttonTooltips ? `Preview ${attachment.fileName}` : undefined}
       >
-        {attachment.kind === "image" && !uploading && resolvedContentUrl ? (
-          <img
-            alt={attachment.fileName}
-            className="h-24 w-full object-cover"
-            loading="lazy"
-            src={resolvedContentUrl}
-          />
-        ) : attachment.kind === "text" && attachment.previewText ? (
-          <pre className="h-20 overflow-hidden px-3 pt-2 font-mono text-[10px] leading-4 whitespace-pre-wrap text-muted-foreground [mask-image:linear-gradient(to_bottom,black_55%,transparent)]">
-            {attachment.previewText}
-          </pre>
-        ) : (
-          <div className="grid h-16 place-items-center text-muted-foreground">
-            {uploading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <AttachmentIcon kind={attachment.kind} />
-            )}
-          </div>
-        )}
-        <div className="flex min-w-0 items-center gap-2 px-3 py-2">
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-medium">
-              {attachment.fileName}
-            </span>
-            <span
-              className={cn(
-                "block truncate text-[10px] text-muted-foreground",
-                error && "text-destructive",
+        <button
+          type="button"
+          className="block w-full text-left"
+          disabled={uploading}
+          onClick={onOpen}
+        >
+          {attachment.kind === "image" && !uploading && resolvedContentUrl ? (
+            <img
+              alt={attachment.fileName}
+              className="h-24 w-full object-cover"
+              loading="lazy"
+              src={resolvedContentUrl}
+            />
+          ) : attachment.kind === "text" && attachment.previewText ? (
+            <pre className="h-20 overflow-hidden px-3 pt-2 font-mono text-[10px] leading-4 whitespace-pre-wrap text-muted-foreground [mask-image:linear-gradient(to_bottom,black_55%,transparent)]">
+              {attachment.previewText}
+            </pre>
+          ) : (
+            <div className="grid h-16 place-items-center text-muted-foreground">
+              {uploading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <AttachmentIcon kind={attachment.kind} />
               )}
-            >
-              {error ??
-                (uploading
-                  ? "Uploading…"
-                  : `${attachment.source === "paste" ? "Pasted text · " : ""}${formatAttachmentBytes(attachment.sizeBytes)}`)}
+            </div>
+          )}
+          <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-medium">
+                {attachment.fileName}
+              </span>
+              <span
+                className={cn(
+                  "block truncate text-[10px] text-muted-foreground",
+                  error && "text-destructive",
+                )}
+              >
+                {error ??
+                  (uploading
+                    ? "Uploading…"
+                    : `${attachment.source === "paste" ? "Pasted text · " : ""}${formatAttachmentBytes(attachment.sizeBytes)}`)}
+              </span>
             </span>
-          </span>
-        </div>
-      </button>
+          </div>
+        </button>
+      </TooltipTarget>
       {onRemove ? (
-        <Button
+        <TooltipButton
+          tooltip={buttonTooltips ? `Remove ${attachment.fileName}` : undefined}
+          aria-label={buttonTooltips ? "Remove attachment" : undefined}
           type="button"
           size="icon"
           variant="outline"
@@ -251,7 +273,7 @@ export function AttachmentPreview({
         >
           <X className="size-3" />
           <span className="sr-only">Remove attachment</span>
-        </Button>
+        </TooltipButton>
       ) : null}
     </div>
   );
@@ -259,11 +281,13 @@ export function AttachmentPreview({
 
 export function AttachmentViewerDialog({
   attachment,
+  buttonTooltips,
   contentUrl,
   onOpenChange,
   open,
 }: {
   attachment: AttachmentPresentation | null;
+  buttonTooltips?: boolean;
   contentUrl: string | null;
   onOpenChange(open: boolean): void;
   open: boolean;
@@ -304,7 +328,10 @@ export function AttachmentViewerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] max-w-4xl flex-col">
+      <DialogContent
+        closeTooltip={buttonTooltips ? "Close attachment" : undefined}
+        className="flex max-h-[85vh] max-w-4xl flex-col"
+      >
         <DialogHeader>
           <DialogTitle className="truncate pr-8">
             {attachment?.fileName ?? "Attachment"}

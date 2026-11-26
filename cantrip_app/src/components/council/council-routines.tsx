@@ -12,6 +12,7 @@ import { useState } from "react";
 
 import { AutomationRunLink } from "@/components/chat/automation-run-link";
 import { Button } from "@/components/ui/button";
+import { TooltipButton, TooltipTarget } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -89,12 +90,17 @@ export function CouncilRoutines({ agentId }: { agentId: string }) {
   }
   return (
     <Dialog open={open} onOpenChange={opened}>
-      <DialogTrigger asChild>
-        <Button aria-label="Council routines" size="icon" variant="ghost">
-          <CalendarClock className="size-4" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[85dvh] overflow-y-auto">
+      <TooltipTarget tooltip="Council routines">
+        <DialogTrigger asChild>
+          <Button aria-label="Council routines" size="icon" variant="ghost">
+            <CalendarClock className="size-4" />
+          </Button>
+        </DialogTrigger>
+      </TooltipTarget>
+      <DialogContent
+        closeTooltip="Close routines"
+        className="max-h-[85dvh] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>
             {editor
@@ -127,14 +133,15 @@ export function CouncilRoutines({ agentId }: { agentId: string }) {
           />
         ) : history ? (
           <>
-            <Button
+            <TooltipButton
+              tooltip="Back to routines"
               className="w-fit"
               size="sm"
               variant="outline"
               onClick={() => setHistory(null)}
             >
               Back to routines
-            </Button>
+            </TooltipButton>
             {runs.isPending ? (
               <p role="status" className="text-sm">
                 Loading runs…
@@ -164,9 +171,14 @@ export function CouncilRoutines({ agentId }: { agentId: string }) {
           </>
         ) : (
           <>
-            <Button className="w-fit" size="sm" onClick={() => edit("new")}>
+            <TooltipButton
+              tooltip="New routine"
+              className="w-fit"
+              size="sm"
+              onClick={() => edit("new")}
+            >
               <Plus className="size-4" /> New routine
-            </Button>
+            </TooltipButton>
             {routines.isPending ? (
               <p role="status" className="text-sm">
                 Loading routines…
@@ -196,7 +208,10 @@ export function CouncilRoutines({ agentId }: { agentId: string }) {
                         : "Paused"}
                     </p>
                   </div>
-                  <Button
+                  <TooltipButton
+                    tooltip={
+                      routine.enabled ? "Pause routine" : "Resume routine"
+                    }
                     aria-label={`${routine.enabled ? "Pause" : "Resume"} ${routine.name}`}
                     size="icon"
                     variant="ghost"
@@ -213,23 +228,25 @@ export function CouncilRoutines({ agentId }: { agentId: string }) {
                     ) : (
                       <Play className="size-4" />
                     )}
-                  </Button>
-                  <Button
+                  </TooltipButton>
+                  <TooltipButton
+                    tooltip="Edit routine"
                     aria-label={`Edit ${routine.name}`}
                     size="icon"
                     variant="ghost"
                     onClick={() => edit(routine)}
                   >
                     <Pencil className="size-4" />
-                  </Button>
-                  <Button
+                  </TooltipButton>
+                  <TooltipButton
+                    tooltip="View run history"
                     aria-label={`Runs for ${routine.name}`}
                     size="icon"
                     variant="ghost"
                     onClick={() => setHistory(routine)}
                   >
                     <History className="size-4" />
-                  </Button>
+                  </TooltipButton>
                 </li>
               ))}
             </ul>

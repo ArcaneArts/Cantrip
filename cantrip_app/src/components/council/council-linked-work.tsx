@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight, BriefcaseBusiness } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -26,17 +26,21 @@ export function CouncilLinkedWork({ agentId }: { agentId: string }) {
   return (
     <>
       {work.length ? (
-        <Button
+        <TooltipButton
+          tooltip="Delegated work"
           aria-label="Delegated work"
           size="icon"
           variant="ghost"
           onClick={() => setOpen(true)}
         >
           <BriefcaseBusiness className="size-4" />
-        </Button>
+        </TooltipButton>
       ) : null}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
+        <DialogContent
+          closeTooltip="Close delegated work"
+          className="max-h-[85dvh] overflow-y-auto sm:max-w-lg"
+        >
           <DialogHeader>
             <DialogTitle>Delegated work</DialogTitle>
             <DialogDescription>

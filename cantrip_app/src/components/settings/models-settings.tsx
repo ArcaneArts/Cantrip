@@ -57,6 +57,7 @@ import {
 } from "@/components/projects/token-usage-analytics";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { ListPageControls } from "@/components/ui/list-page-controls";
 import { ModelCombobox } from "@/components/chat/model-combobox";
@@ -650,7 +651,8 @@ export function ModelsSettings({
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {!inheritsCouncilModelConfiguration(preferences) ? (
-                    <Button
+                    <TooltipButton
+                      tooltip="Use IDE defaults"
                       type="button"
                       size="sm"
                       variant="ghost"
@@ -662,9 +664,10 @@ export function ModelsSettings({
                       }
                     >
                       Use IDE defaults
-                    </Button>
+                    </TooltipButton>
                   ) : null}
                   <ModelReasoningPicker
+                    buttonTooltips
                     configuration={defaultCouncilModelConfiguration(
                       preferences,
                     )}
@@ -689,6 +692,7 @@ export function ModelsSettings({
                 <div className="grid w-full gap-1 sm:w-72">
                   <ModelCombobox
                     ariaLabel="Council default model"
+                    tooltip="Choose the Council default model"
                     models={languageModels}
                     value={preferences.defaultCouncilModelId}
                     disabled={preferencesPending}

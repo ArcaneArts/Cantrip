@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   settingsButtonProps: null as Record<string, any> | null,
 }));
 
-vi.mock("@/components/ui/tooltip", () => ({
+vi.mock("@/components/ui/tooltip", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/ui/tooltip")>()),
   TooltipButton: ({ tooltip, tooltipSide, ...props }: Record<string, any>) => {
     mocks.settingsButtonProps = { ...props, tooltip, tooltipSide };
     return <button {...props} />;

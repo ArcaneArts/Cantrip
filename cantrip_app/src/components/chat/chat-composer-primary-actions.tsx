@@ -6,7 +6,7 @@ import {
   persistedTurnElapsed,
 } from "./native-suspension-view";
 
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import { formatRunningAgentDuration } from "@/components/chat/chat-run-duration";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +90,7 @@ function RunningAgentDuration({
 }
 
 export function ChatComposerPrimaryActions({
+  buttonTooltips = false,
   active,
   agentStartedAtMs,
   onPauseChange,
@@ -105,6 +106,7 @@ export function ChatComposerPrimaryActions({
   stopPending,
 }: {
   active: boolean;
+  buttonTooltips?: boolean;
   agentStartedAtMs: number | null;
   onPauseChange(paused: boolean): void;
   onStop(): void;
@@ -124,11 +126,17 @@ export function ChatComposerPrimaryActions({
   );
   const label =
     recovery?.label ?? (paused ? "Resume automatic agent work" : "Pause agent");
+  const pauseTooltip = recovery
+    ? label
+    : paused
+      ? "Resume automatic agent work"
+      : "Pause after the current safe boundary";
   if (!active && !recovery) {
     return (
       <>
         {paused && !nativeSuspension?.active ? (
-          <Button
+          <TooltipButton
+            tooltip={buttonTooltips ? "Resume automatic agent work" : undefined}
             size="icon"
             type="button"
             variant="outline"
@@ -143,9 +151,10 @@ export function ChatComposerPrimaryActions({
             ) : (
               <Play className="size-3.5" />
             )}
-          </Button>
+          </TooltipButton>
         ) : null}
-        <Button
+        <TooltipButton
+          tooltip={buttonTooltips ? "Send prompt" : undefined}
           size="icon"
           type="submit"
           className="size-8 shrink-0 rounded-lg"
@@ -157,7 +166,7 @@ export function ChatComposerPrimaryActions({
             <Send className="size-3.5" />
           )}
           <span className="sr-only">Send prompt</span>
-        </Button>
+        </TooltipButton>
       </>
     );
   }
@@ -179,7 +188,8 @@ export function ChatComposerPrimaryActions({
         startedAtMs={agentStartedAtMs}
         nativeSuspension={nativeSuspension}
       />
-      <Button
+      <TooltipButton
+        tooltip={buttonTooltips ? pauseTooltip : undefined}
         type="button"
         size="icon"
         variant="outline"
@@ -190,13 +200,7 @@ export function ChatComposerPrimaryActions({
         )}
         disabled={pauseDisabled || recovery?.pending || recovery?.blocked}
         onClick={() => onPauseChange(recovery?.nextPaused ?? !paused)}
-        title={
-          recovery
-            ? label
-            : paused
-              ? "Resume automatic agent work"
-              : "Pause after the current safe boundary"
-        }
+        title={pauseTooltip}
         aria-label={label}
       >
         {pausePending || recovery?.pending ? (
@@ -212,9 +216,10 @@ export function ChatComposerPrimaryActions({
         ) : (
           <Pause className="size-3.5" />
         )}
-      </Button>
+      </TooltipButton>
       {recovery?.resumeAlso ? (
-        <Button
+        <TooltipButton
+          tooltip={buttonTooltips ? "Resume automatic agent work" : undefined}
           type="button"
           size="icon"
           variant="outline"
@@ -225,9 +230,10 @@ export function ChatComposerPrimaryActions({
           onClick={() => onPauseChange(false)}
         >
           <Play className="size-3.5" />
-        </Button>
+        </TooltipButton>
       ) : null}
-      <Button
+      <TooltipButton
+        tooltip={buttonTooltips ? "Stop current operation" : undefined}
         size="icon"
         type="button"
         variant="outline"
@@ -243,7 +249,7 @@ export function ChatComposerPrimaryActions({
         ) : (
           <Square className="size-3 fill-current" />
         )}
-      </Button>
+      </TooltipButton>
     </>
   );
 }

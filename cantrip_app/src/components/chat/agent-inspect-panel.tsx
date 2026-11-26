@@ -2,7 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Info, X } from "lucide-react";
 import { type ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   ResizablePanel,
   clampResizablePanelWidth,
@@ -96,11 +96,13 @@ export function updateAgentInspectOpenChats(
 
 export function AgentInspectPanel({
   ariaLabel = "Agent activity inspector",
+  buttonTooltips,
   children,
   icon,
   onClose,
   title = "Inspect",
 }: {
+  buttonTooltips?: boolean;
   ariaLabel?: string;
   children?: ReactNode;
   icon?: ReactNode;
@@ -120,7 +122,9 @@ export function AgentInspectPanel({
       >
         {icon ?? <Info className="size-4 text-muted-foreground" />}
         <h2 className="truncate text-sm font-medium">{title}</h2>
-        <Button
+        <TooltipButton
+          tooltip={buttonTooltips ? `Close ${title}` : undefined}
+          tooltipClassName="z-[110]"
           aria-label={`Close ${title}`}
           className="pointer-events-auto ml-auto size-7"
           onClick={onClose}
@@ -129,7 +133,7 @@ export function AgentInspectPanel({
           variant="ghost"
         >
           <X className="size-3.5" />
-        </Button>
+        </TooltipButton>
       </header>
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
     </aside>
@@ -138,12 +142,14 @@ export function AgentInspectPanel({
 
 function AgentInspectMobilePanel({
   ariaLabel,
+  buttonTooltips,
   children,
   icon,
   onOpenChange,
   open,
   panelTitle,
 }: {
+  buttonTooltips?: boolean;
   ariaLabel: string;
   children?: ReactNode;
   icon?: ReactNode;
@@ -164,6 +170,7 @@ function AgentInspectMobilePanel({
             {ariaLabel}
           </DialogPrimitive.Title>
           <AgentInspectPanel
+            buttonTooltips={buttonTooltips}
             ariaLabel={ariaLabel}
             icon={icon}
             onClose={() => onOpenChange(false)}
@@ -179,6 +186,7 @@ function AgentInspectMobilePanel({
 
 export function AgentInspectPanelShell({
   ariaLabel = "Agent activity inspector",
+  buttonTooltips,
   children,
   className,
   extendIntoProjectTabBar = false,
@@ -189,6 +197,7 @@ export function AgentInspectPanelShell({
   overlay,
   panelTitle = "Inspect",
 }: {
+  buttonTooltips?: boolean;
   ariaLabel?: string;
   children?: ReactNode;
   className?: string;
@@ -203,6 +212,7 @@ export function AgentInspectPanelShell({
   if (overlay) {
     return (
       <AgentInspectMobilePanel
+        buttonTooltips={buttonTooltips}
         ariaLabel={ariaLabel}
         icon={headerIcon}
         onOpenChange={onOpenChange}
@@ -241,6 +251,7 @@ export function AgentInspectPanelShell({
       title={`Drag to resize ${panelTitle} sidebar`}
     >
       <AgentInspectPanel
+        buttonTooltips={buttonTooltips}
         ariaLabel={ariaLabel}
         icon={headerIcon}
         onClose={() => onOpenChange(false)}

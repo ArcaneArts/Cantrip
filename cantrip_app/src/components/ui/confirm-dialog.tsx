@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InlineAlert } from "@/components/ui/inline-alert";
+import { TooltipButton } from "@/components/ui/tooltip";
 
 export function confirmDialogAllowsOpenChange(
   open: boolean,
@@ -33,6 +33,7 @@ export function ConfirmDialog({
   open,
   pending = false,
   title,
+  buttonTooltips = false,
 }: {
   cancelLabel?: ReactNode;
   confirmDisabled?: boolean;
@@ -48,6 +49,7 @@ export function ConfirmDialog({
   open: boolean;
   pending?: boolean;
   title: ReactNode;
+  buttonTooltips?: boolean;
 }) {
   const requestOpenChange = (nextOpen: boolean) => {
     if (confirmDialogAllowsOpenChange(nextOpen, pending)) {
@@ -59,6 +61,7 @@ export function ConfirmDialog({
     <Dialog open={open} onOpenChange={requestOpenChange}>
       <DialogContent
         className={contentClassName}
+        closeTooltip={buttonTooltips ? "Close confirmation" : undefined}
         showClose={!pending}
         onCloseAutoFocus={onCloseAutoFocus}
       >
@@ -68,14 +71,16 @@ export function ConfirmDialog({
         </DialogHeader>
         {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
         <DialogFooter>
-          <Button
+          <TooltipButton
+            tooltip={buttonTooltips ? cancelLabel : undefined}
             disabled={pending}
             onClick={() => requestOpenChange(false)}
             variant="outline"
           >
             {cancelLabel}
-          </Button>
-          <Button
+          </TooltipButton>
+          <TooltipButton
+            tooltip={buttonTooltips ? confirmLabel : undefined}
             disabled={confirmDisabled}
             onClick={onConfirm}
             pending={pending}
@@ -83,7 +88,7 @@ export function ConfirmDialog({
             variant={confirmVariant}
           >
             {confirmLabel}
-          </Button>
+          </TooltipButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

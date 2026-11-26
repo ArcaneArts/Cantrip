@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { TooltipTarget } from "@/components/ui/tooltip";
 import { getAutomationRun } from "@/lib/project-automation-api";
 
 export function AutomationRunLink({
@@ -20,6 +21,7 @@ export function AutomationRunLink({
   source: ChatAutomationSource;
   label?: string;
 }) {
+  const council = source.targetKind === "council";
   const [open, setOpen] = useState(false);
   const run = useQuery({
     queryKey: ["automation-run", source.automationId, source.runId],
@@ -28,16 +30,18 @@ export function AutomationRunLink({
   });
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <span className="truncate">{label}</span>
-          <ArrowUpRight aria-hidden="true" className="size-3 shrink-0" />
-        </button>
-      </DialogTrigger>
-      <DialogContent>
+      <TooltipTarget tooltip={council ? "View automation run" : undefined}>
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <span className="truncate">{label}</span>
+            <ArrowUpRight aria-hidden="true" className="size-3 shrink-0" />
+          </button>
+        </DialogTrigger>
+      </TooltipTarget>
+      <DialogContent closeTooltip={council ? "Close" : undefined}>
         <DialogHeader>
           <DialogTitle>{run.data?.name ?? source.name}</DialogTitle>
           <DialogDescription>Automation run</DialogDescription>

@@ -2,6 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type * as React from "react";
 
+import { TooltipTarget } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export const Dialog = DialogPrimitive.Root;
@@ -20,9 +21,11 @@ export function DialogContent({
   className,
   positionerClassName,
   showClose = true,
+  closeTooltip,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showClose?: boolean;
+  closeTooltip?: string;
   positionerClassName?: string;
 }) {
   return (
@@ -41,10 +44,12 @@ export function DialogContent({
         >
           {children}
           {showClose ? (
-            <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-              <X className="size-4" />
-              <span className="sr-only">Close</span>
-            </DialogPrimitive.Close>
+            <TooltipTarget tooltip={closeTooltip}>
+              <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                <X className="size-4" />
+                <span className="sr-only">Close</span>
+              </DialogPrimitive.Close>
+            </TooltipTarget>
           ) : null}
         </DialogPrimitive.Content>
       </div>

@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ModelsSettings } from "./models-settings";
 import {
   modelsForProvider,
@@ -172,11 +173,13 @@ describe("Council default model", () => {
   it("shows the model control when account settings support Council", () => {
     const older = renderToStaticMarkup(<ModelsSettings {...props()} />);
     const current = renderToStaticMarkup(
-      <ModelsSettings
-        {...props({
-          preferences: { ...preferences, defaultCouncilModelId: null },
-        })}
-      />,
+      <TooltipProvider>
+        <ModelsSettings
+          {...props({
+            preferences: { ...preferences, defaultCouncilModelId: null },
+          })}
+        />
+      </TooltipProvider>,
     );
 
     expect(older).not.toContain("Council default model");
@@ -186,15 +189,17 @@ describe("Council default model", () => {
 
   it("opens the shared full configuration on servers with Council model defaults", () => {
     const settings = renderToStaticMarkup(
-      <ModelsSettings
-        {...props({
-          preferences: {
-            ...preferences,
-            defaultCouncilModelId: null,
-            defaultCouncilReasoningEffort: null,
-          },
-        })}
-      />,
+      <TooltipProvider>
+        <ModelsSettings
+          {...props({
+            preferences: {
+              ...preferences,
+              defaultCouncilModelId: null,
+              defaultCouncilReasoningEffort: null,
+            },
+          })}
+        />
+      </TooltipProvider>,
     );
     expect(settings).toContain(
       'aria-label="Council default model configuration"',

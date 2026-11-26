@@ -18,7 +18,7 @@ import { NativeFileWindowCloseGuard } from "@/components/app/native-file-window-
 import { chatEditorSessions } from "./standalone-chat-editor-sessions";
 import type { EditorDocumentSession } from "@/components/editor/document-session";
 import { formatExplorerSize } from "@/components/explorer/explorer-entry-metadata";
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   NativeFolderRevealIcon,
   useShiftKeyHeld,
@@ -397,10 +397,12 @@ export function StandaloneChatFileWindow({
 }
 
 export function StandaloneChatFilesPanel({
+  buttonTooltips,
   chat,
   desktopRuntime,
   requestedPath,
 }: {
+  buttonTooltips?: boolean;
   chat: StandaloneChatSummary;
   desktopRuntime: boolean;
   requestedPath: string | null;
@@ -528,7 +530,8 @@ export function StandaloneChatFilesPanel({
   return (
     <div className="flex h-full min-h-0 flex-col pt-11">
       <div className="flex h-9 shrink-0 items-center gap-1 border-y px-2">
-        <Button
+        <TooltipButton
+          tooltip={buttonTooltips ? "Refresh files" : undefined}
           aria-label="Refresh Chat files"
           onClick={() => void invalidate()}
           size="icon"
@@ -536,12 +539,16 @@ export function StandaloneChatFilesPanel({
           variant="ghost"
         >
           <RefreshCw className="size-3.5" />
-        </Button>
+        </TooltipButton>
         <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
           Scratch workspace
         </span>
         {standaloneChatFileDownloadsVisible(local) && capabilities?.archive ? (
-          <Button
+          <TooltipButton
+            tooltip={
+              buttonTooltips ? "Download all Chat files as ZIP" : undefined
+            }
+            aria-label={buttonTooltips ? "All" : undefined}
             disabled={download.isPending}
             onClick={() => download.mutate({ kind: "all", path: "" })}
             size="sm"
@@ -554,7 +561,7 @@ export function StandaloneChatFilesPanel({
               <Download className="size-3.5" />
             )}{" "}
             All
-          </Button>
+          </TooltipButton>
         ) : null}
       </div>
       {!ready ? (
@@ -622,7 +629,9 @@ export function StandaloneChatFilesPanel({
             >
               {selectedEntry.path}
             </span>
-            <Button
+            <TooltipButton
+              tooltip={buttonTooltips ? "Close file" : undefined}
+              tooltipClassName="z-[110]"
               aria-label="Close Chat file"
               onClick={() => {
                 if (
@@ -643,7 +652,7 @@ export function StandaloneChatFilesPanel({
               variant="ghost"
             >
               <X className="size-4" />
-            </Button>
+            </TooltipButton>
           </header>
           <div className="min-h-0 flex-1">
             <ChatFilePreview

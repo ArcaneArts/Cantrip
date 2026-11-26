@@ -23,7 +23,7 @@ import { ProjectSwitcher } from "@/components/projects/project-switcher";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { Button } from "@/components/ui/button";
-import { TooltipButton } from "@/components/ui/tooltip";
+import { TooltipButton, TooltipTarget } from "@/components/ui/tooltip";
 import {
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
@@ -52,19 +52,23 @@ export function DesktopAppModeMenu({
 
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button
-          aria-label={`${label}. Switch Cantrip mode`}
-          className={cn(
-            "-ml-1 inline-flex max-w-full items-center gap-1 rounded px-1 py-0.5 font-semibold tracking-tight outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
-            overlayTitlebar && "text-xs leading-none",
-          )}
-          type="button"
-        >
-          <span className="truncate">{label}</span>
-          <ChevronDown aria-hidden="true" className="size-3 shrink-0" />
-        </button>
-      </DropdownMenu.Trigger>
+      <TooltipTarget
+        tooltip={appMode === "council" ? "Switch Cantrip mode" : undefined}
+      >
+        <DropdownMenu.Trigger asChild>
+          <button
+            aria-label={`${label}. Switch Cantrip mode`}
+            className={cn(
+              "-ml-1 inline-flex max-w-full items-center gap-1 rounded px-1 py-0.5 font-semibold tracking-tight outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+              overlayTitlebar && "text-xs leading-none",
+            )}
+            type="button"
+          >
+            <span className="truncate">{label}</span>
+            <ChevronDown aria-hidden="true" className="size-3 shrink-0" />
+          </button>
+        </DropdownMenu.Trigger>
+      </TooltipTarget>
       <DropdownMenu.Portal>
         <StyledDropdownMenuContent align="start" className="min-w-44">
           <StyledDropdownMenuItem
@@ -308,7 +312,14 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
               {!overlayTitlebar ? (
                 <StatusDot online={Boolean(onlineWorker)} />
               ) : null}
-              <Button
+              <TooltipButton
+                tooltip={
+                  appMode === "council"
+                    ? desktopSidebarDrawer
+                      ? "Close sidebar"
+                      : "Collapse sidebar"
+                    : undefined
+                }
                 size="icon"
                 variant="ghost"
                 className={overlayTitlebar ? "size-6" : "size-8"}
@@ -327,7 +338,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                 <span className="sr-only">
                   {desktopSidebarDrawer ? "Close sidebar" : "Collapse sidebar"}
                 </span>
-              </Button>
+              </TooltipButton>
             </div>
 
             {appMode === "council" && switchToCouncil ? (
@@ -606,6 +617,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
             <div className="shrink-0 p-3">
               <div className="flex items-center gap-1">
                 <ServerSwitcher
+                  buttonTooltips={appMode === "council"}
                   currentUserName={
                     bootstrap.data?.auth.currentUser?.displayName ??
                     "Cantrip User"

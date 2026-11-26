@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TooltipTarget } from "@/components/ui/tooltip";
 import { getServerBootstrap, logout, logoutAll } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
 import { clearClientSession, getClientSession } from "@/lib/client-session";
@@ -36,6 +37,7 @@ import {
 import { cn } from "@/lib/utils";
 
 type ServerSwitcherProps = {
+  buttonTooltips?: boolean;
   currentUserName: string;
   onOpenAdmin?(): void;
   workerName: string;
@@ -103,6 +105,7 @@ export function ServerVersionBadge({
 }
 
 export function ServerSwitcher({
+  buttonTooltips = false,
   currentUserName,
   onOpenAdmin,
   workerName,
@@ -219,21 +222,28 @@ export function ServerSwitcher({
   return (
     <>
       <DropdownMenuPrimitive.Root onOpenChange={setMenuOpen}>
-        <DropdownMenuPrimitive.Trigger asChild>
-          <button
-            className="flex min-w-0 flex-1 items-center rounded-lg px-2 py-2 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-medium">
-                {currentUserName}
+        <TooltipTarget
+          tooltip={
+            buttonTooltips ? "Switch server or manage account" : undefined
+          }
+          side="top"
+        >
+          <DropdownMenuPrimitive.Trigger asChild>
+            <button
+              className="flex min-w-0 flex-1 items-center rounded-lg px-2 py-2 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+              type="button"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium">
+                  {currentUserName}
+                </span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  {active?.name ?? "No server"} · {workerName}
+                </span>
               </span>
-              <span className="block truncate text-[11px] text-muted-foreground">
-                {active?.name ?? "No server"} · {workerName}
-              </span>
-            </span>
-          </button>
-        </DropdownMenuPrimitive.Trigger>
+            </button>
+          </DropdownMenuPrimitive.Trigger>
+        </TooltipTarget>
         <DropdownMenuPrimitive.Portal>
           <DropdownMenuPrimitive.Content
             align="start"
@@ -265,28 +275,35 @@ export function ServerSwitcher({
                     <Check className="size-4" />
                   ) : null}
                   {connection.kind === "remote" ? (
-                    <button
-                      aria-label={`Remove ${connection.name}`}
-                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void removeServerConnection(connection.id)
-                          .then(() => {
-                            clearClientSession();
-                            window.location.reload();
-                          })
-                          .catch((removeError) =>
-                            setError(
-                              removeError instanceof Error
-                                ? removeError.message
-                                : "Could not remove server.",
-                            ),
-                          );
-                      }}
-                      type="button"
+                    <TooltipTarget
+                      tooltip={
+                        buttonTooltips ? `Remove ${connection.name}` : undefined
+                      }
+                      side="top"
                     >
-                      <Trash2 className="size-3.5" />
-                    </button>
+                      <button
+                        aria-label={`Remove ${connection.name}`}
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void removeServerConnection(connection.id)
+                            .then(() => {
+                              clearClientSession();
+                              window.location.reload();
+                            })
+                            .catch((removeError) =>
+                              setError(
+                                removeError instanceof Error
+                                  ? removeError.message
+                                  : "Could not remove server.",
+                              ),
+                            );
+                        }}
+                        type="button"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </TooltipTarget>
                   ) : null}
                 </>
               );
@@ -363,7 +380,9 @@ export function ServerSwitcher({
       </DropdownMenuPrimitive.Root>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent
+          closeTooltip={buttonTooltips ? "Close add server" : undefined}
+        >
           <DialogHeader>
             <DialogTitle>Add server</DialogTitle>
             <DialogDescription>

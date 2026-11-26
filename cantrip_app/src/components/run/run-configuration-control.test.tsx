@@ -15,9 +15,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { MobileProjectHeader } from "../mobile/mobile-project-header";
 import { RunConfigurationControl } from "./run-configuration-control";
 
-vi.mock("@/components/ui/tooltip", async () => {
+vi.mock("@/components/ui/tooltip", async (importOriginal) => {
   const { Button } = await import("@/components/ui/button");
   return {
+    ...(await importOriginal<typeof import("@/components/ui/tooltip")>()),
     Tooltip: ({ children }: { children?: ReactNode }) => children,
     TooltipButton: ({
       tooltip: _tooltip,

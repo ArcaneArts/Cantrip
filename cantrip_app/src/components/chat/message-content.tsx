@@ -12,10 +12,12 @@ import { CouncilHandoffLink } from "@/components/council/council-handoff-link";
 import { chatAttachmentContentUrl } from "@/lib/api";
 
 export const MessageContent = memo(function MessageContent({
+  buttonTooltips,
   message,
   onOpenFile,
   trackGlobalKey = true,
 }: {
+  buttonTooltips?: boolean;
   message: Pick<ChatMessage, "chatId" | "id" | "worktreeId" | "content">;
   onOpenFile(path: string, worktreeId?: string | null): void;
   trackGlobalKey?: boolean;
@@ -62,6 +64,7 @@ export const MessageContent = memo(function MessageContent({
             )
           ) : item.type === "attachment" ? (
             <AttachmentPreview
+              buttonTooltips={buttonTooltips}
               key={"attachment:" + item.attachment.id}
               attachment={item.attachment}
               contentUrl={chatAttachmentContentUrl(item.attachment.id)}
@@ -76,6 +79,7 @@ export const MessageContent = memo(function MessageContent({
         )}
       </div>
       <AttachmentViewerDialog
+        buttonTooltips={buttonTooltips}
         attachment={viewingAttachment}
         contentUrl={
           viewingAttachment

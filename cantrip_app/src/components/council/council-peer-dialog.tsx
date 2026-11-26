@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 
-import { Button } from "@/components/ui/button";
+import { TooltipButton } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +42,7 @@ export function CouncilPeerDialog({
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
+        closeTooltip="Close handoffs"
         className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl"
         data-slot="council-peer-dialog"
       >
@@ -66,14 +67,15 @@ export function CouncilPeerDialog({
           <p className="text-sm text-muted-foreground">No handoffs yet.</p>
         ) : null}
         {query.hasNextPage ? (
-          <Button
+          <TooltipButton
+            tooltip="Load earlier messages"
             className="w-fit"
             variant="outline"
             disabled={query.isFetchingNextPage}
             onClick={() => void query.fetchNextPage()}
           >
             Load earlier messages
-          </Button>
+          </TooltipButton>
         ) : null}
         {messages?.length ? (
           <ol className="space-y-3">

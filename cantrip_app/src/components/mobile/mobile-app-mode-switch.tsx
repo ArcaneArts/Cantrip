@@ -12,7 +12,7 @@ import {
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-menu";
-import { TooltipButton } from "@/components/ui/tooltip";
+import { TooltipButton, TooltipTarget } from "@/components/ui/tooltip";
 import type { ShellAppMode } from "@/lib/app-mode";
 
 const modes = [
@@ -37,18 +37,24 @@ export function MobileAppModeSwitch({
       modes.find(([id]) => id === currentMode) ?? modes[0];
     return (
       <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <Button
-            aria-label="Switch Cantrip mode"
-            className="gap-1"
-            size="sm"
-            variant="ghost"
-          >
-            <ModeIcon className="size-4" />
-            {labeled ? name : null}
-            <ChevronDown className="size-3" />
-          </Button>
-        </DropdownMenu.Trigger>
+        <TooltipTarget
+          tooltip={
+            currentMode === "council" ? "Switch Cantrip mode" : undefined
+          }
+        >
+          <DropdownMenu.Trigger asChild>
+            <Button
+              aria-label="Switch Cantrip mode"
+              className="gap-1"
+              size="sm"
+              variant="ghost"
+            >
+              <ModeIcon className="size-4" />
+              {labeled ? name : null}
+              <ChevronDown className="size-3" />
+            </Button>
+          </DropdownMenu.Trigger>
+        </TooltipTarget>
         <DropdownMenu.Portal>
           <StyledDropdownMenuContent align="end" className="min-w-44">
             {modes.map(([id, label, Icon]) => (
