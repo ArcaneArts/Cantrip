@@ -444,7 +444,7 @@ export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
                 >
                   {selectedProjectId ? (
                     <ProjectAlertTile
-                      key={selectedProjectId}
+                      key={`alerts:${selectedProjectId}`}
                       count={bindings.projectAlertCounts?.get(
                         selectedProjectId,
                       )}
