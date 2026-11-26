@@ -70,9 +70,12 @@ impl Execution {
                     )
                     .await?;
                 let mut prompt = input["queuedPrompt"].clone();
-                if managed(&context) && prompt.get("executionMethod").is_none() {
-                    // Retain normal first-turn naming and goal initialization.
-                    prompt["executionMethod"] = json!("turn/start");
+                if managed(&context) {
+                    prompt["executionMethod"] =
+                        json!(crate::native_commands::queued_prompt::execution_method(
+                            &prompt,
+                            &prompt["classification"]["mode"],
+                        ));
                 }
                 self.prompt_create(&context, &prompt, &attachments).await
             }

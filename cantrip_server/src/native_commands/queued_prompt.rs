@@ -28,6 +28,60 @@ impl PromptRepository {
     }
 }
 
+pub(crate) fn execution_method<'a>(prompt: &'a Value, mode: &Value) -> &'a str {
+    match prompt["executionMethod"].as_str() {
+        None if mode == "goal" => "thread/goal/set",
+        // Older GUI submissions stamped ordinary Goal prompts as turn starts.
+        Some("turn/start")
+            if mode == "goal"
+                && prompt.get("nativeAction").is_none()
+                && prompt.get("protectedNativeInput").is_none() =>
+        {
+            "thread/goal/set"
+        }
+        method => method.unwrap_or("turn/start"),
+    }
+}
+
+#[cfg(test)]
+mod method_tests {
+    use super::execution_method;
+    use crate::wire::value::json;
+
+    #[test]
+    fn ordinary_goal_prompts_set_a_native_goal_even_when_queued_by_an_older_server() {
+        assert_eq!(
+            execution_method(&json!({}), &json!("goal")),
+            "thread/goal/set"
+        );
+        assert_eq!(
+            execution_method(&json!({"executionMethod":"turn/start"}), &json!("goal")),
+            "thread/goal/set"
+        );
+    }
+
+    #[test]
+    fn plan_default_and_explicit_native_actions_keep_their_methods() {
+        for mode in ["default", "plan"] {
+            assert_eq!(execution_method(&json!({}), &json!(mode)), "turn/start");
+        }
+        assert_eq!(
+            execution_method(
+                &json!({"executionMethod":"thread/goal/clear"}),
+                &json!("goal")
+            ),
+            "thread/goal/clear"
+        );
+        assert_eq!(
+            execution_method(
+                &json!({"executionMethod":"turn/start","nativeAction":"literal"}),
+                &json!("goal")
+            ),
+            "turn/start"
+        );
+    }
+}
+
 async fn raw_one(ex: Executor<'_, '_>, sql: &str, params: Parameters<'_>) -> Result<Option<Value>> {
     ex.query(sql, params)
         .await?
