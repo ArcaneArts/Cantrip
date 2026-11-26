@@ -980,7 +980,7 @@ impl Turns {
                 Vec::new()
             };
             let mut input = if is_queued
-                || (guest
+                || ((guest || task::is_round(&command))
                     && command["attachments"]
                         .as_array()
                         .is_some_and(|items| !items.is_empty()))
