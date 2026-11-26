@@ -375,11 +375,11 @@ export function ChatTranscriptView({
                     ? "Start a conversation"
                     : "Start working"}
                 </EmptyStateTitle>
-                <EmptyStateDescription>
-                  {capabilities.context === "standalone"
-                    ? "Ask Cantrip anything, or attach material to work with in this chat."
-                    : "Ask Cantrip to inspect, explain, or change this repository."}
-                </EmptyStateDescription>
+                {capabilities.context === "standalone" ? (
+                  <EmptyStateDescription>
+                    Attach files to give the conversation context.
+                  </EmptyStateDescription>
+                ) : null}
               </EmptyStateContent>
             </EmptyState>
           ) : null}
