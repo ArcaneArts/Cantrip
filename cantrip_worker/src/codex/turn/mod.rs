@@ -14,6 +14,7 @@ pub(crate) mod handoff;
 pub(crate) mod interactions;
 pub(crate) mod label;
 mod output;
+mod owner;
 mod params;
 mod policy;
 mod protected;
@@ -716,40 +717,7 @@ impl Turns {
             )),
             changed: watch::channel(0).0,
         });
-        {
-            let mut entries = self.active.lock().unwrap();
-            if entries.active.contains_key(&key)
-                || entries.restoring.contains_key(&key)
-                || entries.stopping.contains_key(&key)
-            {
-                bail!("This chat already has an active native turn.");
-            }
-            if let Some(input) = &active.task_input
-                && entries.active.values().any(|owned| {
-                    owned.task_input.as_ref().is_some_and(|other| {
-                        other.operation() == input.operation()
-                            && !matches!(*owned.phase.lock().unwrap(), Phase::Finished)
-                    })
-                })
-            {
-                bail!("The Task input already has a live physical command owner.");
-            }
-            if root.as_ref().is_some_and(|root| {
-                entries.cancelled.contains(&(
-                    key.clone(),
-                    root.operation.clone(),
-                    root.generation.clone(),
-                ))
-            }) {
-                bail!("The GUI request was stopped before native dispatch.");
-            }
-            entries.active.insert(key.clone(), active.clone());
-        }
-        let mut owner = Some(Owner {
-            sessions: self.active.clone(),
-            key: key.clone(),
-            active: active.clone(),
-        });
+        let mut owner = Some(Owner::claim(&self.active, &key, &active).await?);
         let command = self.preparation.resolve_routing(incoming).await?;
         if !command["taskResumption"].is_null() {
             let task = task.context("The restored Task has no canonical owner.")?;
