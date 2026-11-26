@@ -1,11 +1,13 @@
 import type {
   WorktreeStatusResult,
   ProjectWorktreeCreate,
+  ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import {
   projectWorktreeSummarySchema,
   projectWorktreeCreateSchema,
 } from "@cantrip/protocol";
+import { repositoryRoutingHandleSchema } from "@cantrip/protocol/repository-operation";
 import { CantripApiError, post, request } from "@/lib/api-client";
 import { getProjectWorktreeWireList } from "./projects";
 import { getWorkers } from "./worker-wire";
@@ -14,6 +16,18 @@ import {
   registerWorkerRepositoryMetadata,
 } from "./repository-identity";
 import { getProtectedWorktreeStatus } from "./repository-operations";
+
+async function worktreeDisplayName(worktree: ProjectWorktreeSummary) {
+  if (worktree.isPrimary) return "Primary";
+  if (!repositoryRoutingHandleSchema.safeParse(worktree.name).success)
+    return worktree.name;
+  const resolved = await resolveWorkerRepositoryMetadata({
+    workerId: worktree.workerId,
+    scopeId: worktree.projectId,
+    values: { name: worktree.name },
+  }).catch(() => null);
+  return resolved?.values.name || undefined;
+}
 
 export async function getProjectWorktrees(
   projectId: string,
@@ -55,24 +69,25 @@ export async function getProjectWorktrees(
             displayPath: resolved.values.displayPath,
           });
         }
-        const status = await getProtectedWorktreeStatus({
-          projectId,
-          worktreeId: worktree.id,
-          target: {
-            worktree,
-            worker: workers.find(
-              ({ workerId }) => workerId === worktree.workerId,
-            ),
-          },
-        });
+        const [status, name] = await Promise.all([
+          getProtectedWorktreeStatus({
+            projectId,
+            worktreeId: worktree.id,
+            target: {
+              worktree,
+              worker: workers.find(
+                ({ workerId }) => workerId === worktree.workerId,
+              ),
+            },
+          }),
+          worktreeDisplayName(worktree),
+        ]);
         options.onStatus?.(worktree.id, status);
         const privateState = status.worktree;
         const pathSegments = privateState.path.split(/[\\/]/u).filter(Boolean);
         return projectWorktreeSummarySchema.parse({
           ...worktree,
-          name: worktree.isPrimary
-            ? "Primary"
-            : (pathSegments.at(-1) ?? "Worktree"),
+          name: name ?? pathSegments.at(-1) ?? "Worktree",
           path: privateState.path,
           displayPath: privateState.path,
           branch: privateState.branch,
