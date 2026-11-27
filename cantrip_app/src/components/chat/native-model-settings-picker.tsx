@@ -1,8 +1,14 @@
 import { NativeAccountDefaultsEditor } from "./native-account-defaults-editor";
-import { NativeRuntimeHandoffEditor } from "./native-runtime-handoff-editor";
-import { useRuntimeHandoff } from "./use-runtime-handoff";
 import { useEffect, useMemo, useState } from "react";
-import { resolveNativeModelSelection } from "@cantrip/protocol";
+import {
+  isLanguageModelProfile,
+  resolveNativeModelSelection,
+  type ChatReasoningState,
+  type ModelConfiguration,
+  type ModelProfileSummary,
+} from "@cantrip/protocol";
+import { useModelReasoningState } from "./model-reasoning-picker";
+import { modelDisplayName } from "../app/application-shell-model";
 import { useNonLanguageRoutes } from "./use-language-model-routes";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,11 +30,19 @@ export function NativeModelSettingsPicker({
   open,
   onOpenChange,
   disabled = false,
+  configuredModels = [],
+  configuration,
+  loadReasoningState,
+  saveConfiguration,
 }: {
   controller: NativeModelSettingsController;
   open: boolean;
   onOpenChange(open: boolean): void;
   disabled?: boolean;
+  configuredModels?: readonly ModelProfileSummary[];
+  configuration?: ModelConfiguration;
+  loadReasoningState?: (modelId: string) => Promise<ChatReasoningState>;
+  saveConfiguration?: (configuration: ModelConfiguration) => Promise<unknown>;
 }) {
   const { binding, selected, inventory, observed, update } = controller;
   const nonLanguageRoutes = useNonLanguageRoutes(open);
@@ -39,16 +53,36 @@ export function NativeModelSettingsPicker({
       ) ?? [],
     [inventory.data?.models, nonLanguageRoutes],
   );
-  const handoff = useRuntimeHandoff({
-    binding,
-    identity: observed.identity,
-    open: open && binding?.contextKind === "project",
-    unlocked: observed.encryption.status === "ready",
-  });
   const [storedDraft, setDraft] = useState<NativeModelDraft | null>(null);
   const [dirty, setDirty] = useState<NativeModelDirty>({});
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
-  const [targetRouteId, setTargetRouteId] = useState("");
+  const [targetModelId, setTargetModelId] = useState<string | null>(null);
+  const [targetEffort, setTargetEffort] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const sourceProviderId =
+    inventory.data?.providerId ??
+    configuredModels
+      .flatMap(({ routes }) => routes)
+      .find(({ id }) => id === binding?.modelRouteId)?.providerId;
+  const otherModels = configuredModels.filter(
+    (model) =>
+      sourceProviderId &&
+      isLanguageModelProfile(model) &&
+      model.routes.some(
+        (route) => route.enabled && route.providerId !== sourceProviderId,
+      ) &&
+      !modelChoices.some((choice) => choice.id === model.id),
+  );
+  const configuredTarget = otherModels.find(
+    (model) => model.id === configuration?.modelId,
+  );
+  const target = otherModels.find((model) => model.id === targetModelId);
+  const targetReasoning = useModelReasoningState({
+    enabled: open,
+    modelId: target?.id ?? null,
+    loader: loadReasoningState,
+  });
   const [editorIdentity, setEditorIdentity] = useState(observed.identity);
   const draft =
     observed.encryption.status === "ready" &&
@@ -60,7 +94,9 @@ export function NativeModelSettingsPicker({
     setDraft(null);
     setDirty({});
     setEditingBindingId(null);
-    setTargetRouteId("");
+    setTargetModelId(null);
+    setTargetEffort(null);
+    setSaveError(null);
     setEditorIdentity(observed.identity);
   }, [observed.identity]);
   useEffect(() => {
@@ -85,10 +121,22 @@ export function NativeModelSettingsPicker({
     if (open && !draft && selected) {
       setDraft({ ...selected, routeId: controller.selectedRouteId });
       setEditingBindingId(binding?.bindingId ?? null);
+      setTargetModelId(configuredTarget?.id ?? null);
+      setTargetEffort(configuration?.reasoningEffort ?? null);
     }
-  }, [open, draft, selected, controller.selectedRouteId, binding?.bindingId]);
+  }, [
+    open,
+    draft,
+    selected,
+    controller.selectedRouteId,
+    binding?.bindingId,
+    configuredTarget?.id,
+    configuration?.reasoningEffort,
+  ]);
   const changeOpen = (next: boolean) => {
-    setTargetRouteId("");
+    setTargetModelId(next ? (configuredTarget?.id ?? null) : null);
+    setTargetEffort(next ? (configuration?.reasoningEffort ?? null) : null);
+    setSaveError(null);
     if (next && selected) {
       setDraft({ ...selected, routeId: controller.selectedRouteId });
       setEditingBindingId(binding?.bindingId ?? null);
@@ -122,10 +170,12 @@ export function NativeModelSettingsPicker({
   const efforts = [
     ...new Set([
       null,
-      ...(model?.catalog?.supportedReasoningEfforts?.map(
-        (option) => option.effort,
-      ) ?? []),
-      draft?.effort ?? null,
+      ...(target
+        ? (targetReasoning.state?.options ?? []).map((option) => option.effort)
+        : (model?.catalog?.supportedReasoningEfforts ?? []).map(
+            (option) => option.effort,
+          )),
+      target ? targetEffort : (draft?.effort ?? null),
     ]),
   ];
   const pending =
@@ -134,9 +184,6 @@ export function NativeModelSettingsPicker({
     controller.localStatus === "queued";
   const status = observed.state.data?.desiredStatus;
   const canSelectModel = Boolean(
-    !handoff.active &&
-    !handoff.busy &&
-    !handoff.unconfirmed &&
     draft &&
     binding &&
     inventory.data &&
@@ -144,17 +191,46 @@ export function NativeModelSettingsPicker({
     editingBindingId === binding.bindingId &&
     observed.confirmed,
   );
-  const editable = canSelectModel && !targetRouteId;
-  const inventoryMatches =
-    handoff.query.data?.binding?.bindingId === binding?.bindingId;
-  const transferProviders = inventoryMatches
-    ? (handoff.query.data?.providers ?? []).filter(
-        (provider) =>
-          provider.id !== inventory.data?.providerId &&
-          (!provider.requiresAccount || provider.accounts.length > 0),
-      )
-    : [];
+  const editable = canSelectModel && !target;
+  const targetDirty =
+    target &&
+    (target.id !== configuredTarget?.id ||
+      targetEffort !== configuration?.reasoningEffort);
+  const localSelection = configuredTarget && !target && model;
+  const canSaveSelection = Boolean(
+    configuration &&
+    saveConfiguration &&
+    !saving &&
+    (targetDirty || localSelection),
+  );
   const settingsDirty = Object.values(dirty).some(Boolean);
+  const save = async () => {
+    const requestedModel =
+      target ?? (localSelection ? { id: localSelection.id } : undefined);
+    if (requestedModel && saveConfiguration && configuration) {
+      setSaving(true);
+      setSaveError(null);
+      try {
+        await saveConfiguration({
+          ...configuration,
+          modelId: requestedModel.id,
+          reasoningEffort: target ? targetEffort : (draft?.effort ?? null),
+        });
+        onOpenChange(false);
+      } catch (error) {
+        setSaveError(
+          error instanceof Error
+            ? error.message
+            : "Could not change the chat model.",
+        );
+      } finally {
+        setSaving(false);
+      }
+    } else if (draft && editingBindingId) {
+      await update.mutateAsync({ draft, dirty, bindingId: editingBindingId });
+      onOpenChange(false);
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <Button
@@ -167,13 +243,15 @@ export function NativeModelSettingsPicker({
       >
         <span className="min-w-0">
           <span className="block truncate text-xs font-medium">
-            {selected
-              ? displayModel(selected.model, controller.selectedRouteId)
-              : "Session model"}
+            {configuredTarget
+              ? modelDisplayName(configuredTarget)
+              : selected
+                ? displayModel(selected.model, controller.selectedRouteId)
+                : "Session model"}
           </span>
           <span className="block truncate text-[10px] text-muted-foreground">
-            {handoff.active || handoff.busy || handoff.unconfirmed
-              ? "Transfer pending"
+            {configuredTarget
+              ? (configuration?.reasoningEffort ?? "Default reasoning")
               : pending
                 ? "Change pending"
                 : (selected?.effort ?? "Default reasoning")}
@@ -184,8 +262,8 @@ export function NativeModelSettingsPicker({
         <DialogHeader>
           <DialogTitle>Session model settings</DialogTitle>
           <DialogDescription>
-            Choose a model for this conversation. To switch providers, select a
-            model and confirm the transfer.
+            Choose a model and reasoning effort for this conversation. Changes
+            apply on the next turn.
           </DialogDescription>
         </DialogHeader>
         {observed.confirmed ? (
@@ -234,14 +312,19 @@ export function NativeModelSettingsPicker({
           <select
             aria-label="Session model"
             className="w-full rounded border bg-background p-2"
-            value={targetRouteId || draft?.routeId || ""}
-            disabled={!canSelectModel || update.isPending}
+            value={target ? `profile:${target.id}` : (draft?.routeId ?? "")}
+            disabled={
+              (!canSelectModel &&
+                !(binding && saveConfiguration && otherModels.length)) ||
+              update.isPending ||
+              saving
+            }
             onChange={(event) => {
               const choice = modelChoices.find(
                 (candidate) => candidate.routeId === event.target.value,
               );
               if (choice) {
-                setTargetRouteId("");
+                setTargetModelId(null);
                 if (choice.routeId === draft?.routeId) return;
                 setDraft((current) =>
                   current
@@ -254,7 +337,17 @@ export function NativeModelSettingsPicker({
                 );
                 setDirty((current) => ({ ...current, model: true }));
               } else {
-                setTargetRouteId(event.target.value);
+                const next = otherModels.find(
+                  (model) => `profile:${model.id}` === event.target.value,
+                );
+                if (next) {
+                  setTargetModelId(next.id);
+                  setTargetEffort(
+                    next.id === configuredTarget?.id
+                      ? (configuration?.reasoningEffort ?? null)
+                      : null,
+                  );
+                }
               }
             }}
           >
@@ -278,46 +371,29 @@ export function NativeModelSettingsPicker({
                   : ""}
               </option>
             ))}
-            {transferProviders.map((provider) => {
-              const choices = provider.models.filter(
-                (choice) => !nonLanguageRoutes.has(choice.routeId),
-              );
-              return choices.length ? (
-                <optgroup
-                  key={provider.id}
-                  label={provider.name}
-                  disabled={settingsDirty || pending}
-                >
-                  {choices.map((choice) => (
-                    <option key={choice.routeId} value={choice.routeId}>
-                      {choice.profileName}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null;
-            })}
+            {otherModels.map((choice) => (
+              <option key={choice.id} value={`profile:${choice.id}`}>
+                {modelDisplayName(choice)}
+              </option>
+            ))}
           </select>
         </label>
-        {open &&
-        binding?.contextKind === "project" &&
-        observed.identity &&
-        observed.encryption.status === "ready" ? (
-          <NativeRuntimeHandoffEditor
-            controller={handoff}
-            binding={binding}
-            identity={observed.identity}
-            disabled={update.isPending || pending || settingsDirty}
-            destinationRoute={{ id: targetRouteId, onChange: setTargetRouteId }}
-          />
-        ) : null}
         <label className="space-y-1 text-sm">
           Reasoning effort
           <select
             aria-label="Session reasoning effort"
             className="w-full rounded border bg-background p-2"
-            value={draft?.effort ?? ""}
-            disabled={!editable || update.isPending}
+            value={(target ? targetEffort : draft?.effort) ?? ""}
+            disabled={
+              target
+                ? saving || targetReasoning.loading
+                : !editable || update.isPending
+            }
             onChange={(event) => {
+              if (target) {
+                setTargetEffort(event.target.value || null);
+                return;
+              }
               setDraft((current) =>
                 current
                   ? { ...current, effort: event.target.value || null }
@@ -493,10 +569,9 @@ export function NativeModelSettingsPicker({
             </select>
           </label>
         ) : null}
-        {Object.values(dirty).some(Boolean) ? (
-          <p className="text-xs">
-            Save or discard your model settings edits before transferring the
-            conversation.
+        {saveError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {saveError}
           </p>
         ) : null}
         {controller.error ? (
@@ -538,19 +613,13 @@ export function NativeModelSettingsPicker({
           </Button>
           <Button
             disabled={
-              !editable ||
-              update.isPending ||
-              !Object.values(dirty).some(Boolean)
+              target || localSelection
+                ? !canSaveSelection
+                : !editable || update.isPending || !settingsDirty
             }
-            onClick={() => {
-              if (draft && editingBindingId)
-                void update
-                  .mutateAsync({ draft, dirty, bindingId: editingBindingId })
-                  .then(() => onOpenChange(false))
-                  .catch(() => {});
-            }}
+            onClick={() => void save().catch(() => {})}
           >
-            {update.isPending ? "Submitting…" : "Save settings"}
+            {update.isPending || saving ? "Submitting…" : "Save settings"}
           </Button>
         </DialogFooter>
       </DialogContent>

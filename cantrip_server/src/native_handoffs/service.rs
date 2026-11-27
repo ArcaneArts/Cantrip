@@ -109,14 +109,20 @@ impl Service {
             .boxed()
         })
     }
-    async fn begin_captured(&self, owner: &str, chat: &str, input: &Value) -> Result<Value> {
+    async fn begin_captured(
+        &self,
+        owner: &str,
+        chat: &str,
+        input: &Value,
+        automatic: Option<Value>,
+    ) -> Result<Value> {
         let input = parse("nativeRuntimeHandoffRequestSchema", input)?;
         let captured = self
             .repository
             .capture_task_goal(owner, chat, self.task_reader(owner), Some(&input))
             .await?;
         self.repository
-            .begin_captured(owner, chat, &input, captured)
+            .begin_captured(owner, chat, &input, captured, automatic)
             .await
     }
     pub fn read_task_source(&self, owner: &str, chat: &str) -> BoxFuture<'static, Result<Value>> {
@@ -208,7 +214,7 @@ impl Service {
             input.clone(),
         );
         self.operations.run(async move {
-            let state = this.begin_captured(&owner, &chat, &input).await?;
+            let state = this.begin_captured(&owner, &chat, &input, None).await?;
             drop(this.dispatch(&owner, &state, false));
             (this.publish)(&owner, &text(&state["chatId"])?);
             Ok(state)
@@ -262,6 +268,24 @@ impl Service {
         chat: &str,
         input: &Value,
     ) -> BoxFuture<'static, Result<Value, Arc<anyhow::Error>>> {
+        self.wait_for_handoff(owner, chat, input, None)
+    }
+    pub(crate) fn prepare_chat_model(
+        &self,
+        owner: &str,
+        chat: &str,
+        input: &Value,
+        configuration: Value,
+    ) -> BoxFuture<'static, Result<Value, Arc<anyhow::Error>>> {
+        self.wait_for_handoff(owner, chat, input, Some(configuration))
+    }
+    fn wait_for_handoff(
+        &self,
+        owner: &str,
+        chat: &str,
+        input: &Value,
+        configuration: Option<Value>,
+    ) -> BoxFuture<'static, Result<Value, Arc<anyhow::Error>>> {
         let (this, owner, chat, input) = (
             self.clone(),
             owner.to_owned(),
@@ -269,7 +293,8 @@ impl Service {
             input.clone(),
         );
         self.operations.run(async move{
-            let state=this.begin_captured(&owner,&chat,&input).await?;(this.publish)(&owner,&chat);
+            let automatic = configuration.is_some();
+            let state=this.begin_captured(&owner,&chat,&input,configuration).await?;(this.publish)(&owner,&chat);
             // Keep the actual error available to HTTP/error mapping without
             // flattening SQL or command failures into a synthetic string error.
             let transport=this.dispatch(&owner,&state,false).await;
@@ -277,7 +302,12 @@ impl Service {
             let settled=this.repository.get(&owner,&chat,&text(&state["operationId"])?).await?;
             if let Some(state)=settled.as_ref().filter(|s|s["phase"]=="completed"){return Ok(Ok(state.clone()))}
             let code=settled.as_ref().and_then(|s|s.get("errorCode")).filter(|v|!v.is_null()).map(text).transpose()?.unwrap_or_else(||"handoff-not-completed".into());
-            Err(CommandError::new(code,Some("The account switch did not complete. Retry the account transfer before sending this message."),409).into())
+            let message = if automatic {
+                "The worker could not prepare the selected model. Retry the message."
+            } else {
+                "The account switch did not complete. Retry the account transfer before sending this message."
+            };
+            Err(CommandError::new(code, Some(message), 409).into())
         }).map(|result|match result{Ok(value)=>value,Err(error)=>Err(Arc::new(error))}).boxed()
     }
     pub fn worker_connected(

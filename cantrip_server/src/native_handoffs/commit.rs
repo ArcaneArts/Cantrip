@@ -90,23 +90,27 @@ pub(super) async fn apply(
     if updated.len() != 1 {
         return reject("handoff-runtime-replaced");
     }
-    if let Some(reasoning) = prepared.get("reasoningEffort") {
-        tx.query(
-            "UPDATE chats SET model_id=$1,reasoning_effort=$2,updated_at=$3 WHERE id=$4",
-            &[
-                &text(&target["modelId"])?,
-                &optional(reasoning)?,
-                &crate::auth::now(),
-                &chat,
-            ],
-        )
-        .await?;
-    } else {
-        tx.query(
-            "UPDATE chats SET model_id=$1,updated_at=$2 WHERE id=$3",
-            &[&text(&target["modelId"])?, &crate::auth::now(), &chat],
-        )
-        .await?;
+    // Automatic dispatch acts on a queued prompt. A later model selection
+    // for this conversation remains the default for future messages.
+    if row["automatic_model_configuration"].is_null() {
+        if let Some(reasoning) = prepared.get("reasoningEffort") {
+            tx.query(
+                "UPDATE chats SET model_id=$1,reasoning_effort=$2,updated_at=$3 WHERE id=$4",
+                &[
+                    &text(&target["modelId"])?,
+                    &optional(reasoning)?,
+                    &crate::auth::now(),
+                    &chat,
+                ],
+            )
+            .await?;
+        } else {
+            tx.query(
+                "UPDATE chats SET model_id=$1,updated_at=$2 WHERE id=$3",
+                &[&text(&target["modelId"])?, &crate::auth::now(), &chat],
+            )
+            .await?;
+        }
     }
     tx.query(
         "UPDATE native_settings_states SET state=$1::text::jsonb,updated_at=$2 WHERE chat_id=$3",

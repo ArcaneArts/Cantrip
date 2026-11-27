@@ -1,0 +1,1 @@
+ALTER TABLE native_runtime_handoffs ADD COLUMN automatic_model_configuration jsonb;

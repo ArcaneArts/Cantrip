@@ -3,6 +3,7 @@ import TestRenderer, { act } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ModelProfileSummary,
   NativeSettingsState,
   NativeThreadSettings,
 } from "@cantrip/protocol";
@@ -13,24 +14,8 @@ const runtime = vi.hoisted(() => ({
   send: vi.fn(),
   sendPermission: vi.fn(),
   matches: vi.fn(() => true),
-  handoffInventory: null as unknown,
-}));
-vi.mock("./use-runtime-handoff", () => ({
-  useRuntimeHandoff: () => ({
-    query: { data: runtime.handoffInventory },
-    latest: null,
-    active: false,
-    busy: false,
-    error: null,
-    unconfirmed: null,
-  }),
-}));
-vi.mock("./native-runtime-handoff-editor", () => ({
-  NativeRuntimeHandoffEditor: ({
-    destinationRoute,
-  }: {
-    destinationRoute: { id: string };
-  }) => createElement("div", { "data-transfer-route": destinationRoute.id }),
+  saveConfiguration: vi.fn(),
+  loadReasoning: vi.fn(),
 }));
 vi.mock("./use-native-settings-state", () => ({
   useNativeSettingsState: () => runtime.observed,
@@ -148,7 +133,7 @@ async function flush() {
     await new Promise((resolve) => setTimeout(resolve, 10));
   });
 }
-async function mount() {
+async function mount(configuredModels?: ModelProfileSummary[]) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -168,6 +153,16 @@ async function mount() {
     return (
       <NativeModelSettingsPicker
         controller={controller}
+        configuredModels={configuredModels}
+        configuration={{
+          modelId: "logical",
+          reasoningEffort: null,
+          customSubagentModel: false,
+          subagentModelId: null,
+          subagentReasoningEffort: null,
+        }}
+        loadReasoningState={runtime.loadReasoning}
+        saveConfiguration={runtime.saveConfiguration}
         open={isOpen}
         onOpenChange={setOpen}
       />
@@ -200,7 +195,8 @@ beforeEach(() => {
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
   runtime.observed = observed();
-  runtime.handoffInventory = null;
+  runtime.saveConfiguration.mockReset().mockResolvedValue(undefined);
+  runtime.loadReasoning.mockReset();
   runtime.matches.mockReset().mockReturnValue(true);
   runtime.read.mockReset().mockResolvedValue(inventory);
   runtime.prepare
@@ -258,51 +254,45 @@ describe("bound GUI native model picker", () => {
     expect(gui.controller().selected?.model).toBe("opus");
   });
 
-  it("selects a Claude model as a transfer instead of patching the existing provider", async () => {
-    runtime.handoffInventory = {
-      binding,
-      providers: [
-        {
-          id: "claude",
-          name: "Claude Code",
-          requiresAccount: true,
-          accounts: [{ id: "claude-local" }],
-          models: [
-            { routeId: "claude-sonnet", name: "sonnet", profileName: "Sonnet" },
-          ],
-        },
-        {
-          id: "other-claude",
-          name: "Unavailable provider",
-          requiresAccount: true,
-          accounts: [],
-          models: [
-            {
-              routeId: "other-claude-route",
-              name: "opus",
-              profileName: "Opus",
-            },
-          ],
-        },
-      ],
-    };
-    const mounted = await mount();
+  it("saves a Claude model and reasoning for the next turn without a provider picker", async () => {
+    runtime.loadReasoning.mockResolvedValue({
+      modelId: "claude-profile",
+      options: [{ effort: "max" }],
+    });
+    const mounted = await mount([
+      {
+        id: "claude-profile",
+        name: "Opus 5.5",
+        routes: [{ id: "claude-route", providerId: "claude", enabled: true }],
+      } as ModelProfileSummary,
+    ]);
     await mounted.open();
     const select = mounted.view.root.findByProps({
       "aria-label": "Session model",
     });
     expect(
-      select.findAllByType("option").map((option) => option.props.value),
-    ).toContain("claude-sonnet");
-    expect(
-      select.findAllByType("option").map((option) => option.props.value),
-    ).not.toContain("other-claude-route");
+      select.findAllByType("option").map((option) => option.children.join("")),
+    ).toContain("Opus 5.5");
     await act(async () =>
-      select.props.onChange({ target: { value: "claude-sonnet" } }),
+      select.props.onChange({ target: { value: "profile:claude-profile" } }),
     );
-    expect(
-      mounted.view.root.findByProps({ "data-transfer-route": "claude-sonnet" }),
-    ).toBeDefined();
+    await flush();
+    const effort = mounted.view.root.findByProps({
+      "aria-label": "Session reasoning effort",
+    });
+    expect(effort.props.disabled).toBe(false);
+    await act(async () => effort.props.onChange({ target: { value: "max" } }));
+    const save = mounted.view.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Save settings"))!;
+    expect(save.props.disabled).toBe(false);
+    await act(async () => save.props.onClick());
+    expect(runtime.saveConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: "claude-profile",
+        reasoningEffort: "max",
+      }),
+    );
     expect(runtime.send).not.toHaveBeenCalled();
   });
 

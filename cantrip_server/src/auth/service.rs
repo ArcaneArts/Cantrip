@@ -492,6 +492,7 @@ impl AuthService {
         let account_failover = crate::chats::account_failover::Service::new(
             repository.database.clone(),
             native_handoffs.clone(),
+            model_routing.clone(),
         );
         let execution = crate::chats::execution_services::Service::new(
             crate::chats::execution_services::Dependencies {

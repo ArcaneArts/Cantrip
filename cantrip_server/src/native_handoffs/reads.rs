@@ -84,7 +84,7 @@ impl Repository {
         self.database.query("SELECT to_jsonb(h)::text FROM native_runtime_handoffs h WHERE owner_id=$1 AND worker_id=$2 AND phase IN ('preparing','prepared','committed')",&[&owner,&worker]).await?.iter().map(|r|wire(&serde_json::from_str(&r.get::<String>(0)?)?)).collect()
     }
     pub async fn begin(&self, owner: &str, chat: &str, input: &Value) -> Result<Value> {
-        self.begin_captured(owner, chat, input, None).await
+        self.begin_captured(owner, chat, input, None, None).await
     }
     pub(super) async fn begin_captured(
         &self,
@@ -92,6 +92,7 @@ impl Repository {
         chat: &str,
         input: &Value,
         captured: Option<Value>,
+        automatic: Option<Value>,
     ) -> Result<Value> {
         let input = parse("nativeRuntimeHandoffRequestSchema", input)?;
         let (owner, chat) = (owner.to_owned(), chat.to_owned());
@@ -131,7 +132,8 @@ impl Repository {
                 ).await?.is_empty();
                 if !different_route || (task.is_none() && !council_switch) {return reject("handoff-same-provider-account")}
             }
-            let row=one(Executor::Transaction(tx),"INSERT INTO native_runtime_handoffs(operation_id,owner_id,chat_id,worker_id,source,binding,phase,target_model_route_id,target_provider_account_id,queued_source) VALUES($1,$2,$3,$4,$5::text::jsonb,$5::text::jsonb,'preparing',$6,$7,$8::text::jsonb) RETURNING to_jsonb(native_runtime_handoffs)::text",&[&operation,&owner,&chat,&text(&source["workerId"])?,&source.stringify(),&text(&input["targetModelRouteId"])?,&optional(&input["targetProviderAccountId"])?,&queued_source.stringify()]).await?.context("Runtime handoff reservation returned no row")?;
+            let automatic = automatic.as_ref().map(Value::stringify);
+            let row=one(Executor::Transaction(tx),"INSERT INTO native_runtime_handoffs(operation_id,owner_id,chat_id,worker_id,source,binding,phase,target_model_route_id,target_provider_account_id,queued_source,automatic_model_configuration) VALUES($1,$2,$3,$4,$5::text::jsonb,$5::text::jsonb,'preparing',$6,$7,$8::text::jsonb,$9::text::jsonb) RETURNING to_jsonb(native_runtime_handoffs)::text",&[&operation,&owner,&chat,&text(&source["workerId"])?,&source.stringify(),&text(&input["targetModelRouteId"])?,&optional(&input["targetProviderAccountId"])?,&queued_source.stringify(),&automatic]).await?.context("Runtime handoff reservation returned no row")?;
             wire(&row)
         })).await
     }

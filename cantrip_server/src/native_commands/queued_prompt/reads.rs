@@ -43,6 +43,26 @@ impl PromptRepository {
     pub async fn list_encrypted(&self, owner: &str, chat: &str) -> Result<Vec<Value>> {
         encrypted_list(Executor::Database(&self.database), owner, chat).await
     }
+    pub(crate) async fn next_routing_prompt(
+        &self,
+        owner: &str,
+        chat: &str,
+    ) -> Result<Option<Value>> {
+        raw_one(
+            Executor::Database(&self.database),
+            "SELECT to_jsonb(p)::text FROM queued_prompts p JOIN chats c ON c.id=p.chat_id
+             WHERE c.owner_id=$1 AND p.chat_id=$2 AND NOT p.frozen
+               AND (p.state='claimed' OR (p.state='pending' AND NOT EXISTS (
+                 SELECT 1 FROM managed_queue_claims q
+                 WHERE q.prompt_id=p.id AND q.prompt_revision=p.revision AND q.status='rejected'
+               )))
+             ORDER BY (p.state='claimed') DESC,p.position,p.created_at LIMIT 1",
+            &[&owner, &chat],
+        )
+        .await?
+        .map(|row| encrypted(&row))
+        .transpose()
+    }
     pub async fn get_encrypted(&self, owner: &str, id: &str) -> Result<Option<Value>> {
         encrypted_get(Executor::Database(&self.database), owner, id).await
     }

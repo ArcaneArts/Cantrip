@@ -12,10 +12,12 @@ pub(super) async fn update(
     let Some(context) = repository.execution_context(&owner, &chat).await? else {
         return Ok(error(404, "Chat source not found."));
     };
-    if matches!(
-        context["status"].as_str(),
-        Some("running" | "waiting-for-approval")
-    ) {
+    if context["experience"] != "agent"
+        && matches!(
+            context["status"].as_str(),
+            Some("running" | "waiting-for-approval")
+        )
+    {
         return output(
             409,
             "modelConfigurationFailureSchema",
