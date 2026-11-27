@@ -277,7 +277,8 @@ export function ProjectConversationList({
       ref={listRoot}
       aria-label="Agent chats"
       data-elite-ignore={visible ? undefined : ""}
-      className="flex min-h-0 flex-1 flex-col"
+      data-slot="conversation-list-scroll"
+      className="relative min-h-0 flex-1 overflow-y-auto"
     >
       {actionsHost
         ? createPortal(
@@ -301,24 +302,21 @@ export function ProjectConversationList({
             actionsHost,
           )
         : null}
-      {error || query.error ? (
-        <div role="alert" className="px-2 py-2 text-xs text-destructive">
-          {errorMessage(error ?? query.error)}
-          {query.error ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void query.refetch()}
-            >
-              Retry
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-      <div
-        className="min-h-0 flex-1 overflow-y-auto"
-        data-slot="conversation-list-scroll"
-      >
+      <div>
+        {error || query.error ? (
+          <div role="alert" className="px-2 py-2 text-xs text-destructive">
+            {errorMessage(error ?? query.error)}
+            {query.error ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void query.refetch()}
+              >
+                Retry
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         {query.isPending ? (
           <p role="status" className="p-3 text-xs text-muted-foreground">
             Loading chats…

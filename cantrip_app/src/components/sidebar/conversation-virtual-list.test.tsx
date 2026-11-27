@@ -9,16 +9,33 @@ import { ConversationVirtualList } from "./conversation-virtual-list";
 let host: HTMLDivElement;
 let root: Root;
 const rows = Array.from({ length: 1000 }, (_, i) => ({ id: `chat-${i}` }));
-async function render(items = rows) {
+const archived = Array.from({ length: 1000 }, (_, i) => ({
+  id: `archive-${i}`,
+}));
+async function render(items = rows, showArchive = false) {
   await act(async () =>
     root.render(
-      <ConversationVirtualList rows={items} estimate={32} label="Conversations">
-        {(row) => <button>{row.id}</button>}
-      </ConversationVirtualList>,
+      <div data-slot="conversation-list-scroll">
+        <div>
+          <ConversationVirtualList rows={items} estimate={32} label="Active">
+            {(row) => <button>{row.id}</button>}
+          </ConversationVirtualList>
+          {showArchive ? (
+            <ConversationVirtualList
+              rows={archived}
+              estimate={50}
+              label="Archive"
+            >
+              {(row) => <button>{row.id}</button>}
+            </ConversationVirtualList>
+          ) : null}
+        </div>
+      </div>,
     ),
   );
 }
-const viewport = () => host.querySelector<HTMLElement>('[role="list"]')!;
+const viewport = () =>
+  host.querySelector<HTMLElement>('[data-slot="conversation-list-scroll"]')!;
 beforeEach(() => {
   host = document.createElement("div");
   document.body.append(host);
@@ -75,4 +92,30 @@ it("keeps a focused row mounted when scrolling and moves keyboard focus across v
     await new Promise((resolve) => setTimeout(resolve, 10));
   });
   expect(document.activeElement?.textContent).toBe("chat-999");
+});
+
+it("windows each list at its own offset in the common scroll region", async () => {
+  await render(rows, true);
+  const archive = host.querySelector('[aria-label="Archive"]')!;
+  const archiveOffset = rows.length * 32 + 48;
+  Object.defineProperty(archive, "offsetTop", { value: archiveOffset });
+  Object.defineProperty(viewport(), "clientHeight", { value: 400 });
+  await act(async () => {
+    viewport().scrollTop = archiveOffset + 500 * 50;
+    viewport().dispatchEvent(new Event("scroll"));
+  });
+  expect(host.querySelector('[aria-label="Active"] button')).toBeNull();
+  const middle = archive.querySelector<HTMLButtonElement>(
+    '[data-virtual-conversation="archive-500"] button',
+  )!;
+  expect(middle.textContent).toBe("archive-500");
+  expect(archive.querySelectorAll("button").length).toBeLessThan(25);
+  await act(async () => {
+    middle.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Home", bubbles: true }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(viewport().scrollTop).toBe(archiveOffset);
+  expect(document.activeElement?.textContent).toBe("archive-0");
 });
