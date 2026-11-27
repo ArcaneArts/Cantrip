@@ -67,7 +67,10 @@ export function AlertInbox({
           <RefreshCw className="size-4" />
         </Button>
       </PanelToolbar>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-6">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-6"
+        data-content-gutter="standard"
+      >
         {alerts.isPending ? (
           <p role="status" className="text-sm text-muted-foreground">
             Loading alerts…
@@ -96,7 +99,7 @@ export function AlertInbox({
             </p>
           </div>
         ) : null}
-        <div className="mx-auto max-w-5xl space-y-3">
+        <div className="space-y-3">
           {alerts.data?.items.map((alert) => {
             const chat = chats.find((c) => c.id === alert.chatId);
             const open = expanded === alert.id;
@@ -159,7 +162,7 @@ export function AlertInbox({
         {cursors.length > 1 || alerts.data?.nextCursor ? (
           <nav
             aria-label="Alert pages"
-            className="mx-auto mt-4 flex max-w-5xl justify-between gap-2"
+            className="mt-4 flex justify-between gap-2"
           >
             <Button
               variant="outline"
