@@ -1,5 +1,5 @@
 //! Runtime route selection shared by consoles and later execution consumers.
-use super::eligibility;
+use super::{claude_routing::ClaudeRouting, eligibility};
 use crate::workers::transport::WorkerTransport;
 use crate::{
     database::Database,
@@ -46,6 +46,7 @@ pub struct ModelRouting {
     hydrate: Hydrate,
     clock: Clock,
     cooldowns: Mutex<HashMap<JsString, f64>>,
+    pub(super) claude: Option<ClaudeRouting>,
     logger: Logger,
 }
 fn wire(values: Vec<serde_json::Value>) -> Vec<Value> {
@@ -69,7 +70,8 @@ pub fn cooldown_key(runtime: &Value) -> JsString {
         .expect("Runtime route")
         .units()
         .to_vec();
-    if eligibility::account_provider(&runtime["provider"]["kind"])
+    if (eligibility::account_provider(&runtime["provider"]["kind"])
+        || runtime["provider"]["kind"] == "claude-code")
         && truthy(runtime["provider"].get("accountId"))
     {
         units.extend(":account:".encode_utf16());
@@ -87,9 +89,11 @@ impl ModelRouting {
         database: Arc<Database>,
         catalogs: Arc<CatalogRuntime>,
         bridge: Arc<dyn WorkerTransport>,
+        claude_commands: Arc<crate::workers::command_bus::LimitedCommandBus>,
+        server_id: String,
     ) -> Arc<Self> {
-        Self::with_dependencies(
-            database,
+        let mut routing = Self::with_dependencies(
+            database.clone(),
             Arc::new(move |worker| bridge.is_connected(worker)),
             Arc::new(move |owner, runtimes| {
                 let catalogs = catalogs.clone();
@@ -101,7 +105,10 @@ impl ModelRouting {
                 })
             }),
             Arc::new(|| crate::auth::now().timestamp_millis() as f64),
-        )
+        );
+        Arc::get_mut(&mut routing).expect("New model routing").claude =
+            Some(ClaudeRouting::new(database, claude_commands, server_id));
+        routing
     }
     pub fn with_dependencies(
         database: Arc<Database>,
@@ -130,6 +137,7 @@ impl ModelRouting {
             hydrate,
             clock,
             cooldowns: Mutex::new(HashMap::new()),
+            claude: None,
             logger,
         })
     }
@@ -219,7 +227,7 @@ impl ModelRouting {
             cooldowns.remove(&key);
         }
     }
-    fn cooling(&self, runtime: &Value, now: f64) -> bool {
+    pub(super) fn cooling(&self, runtime: &Value, now: f64) -> bool {
         self.cooldowns
             .lock()
             .unwrap()

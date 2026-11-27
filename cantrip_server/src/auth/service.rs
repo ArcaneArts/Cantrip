@@ -341,6 +341,8 @@ impl AuthService {
             repository.database.clone(),
             provider_catalogs.clone(),
             workers.bridge.clone(),
+            workers.commands.clone(),
+            server_id.clone(),
         );
         let publisher = Arc::downgrade(&live);
         // The coordinator and observer refer to each other. The callback uses

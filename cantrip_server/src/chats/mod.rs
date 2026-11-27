@@ -6,6 +6,7 @@ pub mod attachments;
 pub mod automatic_title;
 pub mod automation_pause;
 pub mod catalog;
+mod claude_routing;
 pub(crate) mod computer_use_authority;
 mod context;
 pub mod conversations;
