@@ -375,6 +375,31 @@ pub(super) async fn apply_execution_permissions(
     .await
 }
 
+pub(super) async fn apply_handoff_reasoning(
+    runtime: &Runtime,
+    thread: &LoadedThread,
+    effort: &Value,
+) -> Result<()> {
+    let current = call(
+        runtime,
+        "thread/settings/read",
+        json!({"threadId":thread.id()}),
+    )
+    .await?;
+    if &current["threadSettings"]["effort"] == effort {
+        return Ok(());
+    }
+    // A resumed thread can inherit its previous provider's reasoning value.
+    // Commit the selected destination value, including an explicit reset.
+    apply_settings(runtime, thread, json!({"effort":effort}), |actual| {
+        if &actual["effort"] != effort {
+            bail!("The native thread did not apply the selected reasoning effort.");
+        }
+        Ok(())
+    })
+    .await
+}
+
 async fn apply_settings(
     runtime: &Runtime,
     thread: &LoadedThread,

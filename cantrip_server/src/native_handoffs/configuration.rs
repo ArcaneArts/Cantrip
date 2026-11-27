@@ -102,16 +102,13 @@ impl Repository {
         } else if !account.is_null() {
             return reject("handoff-target-account-mismatch");
         }
-        if side != "source" {
-            let automatic = one(
-                Executor::Database(&self.database),
-                "SELECT automatic_model_configuration::text FROM native_runtime_handoffs WHERE owner_id=$1 AND chat_id=$2 AND operation_id=$3 AND automatic_model_configuration IS NOT NULL",
-                &[&owner, &text(&state["chatId"])?, &text(&state["operationId"])?],
-            ).await?;
-            if let Some(configuration) = automatic {
-                context["reasoningEffort"] = configuration["reasoningEffort"].clone();
-                context["modelConfiguration"] = configuration;
-            }
+        let automatic = one(
+            Executor::Database(&self.database),
+            "SELECT automatic_model_configuration::text FROM native_runtime_handoffs WHERE owner_id=$1 AND chat_id=$2 AND operation_id=$3 AND automatic_model_configuration IS NOT NULL",
+            &[&owner, &text(&state["chatId"])?, &text(&state["operationId"])?],
+        ).await?;
+        if let Some(configuration) = automatic {
+            apply_automatic_configuration(&mut context, side, configuration);
         }
         let launch = console.configuration(owner, &context, &runtime).await?;
         if launch["model"].get("routeId") != Some(route)
@@ -151,5 +148,42 @@ impl Repository {
             "nativeRuntimeHandoffConfigurationSchema",
             &json!({"state":state,"side":side,"configuration":configuration}),
         )
+    }
+}
+
+fn apply_automatic_configuration(context: &mut Value, side: &str, configuration: Value) {
+    if side == "source" {
+        // The worker opens the retained source session using Intent::Preserve.
+        // Its bootstrap defaults must be valid for the source provider even if
+        // the user has already saved a destination-only effort or child model.
+        context["reasoningEffort"] = Value::Null;
+        context["modelConfiguration"] = json!({
+            "modelId":Value::Null,"reasoningEffort":Value::Null,
+            "customSubagentModel":false,"subagentModelId":Value::Null,"subagentReasoningEffort":Value::Null,
+        });
+    } else {
+        context["reasoningEffort"] = configuration["reasoningEffort"].clone();
+        context["modelConfiguration"] = configuration;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn automatic_handoff_keeps_destination_options_out_of_source_preparation() {
+        let selected = json!({
+            "modelId":"opus","reasoningEffort":"max","customSubagentModel":true,
+            "subagentModelId":"claude-child","subagentReasoningEffort":"high",
+        });
+        let mut context = json!({"reasoningEffort":"max","modelConfiguration":selected});
+        apply_automatic_configuration(&mut context, "source", selected.clone());
+        assert!(context["reasoningEffort"].is_null());
+        assert_eq!(context["modelConfiguration"]["customSubagentModel"], false);
+        assert!(context["modelConfiguration"]["subagentModelId"].is_null());
+        apply_automatic_configuration(&mut context, "destination", selected.clone());
+        assert_eq!(context["reasoningEffort"], "max");
+        assert_eq!(context["modelConfiguration"], selected);
     }
 }
