@@ -349,11 +349,11 @@ for arg in "$@"; do
   esac
 done
 [ "$tool_setting" = disabled ] && [ "$safe_mode" = yes ] || exit 6
-[ -z "${ANTHROPIC_API_KEY+x}" ] && [ "$HOME/config" = "$CLAUDE_CONFIG_DIR" ] || exit 7
+[ -z "${ANTHROPIC_API_KEY+x}" ] && [ "$PWD/config" = "$CLAUDE_CONFIG_DIR" ] || exit 7
 input=$(/bin/cat)
 case "$input" in
   "label please")
-    printf '%s' "$input" > "$HOME/fixture-input"
+    printf '%s' "$input" > "$PWD/fixture-input"
     echo '{"type":"result","subtype":"success","is_error":false,"result":"Orchard inventory"}' ;;
   "summary please") echo '{"type":"result","subtype":"success","is_error":false,"result":"Two crates reached the orchard."}' ;;
   "auth error") echo '{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["Login expired"]}'; exit 1 ;;
@@ -361,7 +361,7 @@ case "$input" in
   "model error") echo 'issue with the selected model' >&2; exit 1 ;;
   "bad output") echo 'an unexpected response' ;;
   "hang")
-    printf '%s' "$$" > "$HOME/fixture-pid"
+    printf '%s' "$$" > "$PWD/fixture-pid"
     exec /bin/sleep 60 ;;
   *) exit 8 ;;
 esac

@@ -465,7 +465,7 @@ printf '{"type":"result","subtype":"success","is_error":false,"structured_output
         install_fixture(
             &manager,
             r#"#!/bin/sh
-printf '%s' "$$" > "$HOME/fixture-pid"
+printf '%s' "$$" > "$PWD/fixture-pid"
 exec /bin/sleep 60
 "#,
         )?;
