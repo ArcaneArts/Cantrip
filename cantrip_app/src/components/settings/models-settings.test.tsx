@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ModelsSettings } from "./models-settings";
+import { ProviderSetupIcon } from "./provider-setup-icon";
 import {
   modelsForProvider,
   modelsSettingsSearchTab,
@@ -393,6 +394,10 @@ describe("Models provider navigation", () => {
       await act(async () => item.props.onClick());
       expect(inputs.onAddProvider).toHaveBeenLastCalledWith(setup.id);
     }
+    const providerTabIcons = buttons
+      .filter((button) => button.props.role === "tab" && button.props.title)
+      .map((tab) => tab.findByType(ProviderSetupIcon).props.setup);
+    expect(providerTabIcons).toEqual(["ollama", "openrouter"]);
     const edits = buttons.filter(
       (button) =>
         Array.isArray(button.props.children) &&
@@ -424,6 +429,13 @@ describe("Models provider navigation", () => {
         .findAllByType("button")
         .filter((button) => button.props.disabled);
       expect(disabled).toHaveLength(1);
+      const tab = view.root
+        .findAllByType("button")
+        .find(
+          (button) =>
+            button.props.role === "tab" && button.props.title === kind,
+        )!;
+      expect(tab.findByType(ProviderSetupIcon).props.setup).toBe(kind);
       expect(disabled[0]!.props.title).toContain(
         "Add sign-ins to that provider instead",
       );

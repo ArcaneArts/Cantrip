@@ -26,7 +26,6 @@ import {
   Cpu,
   Pencil,
   Plus,
-  Server,
   SlidersHorizontal,
   Trash2,
 } from "lucide-react";
@@ -82,6 +81,7 @@ import {
   providerSupportsCatalog,
 } from "./provider-catalog-display";
 import {
+  providerSetupFor,
   providerSetupOptions,
   providerSetupUnavailableReason,
   type ProviderSetupKind,
@@ -478,7 +478,7 @@ export function ModelsSettings({
                       {...tabProps(tab)}
                       title={provider.name}
                     >
-                      <Server className="size-3.5 shrink-0" />
+                      <ProviderSetupIcon setup={providerSetupFor(provider)} />
                       <span className="truncate">{provider.name}</span>
                     </Button>
                   </ContextMenu.Trigger>
