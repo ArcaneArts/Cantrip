@@ -51,6 +51,7 @@ vi.mock("@/components/ui/dialog", () => {
     DialogContent: part,
     DialogHeader: part,
     DialogTitle: part,
+    DialogTrigger: part,
     DialogDescription: part,
     DialogFooter: part,
   };
@@ -247,10 +248,12 @@ describe("bound GUI native model picker", () => {
     expect(
       launcher.findAllByType("span").map((span) => span.children[0]),
     ).toContain("Opus 5.5");
-    const label = gui.view.root.findByProps({
-      "aria-label": "Effective model settings",
-    });
-    expect(label.children.join("")).toContain("Confirmed: Opus 5.5");
+    const model = gui.view.root.findByProps({ "aria-label": "Session model" });
+    expect(
+      model
+        .findAllByType("option")
+        .find((option) => option.props.value === "route-one")?.children,
+    ).toContain("Opus 5.5");
     expect(gui.controller().selected?.model).toBe("opus");
   });
 
@@ -425,42 +428,34 @@ describe("bound GUI native model picker", () => {
     },
   );
 
-  it.each([
-    ["No service tier override", { unsetServiceTier: true }, null],
-    ["Standard service", { serviceTier: "default" }, "default"],
-  ] as const)(
-    "submits %s independently and shows actual confirmed state after reconnect",
-    async (buttonLabel, patch, tier) => {
-      const mounted = await mount();
-      await mounted.open();
-      await act(async () => {
-        mounted.view.root
-          .findAllByType("button")
-          .find((button) => button.children.includes(buttonLabel))!
-          .props.onClick();
+  it("shows session model settings without exposing account defaults or service tier", async () => {
+    const mounted = await mount();
+    await mounted.open();
+    const root = mounted.view.root;
+    expect(
+      root.findAllByProps({ "aria-label": "Session service tier" }),
+    ).toHaveLength(0);
+    expect(JSON.stringify(mounted.view.toJSON())).not.toMatch(
+      /service tier|account defaults/i,
+    );
+
+    await act(async () => {
+      root.findByProps({ "aria-label": "Session model" }).props.onChange({
+        target: { value: "route-two" },
       });
-      await act(async () => {
-        mounted.view.root
-          .findAllByType("button")
-          .find((button) => button.children.includes("Save settings"))!
-          .props.onClick();
-      });
-      await flush();
-      expect(runtime.prepare.mock.calls[0]![0].patch).toEqual(patch);
-      expect(mounted.controller().selected?.serviceTier).toBe(tier);
-      const current = observed();
-      runtime.observed = {
-        ...current,
-        identity: { ...identity, generation: 2 },
-        confirmed: { ...current.confirmed, serviceTier: tier },
-      };
-      await mounted.rerender();
-      await flush();
-      expect(mounted.controller().selected?.serviceTier).toBe(tier);
-      expect(mounted.controller().observed.confirmed?.serviceTier).toBe(tier);
-      expect(runtime.send).toHaveBeenCalledTimes(1);
-    },
-  );
+    });
+    await act(async () => {
+      root
+        .findAllByType("button")
+        .find((button) => button.children.includes("Save settings"))!
+        .props.onClick();
+    });
+    await flush();
+    expect(runtime.prepare.mock.calls[0]![0].patch).toEqual({
+      model: "private-choice",
+    });
+    expect(mounted.controller().selected?.serviceTier).toBe("fast");
+  });
 
   it("lets a replacement source submit while a retired request waits without releasing its successor", async () => {
     const mounted = await mount();
@@ -544,6 +539,27 @@ describe("bound GUI native model picker", () => {
     };
     const mounted = await mount();
     await mounted.open();
+    const tabs = mounted.view.root.findAll(
+      (node) => node.type === "button" && node.props.role === "tab",
+    );
+    expect(tabs.map((tab) => tab.children.join(""))).toEqual([
+      "Model",
+      "Subagents",
+    ]);
+    const modelTab = tabs[0]!;
+    const subagentsTab = tabs[1]!;
+    expect(modelTab.props["aria-selected"]).toBe(true);
+    expect(subagentsTab.props["aria-selected"]).toBe(false);
+    const modelPanel = mounted.view.root.findByProps({
+      id: modelTab.props["aria-controls"],
+    });
+    const subagentsPanel = mounted.view.root.findByProps({
+      id: subagentsTab.props["aria-controls"],
+    });
+    expect(subagentsPanel.props.hidden).toBe(true);
+    await act(async () => subagentsTab.props.onClick());
+    expect(modelPanel.props.hidden).toBe(true);
+    expect(subagentsPanel.props.hidden).toBe(false);
     await act(async () => {
       mounted.view.root
         .findByProps({ "aria-label": "Enable subagents" })
@@ -555,6 +571,8 @@ describe("bound GUI native model picker", () => {
         .findByProps({ "aria-label": "Subagent reasoning effort" })
         .props.onChange({ target: { value: "" } });
     });
+    await act(async () => modelTab.props.onClick());
+    expect(subagentsPanel.props.hidden).toBe(true);
     await act(async () => {
       mounted.view.root
         .findAllByType("button")

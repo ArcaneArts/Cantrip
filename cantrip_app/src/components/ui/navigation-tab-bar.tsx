@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { KeyboardEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ export function NavigationTabBar<TabId extends string>({
   className,
   disabled = false,
   onTabChange,
+  panelIdPrefix,
   tabs,
 }: {
   activeTab: TabId | null;
@@ -24,8 +26,33 @@ export function NavigationTabBar<TabId extends string>({
   className?: string;
   disabled?: boolean;
   onTabChange(tab: TabId): void;
+  panelIdPrefix?: string;
   tabs: readonly NavigationTab<TabId>[];
 }) {
+  function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const enabledTabs = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        '[role="tab"]:enabled',
+      ),
+    );
+    const current = enabledTabs.findIndex((tab) => tab === event.target);
+    if (current < 0) return;
+
+    const last = enabledTabs.length - 1;
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? last
+          : event.key === "ArrowRight"
+            ? (current + 1) % enabledTabs.length
+            : (current + last) % enabledTabs.length;
+    event.preventDefault();
+    enabledTabs[next]?.focus();
+    enabledTabs[next]?.click();
+  }
+
   return (
     <div
       aria-label={ariaLabel}
@@ -34,6 +61,7 @@ export function NavigationTabBar<TabId extends string>({
         className,
       )}
       role="tablist"
+      onKeyDown={panelIdPrefix ? moveFocus : undefined}
     >
       {tabs.map(
         ({ attention, disabled: tabDisabled, icon: Icon, id, label }) => (
@@ -41,7 +69,12 @@ export function NavigationTabBar<TabId extends string>({
             key={id}
             type="button"
             role="tab"
+            id={panelIdPrefix ? `${panelIdPrefix}-${id}-tab` : undefined}
+            aria-controls={
+              panelIdPrefix ? `${panelIdPrefix}-${id}-panel` : undefined
+            }
             aria-selected={activeTab === id}
+            tabIndex={panelIdPrefix ? (activeTab === id ? 0 : -1) : undefined}
             disabled={disabled || tabDisabled}
             size="sm"
             variant="ghost"
@@ -50,6 +83,7 @@ export function NavigationTabBar<TabId extends string>({
               activeTab === id
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground",
+              panelIdPrefix && "focus-visible:ring-inset",
             )}
             onClick={() => onTabChange(id)}
           >
