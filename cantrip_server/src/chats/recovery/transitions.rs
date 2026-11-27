@@ -206,7 +206,7 @@ impl Service {
         (self.dependencies.begin)(owner.to_owned(),next.clone(),input,json!({"encryptedChatMessages":json!({"userMessage":protected,"response":response}),"acquiringActor":"agent","messageRole":"system","purpose":purpose})).await?;
         Ok(())
     }
-    async fn system_message(
+    pub(super) async fn system_message(
         &self,
         owner: &str,
         chat: &str,

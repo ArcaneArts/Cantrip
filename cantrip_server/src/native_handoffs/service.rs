@@ -298,9 +298,24 @@ impl Service {
             // Keep the actual error available to HTTP/error mapping without
             // flattening SQL or command failures into a synthetic string error.
             let transport=this.dispatch(&owner,&state,false).await;
-            if let Err(error)=transport{return Ok(Err(error))}
-            let settled=this.repository.get(&owner,&chat,&text(&state["operationId"])?).await?;
-            if let Some(state)=settled.as_ref().filter(|s|s["phase"]=="completed"){return Ok(Ok(state.clone()))}
+            let operation = text(&state["operationId"])?;
+            let settled = this.repository.get(&owner, &chat, &operation).await?;
+            if let Some(state) = settled.as_ref().filter(|s| s["phase"] == "completed") {
+                return Ok(Ok(state.clone()));
+            }
+            // A selection with no manual controls must release an abandoned
+            // pre-commit reservation. The repository fences a concurrent commit.
+            if automatic
+                && settled.as_ref().is_some_and(|state| {
+                    matches!(state["phase"].as_str(), Some("preparing" | "prepared"))
+                })
+                && let Ok(cancelled) = this.repository.request_cancellation(&owner, &chat, &operation).await
+            {
+                let _ = this.dispatch(&owner, &cancelled, false).await;
+            }
+            if let Err(error) = transport {
+                return Ok(Err(error));
+            }
             let code=settled.as_ref().and_then(|s|s.get("errorCode")).filter(|v|!v.is_null()).map(text).transpose()?.unwrap_or_else(||"handoff-not-completed".into());
             let message = if automatic {
                 "The worker could not prepare the selected model. Retry the message."

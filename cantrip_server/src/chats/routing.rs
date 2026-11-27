@@ -1,5 +1,8 @@
 //! Runtime route selection shared by consoles and later execution consumers.
-use super::{claude_routing::ClaudeRouting, eligibility};
+use super::{
+    claude_routing::{ClaudeRouting, NoClaudeAccount},
+    eligibility,
+};
 use crate::workers::transport::WorkerTransport;
 use crate::{
     database::Database,
@@ -106,8 +109,9 @@ impl ModelRouting {
             }),
             Arc::new(|| crate::auth::now().timestamp_millis() as f64),
         );
-        Arc::get_mut(&mut routing).expect("New model routing").claude =
-            Some(ClaudeRouting::new(database, claude_commands, server_id));
+        Arc::get_mut(&mut routing)
+            .expect("New model routing")
+            .claude = Some(ClaudeRouting::new(database, claude_commands, server_id));
         routing
     }
     pub fn with_dependencies(
@@ -286,6 +290,9 @@ impl ModelRouting {
         }
         let now = (self.clock)();
         let configured = runtimes.len();
+        let claude_only = runtimes
+            .iter()
+            .all(|runtime| runtime["provider"]["kind"] == "claude-code");
         let worker = text(context, "workerId")?;
         let (mut available, mut unavailable) = (Vec::new(), Vec::new());
         for mut runtime in runtimes {
@@ -390,6 +397,9 @@ impl ModelRouting {
                 json!({"event":"provider.routing.unavailable","subsystem":"provider-routing","operation":"resolve-routes","reasonCode":"no-eligible-routes","status":"unavailable","workerId":context["workerId"],"counts":json!({"configuredRoutes":configured,"unavailableRoutes":unavailable.len()})}),
                 Some(json!({"summaryEvery":10,"windowMs":60_000})),
             ));
+            if claude_only {
+                return Err(NoClaudeAccount.into());
+            }
             return Err(NoProviderRoutes(format!(
                 "No provider route is currently available{}",
                 if unavailable.is_empty() {
@@ -469,6 +479,9 @@ impl ModelRouting {
                 .available_runtimes(owner, context, &text(configuration, "modelId")?)
                 .await
                 .map_err(|cause| {
+                    if cause.is::<NoClaudeAccount>() {
+                        return NoClaudeAccount::configuration_failure();
+                    }
                     failure(
                         "root-model-unavailable",
                         crate::settings::operation_error_message(&cause)
