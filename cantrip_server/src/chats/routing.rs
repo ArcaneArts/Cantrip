@@ -243,6 +243,27 @@ impl ModelRouting {
         context: &Value,
         model: &str,
     ) -> Result<Vec<Value>> {
+        self.available_inference_runtimes(owner, context, model, false)
+            .await
+    }
+
+    pub(crate) async fn available_label_runtimes(
+        &self,
+        owner: &str,
+        context: &Value,
+        model: &str,
+    ) -> Result<Vec<Value>> {
+        self.available_inference_runtimes(owner, context, model, true)
+            .await
+    }
+
+    async fn available_inference_runtimes(
+        &self,
+        owner: &str,
+        context: &Value,
+        model: &str,
+        labeling: bool,
+    ) -> Result<Vec<Value>> {
         let repository = SettingsRepository::new(self.database.clone());
         let mut runtimes = wire(
             repository
@@ -266,9 +287,30 @@ impl ModelRouting {
         let configured = runtimes.len();
         let worker = text(context, "workerId")?;
         let (mut available, mut unavailable) = (Vec::new(), Vec::new());
-        for runtime in runtimes {
+        for mut runtime in runtimes {
             let provider = &runtime["provider"];
             let name = text(provider, "name")?;
+            if provider["kind"] == "claude-code" {
+                if !labeling {
+                    unavailable.push(format!("{name} is currently available for labels."));
+                    continue;
+                }
+                let accounts = repository
+                    .claude_worker_accounts(owner, &text(provider, "id")?, &worker)
+                    .await?;
+                let preferred = context["providerAccountId"].as_str();
+                let account = accounts
+                    .iter()
+                    .find(|account| Some(account.as_str()) == preferred)
+                    .or_else(|| accounts.first());
+                if let Some(account) = account {
+                    runtime["provider"]["accountId"] = json!(account);
+                    available.push(runtime);
+                } else {
+                    unavailable.push(format!("{name} has no enabled account on this worker"));
+                }
+                continue;
+            }
             if !eligibility::account_provider(&provider["kind"]) {
                 let catalog = if truthy(runtime["model"].get("providerModelId")) {
                     wire(

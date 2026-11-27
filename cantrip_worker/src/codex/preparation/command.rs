@@ -1473,6 +1473,24 @@ impl Ensurer {
         Ok(thread.id().clone())
     }
 
+    pub(in crate::codex) fn claude_code(&self) -> crate::claude_code::Manager {
+        crate::claude_code::Manager::new(&self.0.data)
+    }
+
+    pub(in crate::codex) fn headless_admission(
+        &self,
+        bound: &(JsString, Value),
+    ) -> Result<crate::inference::admission::Manager> {
+        self.assert_bound(bound)?;
+        self.0.codex.inference_manager(
+            &bound.0,
+            bound
+                .1
+                .as_js_string()
+                .context("Unverified worker server identity")?,
+        )
+    }
+
     pub(in crate::codex) async fn label_runtime(
         &self,
         job: &Value,

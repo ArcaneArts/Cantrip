@@ -210,26 +210,21 @@ impl MessageTitles {
         if claim.is_none() {
             return Ok(None);
         }
+        let context_for_label = route_context.unwrap_or(&context);
+        let runtimes = self
+            .routing
+            .available_label_runtimes(
+                owner,
+                context_for_label,
+                model.as_str().context("Label model")?,
+            )
+            .await?;
         let runtime = if is_task {
-            self.routing
-                .available_runtimes(
-                    owner,
-                    route_context.unwrap_or(&context),
-                    model.as_str().context("Label model")?,
-                )
-                .await?
-                .into_iter()
-                .next()
-                .context("No labeling route.")?
+            runtimes.into_iter().next().context("No labeling route.")?
         } else {
             let configuration = json!({"modelId":model,"reasoningEffort":Value::Null,"customSubagentModel":false,"subagentModelId":Value::Null,"subagentReasoningEffort":Value::Null});
             self.routing
-                .route_pairs(
-                    owner,
-                    route_context.unwrap_or(&context),
-                    &configuration,
-                    None,
-                )
+                .route_pairs(owner, context_for_label, &configuration, Some(&runtimes))
                 .await?
                 .first()
                 .context("No labeling route.")?["root"]["runtime"]
@@ -299,16 +294,27 @@ impl MessageTitles {
             return Ok(None);
         };
         let is_task = input["kind"] == "task";
+        let worker = context["workerId"].as_str().context("Label worker")?;
+        let claude_account = (command["provider"]["kind"] == "claude-code").then(|| {
+            (
+                command["provider"]["id"].clone(),
+                command["provider"]["accountId"].clone(),
+            )
+        });
         let reply = self
             .commands
-            .request(
-                context["workerId"].as_str().context("Label worker")?,
-                command,
-                Some(Duration::from_secs(30)),
-                None,
-            )
-            .await?;
-        let reply = crate::settings::parse_response("generateLabelResultSchema", reply.as_ref())?;
+            .request(worker, command, Some(Duration::from_secs(30)), None)
+            .await;
+        if let Err(crate::workers::command_bus::CommandFailure::Bridge(error)) = &reply
+            && error.code.as_deref() == Some("provider-reauth-required")
+            && let Some((provider, account)) = claude_account
+            && let (Some(provider), Some(account)) = (provider.as_str(), account.as_str())
+        {
+            self.settings
+                .record_claude_account_status(owner, provider, account, worker, "signed-out")
+                .await?;
+        }
+        let reply = crate::settings::parse_response("generateLabelResultSchema", reply?.as_ref())?;
         let still_enabled = enabled(
             &Value::from_serialize(&self.settings.get_user_settings(owner).await?),
             is_task,

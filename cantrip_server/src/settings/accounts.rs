@@ -70,6 +70,18 @@ impl SettingsRepository {
         rows.first().map(|row| row.get(0)).transpose()
     }
 
+    pub(crate) async fn claude_worker_accounts(
+        &self,
+        owner: &str,
+        provider: &str,
+        worker: &str,
+    ) -> Result<Vec<String>> {
+        self.database.query(
+            "SELECT a.id FROM model_provider_accounts a JOIN model_providers p ON p.id=a.provider_id JOIN workers w ON w.id=a.bound_worker_id AND w.owner_id=p.owner_id WHERE p.owner_id=$1 AND p.id=$2 AND p.kind='claude-code' AND a.bound_worker_id=$3 AND a.enabled ORDER BY a.position",
+            &[&owner, &provider, &worker],
+        ).await?.iter().map(|row| row.get(0)).collect()
+    }
+
     pub async fn record_claude_account_status(
         &self,
         owner: &str,
