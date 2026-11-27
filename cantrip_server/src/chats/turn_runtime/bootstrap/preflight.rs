@@ -105,11 +105,17 @@ impl Bootstrap {
             context.clone(),
             configuration["turnModelConfiguration"].clone(),
         );
+        let first_native_turn = context["threadId"].is_null() && context["experience"] == "agent";
         let route_pairs = observer
             .run("resolve-model-routes", async move {
-                routing
+                let routes = routing
                     .route_pairs(&principal, &ctx, &config, bound.as_deref())
-                    .await
+                    .await?;
+                if first_native_turn {
+                    routing.select_claude_accounts(&principal, &ctx, routes).await
+                } else {
+                    Ok(routes)
+                }
             })
             .await?;
         let (chats, principal, ctx, ids) = (
