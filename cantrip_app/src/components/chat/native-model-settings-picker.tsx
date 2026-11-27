@@ -2,6 +2,7 @@ import { NativeAccountDefaultsEditor } from "./native-account-defaults-editor";
 import { NativeRuntimeHandoffEditor } from "./native-runtime-handoff-editor";
 import { useRuntimeHandoff } from "./use-runtime-handoff";
 import { useEffect, useMemo, useState } from "react";
+import { resolveNativeModelSelection } from "@cantrip/protocol";
 import { useNonLanguageRoutes } from "./use-language-model-routes";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,6 +106,13 @@ export function NativeModelSettingsPicker({
   const model = inventory.data?.models.find(
     (candidate) => candidate.routeId === draft?.routeId,
   );
+  const displayModel = (name: string, routeId?: string | null) => {
+    if (!inventory.data) return name;
+    const resolved = resolveNativeModelSelection(inventory.data, name, routeId);
+    return resolved.status === "resolved"
+      ? (resolved.model.catalog?.displayName ?? name)
+      : name;
+  };
   const subagentConflict =
     Boolean(draft?.subagentModel) &&
     inventory.data?.models.some(
@@ -159,7 +167,9 @@ export function NativeModelSettingsPicker({
       >
         <span className="min-w-0">
           <span className="block truncate text-xs font-medium">
-            {selected?.model ?? "Session model"}
+            {selected
+              ? displayModel(selected.model, controller.selectedRouteId)
+              : "Session model"}
           </span>
           <span className="block truncate text-[10px] text-muted-foreground">
             {handoff.active || handoff.busy || handoff.unconfirmed
@@ -183,8 +193,12 @@ export function NativeModelSettingsPicker({
             className="text-xs text-muted-foreground"
             aria-label="Effective model settings"
           >
-            Confirmed: {observed.confirmed.model} ·{" "}
-            {observed.confirmed.effort ?? "Default reasoning"} ·{" "}
+            Confirmed:{" "}
+            {displayModel(
+              observed.confirmed.model,
+              controller.confirmedRouteId,
+            )}{" "}
+            · {observed.confirmed.effort ?? "Default reasoning"} ·{" "}
             {observed.confirmed.serviceTier === "default"
               ? "Standard service"
               : (observed.confirmed.serviceTier ?? "No service tier override")}
@@ -245,11 +259,14 @@ export function NativeModelSettingsPicker({
             }}
           >
             <option value="" disabled>
-              {draft?.model ?? "Choose model"}
+              {draft
+                ? displayModel(draft.model, draft.routeId)
+                : "Choose model"}
             </option>
             {draft?.routeId && nonLanguageRoutes.has(draft.routeId) ? (
               <option value={draft.routeId} disabled>
-                {draft.model} · Review language configuration
+                {displayModel(draft.model, draft.routeId)} · Review language
+                configuration
               </option>
             ) : null}
             {modelChoices.map((candidate) => (
@@ -417,7 +434,7 @@ export function NativeModelSettingsPicker({
                   value={name}
                   disabled={name === draft.subagentModel && subagentConflict}
                 >
-                  {name}
+                  {displayModel(name)}
                   {name === draft.subagentModel && subagentConflict
                     ? " · Review language configuration"
                     : ""}
