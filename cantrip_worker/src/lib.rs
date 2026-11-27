@@ -7,6 +7,7 @@ mod browser_services;
 mod browser_surface;
 mod cantrip_os;
 pub(crate) mod chat_content;
+pub mod claude_code;
 mod cli;
 mod codegraph;
 pub use codegraph::launch_mcp as launch_codegraph_mcp;

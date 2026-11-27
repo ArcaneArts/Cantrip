@@ -81,6 +81,7 @@ async-trait = "0.1"
 rtc = "=0.21.1"
 rtc-shared = "=0.21.1"
 webrtc = { version = "=0.21.1", path = "third-party/webrtc" }
+pgp = { version = "=0.21.1", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
