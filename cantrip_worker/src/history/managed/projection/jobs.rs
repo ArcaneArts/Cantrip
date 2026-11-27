@@ -32,7 +32,9 @@ impl Pump {
                     break;
                 };
                 projection.drain().await?;
-                entry.job.lock().unwrap().failures = 0;
+                let mut job = entry.job.lock().unwrap();
+                job.failures = 0;
+                job.awaiting_context = false;
             }
             Ok(())
         }
@@ -48,6 +50,7 @@ impl Pump {
                             || c == &JsString::from("binding-not-found")
                     })
             });
+            let awaiting_context = error.is::<crate::history::turn_context::Pending>();
             let error = Failure::new(error);
             {
                 let mut job = entry.job.lock().unwrap();
@@ -55,8 +58,11 @@ impl Pump {
                     job.unavailable = Some(error.clone());
                     job.dirty = false;
                 } else {
+                    if !(awaiting_context && job.dirty) {
+                        retry = self.0.options.retry.delay(job.failures);
+                    }
                     job.dirty = true;
-                    retry = self.0.options.retry.delay(job.failures);
+                    job.awaiting_context = awaiting_context;
                     job.failures = job.failures.saturating_add(1);
                 }
             }

@@ -49,6 +49,20 @@ impl Capture {
             Ok(frame) => {
                 let mut state = self.0.state.lock().unwrap();
                 if state.observing && !state.stopped {
+                    if state.awaiting_context.as_ref().is_some_and(|turn| {
+                        frame["snapshot"]["history"]["turns"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .any(|entry| {
+                                entry["turnId"].as_js_string() == Some(turn)
+                                    && entry["contexts"]
+                                        .as_array()
+                                        .is_some_and(|entries| !entries.is_empty())
+                            })
+                    }) {
+                        state.awaiting_context = None;
+                    }
                     let gap = state.cursors.snapshot(&frame);
                     state.pending.push_back(Pending {
                         frame,
