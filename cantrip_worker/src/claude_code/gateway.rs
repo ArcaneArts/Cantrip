@@ -247,6 +247,7 @@ impl Service {
                         Failure::Quota => StatusCode::TOO_MANY_REQUESTS,
                         Failure::Model => StatusCode::NOT_FOUND,
                         Failure::Timeout => StatusCode::GATEWAY_TIMEOUT,
+                        Failure::UpstreamUnavailable => StatusCode::SERVICE_UNAVAILABLE,
                         _ => StatusCode::BAD_GATEWAY,
                     };
                     error(status, failure.code(), &failure.to_string())
@@ -322,8 +323,9 @@ impl Service {
                 );
             }
             let turn = pending.lease.as_ref().unwrap();
-            let reply = turn
-                .infer(
+            let deadline = Instant::now() + RESPONSE_TIME;
+            let attempt = || {
+                turn.infer(
                     Prompt {
                         model: &input.model,
                         instructions: INSTRUCTIONS,
@@ -331,10 +333,29 @@ impl Service {
                     },
                     input.effort,
                     Some(DECISION_SCHEMA),
-                    RESPONSE_TIME,
+                    deadline.saturating_duration_since(Instant::now()),
                     &signal,
                 )
-                .await?;
+            };
+            let reply = match attempt().await {
+                Err(error)
+                    if error
+                        .downcast_ref::<Failure>()
+                        .is_some_and(|failure| failure.can_retry_decision())
+                        && deadline.saturating_duration_since(Instant::now())
+                            > Duration::from_secs(1) =>
+                {
+                    // No decision was returned to Codex, so none of its tool
+                    // calls can have executed as a result of this request.
+                    tokio::select! {
+                        reason = signal.cancelled() => return Err(reason.into()),
+                        _ = tokio::time::sleep(Duration::from_millis(250)) => {}
+                    }
+                    (self.verify)()?;
+                    attempt().await?
+                }
+                result => result?,
+            };
             (self.verify)()?;
             signal.check()?;
             input.reply(reply)
@@ -453,6 +474,90 @@ printf '{"type":"result","subtype":"success","is_error":false,"structured_output
             manager
                 .begin_sign_in(Profile::bound(&owner, &server, account))
                 .is_ok()
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn retries_an_unreturned_decision_and_streams_only_the_public_progress() -> Result<()> {
+        let data = tempfile::tempdir()?;
+        let manager = Manager::new(data.path());
+        install_fixture(
+            &manager,
+            r#"#!/bin/sh
+/bin/cat >/dev/null
+case " $* " in
+  *" --effort=max "*) ;;
+  *) exit 9 ;;
+esac
+case " $* " in
+  *" --max-turns 3 "*) ;;
+  *) exit 9 ;;
+esac
+printf 'attempt\n' >> "$PWD/fixture-attempts"
+if [ ! -f "$PWD/fixture-retry" ]; then
+  : > "$PWD/fixture-retry"
+  echo '{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["fixture execution failure"]}'
+  exit 1
+fi
+echo '{"type":"result","subtype":"success","is_error":false,"structured_output":{"type":"function","name":"test","arguments":"{}","progress":"Checking the fixture."},"thinking":"private-fixture"}'
+"#,
+        )?;
+        let owner = JsString::from("owner");
+        let server = JsString::from("server");
+        let account = uuid::Uuid::new_v4();
+        let command = manager
+            .installation()
+            .await?
+            .account_command(Profile::bound(&owner, &server, account))?;
+        let profile = command.as_std().get_current_dir().unwrap();
+        let gateway = Gateway::start(
+            data.path(),
+            owner,
+            server,
+            account.to_string().into(),
+            Arc::new(|| Ok(())),
+        )
+        .await?;
+        let response = reqwest::Client::new()
+            .post(format!("{}/responses", gateway.url))
+            .header("content-type", "application/json")
+            .body(json!({
+                "model":"opus","reasoning":{"effort":"max"},"input":"Use the fixture.","stream":true,
+                "tools":[{"type":"function","name":"test","parameters":{"type":"object"}}],
+            }).to_string())
+            .send()
+            .await?
+            ;
+        let status = response.status();
+        let output = response.text().await?;
+        assert_eq!(status, StatusCode::OK, "{output}");
+        let events: Vec<Value> = output
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .map(serde_json::from_str)
+            .collect::<serde_json::Result<_>>()?;
+        assert_eq!(
+            std::fs::read_to_string(profile.join("fixture-attempts"))?
+                .lines()
+                .count(),
+            2
+        );
+        let summary = &events
+            .iter()
+            .find(|event| event["type"] == "response.reasoning_summary_text.delta")
+            .unwrap()["delta"];
+        assert_eq!(summary, "Checking the fixture.");
+        assert!(!output.contains("private-fixture"));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| {
+                    event["type"] == "response.output_item.done"
+                        && event["item"]["type"] == "function_call"
+                })
+                .count(),
+            1
         );
         Ok(())
     }

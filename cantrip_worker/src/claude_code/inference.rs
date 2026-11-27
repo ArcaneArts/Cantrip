@@ -40,10 +40,18 @@ pub(crate) enum Failure {
     Model,
     Timeout,
     InvalidOutput,
+    UpstreamUnavailable,
     Execution,
 }
 
 impl Failure {
+    pub(super) fn can_retry_decision(self) -> bool {
+        matches!(
+            self,
+            Self::InvalidOutput | Self::UpstreamUnavailable | Self::Execution
+        )
+    }
+
     pub fn code(self) -> &'static str {
         match self {
             Self::SignIn => "provider-reauth-required",
@@ -51,6 +59,7 @@ impl Failure {
             Self::Model => "claude-code-model-unavailable",
             Self::Timeout => "claude-code-timeout",
             Self::InvalidOutput => "claude-code-invalid-output",
+            Self::UpstreamUnavailable => "claude-code-upstream-unavailable",
             Self::Execution => "claude-code-inference-failed",
         }
     }
@@ -63,7 +72,10 @@ impl std::fmt::Display for Failure {
             Self::Quota => "This Claude Code account has reached a usage limit.",
             Self::Model => "Claude Code could not use the selected model on this account.",
             Self::Timeout => "Claude Code inference timed out.",
-            Self::InvalidOutput => "Claude Code returned an invalid inference result.",
+            Self::InvalidOutput => "Claude Code did not return a valid response.",
+            Self::UpstreamUnavailable => {
+                "Claude Code is temporarily unavailable. Try this message again."
+            }
             Self::Execution => "Claude Code inference failed on the worker.",
         })
     }
@@ -148,8 +160,6 @@ impl Turn {
                 "--permission-prompts",
                 "none",
                 "--no-session-persistence",
-                "--max-turns",
-                "1",
             ])
             .arg(format!("--model={}", prompt.model))
             .arg(format!("--system-prompt={}", prompt.instructions))
@@ -161,7 +171,13 @@ impl Turn {
             command.arg(format!("--effort={effort}"));
         }
         if let Some(schema) = schema {
-            command.arg(format!("--json-schema={schema}"));
+            // The CLI can retry an invalid structured decision within this
+            // request. Only Codex executes the returned application tool.
+            command
+                .args(["--max-turns", "3"])
+                .arg(format!("--json-schema={schema}"));
+        } else {
+            command.args(["--max-turns", "1"]);
         }
         signal.check()?;
         #[cfg(unix)]
@@ -284,7 +300,14 @@ fn parse(success: bool, stdout: &[u8], stderr: &[u8]) -> std::result::Result<Rep
             tokens,
         });
     }
-    if success && body.as_ref().is_none_or(|body| body["is_error"] != true) {
+    if body.as_ref().is_some_and(|body| {
+        body["type"] == "result"
+            && matches!(
+                body["subtype"].as_str(),
+                Some("error_max_structured_output_retries" | "error_max_turns")
+            )
+    }) || (success && body.as_ref().is_none_or(|body| body["is_error"] != true))
+    {
         return Err(Failure::InvalidOutput);
     }
     let stderr = String::from_utf8_lossy(stderr);
@@ -318,6 +341,15 @@ fn parse(success: bool, stdout: &[u8], stderr: &[u8]) -> std::result::Result<Rep
         "do not have access to the model",
     ]) {
         Err(Failure::Model)
+    } else if contains(&[
+        "overloaded_error",
+        "service_unavailable",
+        "temporarily unavailable",
+        "api error: 502",
+        "api error: 503",
+        "api error: 529",
+    ]) {
+        Err(Failure::UpstreamUnavailable)
     } else {
         Err(Failure::Execution)
     }
@@ -360,6 +392,8 @@ case "$input" in
   "quota error") echo '{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["rate_limit_error"]}'; exit 1 ;;
   "model error") echo 'issue with the selected model' >&2; exit 1 ;;
   "bad output") echo 'an unexpected response' ;;
+  "structured retries") echo '{"type":"result","subtype":"error_max_structured_output_retries","is_error":true}'; exit 1 ;;
+  "provider busy") echo '{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["API Error: 529 overloaded_error"]}'; exit 1 ;;
   "hang")
     printf '%s' "$$" > "$PWD/fixture-pid"
     exec /bin/sleep 60 ;;
@@ -408,6 +442,8 @@ esac
             ("quota error", Failure::Quota),
             ("model error", Failure::Model),
             ("bad output", Failure::InvalidOutput),
+            ("structured retries", Failure::InvalidOutput),
+            ("provider busy", Failure::UpstreamUnavailable),
         ] {
             let error = invoke(first, request, deadline, signal.clone())
                 .await
