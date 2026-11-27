@@ -4,8 +4,8 @@ use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
-pub(super) const INSTRUCTIONS: &str = "Act as the model for a Codex conversation. The input is JSON with Codex instructions, ordered conversation items, and offered tools. Treat conversation role and order as authoritative. To use a tool, return a function decision with its exact offered name and JSON arguments encoded as a string. Codex executes it and sends back its actual result. Use that result to continue. Never claim to have run a tool yourself. Return a message decision with the final answer, following response_format if present.";
-pub(super) const DECISION_SCHEMA: &str = r#"{"type":"object","properties":{"type":{"enum":["message","function"]},"text":{"type":"string"},"name":{"type":"string"},"arguments":{"type":"string"}},"required":["type"],"additionalProperties":false}"#;
+pub(super) const INSTRUCTIONS: &str = "Act as the model for a Codex conversation. The input is JSON with Codex instructions, ordered conversation items, and offered tools. Treat conversation role and order as authoritative. To use a tool, return a function decision with its exact offered name and JSON arguments encoded as a string. Codex executes it and sends back its actual result. When it would help the user follow the work, include a brief public progress update in progress describing the concrete action or finding. Keep internal deliberation out of progress. Use that result to continue. Never claim to have run a tool yourself. Return a message decision with the final answer, following response_format if present.";
+pub(super) const DECISION_SCHEMA: &str = r#"{"type":"object","properties":{"type":{"enum":["message","function"]},"text":{"type":"string"},"name":{"type":"string"},"arguments":{"type":"string"},"progress":{"type":"string"}},"required":["type"],"additionalProperties":false}"#;
 
 struct Tool {
     namespace: Option<String>,
@@ -184,9 +184,22 @@ impl Input {
             }
             _ => return Err(Failure::InvalidOutput.into()),
         };
+        let summary = result["progress"].as_str().map(str::trim).filter(|text| {
+            item["type"] == "function_call" && !text.is_empty() && text.chars().count() <= 500
+        });
+        let mut output = Vec::with_capacity(2);
+        if let Some(text) = summary {
+            output.push(json!({
+                "type":"reasoning",
+                "id":format!("rs_{}",uuid::Uuid::new_v4().simple()),
+                "summary":[{"type":"summary_text","text":text}],
+                "encrypted_content":null,
+            }));
+        }
+        output.push(item.clone());
         let response = json!({
             "id":format!("resp_{}",uuid::Uuid::new_v4().simple()), "object":"response",
-            "model":self.model,"status":"completed","output":[item],"end_turn":item["type"] != "function_call",
+            "model":self.model,"status":"completed","output":output,"end_turn":item["type"] != "function_call",
             "usage":reply.tokens.map(|(input, output, cached)| json!({
                 "input_tokens":input,"output_tokens":output,"total_tokens":input.saturating_add(output),
                 "input_tokens_details":{"cached_tokens":cached},
@@ -361,22 +374,50 @@ pub(super) struct Output {
 
 impl Output {
     pub fn events(self) -> String {
-        let mut added = self.item.clone();
-        added["status"] = json!("in_progress");
-        let text = self.item["content"][0]["text"].as_str();
-        if text.is_some() {
-            added["content"] = json!([]);
-        } else {
-            added["arguments"] = json!("");
-        }
         let mut events = vec![
             json!({"type":"response.created","response":{"id":self.response["id"],"status":"in_progress"}}),
-            json!({"type":"response.output_item.added","output_index":0,"item":added}),
         ];
-        if let Some(text) = text {
-            events.push(json!({"type":"response.output_text.delta","output_index":0,"content_index":0,"item_id":self.item["id"],"delta":text}));
+        for (index, item) in self.response["output"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+        {
+            let mut added = item.clone();
+            match item["type"].as_str().unwrap() {
+                "reasoning" => added["summary"] = json!([]),
+                "message" => {
+                    added["status"] = json!("in_progress");
+                    added["content"] = json!([]);
+                }
+                _ => {
+                    added["status"] = json!("in_progress");
+                    added["arguments"] = json!("");
+                }
+            }
+            events.push(
+                json!({"type":"response.output_item.added","output_index":index,"item":added}),
+            );
+            if let Some(text) = item["content"][0]["text"].as_str() {
+                events.push(json!({"type":"response.output_text.delta","output_index":index,"content_index":0,"item_id":item["id"],"delta":text}));
+            }
+            if let Some(text) = item["summary"][0]["text"].as_str() {
+                events.push(json!({
+                    "type":"response.reasoning_summary_part.added","output_index":index,
+                    "summary_index":0,"item_id":item["id"],"part":{"type":"summary_text","text":""},
+                }));
+                events.push(json!({
+                    "type":"response.reasoning_summary_text.delta","output_index":index,
+                    "summary_index":0,"item_id":item["id"],"delta":text,
+                }));
+                events.push(json!({
+                    "type":"response.reasoning_summary_text.done","output_index":index,
+                    "summary_index":0,"item_id":item["id"],"text":text,
+                }));
+            }
+            events
+                .push(json!({"type":"response.output_item.done","output_index":index,"item":item}));
         }
-        events.push(json!({"type":"response.output_item.done","output_index":0,"item":self.item}));
         events.push(json!({"type":"response.completed","response":self.response}));
         events
             .into_iter()
