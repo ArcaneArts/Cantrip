@@ -233,8 +233,16 @@ fn command(executable: &Path, profile: &Path) -> Result<Command> {
     #[cfg(unix)]
     command.env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
 
+    // macOS uses HOME to locate the user's default Keychain. Claude Code
+    // scopes its credentials and settings separately by CLAUDE_CONFIG_DIR.
+    #[cfg(target_os = "macos")]
+    if let Some(home) = std::env::home_dir() {
+        command.env("HOME", home);
+    }
+    #[cfg(not(target_os = "macos"))]
+    command.env("HOME", &profile);
+
     command
-        .env("HOME", &profile)
         .env("USERPROFILE", &profile)
         .env("APPDATA", profile.join("config"))
         .env("LOCALAPPDATA", profile.join("data"))

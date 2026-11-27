@@ -38,6 +38,32 @@ fn verifies_the_anthropic_release_manifest() -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn retains_macos_home_for_keychain_and_scopes_claude_config() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let home = std::env::home_dir().context("Missing macOS user home")?;
+    for name in ["first", "second"] {
+        let command = command(Path::new("/usr/bin/true"), &root.path().join(name))?;
+        let command = command.as_std();
+        let profile = command
+            .get_current_dir()
+            .context("Missing Claude profile")?;
+        let environment = |key: &str| {
+            command
+                .get_envs()
+                .find_map(|(name, value)| (name == key).then_some(value).flatten())
+        };
+        assert_eq!(environment("HOME"), Some(home.as_os_str()));
+        assert_eq!(environment("USERPROFILE"), Some(profile.as_os_str()));
+        assert_eq!(
+            environment("CLAUDE_CONFIG_DIR"),
+            Some(profile.join("config").as_os_str())
+        );
+    }
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "downloads the current public native binary and runs only --version"]
 async fn installs_public_claude_code_release_without_signing_in() -> Result<()> {
@@ -145,12 +171,17 @@ async fn installs_updates_rolls_back_and_isolates_profiles() -> Result<()> {
         let output = first.command(profile)?.output().await?;
         assert!(output.status.success());
         let output = String::from_utf8(output.stdout)?;
+        let mut lines = output.lines();
+        let home = lines.next().context("Missing Claude home")?;
+        #[cfg(target_os = "macos")]
+        assert_eq!(Some(Path::new(home)), std::env::home_dir().as_deref());
+        #[cfg(not(target_os = "macos"))]
+        assert!(home.ends_with(&profile.to_string()));
         assert!(
-            output
-                .lines()
+            lines
                 .next()
-                .unwrap()
-                .ends_with(&profile.to_string())
+                .context("Missing Claude config directory")?
+                .ends_with(&format!("{profile}/config"))
         );
         assert_eq!(output.lines().last(), Some("1"));
         outputs.push(output);
