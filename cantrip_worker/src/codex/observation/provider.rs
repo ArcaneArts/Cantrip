@@ -7,7 +7,7 @@ use crate::{
     },
     provider_access::{Access, Account},
 };
-use anyhow::{Result, anyhow};
+use anyhow::{Context as _, Result, anyhow};
 use cantrip_wire::{Value, value::json};
 use std::sync::Arc;
 use url::Url;
@@ -73,6 +73,12 @@ pub(in crate::codex) fn configure(
         .filter(|value| !value.is_empty());
     profile.diagnostic_policy.secrets.extend(api_key.cloned());
     profile.diagnostic_policy.endpoint = !matches!(kind, "chatgpt" | "grok");
+    if kind == "claude-code" && account_runtime {
+        let account = account.context("Choose a Claude Code account on this worker.")?;
+        profile.account_scope = Some((account.provider.clone(), account.id.clone()));
+        profile.claude = Some(account);
+        return Ok(None);
+    }
     if kind == "chatgpt" {
         profile.provider_arguments = PROVIDER_CONFIG
             .iter()

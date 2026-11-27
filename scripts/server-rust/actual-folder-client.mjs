@@ -29,6 +29,7 @@ import { interruptTaskGoalTransferDependency } from "./task-goal-transfer-depend
 import { interruptTaskGoalTransferPeer } from "./task-goal-transfer-peer-outage.mjs";
 import { actualTaskLabelClient } from "./actual-task-label-client.mjs";
 import { actualClaudeLabel } from "./actual-claude-label.mjs";
+import { actualClaudeResponses } from "./actual-claude-responses.mjs";
 import { actualInlineChatLabels } from "./actual-inline-chat-labels.mjs";
 import { actualAgentInteractionCancel } from "./actual-agent-interaction-cancel.mjs";
 import { actualProviderAuthClient } from "./actual-provider-auth-client.mjs";
@@ -367,6 +368,7 @@ const runTaskProduct =
 const providerAuth = process.argv.includes("--provider-auth");
 const taskLabel = process.argv.includes("--task-label");
 const claudeLabel = process.argv.includes("--claude-label");
+const claudeResponses = process.argv.includes("--claude-responses");
 const inlineChatLabels = process.argv.includes("--inline-chat-labels");
 const approvalCancellation = process.argv.includes("--approval-cancellation");
 const remoteSurfaces = process.argv.includes("--remote-surfaces");
@@ -388,6 +390,7 @@ const singleProduct =
   providerAuth ||
   taskLabel ||
   claudeLabel ||
+  claudeResponses ||
   inlineChatLabels ||
   approvalCancellation ||
   process.argv.includes("--production-server") ||
@@ -710,6 +713,7 @@ async function flow(
       providerAuth ||
       taskLabel ||
       claudeLabel ||
+      claudeResponses ||
       inlineChatLabels ||
       approvalCancellation ||
       remoteSurfaces ||
@@ -744,6 +748,7 @@ async function flow(
           ...(workerLinkRenewal ||
           providerAuth ||
           taskLabel ||
+          claudeResponses ||
           inlineChatLabels ||
           approvalCancellation ||
           remoteSurfaces ||
@@ -1418,6 +1423,18 @@ async function flow(
     result.steps.push(
       "existing project client encrypts label and full worker creates a real managed directory",
     );
+    if (claudeResponses) {
+      await actualClaudeResponses({
+        page,
+        workerId,
+        projectId: first.id,
+        workerDirectory: dataDirectory,
+        result,
+        diagnostics: () => worker.diagnostics(),
+      });
+      assert.deepEqual(errors, []);
+      return;
+    }
     if (claudeLabel) {
       await actualClaudeLabel({
         page,

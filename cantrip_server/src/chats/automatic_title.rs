@@ -213,7 +213,7 @@ impl MessageTitles {
         let context_for_label = route_context.unwrap_or(&context);
         let runtimes = self
             .routing
-            .available_label_runtimes(
+            .available_runtimes(
                 owner,
                 context_for_label,
                 model.as_str().context("Label model")?,

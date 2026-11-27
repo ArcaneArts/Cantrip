@@ -78,6 +78,7 @@ struct Inner {
     attribution: Option<Arc<Mutex<attribution::Attribution>>>,
     retirement: Promise<()>,
     external_auth: Option<Arc<dyn ExternalAuth>>,
+    claude_gateway: Option<crate::claude_code::gateway::Gateway>,
     closing: Mutex<Option<Promise<()>>>,
     standalone_skills: super::skills::standalone::RuntimeSkills,
     project_skill_roots: tokio::sync::RwLock<Vec<JsString>>,
@@ -176,9 +177,10 @@ impl Runtime {
             external_auth,
             observe,
         } = launch;
-        if profile.grok.is_some() {
-            bail!("Managed Grok account launch requires the worker runtime registry.");
+        if profile.grok.is_some() || profile.claude.is_some() {
+            bail!("Managed account launch requires the worker runtime registry.");
         }
+        let claude_gateway = profile.claude_gateway.take();
         let home = cantrip_config::resolve(&host.cwd, &profile.codex_home);
         let configuration_home = profile
             .configuration_home
@@ -306,6 +308,7 @@ impl Runtime {
             attribution,
             retirement,
             external_auth,
+            claude_gateway,
             closing: Mutex::new(None),
             standalone_skills: Default::default(),
             project_skill_roots: Default::default(),
@@ -532,6 +535,9 @@ impl Runtime {
         let mut closing = self.0.closing.lock().unwrap();
         if let Some(pending) = closing.as_ref() {
             return pending.work();
+        }
+        if let Some(gateway) = &self.0.claude_gateway {
+            gateway.stop();
         }
         let router = self.0.router.clone();
         let retired = self.0.retirement.clone();

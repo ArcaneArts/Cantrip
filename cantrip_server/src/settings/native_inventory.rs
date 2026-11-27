@@ -25,7 +25,18 @@ impl SettingsRepository {
         };
         let provider = Value::from_serialize(&provider);
         let account = eligibility::account_provider(&provider["kind"]);
-        if account {
+        if provider["kind"] == "claude-code" {
+            let Some(account_id) = request["providerAccountId"].as_str() else {
+                return Ok(None);
+            };
+            let assigned = self
+                .claude_account_worker(owner, &id, account_id, true)
+                .boxed()
+                .await?;
+            if assigned.as_deref() != request["workerId"].as_str() {
+                return Ok(None);
+            }
+        } else if account {
             let accounts = self.list_provider_accounts(owner, &id).boxed().await?;
             if !truthy(request.get("providerAccountId"))
                 || !accounts.is_some_and(|accounts| {

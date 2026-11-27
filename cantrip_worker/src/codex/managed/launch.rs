@@ -27,6 +27,8 @@ pub struct Profile {
     pub native_host: bool,
     pub diagnostic_policy: Policy,
     pub grok: Option<GrokAccount>,
+    pub(in crate::codex) claude: Option<Account>,
+    pub(super) claude_gateway: Option<crate::claude_code::gateway::Gateway>,
 }
 
 impl Profile {
@@ -47,10 +49,12 @@ impl Profile {
             native_host: false,
             diagnostic_policy: Policy::default(),
             grok: None,
+            claude: None,
+            claude_gateway: None,
         }
     }
 
-    pub(super) fn configure_grok(&mut self, name: &JsString, local: &str) {
+    pub(super) fn configure_loopback(&mut self, name: &JsString, local: &str) {
         self.provider_arguments.extend([
             "web_search=\"disabled\"".into(),
             "features.fast_mode=false".into(),

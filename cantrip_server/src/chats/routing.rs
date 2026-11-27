@@ -154,6 +154,19 @@ impl ModelRouting {
             .as_ref()
             .map(Value::from_serialize)
             .context("The bound provider route no longer exists.")?;
+        if runtime["provider"]["kind"] == "claude-code" {
+            let account = text(context, "providerAccountId")?;
+            let worker = text(context, "workerId")?;
+            let assigned = settings
+                .claude_account_worker(owner, &text(&runtime["provider"], "id")?, &account, false)
+                .await?;
+            anyhow::ensure!(
+                assigned.as_deref() == Some(worker.as_ref()),
+                "This Claude Code account belongs to a different worker or was removed."
+            );
+            runtime["provider"]["accountId"] = json!(account);
+            return Ok(runtime);
+        }
         if !eligibility::account_provider(&runtime["provider"]["kind"]) {
             if context.get("providerAccountId") != Some(&Value::Null) {
                 bail!("The bound provider account does not match its route.");
@@ -190,7 +203,8 @@ impl ModelRouting {
         let route = text(context, "modelRouteId")?;
         let profile = model.as_str().context("Selected model profile")?;
         let account = context["providerAccountId"].as_str();
-        let rows = self.database.query("SELECT r.id FROM model_routes r JOIN model_profiles m ON m.id=r.model_id JOIN model_providers p ON p.id=r.provider_id WHERE r.id=$1 AND r.model_id=$2 AND m.owner_id=$3 AND p.owner_id=$3 AND r.enabled=true AND (CASE WHEN p.kind IN ('chatgpt','grok') THEN EXISTS(SELECT 1 FROM model_provider_accounts a WHERE a.id=$4 AND a.provider_id=p.id AND a.enabled=true) ELSE $4::text IS NULL END)", &[&route,&profile,&owner,&account]).await?;
+        let worker = context["workerId"].as_str();
+        let rows = self.database.query("SELECT r.id FROM model_routes r JOIN model_profiles m ON m.id=r.model_id JOIN model_providers p ON p.id=r.provider_id WHERE r.id=$1 AND r.model_id=$2 AND m.owner_id=$3 AND p.owner_id=$3 AND r.enabled=true AND (CASE WHEN p.kind IN ('chatgpt','grok') THEN EXISTS(SELECT 1 FROM model_provider_accounts a WHERE a.id=$4 AND a.provider_id=p.id AND a.enabled=true) WHEN p.kind='claude-code' THEN EXISTS(SELECT 1 FROM model_provider_accounts a WHERE a.id=$4 AND a.provider_id=p.id AND a.enabled=true AND a.bound_worker_id=$5) ELSE $4::text IS NULL END)", &[&route,&profile,&owner,&account,&worker]).await?;
         anyhow::ensure!(
             !rows.is_empty(),
             "The selected destination is no longer enabled."
@@ -243,27 +257,6 @@ impl ModelRouting {
         context: &Value,
         model: &str,
     ) -> Result<Vec<Value>> {
-        self.available_inference_runtimes(owner, context, model, false)
-            .await
-    }
-
-    pub(crate) async fn available_label_runtimes(
-        &self,
-        owner: &str,
-        context: &Value,
-        model: &str,
-    ) -> Result<Vec<Value>> {
-        self.available_inference_runtimes(owner, context, model, true)
-            .await
-    }
-
-    async fn available_inference_runtimes(
-        &self,
-        owner: &str,
-        context: &Value,
-        model: &str,
-        labeling: bool,
-    ) -> Result<Vec<Value>> {
         let repository = SettingsRepository::new(self.database.clone());
         let mut runtimes = wire(
             repository
@@ -291,10 +284,6 @@ impl ModelRouting {
             let provider = &runtime["provider"];
             let name = text(provider, "name")?;
             if provider["kind"] == "claude-code" {
-                if !labeling {
-                    unavailable.push(format!("{name} is currently available for labels."));
-                    continue;
-                }
                 let accounts = repository
                     .claude_worker_accounts(owner, &text(provider, "id")?, &worker)
                     .await?;

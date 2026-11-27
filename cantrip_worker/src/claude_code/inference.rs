@@ -1,5 +1,5 @@
 //! Noninteractive Claude Code with the worker-owned subscription profile.
-use super::{Installation, Manager, Profile};
+use super::{Installation, Manager, Profile, ProfileLease};
 use crate::metadata::Signal;
 use anyhow::{Context, Result, ensure};
 use cantrip_wire::{JsString, Value, parse_json_text};
@@ -20,6 +20,17 @@ pub(crate) struct Prompt<'a> {
     pub model: &'a str,
     pub instructions: &'a str,
     pub text: &'a str,
+}
+
+pub(super) struct Reply {
+    pub text: Option<String>,
+    pub structured: Value,
+    pub tokens: Option<(u64, u64, u64)>,
+}
+
+pub(super) struct Turn {
+    installation: Installation,
+    account: ProfileLease,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +80,21 @@ impl Manager {
         timeout: Duration,
         signal: &Signal,
     ) -> Result<String> {
+        self.turn(owner, server, account, signal)
+            .await?
+            .infer(prompt, None, None, timeout, signal)
+            .await?
+            .text
+            .ok_or_else(|| Failure::InvalidOutput.into())
+    }
+
+    pub(super) async fn turn(
+        &self,
+        owner: &JsString,
+        server: &JsString,
+        account: &Value,
+        signal: &Signal,
+    ) -> Result<Turn> {
         let account = uuid::Uuid::parse_str(
             account
                 .as_str()
@@ -80,19 +106,23 @@ impl Manager {
             reason = signal.cancelled() => return Err(reason.into()),
             result = self.installation() => result?,
         };
-        let _lease = self.begin_inference(profile)?;
-        installation.infer(profile, prompt, timeout, signal).await
+        let account = self.begin_inference(profile)?;
+        Ok(Turn {
+            installation,
+            account,
+        })
     }
 }
 
-impl Installation {
-    async fn infer(
+impl Turn {
+    pub(super) async fn infer(
         &self,
-        profile: Profile,
         prompt: Prompt<'_>,
+        effort: Option<&str>,
+        schema: Option<&str>,
         timeout: Duration,
         signal: &Signal,
-    ) -> Result<String> {
+    ) -> Result<Reply> {
         ensure!(
             !prompt.text.is_empty() && prompt.text.len() <= PROMPT_LIMIT,
             "Claude Code prompt is empty or too large."
@@ -101,7 +131,7 @@ impl Installation {
             (1..=500).contains(&prompt.model.len()),
             "Invalid Claude Code model."
         );
-        let mut command = self.account_command(profile)?;
+        let mut command = self.installation.account_command(self.account.profile)?;
         command
             .args([
                 "--print",
@@ -127,6 +157,12 @@ impl Installation {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        if let Some(effort) = effort {
+            command.arg(format!("--effort={effort}"));
+        }
+        if let Some(schema) = schema {
+            command.arg(format!("--json-schema={schema}"));
+        }
         signal.check()?;
         #[cfg(unix)]
         let mut child = command
@@ -207,7 +243,7 @@ async fn bounded(
     Ok(bytes)
 }
 
-fn parse(success: bool, stdout: &[u8], stderr: &[u8]) -> std::result::Result<String, Failure> {
+fn parse(success: bool, stdout: &[u8], stderr: &[u8]) -> std::result::Result<Reply, Failure> {
     let body = std::str::from_utf8(stdout)
         .ok()
         .and_then(|text| parse_json_text(text).ok());
@@ -217,12 +253,36 @@ fn parse(success: bool, stdout: &[u8], stderr: &[u8]) -> std::result::Result<Str
         && body["subtype"] == "success"
         && body["is_error"] == false
     {
-        return body["result"]
+        let text = body["result"]
             .as_str()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-            .ok_or(Failure::InvalidOutput);
+            .map(str::to_owned);
+        let structured = body["structured_output"].clone();
+        if text.is_none() && !structured.is_object() {
+            return Err(Failure::InvalidOutput);
+        }
+        let usage = &body["usage"];
+        let tokens = match (
+            usage["input_tokens"].as_u64(),
+            usage["output_tokens"].as_u64(),
+        ) {
+            (Some(input), Some(output)) => {
+                let read = usage["cache_read_input_tokens"].as_u64().unwrap_or(0);
+                let created = usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+                Some((
+                    input.saturating_add(read).saturating_add(created),
+                    output,
+                    read,
+                ))
+            }
+            _ => None,
+        };
+        return Ok(Reply {
+            text,
+            structured,
+            tokens,
+        });
     }
     if success && body.as_ref().is_none_or(|body| body["is_error"] != true) {
         return Err(Failure::InvalidOutput);
