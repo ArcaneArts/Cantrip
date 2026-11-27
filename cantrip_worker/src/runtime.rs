@@ -198,6 +198,7 @@ async fn cycle(
     http::enroll(&client, &mut config, &heartbeat, logs).await?;
     let catalog_version = codex_compatibility["version"]["raw"].clone();
     let data_directory = config.data_directory.clone();
+    let claude_code = crate::claude_code::Manager::new(&data_directory);
     let codex_binary = config.codex_installation.binary.clone();
     let configuration = Arc::new(Mutex::new(config));
     let cli = crate::cli::Broker::start(
@@ -498,6 +499,11 @@ async fn cycle(
         let manager = managed_web.clone();
         let logs = logs.clone();
         tokio::spawn(async move { manager.run(&logs).await })
+    };
+    let claude_code_task = {
+        let logs = logs.clone();
+        let mut stop = stop_rx.clone();
+        tokio::spawn(async move { claude_code.run(&mut stop, &logs).await })
     };
     let mut heartbeat_task = tokio::spawn(publish(
         configuration.clone(),
@@ -1600,6 +1606,7 @@ async fn cycle(
     let worker_link_closed = worker_link_task.await;
     let direct_closed = direct_task.await;
     let managed_web_closed = managed_web_task.await;
+    let claude_code_closed = claude_code_task.await;
     let goal_delivery_closed = goal_delivery.await;
     let settings_delivery_closed = settings_delivery.await;
     let deferred_delivery_closed = deferred_delivery.await;
@@ -1655,6 +1662,7 @@ async fn cycle(
     worker_link_closed?;
     direct_closed?;
     managed_web_closed??;
+    claude_code_closed?;
     goal_delivery_closed?;
     settings_delivery_closed?;
     deferred_delivery_closed?;
