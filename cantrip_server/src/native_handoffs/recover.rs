@@ -65,11 +65,11 @@ pub(super) async fn apply(
             &row["target_provider_account_id"],
         )
     };
-    let target = guards::target(tx, owner, route, account).await?;
+    let target = guards::target(tx, owner, worker, route, account).await?;
     let context = &value["snapshot"]["context"];
     let selection = &value["snapshot"]["modelAttribution"]["selection"];
     let selected = if side == "source" && selection["status"] == "resolved" {
-        guards::target(tx, owner, &selection["routeId"], account).await?
+        guards::target(tx, owner, worker, &selection["routeId"], account).await?
     } else {
         target.clone()
     };

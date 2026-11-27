@@ -119,7 +119,7 @@ impl Repository {
                     snapshot["settingsVersion"].get("epoch") != source.get("nativeEpoch") {return reject("handoff-source-replaced");}
             }
             if !state["pending"].as_array().context("Settings pending operations")?.is_empty(){return reject("handoff-settings-pending")}
-            let target=guards::target(tx,&owner,&input["targetModelRouteId"],&input["targetProviderAccountId"]).await?;
+            let target=guards::target(tx,&owner,&text(&source["workerId"])?,&input["targetModelRouteId"],&input["targetProviderAccountId"]).await?;
             let route=source.get("modelRouteId").filter(|v|!v.is_null()).cloned().unwrap_or_else(||json!(""));
             let source_route=one(Executor::Transaction(tx),"SELECT to_jsonb(r)::text FROM model_routes r WHERE id=$1",&[&text(&route)?]).await?;
             if source_route.as_ref().and_then(|r|r.get("provider_id"))==target.get("providerId") && source.get("providerAccountId")==input.get("targetProviderAccountId") {

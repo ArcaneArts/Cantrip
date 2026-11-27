@@ -15,6 +15,7 @@ export function NativeRuntimeHandoffEditor({
   disabled,
   allowSameProviderModelChange = false,
   description,
+  destinationRoute,
 }: {
   controller: ReturnType<typeof useRuntimeHandoff>;
   binding: NativeSettingsBinding;
@@ -22,10 +23,13 @@ export function NativeRuntimeHandoffEditor({
   disabled: boolean;
   allowSameProviderModelChange?: boolean;
   description?: string;
+  destinationRoute?: { id: string; onChange(id: string): void };
 }) {
   const { query, latest, active, busy, error, unconfirmed, run } = controller;
   const [providerId, setProviderId] = useState("");
-  const [routeId, setRouteId] = useState("");
+  const [localRouteId, setLocalRouteId] = useState("");
+  const routeId = destinationRoute?.id ?? localRouteId;
+  const setRouteId = destinationRoute?.onChange ?? setLocalRouteId;
   const [accountId, setAccountId] = useState("");
   const [labels, setLabels] = useState<Record<string, string>>({});
   const nonLanguageRoutes = useNonLanguageRoutes();
@@ -38,10 +42,24 @@ export function NativeRuntimeHandoffEditor({
             (model) => !nonLanguageRoutes.has(model.routeId),
           ),
         }))
-        .filter((provider) => provider.models.length > 0),
+        .filter(
+          (provider) =>
+            provider.models.length > 0 &&
+            (!provider.requiresAccount || provider.accounts.length > 0),
+        ),
     [query.data?.providers, nonLanguageRoutes],
   );
-  const provider = providers.find((entry) => entry.id === providerId);
+  const provider =
+    providers.find((entry) =>
+      entry.models.some((model) => model.routeId === routeId),
+    ) ?? providers.find((entry) => entry.id === providerId);
+  const selectedAccountId = provider?.accounts.some(
+    (account) => account.id === accountId,
+  )
+    ? accountId
+    : destinationRoute?.id && provider?.accounts.length === 1
+      ? provider.accounts[0]!.id
+      : "";
   const sourceProvider = query.data?.providers.find((entry) =>
     entry.models.some((model) => model.routeId === binding.modelRouteId),
   );
@@ -83,11 +101,10 @@ export function NativeRuntimeHandoffEditor({
   }, [binding.bindingId, identity]);
   const valid =
     provider?.models.some((model) => model.routeId === routeId) &&
-    (!provider.requiresAccount ||
-      provider.accounts.some((account) => account.id === accountId)) &&
+    (!provider.requiresAccount || Boolean(selectedAccountId)) &&
     !(
       provider.id === sourceProvider?.id &&
-      (provider.requiresAccount ? accountId : null) === sourceAccount &&
+      (provider.requiresAccount ? selectedAccountId : null) === sourceAccount &&
       (!allowSameProviderModelChange || routeId === binding.modelRouteId)
     );
   const locked =
@@ -125,7 +142,7 @@ export function NativeRuntimeHandoffEditor({
         <select
           aria-label="Transfer provider"
           className="w-full rounded border bg-background p-2"
-          value={providerId}
+          value={provider?.id ?? providerId}
           disabled={locked}
           onChange={(event) => {
             setProviderId(event.target.value);
@@ -147,7 +164,7 @@ export function NativeRuntimeHandoffEditor({
           <select
             aria-label="Transfer account"
             className="w-full rounded border bg-background p-2"
-            value={accountId}
+            value={selectedAccountId}
             disabled={locked}
             onChange={(event) => setAccountId(event.target.value)}
           >
@@ -190,7 +207,7 @@ export function NativeRuntimeHandoffEditor({
         onClick={() =>
           void run("start", {
             routeId,
-            accountId: provider?.requiresAccount ? accountId : null,
+            accountId: provider?.requiresAccount ? selectedAccountId : null,
           })
         }
       >

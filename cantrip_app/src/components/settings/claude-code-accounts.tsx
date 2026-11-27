@@ -3,7 +3,7 @@ import type {
   ModelProviderSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -20,61 +20,19 @@ import {
   createModelProviderAccount,
   deleteModelProviderAccount,
   getClaudeCodeAccountStatus,
-  getClaudeCodeAccountUsage,
   refreshProviderModelCatalog,
   reorderModelProviderAccounts,
 } from "@/lib/api/models";
 
+import {
+  ClaudeAccountUsage,
+  claudeUsageQueryKey,
+} from "./claude-account-usage";
 import { ClaudeCodeLoginTerminal } from "./claude-code-login-terminal";
 import {
   providerCatalogQueryKey,
   useProviderCatalog,
 } from "./use-provider-catalog";
-
-const usageQueryKey = (providerId: string, accountId: string) =>
-  ["claude-account-usage", providerId, accountId] as const;
-
-function ClaudeAccountUsage({
-  providerId,
-  accountId,
-}: {
-  providerId: string;
-  accountId: string;
-}) {
-  const usage = useQuery({
-    queryKey: usageQueryKey(providerId, accountId),
-    queryFn: () => getClaudeCodeAccountUsage(providerId, accountId),
-    staleTime: 5 * 60_000,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
-  if (!usage.data) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        {usage.isPending
-          ? "Loading subscription usage…"
-          : "Subscription usage unavailable."}
-      </p>
-    );
-  }
-  return (
-    <div
-      className="mt-1 space-y-0.5 text-xs text-muted-foreground"
-      aria-label="Subscription usage"
-    >
-      {usage.data.subscriptionType ? (
-        <p className="capitalize">Claude {usage.data.subscriptionType}</p>
-      ) : null}
-      {usage.data.windows.map(({ label, usedPercent, resetText }) => (
-        <p key={label}>
-          {label} · {usedPercent}% used
-          {resetText ? ` · Resets ${resetText}` : ""}
-        </p>
-      ))}
-      {usage.isError ? <p>Showing previously reported usage.</p> : null}
-    </div>
-  );
-}
 
 export function ClaudeCodeAccounts({
   provider,
@@ -148,7 +106,7 @@ export function ClaudeCodeAccounts({
     onSuccess: (_result, account) => {
       void refresh();
       void client.invalidateQueries({
-        queryKey: usageQueryKey(provider.id, account.id),
+        queryKey: claudeUsageQueryKey(provider.id, account.id),
       });
     },
   });
@@ -257,10 +215,12 @@ export function ClaudeCodeAccounts({
                 {preferred ? " · Preferred on this worker" : ""}
               </p>
               {worker?.online && account.enabled && auth === "signed-in" ? (
-                <ClaudeAccountUsage
-                  providerId={provider.id}
-                  accountId={account.id}
-                />
+                <div className="mt-2 min-w-56">
+                  <ClaudeAccountUsage
+                    providerId={provider.id}
+                    accountId={account.id}
+                  />
+                </div>
               ) : null}
             </div>
             <div className="flex flex-wrap gap-1">
@@ -408,7 +368,7 @@ export function ClaudeCodeAccounts({
                 setLogin(null);
                 void refresh();
                 void client.invalidateQueries({
-                  queryKey: usageQueryKey(provider.id, login.id),
+                  queryKey: claudeUsageQueryKey(provider.id, login.id),
                 });
                 refreshModels.mutate();
               }}

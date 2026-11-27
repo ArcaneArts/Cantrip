@@ -170,6 +170,7 @@ import {
   providerWeeklyUsageFromQuotaSnapshot,
   providerWeeklyRemainingPercent,
 } from "./provider-usage-display";
+import { ProviderUsageBar } from "./provider-usage-bar";
 import { ProviderAccountPriorityChips } from "./provider-account-priority";
 import { ProviderAvailabilitySummary } from "./provider-availability-summary";
 import { cacheProviderModelCatalog } from "./provider-catalog-cache";
@@ -2947,29 +2948,16 @@ export function SettingsPage({
                     </Button>
                   </div>
                   {selectedWeeklyUsage && weeklyRemainingPercent !== null ? (
-                    <div className="grid gap-1.5 border-t pt-3">
-                      <div className="flex justify-between text-xs">
-                        <span>7-day remaining</span>
-                        <span className="font-medium">
-                          {Math.round(weeklyRemainingPercent)}%
-                        </span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-primary transition-[width]"
-                          style={{
-                            width: `${weeklyRemainingPercent}%`,
-                          }}
-                        />
-                      </div>
-                      {selectedWeeklyUsage.resetsAt ? (
-                        <p className="text-[11px] text-muted-foreground">
-                          Resets{" "}
-                          {new Date(
-                            selectedWeeklyUsage.resetsAt * 1_000,
-                          ).toLocaleString()}
-                        </p>
-                      ) : null}
+                    <div className="border-t pt-3">
+                      <ProviderUsageBar
+                        label="7-day quota"
+                        remainingPercent={weeklyRemainingPercent}
+                        resetText={
+                          selectedWeeklyUsage.resetsAt
+                            ? `Resets ${new Date(selectedWeeklyUsage.resetsAt * 1_000).toLocaleString()}`
+                            : null
+                        }
+                      />
                     </div>
                   ) : null}
                   {accountProvider.kind === "chatgpt" ? (

@@ -61,7 +61,23 @@ impl Repository {
             return reject("handoff-route-unavailable");
         };
         let mut runtime = Value::from_serialize(&runtime);
-        if matches!(
+        if runtime["provider"]["kind"] == "claude-code" {
+            let Some(account_id) = account.as_str() else {
+                return reject("handoff-target-account-required");
+            };
+            let assigned = settings
+                .claude_account_worker(
+                    owner,
+                    &text(&runtime["provider"]["id"])?,
+                    account_id,
+                    side != "source",
+                )
+                .await?;
+            if assigned.as_deref() != state["workerId"].as_str() {
+                return reject("handoff-target-account-mismatch");
+            }
+            runtime["provider"]["accountId"] = account.clone();
+        } else if matches!(
             runtime["provider"]["kind"].as_str(),
             Some("chatgpt" | "grok")
         ) {
