@@ -17,7 +17,7 @@ impl Repository {
         let context = Chats::new(self.database.clone())
             .execution_context(owner, &text(&state["chatId"])?)
             .await?;
-        let Some(context) = context.filter(|c| {
+        let Some(mut context) = context.filter(|c| {
             c.get("contextKind") == state["source"].get("contextKind")
                 && c["experience"]
                     == (if truthy(state["queuedSource"].get("taskGoal")) {
@@ -101,6 +101,17 @@ impl Repository {
             }
         } else if !account.is_null() {
             return reject("handoff-target-account-mismatch");
+        }
+        if side != "source" {
+            let automatic = one(
+                Executor::Database(&self.database),
+                "SELECT automatic_model_configuration::text FROM native_runtime_handoffs WHERE owner_id=$1 AND chat_id=$2 AND operation_id=$3 AND automatic_model_configuration IS NOT NULL",
+                &[&owner, &text(&state["chatId"])?, &text(&state["operationId"])?],
+            ).await?;
+            if let Some(configuration) = automatic {
+                context["reasoningEffort"] = configuration["reasoningEffort"].clone();
+                context["modelConfiguration"] = configuration;
+            }
         }
         let launch = console.configuration(owner, &context, &runtime).await?;
         if launch["model"].get("routeId") != Some(route)

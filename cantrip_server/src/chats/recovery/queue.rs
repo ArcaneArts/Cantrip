@@ -59,11 +59,7 @@ impl Service {
         Ok(())
     }
     async fn execute_next(&self, owner: &str, chat: &str, claim: &mut Option<Value>) -> Result<()> {
-        let Some(mut context) = self
-            .chats
-            .execution_context(owner, chat)
-            .await?
-        else {
+        let Some(mut context) = self.chats.execution_context(owner, chat).await? else {
             return Ok(());
         };
         if context.get("councilAgent").is_some()
@@ -99,16 +95,36 @@ impl Service {
             return Ok(());
         }
         let managed = session_context(&context).is_some();
-        if managed
-            && self
-                .prompts
-                .list_encrypted(owner, chat)
-                .await?
-                .iter()
-                .any(|p| !truthy(p.get("frozen")))
-        {
-            context = (self.dependencies.prepare_account)(owner.to_owned(), context).await?;
-        }
+        let prepared_prompt = if managed && context.get("councilAgent").is_none() {
+            let Some(prompt) = self.prompts.next_routing_prompt(owner, chat).await? else {
+                return Ok(());
+            };
+            match (self.dependencies.prepare_account)(owner.to_owned(), context, prompt.clone())
+                .await
+            {
+                Ok(prepared) => context = prepared,
+                Err(error) => {
+                    if error.is::<crate::settings::reasoning::ConfigurationFailure>()
+                        && let Some(rejected) = self.queue.claim_next(owner, chat).await?
+                    {
+                        if rejected["promptId"] == prompt["id"]
+                            && rejected["promptRevision"] == prompt["revision"]
+                        {
+                            *claim = Some(rejected);
+                        } else {
+                            self.queue
+                                .defer_unadmitted(owner, chat, &text(&rejected["id"])?)
+                                .await?;
+                            drop(self.dispatch(owner, chat));
+                        }
+                    }
+                    return Err(error);
+                }
+            }
+            Some(prompt)
+        } else {
+            None
+        };
         *claim = if managed {
             self.queue.claim_next(owner, chat).await?
         } else {
@@ -129,6 +145,18 @@ impl Service {
                 .find(|p| !truthy(p.get("frozen")))
         };
         let Some(prompt) = prompt else { return Ok(()) };
+        if let Some(prepared) = &prepared_prompt
+            && ["id", "revision"]
+                .iter()
+                .any(|key| prepared[*key] != prompt[*key])
+            && let Some(stale) = claim.take()
+        {
+            self.queue
+                .defer_unadmitted(owner, chat, &text(&stale["id"])?)
+                .await?;
+            drop(self.dispatch(owner, chat));
+            return Ok(());
+        }
         self.log("info","Queued prompt is being dispatched",json!({"event":"chat.queue.dispatching","subsystem":"chat-queue","operation":"dispatch-prompt","status":"dispatching","chatId":chat,"requestId":prompt["id"]}));
         if context["contextKind"] == "project"
             && truthy(prompt.get("worktreeId"))

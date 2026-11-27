@@ -40,7 +40,7 @@ import { ChatTurnPromptOverlay } from "@/components/chat/chat-turn-prompt-overla
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
 import { NativeSettingsStatus } from "@/components/chat/native-settings-status";
 import { NativeModelSettingsPicker } from "./native-model-settings-picker";
-import { ChatModelReasoningPicker } from "./chat-model-reasoning-picker";
+import { ModelReasoningPicker } from "./model-reasoning-picker";
 import { OllamaModelPickerRefresh } from "./ollama-model-picker-refresh";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { ChatRelocationStatus } from "@/components/chat/chat-relocation-dialog";
@@ -233,13 +233,15 @@ export function ChatTranscriptView({
     viewTurnTrajectory,
     viewingAttachment,
   } = controller;
-  const usageRouteId =
+  const boundUsageRouteId =
     nativeModelSettings.binding?.modelRouteId ??
     runtimeSelection.data?.modelRouteId;
-  const usageModel =
-    settings?.models.find((model) =>
-      model.routes.some((route) => route.id === usageRouteId),
-    ) ?? selectedModel;
+  const boundUsageModel = settings?.models.find((model) =>
+    model.routes.some((route) => route.id === boundUsageRouteId),
+  );
+  const usageModel = selectedModel ?? boundUsageModel;
+  const usageRouteId =
+    usageModel?.id === boundUsageModel?.id ? boundUsageRouteId : null;
   const suspensionView = nativeSuspensionView(
     chat.nativeSuspension,
     setAutomationPaused.isPending ? setAutomationPaused.variables : undefined,
@@ -1115,6 +1117,12 @@ export function ChatTranscriptView({
                 {nativeModelSettings.pickerMode === "native" ? (
                   <NativeModelSettingsPicker
                     controller={nativeModelSettings}
+                    configuredModels={settings?.models}
+                    configuration={currentModelConfiguration}
+                    loadReasoningState={loadModelReasoningState}
+                    saveConfiguration={(configuration) =>
+                      selectModelConfiguration.mutateAsync(configuration)
+                    }
                     open={settingsPicker === "model"}
                     onOpenChange={(open) =>
                       setSettingsPicker((current) =>
@@ -1124,12 +1132,8 @@ export function ChatTranscriptView({
                     disabled={relocationActive}
                   />
                 ) : (
-                  <ChatModelReasoningPicker
+                  <ModelReasoningPicker
                     buttonTooltips={capabilities.council}
-                    chatId={chat.id}
-                    workerId={chat.activeWorkerId}
-                    scratchRootId={chat.activeScratchRootId ?? null}
-                    contextKind={capabilities.context}
                     open={settingsPicker === "model"}
                     onOpenChange={(open) =>
                       setSettingsPicker((current) =>
@@ -1142,8 +1146,9 @@ export function ChatTranscriptView({
                     models={settings?.models ?? []}
                     pending={selectModelConfiguration.isPending}
                     readOnly={
-                      chat.status === "running" ||
-                      chat.status === "waiting-for-approval"
+                      chat.experience !== "agent" &&
+                      (chat.status === "running" ||
+                        chat.status === "waiting-for-approval")
                     }
                     reasoningState={reasoningState.data}
                     selectionStatus={
@@ -1198,9 +1203,10 @@ export function ChatTranscriptView({
                   model={usageModel}
                   modelRouteId={usageRouteId}
                   providerAccountId={
-                    nativeModelSettings.binding
-                      ? nativeModelSettings.binding.providerAccountId
-                      : runtimeSelection.data?.providerAccountId
+                    usageRouteId === null
+                      ? null
+                      : (nativeModelSettings.binding?.providerAccountId ??
+                        runtimeSelection.data?.providerAccountId)
                   }
                   providers={settings?.providers ?? []}
                   workerId={

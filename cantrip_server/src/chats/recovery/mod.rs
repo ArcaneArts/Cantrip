@@ -34,7 +34,7 @@ use std::{
 pub type Begin =
     Arc<dyn Fn(String, Value, Value, Value) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
 pub type PrepareAccount =
-    Arc<dyn Fn(String, Value) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
+    Arc<dyn Fn(String, Value, Value) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
 pub trait TaskTransitions: Send + Sync {
     fn recover(&self, owner: String, chat: String) -> BoxFuture<'static, Result<bool>>;
     fn continue_goal(

@@ -308,7 +308,7 @@ export function modelsShareProvider(
   );
 }
 
-function useModelReasoningState({
+export function useModelReasoningState({
   enabled,
   fallbackState,
   loader,

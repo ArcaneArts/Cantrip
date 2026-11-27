@@ -2255,6 +2255,13 @@
       "when": 1795786800000,
       "tag": "0321_claude_code_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 322,
+      "version": "7",
+      "when": 1795786900000,
+      "tag": "0322_automatic_chat_model_selection",
+      "breakpoints": true
     }
   ]
 }
