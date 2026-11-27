@@ -76,6 +76,7 @@ async function fixture(t) {
     patch("first patch", "second patch"),
   );
   return {
+    source,
     patches,
     run: () =>
       spawnSync(
@@ -106,6 +107,23 @@ test("Codex verifier applies dependent patches in order to actual source without
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /2 patches match/);
   await prepared.unchanged();
+});
+
+test("Codex verifier ignores Finder metadata and rejects other extra files", async (t) => {
+  const prepared = await fixture(t);
+  await writeFile(path.join(prepared.source, ".DS_Store"), "Finder metadata");
+  await writeFile(
+    path.join(prepared.source, "codex-rs", ".DS_Store"),
+    "nested Finder metadata",
+  );
+  const withFinderMetadata = prepared.run();
+  assert.equal(withFinderMetadata.status, 0, withFinderMetadata.stderr);
+  assert.match(withFinderMetadata.stdout, /2 source files and 2 patches match/);
+
+  await writeFile(path.join(prepared.source, "extra.txt"), "unexpected source");
+  const withExtraFile = prepared.run();
+  assert.notEqual(withExtraFile.status, 0);
+  assert.match(withExtraFile.stderr, /differs from upstream\.files\.json/);
 });
 
 test("Codex verifier names a broken later patch and leaves source and index untouched", async (t) => {

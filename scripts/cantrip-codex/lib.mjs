@@ -44,6 +44,8 @@ async function collect(directory, relativeDirectory, records) {
   const entries = await readdir(directory, { withFileTypes: true });
   entries.sort((left, right) => left.name.localeCompare(right.name));
   for (const entry of entries) {
+    // Finder can create this metadata in any directory it opens.
+    if (entry.name === ".DS_Store" && entry.isFile()) continue;
     const relative = path.posix.join(relativeDirectory, entry.name);
     const absolute = path.join(directory, entry.name);
     if (entry.isDirectory()) {
