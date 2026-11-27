@@ -2,6 +2,10 @@
 //! same provider. A different provider settles its own request first.
 use super::{Emit, protected::user_prompt_text};
 use crate::{
+    claude_code::{
+        self,
+        inference::{Failure as ClaudeFailure, Prompt},
+    },
     codex::{
         admission::{Acquire, Execution},
         managed::Runtime,
@@ -10,7 +14,7 @@ use crate::{
     },
     encryption::Service,
     http::checked,
-    inference::admission::Source,
+    inference::admission::{DirectRequest, Source},
     metadata::Signal,
     task_content,
 };
@@ -63,7 +67,16 @@ pub(crate) async fn execute(
     let result = title
         .run_separate(preparation, encryption, signal, Some(resource.clone()))
         .await
-        .map_err(|_| anyhow::anyhow!("Private label generation failed on the worker."))?;
+        .map_err(|cause| {
+            if cause
+                .chain()
+                .any(|cause| cause.downcast_ref::<ClaudeFailure>().is_some())
+            {
+                cause
+            } else {
+                anyhow::anyhow!("Private label generation failed on the worker.")
+            }
+        })?;
     // A stateless RPC can finish after deletion. Its result has no authority
     // and the reservation still settles only through the native response.
     resource.authorize(&title.scope).await?;
@@ -115,6 +128,11 @@ impl Title {
             return empty_title();
         };
         signal.check()?;
+        if self.job["provider"]["kind"] == "claude-code" {
+            return self
+                .claude_separate(preparation, encryption, signal, params, resource)
+                .await;
+        }
         let runtime = preparation.label_runtime(&self.job, &self.scope).await?;
         self.assert_bound(&encryption)?;
         let claim = self.job["operationId"]
@@ -146,15 +164,116 @@ impl Title {
         result
     }
 
+    async fn claude_separate(
+        &self,
+        preparation: Ensurer,
+        encryption: Arc<Service>,
+        signal: Signal,
+        params: Value,
+        resource: Option<Resource>,
+    ) -> Result<Value> {
+        let admission = preparation.headless_admission(&self.scope)?;
+        let provider = &self.job["provider"];
+        admission.configure(json!({
+            "providerId":provider["id"],
+            "maxConcurrentInference":provider["maxConcurrentInference"],
+            "inferenceConfigRevision":provider["inferenceConfigRevision"],
+            "inferenceCatalogCreatedRevision":provider["inferenceCatalogCreatedRevision"],
+        }))?;
+        let operation = self.job["operationId"]
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let source = Source::claimed(format!("label:{operation}").into(), Some(signal));
+        let mut direct = DirectRequest::new(
+            source.clone(),
+            provider["id"]
+                .as_js_string()
+                .context("Label provider identity")?
+                .clone(),
+        );
+        direct.input.provider_creation_revision =
+            provider["inferenceCatalogCreatedRevision"].as_f64();
+        direct.input.purpose = Some("label".into());
+        direct.input.chat_id = Some(self.job["chatId"].clone());
+        let title = self.clone();
+        let service = encryption.clone();
+        let result = admission
+            .run_direct(direct, move |signal| {
+                Box::pin(async move {
+                    if let Some(resource) = resource {
+                        resource.authorize(&title.scope).await?;
+                    }
+                    title.assert_bound(&service)?;
+                    title
+                        .claude(&preparation.claude_code(), &params, &signal)
+                        .await
+                })
+            })
+            .await;
+        source.close();
+        self.seal(&result?, &encryption)
+    }
+
+    async fn claude(
+        &self,
+        manager: &claude_code::Manager,
+        params: &Value,
+        signal: &Signal,
+    ) -> Result<String> {
+        manager
+            .infer(
+                &self.scope.0,
+                self.scope
+                    .1
+                    .as_js_string()
+                    .context("Unverified worker server identity")?,
+                &self.job["provider"]["accountId"],
+                Prompt {
+                    model: params["model"].as_str().context("Claude Code model")?,
+                    instructions: params["instructions"]
+                        .as_str()
+                        .context("Label instructions")?,
+                    text: params["input"].as_str().context("Label input")?,
+                },
+                Duration::from_secs(27),
+                signal,
+            )
+            .await
+    }
+
     pub(super) async fn shared(
         &self,
         runtime: &Runtime,
         execution: &Execution,
         encryption: Arc<Service>,
+        preparation: &Ensurer,
+        signal: Signal,
     ) -> Result<Value> {
         let Some(params) = self.params(&encryption)? else {
             return empty_title();
         };
+        if self.job["provider"]["kind"] == "claude-code" {
+            let title = self.clone();
+            let service = encryption.clone();
+            let manager = preparation.claude_code();
+            let provider_id = self.job["provider"]["id"]
+                .as_js_string()
+                .context("Label provider identity")?
+                .clone();
+            let reply = execution
+                .prepare(provider_id, move |scope| {
+                    Box::pin(async move {
+                        title.assert_bound(&service)?;
+                        scope.before_send()?;
+                        let result = title.claude(&manager, &params, &signal).await;
+                        scope.replied();
+                        result
+                    })
+                })
+                .await?;
+            return self.seal(&reply, &encryption);
+        }
         self.infer(runtime.clone(), execution, params, encryption, None)
             .await
     }
@@ -244,13 +363,15 @@ impl Title {
                 })
             })
             .await?;
-        let title = normalize(
-            reply["text"]
-                .as_str()
-                .context("Invalid private label response.")?,
-            self.job["labelKind"] == "task",
-        )
-        .context("Labeler returned no usable title.")?;
+        let text = reply["text"]
+            .as_str()
+            .context("Invalid private label response.")?;
+        self.seal(text, &encryption)
+    }
+
+    fn seal(&self, text: &str, encryption: &Service) -> Result<Value> {
+        let title = normalize(text, self.job["labelKind"] == "task")
+            .context("Labeler returned no usable title.")?;
         let grant = encryption.bound_component("private-surface-metadata", None)?;
         if grant.owner_id != self.scope.0 || grant.server_id != self.scope.1 {
             bail!("The worker binding changed during private labeling.");
@@ -262,7 +383,7 @@ impl Title {
             }),
             &json!(title),
         )?;
-        self.assert_bound(&encryption)?;
+        self.assert_bound(encryption)?;
         checked(
             "generateLabelResultSchema",
             &json!({"titleProtection":title,"emptyInput":false}),

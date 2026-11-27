@@ -52,7 +52,16 @@ pub struct ProfileLease {
 
 impl Manager {
     pub fn begin_sign_in(&self, profile: Profile) -> Result<ProfileLease> {
-        let lease = self.lock_profile(profile)?;
+        let lease = self.lock_profile(profile, false)?;
+        ensure!(
+            !self.removed_profile(profile).try_exists()?,
+            "This Claude Code account was removed."
+        );
+        Ok(lease)
+    }
+
+    pub(super) fn begin_inference(&self, profile: Profile) -> Result<ProfileLease> {
+        let lease = self.lock_profile(profile, true)?;
         ensure!(
             !self.removed_profile(profile).try_exists()?,
             "This Claude Code account was removed."
@@ -67,7 +76,7 @@ impl Manager {
             .join(format!("account-{}.removed", profile.0))
     }
 
-    fn lock_profile(&self, profile: Profile) -> Result<ProfileLease> {
+    fn lock_profile(&self, profile: Profile, shared: bool) -> Result<ProfileLease> {
         self.storage.prepare()?;
         let file = lock_file(
             &self
@@ -76,7 +85,11 @@ impl Manager {
                 .join("leases")
                 .join(format!("account-{}.lock", profile.0)),
         )?;
-        match file.try_lock() {
+        match if shared {
+            file.try_lock_shared()
+        } else {
+            file.try_lock()
+        } {
             Ok(()) => Ok(ProfileLease {
                 profile,
                 _lock: file,
@@ -129,7 +142,7 @@ impl Manager {
         profile: Profile,
         ensure_identity: impl Fn() -> Result<()>,
     ) -> Result<()> {
-        let _lease = self.lock_profile(profile)?;
+        let _lease = self.lock_profile(profile, false)?;
         let directory = self
             .storage
             .root

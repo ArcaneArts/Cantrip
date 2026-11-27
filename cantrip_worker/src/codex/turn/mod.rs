@@ -910,7 +910,7 @@ impl Turns {
             }
             if let Some(title) = shared_title {
                 let result = title
-                    .shared(runtime, &execution, self.encryption.clone())
+                    .shared(runtime, &execution, self.encryption.clone(), &self.preparation, signal.clone())
                     .await;
                 title.report(&emit, result)?;
             }

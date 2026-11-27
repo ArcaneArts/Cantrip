@@ -1726,6 +1726,11 @@ fn finish(
                 json!({"message":error.to_string(),"code":crate::codex::turn::COUNCIL_PROVIDER_QUOTA})
             } else if error.is::<crate::codex::turn::CouncilCheckpointIncompatible>() {
                 json!({"message":error.to_string(),"code":crate::codex::turn::COUNCIL_CHECKPOINT_INCOMPATIBLE})
+            } else if let Some(error) = error
+                .chain()
+                .find_map(|cause| cause.downcast_ref::<crate::claude_code::inference::Failure>())
+            {
+                json!({"message":error.to_string(),"code":error.code()})
             } else if let Some(error) = error.downcast_ref::<crate::routing::ProtectedError>() {
                 match error.code {
                     Some(code) => json!({"message":error.to_string(),"code":code}),
