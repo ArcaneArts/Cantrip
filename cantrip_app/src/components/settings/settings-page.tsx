@@ -73,7 +73,6 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -87,11 +86,6 @@ import {
   BUILTIN_PERMISSION_PROFILES,
   permissionProfileLabel,
 } from "@/components/chat/permission-profile-control";
-import {
-  formatAgentTime,
-  formatConcurrency,
-  formatTokenCount,
-} from "@/components/projects/token-usage-analytics";
 import {
   Dialog,
   DialogClose,
@@ -165,12 +159,12 @@ import {
   providerAccountCredits,
   providerRateLimitResetImpact,
   providerCreditsText,
-  providerTotalCreditsText,
   providerWeeklyAvailability,
   providerWeeklyUsageFromQuotaSnapshot,
   providerWeeklyRemainingPercent,
 } from "./provider-usage-display";
 import { ProviderUsageBar } from "./provider-usage-bar";
+import { SubscriptionAccountCards } from "./provider-account-cards";
 import { ProviderAccountPriorityChips } from "./provider-account-priority";
 import { ProviderAvailabilitySummary } from "./provider-availability-summary";
 import { cacheProviderModelCatalog } from "./provider-catalog-cache";
@@ -810,17 +804,7 @@ function newEditableRoute(providerId: string, modelName = ""): EditableRoute {
   };
 }
 
-function editSettingsRowFromKeyboard(
-  event: KeyboardEvent<HTMLDivElement>,
-  onEdit: () => void,
-) {
-  if (event.target !== event.currentTarget) return;
-  if (event.key !== "Enter" && event.key !== " ") return;
-  event.preventDefault();
-  onEdit();
-}
-
-function ProviderRow({
+function ProviderOverview({
   availableResetCredits,
   provider,
   workerId,
@@ -833,7 +817,7 @@ function ProviderRow({
   provider: ModelProviderSummary;
   workerId: string | null;
   removing: boolean;
-  onEdit(): void;
+  onEdit(accountId?: string): void;
   onAnalytics(): void;
   onRemove(): void;
 }) {
@@ -890,14 +874,13 @@ function ProviderRow({
     catalog.error ??
     catalog.data?.syncStates.find(({ error }) => error)?.error ??
     null;
-  const enabledAccounts = provider.accounts.filter(({ enabled }) => enabled);
-  const signedInAccounts = enabledAccounts.filter(
-    (account) => account.credentialState === "signed-in",
-  );
-  const weeklyAvailability = providerWeeklyAvailability(
-    provider.accounts,
-    provider.kind === "chatgpt" ? availableResetCredits : undefined,
-  );
+  const accountProvider = isAccountProviderKind(provider.kind);
+  const weeklyAvailability = accountProvider
+    ? providerWeeklyAvailability(
+        provider.accounts,
+        provider.kind === "chatgpt" ? availableResetCredits : undefined,
+      )
+    : null;
   const showingCachedCatalog = catalog.isPlaceholderData;
   const catalogSyncing = catalog.isFetching || refreshCatalog.isPending;
   const statusTone =
@@ -923,124 +906,97 @@ function ProviderRow({
             : displayStatus[0]!.toUpperCase() + displayStatus.slice(1);
 
   return (
-    <div
-      data-high-contrast-row
-      role="button"
-      tabIndex={0}
-      aria-label={`Edit ${provider.name}`}
-      title={`Edit ${provider.name}`}
-      className="grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-1.5 outline-none transition-colors hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_96px]"
-      onClick={onEdit}
-      onKeyDown={(event) => editSettingsRowFromKeyboard(event, onEdit)}
-    >
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-        <Server className="size-4 shrink-0 text-muted-foreground" />
-        <p className="min-w-0 flex-1 basis-[calc(100%-2rem)] truncate text-sm font-medium">
-          {provider.name}
-        </p>
-        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-          {formatTokenCount(provider.tokenUsage.totalTokens)} tokens
-        </span>
-        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-          {formatAgentTime(provider.agentTime.agentTimeMs)} AI ·{" "}
-          {formatConcurrency(provider.agentTime)}
-        </span>
-        <Badge className="sm:hidden" variant="secondary">
-          {providerFamilyLabel(provider)}
-        </Badge>
-      </div>
-      <div className="col-span-2 min-w-0 pl-6 sm:col-span-1 sm:pl-0">
-        {isAccountProviderKind(provider.kind) ? (
-          <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-            <span
-              className={
-                signedInAccounts.length ? "text-emerald-500" : undefined
-              }
-            >
-              {signedInAccounts.length}/{enabledAccounts.length} signed in
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold">
+            {accountProvider ? "Accounts" : provider.name}
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            <span className={statusTone}>
+              {supportsCatalog
+                ? `Catalog ${statusLabel.toLocaleLowerCase()} · ${availableModelCount} available`
+                : statusLabel}
             </span>
-            {weeklyAvailability === null ? null : (
-              <span>
-                {Math.round(weeklyAvailability.availablePercent)}%{" "}
-                {provider.kind === "chatgpt" ? "maximum" : "total"} 7-day
-                available
-              </span>
-            )}
-            {provider.kind === "chatgpt" ? (
-              <span>{providerTotalCreditsText(provider.accounts)}</span>
-            ) : null}
+            {" · "}
+            {catalogScopeLabel(provider, catalog.data, workerId)}
+            {" · "}
+            {formatCatalogAge(latestCatalogSuccess(catalog.data, workerId))}
           </p>
-        ) : (
-          <p className="truncate font-mono text-xs text-muted-foreground">
-            {provider.baseUrl}
-          </p>
-        )}
-      </div>
-      <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-2 pl-6 sm:col-span-1 sm:block sm:pl-0">
-        <p className={`truncate text-xs font-medium ${statusTone}`}>
-          {statusLabel}
-          {supportsCatalog ? ` · ${availableModelCount} available` : ""}
-        </p>
-        <p
-          className="truncate text-[10px] text-muted-foreground"
-          title={catalogError ? errorText(catalogError) : undefined}
-        >
-          {catalogError
-            ? errorText(catalogError)
-            : formatCatalogAge(latestCatalogSuccess(catalog.data, workerId))}
-        </p>
-      </div>
-      <div className="hidden min-w-0 sm:block">
-        <p className="truncate text-xs text-muted-foreground">
-          {catalogScopeLabel(provider, catalog.data, workerId)}
-        </p>
-        <div className="mt-0.5 flex items-center gap-1">
-          <Badge variant="secondary">{providerFamilyLabel(provider)}</Badge>
-          {provider.hasApiKey ? (
-            <KeyRound className="size-3 text-muted-foreground" />
+          {weeklyAvailability && weeklyAvailability.signedInAccountCount > 1 ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {Math.round(weeklyAvailability.availablePercent)}% combined
+              reported 7-day quota
+            </p>
+          ) : null}
+          {!accountProvider ? (
+            <p className="mt-1 text-xs break-all text-muted-foreground">
+              {providerFamilyLabel(provider)} · {provider.baseUrl}
+            </p>
           ) : null}
         </div>
-      </div>
-      <div
-        className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <Button
-          className="size-7"
-          size="icon"
-          variant="ghost"
-          title={`View ${provider.name} telemetry`}
-          onClick={onAnalytics}
-        >
-          <BarChart3 className="size-3.5" />
-          <span className="sr-only">View {provider.name} telemetry</span>
-        </Button>
-        {supportsCatalog ? (
+        <div className="flex flex-wrap items-center gap-1">
           <Button
-            className="size-7"
+            type="button"
+            className="size-8"
             size="icon"
             variant="ghost"
-            disabled={catalogSyncing}
-            title="Refresh model catalog"
-            onClick={() => refreshCatalog.mutate()}
+            title={`View ${provider.name} telemetry`}
+            aria-label={`View ${provider.name} telemetry`}
+            onClick={onAnalytics}
           >
-            <RefreshCw
-              className={`size-3.5 ${catalogSyncing ? "animate-spin" : ""}`}
-            />
-            <span className="sr-only">Refresh {provider.name} catalog</span>
+            <BarChart3 className="size-4" />
           </Button>
-        ) : null}
-        <Button
-          className="size-7"
-          size="icon"
-          variant="ghost"
-          disabled={removing}
-          onClick={onRemove}
-        >
-          <Trash2 className="size-3.5" />
-          <span className="sr-only">Delete {provider.name}</span>
-        </Button>
+          {supportsCatalog ? (
+            <Button
+              type="button"
+              className="size-8"
+              size="icon"
+              variant="ghost"
+              disabled={catalogSyncing}
+              title="Refresh model catalog"
+              aria-label={`Refresh ${provider.name} catalog`}
+              onClick={() => refreshCatalog.mutate()}
+            >
+              <RefreshCw
+                className={`size-4 ${catalogSyncing ? "animate-spin" : ""}`}
+              />
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            disabled={removing}
+            title={`Delete ${provider.name}`}
+            aria-label={`Delete ${provider.name}`}
+            onClick={onRemove}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onEdit()}
+          >
+            {accountProvider ? "Manage accounts" : "Edit provider"}
+          </Button>
+        </div>
       </div>
+      {catalogError ? (
+        <p role="alert" className="text-xs text-destructive">
+          {errorText(catalogError)}
+        </p>
+      ) : null}
+      {accountProvider ? (
+        <SubscriptionAccountCards
+          provider={provider}
+          availableResetCredits={availableResetCredits}
+          onManage={onEdit}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1693,6 +1649,7 @@ export function SettingsPage({
   const openProviderDialog = (
     provider: ModelProviderSummary | null,
     setup: ProviderSetupKind = "ollama",
+    accountId?: string,
   ) => {
     const defaults = providerSetupDefaults(setup);
     saveProvider.reset();
@@ -1716,8 +1673,11 @@ export function SettingsPage({
     setBaseUrl(provider?.baseUrl ?? defaults.baseUrl);
     setApiKey("");
     setRemoveApiKey(false);
-    setSelectedAccountId(provider?.accounts[0]?.id ?? null);
-    setAccountLabelDraft(provider?.accounts[0]?.label ?? "");
+    const account =
+      provider?.accounts.find(({ id }) => id === accountId) ??
+      provider?.accounts[0];
+    setSelectedAccountId(account?.id ?? null);
+    setAccountLabelDraft(account?.label ?? "");
     setDeviceLogin(null);
     setDeviceCodeCopied(false);
     setDeviceLinkCopied(false);
@@ -2399,13 +2359,15 @@ export function SettingsPage({
                         onRemove={() => removeProvider.mutate(provider.id)}
                       />
                     ) : (
-                      <ProviderRow
+                      <ProviderOverview
                         key={provider.id}
                         availableResetCredits={chatGptAvailableResetCredits}
                         provider={provider}
                         workerId={worker?.workerId ?? null}
                         removing={removeProvider.isPending}
-                        onEdit={() => openProviderDialog(provider)}
+                        onEdit={(accountId) =>
+                          openProviderDialog(provider, undefined, accountId)
+                        }
                         onAnalytics={() => setAnalyticsProvider(provider)}
                         onRemove={() => removeProvider.mutate(provider.id)}
                       />

@@ -1,9 +1,15 @@
+import {
+  ProviderAccountCard,
+  ProviderAccountGrid,
+} from "./provider-account-cards";
 import type {
   ModelProviderAccountSummary,
   ModelProviderSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Ellipsis } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -16,6 +22,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+} from "@/components/ui/styled-menu";
 import {
   createModelProviderAccount,
   deleteModelProviderAccount,
@@ -130,14 +140,11 @@ export function ClaudeCodeAccounts({
   });
   const operationError = status.error ?? prefer.error;
   return (
-    <section className="space-y-3 rounded-lg border p-4">
+    <section className="grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-medium">{provider.name}</h2>
-          <p className="text-xs text-muted-foreground">
-            Claude Code accounts are stored on their worker.
-          </p>
-          <p className="text-xs text-muted-foreground">
+          <h2 className="text-base font-semibold">Accounts</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
             {catalog.isFetching || refreshModels.isPending
               ? "Refreshing model catalog…"
               : catalog.isError && !catalog.data
@@ -183,91 +190,107 @@ export function ClaudeCodeAccounts({
           No Claude Code accounts.
         </p>
       ) : null}
-      {provider.accounts.map((account) => {
-        const worker = workers.find(
-          (candidate) => candidate.workerId === account.boundWorkerId,
-        );
-        const auth = account.workerBindings.find(
-          (binding) => binding.workerId === account.boundWorkerId,
-        )?.authState;
-        const description = !worker?.online
-          ? "Worker offline"
-          : auth === "signed-in"
-            ? "Signed in"
-            : auth === "failed"
-              ? "Subscription sign-in required"
-              : "Signed out";
-        const preferred =
-          provider.accounts.find(
-            (candidate) =>
-              candidate.boundWorkerId === account.boundWorkerId &&
-              candidate.enabled,
-          )?.id === account.id;
-        return (
-          <div
-            key={account.id}
-            className="flex flex-wrap items-center justify-between gap-2 border-t pt-3"
-          >
-            <div className="min-w-0">
-              <p className="break-words text-sm">{account.label}</p>
-              <p className="text-xs text-muted-foreground">
-                {worker?.name ?? account.boundWorkerId} · {description}
-                {preferred ? " · Preferred on this worker" : ""}
-              </p>
-              {worker?.online && account.enabled && auth === "signed-in" ? (
-                <div className="mt-2 min-w-56">
+      {provider.accounts.length ? (
+        <ProviderAccountGrid>
+          {provider.accounts.map((account) => {
+            const worker = workers.find(
+              (candidate) => candidate.workerId === account.boundWorkerId,
+            );
+            const auth = account.workerBindings.find(
+              (binding) => binding.workerId === account.boundWorkerId,
+            )?.authState;
+            const description = !account.enabled
+              ? "Disabled"
+              : !worker?.online
+                ? "Worker offline"
+                : auth === "signed-in"
+                  ? "Signed in"
+                  : auth === "failed"
+                    ? "Subscription sign-in required"
+                    : "Signed out";
+            const preferred =
+              provider.accounts.find(
+                (candidate) =>
+                  candidate.boundWorkerId === account.boundWorkerId &&
+                  candidate.enabled,
+              )?.id === account.id;
+            return (
+              <ProviderAccountCard
+                key={account.id}
+                label={account.label}
+                detail={[
+                  worker?.name ?? account.boundWorkerId,
+                  preferred ? "Preferred on this worker" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                status={description}
+                actions={
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={!worker?.online || !account.enabled}
+                      onClick={() => setLogin(account)}
+                    >
+                      {auth === "signed-in" ? "Sign in again" : "Sign in"}
+                    </Button>
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          aria-label={`Actions for ${account.label}`}
+                          title={`Actions for ${account.label}`}
+                        >
+                          <Ellipsis className="size-4" />
+                        </Button>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Portal>
+                        <StyledDropdownMenuContent align="end" sideOffset={4}>
+                          <StyledDropdownMenuItem
+                            disabled={!worker?.online || status.isPending}
+                            onSelect={() => status.mutate(account)}
+                          >
+                            Check status
+                          </StyledDropdownMenuItem>
+                          {!preferred && account.enabled ? (
+                            <StyledDropdownMenuItem
+                              disabled={prefer.isPending}
+                              onSelect={() => prefer.mutate(account)}
+                            >
+                              Prefer on this worker
+                            </StyledDropdownMenuItem>
+                          ) : null}
+                          <StyledDropdownMenuItem
+                            onSelect={() => {
+                              remove.reset();
+                              setRemoving(account);
+                            }}
+                          >
+                            Remove
+                          </StyledDropdownMenuItem>
+                        </StyledDropdownMenuContent>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
+                  </>
+                }
+              >
+                {worker?.online && account.enabled && auth === "signed-in" ? (
                   <ClaudeAccountUsage
                     providerId={provider.id}
                     accountId={account.id}
                   />
-                </div>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={!worker?.online || !account.enabled}
-                onClick={() => setLogin(account)}
-              >
-                {auth === "signed-in" ? "Sign in again" : "Sign in"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={!worker?.online || status.isPending}
-                onClick={() => status.mutate(account)}
-              >
-                Check status
-              </Button>
-              {!preferred && account.enabled ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={prefer.isPending}
-                  onClick={() => prefer.mutate(account)}
-                >
-                  Prefer on this worker
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  remove.reset();
-                  setRemoving(account);
-                }}
-              >
-                Remove
-              </Button>
-            </div>
-          </div>
-        );
-      })}
+                ) : null}
+              </ProviderAccountCard>
+            );
+          })}
+        </ProviderAccountGrid>
+      ) : null}
+
       {operationError ? (
         <p role="alert" className="text-sm text-destructive">
           {operationError.message}
