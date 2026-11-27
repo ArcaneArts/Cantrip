@@ -1,5 +1,4 @@
-import { NativeAccountDefaultsEditor } from "./native-account-defaults-editor";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   isLanguageModelProfile,
   resolveNativeModelSelection,
@@ -18,12 +17,21 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
+import { NativeSelect } from "@/components/ui/native-select";
+import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 import type { NativeModelSettingsController } from "./use-native-model-settings";
 import type {
   NativeModelDirty,
   NativeModelDraft,
 } from "./native-model-settings";
+
+const tabs = [
+  { id: "model", label: "Model" },
+  { id: "subagents", label: "Subagents" },
+] as const;
+type Tab = (typeof tabs)[number]["id"];
 
 export function NativeModelSettingsPicker({
   controller,
@@ -45,6 +53,8 @@ export function NativeModelSettingsPicker({
   saveConfiguration?: (configuration: ModelConfiguration) => Promise<unknown>;
 }) {
   const { binding, selected, inventory, observed, update } = controller;
+  const tabId = useId();
+  const [activeTab, setActiveTab] = useState<Tab>("model");
   const nonLanguageRoutes = useNonLanguageRoutes(open);
   const modelChoices = useMemo(
     () =>
@@ -100,10 +110,13 @@ export function NativeModelSettingsPicker({
     setEditorIdentity(observed.identity);
   }, [observed.identity]);
   useEffect(() => {
-    if (!open && selected) {
-      setDraft({ ...selected, routeId: controller.selectedRouteId });
-      setDirty({});
-      setEditingBindingId(binding?.bindingId ?? null);
+    if (!open) {
+      setActiveTab("model");
+      if (selected) {
+        setDraft({ ...selected, routeId: controller.selectedRouteId });
+        setDirty({});
+        setEditingBindingId(binding?.bindingId ?? null);
+      }
     }
   }, [
     open,
@@ -183,6 +196,11 @@ export function NativeModelSettingsPicker({
     controller.localStatus === "requesting" ||
     controller.localStatus === "queued";
   const status = observed.state.data?.desiredStatus;
+  const rejected =
+    status === "rejected" || controller.localStatus === "rejected";
+  const uncertain =
+    status === "uncertain" || controller.localStatus === "uncertain";
+  const showConfirmed = pending || rejected || uncertain || configuredTarget;
   const canSelectModel = Boolean(
     draft &&
     binding &&
@@ -233,56 +251,62 @@ export function NativeModelSettingsPicker({
   };
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <Button
-        type="button"
-        variant="ghost"
-        className="h-8 max-w-72 justify-start px-1.5 text-left"
-        disabled={disabled}
-        aria-label="Configure agent models"
-        onClick={() => changeOpen(true)}
-      >
-        <span className="min-w-0">
-          <span className="block truncate text-xs font-medium">
-            {configuredTarget
-              ? modelDisplayName(configuredTarget)
-              : selected
-                ? displayModel(selected.model, controller.selectedRouteId)
-                : "Session model"}
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-8 max-w-72 justify-start px-1.5 text-left"
+          disabled={disabled}
+          aria-label="Configure agent models"
+        >
+          <span className="min-w-0">
+            <span className="block truncate text-xs font-medium">
+              {configuredTarget
+                ? modelDisplayName(configuredTarget)
+                : selected
+                  ? displayModel(selected.model, controller.selectedRouteId)
+                  : "Session model"}
+            </span>
+            <span className="block truncate text-[10px] text-muted-foreground">
+              {configuredTarget
+                ? (configuration?.reasoningEffort ?? "Default reasoning")
+                : pending
+                  ? "Change pending"
+                  : (selected?.effort ?? "Default reasoning")}
+            </span>
           </span>
-          <span className="block truncate text-[10px] text-muted-foreground">
-            {configuredTarget
-              ? (configuration?.reasoningEffort ?? "Default reasoning")
-              : pending
-                ? "Change pending"
-                : (selected?.effort ?? "Default reasoning")}
-          </span>
-        </span>
-      </Button>
-      <DialogContent className="max-h-[85dvh] max-w-xl overflow-y-auto">
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85dvh] max-w-md gap-4">
         <DialogHeader>
           <DialogTitle>Session model settings</DialogTitle>
-          <DialogDescription>
-            Choose a model and reasoning effort for this conversation. Changes
-            apply on the next turn.
-          </DialogDescription>
+          <DialogDescription>Changes apply on the next turn.</DialogDescription>
         </DialogHeader>
+        <NavigationTabBar<Tab>
+          activeTab={activeTab}
+          ariaLabel="Session model settings sections"
+          className="border-b"
+          onTabChange={setActiveTab}
+          panelIdPrefix={tabId}
+          tabs={tabs}
+        />
         {observed.confirmed ? (
-          <p
-            className="text-xs text-muted-foreground"
-            aria-label="Effective model settings"
-          >
-            Confirmed:{" "}
-            {displayModel(
-              observed.confirmed.model,
-              controller.confirmedRouteId,
-            )}{" "}
-            · {observed.confirmed.effort ?? "Default reasoning"} ·{" "}
-            {observed.confirmed.serviceTier === "default"
-              ? "Standard service"
-              : (observed.confirmed.serviceTier ?? "No service tier override")}
-          </p>
+          showConfirmed ? (
+            <p
+              className="text-xs text-muted-foreground"
+              aria-label="Effective model settings"
+            >
+              Confirmed:{" "}
+              {displayModel(
+                observed.confirmed.model,
+                controller.confirmedRouteId,
+              )}
+              {" · "}
+              {observed.confirmed.effort ?? "Default reasoning"}
+            </p>
+          ) : null
         ) : (
-          <p role="status">
+          <p role="status" className="text-sm text-muted-foreground">
             {observed.encryption.status !== "ready"
               ? "Unlock encryption to view session settings."
               : observed.state.error
@@ -295,280 +319,263 @@ export function NativeModelSettingsPicker({
             Requested changes are awaiting confirmation.
           </p>
         ) : null}
-        {status === "rejected" || controller.localStatus === "rejected" ? (
+        {rejected ? (
           <p role="status" className="text-xs text-destructive">
-            The latest change was rejected. Confirmed settings remain shown
-            above.
+            The latest change was rejected.
           </p>
         ) : null}
-        {status === "uncertain" || controller.localStatus === "uncertain" ? (
+        {uncertain ? (
           <p role="status" className="text-xs">
             The latest change has an unconfirmed outcome. Check session settings
             before submitting it again.
           </p>
         ) : null}
-        <label className="space-y-1 text-sm">
-          Model
-          <select
-            aria-label="Session model"
-            className="w-full rounded border bg-background p-2"
-            value={target ? `profile:${target.id}` : (draft?.routeId ?? "")}
-            disabled={
-              (!canSelectModel &&
-                !(binding && saveConfiguration && otherModels.length)) ||
-              update.isPending ||
-              saving
-            }
-            onChange={(event) => {
-              const choice = modelChoices.find(
-                (candidate) => candidate.routeId === event.target.value,
-              );
-              if (choice) {
-                setTargetModelId(null);
-                if (choice.routeId === draft?.routeId) return;
-                setDraft((current) =>
-                  current
-                    ? {
-                        ...current,
-                        routeId: choice.routeId,
-                        model: choice.name,
-                      }
-                    : current,
-                );
-                setDirty((current) => ({ ...current, model: true }));
-              } else {
-                const next = otherModels.find(
-                  (model) => `profile:${model.id}` === event.target.value,
-                );
-                if (next) {
-                  setTargetModelId(next.id);
-                  setTargetEffort(
-                    next.id === configuredTarget?.id
-                      ? (configuration?.reasoningEffort ?? null)
-                      : null,
-                  );
+        <div
+          role="tabpanel"
+          id={`${tabId}-model-panel`}
+          aria-labelledby={`${tabId}-model-tab`}
+          hidden={activeTab !== "model"}
+        >
+          <div className="grid min-h-44 content-start gap-4">
+            <label className="grid gap-1.5 text-sm font-medium">
+              Model
+              <NativeSelect
+                aria-label="Session model"
+                className="w-full min-w-0 font-normal"
+                value={target ? `profile:${target.id}` : (draft?.routeId ?? "")}
+                disabled={
+                  (!canSelectModel &&
+                    !(binding && saveConfiguration && otherModels.length)) ||
+                  update.isPending ||
+                  saving
                 }
-              }
-            }}
-          >
-            <option value="" disabled>
-              {draft
-                ? displayModel(draft.model, draft.routeId)
-                : "Choose model"}
-            </option>
-            {draft?.routeId && nonLanguageRoutes.has(draft.routeId) ? (
-              <option value={draft.routeId} disabled>
-                {displayModel(draft.model, draft.routeId)} · Review language
-                configuration
-              </option>
+                onChange={(event) => {
+                  const choice = modelChoices.find(
+                    (candidate) => candidate.routeId === event.target.value,
+                  );
+                  if (choice) {
+                    setTargetModelId(null);
+                    if (choice.routeId === draft?.routeId) return;
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            routeId: choice.routeId,
+                            model: choice.name,
+                          }
+                        : current,
+                    );
+                    setDirty((current) => ({ ...current, model: true }));
+                  } else {
+                    const next = otherModels.find(
+                      (model) => `profile:${model.id}` === event.target.value,
+                    );
+                    if (next) {
+                      setTargetModelId(next.id);
+                      setTargetEffort(
+                        next.id === configuredTarget?.id
+                          ? (configuration?.reasoningEffort ?? null)
+                          : null,
+                      );
+                    }
+                  }
+                }}
+              >
+                <option value="" disabled>
+                  {draft
+                    ? displayModel(draft.model, draft.routeId)
+                    : "Choose model"}
+                </option>
+                {draft?.routeId && nonLanguageRoutes.has(draft.routeId) ? (
+                  <option value={draft.routeId} disabled>
+                    {displayModel(draft.model, draft.routeId)} · Review language
+                    configuration
+                  </option>
+                ) : null}
+                {modelChoices.map((candidate) => (
+                  <option key={candidate.routeId} value={candidate.routeId}>
+                    {candidate.catalog?.displayName ?? candidate.name}
+                    {modelChoices.filter(
+                      (entry) => entry.name === candidate.name,
+                    ).length > 1
+                      ? ` (${candidate.routeId})`
+                      : ""}
+                  </option>
+                ))}
+                {otherModels.map((choice) => (
+                  <option key={choice.id} value={`profile:${choice.id}`}>
+                    {modelDisplayName(choice)}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Reasoning effort
+              <NativeSelect
+                aria-label="Session reasoning effort"
+                className="w-full min-w-0 font-normal"
+                value={(target ? targetEffort : draft?.effort) ?? ""}
+                disabled={
+                  target
+                    ? saving || targetReasoning.loading
+                    : !editable || update.isPending
+                }
+                onChange={(event) => {
+                  if (target) {
+                    setTargetEffort(event.target.value || null);
+                    return;
+                  }
+                  setDraft((current) =>
+                    current
+                      ? { ...current, effort: event.target.value || null }
+                      : current,
+                  );
+                  setDirty((current) => ({ ...current, effort: true }));
+                }}
+              >
+                {efforts.map((effort) => (
+                  <option key={effort ?? "default"} value={effort ?? ""}>
+                    {effort ?? "Default"}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+          </div>
+        </div>
+        <div
+          role="tabpanel"
+          id={`${tabId}-subagents-panel`}
+          aria-labelledby={`${tabId}-subagents-tab`}
+          hidden={activeTab !== "subagents"}
+        >
+          <div className="grid min-h-44 content-start gap-4">
+            {draft?.multiAgentEnabled !== undefined ? (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  aria-label="Enable subagents"
+                  className="size-4 accent-primary"
+                  checked={draft.multiAgentEnabled}
+                  disabled={!editable || update.isPending}
+                  onChange={(event) => {
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            multiAgentEnabled: event.target.checked,
+                          }
+                        : current,
+                    );
+                    setDirty((current) => ({
+                      ...current,
+                      multiAgentEnabled: true,
+                    }));
+                  }}
+                />{" "}
+                Enable subagents
+              </label>
             ) : null}
-            {modelChoices.map((candidate) => (
-              <option key={candidate.routeId} value={candidate.routeId}>
-                {candidate.catalog?.displayName ?? candidate.name}
-                {modelChoices.filter((entry) => entry.name === candidate.name)
-                  .length > 1
-                  ? ` (${candidate.routeId})`
-                  : ""}
-              </option>
-            ))}
-            {otherModels.map((choice) => (
-              <option key={choice.id} value={`profile:${choice.id}`}>
-                {modelDisplayName(choice)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="space-y-1 text-sm">
-          Reasoning effort
-          <select
-            aria-label="Session reasoning effort"
-            className="w-full rounded border bg-background p-2"
-            value={(target ? targetEffort : draft?.effort) ?? ""}
-            disabled={
-              target
-                ? saving || targetReasoning.loading
-                : !editable || update.isPending
-            }
-            onChange={(event) => {
-              if (target) {
-                setTargetEffort(event.target.value || null);
-                return;
-              }
-              setDraft((current) =>
-                current
-                  ? { ...current, effort: event.target.value || null }
-                  : current,
-              );
-              setDirty((current) => ({ ...current, effort: true }));
-            }}
-          >
-            {efforts.map((effort) => (
-              <option key={effort ?? "default"} value={effort ?? ""}>
-                {effort ?? "Default"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="space-y-1 text-sm">
-          Service tier
-          <input
-            aria-label="Session service tier"
-            className="w-full rounded border bg-background p-2"
-            placeholder="No service tier override"
-            value={draft?.serviceTier ?? ""}
-            disabled={!editable || update.isPending}
-            onChange={(event) => {
-              setDraft((current) =>
-                current
-                  ? { ...current, serviceTier: event.target.value || null }
-                  : current,
-              );
-              setDirty((current) => ({ ...current, serviceTier: true }));
-            }}
-          />
-          <span className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!editable || update.isPending}
-              onClick={() => {
-                setDraft((current) =>
-                  current ? { ...current, serviceTier: null } : current,
-                );
-                setDirty((current) => ({ ...current, serviceTier: true }));
-              }}
-            >
-              No service tier override
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!editable || update.isPending}
-              onClick={() => {
-                setDraft((current) =>
-                  current ? { ...current, serviceTier: "default" } : current,
-                );
-                setDirty((current) => ({ ...current, serviceTier: true }));
-              }}
-            >
-              Standard service
-            </Button>
-          </span>
-          <span className="block text-xs text-muted-foreground">
-            Empty leaves the service tier unspecified. Standard service selects
-            the standard tier explicitly.
-          </span>
-        </label>
-        {draft?.multiAgentEnabled !== undefined ? (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              aria-label="Enable subagents"
-              checked={draft.multiAgentEnabled}
-              disabled={!editable || update.isPending}
-              onChange={(event) => {
-                setDraft((current) =>
-                  current
-                    ? { ...current, multiAgentEnabled: event.target.checked }
-                    : current,
-                );
-                setDirty((current) => ({
-                  ...current,
-                  multiAgentEnabled: true,
-                }));
-              }}
-            />{" "}
-            Enable subagents
-          </label>
-        ) : null}
-        {draft?.subagentModel !== undefined ? (
-          <label className="space-y-1 text-sm">
-            Subagent model
-            <select
-              aria-label="Subagent model"
-              className="w-full rounded border bg-background p-2"
-              value={draft.subagentModel ?? ""}
-              disabled={!editable || update.isPending}
-              onChange={(event) => {
-                setDraft((current) =>
-                  current
-                    ? { ...current, subagentModel: event.target.value || null }
-                    : current,
-                );
-                setDirty((current) => ({ ...current, subagentModel: true }));
-              }}
-            >
-              <option value="">Inherit parent model</option>
-              {[
-                ...new Set([
-                  ...modelChoices.map((entry) => entry.name),
-                  ...(draft.subagentModel ? [draft.subagentModel] : []),
-                ]),
-              ].map((name) => (
-                <option
-                  key={name}
-                  value={name}
-                  disabled={name === draft.subagentModel && subagentConflict}
+            {draft?.subagentModel !== undefined ? (
+              <label className="grid gap-1.5 text-sm font-medium">
+                Subagent model
+                <NativeSelect
+                  aria-label="Subagent model"
+                  className="w-full min-w-0 font-normal"
+                  value={draft.subagentModel ?? ""}
+                  disabled={!editable || update.isPending}
+                  onChange={(event) => {
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            subagentModel: event.target.value || null,
+                          }
+                        : current,
+                    );
+                    setDirty((current) => ({
+                      ...current,
+                      subagentModel: true,
+                    }));
+                  }}
                 >
-                  {displayModel(name)}
-                  {name === draft.subagentModel && subagentConflict
-                    ? " · Review language configuration"
-                    : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            This session has not reported subagent model settings yet.
-          </p>
-        )}
-        {draft?.subagentReasoningEffort !== undefined ? (
-          <label className="space-y-1 text-sm">
-            Subagent reasoning effort
-            <select
-              aria-label="Subagent reasoning effort"
-              className="w-full rounded border bg-background p-2"
-              value={draft.subagentReasoningEffort ?? ""}
-              disabled={!editable || update.isPending}
-              onChange={(event) => {
-                setDraft((current) =>
-                  current
-                    ? {
-                        ...current,
-                        subagentReasoningEffort: event.target.value || null,
+                  <option value="">Inherit parent model</option>
+                  {[
+                    ...new Set([
+                      ...modelChoices.map((entry) => entry.name),
+                      ...(draft.subagentModel ? [draft.subagentModel] : []),
+                    ]),
+                  ].map((name) => (
+                    <option
+                      key={name}
+                      value={name}
+                      disabled={
+                        name === draft.subagentModel && subagentConflict
                       }
-                    : current,
-                );
-                setDirty((current) => ({
-                  ...current,
-                  subagentReasoningEffort: true,
-                }));
-              }}
-            >
-              <option value="">Inherit parent reasoning</option>
-              {[
-                ...new Set([
-                  ...(modelChoices
-                    .find(
-                      (entry) =>
-                        entry.name === (draft.subagentModel ?? draft.model),
-                    )
-                    ?.catalog?.supportedReasoningEfforts?.map(
-                      (entry) => entry.effort,
-                    ) ?? []),
-                  ...(draft.subagentReasoningEffort
-                    ? [draft.subagentReasoningEffort]
-                    : []),
-                ]),
-              ].map((effort) => (
-                <option key={effort} value={effort}>
-                  {effort}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+                    >
+                      {displayModel(name)}
+                      {name === draft.subagentModel && subagentConflict
+                        ? " · Review language configuration"
+                        : ""}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+            ) : null}
+            {draft?.subagentReasoningEffort !== undefined ? (
+              <label className="grid gap-1.5 text-sm font-medium">
+                Subagent reasoning effort
+                <NativeSelect
+                  aria-label="Subagent reasoning effort"
+                  className="w-full min-w-0 font-normal"
+                  value={draft.subagentReasoningEffort ?? ""}
+                  disabled={!editable || update.isPending}
+                  onChange={(event) => {
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            subagentReasoningEffort: event.target.value || null,
+                          }
+                        : current,
+                    );
+                    setDirty((current) => ({
+                      ...current,
+                      subagentReasoningEffort: true,
+                    }));
+                  }}
+                >
+                  <option value="">Inherit parent reasoning</option>
+                  {[
+                    ...new Set([
+                      ...(modelChoices
+                        .find(
+                          (entry) =>
+                            entry.name === (draft.subagentModel ?? draft.model),
+                        )
+                        ?.catalog?.supportedReasoningEfforts?.map(
+                          (entry) => entry.effort,
+                        ) ?? []),
+                      ...(draft.subagentReasoningEffort
+                        ? [draft.subagentReasoningEffort]
+                        : []),
+                    ]),
+                  ].map((effort) => (
+                    <option key={effort} value={effort}>
+                      {effort}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+            ) : null}
+            {draft &&
+            draft.subagentModel === undefined &&
+            draft.subagentReasoningEffort === undefined ? (
+              <p className="text-sm text-muted-foreground">
+                Subagent model settings are unavailable for this session.
+              </p>
+            ) : null}
+          </div>
+        </div>
         {saveError ? (
           <p role="alert" className="text-xs text-destructive">
             {saveError}
@@ -595,21 +602,9 @@ export function NativeModelSettingsPicker({
             Retry settings read
           </Button>
         ) : null}
-        {open && editable && binding && draft && observed.identity ? (
-          <NativeAccountDefaultsEditor
-            key={binding.bindingId}
-            binding={binding}
-            identity={observed.identity}
-            values={{
-              model: draft.model,
-              model_reasoning_effort: draft.effort,
-              service_tier: draft.serviceTier ?? null,
-            }}
-          />
-        ) : null}
         <DialogFooter>
           <Button variant="outline" onClick={() => changeOpen(false)}>
-            Close
+            Cancel
           </Button>
           <Button
             disabled={
