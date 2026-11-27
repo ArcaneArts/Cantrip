@@ -397,7 +397,53 @@ impl Worker {
                             })?;
                             let name = grok.provider_name.clone();
                             let proxy = resolver(grok).await?;
-                            launch.profile.configure_grok(&name, &proxy);
+                            launch.profile.configure_loopback(&name, &proxy);
+                        }
+                        if let Some(account) = launch.profile.claude.take() {
+                            let verify = this.0.binding.clone();
+                            let scope = key.scope.clone();
+                            let authority = Arc::new(move || {
+                                let (server, owner) = verify()?;
+                                anyhow::ensure!(
+                                    owner == scope.owner && server == scope.server,
+                                    "The Claude Code worker binding changed."
+                                );
+                                Ok(())
+                            });
+                            let proxy = crate::claude_code::gateway::Gateway::start(
+                                &this.0.data,
+                                key.scope.owner.clone(),
+                                key.scope.server.clone(),
+                                account.id,
+                                authority,
+                            )
+                            .await?;
+                            launch
+                                .profile
+                                .configure_loopback(&"Claude Code".into(), &proxy.url);
+                            launch.profile.provider_arguments.extend([
+                                "model_providers.cantrip_runtime.supports_websockets=false".into(),
+                                "model_providers.cantrip_runtime.request_max_retries=0".into(),
+                                "model_providers.cantrip_runtime.stream_max_retries=0".into(),
+                            ]);
+                            let lifecycle = proxy.observe();
+                            let observe = launch.observe;
+                            launch.observe = Arc::new(move |event| {
+                                match &event.kind {
+                                    EventKind::Message(message)
+                                        if message["method"] == "turn/completed" =>
+                                    {
+                                        if let Some(turn) = message["params"]["turn"]["id"].as_str()
+                                        {
+                                            lifecycle(Some(turn));
+                                        }
+                                    }
+                                    EventKind::ProcessExited(_) => lifecycle(None),
+                                    _ => {}
+                                }
+                                observe(event)
+                            });
+                            launch.profile.claude_gateway = Some(proxy);
                         }
                         if let Some(delivery) = this.0.project_goals.get().cloned() {
                             let scope = key.scope.clone();

@@ -54,6 +54,14 @@ pub(in crate::codex) async fn profile(
     let mut id = surround("", provider_key, &format!(":{}", &configuration[..16]));
     let configuration_home = if matches!(provider["kind"].as_str(), Some("chatgpt" | "grok")) {
         account_home(data, provider_key)
+    } else if provider["kind"] == "claude-code" {
+        data.join("codex-claude-homes").join(sha256(
+            &json!({
+                "owner":scope["ownerId"],"server":scope["serverId"],
+                "provider":provider["id"],"account":provider["accountId"],
+            })
+            .stringify(),
+        ))
     } else {
         data.join("codex-home")
     };

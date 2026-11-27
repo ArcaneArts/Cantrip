@@ -1,7 +1,9 @@
 //! The worker's private, versioned installation of Anthropic's Claude Code.
 mod accounts;
+pub(crate) mod gateway;
 pub(crate) mod inference;
 mod release;
+mod responses;
 mod storage;
 pub use accounts::{Profile, ProfileLease, SignIn};
 

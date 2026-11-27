@@ -130,6 +130,41 @@ references are rejected. Request and retained output bodies are bounded at
 64 MiB, with a 4 MiB SSE-event bound. MLX model/tool templates must support the
 chosen model's function calling; a successful model list is not proof of that.
 
+## Claude Code subscription on a worker
+
+In **Settings → Models → Add provider**, choose **Claude Code**. Add a named
+account, select its worker, and complete Anthropic sign-in in Cantrip's temporary
+terminal. Add another account the same way. **Prefer on this worker** sets the
+account for new work on that worker. The worker downloads and verifies its own
+copy of Claude Code, updates it automatically, and uses a separate
+`CLAUDE_CONFIG_DIR` for each sign-in. Credentials stay on that worker.
+[Claude Code account isolation](https://code.claude.com/docs/en/authentication#log-in-with-multiple-accounts)
+
+Add a language model to the provider, using a Claude Code model name such as
+`sonnet`. The model can be selected for automatic labels, IDE, Chats, and
+Council on the account's worker. Codex maintains conversation history,
+compaction, and tool approvals. Claude requests only the JSON function tools
+Codex offers. The worker returns the actual Codex tool result to Claude for the
+next response. The adapter accepts text conversation history and supports one
+function call per response. It returns an error for unsupported input such as
+images or opaque reasoning from a different provider.
+
+Run this live check once a subscription account is available.
+
+1. Sign in to two accounts on the same worker. Switch the preferred account and
+   verify both sign-ins survive a worker restart and an independent personal
+   Claude Code login still works.
+2. Select the Claude model for labels and start a test task. Verify its label is
+   produced with the preferred account.
+3. Select the model in the IDE, ask it to run a small command, and verify that
+   the approval, command output, and final response are visible in Cantrip.
+4. Run `/compact` and verify the next turn retains the conversation summary.
+5. Run a short prompt in Chats and Council, then remove one account and verify
+   work still runs through the other.
+
+Obtain Anthropic's approval before offering the headless subscription sign-in
+integration to other users. [Anthropic's integration terms](https://code.claude.com/docs/en/agent-sdk/overview#get-started)
+
 ## Validation evidence
 
 The endpoint fixture exercises all six additional provider kinds through the

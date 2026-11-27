@@ -17,17 +17,20 @@ if grep -q 'orchard' "$HOME/fixture-input"; then title='Inventory orchard crates
 printf '{"type":"result","subtype":"success","is_error":false,"result":"%s"}\\n' "$title"
 `;
 
-async function installFixture(workerDirectory) {
+export async function installClaudeCodeFixture(
+  workerDirectory,
+  program = fixture,
+) {
   const root = path.join(workerDirectory, "managed-runtimes", "claude-code");
-  const checksum = createHash("sha256").update(fixture).digest("hex");
+  const checksum = createHash("sha256").update(program).digest("hex");
   const directory = path.join(root, "versions", checksum);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  await writeFile(path.join(directory, "claude"), fixture, { mode: 0o700 });
+  await writeFile(path.join(directory, "claude"), program, { mode: 0o700 });
   await writeFile(
     path.join(root, "current.json"),
     JSON.stringify({
       schemaVersion: 1,
-      active: { version: "2.1.1", checksum, size: Buffer.byteLength(fixture) },
+      active: { version: "2.1.1", checksum, size: Buffer.byteLength(program) },
       previous: null,
     }),
     { mode: 0o600 },
@@ -43,7 +46,7 @@ export async function actualClaudeLabel({
   result,
   diagnostics,
 }) {
-  const profiles = await installFixture(workerDirectory);
+  const profiles = await installClaudeCodeFixture(workerDirectory);
   const taskModel = await taskModelProvider();
   try {
     const { providerId, ids } = await page.evaluate(
