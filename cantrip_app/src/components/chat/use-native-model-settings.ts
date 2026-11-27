@@ -139,6 +139,7 @@ export function useNativeModelSettings(input: {
     }),
     binding,
     inventory,
+    confirmedRouteId: currentRouteId,
     selected,
     selectedRouteId: mapped?.status === "resolved" ? mapped.model.routeId : "",
     update,

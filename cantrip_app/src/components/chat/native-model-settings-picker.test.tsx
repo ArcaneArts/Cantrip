@@ -227,6 +227,37 @@ afterEach(async () => {
   await act(async () => cleanups.splice(0).forEach((cleanup) => cleanup()));
 });
 describe("bound GUI native model picker", () => {
+  it("shows the provider catalog label while keeping the native model ID", async () => {
+    const state = observed();
+    state.confirmed.model = "opus";
+    runtime.observed = state;
+    runtime.read.mockResolvedValue({
+      ...inventory,
+      providerKind: "claude-code",
+      models: [
+        {
+          ...inventory.models[0],
+          name: "opus",
+          catalog: { displayName: "Opus 5.5" },
+        },
+      ],
+    });
+    const gui = await mount();
+    await gui.open();
+
+    const launcher = gui.view.root.findByProps({
+      "aria-label": "Configure agent models",
+    });
+    expect(
+      launcher.findAllByType("span").map((span) => span.children[0]),
+    ).toContain("Opus 5.5");
+    const label = gui.view.root.findByProps({
+      "aria-label": "Effective model settings",
+    });
+    expect(label.children.join("")).toContain("Confirmed: Opus 5.5");
+    expect(gui.controller().selected?.model).toBe("opus");
+  });
+
   it("selects a Claude model as a transfer instead of patching the existing provider", async () => {
     runtime.handoffInventory = {
       binding,
