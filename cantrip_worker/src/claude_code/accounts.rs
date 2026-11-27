@@ -126,6 +126,14 @@ impl Manager {
             })
             .await?;
             json!({"removed":true})
+        } else if request["type"] == "claude-code.account.inspect" {
+            self.inspect(
+                profile,
+                request["section"]
+                    .as_str()
+                    .context("Missing inspection section")?,
+            )
+            .await?
         } else {
             let status = self.sign_in_status(profile).await?;
             json!({"status":status.wire()})
@@ -194,6 +202,10 @@ impl Installation {
     }
 
     pub async fn sign_in_status(&self, profile: Profile) -> Result<SignIn> {
+        self.auth_status(profile).await.map(|(sign_in, _)| sign_in)
+    }
+
+    pub(super) async fn auth_status(&self, profile: Profile) -> Result<(SignIn, Value)> {
         let mut command = self.account_command(profile)?;
         command.args(["auth", "status"]).kill_on_drop(true);
         let output = tokio::time::timeout(Duration::from_secs(12), command.output())
@@ -205,7 +217,7 @@ impl Installation {
         );
         let value = parse_json_text(std::str::from_utf8(&output.stdout)?)
             .map_err(|_| anyhow::anyhow!("Claude Code returned invalid sign-in status."))?;
-        status(output.status.success(), &value)
+        Ok((status(output.status.success(), &value)?, value))
     }
 }
 

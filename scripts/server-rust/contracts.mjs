@@ -199,6 +199,8 @@ export const contractRoots = [
   "orderedIdsSchema",
   "providerAuthLiveStatusSchema",
   "providerModelCatalogResultSchema",
+  "claudeCodeModelListSchema",
+  "claudeCodeAccountUsageSchema",
   "providerTelemetryWireAnalyticsSchema",
   "providerTelemetryExportSchema",
   "providerTelemetryDeleteResultSchema",

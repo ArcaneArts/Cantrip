@@ -33,7 +33,8 @@ export function providerSupportsCatalog(provider: ModelProviderSummary) {
   if (
     usesWorkerModelCatalog(provider) ||
     provider.kind === "chatgpt" ||
-    provider.kind === "grok"
+    provider.kind === "grok" ||
+    provider.kind === "claude-code"
   ) {
     return true;
   }

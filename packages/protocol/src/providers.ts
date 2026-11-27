@@ -308,6 +308,7 @@ export const providerModelMetadataSourceSchema = z.enum([
   "openrouter",
   "codex",
   "grok",
+  "claude-code",
   "zai",
   "compatible-api",
   "manual",
@@ -394,6 +395,32 @@ export const providerModelCatalogResultSchema = z.object({
   availability: z.array(providerModelAvailabilitySchema),
   syncStates: z.array(providerCatalogSyncStateSchema),
   servedStale: z.boolean(),
+});
+
+export const claudeCodeModelListSchema = z.object({
+  models: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(500),
+        name: z.string().min(1).max(500),
+        description: z.string().max(20_000).nullable(),
+        efforts: z.array(reasoningEffortSchema).max(32),
+      }),
+    )
+    .max(256),
+});
+
+export const claudeCodeAccountUsageSchema = z.object({
+  subscriptionType: z.string().max(80).nullable(),
+  windows: z
+    .array(
+      z.object({
+        label: z.string().min(1).max(100),
+        usedPercent: z.number().min(0).max(100),
+        resetText: z.string().min(1).max(160).nullable(),
+      }),
+    )
+    .max(16),
 });
 
 export const providerConnectionTestStageSchema = z.enum([

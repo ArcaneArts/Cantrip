@@ -53,6 +53,37 @@ async fn execute(
     let method = request.method().clone();
     let logout = request.uri().path() == "/api/codex/auth/logout";
     let device_login = request.uri().path() == "/api/codex/auth/device-login";
+    if request.uri().path().ends_with("/claude-usage") {
+        let provider = &params["providerId"];
+        let account = &params["accountId"];
+        let Some(worker) = repository
+            .claude_account_worker(owner, provider, account, true)
+            .await?
+        else {
+            return Ok(error(404, "Claude Code account not found."));
+        };
+        let result = service.workers.commands.request(
+            &worker,
+            crate::wire::value::json!({"type":"claude-code.account.inspect","accountId":account,"serverId":service.server_id,"section":"usage"}),
+            Some(std::time::Duration::from_secs(35)),
+            None,
+        ).await;
+        return match result {
+            Ok(Some(usage)) => {
+                if repository
+                    .claude_account_worker(owner, provider, account, true)
+                    .await?
+                    .as_deref()
+                    != Some(&worker)
+                {
+                    return Ok(error(404, "Claude Code account not found."));
+                }
+                output(200, "claudeCodeAccountUsageSchema", &usage)
+            }
+            Ok(None) => Ok(error(502, "Claude Code returned no subscription usage.")),
+            Err(cause) => Ok(auth_failure(cause.into())),
+        };
+    }
     if request.uri().path() == "/api/codex/auth/status" {
         let query = account::query(request.uri());
         if !crate::wire::coercion::truthy(query.get("providerId")) {
@@ -327,6 +358,10 @@ pub(super) fn routes() -> Router<Arc<AuthService>> {
         .route("/api/codex/auth/device-login", post(handle))
         .route(
             "/api/settings/providers/{providerId}/accounts/{accountId}/claude-status",
+            get(handle),
+        )
+        .route(
+            "/api/settings/providers/{providerId}/accounts/{accountId}/claude-usage",
             get(handle),
         )
 }

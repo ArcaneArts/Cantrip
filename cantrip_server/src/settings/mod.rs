@@ -10,6 +10,7 @@ mod catalog_hash;
 pub mod catalog_refresh;
 pub mod catalog_runtime;
 pub mod chatgpt;
+mod claude_catalog;
 pub mod credential_migrations;
 pub(crate) mod desktop_update;
 pub(crate) mod endpoint_providers;

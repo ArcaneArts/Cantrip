@@ -227,7 +227,7 @@ async fn capture(
     Ok((exit, stdout, stderr))
 }
 
-async fn bounded(
+pub(super) async fn bounded(
     input: impl AsyncRead + Unpin,
     limit: u64,
 ) -> std::result::Result<Vec<u8>, Failure> {

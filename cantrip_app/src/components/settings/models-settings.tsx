@@ -327,7 +327,7 @@ export function ModelsSettings({
   );
   const catalog = useProviderCatalog(
     provider?.id,
-    workerId,
+    provider?.kind === "claude-code" ? null : workerId,
     Boolean(provider && providerSupportsCatalog(provider)),
     provider?.connectionRevision ?? provider?.updatedAt,
   );

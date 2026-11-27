@@ -192,6 +192,14 @@ export const workerSurfaceCommandSchemas = [
     .strict(),
   z
     .object({
+      type: z.literal("claude-code.account.inspect"),
+      accountId: z.string().uuid(),
+      serverId: z.string().min(1).max(255),
+      section: z.enum(["models", "usage"]),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("claude-code.auth.remove"),
       accountId: z.string().uuid(),
       serverId: z.string().min(1).max(255),

@@ -3,8 +3,8 @@ import type {
   ModelProviderSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,10 +20,61 @@ import {
   createModelProviderAccount,
   deleteModelProviderAccount,
   getClaudeCodeAccountStatus,
+  getClaudeCodeAccountUsage,
+  refreshProviderModelCatalog,
   reorderModelProviderAccounts,
 } from "@/lib/api/models";
 
 import { ClaudeCodeLoginTerminal } from "./claude-code-login-terminal";
+import {
+  providerCatalogQueryKey,
+  useProviderCatalog,
+} from "./use-provider-catalog";
+
+const usageQueryKey = (providerId: string, accountId: string) =>
+  ["claude-account-usage", providerId, accountId] as const;
+
+function ClaudeAccountUsage({
+  providerId,
+  accountId,
+}: {
+  providerId: string;
+  accountId: string;
+}) {
+  const usage = useQuery({
+    queryKey: usageQueryKey(providerId, accountId),
+    queryFn: () => getClaudeCodeAccountUsage(providerId, accountId),
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  if (!usage.data) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {usage.isPending
+          ? "Loading subscription usage…"
+          : "Subscription usage unavailable."}
+      </p>
+    );
+  }
+  return (
+    <div
+      className="mt-1 space-y-0.5 text-xs text-muted-foreground"
+      aria-label="Subscription usage"
+    >
+      {usage.data.subscriptionType ? (
+        <p className="capitalize">Claude {usage.data.subscriptionType}</p>
+      ) : null}
+      {usage.data.windows.map(({ label, usedPercent, resetText }) => (
+        <p key={label}>
+          {label} · {usedPercent}% used
+          {resetText ? ` · Resets ${resetText}` : ""}
+        </p>
+      ))}
+      {usage.isError ? <p>Showing previously reported usage.</p> : null}
+    </div>
+  );
+}
 
 export function ClaudeCodeAccounts({
   provider,
@@ -46,6 +97,28 @@ export function ClaudeCodeAccounts({
   const [workerId, setWorkerId] = useState("");
   const [attempt, setAttempt] = useState(0);
   const refresh = () => client.invalidateQueries({ queryKey: ["settings"] });
+  const revision = provider.connectionRevision ?? provider.updatedAt;
+  const catalog = useProviderCatalog(provider.id, null, true, revision);
+  const refreshModels = useMutation({
+    mutationFn: () => refreshProviderModelCatalog(provider.id),
+    onSuccess: (result) => {
+      client.setQueryData(
+        providerCatalogQueryKey(provider.id, null, revision),
+        result,
+      );
+    },
+  });
+  const fetchedCatalog =
+    catalog.isSuccess && !catalog.isPlaceholderData ? catalog.dataUpdatedAt : 0;
+  useEffect(() => {
+    if (fetchedCatalog)
+      void client.invalidateQueries({ queryKey: ["settings"] });
+  }, [client, fetchedCatalog]);
+  const availableModels = new Set(
+    catalog.data?.availability
+      .filter((entry) => entry.state === "available")
+      .map((entry) => entry.providerModelId),
+  ).size;
   const create = useMutation({
     mutationFn: () =>
       createModelProviderAccount(provider.id, {
@@ -64,12 +137,20 @@ export function ClaudeCodeAccounts({
     onSuccess: () => {
       setRemoving(null);
       void refresh();
+      void client.invalidateQueries({
+        queryKey: ["provider-catalog", provider.id],
+      });
     },
   });
   const status = useMutation({
     mutationFn: (account: ModelProviderAccountSummary) =>
       getClaudeCodeAccountStatus(provider.id, account.id),
-    onSuccess: refresh,
+    onSuccess: (_result, account) => {
+      void refresh();
+      void client.invalidateQueries({
+        queryKey: usageQueryKey(provider.id, account.id),
+      });
+    },
   });
   const prefer = useMutation({
     mutationFn: (account: ModelProviderAccountSummary) => {
@@ -98,8 +179,24 @@ export function ClaudeCodeAccounts({
           <p className="text-xs text-muted-foreground">
             Claude Code accounts are stored on their worker.
           </p>
+          <p className="text-xs text-muted-foreground">
+            {catalog.isFetching || refreshModels.isPending
+              ? "Refreshing model catalog…"
+              : catalog.isError && !catalog.data
+                ? "Model catalog unavailable"
+                : `${availableModels} available ${availableModels === 1 ? "model" : "models"}${catalog.data?.servedStale ? " · cached" : ""}`}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={catalog.isFetching || refreshModels.isPending}
+            onClick={() => refreshModels.mutate()}
+          >
+            Refresh models
+          </Button>
           <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
             Edit provider
           </Button>
@@ -159,6 +256,12 @@ export function ClaudeCodeAccounts({
                 {worker?.name ?? account.boundWorkerId} · {description}
                 {preferred ? " · Preferred on this worker" : ""}
               </p>
+              {worker?.online && account.enabled && auth === "signed-in" ? (
+                <ClaudeAccountUsage
+                  providerId={provider.id}
+                  accountId={account.id}
+                />
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-1">
               <Button
@@ -208,6 +311,11 @@ export function ClaudeCodeAccounts({
       {operationError ? (
         <p role="alert" className="text-sm text-destructive">
           {operationError.message}
+        </p>
+      ) : null}
+      {refreshModels.error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {refreshModels.error.message}
         </p>
       ) : null}
       <Dialog open={adding} onOpenChange={setAdding}>
@@ -299,6 +407,10 @@ export function ClaudeCodeAccounts({
               onSignedIn={() => {
                 setLogin(null);
                 void refresh();
+                void client.invalidateQueries({
+                  queryKey: usageQueryKey(provider.id, login.id),
+                });
+                refreshModels.mutate();
               }}
             />
           ) : null}

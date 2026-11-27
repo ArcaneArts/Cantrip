@@ -24,6 +24,7 @@ pub enum Family {
     Public,
     ChatGpt,
     Grok,
+    ClaudeCode,
     Ollama,
     Endpoint,
 }
@@ -53,6 +54,7 @@ struct Services {
     commands: Arc<LimitedCommandBus>,
     public: Arc<openrouter::CatalogService>,
     grok: Arc<super::grok::CatalogService>,
+    server_id: String,
 }
 impl CatalogBackend for Services {
     fn load(
@@ -64,6 +66,7 @@ impl CatalogBackend for Services {
         let commands = self.commands.clone();
         let public = self.public.clone();
         let grok = self.grok.clone();
+        let server_id = self.server_id.clone();
         async move {
             let worker_text = if matches!(
                 family,
@@ -79,6 +82,11 @@ impl CatalogBackend for Services {
             };
             let worker_key_is_string = request.worker.as_ref().is_some_and(Value::is_string);
             match family {
+                Family::ClaudeCode => {
+                    repository
+                        .get_claude_code_catalog(&request, &commands, &server_id)
+                        .await
+                }
                 Family::Zai => {
                     repository
                         .get_zai_provider_catalog(&request.owner, &request.provider)
@@ -181,6 +189,7 @@ impl CatalogRuntime {
     pub fn new(
         repository: SettingsRepository,
         commands: Arc<LimitedCommandBus>,
+        server_id: String,
     ) -> Result<Arc<Self>> {
         let diagnostics = Arc::new(OperationalDiagnostics);
         let backend = Arc::new(Services {
@@ -192,6 +201,7 @@ impl CatalogRuntime {
                 commands.clone(),
                 diagnostics.clone(),
             )?,
+            server_id,
         });
         Ok(Self::with_backend(
             repository,
@@ -320,12 +330,16 @@ impl CatalogRuntime {
         let family = match provider["kind"].as_str() {
             Some("chatgpt") => Family::ChatGpt,
             Some("grok") => Family::Grok,
+            Some("claude-code") => Family::ClaudeCode,
             Some("ollama") => Family::Ollama,
             Some(_) if super::endpoint_providers::worker_catalog_provider(&provider) => {
                 Family::Endpoint
             }
             _ => Family::Public,
         };
+        if matches!(family, Family::ClaudeCode) {
+            return self.backend.load(family, request.clone()).await;
+        }
         if matches!(family, Family::Public) {
             let catalog = self.backend.load(family, request.clone()).await?;
             if catalog.is_some() {
