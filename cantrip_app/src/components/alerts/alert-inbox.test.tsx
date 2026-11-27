@@ -87,6 +87,26 @@ it("keeps an open Inbox cleanly empty without opening a source or taking an acti
   expect(open).not.toHaveBeenCalled();
   expect(respondToAgentInteractionRequest).not.toHaveBeenCalled();
 });
+it("puts alerts and pagination in the shared content gutter viewport", async () => {
+  const ui = await render(
+    <AlertInbox
+      projectId="project"
+      chats={[chat]}
+      workers={[]}
+      onRename={() => {}}
+      onOpenChat={vi.fn()}
+    />,
+    [
+      [
+        ["project-alerts", "project", null],
+        { items: [alert], nextCursor: "next" },
+      ],
+    ],
+  );
+  const viewport = ui.root.findByProps({ "data-content-gutter": "standard" });
+  expect(viewport.findByProps({ "data-alert-id": alert.id })).toBeDefined();
+  expect(viewport.findByProps({ "aria-label": "Alert pages" })).toBeDefined();
+});
 it("shows attribution and request context only when expanded; opening never approves", async () => {
   const open = vi.fn();
   const request = {
