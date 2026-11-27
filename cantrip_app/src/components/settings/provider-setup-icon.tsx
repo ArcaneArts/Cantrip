@@ -1,3 +1,4 @@
+import SiClaude from "@icons-pack/react-simple-icons/icons/SiClaude";
 import SiLmstudio from "@icons-pack/react-simple-icons/icons/SiLmstudio";
 import SiOllama from "@icons-pack/react-simple-icons/icons/SiOllama";
 import SiOpenrouter from "@icons-pack/react-simple-icons/icons/SiOpenrouter";
@@ -35,7 +36,7 @@ const providerMarks: Record<ProviderSetupKind, ProviderMark> = {
   "openai-compatible": Plug,
   chatgpt: { light: openAiLogo },
   grok: { light: grokLogo },
-  "claude-code": Plug,
+  "claude-code": SiClaude,
 };
 
 export function ProviderSetupIcon({ setup }: { setup: ProviderSetupKind }) {
