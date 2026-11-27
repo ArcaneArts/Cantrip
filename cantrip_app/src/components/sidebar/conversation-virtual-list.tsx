@@ -1,7 +1,9 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
-/** A bounded catalog viewport. Only summaries are mounted; focus and scroll
- * are retained by resource ID when Live changes the recency order. */
+// The positioned scroll region is also the offset parent of both lists.
+const scrollRegion = '[data-slot="conversation-list-scroll"]';
+
+/** Window each catalog against the shared sidebar scroll region. */
 export function ConversationVirtualList<T extends { id: string }>({
   rows,
   estimate,
@@ -13,7 +15,7 @@ export function ConversationVirtualList<T extends { id: string }>({
   label: string;
   children(row: T): ReactNode;
 }) {
-  const viewport = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const heights = useRef(new Map<string, number>());
   const [geometry, setGeometry] = useState({ top: 0, height: 384 });
   const [focused, setFocused] = useState<string | null>(null);
@@ -32,36 +34,41 @@ export function ConversationVirtualList<T extends { id: string }>({
   const previous = useRef<{ ids: string[]; offsets: number[] } | null>(null);
   const order = rows.map((row) => row.id).join("\u0000");
   useLayoutEffect(() => {
-    const element = viewport.current;
-    if (!element) return;
+    const element = list.current;
+    const scroll = element?.closest<HTMLElement>(scrollRegion);
+    if (!element || !scroll) return;
     const before = previous.current;
-    if (before) {
+    const top = scroll.scrollTop - element.offsetTop;
+    // Only the list under the viewport's leading edge can anchor its scroll.
+    if (before && top >= 0 && top < before.offsets.at(-1)!) {
       const index = before.ids.findIndex(
-        (_, index) => before.offsets[index + 1]! > element.scrollTop,
+        (_, index) => before.offsets[index + 1]! > top,
       );
       const anchor = before.ids[index];
       const next = rows.findIndex((row) => row.id === anchor);
       if (next >= 0)
-        element.scrollTop += offsets[next]! - before.offsets[index]!;
+        scroll.scrollTop += offsets[next]! - before.offsets[index]!;
     }
     previous.current = { ids: rows.map((row) => row.id), offsets };
     const update = () =>
       setGeometry({
-        top: element.scrollTop,
-        height: element.clientHeight || 384,
+        top: scroll.scrollTop - element.offsetTop,
+        height: scroll.clientHeight || 384,
       });
     update();
-    element.addEventListener("scroll", update, { passive: true });
+    scroll.addEventListener("scroll", update, { passive: true });
     const observer =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
-    observer?.observe(element);
+    observer?.observe(scroll);
+    // Content ahead of Archived can resize without changing the viewport.
+    if (scroll.firstElementChild) observer?.observe(scroll.firstElementChild);
     return () => {
-      element.removeEventListener("scroll", update);
+      scroll.removeEventListener("scroll", update);
       observer?.disconnect();
     };
   }, [order, estimate, measureVersion]);
   useLayoutEffect(() => {
-    const root = viewport.current;
+    const root = list.current;
     if (!root || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
       let changed = false;
@@ -82,13 +89,19 @@ export function ConversationVirtualList<T extends { id: string }>({
   });
   function focus(index: number) {
     const row = rows[index];
-    const root = viewport.current;
-    if (!row || !root) return;
+    const root = list.current;
+    const scroll = root?.closest<HTMLElement>(scrollRegion);
+    if (!row || !root || !scroll) return;
     setFocused(row.id);
-    if (offsets[index]! < root.scrollTop) root.scrollTop = offsets[index]!;
-    else if (offsets[index + 1]! > root.scrollTop + root.clientHeight)
-      root.scrollTop = Math.max(0, offsets[index + 1]! - root.clientHeight);
-    setGeometry({ top: root.scrollTop, height: root.clientHeight || 384 });
+    const top = root.offsetTop + offsets[index]!;
+    const bottom = root.offsetTop + offsets[index + 1]!;
+    if (top < scroll.scrollTop) scroll.scrollTop = top;
+    else if (bottom > scroll.scrollTop + scroll.clientHeight)
+      scroll.scrollTop = Math.max(0, bottom - scroll.clientHeight);
+    setGeometry({
+      top: scroll.scrollTop - root.offsetTop,
+      height: scroll.clientHeight || 384,
+    });
     requestAnimationFrame(() => {
       [...root.querySelectorAll<HTMLElement>("[data-virtual-conversation]")]
         .find((element) => element.dataset.virtualConversation === row.id)
@@ -98,11 +111,9 @@ export function ConversationVirtualList<T extends { id: string }>({
   }
   return (
     <div
-      ref={viewport}
+      ref={list}
       role="list"
       aria-label={label}
-      data-conversation-viewport=""
-      className="max-h-[42vh] min-h-0 overflow-y-auto"
       style={{ overflowAnchor: "none" }}
       onFocusCapture={(event) => {
         const row = (event.target as HTMLElement).closest<HTMLElement>(
